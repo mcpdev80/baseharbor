@@ -41,6 +41,22 @@ type machineProviderRemoveInput struct {
 	Approval bool   `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
 }
 
+type machineOrganizationInput struct {
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to resolve effective organization defaults; defaults to dev"`
+}
+
+type machineOrganizationSetInput struct {
+	Source      string `json:"source" jsonschema:"organization source kind: oci, git, local or system"`
+	Location    string `json:"location,omitempty" jsonschema:"OCI repository, Git repository, local path, or managed system path"`
+	Requested   string `json:"requested,omitempty" jsonschema:"requested OCI tag/channel or Git ref; the resolved immutable digest/revision is persisted"`
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to return effective defaults; defaults to dev"`
+}
+
+type machineOrganizationUpdateInput struct {
+	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit approval required after reviewing organization.check"`
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to return effective defaults; defaults to dev"`
+}
+
 type machineTargetInput struct {
 	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 }

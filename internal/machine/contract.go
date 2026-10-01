@@ -140,6 +140,10 @@ func Operations() []Operation {
 		{ID: "provider.verify", MCPTool: "baseharbor.provider.verify", Description: "Verify external provider reachability and configured trust without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "provider.add", MCPTool: "baseharbor.provider.add", Description: "Register externally owned provider deployment state and references.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "provider.remove", MCPTool: "baseharbor.provider.remove", Description: "Remove BaseHarbor external-provider registration without mutating foreign infrastructure.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "organization.inspect", MCPTool: "baseharbor.organization.inspect", Description: "Inspect active organization/platform configuration and effective defaults.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "organization.check", MCPTool: "baseharbor.organization.check", Description: "Resolve the configured organization source without changing active configuration.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "organization.set", MCPTool: "baseharbor.organization.set", Description: "Resolve and activate an organization/platform configuration source.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "organization.update", MCPTool: "baseharbor.organization.update", Description: "Explicitly activate the configured organization source at its newly resolved immutable version.", Safety: SafetyMutating, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "policy.explain", MCPTool: "baseharbor.policy.explain", Description: "Explain effective policy defaults and bounded overrides.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 	}
 }
