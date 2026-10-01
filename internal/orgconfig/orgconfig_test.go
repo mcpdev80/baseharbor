@@ -172,3 +172,59 @@ func runGitTest(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }
+
+
+func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+
+	fixture := filepath.Join(root, "fixture.yaml")
+	if err := os.WriteFile(fixture, []byte(testOrgYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	digest := "sha256:" + strings.Repeat("c", 64)
+	oras := filepath.Join(bin, "oras")
+	script := "#!/bin/sh\n" +
+		"set -eu\n" +
+		"case \"$1\" in\n" +
+		"  resolve) echo '" + digest + "' ;;\n" +
+		"  pull)\n" +
+		"    ref=\"$2\"; shift 2; out=\"\"\n" +
+		"    while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --output ]; then out=\"$2\"; shift 2; else shift; fi; done\n" +
+		"    case \"$ref\" in *@'" + digest + "') ;; *) echo bad-ref >&2; exit 9 ;; esac\n" +
+		"    mkdir -p \"$out\"; cp \"$ORG_FIXTURE\" \"$out/organization.yaml\" ;;\n" +
+		"  *) exit 8 ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(oras, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ORG_FIXTURE", fixture)
+
+	resolution, config, err := Resolve(context.Background(), Source{
+		Kind: SourceOCI, Location: "registry.example.invalid/platform/baseharbor-org", Requested: "stable",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.ResolvedDigest != digest {
+		t.Fatalf("resolved digest=%q want=%q", resolution.ResolvedDigest, digest)
+	}
+	if resolution.Source.Requested != "stable" {
+		t.Fatalf("requested channel was not retained: %+v", resolution.Source)
+	}
+	if resolution.Provenance != "registry.example.invalid/platform/baseharbor-org@"+digest {
+		t.Fatalf("unexpected immutable provenance: %q", resolution.Provenance)
+	}
+	if config.Organization != "acme" {
+		t.Fatalf("unexpected resolved organization: %+v", config)
+	}
+	if _, err := os.Stat(resolution.CachePath); err != nil {
+		t.Fatalf("immutable OCI cache missing: %v", err)
+	}
+}
