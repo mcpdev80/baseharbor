@@ -54,6 +54,14 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		service := runtimeServiceName("mongodb", instance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbAccessService(instance) + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+		)
+	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
 	}
