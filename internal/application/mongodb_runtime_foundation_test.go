@@ -90,18 +90,25 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("MongoDB init script permissions = %o, want owner-only", info.Mode().Perm())
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("MongoDB init script permissions = %o, want 644 for container readability", info.Mode().Perm())
 	}
 	initData, err := os.ReadFile(initPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	initText := string(initData)
-	if !strings.Contains(initText, "readWrite") || !strings.Contains(initText, values[mongodbRuntimeKey("primary", "DB")]) {
-		t.Fatalf("MongoDB scoped application user is missing from init script:\n%s", initText)
+	for _, want := range []string{
+		"readWrite",
+		"process.env.MONGO_INITDB_DATABASE",
+		"process.env.BASEHARBOR_MONGODB_USER",
+		"process.env.BASEHARBOR_MONGODB_PASSWORD",
+	} {
+		if !strings.Contains(initText, want) {
+			t.Fatalf("MongoDB init script missing %q:\n%s", want, initText)
+		}
 	}
-	if strings.Contains(initText, adminPassword) {
-		t.Fatal("MongoDB provider-admin password leaked into application-user init script")
+	if strings.Contains(initText, appPassword) || strings.Contains(initText, adminPassword) {
+		t.Fatal("MongoDB credential material leaked into application-user init script")
 	}
 }
