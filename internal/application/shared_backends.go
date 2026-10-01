@@ -116,6 +116,9 @@ func HasApplicationScopedRuntimeServices(m Manifest) bool {
 	if len(CacheInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
 		return true
 	}
+	if len(RabbitMQInstanceNames(m)) > 0 {
+		return true
+	}
 	return false
 }
 
