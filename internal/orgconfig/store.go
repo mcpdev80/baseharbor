@@ -45,28 +45,39 @@ func ActivePath() (string, error) {
 }
 
 func LoadActive() (ActiveState, error) {
-	path, err := ActivePath()
+	state, ok, err := LoadActiveOptional()
 	if err != nil {
 		return ActiveState{}, err
+	}
+	if !ok {
+		return ActiveState{}, fmt.Errorf("organization configuration is not configured; run 'baha config organization set'")
+	}
+	return state, nil
+}
+
+func LoadActiveOptional() (ActiveState, bool, error) {
+	path, err := ActivePath()
+	if err != nil {
+		return ActiveState{}, false, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return ActiveState{}, fmt.Errorf("organization configuration is not configured; run 'baha config organization set'")
+			return ActiveState{}, false, nil
 		}
-		return ActiveState{}, fmt.Errorf("read active organization configuration: %w", err)
+		return ActiveState{}, false, fmt.Errorf("read active organization configuration: %w", err)
 	}
 	var state ActiveState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return ActiveState{}, fmt.Errorf("decode active organization configuration: %w", err)
 	}
 	if err := state.Config.Validate(); err != nil {
-		return ActiveState{}, fmt.Errorf("validate active organization configuration: %w", err)
+		return ActiveState{}, false, fmt.Errorf("validate active organization configuration: %w", err)
 	}
 	if err := state.Resolution.Validate(); err != nil {
-		return ActiveState{}, fmt.Errorf("validate active organization resolution: %w", err)
+		return ActiveState{}, false, fmt.Errorf("validate active organization resolution: %w", err)
 	}
-	return state, nil
+	return state, true, nil
 }
 
 func SaveActive(state ActiveState) error {
