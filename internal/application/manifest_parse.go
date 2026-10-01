@@ -525,7 +525,7 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 	if p.section != "services" || (p.serviceField != "instances" && p.serviceField != "buckets") {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
-	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" {
+	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" && p.service != "messaging_queue" && p.service != "messaging_pubsub" && p.service != "messaging_stream" {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
 	if p.serviceField == "buckets" && p.service != "object_storage" {
