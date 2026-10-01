@@ -32,13 +32,25 @@ func TestServiceSchemasUseJSONSchema202012AndStayProviderNeutral(t *testing.T) {
 			lower := strings.ToLower(string(data))
 			for _, product := range []string{
 				"postgresql", "valkey", "redis", "seaweedfs", "openbao",
-				"prometheus", "loki", "tempo", "keycloak",
+				"prometheus", "loki", "tempo", "keycloak", "rabbitmq", "mongodb",
 			} {
 				if strings.Contains(lower, product) {
 					t.Fatalf("portable service schema leaks product name %q", product)
 				}
 			}
 		})
+	}
+}
+
+func TestShippedServiceFamiliesHaveSchemas(t *testing.T) {
+	for _, name := range []string{
+		"sql", "cache", "key-value", "document-database", "object-storage",
+		"secrets", "observability", "identity", "messaging", "exposure",
+	} {
+		path := filepath.Join("service", "v1", name+".schema.json")
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("shipped service family %q has no v1 JSON Schema: %v", name, err)
+		}
 	}
 }
 
