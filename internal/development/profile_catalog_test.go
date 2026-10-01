@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestProfileCatalogScopesAndComposition(t *testing.T) {
@@ -139,5 +140,84 @@ func TestProfileCatalogRejectsCrossScopeNameCollision(t *testing.T) {
 	}
 	if _, err := development.LoadProfileCatalog(repoRoot, map[string]development.StackProfile{"go": profile}); err == nil {
 		t.Fatal("cross-scope profile name collision unexpectedly accepted")
+	}
+}
+
+func TestOrganizationArtifactFeedsDevelopmentCatalog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	repoRoot := t.TempDir()
+
+	builtins := map[string]development.StackProfile{
+		"go": development.BuiltinProfile(goadapter.AdapterID, "go"),
+	}
+	organizationProfile := development.StackProfile{
+		APIVersion: development.StackProfileAPIVersion,
+		Kind:       development.StackProfileKind,
+		Metadata:   development.ProfileMetadata{Name: "company-api"},
+		Extends:    []string{"go"},
+		Capabilities: []development.CapabilityPreference{
+			{Capability: capability.SQL, Components: []string{"app"}},
+		},
+	}
+	artifactDir := t.TempDir()
+	artifactPath := filepath.Join(artifactDir, "company-api.yaml")
+	data, err := yaml.Marshal(organizationProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifactPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog, err := development.LoadProfileCatalogWithOrganization(
+		repoRoot,
+		builtins,
+		map[string]string{"company-api": artifactPath},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := catalog["company-api"]
+	if !ok {
+		t.Fatal("organization stack artifact missing from development catalog")
+	}
+	if entry.Scope != development.ProfileScopeOrganization {
+		t.Fatalf("organization profile scope = %q", entry.Scope)
+	}
+	if entry.Path != artifactPath {
+		t.Fatalf("organization profile path = %q, want %q", entry.Path, artifactPath)
+	}
+
+	resolved, err := development.ResolveStackProfile("company-api", development.ProfileMap(catalog))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Profile.Components) != 1 || resolved.Profile.Components[0].Adapter != goadapter.AdapterID {
+		t.Fatalf("organization profile did not inherit built-in adapter: %#v", resolved.Profile)
+	}
+	if len(resolved.Profile.Capabilities) != 1 || resolved.Profile.Capabilities[0].Capability != capability.SQL {
+		t.Fatalf("organization capability placement not preserved: %#v", resolved.Profile.Capabilities)
+	}
+}
+
+func TestOrganizationArtifactNameMustMatchDistributedReference(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	profile := development.BuiltinProfile(goadapter.AdapterID, "actual-name")
+	data, err := yaml.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "profile.yaml")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = development.LoadProfileCatalogWithOrganization(
+		t.TempDir(),
+		nil,
+		map[string]string{"distributed-name": path},
+	)
+	if err == nil {
+		t.Fatal("organization stack reference with mismatched metadata.name unexpectedly accepted")
 	}
 }

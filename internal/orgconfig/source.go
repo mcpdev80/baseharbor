@@ -97,7 +97,7 @@ func resolveLocal(source Source) (Resolution, Config, error) {
 		ResolvedDigest:  digest,
 		Provenance:      "file://" + abs,
 	}
-	cachePath, err := writeCache(resolution, content)
+	cachePath, err := writeCache(resolution, config, content, filepath.Dir(path))
 	if err != nil {
 		return Resolution{}, Config{}, err
 	}
@@ -145,7 +145,7 @@ func resolveGit(ctx context.Context, source Source) (Resolution, Config, error) 
 		ResolvedRevision: revision,
 		Provenance:       strings.TrimSpace(source.Location) + "@" + revision,
 	}
-	cachePath, err := writeCache(resolution, content)
+	cachePath, err := writeCache(resolution, config, content, filepath.Dir(path))
 	if err != nil {
 		return Resolution{}, Config{}, err
 	}
@@ -218,7 +218,7 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 		ResolvedDigest:  digest,
 		Provenance:      immutableRef,
 	}
-	cachePath, err := writeCache(resolution, content)
+	cachePath, err := writeCache(resolution, config, content, filepath.Dir(path))
 	if err != nil {
 		return Resolution{}, Config{}, err
 	}

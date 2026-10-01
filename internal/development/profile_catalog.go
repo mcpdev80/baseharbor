@@ -14,9 +14,10 @@ import (
 type ProfileScope string
 
 const (
-	ProfileScopeBuiltin    ProfileScope = "built-in"
-	ProfileScopeUser       ProfileScope = "user"
-	ProfileScopeRepository ProfileScope = "repository"
+	ProfileScopeBuiltin      ProfileScope = "built-in"
+	ProfileScopeOrganization ProfileScope = "organization"
+	ProfileScopeUser         ProfileScope = "user"
+	ProfileScopeRepository   ProfileScope = "repository"
 )
 
 type ProfileEntry struct {
@@ -52,6 +53,10 @@ func RepositoryProfileRoot(repositoryRoot string) string {
 }
 
 func LoadProfileCatalog(repositoryRoot string, builtins map[string]StackProfile) (ProfileCatalogEntries, error) {
+	return LoadProfileCatalogWithOrganization(repositoryRoot, builtins, nil)
+}
+
+func LoadProfileCatalogWithOrganization(repositoryRoot string, builtins map[string]StackProfile, organization map[string]string) (ProfileCatalogEntries, error) {
 	result := ProfileCatalogEntries{}
 	names := make([]string, 0, len(builtins))
 	for name := range builtins {
@@ -64,6 +69,16 @@ func LoadProfileCatalog(repositoryRoot string, builtins map[string]StackProfile)
 			return nil, fmt.Errorf("built-in stack profile %q: %w", name, err)
 		}
 		result[name] = ProfileEntry{Profile: profile, Scope: ProfileScopeBuiltin}
+	}
+	orgNames := make([]string, 0, len(organization))
+	for name := range organization {
+		orgNames = append(orgNames, name)
+	}
+	sort.Strings(orgNames)
+	for _, name := range orgNames {
+		if err := loadProfileFile(result, organization[name], ProfileScopeOrganization, name); err != nil {
+			return nil, err
+		}
 	}
 	userRoot, err := UserProfileRoot()
 	if err != nil {
@@ -91,22 +106,32 @@ func loadProfileDirectory(result ProfileCatalogEntries, root string, scope Profi
 			continue
 		}
 		path := filepath.Join(root, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read stack profile %s: %w", path, err)
+		if err := loadProfileFile(result, path, scope, ""); err != nil {
+			return err
 		}
-		var profile StackProfile
-		if err := yaml.Unmarshal(data, &profile); err != nil {
-			return fmt.Errorf("parse stack profile %s: %w", path, err)
-		}
-		if err := profile.Validate(); err != nil {
-			return fmt.Errorf("validate stack profile %s: %w", path, err)
-		}
-		if existing, exists := result[profile.Metadata.Name]; exists {
-			return fmt.Errorf("stack profile %q is defined in both %s and %s scope; rename one profile to make ownership explicit", profile.Metadata.Name, existing.Scope, scope)
-		}
-		result[profile.Metadata.Name] = ProfileEntry{Profile: profile, Scope: scope, Path: path}
 	}
+	return nil
+}
+
+func loadProfileFile(result ProfileCatalogEntries, path string, scope ProfileScope, expectedName string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s stack profile %s: %w", scope, path, err)
+	}
+	var profile StackProfile
+	if err := yaml.Unmarshal(data, &profile); err != nil {
+		return fmt.Errorf("parse %s stack profile %s: %w", scope, path, err)
+	}
+	if err := profile.Validate(); err != nil {
+		return fmt.Errorf("validate %s stack profile %s: %w", scope, path, err)
+	}
+	if expectedName != "" && profile.Metadata.Name != expectedName {
+		return fmt.Errorf("%s stack profile reference %q resolves to metadata.name %q", scope, expectedName, profile.Metadata.Name)
+	}
+	if existing, exists := result[profile.Metadata.Name]; exists {
+		return fmt.Errorf("stack profile %q is defined in both %s and %s scope; rename one profile to make ownership explicit", profile.Metadata.Name, existing.Scope, scope)
+	}
+	result[profile.Metadata.Name] = ProfileEntry{Profile: profile, Scope: scope, Path: path}
 	return nil
 }
 

@@ -33,7 +33,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+	catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
 	if err != nil {
 		return err
 	}
