@@ -323,6 +323,16 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		checks = append(checks,
+			preflight.Check{Name: "rabbitmq semantic verification", Run: func(ctx context.Context) error {
+				if c.runtimeErr != nil {
+					return c.runtimeErr
+				}
+				return application.VerifyRabbitMQRuntime(ctx, m, c.files)
+			}},
+		)
+	}
 	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
