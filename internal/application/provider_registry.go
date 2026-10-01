@@ -111,18 +111,33 @@ func registerAdditionalProviderResources(registry *capability.Registry, m Manife
 		if resource.Application != m.Name {
 			return fmt.Errorf("additional provider resource belongs to application %q, expected %q", resource.Application, m.Name)
 		}
-		instance, err := referenceProviderInstance(m, resource)
-		if err != nil {
-			return err
-		}
-		if err := registry.Register(instance); err != nil {
-			return err
-		}
-		if err := registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID); err != nil {
+		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func bindProviderResource(registry *capability.Registry, m Manifest, resource capability.Resource) error {
+	placement, err := ResolveProviderPlacement(m, resource.Provider)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		instance, err := registry.ResolvePlacement(resource.Provider, placement, m.ApplicationID)
+		if err != nil {
+			return fmt.Errorf("resolve registered external provider %q for %s: %w; register it first with 'baha provider add'", placement.ExternalReference, resource.Provider, err)
+		}
+		return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		return err
+	}
+	if err := registry.Register(instance); err != nil {
+		return err
+	}
+	return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
 }
 
 func CheckControlPlaneDestroySafe() error {
@@ -266,14 +281,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			}
 		}
 
-		instance, err := referenceProviderInstance(m, resource)
-		if err != nil {
-			return err
-		}
-		if err := registry.Register(instance); err != nil {
-			return err
-		}
-		if err := registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID); err != nil {
+		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}
 	}
@@ -290,14 +298,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Name:        runtimeMetricsRegistryResource,
 				Provider:    capability.ProviderPrometheus,
 			}
-			instance, err := referenceProviderInstance(m, resource)
-			if err != nil {
-				return err
-			}
-			if err := registry.Register(instance); err != nil {
-				return err
-			}
-			if err := registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID); err != nil {
+			if err := bindProviderResource(registry, m, resource); err != nil {
 				return err
 			}
 		}
