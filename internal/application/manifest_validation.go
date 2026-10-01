@@ -26,11 +26,12 @@ func (m Manifest) Validate() error {
 	sql := SQLInstanceNames(m)
 	cache := CacheInstanceNames(m)
 	keyValue := KeyValueInstanceNames(m)
+	documentDatabase := DocumentDatabaseInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
 	messagingQueue := MessagingQueueInstanceNames(m)
 	messagingPubSub := MessagingPubSubInstanceNames(m)
 	messagingStream := MessagingStreamInstanceNames(m)
-	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(documentDatabase) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range sql {
@@ -45,6 +46,11 @@ func (m Manifest) Validate() error {
 	}
 	for _, name := range keyValue {
 		if err := validateSlug("key-value database instance name", name); err != nil {
+			return err
+		}
+	}
+	for _, name := range documentDatabase {
+		if err := validateSlug("document database instance name", name); err != nil {
 			return err
 		}
 	}

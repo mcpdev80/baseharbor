@@ -46,6 +46,12 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure durable key-value database capability resource %s", capability.Name)},
 				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify durable application-facing key-value write/read access for %s", capability.Name)},
 			)
+		case CapabilityDocumentDatabase:
+			resource := "database.document:" + capability.Name
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure document database capability resource %s", capability.Name)},
+				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify application-facing document write/read access for %s", capability.Name)},
+			)
 		case CapabilityMessagingQueue:
 			resource := "messaging.queue:" + capability.Name
 			p.Actions = append(p.Actions,

@@ -11,6 +11,7 @@ const (
 	CapabilitySQL             CapabilityKind = capability.SQL
 	CapabilityKeyValue        CapabilityKind = capability.KeyValue
 	CapabilityDurableKeyValue CapabilityKind = capability.DurableKeyValue
+	CapabilityDocumentDatabase CapabilityKind = capability.DocumentDatabase
 	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
 	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
@@ -83,6 +84,9 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	for _, name := range KeyValueInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDurableKeyValue, Name: name})
+	}
+	for _, name := range DocumentDatabaseInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDocumentDatabase, Name: name})
 	}
 	for _, name := range MessagingQueueInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMessagingQueue, Name: name})

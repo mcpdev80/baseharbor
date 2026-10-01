@@ -21,6 +21,7 @@ var (
 	SQLV1             = CapabilitySpecification{ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1}
 	KeyValueV1        = CapabilitySpecification{ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1}
 	DurableKeyValueV1 = CapabilitySpecification{ID: "database.key-value/v1", Kind: DurableKeyValue, Version: SpecificationV1}
+	DocumentDatabaseV1 = CapabilitySpecification{ID: "database.document/v1", Kind: DocumentDatabase, Version: SpecificationV1}
 	SecretsV1         = CapabilitySpecification{ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1}
 	ExposureHTTPV1    = CapabilitySpecification{ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1}
 	ObjectStorageS3V1 = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
@@ -42,6 +43,8 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return KeyValueV1, nil
 	case DurableKeyValue:
 		return DurableKeyValueV1, nil
+	case DocumentDatabase:
+		return DocumentDatabaseV1, nil
 	case Secrets:
 		return SecretsV1, nil
 	case ExposureHTTP:

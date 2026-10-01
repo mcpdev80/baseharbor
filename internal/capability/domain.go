@@ -13,6 +13,7 @@ const (
 	SQL             Kind = "database.sql"
 	KeyValue        Kind = "cache.key-value"
 	DurableKeyValue Kind = "database.key-value"
+	DocumentDatabase Kind = "database.document"
 	Secrets         Kind = "secrets"
 	ExposureHTTP    Kind = "exposure.http"
 	ObjectStorageS3 Kind = "object-storage.s3"
@@ -52,6 +53,7 @@ const (
 	ProviderKeycloak        ProviderKind = "keycloak"
 	ProviderExternalOIDC    ProviderKind = "external-oidc"
 	ProviderRabbitMQ        ProviderKind = "rabbitmq"
+	ProviderMongoDB         ProviderKind = "mongodb"
 )
 
 // Provider describes the capability surface of one provider implementation.
