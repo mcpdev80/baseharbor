@@ -33,7 +33,7 @@ func TestPhysicalBucketNameIsStableAndBounded(t *testing.T) {
 	}
 }
 
-func TestServiceTrustBundleReturnsPEMContents(t *testing.T) {
+func TestServiceTrustBundleReturnsCAPath(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 
@@ -45,11 +45,15 @@ func TestServiceTrustBundleReturnsPEMContents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(bundle, "-----BEGIN CERTIFICATE-----") {
-		t.Fatalf("trust bundle does not contain PEM certificate: %q", bundle)
+	if !filepath.IsAbs(bundle) {
+		t.Fatalf("trust bundle path = %q, want absolute path", bundle)
 	}
-	if strings.TrimSpace(bundle) == strings.TrimSpace(filepath.Join(files.Dir, "service-access", "pki", "ca.pem")) {
-		t.Fatalf("trust bundle returned CA path instead of contents: %q", bundle)
+	data, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("trust bundle file does not contain PEM certificate")
 	}
 }
 
