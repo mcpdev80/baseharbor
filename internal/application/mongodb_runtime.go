@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const MongoDBImage = "docker.io/library/mongo:8.3.11"
+const MongoDBImage = "docker.io/library/mongo:7.0.43"
 
 func mongodbRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("MONGODB", instance, suffix)
