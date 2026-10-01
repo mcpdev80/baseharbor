@@ -298,8 +298,9 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
 	userKey := rabbitmqRuntimeKey(instance, "USER")
 	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
 	fmt.Fprintf(b, `  %s:
-    image: docker.io/library/rabbitmq:4.3.6-management-alpine
+    image: docker.io/library/rabbitmq:4.3.6-alpine
     restart: unless-stopped
+    user: "rabbitmq"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
