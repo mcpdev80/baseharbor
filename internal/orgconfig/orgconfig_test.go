@@ -72,11 +72,11 @@ func TestLocalActivationAndEffectiveProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if effective.Target == nil || effective.Target.Value != "dev" || effective.Target.Source != "organization.environment.prod" {
+	if effective.Target == nil || effective.Target.Name != "dev" || effective.Target.Value != "company-dev" || effective.Target.Source != "organization.environment.prod" {
 		t.Fatalf("unexpected effective target: %+v", effective.Target)
 	}
 	p := effective.Providers["database.sql"]
-	if p.Provider != "company-postgres" || p.Scope != "external" || p.Source != "organization.environment.prod" {
+	if p.Provider != "company-postgres" || p.Reference != "external-provider:company-postgres" || p.Scope != "external" || p.Source != "organization.environment.prod" {
 		t.Fatalf("unexpected effective provider: %+v", p)
 	}
 }
