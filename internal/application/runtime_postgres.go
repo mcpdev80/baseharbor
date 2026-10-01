@@ -246,13 +246,14 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	sqlInstances := SQLInstanceNames(m)
 	cacheInstances := ValkeyInstanceNames(m)
+	rabbitInstances := RabbitMQInstanceNames(m)
 	if UsesSharedPostgreSQL(m) {
 		sqlInstances = nil
 	}
 	if UsesSharedValkey(m) {
 		cacheInstances = nil
 	}
-	if len(sqlInstances) == 0 && len(cacheInstances) == 0 {
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 && len(rabbitInstances) == 0 {
 		return "services: {}\n", nil
 	}
 	var b strings.Builder
@@ -263,6 +264,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	for _, instance := range cacheInstances {
 		writeValkeyComposeService(&b, instance)
 		b.WriteString(valkeyGatewayCompose(instance))
+	}
+	for _, instance := range rabbitInstances {
+		writeRabbitMQComposeService(&b, instance)
+		b.WriteString(rabbitmqGatewayCompose(instance))
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
@@ -279,11 +284,43 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		service := runtimeServiceName("valkey", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
+	for _, instance := range rabbitInstances {
+		service := runtimeServiceName("rabbitmq", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	return b.String(), nil
 }
 
+func writeRabbitMQComposeService(b *strings.Builder, instance string) {
+	service := runtimeServiceName("rabbitmq", instance)
+	userKey := rabbitmqRuntimeKey(instance, "USER")
+	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+	fmt.Fprintf(b, `  %s:
+    image: docker.io/library/rabbitmq:4.3.6-alpine
+    restart: unless-stopped
+    user: "rabbitmq"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    environment:
+      RABBITMQ_DEFAULT_USER: ${%s}
+      RABBITMQ_DEFAULT_PASS: ${%s}
+    volumes:
+      - %s-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+`, service, userKey, passwordKey, service)
+}
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
@@ -537,6 +574,29 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		userKey := rabbitmqRuntimeKey(instance, "USER")
+		passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+		portKey := rabbitmqRuntimeKey(instance, "HOST_PORT")
+		if values[userKey] == "" {
+			values[userKey] = "baseharbor"
+		}
+		if values[passwordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[passwordKey] = password
+		}
+		if values[portKey] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[portKey] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
 	if m.Services.SQLManagementUI {
 		if values[PostgresUIEmailEnv] == "" {
 			values[PostgresUIEmailEnv] = "baseharbor@example.com"
@@ -619,6 +679,12 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+			key := rabbitmqRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
+	}
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
@@ -698,6 +764,18 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT"} {
+			key := rabbitmqRuntimeKey(instance, suffix)
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		portKey := rabbitmqRuntimeKey(instance, "HOST_PORT")
+		if err := validatePortValue(values[portKey], portKey); err != nil {
+			return err
+		}
+	}
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
 			if values[key] == "" {
@@ -758,6 +836,14 @@ func postgresRuntimeKey(instance, suffix string) string {
 
 func valkeyRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("VALKEY", instance, suffix)
+}
+
+func rabbitmqRuntimeKey(instance, suffix string) string {
+	return runtimeInstanceKey("RABBITMQ", instance, suffix)
+}
+
+func rabbitmqContainerHostKey(instance string) string {
+	return rabbitmqRuntimeKey(instance, "CONTAINER_HOST")
 }
 
 func s3RuntimeKey(bucket, suffix string) string {

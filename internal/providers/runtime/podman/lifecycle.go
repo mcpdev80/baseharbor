@@ -562,6 +562,53 @@ func (p PodmanProvider) RunningServicesProject(ctx context.Context, project, com
 	return services, nil
 }
 
+func composeContainerServiceFromExpectedName(project, name string) (string, bool) {
+	project = strings.TrimSpace(project)
+	name = strings.TrimSpace(name)
+	prefix := project + "-"
+	if project == "" || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, "-1") {
+		return "", false
+	}
+	service := strings.TrimSuffix(strings.TrimPrefix(name, prefix), "-1")
+	if strings.TrimSpace(service) == "" {
+		return "", false
+	}
+	return service, true
+}
+
+func (p PodmanProvider) resolveOwnedContainerResourceName(ctx context.Context, project, requested string) (string, bool, error) {
+	requested = strings.TrimSpace(requested)
+	exists, err := quadletRuntimeResourceExists(ctx, "container", requested)
+	if err != nil {
+		return "", false, err
+	}
+	if exists {
+		return requested, true, nil
+	}
+	service, ok := composeContainerServiceFromExpectedName(project, requested)
+	if !ok {
+		return "", false, nil
+	}
+	containers, err := p.ListRuntimeContainers(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	var actual string
+	for _, container := range containers {
+		if container.Project != project || container.Service != service {
+			continue
+		}
+		if actual != "" && actual != container.Name {
+			return "", false, fmt.Errorf("multiple Podman containers match owned service %s/%s", project, service)
+		}
+		actual = container.Name
+	}
+	if actual == "" {
+		return "", false, nil
+	}
+	return actual, true, nil
+}
+
 func (p PodmanProvider) InspectProjectResource(ctx context.Context, project string, resource ProjectResource) (bool, error) {
 	existing, err := p.InspectProjectResources(ctx, project, []ProjectResource{resource})
 	if err != nil {
@@ -592,7 +639,14 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 		default:
 			return nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
 		}
-		exists, err := quadletRuntimeResourceExists(ctx, resource.Kind, name)
+		actualName := name
+		var exists bool
+		var err error
+		if resource.Kind == "container" {
+			actualName, exists, err = p.resolveOwnedContainerResourceName(ctx, project, name)
+		} else {
+			exists, err = quadletRuntimeResourceExists(ctx, resource.Kind, name)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -606,7 +660,7 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 		default:
 			template = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
 		}
-		out, err := p.DirectOutput(ctx, resource.Kind, "inspect", "--format", template, name)
+		out, err := p.DirectOutput(ctx, resource.Kind, "inspect", "--format", template, actualName)
 		if err != nil {
 			return nil, fmt.Errorf("inspect %s ownership: %w", resource.Kind, err)
 		}
@@ -710,10 +764,17 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 		if resource.Kind != "container" {
 			continue
 		}
+		actualName, exists, resolveErr := p.resolveOwnedContainerResourceName(ctx, project, resource.Name)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if !exists {
+			continue
+		}
 		unitOut, inspectErr := p.DirectOutput(ctx,
 			"container", "inspect", "--format",
 			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
-			resource.Name,
+			actualName,
 		)
 		if inspectErr != nil {
 			return fmt.Errorf("inspect Quadlet unit for owned container %s: %w", resource.Name, inspectErr)
@@ -740,9 +801,20 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 			if resource.Kind != kind {
 				continue
 			}
-			args := []string{kind, "rm", resource.Name}
+			actualName := resource.Name
 			if kind == "container" {
-				args = []string{"container", "rm", "-f", resource.Name}
+				resolvedName, exists, resolveErr := p.resolveOwnedContainerResourceName(ctx, project, resource.Name)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				if !exists {
+					continue
+				}
+				actualName = resolvedName
+			}
+			args := []string{kind, "rm", actualName}
+			if kind == "container" {
+				args = []string{"container", "rm", "-f", actualName}
 			}
 			if _, err := p.DirectOutput(ctx, args...); err != nil {
 				if kind == "network" && podmanNetworkHasActiveConsumers(err) {

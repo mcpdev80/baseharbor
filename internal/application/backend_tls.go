@@ -13,6 +13,7 @@ import (
 const (
 	postgresTLSCAContainerPrefix = "/run/baseharbor/bindings/postgres"
 	valkeyTLSCAContainerPrefix   = "/run/baseharbor/bindings/valkey"
+	rabbitmqTLSCAContainerPrefix = "/run/baseharbor/bindings/rabbitmq"
 )
 
 func postgresAccessService(instance string) string {
@@ -23,6 +24,10 @@ func valkeyAccessService(instance string) string {
 	return runtimeServiceName("valkey", instance) + "-access"
 }
 
+func rabbitmqAccessService(instance string) string {
+	return runtimeServiceName("rabbitmq", instance) + "-access"
+}
+
 func postgresTLSCAKey(instance string) string {
 	return postgresRuntimeKey(instance, "TLS_CA_FILE")
 }
@@ -31,12 +36,20 @@ func valkeyTLSCAKey(instance string) string {
 	return valkeyRuntimeKey(instance, "TLS_CA_FILE")
 }
 
+func rabbitmqTLSCAKey(instance string) string {
+	return rabbitmqRuntimeKey(instance, "TLS_CA_FILE")
+}
+
 func postgresTLSCAContainerPath(instance string) string {
 	return postgresTLSCAContainerPrefix + "/" + instance + "/ca.pem"
 }
 
 func valkeyTLSCAContainerPath(instance string) string {
 	return valkeyTLSCAContainerPrefix + "/" + instance + "/ca.pem"
+}
+
+func rabbitmqTLSCAContainerPath(instance string) string {
+	return rabbitmqTLSCAContainerPrefix + "/" + instance + "/ca.pem"
 }
 
 func backendAccessRoot(files RuntimeFiles, kind, instance string) string {
@@ -103,6 +116,32 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			}
 			values[valkeyTLSCAKey(instance)] = ca
 		}
+	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		policy, err := serviceaccess.Resolve(m.Environment, "rabbitmq", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		root := backendAccessRoot(files, "rabbitmq", instance)
+		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
+			ServiceName:      rabbitmqAccessService(instance),
+			UpstreamHost:     runtimeServiceName("rabbitmq", instance),
+			UpstreamPort:     5672,
+			PublishedPortEnv: rabbitmqRuntimeKey(instance, "HOST_PORT"),
+			ContainerPort:    5672,
+		})
+		if err != nil {
+			return fmt.Errorf("prepare RabbitMQ TLS access for %s: %w", instance, err)
+		}
+		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+		if err != nil {
+			return err
+		}
+		ca, err := projectBackendCA(files, "rabbitmq", instance, material.CA)
+		if err != nil {
+			return err
+		}
+		values[rabbitmqTLSCAKey(instance)] = ca
 	}
 	return writeRuntimeEnv(files.Env, m, values)
 }
@@ -192,6 +231,19 @@ func valkeyGatewayCompose(instance string) string {
 	)
 }
 
+func rabbitmqGatewayCompose(instance string) string {
+	return serviceaccess.TCPGatewayComposeService(
+		backendGatewayComposeFiles("rabbitmq", instance),
+		serviceaccess.TCPGatewaySpec{
+			ServiceName:      rabbitmqAccessService(instance),
+			UpstreamHost:     runtimeServiceName("rabbitmq", instance),
+			UpstreamPort:     5672,
+			PublishedPortEnv: rabbitmqRuntimeKey(instance, "HOST_PORT"),
+			ContainerPort:    5672,
+		},
+	)
+}
+
 type BackendTLSLifecycleObservation struct {
 	Kind      string                             `json:"kind"`
 	Instance  string                             `json:"instance"`
@@ -199,7 +251,7 @@ type BackendTLSLifecycleObservation struct {
 }
 
 func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLifecycleObservation, error) {
-	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m)))
+	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m))+len(RabbitMQInstanceNames(m)))
 	if !UsesSharedPostgreSQL(m) {
 		for _, instance := range SQLInstanceNames(m) {
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
@@ -217,6 +269,13 @@ func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLif
 			}
 			out = append(out, BackendTLSLifecycleObservation{Kind: "cache", Instance: instance, Lifecycle: lifecycle})
 		}
+	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "rabbitmq", instance), "service-access", "pki"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect RabbitMQ TLS lifecycle for %s: %w", instance, err)
+		}
+		out = append(out, BackendTLSLifecycleObservation{Kind: "messaging", Instance: instance, Lifecycle: lifecycle})
 	}
 	return out, nil
 }

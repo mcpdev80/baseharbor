@@ -333,6 +333,25 @@ func MessagingStreamInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.MessagingStream, m.Services.MessagingStreamInstances)
 }
 
+func RabbitMQInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, names := range [][]string{
+		MessagingQueueInstanceNames(m),
+		MessagingPubSubInstanceNames(m),
+		MessagingStreamInstanceNames(m),
+	} {
+		for _, name := range names {
+			seen[name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func ValkeyInstanceNames(m Manifest) []string {
 	seen := map[string]struct{}{}
 	for _, name := range CacheInstanceNames(m) {
