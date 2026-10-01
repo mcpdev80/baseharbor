@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Provider descriptors, SDK/scaffolding, service schemas, Development Adapters, repository inspection, CLI, JSON and MCP now cover the complete v0.4.19 capability set.
 - Durable `database.key-value` semantics are explicitly separated from reconstructable `cache.key-value` semantics.
 - Source/build resolution ends before the portable Runtime boundary; Runtime providers consume resolved OCI workload artifacts.
+- Pre-release validation now uses independently rerunnable, SHA-bound atomic gates with explicit resource profiles: static contract/DX checks run on the k3s worker without provider containers, while Docker and Podman gates are distributed across the four runtime workers and reuse one prebuilt candidate image. Each gate publishes its own evidence bundle and the release run assembles a complete evidence manifest.
 
 ### Fixed
 
