@@ -195,6 +195,27 @@ var (
 	}
 )
 
+// ReferenceIntegrations returns the deterministic shipped reference-provider catalog.
+// Consumers should iterate this catalog instead of maintaining partial provider lists.
+func ReferenceIntegrations() []IntegrationDescriptor {
+	return []IntegrationDescriptor{
+		PostgreSQLIntegration,
+		ValkeyIntegration,
+		OpenBaoIntegration,
+		CaddyIntegration,
+		SeaweedFSIntegration,
+		OTelCollectorIntegration,
+		ExternalOTLPIntegration,
+		PrometheusIntegration,
+		LokiIntegration,
+		TempoIntegration,
+		KeycloakIntegration,
+		ExternalOIDCIntegration,
+		RabbitMQIntegration,
+		MongoDBIntegration,
+	}
+}
+
 func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) {
 	switch provider {
 	case ProviderPostgreSQL:
