@@ -108,6 +108,12 @@ func TestGoAdapterBootstrapIsEcosystemNative(t *testing.T) {
 	if !strings.Contains(content["compose.yaml"], "/healthz") {
 		t.Fatal("generated compose file does not include workload healthcheck")
 	}
+	if !strings.Contains(content["Dockerfile"], "RUN go mod tidy && go mod verify") {
+		t.Fatal("generated Dockerfile must materialize and verify module checksums before build")
+	}
+	if strings.Index(content["Dockerfile"], "COPY main.go ./") > strings.Index(content["Dockerfile"], "RUN go mod tidy && go mod verify") {
+		t.Fatal("generated Dockerfile must copy source imports before go mod tidy")
+	}
 }
 
 func requireAction(t *testing.T, actions []development.Action, kind development.ActionKind, capabilityKind capability.Kind, name string) {
