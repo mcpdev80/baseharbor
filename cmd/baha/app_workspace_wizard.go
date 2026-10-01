@@ -23,7 +23,7 @@ func runAppWorkspaceWizard(ctx context.Context, out io.Writer) error {
 	}
 	if _, _, err := development.LoadSourceModel(manifestPath); err == nil {
 		return usageError("workspace source model already exists", "Run 'baha app workspace show' to inspect it, or use deterministic workspace commands to update mappings.")
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, development.ErrWorkspaceModelMissing) {
 		return err
 	}
 
