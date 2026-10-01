@@ -42,12 +42,17 @@ type ProviderDefault struct {
 	Scope    string `yaml:"scope,omitempty" json:"scope,omitempty"`
 }
 
+type PolicyDefault struct {
+	Policy    string `yaml:"policy" json:"policy"`
+	Mandatory bool   `yaml:"mandatory,omitempty" json:"mandatory,omitempty"`
+}
+
 type EnvironmentDefaults struct {
 	Target    string                     `yaml:"target,omitempty" json:"target,omitempty"`
 	Stack     string                     `yaml:"stack,omitempty" json:"stack,omitempty"`
 	Providers map[string]ProviderDefault `yaml:"providers,omitempty" json:"providers,omitempty"`
 	Trust     map[string]Reference       `yaml:"trust,omitempty" json:"trust,omitempty"`
-	Policies  []Reference                `yaml:"policies,omitempty" json:"policies,omitempty"`
+	Policies  []PolicyDefault            `yaml:"policies,omitempty" json:"policies,omitempty"`
 }
 
 type Config struct {
@@ -165,9 +170,9 @@ func validateDefaults(scope string, d EnvironmentDefaults) error {
 			return fmt.Errorf("%s trust %q: %w", scope, name, err)
 		}
 	}
-	for i, ref := range d.Policies {
-		if err := validateReference(ref); err != nil {
-			return fmt.Errorf("%s policy %d: %w", scope, i, err)
+	for i, policy := range d.Policies {
+		if !namePattern.MatchString(strings.TrimSpace(policy.Policy)) {
+			return fmt.Errorf("%s policy %d has invalid policy reference %q", scope, i, policy.Policy)
 		}
 	}
 	return nil
