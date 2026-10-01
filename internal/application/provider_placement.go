@@ -8,6 +8,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 func providerPlacementEnvToken(provider capability.ProviderKind) string {
@@ -85,6 +86,11 @@ func ResolveProviderPlacement(m Manifest, provider capability.ProviderKind) (cap
 	if err != nil {
 		return capability.ProviderPlacement{}, err
 	}
+	if organizationPlacement, ok, err := resolveOrganizationProviderPlacement(m, provider); err != nil {
+		return capability.ProviderPlacement{}, err
+	} else if ok {
+		placement = organizationPlacement
+	}
 
 	if raw := strings.TrimSpace(os.Getenv(ProviderScopeEnv(provider))); raw != "" {
 		placement.Scope = capability.ProviderScope(strings.ToLower(raw))
@@ -153,4 +159,60 @@ func ProviderPlacementNameToken(value string) string {
 		base = base[:32]
 	}
 	return fmt.Sprintf("%s-%x", base, sum[:4])
+}
+
+
+func resolveOrganizationProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
+	state, ok, err := orgconfig.LoadActiveOptional()
+	if err != nil || !ok {
+		return capability.ProviderPlacement{}, false, err
+	}
+	effective, err := orgconfig.ResolveEffective(state, m.Environment)
+	if err != nil {
+		return capability.ProviderPlacement{}, false, fmt.Errorf("resolve organization provider defaults: %w", err)
+	}
+	var keys []string
+	switch provider {
+	case capability.ProviderPostgreSQL:
+		keys = []string{string(capability.SQL)}
+	case capability.ProviderValkey:
+		keys = []string{string(capability.DurableKeyValue), string(capability.KeyValue)}
+	case capability.ProviderRabbitMQ:
+		keys = []string{string(capability.MessagingQueue), string(capability.MessagingPubSub), string(capability.MessagingStream)}
+	case capability.ProviderMongoDB:
+		keys = []string{string(capability.DocumentDatabase)}
+	default:
+		return capability.ProviderPlacement{}, false, nil
+	}
+	var selected orgconfig.EffectiveProvider
+	found := false
+	for _, key := range keys {
+		if candidate, exists := effective.Providers[key]; exists {
+			selected, found = candidate, true
+			break
+		}
+	}
+	if !found {
+		return capability.ProviderPlacement{}, false, nil
+	}
+	scope := capability.ProviderScope(strings.TrimSpace(selected.Scope))
+	if scope == "" {
+		scope = capability.ScopeExternal
+	}
+	placement := capability.ProviderPlacement{Scope: scope}
+	switch scope {
+	case capability.ScopeExternal:
+		const prefix = "external-provider:"
+		reference := strings.TrimSpace(selected.Reference)
+		if !strings.HasPrefix(reference, prefix) || strings.TrimSpace(strings.TrimPrefix(reference, prefix)) == "" {
+			return capability.ProviderPlacement{}, false, fmt.Errorf("organization provider default %q must reference %sexternal-id for external placement", selected.Provider, prefix)
+		}
+		placement.Ownership = capability.OwnershipExternal
+		placement.ExternalReference = strings.TrimSpace(strings.TrimPrefix(reference, prefix))
+	case capability.ScopeShared, capability.ScopeApplication:
+		placement.Ownership = capability.OwnershipBaseHarbor
+	default:
+		return capability.ProviderPlacement{}, false, fmt.Errorf("organization provider default %q has unsupported scope %q", selected.Provider, scope)
+	}
+	return placement, true, nil
 }
