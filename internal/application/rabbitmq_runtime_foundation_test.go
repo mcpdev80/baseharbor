@@ -36,7 +36,8 @@ func TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent(t *testing.T)
 	}
 	for _, want := range []string{
 		"rabbitmq-jobs:",
-		"docker.io/library/rabbitmq:4.3.6-management-alpine",
+		"user: \"rabbitmq\"",
+		"docker.io/library/rabbitmq:4.3.6-alpine",
 		"RABBITMQ_DEFAULT_USER: ${RABBITMQ_JOBS_USER}",
 		"RABBITMQ_DEFAULT_PASS: ${RABBITMQ_JOBS_PASSWORD}",
 		"127.0.0.1:${RABBITMQ_JOBS_HOST_PORT}:5672",
