@@ -2,6 +2,7 @@ package pythonadapter
 
 import (
 	"os"
+	"strings"
 	"path/filepath"
 	"testing"
 
@@ -31,5 +32,14 @@ func TestPythonRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "pyproject.toml")); err != nil {
 		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(filepath.Join(root, "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"healthcheck:", "/healthz", "urllib.request"} {
+		if !strings.Contains(string(compose), want) {
+			t.Fatalf("generated Python compose is missing readiness contract %q:\n%s", want, compose)
+		}
 	}
 }
