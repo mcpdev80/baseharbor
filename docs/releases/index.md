@@ -2,6 +2,7 @@
 
 Release notes record delivered behavior. Future planning belongs in GitHub Issues.
 
+- [v0.4.19](v0.4.19.md)
 - [v0.4.18](v0.4.18.md)
 - [v0.4.17](v0.4.17.md)
 - [v0.4.16](v0.4.16.md)
