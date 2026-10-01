@@ -45,7 +45,7 @@ func TestSDKExportsAllNewV0419CapabilityKinds(t *testing.T) {
 		provider.MessagingStream,
 	} {
 		driver := &externalDriver{provider: provider.Provider{
-			Kind: "example-provider",
+			Kind:         "example-provider",
 			Capabilities: []provider.Kind{kind},
 		}}
 		plan, err := provider.BuildPlan("demo", []provider.Request{{
