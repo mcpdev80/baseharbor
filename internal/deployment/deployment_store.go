@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
@@ -54,10 +55,11 @@ type DeploymentSource struct {
 }
 
 type AppliedDeployment struct {
-	Intent          json.RawMessage   `json:"intent,omitempty"`
-	RuntimeProvider string            `json:"runtime_provider"`
-	GeneratedState  map[string]string `json:"generated_state,omitempty"`
-	LastAppliedRef  string            `json:"last_applied_ref,omitempty"`
+	Intent          json.RawMessage    `json:"intent,omitempty"`
+	RuntimeProvider string             `json:"runtime_provider"`
+	Delivery        delivery.Selection `json:"delivery,omitempty"`
+	GeneratedState  map[string]string  `json:"generated_state,omitempty"`
+	LastAppliedRef  string             `json:"last_applied_ref,omitempty"`
 }
 
 type ObservedDeployment struct {
@@ -146,6 +148,10 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if record.Version != DeploymentRecordVersion {
 		return fmt.Errorf("unsupported deployment record version %d", record.Version)
 	}
+	record.Applied.Delivery = record.Applied.Delivery.Normalize()
+	if err := record.Applied.Delivery.Validate(); err != nil {
+		return fmt.Errorf("invalid delivery selection: %w", err)
+	}
 	root, err := DeploymentRoot(record.Identity)
 	if err != nil {
 		return err
@@ -191,6 +197,10 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 	}
 	if record.Version != DeploymentRecordVersion {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("unsupported deployment record version %d", record.Version)}
+	}
+	record.Applied.Delivery = record.Applied.Delivery.Normalize()
+	if err := record.Applied.Delivery.Validate(); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("invalid delivery selection: %w", err)}
 	}
 	if err := record.Identity.Validate(); err != nil {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}
