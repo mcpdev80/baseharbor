@@ -62,7 +62,6 @@ func TestWriteBackupArchiveRefusesOverwrite(t *testing.T) {
 	}
 }
 
-
 func TestRestoreNeedsDeploymentInitializationOnlyForMissingDevExposureState(t *testing.T) {
 	devExposure := application.Manifest{
 		Environment: "dev",
