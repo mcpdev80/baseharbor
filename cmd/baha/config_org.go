@@ -138,10 +138,20 @@ func writeOrganizationView(out io.Writer, state orgconfig.ActiveState, environme
 	}
 	for capability, provider := range effective.Providers {
 		fmt.Fprintf(out, "Provider:     %s -> %s", capability, provider.Provider)
+		if provider.Reference != "" {
+			fmt.Fprintf(out, " -> %s", provider.Reference)
+		}
 		if provider.Scope != "" {
 			fmt.Fprintf(out, " [%s]", provider.Scope)
 		}
 		fmt.Fprintf(out, " (%s)\n", provider.Source)
+	}
+	for _, policy := range effective.Policies {
+		mode := "default"
+		if policy.Mandatory {
+			mode = "mandatory"
+		}
+		fmt.Fprintf(out, "Policy:       %s -> %s [%s] (%s)\n", policy.Policy, policy.Reference, mode, policy.Source)
 	}
 	return nil
 }
