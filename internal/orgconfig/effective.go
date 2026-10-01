@@ -19,6 +19,13 @@ type EffectiveProvider struct {
 	Source    string `json:"source"`
 }
 
+type EffectivePolicy struct {
+	Policy    string `json:"policy"`
+	Reference string `json:"reference"`
+	Mandatory bool   `json:"mandatory"`
+	Source    string `json:"source"`
+}
+
 type Effective struct {
 	ContractVersion string                       `json:"contract_version"`
 	Organization    string                       `json:"organization"`
@@ -27,7 +34,7 @@ type Effective struct {
 	Stack           *EffectiveValue              `json:"stack,omitempty"`
 	Providers       map[string]EffectiveProvider `json:"providers,omitempty"`
 	Trust           map[string]EffectiveValue    `json:"trust,omitempty"`
-	Policies        []EffectiveValue             `json:"policies,omitempty"`
+	Policies        []EffectivePolicy            `json:"policies,omitempty"`
 	Resolution      Resolution                   `json:"resolution"`
 }
 
@@ -80,6 +87,14 @@ func ResolveEffective(state ActiveState, environment string) (Effective, error) 
 		provider.Reference = strings.TrimSpace(ref.Reference)
 		result.Providers[capability] = provider
 	}
+	for i, policy := range result.Policies {
+		ref, ok := state.Config.Policies[policy.Policy]
+		if !ok {
+			return Effective{}, fmt.Errorf("effective policy %q is not declared by organization configuration", policy.Policy)
+		}
+		policy.Reference = strings.TrimSpace(ref.Reference)
+		result.Policies[i] = policy
+	}
 	return result, nil
 }
 
@@ -114,7 +129,9 @@ func applyDefaults(result *Effective, defaults EnvironmentDefaults, source strin
 	if defaults.Policies != nil {
 		result.Policies = result.Policies[:0]
 		for _, policy := range defaults.Policies {
-			result.Policies = append(result.Policies, EffectiveValue{Value: policy.Reference, Source: source})
+			result.Policies = append(result.Policies, EffectivePolicy{
+				Policy: strings.TrimSpace(policy.Policy), Mandatory: policy.Mandatory, Source: source,
+			})
 		}
 	}
 }
