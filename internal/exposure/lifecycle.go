@@ -88,8 +88,12 @@ func (d *Lifecycle) Preflight(_ context.Context, resource capability.Resource, b
 	if binding.Workload != "service/"+route.Service {
 		return fmt.Errorf("HTTP exposure %q binding targets %q, expected service/%s", resource.Name, binding.Workload, route.Service)
 	}
-	if route.Protocol == "https" && d.tlsMode != "existing" {
-		return fmt.Errorf("managed HTTPS exposure %q currently requires existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.tlsMode)
+	if route.Protocol == "https" {
+		switch d.tlsMode {
+		case "local", "existing":
+		default:
+			return fmt.Errorf("managed HTTPS exposure %q requires local development TLS termination or existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.tlsMode)
+		}
 	}
 	if err := capability.RequireIntegrationContract(d.IntegrationDescriptor()); err != nil {
 		return err
