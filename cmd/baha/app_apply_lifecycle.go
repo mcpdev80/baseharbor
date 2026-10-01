@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
@@ -133,6 +134,9 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 	m := e.manifest
 	return []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "host memory", Run: func(ctx context.Context) error {
+			return runHostMemoryPreflight(ctx, appApplySecretInput, e.out, bhruntime.ProviderKind(e.resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), true)
+		}},
 		{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
@@ -212,11 +216,6 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	}
 	if err := activity(ctx, e.term, "Reconciling object storage", func(progress io.Writer) error {
 		return convergeManagedObjectStorage(ctx, progress, e.providers.objectStorage)
-	}); err != nil {
-		return err
-	}
-	if err := activity(ctx, e.term, "Preparing application exposure", func(io.Writer) error {
-		return provisionManagedExposure(ctx, e.providers.exposure)
 	}); err != nil {
 		return err
 	}
@@ -377,13 +376,6 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
 	}
-	if requiresDevelopmentGateway(e.manifest) {
-		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
-			return e.reconcileDevelopmentCanonicalRoutes(ctx)
-		}); err != nil {
-			return err
-		}
-	}
 	if err := reconcileConnectivityForManifest(ctx, e.out, e.compose, e.resolved); err != nil {
 		return fmt.Errorf("reconcile cross-application connectivity: %w", err)
 	}
@@ -401,6 +393,13 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
 	}); err != nil {
 		return err
+	}
+	if requiresDevelopmentGateway(e.manifest) {
+		if err := activity(ctx, e.term, "Reconciling canonical development routes", func(io.Writer) error {
+			return e.reconcileDevelopmentCanonicalRoutes(ctx)
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

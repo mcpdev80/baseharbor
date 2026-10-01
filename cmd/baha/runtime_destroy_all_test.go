@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestFullDestroyDryRunDoesNotMutateState(t *testing.T) {
@@ -85,5 +86,39 @@ func TestFullDestroyRemovesOwnedLocalStateButPreservesSourceRepository(t *testin
 	}
 	if !bytes.Contains(out.Bytes(), []byte("Cleanup report")) {
 		t.Fatalf("expected cleanup report, got:\n%s", out.String())
+	}
+}
+
+func TestCountFullDestroyBlockersDistinguishesInformationalSkip(t *testing.T) {
+	results := []fullDestroyResult{
+		{Status: "REMOVED", Resource: "ok"},
+		{Status: "SKIPPED", Resource: "runtime-provider", Detail: "runtime provider cannot be inferred; only local state can be removed safely"},
+	}
+	if got := countFullDestroyBlockers(results); got != 0 {
+		t.Fatalf("informational skip blockers = %d, want 0", got)
+	}
+
+	results = append(results,
+		fullDestroyResult{Status: "FAILED", Resource: "data-providers", Detail: "active endpoints"},
+		fullDestroyResult{Status: "SKIPPED", Resource: "target-state", Detail: "preserved because runtime cleanup could not be verified"},
+	)
+	if got := countFullDestroyBlockers(results); got != 2 {
+		t.Fatalf("cleanup blockers = %d, want 2", got)
+	}
+}
+
+func TestTargetOwnedRuntimeContainersFiltersOnlyTargetProjects(t *testing.T) {
+	containers := []bhruntime.RuntimeContainer{
+		{Name: "shared", Project: "bh-local-shared", Service: "postgres"},
+		{Name: "app", Project: "bh-local-demo-dev", Service: "demo-app"},
+		{Name: "other", Project: "bh-other-demo-dev", Service: "demo-app"},
+		{Name: "foreign", Project: "unrelated", Service: "x"},
+	}
+	got := targetOwnedRuntimeContainers("local", containers)
+	if len(got) != 2 {
+		t.Fatalf("target-owned containers = %#v, want 2", got)
+	}
+	if got[0].Project != "bh-local-demo-dev" || got[1].Project != "bh-local-shared" {
+		t.Fatalf("unexpected target-owned ordering/content: %#v", got)
 	}
 }

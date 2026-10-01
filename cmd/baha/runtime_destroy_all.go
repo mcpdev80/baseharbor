@@ -115,17 +115,20 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		destroyTargetBestEffort(parent, target, &results)
 	}
 
-	removeFullDestroyLocalState(&results)
+	blockers := countFullDestroyBlockers(results)
+	if blockers == 0 {
+		removeFullDestroyLocalState(&results)
+	} else {
+		results = append(results,
+			fullDestroyResult{Status: "SKIPPED", Resource: "xdg-data", Detail: "preserved because runtime cleanup is incomplete; retry destroy after resolving the reported failures"},
+			fullDestroyResult{Status: "SKIPPED", Resource: "xdg-config", Detail: "preserved because runtime cleanup is incomplete; ownership evidence remains available for retry"},
+		)
+	}
 	renderFullDestroyReport(out, results)
 
-	failures := 0
-	for _, result := range results {
-		if result.Status == "FAILED" {
-			failures++
-		}
-	}
-	if failures > 0 {
-		return fmt.Errorf("full destroy completed with %d cleanup failure(s); review the cleanup report", failures)
+	blockers = countFullDestroyBlockers(results)
+	if blockers > 0 {
+		return fmt.Errorf("full destroy did not complete; %d cleanup result(s) require attention and BaseHarbor state was preserved", blockers)
 	}
 	fmt.Fprintln(out, "BaseHarbor-managed installation state was permanently removed.")
 	return nil
@@ -356,6 +359,10 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 			if resolved.FromRepository {
 				if _, stopErr := stopRepositoryWorkload(parent, compose, resolved, files); stopErr != nil {
 					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "workload " + m.Name + "/" + m.Environment, Detail: stopErr.Error()})
+				} else if removed, cleanupErr := destroyRepositoryWorkloadRuntime(parent, compose, resolved, files); cleanupErr != nil {
+					*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "workload-runtime " + m.Name + "/" + m.Environment, Detail: cleanupErr.Error()})
+				} else if removed {
+					*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "workload-runtime " + m.Name + "/" + m.Environment, Detail: "owned containers and networks removed; repository volumes preserved"})
 				}
 			}
 			if application.RequiresRuntimeBroker(m) {
@@ -410,10 +417,11 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
+	cleanupResultStart := len(*results)
 	compose, composeErr := detectRuntimeForTarget(ctx, target)
 	if composeErr != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-provider", Detail: composeErr.Error()})
-		_ = os.RemoveAll(dataDir)
+		*results = append(*results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-state", Detail: "preserved because runtime cleanup could not be verified"})
 		return
 	}
 
@@ -477,6 +485,31 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "control-plane-state", Detail: filesErr.Error()})
 	}
 
+	if containers, err := compose.ListRuntimeContainers(ctx); err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-audit", Detail: err.Error()})
+	} else if residual := targetOwnedRuntimeContainers(target.Name, containers); len(residual) > 0 {
+		var names []string
+		for _, container := range residual {
+			names = append(names, container.Project+"/"+container.Service+" ("+container.Name+")")
+		}
+		sort.Strings(names)
+		*results = append(*results, fullDestroyResult{
+			Status:   "FAILED",
+			Target:   target.Name,
+			Resource: "runtime-audit",
+			Detail:   "BaseHarbor-owned containers remain: " + strings.Join(names, ", "),
+		})
+	}
+
+	if countFullDestroyBlockers((*results)[cleanupResultStart:]) > 0 {
+		*results = append(*results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   target.Name,
+			Resource: "target-state",
+			Detail:   "preserved because one or more target runtime resources could not be removed or verified",
+		})
+		return
+	}
 	if err := os.RemoveAll(dataDir); err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
 	} else {
@@ -525,4 +558,40 @@ func renderFullDestroyReport(out io.Writer, results []fullDestroyResult) {
 			fmt.Fprintf(out, "  %-9s %-16s %s: %s\n", result.Status, target, result.Resource, result.Detail)
 		}
 	}
+}
+
+func countFullDestroyBlockers(results []fullDestroyResult) int {
+	count := 0
+	for _, result := range results {
+		if result.Status == "FAILED" {
+			count++
+			continue
+		}
+		if result.Status == "SKIPPED" && strings.Contains(strings.ToLower(result.Detail), "preserved because") {
+			count++
+		}
+	}
+	return count
+}
+
+func targetOwnedRuntimeContainers(target string, containers []bhruntime.RuntimeContainer) []bhruntime.RuntimeContainer {
+	sharedProject := bhruntime.SharedProjectName(target)
+	projectPrefix := strings.TrimSuffix(sharedProject, "shared")
+	var result []bhruntime.RuntimeContainer
+	for _, container := range containers {
+		project := strings.TrimSpace(container.Project)
+		if project == sharedProject || strings.HasPrefix(project, projectPrefix) {
+			result = append(result, container)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Project != result[j].Project {
+			return result[i].Project < result[j].Project
+		}
+		if result[i].Service != result[j].Service {
+			return result[i].Service < result[j].Service
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result
 }

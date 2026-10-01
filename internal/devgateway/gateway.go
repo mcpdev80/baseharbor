@@ -106,6 +106,7 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 	} else if err != nil {
 		return err
 	}
+	previous := cloneState(current)
 	owners := map[string]struct{}{}
 	for _, group := range groups {
 		owner := strings.TrimSpace(group.Owner)
@@ -131,7 +132,13 @@ func ReplaceRoutes(ctx context.Context, runtime Runtime, issuer serviceaccess.Is
 		}
 	}
 	current.Routes = normalizedRoutes(filtered)
-	if err := saveState(files.State, current); err != nil {
+	if len(current.Routes) > 0 && current.HostPort == 0 {
+		current.HostPort, err = resolveGatewayHostPort(files, current, runtime)
+		if err != nil {
+			return err
+		}
+	}
+	if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 		return err
 	}
 	return Reconcile(ctx, runtime, issuer, target)
@@ -152,6 +159,7 @@ func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacces
 	} else if err != nil {
 		return err
 	}
+	previous := cloneState(current)
 	byKey := map[string]Route{}
 	for _, route := range current.Routes {
 		byKey[route.Key] = route
@@ -168,10 +176,59 @@ func UpsertOwnerRoutes(ctx context.Context, runtime Runtime, issuer serviceacces
 		current.Routes = append(current.Routes, route)
 	}
 	current.Routes = normalizedRoutes(current.Routes)
-	if err := saveState(files.State, current); err != nil {
+	if len(current.Routes) > 0 && current.HostPort == 0 {
+		current.HostPort, err = resolveGatewayHostPort(files, current, runtime)
+		if err != nil {
+			return err
+		}
+	}
+	if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 		return err
 	}
 	return Reconcile(ctx, runtime, issuer, target)
+}
+
+func cloneState(input state) state {
+	cloned := input
+	cloned.Routes = append([]Route(nil), input.Routes...)
+	return cloned
+}
+
+func saveRouteStateForReconcile(ctx context.Context, runtime Runtime, files Files, previous, next state) error {
+	if len(next.Routes) > 0 && routeNetworkSetChanged(previous.Routes, next.Routes) {
+		if _, err := os.Stat(files.Compose); err == nil {
+			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+				return fmt.Errorf("restart development gateway after route network change: %w", err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return saveState(files.State, next)
+}
+
+func routeNetworkSetChanged(before, after []Route) bool {
+	left := routeNetworkSet(before)
+	right := routeNetworkSet(after)
+	if len(left) != len(right) {
+		return true
+	}
+	for network := range left {
+		if _, ok := right[network]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+func routeNetworkSet(routes []Route) map[string]struct{} {
+	result := make(map[string]struct{}, len(routes))
+	for _, route := range routes {
+		if network := strings.TrimSpace(route.Network); network != "" {
+			result[network] = struct{}{}
+		}
+	}
+	return result
 }
 
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
@@ -228,8 +285,9 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		return err
 	}
 	if changed {
+		previous := cloneState(current)
 		current.Routes = pruned
-		if err := saveState(files.State, current); err != nil {
+		if err := saveRouteStateForReconcile(ctx, runtime, files, previous, current); err != nil {
 			return err
 		}
 	}
@@ -337,7 +395,7 @@ func URLForRuntime(target, host string, runtime Runtime) string {
 func urlForRuntime(target, host string, runtime Runtime, available func(int) bool) string {
 	files, err := FilesFor(target)
 	if err == nil {
-		if current, loadErr := loadState(files.State); loadErr == nil {
+		if current, loadErr := loadState(files.State); loadErr == nil && current.HostPort > 0 {
 			return canonicalURL(host, current.HostPort)
 		}
 	}
@@ -454,7 +512,8 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 			continue
 		}
 		seen[route.Host] = struct{}{}
-		if err := verifyRoute(ctx, roots, route, current.HostPort); err != nil {
+		allowed := relatedRedirectURLs(current.Routes, route, current.HostPort)
+		if err := verifyRoute(ctx, roots, route, current.HostPort, allowed...); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -466,7 +525,22 @@ func VerifyHosts(ctx context.Context, target string, hosts []string) error {
 	return errors.Join(errs...)
 }
 
-func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int) error {
+func relatedRedirectURLs(routes []Route, route Route, hostPort int) []string {
+	if !strings.HasSuffix(route.Key, "/admin") && !strings.HasSuffix(route.Key, "/identity-admin") {
+		return nil
+	}
+	for _, candidate := range routes {
+		if candidate.Owner != route.Owner {
+			continue
+		}
+		if strings.HasSuffix(candidate.Key, "/login") || strings.HasSuffix(candidate.Key, "/identity") {
+			return []string{canonicalURL(candidate.Host, hostPort)}
+		}
+	}
+	return nil
+}
+
+func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPort int, allowedURLs ...string) error {
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -479,17 +553,8 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 		},
 	}
 	client := &http.Client{Transport: transport}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, canonicalURL(route.Host, hostPort)+"/", nil)
-	if err != nil {
+	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
 		return fmt.Errorf("%s: %w", route.Host, err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("%s: %w", route.Host, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 500 {
-		return fmt.Errorf("%s returned HTTP %d", route.Host, resp.StatusCode)
 	}
 	return nil
 }
@@ -538,9 +603,6 @@ func loadState(path string) (state, error) {
 	}
 	if value.Version != stateVersion {
 		return state{}, fmt.Errorf("unsupported development gateway route state version %d", value.Version)
-	}
-	if value.HostPort == 0 {
-		value.HostPort = gatewayPort
 	}
 	value.Routes = normalizedRoutes(value.Routes)
 	return value, nil
@@ -641,106 +703,6 @@ func normalizedRoutes(routes []Route) []Route {
 		return out[i].Key < out[j].Key
 	})
 	return out
-}
-
-func renderCaddyfile(routes []Route, listenPort int) string {
-	var b strings.Builder
-	b.WriteString("{\n  auto_https off\n}\n")
-	renderListener := func(port int) {
-		fmt.Fprintf(&b, "\n:%d {\n  tls /certs/server.pem /certs/server-key.pem\n", port)
-		for i, route := range routes {
-			fmt.Fprintf(&b, "  @route%d {\n    host %s\n", i, route.Host)
-			if route.PathPrefix != "" {
-				fmt.Fprintf(&b, "    path %s %s/*\n", route.PathPrefix, route.PathPrefix)
-			}
-			b.WriteString("  }\n")
-			fmt.Fprintf(&b, "  handle @route%d {\n", i)
-			if route.PathPrefix != "" {
-				fmt.Fprintf(&b, "    uri strip_prefix %s\n", route.PathPrefix)
-			}
-			if strings.HasPrefix(route.Upstream, "https://") {
-				fmt.Fprintf(&b, "    reverse_proxy %s {\n", route.Upstream)
-				b.WriteString("      transport http {\n        tls\n")
-				fmt.Fprintf(&b, "        tls_trust_pool file /trust/route-%03d.pem\n", i)
-				fmt.Fprintf(&b, "        tls_server_name %s\n", route.ServerName)
-				b.WriteString("      }\n    }\n")
-			} else {
-				fmt.Fprintf(&b, "    reverse_proxy %s\n", route.Upstream)
-			}
-			b.WriteString("  }\n")
-		}
-		b.WriteString("  respond 404\n}\n")
-	}
-	renderListener(listenPort)
-	return b.String()
-}
-
-func renderCompose(files Files, routes []Route, trustTargets map[string]string, hostPort int) string {
-	networks := map[string]string{}
-	routeNetwork := map[string]string{}
-	for _, route := range routes {
-		if logical, ok := networks[route.Network]; ok {
-			routeNetwork[route.Key] = logical
-			continue
-		}
-		logical := "route" + strconv.Itoa(len(networks))
-		networks[route.Network] = logical
-		routeNetwork[route.Key] = logical
-	}
-	var b strings.Builder
-	b.WriteString("services:\n  dev-gateway:\n")
-	b.WriteString("    image: docker.io/library/caddy:2.11.4-alpine\n")
-	b.WriteString("    restart: unless-stopped\n    user: \"65532:65532\"\n    read_only: true\n")
-	b.WriteString("    cap_drop: [\"ALL\"]\n    cap_add: [\"NET_BIND_SERVICE\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
-	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
-	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
-	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", hostPort, hostPort)
-	b.WriteString("    volumes:\n")
-	fmt.Fprintf(&b, "      - %q\n", files.Caddyfile+":/etc/caddy/Caddyfile:ro")
-	fmt.Fprintf(&b, "      - %q\n", files.Cert+":/certs/server.pem:ro")
-	fmt.Fprintf(&b, "      - %q\n", files.Key+":/certs/server-key.pem:ro")
-	for _, route := range routes {
-		if trust := trustTargets[route.Key]; trust != "" {
-			fmt.Fprintf(&b, "      - %q\n", trust+":/trust/"+trustMountName(routes, route.Key)+":ro")
-		}
-	}
-	b.WriteString("    networks:\n")
-	seen := map[string]bool{}
-	for _, route := range routes {
-		logical := routeNetwork[route.Key]
-		if seen[logical] {
-			continue
-		}
-		seen[logical] = true
-		fmt.Fprintf(&b, "      %s:\n", logical)
-		b.WriteString("        aliases:\n")
-		for _, candidate := range routes {
-			if routeNetwork[candidate.Key] == logical {
-				fmt.Fprintf(&b, "          - %q\n", candidate.Host)
-			}
-		}
-	}
-	b.WriteString("\nnetworks:\n")
-	actuals := make([]string, 0, len(networks))
-	for actual := range networks {
-		actuals = append(actuals, actual)
-	}
-	sort.Strings(actuals)
-	for _, actual := range actuals {
-		logical := networks[actual]
-		fmt.Fprintf(&b, "  %s:\n    external: true\n    name: %q\n", logical, actual)
-	}
-	return b.String()
-}
-
-func trustMountName(routes []Route, key string) string {
-	for i, route := range routes {
-		if route.Key == key {
-			return fmt.Sprintf("route-%03d.pem", i)
-		}
-	}
-	return "missing.pem"
 }
 
 func projectReadable(source, target string) error {

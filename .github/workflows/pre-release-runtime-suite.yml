@@ -1,0 +1,185 @@
+name: "Runtime Suite"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact BaseHarbor ref or commit SHA to test
+        required: true
+        type: string
+      demo_ref:
+        description: Exact baseharbor-demo commit SHA to test
+        required: true
+        type: string
+      runtime:
+        description: Runtime provider
+        required: true
+        type: string
+      suite:
+        description: Named demo acceptance suite
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-suite:
+    name: ${{ inputs.runtime == 'podman' && 'Podman' || 'Docker' }} · ${{ inputs.suite == 'normal' && 'Core Journey' || 'Operations' }}
+    runs-on: ${{ inputs.runtime == 'podman' && fromJSON('["self-hosted","Linux","X64","baseharbor","podman"]') || fromJSON('["self-hosted","Linux","X64","baseharbor","docker"]') }}
+    timeout-minutes: 90
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
+      DEMO_SUITE: ${{ inputs.suite }}
+      ARTIFACT_DIR: /tmp/baseharbor-pre-release-${{ inputs.runtime }}-${{ inputs.suite }}
+
+    steps:
+      - name: Checkout BaseHarbor candidate
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Verify runtime host
+        id: runtime_host
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$BASEHARBOR_TEST_RUNTIME" = "docker" ]; then
+            docker info >/tmp/pre-release-docker-info.txt
+            exit 0
+          fi
+
+          podman info >/tmp/pre-release-podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+
+          verify_unit_dir="$RUNNER_TEMP/pre-release-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/tmp/pre-release-podman-quadlet.txt
+
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet pre-release acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Download prebuilt candidate
+        id: candidate_artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: pre-release-runtime-candidate
+          path: ${{ runner.temp }}/pre-release-candidate
+
+      - name: Load prebuilt runtime image
+        id: load_image
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+          archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+          test -s "$archive"
+          if [ "$BASEHARBOR_TEST_RUNTIME" = "podman" ]; then
+            env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+            env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          else
+            docker load -i "$archive"
+            docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          fi
+
+      - name: Checkout exact demo revision
+        id: demo
+        shell: bash
+        env:
+          DEMO_REF: ${{ inputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          workdir="/tmp/baseharbor-demo-${BASEHARBOR_TEST_RUNTIME}-${DEMO_SUITE}"
+          rm -rf "$workdir" "$ARTIFACT_DIR"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
+          echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+
+      - name: Run persistent acceptance suite
+        id: acceptance
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          BASEHARBOR_PREBUILT_BINARY: ${{ runner.temp }}/pre-release-candidate/baha
+        run: |
+          set -euo pipefail
+          cd "${{ steps.demo.outputs.workdir }}"
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_PREBUILT_BINARY="$BASEHARBOR_PREBUILT_BINARY"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME"             DEMO_SUITE="$DEMO_SUITE"             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh
+
+      - name: Collect runtime failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          bash scripts/ci-failure-diagnostics.sh             "$BASEHARBOR_TEST_RUNTIME"             "$ARTIFACT_DIR/runtime-diagnostics"             "${{ steps.demo.outputs.workdir }}"             "$RUNNER_TEMP/pre-release-candidate/baha"
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
+
+      - name: Generate runtime suite evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pre-release-${BASEHARBOR_TEST_RUNTIME}-${DEMO_SUITE}-evidence"
+          rows="$RUNNER_TEMP/pre-release-${BASEHARBOR_TEST_RUNTIME}-${DEMO_SUITE}.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
+          Runner reset	${{ steps.reset.outcome }}	Clean persistent runtime state
+          Runtime host	${{ steps.runtime_host.outcome }}	Selected runtime available; Podman requires Quadlet and forbids Compose fallback
+          Candidate artifact	${{ steps.candidate_artifact.outcome }}	One prebuilt binary and runtime image reused from source/build validation
+          Candidate image load	${{ steps.load_image.outcome }}	Prebuilt runtime image loaded into selected runtime
+          Demo revision	${{ steps.demo.outcome }}	Exact pinned baseharbor-demo revision
+          Persistent suite	${{ steps.acceptance.outcome }}	Named ${DEMO_SUITE} suite runs all selected gates on one shared environment
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent runner returned to clean state
+          EOF
+          mkdir -p "$out/demo"
+          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$out"             "BaseHarbor ${BASEHARBOR_TEST_RUNTIME} ${DEMO_SUITE} Pre-Release Evidence"             "pre-release/runtime/${BASEHARBOR_TEST_RUNTIME}/${DEMO_SUITE}"             "$EVIDENCE_REF"             "${{ steps.candidate.outputs.sha || github.sha }}"             "$rows"
+
+      - name: Upload runtime suite evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-${{ inputs.runtime }}-${{ inputs.suite }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-${{ inputs.runtime }}-${{ inputs.suite }}-evidence
+          if-no-files-found: error
+          retention-days: 30

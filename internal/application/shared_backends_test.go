@@ -186,3 +186,15 @@ func TestSharedPostgresStateContainsCredentialReferencesNotSecrets(t *testing.T)
 		}
 	}
 }
+
+func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
+	var b strings.Builder
+	writeSharedValkeyCompose(&b, sharedBackendAppState{Application: "demo", Environment: "dev"}, "default")
+	got := b.String()
+	if !strings.Contains(got, `user: "999:1000"`) {
+		t.Fatalf("shared Valkey compose missing numeric non-root identity:\n%s", got)
+	}
+	if strings.Contains(got, `user: "valkey"`) {
+		t.Fatalf("shared Valkey compose must not use symbolic runtime identity:\n%s", got)
+	}
+}

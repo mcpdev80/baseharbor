@@ -547,7 +547,7 @@ func DestroyAllSharedBackendsAt(ctx context.Context, compose bhruntime.RuntimePr
 		environment := entry.Name()
 		files := SharedBackendFilesAt(dataDir, namespace, environment)
 		if _, statErr := os.Stat(files.Compose); statErr == nil {
-			if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			if err := compose.DestroyProjectRemoveOrphans(ctx, files.Project, files.Compose, files.Env); err != nil {
 				result = errors.Join(result, fmt.Errorf("destroy shared backend provider %s: %w", environment, err))
 				continue
 			}

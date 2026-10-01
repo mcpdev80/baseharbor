@@ -163,7 +163,7 @@ jobs:
           name: demo-docker-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-docker-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
   podman:
     name: Podman · full acceptance suite
@@ -292,7 +292,7 @@ jobs:
           name: demo-podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-podman-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
   evidence:
     name: demo-acceptance-evidence
@@ -330,7 +330,7 @@ jobs:
           name: demo-acceptance-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-acceptance-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
       - name: Enforce complete demo acceptance
         shell: bash

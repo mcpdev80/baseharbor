@@ -17,7 +17,11 @@ import (
 )
 
 func promptDirectoryPath(reader *bufio.Reader, out io.Writer, label string) (string, error) {
-	return promptPathWithCompletion(reader, out, label, appInitInput)
+	return promptDirectoryPathFrom(reader, out, label, "", appInitInput)
+}
+
+func promptDirectoryPathFrom(reader *bufio.Reader, out io.Writer, label, base string, input io.Reader) (string, error) {
+	return promptPathWithCompletionBase(reader, out, label, input, base)
 }
 
 func promptNewFilePath(reader *bufio.Reader, out io.Writer, label string, input io.Reader) (string, error) {
@@ -25,6 +29,10 @@ func promptNewFilePath(reader *bufio.Reader, out io.Writer, label string, input 
 }
 
 func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string, input io.Reader) (string, error) {
+	return promptPathWithCompletionBase(reader, out, label, input, "")
+}
+
+func promptPathWithCompletionBase(reader *bufio.Reader, out io.Writer, label string, input io.Reader, base string) (string, error) {
 	if !readerIsTerminal(input) {
 		return promptLine(reader, out, label, "")
 	}
@@ -49,9 +57,20 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, oldState) }()
 
 	prompt := label
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
+	cwd := strings.TrimSpace(base)
+	if cwd == "" {
+		var err error
+		cwd, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+	if !filepath.IsAbs(cwd) {
+		abs, err := filepath.Abs(cwd)
+		if err != nil {
+			return "", err
+		}
+		cwd = abs
 	}
 	promptPath := shellDisplayPath(cwd)
 	var value []byte
@@ -84,7 +103,7 @@ func promptPathWithCompletion(reader *bufio.Reader, out io.Writer, label string,
 				redrawPathPrompt(out, prompt, promptPath, string(value))
 			}
 		case '\t':
-			completed, matches := completeDirectoryPath(string(value))
+			completed, matches := completeDirectoryPathFrom(cwd, string(value))
 			if completed != string(value) {
 				value = []byte(completed)
 				redrawPathPrompt(out, prompt, promptPath, completed)
@@ -164,8 +183,21 @@ func shellDisplayPath(path string) string {
 }
 
 func completeDirectoryPath(typed string) (string, []string) {
+	return completeDirectoryPathFrom("", typed)
+}
+
+func completeDirectoryPathFrom(base, typed string) (string, []string) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base, _ = os.Getwd()
+	}
+	if !filepath.IsAbs(base) {
+		base, _ = filepath.Abs(base)
+	}
+
 	lookup := typed
 	homePrefix := false
+	absoluteInput := filepath.IsAbs(typed)
 	if typed == "~" || strings.HasPrefix(typed, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
 			homePrefix = true
@@ -175,11 +207,13 @@ func completeDirectoryPath(typed string) (string, []string) {
 				lookup = filepath.Join(home, strings.TrimPrefix(typed, "~/"))
 			}
 		}
+	} else if !absoluteInput {
+		lookup = filepath.Join(base, typed)
 	}
 
 	dir, prefix := filepath.Split(lookup)
 	if dir == "" {
-		dir = "."
+		dir = base
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -205,35 +239,42 @@ func completeDirectoryPath(typed string) (string, []string) {
 		return typed, displayDirectoryMatches(typed, prefix, names)
 	}
 
-	completedLookup := filepath.Join(dir, common)
+	completedAbs := filepath.Join(dir, common)
 	if len(names) == 1 {
-		completedLookup += string(os.PathSeparator)
+		completedAbs += string(os.PathSeparator)
 	}
-	completed := completedLookup
-	if dir == "." {
-		completed = common
-		if len(names) == 1 {
-			completed += string(os.PathSeparator)
-		}
-	} else if !filepath.IsAbs(lookup) && !homePrefix {
-		completed = filepath.Join(dir, common)
-		if len(names) == 1 {
-			completed += string(os.PathSeparator)
-		}
-	}
-	if homePrefix {
+	var completed string
+	switch {
+	case homePrefix:
 		home, _ := os.UserHomeDir()
-		rel, err := filepath.Rel(home, strings.TrimSuffix(completedLookup, string(os.PathSeparator)))
-		if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		rel, err := filepath.Rel(home, strings.TrimSuffix(completedAbs, string(os.PathSeparator)))
+		if err != nil {
+			return typed, displayDirectoryMatches(typed, prefix, names)
+		}
+		if rel == "." {
+			completed = "~/"
+		} else {
 			completed = "~/" + filepath.ToSlash(rel)
 			if len(names) == 1 {
 				completed += "/"
 			}
-		} else if rel == "." {
-			completed = "~/"
+		}
+	case absoluteInput:
+		completed = filepath.ToSlash(completedAbs)
+	default:
+		rel, err := filepath.Rel(base, strings.TrimSuffix(completedAbs, string(os.PathSeparator)))
+		if err != nil {
+			return typed, displayDirectoryMatches(typed, prefix, names)
+		}
+		completed = filepath.ToSlash(rel)
+		if completed == "." {
+			completed = ""
+		}
+		if len(names) == 1 {
+			completed += "/"
 		}
 	}
-	return filepath.ToSlash(completed), displayDirectoryMatches(typed, prefix, names)
+	return completed, displayDirectoryMatches(typed, prefix, names)
 }
 
 func displayDirectoryMatches(typed, prefix string, names []string) []string {

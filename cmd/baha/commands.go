@@ -27,6 +27,7 @@ func rootCommand() *cli.Command {
 	}
 	appCmd.Children = append(appCmd.Children,
 		appInspectCommand(),
+		appNewCommand(),
 		appApplyCommand(store),
 		appGuidedBackupCommand(store),
 		appGuidedRestoreCommandWithRecoveryMetadata(store),
@@ -136,6 +137,8 @@ func rootCommand() *cli.Command {
 				return doctorCommand(ctx, args, out, errOut)
 			},
 		},
+		providerCommand(),
+		stackCommand(),
 		targetCommand(),
 		devCommand(),
 		configCommand(),

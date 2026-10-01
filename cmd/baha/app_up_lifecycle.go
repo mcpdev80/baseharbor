@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -131,6 +132,9 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 	m := e.manifest
 	return []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "host memory", Run: func(ctx context.Context) error {
+			return runHostMemoryPreflight(ctx, runtimeInput, e.out, bhruntime.ProviderKind(e.resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), true)
+		}},
 		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
@@ -207,7 +211,7 @@ func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error 
 	if err := application.EnsureBackendServiceAccess(ctx, e.issuer, e.files, e.manifest); err != nil {
 		return fmt.Errorf("reconcile managed backend service access: %w", err)
 	}
-	if application.HasManagedRuntimeServices(e.manifest) {
+	if application.HasApplicationScopedRuntimeServices(e.manifest) {
 		if err := activity(ctx, e.term, "Starting managed application services", func(progress io.Writer) error {
 			return e.compose.UpProjectProgress(ctx, e.files.Project, e.files.Compose, e.files.Env, func(detail string) {
 				cli.ReportActivityDetail(progress, detail)
@@ -218,11 +222,6 @@ func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error 
 	}
 	if err := activity(ctx, e.term, "Reconciling object storage", func(progress io.Writer) error {
 		return convergeManagedObjectStorage(ctx, progress, e.providers.objectStorage)
-	}); err != nil {
-		return err
-	}
-	if err := activity(ctx, e.term, "Preparing application exposure", func(io.Writer) error {
-		return provisionManagedExposure(ctx, e.providers.exposure)
 	}); err != nil {
 		return err
 	}

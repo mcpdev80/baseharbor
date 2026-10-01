@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/development/v1/development-plan.schema.json",
+  "title": "BaseHarbor Development Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "baseharbor.development-plan/v1"},
+    "application": {"type": "string", "minLength": 1},
+    "profile": {"type": "string", "minLength": 1},
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["dependency", "binding", "source", "build", "health", "telemetry"]
+          },
+          "component": {"type": "string", "minLength": 1},
+          "capability": {"type": "string"},
+          "name": {"type": "string", "minLength": 1},
+          "value": {"type": "string"}
+        },
+        "required": ["kind", "component", "name"]
+      }
+    }
+  },
+  "required": ["schema_version", "application", "profile", "actions"]
+}

@@ -236,6 +236,7 @@ func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
 		return err
 	}
 	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = canonicalURL
+	delete(values, "BASEHARBOR_KEYCLOAK_CANONICAL_ADMIN_URL")
 	return writeProtectedEnv(files.Env, values)
 }
 
@@ -256,6 +257,12 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
     volumes:
       - keycloak-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_KEYCLOAK_DB_USER} -d ${BASEHARBOR_KEYCLOAK_DB_NAME}"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 2s
     networks:
       - identity-internal
 
@@ -266,7 +273,8 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
-      - keycloak-db
+      keycloak-db:
+        condition: service_healthy
     command:
       - start
       - --http-enabled=false
@@ -289,6 +297,12 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - ./native-tls/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
       - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
       - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+      start_period: 10s
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -295,10 +294,7 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 	if environment == nil {
 		environment = map[string]string{}
 	}
-	if err := mergeRepositoryDeploymentWorkloadPorts(environment, resolved); err != nil {
-		return nil, err
-	}
-	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
 		return nil, err
 	}
 	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
@@ -312,7 +308,7 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 
 func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
 	environment := map[string]string{}
-	if err := mergePersistedWorkloadPortOverrides(environment, files); err != nil {
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
 		return nil, err
 	}
 	if runtimeURL, configured, err := application.ConfiguredRuntimeAPIURL(); err != nil {
@@ -488,90 +484,74 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	workload, found, err := materializeRepositoryWorkload(resolved, files)
-	if errors.Is(err, os.ErrNotExist) && resolved.FromRepository {
-		return stopRepositoryWorkloadRecovery(ctx, compose, resolved, files)
+	if !resolved.FromRepository {
+		return false, nil
 	}
-	if err != nil || !found {
-		return false, err
-	}
-	environment, err := repositoryWorkloadStopEnvironment(resolved, files)
+	project := application.WorkloadProjectNameForRuntime(resolved.Manifest, files)
+	containers, err := compose.ListRuntimeContainers(ctx)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("inspect application workload ownership before stop: %w", err)
 	}
-	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
-	if err != nil {
-		return false, err
-	}
-	if err := compose.ConfigProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...); err != nil {
-		return false, fmt.Errorf("validate application workload before stop: %w", err)
-	}
-	activeServices, err := compose.ServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("resolve active application workload services before stop: %w", err)
-	}
-	expectedServices := activeSelectedWorkloadServices(activeServices, workload.Services)
-	if workload.Partial || len(resolved.Manifest.Workload.Services) > 0 {
-		if err := compose.StopProjectFilesSelected(ctx, workload.Project, workload.RepositoryRoot, environment, expectedServices, composeFiles...); err != nil {
-			return false, fmt.Errorf("stop selected application workload services: %w", err)
+	found := false
+	for _, container := range containers {
+		if container.Project == project {
+			found = true
+			break
 		}
-	} else if err := compose.DownProjectFiles(ctx, workload.Project, workload.RepositoryRoot, composeFiles...); err != nil {
-		return false, fmt.Errorf("stop application workload: %w", err)
 	}
-	running, err := compose.RunningServicesProjectFilesEnv(ctx, workload.Project, workload.RepositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("verify application workload stopped: %w", err)
+	if !found {
+		return false, nil
 	}
-	for _, service := range expectedServices {
-		for _, active := range running {
-			if service == active {
-				return false, fmt.Errorf("verify application workload stopped: selected service %s is still running", service)
-			}
-		}
+	if err := compose.StopOwnedProjectContainers(ctx, project); err != nil {
+		return false, fmt.Errorf("stop application workload by observed runtime ownership: %w", err)
 	}
 	return true, nil
 }
 
-func stopRepositoryWorkloadRecovery(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	repositoryRoot := resolved.repositoryRoot()
-	services, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
-	if err != nil || !found {
+func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	if !resolved.FromRepository {
+		return false, nil
+	}
+	project := application.WorkloadProjectNameForRuntime(resolved.Manifest, files)
+	resources, err := compose.ListOwnedProjectResources(ctx, project)
+	if err != nil {
+		return false, fmt.Errorf("inventory application workload runtime resources: %w", err)
+	}
+	cleanup := workloadRuntimeCleanupResources(resources)
+	if len(cleanup) == 0 {
+		return false, nil
+	}
+	if err := compose.DestroyOwnedProjectResources(ctx, project, cleanup); err != nil {
+		return false, fmt.Errorf("remove application workload containers/networks: %w", err)
+	}
+	remaining, err := compose.InspectProjectResources(ctx, project, cleanup)
+	if err != nil {
+		return false, fmt.Errorf("verify application workload runtime cleanup: %w", err)
+	}
+	if err := verifyRepositoryWorkloadCleanup(remaining); err != nil {
 		return false, err
-	}
-	environment, err := repositoryWorkloadStopEnvironment(resolved, files)
-	if err != nil {
-		return false, err
-	}
-	project := application.WorkloadProjectName(resolved.Manifest)
-	composeFiles := []string{composePath}
-	if err := compose.ConfigProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...); err != nil {
-		return false, fmt.Errorf("validate application workload before recovery stop: %w", err)
-	}
-	activeServices, err := compose.ServicesProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("resolve active application workload services before recovery stop: %w", err)
-	}
-	expectedServices := activeSelectedWorkloadServices(activeServices, services)
-	partial := len(services) != len(activeServices) || len(resolved.Manifest.Workload.Services) > 0
-	if partial {
-		if err := compose.StopProjectFilesSelected(ctx, project, repositoryRoot, environment, expectedServices, composeFiles...); err != nil {
-			return false, fmt.Errorf("stop selected application workload services during recovery: %w", err)
-		}
-	} else if err := compose.DownProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...); err != nil {
-		return false, fmt.Errorf("stop application workload during recovery: %w", err)
-	}
-	running, err := compose.RunningServicesProjectFilesEnv(ctx, project, repositoryRoot, environment, composeFiles...)
-	if err != nil {
-		return false, fmt.Errorf("verify recovered application workload stop: %w", err)
-	}
-	for _, service := range expectedServices {
-		for _, active := range running {
-			if service == active {
-				return false, fmt.Errorf("verify recovered application workload stop: selected service %s is still running", service)
-			}
-		}
 	}
 	return true, nil
+}
+
+func verifyRepositoryWorkloadCleanup(remaining []bhruntime.ProjectResource) error {
+	for _, resource := range remaining {
+		if resource.Kind != "network" {
+			return fmt.Errorf("verify application workload runtime cleanup: owned %s %s remains", resource.Kind, resource.Name)
+		}
+	}
+	return nil
+}
+
+func workloadRuntimeCleanupResources(resources []bhruntime.ProjectResource) []bhruntime.ProjectResource {
+	cleanup := make([]bhruntime.ProjectResource, 0, len(resources))
+	for _, resource := range resources {
+		switch resource.Kind {
+		case "container", "network":
+			cleanup = append(cleanup, resource)
+		}
+	}
+	return cleanup
 }
 
 func inspectRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (application.WorkloadFiles, []string, bool, error) {

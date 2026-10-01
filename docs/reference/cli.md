@@ -57,7 +57,17 @@ baha
 ├── update
 ├── completion bash|zsh|fish
 ├── tui
+├── stack
+│   ├── list
+│   ├── show
+│   └── create
 ├── app
+│   ├── new
+│   ├── workspace
+│   │   ├── init
+│   │   ├── map
+│   │   ├── show
+│   │   └── resolve
 │   ├── init
 │   ├── inspect
 │   ├── create
@@ -899,3 +909,20 @@ The guided flow is capability-first:
 Repository Compose files are never rewritten. Supported backend services discovered in a mixed Compose file are classified as replaceable infrastructure and excluded from BaseHarbor `workload.services`; the original Compose file remains usable independently.
 
 `baha app init --quick` is deterministic and fail-closed. It refuses ambiguous Compose selection, metrics service/port mapping, OTLP signal mapping, or Runtime API service scope instead of guessing.
+
+
+## Greenfield development and Stack Profiles
+
+`baha app new` creates and validates ecosystem-native applications from capability intent. The supported built-in stacks are Go, Next.js, Python and Quarkus. `baha stack list|show|create` manages reusable development Stack Profiles; `stack create` is guided with no arguments and deterministic with explicit flags.
+
+Optional Backstage Catalog metadata is emitted only when explicitly requested with `--emit-backstage --backstage-owner OWNER`.
+
+## Multi-repository workspace
+
+`baha app workspace` opens the guided workspace wizard. Automation uses `workspace init|map|show|resolve`. Portable source identity lives in `.baseharbor/sources.yaml`; local repository/worktree paths live only in XDG-local workspace state.
+
+## Local host resource preflight
+
+Before Docker/Podman mutation, BaseHarbor evaluates Linux host memory evidence and the planned runtime delta. Unsafe headroom fails before mutation; tight headroom requires explicit approval or `--skip-memory-preflight`.
+
+Kubernetes/OpenShift do not reuse local host evidence. Their future provider implementation must supply cluster capacity/quota/scheduling evidence.

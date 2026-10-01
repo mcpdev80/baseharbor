@@ -321,7 +321,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
-    user: "postgres"
+    user: "70:70"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
@@ -368,7 +368,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 	fmt.Fprintf(b, `  %s:
     image: docker.io/valkey/valkey:9.1.2-alpine
     restart: unless-stopped
-    user: "valkey"
+    user: "999:1000"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

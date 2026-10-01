@@ -294,6 +294,9 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		if _, err := stopRepositoryWorkload(ctx, e.compose, e.resolved, e.files); err != nil {
 			return err
 		}
+		if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
+			return err
+		}
 		if len(e.replacedVolumes) > 0 {
 			project := application.WorkloadProjectNameForRuntime(m, e.files)
 			if err := e.compose.DestroyOwnedProjectResources(ctx, project, e.replacedVolumes); err != nil {

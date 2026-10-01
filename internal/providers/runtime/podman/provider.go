@@ -145,10 +145,15 @@ func serviceStatesFromRuntimeLabels(ctx context.Context, backend bhruntime.Compo
 			if err != nil {
 				return nil, fmt.Errorf("inspect published ports for %s: %w", container.Name, err)
 			}
+			if strings.TrimSpace(container.State) != "" {
+				state = container.State
+			}
 			byService[container.Service] = ServiceState{
 				Service:    container.Service,
 				State:      state,
 				Health:     container.Health,
+				ExitCode:   container.ExitCode,
+				Error:      container.Error,
 				Publishers: publishers,
 			}
 		}

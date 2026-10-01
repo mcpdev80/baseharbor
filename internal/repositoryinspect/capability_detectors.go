@@ -45,7 +45,7 @@ func (objectStorageDetector) Detect(ctx context.Context, snapshot Snapshot) ([]F
 			}
 		}
 		if isDependencyFile(base) && containsAnyToken(lower, []string{
-			"@aws-sdk/client-s3", "aws-sdk-s3", "boto3", "botocore", "minio",
+			"@aws-sdk/client-s3", "aws-sdk-s3", "software.amazon.awssdk", "boto3", "botocore", "minio",
 		}) {
 			suggested = append(suggested, Evidence{
 				Kind: EvidenceDependency, Path: path,

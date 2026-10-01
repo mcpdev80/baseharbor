@@ -165,6 +165,56 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		})
 	}
 
+	t.Run("app new uses semantic greenfield flow for all reference adapters", func(t *testing.T) {
+		cases := []struct {
+			stack string
+			files []string
+		}{
+			{stack: "go", files: []string{"baseharbor.yaml", "go.mod", "main.go", "compose.yaml"}},
+			{stack: "nextjs", files: []string{"baseharbor.yaml", "package.json", "app/page.tsx", "compose.yaml"}},
+			{stack: "python", files: []string{"baseharbor.yaml", "pyproject.toml", "app.py", "compose.yaml"}},
+			{stack: "quarkus", files: []string{"baseharbor.yaml", "pom.xml", "src/main/java/dev/baseharbor/AppResource.java", "compose.yaml"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.stack, func(t *testing.T) {
+				parent := t.TempDir()
+				name := "agent-" + tc.stack
+				root := filepath.Join(parent, name)
+				result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+					Name: "baseharbor.app.new",
+					Arguments: map[string]any{
+						"directory":    parent,
+						"name":         name,
+						"stack":        tc.stack,
+						"capabilities": []string{"exposure.http", "database.sql", "cache.key-value", "object-storage.s3", "secrets", "telemetry.otlp"},
+						"secrets":      []string{"APP_SECRET"},
+					},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.IsError {
+					t.Fatalf("app new returned error: %#v", result.Content)
+				}
+				for _, name := range tc.files {
+					if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+						t.Fatalf("generated file %s: %v", name, err)
+					}
+				}
+				encoded, err := json.Marshal(result)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Contains(encoded, []byte(`"contract_version":"v1"`)) {
+					t.Fatalf("machine contract version missing from app new: %s", encoded)
+				}
+				if !bytes.Contains(encoded, []byte(`"satisfied":true`)) {
+					t.Fatalf("app new validation is not satisfied: %s", encoded)
+				}
+			})
+		}
+	})
+
 	t.Run("destroy requires explicit approval", func(t *testing.T) {
 		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.destroy",

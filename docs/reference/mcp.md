@@ -20,6 +20,8 @@ The current surface is intentionally small:
 
 ```text
 baseharbor.target
+baseharbor.workspace.resolve
+baseharbor.app.new
 baseharbor.inspect
 baseharbor.plan
 baseharbor.apply
@@ -121,3 +123,10 @@ mutation requires approval
         ↓
 destruction requires explicit BaseHarbor approval too
 ```
+
+
+## Development and workspace tools
+
+`baseharbor.app.new` is the semantic greenfield creation operation. It uses the same Application Contract, Stack Profile, Development Plan and adapter model as the human CLI and does not expose a generic shell.
+
+`baseharbor.workspace.resolve` is read-only. It resolves canonical component/source identity against the developer-local XDG workspace mapping and never clones, fetches, checks out or mutates repositories.

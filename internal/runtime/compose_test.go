@@ -25,10 +25,10 @@ fi
 
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
 	printf '%s\n' \
-	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy' \
-	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true|' \
-	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy' \
-	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false|'
+	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true||running|0|' \
+	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false||exited|0|'
 	exit 0
 fi
 
@@ -87,5 +87,228 @@ func TestFirstRuntimeLabelPrefersDockerAndFallsBackToPodman(t *testing.T) {
 				t.Fatalf("firstRuntimeLabel(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestListRuntimeContainersCapturesTerminalStartEvidence(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	script := `#!/bin/sh
+set -eu
+if [ "$1" = "container" ] && [ "$2" = "ls" ]; then
+	printf '%s\n' failed1
+	exit 0
+fi
+if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
+	printf '%s\n' '/demo-app|baseharbor-demo-dev|<no value>|demo-app|<no value>|false||created|128|failed to set up container networking: port is already allocated'
+	exit 0
+fi
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	compose := Compose{command: runtimePath}
+	containers, err := compose.ListRuntimeContainers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers) != 1 {
+		t.Fatalf("containers = %#v", containers)
+	}
+	got := containers[0]
+	if got.State != "created" || got.ExitCode != 128 || !strings.Contains(got.Error, "port is already allocated") {
+		t.Fatalf("terminal evidence lost: %#v", got)
+	}
+}
+
+func TestDestroyProjectRemoveOrphansRemovesOwnedResourcesOutsideCurrentComposeModel(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	stateDir := filepath.Join(dir, "state")
+	logPath := filepath.Join(dir, "calls.log")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+set -eu
+printf '%s
+' "$*" >> "$CALL_LOG"
+
+case "$1 $2" in
+  "container ls")
+    if [ ! -f "$STATE_DIR/containers-removed" ]; then
+      printf '%s
+' current orphan unrelated
+    else
+      printf '%s
+' unrelated
+    fi
+    exit 0
+    ;;
+  "network ls")
+    if [ ! -f "$STATE_DIR/network-removed" ]; then
+      printf '%s
+' shared-net unrelated-net
+    else
+      printf '%s
+' unrelated-net
+    fi
+    exit 0
+    ;;
+  "volume ls")
+    if [ ! -f "$STATE_DIR/volume-removed" ]; then
+      printf '%s
+' shared-vol
+    fi
+    exit 0
+    ;;
+  "container inspect")
+    if [ ! -f "$STATE_DIR/containers-removed" ]; then
+      printf '%s
+'         '/current|bh-local-shared|<no value>'         '/orphan|bh-local-shared|<no value>'         '/unrelated|other-project|<no value>'
+    else
+      printf '%s
+' '/unrelated|other-project|<no value>'
+    fi
+    exit 0
+    ;;
+  "network inspect")
+    if [ ! -f "$STATE_DIR/network-removed" ]; then
+      printf '%s
+'         'shared-net|bh-local-shared|<no value>'         'unrelated-net|other-project|<no value>'
+    else
+      printf '%s
+' 'unrelated-net|other-project|<no value>'
+    fi
+    exit 0
+    ;;
+  "volume inspect")
+    if [ ! -f "$STATE_DIR/volume-removed" ]; then
+      printf '%s
+' 'shared-vol|bh-local-shared|<no value>'
+    fi
+    exit 0
+    ;;
+esac
+
+if [ "$1 $2" = "container rm" ]; then
+  touch "$STATE_DIR/containers-removed"
+  exit 0
+fi
+if [ "$1 $2" = "network rm" ]; then
+  touch "$STATE_DIR/network-removed"
+  exit 0
+fi
+if [ "$1 $2" = "volume rm" ]; then
+  touch "$STATE_DIR/volume-removed"
+  exit 0
+fi
+
+printf 'unexpected arguments: %s
+' "$*" >&2
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATE_DIR", stateDir)
+	t.Setenv("CALL_LOG", logPath)
+
+	compose := Compose{command: runtimePath}
+	if err := compose.DestroyProjectRemoveOrphans(context.Background(), "bh-local-shared", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := string(raw)
+	for _, want := range []string{
+		"container rm -f current",
+		"container rm -f orphan",
+		"network rm shared-net",
+		"volume rm shared-vol",
+	} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("full owned-project destroy missing %q:\\n%s", want, calls)
+		}
+	}
+	for _, forbidden := range []string{
+		"container rm -f unrelated",
+		"network rm unrelated-net",
+	} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("full owned-project destroy touched unrelated resource %q:\\n%s", forbidden, calls)
+		}
+	}
+}
+
+func TestStopOwnedProjectContainersUsesObservedOwnershipOnly(t *testing.T) {
+	dir := t.TempDir()
+	runtimePath := filepath.Join(dir, "runtime")
+	stateDir := filepath.Join(dir, "state")
+	logPath := filepath.Join(dir, "calls.log")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$CALL_LOG"
+
+if [ "$1 $2" = "container ls" ]; then
+	printf '%s\n' app1 app2 other1
+	exit 0
+fi
+
+if [ "$1 $2" = "container inspect" ]; then
+	if [ -f "$STATE_DIR/stopped" ]; then
+		printf '%s\n' \
+		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|false||exited|0|' \
+		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+	else
+		printf '%s\n' \
+		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+	fi
+	exit 0
+fi
+
+if [ "$1 $2" = "container stop" ]; then
+	[ "$3" = "app1" ] || exit 3
+	touch "$STATE_DIR/stopped"
+	exit 0
+fi
+
+printf 'unexpected arguments: %s\n' "$*" >&2
+exit 2
+`
+	if err := os.WriteFile(runtimePath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATE_DIR", stateDir)
+	t.Setenv("CALL_LOG", logPath)
+
+	compose := Compose{command: runtimePath}
+	if err := compose.StopOwnedProjectContainers(context.Background(), "bh-local-demo-dev"); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := string(raw)
+	if !strings.Contains(calls, "container stop app1") {
+		t.Fatalf("owned running container was not stopped:\n%s", calls)
+	}
+	if strings.Contains(calls, "container stop app2") {
+		t.Fatalf("already stopped owned container was touched:\n%s", calls)
+	}
+	if strings.Contains(calls, "container stop other1") {
+		t.Fatalf("unrelated project container was touched:\n%s", calls)
 	}
 }

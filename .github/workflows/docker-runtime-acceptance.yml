@@ -156,4 +156,4 @@ jobs:
           name: docker-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/docker-runtime-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
