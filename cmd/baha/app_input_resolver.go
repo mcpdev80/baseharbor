@@ -278,6 +278,13 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 		}
 		return usageError("required application deployment inputs are unresolved: "+strings.Join(names, ", "), "Provide them with app init flags or --input NAME=VALUE in non-interactive automation.")
 	}
+	if resolved.DeploymentRecord == nil {
+		pending, err := recordPendingDeployment(ctx, resolved)
+		if err != nil {
+			return fmt.Errorf("record deployment before saving deployment inputs: %w", err)
+		}
+		resolved.DeploymentRecord = &pending
+	}
 	if development {
 		return runRepositoryRuntimeInit(ctx, resolved, repositoryInitOptions{Yes: true}, out)
 	}
