@@ -45,6 +45,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
           fetch-depth: 0
 
+      - name: Enforce workflow policy
+        id: workflow_policy
+        run: bash scripts/ci-workflow-policy.sh
+
       - name: Reset persistent runner state
         id: reset
         shell: bash
