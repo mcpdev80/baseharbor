@@ -63,6 +63,7 @@ type Services struct {
 	SQL                       bool
 	Cache                     bool
 	KeyValue                  bool
+	DocumentDatabase          bool
 	MessagingQueue            bool
 	MessagingPubSub           bool
 	MessagingStream           bool
@@ -79,6 +80,7 @@ type Services struct {
 	SQLInstances              map[string]ServiceInstance
 	CacheInstances            map[string]ServiceInstance
 	KeyValueInstances         map[string]ServiceInstance
+	DocumentDatabaseInstances map[string]ServiceInstance
 	MessagingQueueInstances   map[string]ServiceInstance
 	MessagingPubSubInstances  map[string]ServiceInstance
 	MessagingStreamInstances  map[string]ServiceInstance
@@ -319,6 +321,10 @@ func CacheInstanceNames(m Manifest) []string {
 
 func KeyValueInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
+}
+
+func DocumentDatabaseInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
 }
 
 func MessagingQueueInstanceNames(m Manifest) []string {

@@ -140,6 +140,8 @@ func referenceCapabilityProvider(kind capability.Kind) (capability.Provider, err
 		return capability.PostgreSQL, nil
 	case capability.KeyValue, capability.DurableKeyValue:
 		return capability.Valkey, nil
+	case capability.DocumentDatabase:
+		return capability.MongoDB, nil
 	case capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream:
 		return capability.RabbitMQ, nil
 	case capability.ExposureHTTP:

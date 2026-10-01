@@ -210,7 +210,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "key_value", "messaging_queue", "messaging_pubsub", "messaging_stream", "object_storage", "secrets", "identity", "observability":
+	case "sql", "cache", "key_value", "document_database", "messaging_queue", "messaging_pubsub", "messaging_stream", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -311,7 +311,7 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 }
 
 func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
-	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value" || p.service == "messaging_queue" || p.service == "messaging_pubsub" || p.service == "messaging_stream") {
+	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value" || p.service == "document_database" || p.service == "messaging_queue" || p.service == "messaging_pubsub" || p.service == "messaging_stream") {
 		p.serviceField = "instances"
 		return nil
 	}
@@ -354,6 +354,8 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.Cache = enabled
 	case "key_value":
 		p.manifest.Services.KeyValue = enabled
+	case "document_database":
+		p.manifest.Services.DocumentDatabase = enabled
 	case "messaging_queue":
 		p.manifest.Services.MessagingQueue = enabled
 	case "messaging_pubsub":
@@ -525,7 +527,7 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 	if p.section != "services" || (p.serviceField != "instances" && p.serviceField != "buckets") {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
-	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" && p.service != "messaging_queue" && p.service != "messaging_pubsub" && p.service != "messaging_stream" {
+	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" && p.service != "document_database" && p.service != "messaging_queue" && p.service != "messaging_pubsub" && p.service != "messaging_stream" {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
 	if p.serviceField == "buckets" && p.service != "object_storage" {
@@ -560,6 +562,12 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 		}
 		p.manifest.Services.KeyValueInstances[name] = ServiceInstance{}
 		p.manifest.Services.KeyValue = true
+	case "document_database":
+		if p.manifest.Services.DocumentDatabaseInstances == nil {
+			p.manifest.Services.DocumentDatabaseInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.DocumentDatabaseInstances[name] = ServiceInstance{}
+		p.manifest.Services.DocumentDatabase = true
 	case "messaging_queue":
 		if p.manifest.Services.MessagingQueueInstances == nil {
 			p.manifest.Services.MessagingQueueInstances = map[string]ServiceInstance{}

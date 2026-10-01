@@ -8,18 +8,19 @@ import "github.com/mcpdev80/baseharbor/internal/capability"
 type CapabilityKind = capability.Kind
 
 const (
-	CapabilitySQL             CapabilityKind = capability.SQL
-	CapabilityKeyValue        CapabilityKind = capability.KeyValue
-	CapabilityDurableKeyValue CapabilityKind = capability.DurableKeyValue
-	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
-	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
-	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
-	CapabilityMetrics         CapabilityKind = capability.Metrics
-	CapabilityLogs            CapabilityKind = capability.Logs
-	CapabilityIdentity        CapabilityKind = capability.Identity
-	CapabilityMessagingQueue  CapabilityKind = capability.MessagingQueue
-	CapabilityMessagingPubSub CapabilityKind = capability.MessagingPubSub
-	CapabilityMessagingStream CapabilityKind = capability.MessagingStream
+	CapabilitySQL              CapabilityKind = capability.SQL
+	CapabilityKeyValue         CapabilityKind = capability.KeyValue
+	CapabilityDurableKeyValue  CapabilityKind = capability.DurableKeyValue
+	CapabilityDocumentDatabase CapabilityKind = capability.DocumentDatabase
+	CapabilityExposureHTTP     CapabilityKind = capability.ExposureHTTP
+	CapabilityObjectStorageS3  CapabilityKind = capability.ObjectStorageS3
+	CapabilityTelemetryOTLP    CapabilityKind = capability.TelemetryOTLP
+	CapabilityMetrics          CapabilityKind = capability.Metrics
+	CapabilityLogs             CapabilityKind = capability.Logs
+	CapabilityIdentity         CapabilityKind = capability.Identity
+	CapabilityMessagingQueue   CapabilityKind = capability.MessagingQueue
+	CapabilityMessagingPubSub  CapabilityKind = capability.MessagingPubSub
+	CapabilityMessagingStream  CapabilityKind = capability.MessagingStream
 )
 
 type CapabilityRequirement = capability.Requirement
@@ -83,6 +84,9 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 	}
 	for _, name := range KeyValueInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDurableKeyValue, Name: name})
+	}
+	for _, name := range DocumentDatabaseInstanceNames(m) {
+		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityDocumentDatabase, Name: name})
 	}
 	for _, name := range MessagingQueueInstanceNames(m) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMessagingQueue, Name: name})

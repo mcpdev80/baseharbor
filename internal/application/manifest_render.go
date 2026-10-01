@@ -27,6 +27,9 @@ func (m Manifest) YAML() string {
 			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
 			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
 		}
+		if m.Services.DocumentDatabase || len(m.Services.DocumentDatabaseInstances) > 0 {
+			writeServiceYAML(&b, "document_database", m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+		}
 		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
 			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
 		}
@@ -171,8 +174,8 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.KeyValue || services.MessagingQueue || services.MessagingPubSub || services.MessagingStream || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
-		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.MessagingQueueInstances) > 0 || len(services.MessagingPubSubInstances) > 0 || len(services.MessagingStreamInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+	return services.SQL || services.Cache || services.KeyValue || services.DocumentDatabase || services.MessagingQueue || services.MessagingPubSub || services.MessagingStream || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
+		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.DocumentDatabaseInstances) > 0 || len(services.MessagingQueueInstances) > 0 || len(services.MessagingPubSubInstances) > 0 || len(services.MessagingStreamInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
 func writeManagementUIYAML(b *strings.Builder, enabled bool) {
