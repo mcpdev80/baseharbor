@@ -14,6 +14,8 @@ type composeService struct {
 	Name                    string
 	Postgres                bool
 	Redis                   bool
+	MongoDB                 bool
+	RabbitMQ                bool
 	ObjectStorage           bool
 	AmbiguousInfrastructure bool
 	Unresolved              bool
@@ -57,8 +59,10 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		lowerName := strings.ToLower(name)
 		item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
 		item.Redis = strings.Contains(lowerName, "redis") || strings.Contains(lowerName, "valkey")
+		item.MongoDB = strings.Contains(lowerName, "mongodb") || lowerName == "mongo" || strings.HasPrefix(lowerName, "mongo-")
+		item.RabbitMQ = strings.Contains(lowerName, "rabbitmq")
 		item.ObjectStorage = composeObjectStorageMarker(lowerName)
-		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.ObjectStorage &&
+		item.AmbiguousInfrastructure = !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage &&
 			(composeAmbiguousInfrastructureMarker(lowerName) || composeUnsupportedDatabaseMarker(lowerName))
 
 		if raw, ok := definition["image"]; ok {
@@ -68,8 +72,10 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 				lowerImage := strings.ToLower(image)
 				item.Postgres = item.Postgres || strings.Contains(lowerImage, "postgres") || strings.Contains(lowerImage, "postgresql")
 				item.Redis = item.Redis || strings.Contains(lowerImage, "redis") || strings.Contains(lowerImage, "valkey")
+				item.MongoDB = item.MongoDB || strings.Contains(lowerImage, "mongodb") || strings.Contains(lowerImage, "/mongo:")
+				item.RabbitMQ = item.RabbitMQ || strings.Contains(lowerImage, "rabbitmq")
 				item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(lowerImage)
-				if !item.Postgres && !item.Redis && !item.ObjectStorage && composeUnsupportedDatabaseMarker(lowerImage) {
+				if !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage && composeUnsupportedDatabaseMarker(lowerImage) {
 					item.AmbiguousInfrastructure = true
 				}
 			}
@@ -94,10 +100,10 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		if raw, ok := definition["volumes"]; ok {
 			item.DatabaseBootstrap = composeUsesDatabaseInitDirectory(raw)
 		}
-		if item.Postgres || item.Redis || item.ObjectStorage {
+		if item.Postgres || item.Redis || item.MongoDB || item.RabbitMQ || item.ObjectStorage {
 			item.AmbiguousInfrastructure = false
 		}
-		if !item.Postgres && !item.Redis && !item.ObjectStorage && !item.AmbiguousInfrastructure && !item.HasBuild && !item.HasImage && !item.HasPorts {
+		if !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage && !item.AmbiguousInfrastructure && !item.HasBuild && !item.HasImage && !item.HasPorts {
 			item.Unresolved = true
 		}
 		item.Ports = uniqueSorted(item.Ports)
