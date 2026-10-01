@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/document-database.schema.json",
+  "title": "BaseHarbor Document Database Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "document-database"},
+    "contractVersion": {"const": "v1"},
+    "name": {"type": "string", "minLength": 1},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "durable": {"const": true},
+        "readWrite": {"type": "boolean"},
+        "transactions": {"type": "boolean"},
+        "requiredIndexes": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "required": ["kind", "contractVersion", "name"]
+}
