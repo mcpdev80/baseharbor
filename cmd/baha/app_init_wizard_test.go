@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames(t *testing.T) {
@@ -645,5 +646,29 @@ func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
 		if !strings.Contains(yaml, want) {
 			t.Fatalf("guided manifest missing %q:\n%s", want, yaml)
 		}
+	}
+}
+
+func TestBuildGuidedInitManifestPreservesExplicitHTTPSExposureEvidence(t *testing.T) {
+	selection := guidedInitSelection{
+		name:              "demo",
+		environment:       "dev",
+		compose:           "compose.yaml",
+		workloadServices:  []string{"demo-app"},
+		workloadProtocols: map[string]string{"demo-app": "https"},
+		workloadPorts: []repositoryinspect.PortEvidence{
+			{Path: "compose.yaml", Service: "demo-app", Value: "${DEMO_HTTPS_PORT:-8080}:8080"},
+		},
+		selected: make([]bool, guidedCapabilityCount),
+	}
+	m, err := buildGuidedInitManifest(bufio.NewReader(strings.NewReader("")), io.Discard, appProjectDetection{}, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []application.HTTPExposureRequirement{{
+		Name: "demo-app", Service: "demo-app", Port: 8080, Protocol: "https", Visibility: "public",
+	}}
+	if !reflect.DeepEqual(m.Exposures, want) {
+		t.Fatalf("exposures = %#v, want %#v", m.Exposures, want)
 	}
 }
