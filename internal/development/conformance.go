@@ -201,7 +201,10 @@ func validatePortableContractProviderNeutrality(contract application.PortableCon
 		return err
 	}
 	lower := strings.ToLower(string(data))
-	for _, product := range []string{"postgresql", "valkey", "openbao", "caddy", "seaweedfs", "keycloak"} {
+	for _, product := range []string{
+		"postgresql", "valkey", "openbao", "caddy", "seaweedfs", "keycloak",
+		"rabbitmq", "mongodb", "prometheus", "loki", "tempo", "opentelemetry",
+	} {
 		if strings.Contains(lower, product) {
 			return fmt.Errorf("portable contract leaks provider product %q", product)
 		}
