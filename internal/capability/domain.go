@@ -10,21 +10,21 @@ import (
 type Kind string
 
 const (
-	SQL             Kind = "database.sql"
-	KeyValue        Kind = "cache.key-value"
-	DurableKeyValue Kind = "database.key-value"
+	SQL              Kind = "database.sql"
+	KeyValue         Kind = "cache.key-value"
+	DurableKeyValue  Kind = "database.key-value"
 	DocumentDatabase Kind = "database.document"
-	Secrets         Kind = "secrets"
-	ExposureHTTP    Kind = "exposure.http"
-	ObjectStorageS3 Kind = "object-storage.s3"
-	TelemetryOTLP   Kind = "telemetry.otlp"
-	Metrics         Kind = "metrics"
-	Logs            Kind = "logs"
-	Traces          Kind = "traces"
-	Identity        Kind = "identity.oidc"
-	MessagingQueue  Kind = "messaging.queue"
-	MessagingPubSub Kind = "messaging.pubsub"
-	MessagingStream Kind = "messaging.stream"
+	Secrets          Kind = "secrets"
+	ExposureHTTP     Kind = "exposure.http"
+	ObjectStorageS3  Kind = "object-storage.s3"
+	TelemetryOTLP    Kind = "telemetry.otlp"
+	Metrics          Kind = "metrics"
+	Logs             Kind = "logs"
+	Traces           Kind = "traces"
+	Identity         Kind = "identity.oidc"
+	MessagingQueue   Kind = "messaging.queue"
+	MessagingPubSub  Kind = "messaging.pubsub"
+	MessagingStream  Kind = "messaging.stream"
 )
 
 // Requirement is one application-owned logical capability request.
