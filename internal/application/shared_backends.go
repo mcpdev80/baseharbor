@@ -119,6 +119,9 @@ func HasApplicationScopedRuntimeServices(m Manifest) bool {
 	if len(RabbitMQInstanceNames(m)) > 0 {
 		return true
 	}
+	if len(DocumentDatabaseInstanceNames(m)) > 0 {
+		return true
+	}
 	return false
 }
 
