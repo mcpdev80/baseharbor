@@ -37,24 +37,10 @@ func Lookup(kind capability.ProviderKind) (Descriptor, error) {
 
 // Catalog returns the deterministic bundled provider catalog.
 func Catalog() ([]Descriptor, error) {
-	kinds := []capability.ProviderKind{
-		capability.ProviderPostgreSQL,
-		capability.ProviderValkey,
-		capability.ProviderOpenBao,
-		capability.ProviderCaddy,
-		capability.ProviderSeaweedFS,
-		capability.ProviderOTelCollector,
-		capability.ProviderExternalOTLP,
-		capability.ProviderPrometheus,
-		capability.ProviderLoki,
-		capability.ProviderTempo,
-		capability.ProviderKeycloak,
-		capability.ProviderExternalOIDC,
-		capability.ProviderRabbitMQ,
-	}
-	result := make([]Descriptor, 0, len(kinds))
-	for _, kind := range kinds {
-		descriptor, err := Lookup(kind)
+	integrations := capability.ReferenceIntegrations()
+	result := make([]Descriptor, 0, len(integrations))
+	for _, integration := range integrations {
+		descriptor, err := Lookup(integration.Provider.Kind)
 		if err != nil {
 			return nil, err
 		}

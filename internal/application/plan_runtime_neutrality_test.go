@@ -9,6 +9,13 @@ func TestBuildPlanContainsNoRuntimeNativeTopology(t *testing.T) {
 	m := New("demo", "dev", true, true, true)
 	m.Services.ObjectStorage = true
 	m.Services.Identity = true
+	m.Services.MessagingQueue = true
+	m.Services.MessagingPubSub = true
+	m.Services.MessagingStream = true
+	m.Services.KeyValue = true
+	m.Services.KeyValueInstances = map[string]ServiceInstance{"durable": {}}
+	m.Services.CacheInstances = map[string]ServiceInstance{"cache": {}}
+	m.Services.DocumentDatabase = true
 	m = WithObjectStorageBuckets(m, "assets")
 	m = WithHTTPExposure(m, "public", "api", 8080, "http")
 	m = WithOTLPTelemetry(m, "traces", "metrics", "logs")
