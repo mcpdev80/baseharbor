@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames(t *testing.T) {
