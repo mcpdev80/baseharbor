@@ -222,7 +222,14 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 		}
 		var adapterID string
 		var profile *development.StackProfile
-		if strings.TrimSpace(input.StackProfile) != "" {
+		stackProfile := strings.TrimSpace(input.StackProfile)
+		if stackProfile == "" && strings.TrimSpace(input.Stack) == "" {
+			stackProfile, err = organizationDefaultStack(input.Environment)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+		}
+		if stackProfile != "" {
 			if strings.TrimSpace(input.Stack) != "" {
 				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
 			}
@@ -230,7 +237,7 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 			if err != nil {
 				return machineMCPFailure(err)
 			}
-			resolved, err := development.ResolveStackProfile(input.StackProfile, development.ProfileMap(catalog))
+			resolved, err := development.ResolveStackProfile(stackProfile, development.ProfileMap(catalog))
 			if err != nil {
 				return machineMCPFailure(err)
 			}
