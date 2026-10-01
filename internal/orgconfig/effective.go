@@ -7,14 +7,16 @@ import (
 )
 
 type EffectiveValue struct {
+	Name   string `json:"name,omitempty"`
 	Value  string `json:"value"`
 	Source string `json:"source"`
 }
 
 type EffectiveProvider struct {
-	Provider string `json:"provider"`
-	Scope    string `json:"scope,omitempty"`
-	Source   string `json:"source"`
+	Provider  string `json:"provider"`
+	Reference string `json:"reference"`
+	Scope     string `json:"scope,omitempty"`
+	Source    string `json:"source"`
 }
 
 type Effective struct {
@@ -53,14 +55,30 @@ func ResolveEffective(state ActiveState, environment string) (Effective, error) 
 		applyDefaults(&result, env, "organization.environment."+environment)
 	}
 	if result.Target != nil {
-		if _, ok := state.Config.Targets[result.Target.Value]; !ok {
-			return Effective{}, fmt.Errorf("effective target %q is not declared by organization configuration", result.Target.Value)
+		name := result.Target.Value
+		ref, ok := state.Config.Targets[name]
+		if !ok {
+			return Effective{}, fmt.Errorf("effective target %q is not declared by organization configuration", name)
 		}
+		result.Target.Name = name
+		result.Target.Value = strings.TrimSpace(ref.Reference)
 	}
 	if result.Stack != nil {
-		if _, ok := state.Config.Stacks[result.Stack.Value]; !ok {
-			return Effective{}, fmt.Errorf("effective stack %q is not declared by organization configuration", result.Stack.Value)
+		name := result.Stack.Value
+		ref, ok := state.Config.Stacks[name]
+		if !ok {
+			return Effective{}, fmt.Errorf("effective stack %q is not declared by organization configuration", name)
 		}
+		result.Stack.Name = name
+		result.Stack.Value = strings.TrimSpace(ref.Reference)
+	}
+	for capability, provider := range result.Providers {
+		ref, ok := state.Config.Providers[provider.Provider]
+		if !ok {
+			return Effective{}, fmt.Errorf("effective provider %q for capability %q is not declared by organization configuration", provider.Provider, capability)
+		}
+		provider.Reference = strings.TrimSpace(ref.Reference)
+		result.Providers[capability] = provider
 	}
 	return result, nil
 }
