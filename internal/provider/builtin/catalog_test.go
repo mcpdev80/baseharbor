@@ -32,7 +32,17 @@ func TestCatalogContainsVersionedFirstPartyProviders(t *testing.T) {
 		capability.ProviderPostgreSQL,
 		capability.ProviderValkey,
 		capability.ProviderOpenBao,
+		capability.ProviderCaddy,
 		capability.ProviderSeaweedFS,
+		capability.ProviderOTelCollector,
+		capability.ProviderExternalOTLP,
+		capability.ProviderPrometheus,
+		capability.ProviderLoki,
+		capability.ProviderTempo,
+		capability.ProviderKeycloak,
+		capability.ProviderExternalOIDC,
+		capability.ProviderRabbitMQ,
+		capability.ProviderMongoDB,
 	} {
 		if !seen[required] {
 			t.Fatalf("provider %q missing from bundled catalog", required)
