@@ -94,6 +94,20 @@ func TestHTTPSAllowsLocalGatewayTerminationAndRejectsUnsupportedTLS(t *testing.T
 	}
 }
 
+func TestLifecycleAllowsLocalGatewayTermination(t *testing.T) {
+	m := application.Manifest{
+		Version: 1, Name: "demo", Environment: "dev",
+		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Exposures: []application.HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "https"}},
+	}
+	resource := capabilityResource(m, "public")
+	driver := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.baha.localhost", TLSMode: "local"})
+	lifecycle := NewLifecycle("demo.baha.localhost", "local", NewCaddyRealization(driver))
+	if err := lifecycle.Preflight(context.Background(), resource, bindingFor(resource, "web")); err != nil {
+		t.Fatalf("runtime-neutral exposure lifecycle must allow local development TLS termination: %v", err)
+	}
+}
+
 func TestLocalHTTPSUsesPlainInternalProviderTransport(t *testing.T) {
 	route := Route{
 		Name: "public", Service: "web", TargetPort: 8080,
