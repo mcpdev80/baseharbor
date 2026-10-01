@@ -180,6 +180,47 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("rabbitmq", instance, len(rabbitInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
+	mongoInstances := DocumentDatabaseInstanceNames(m)
+	preferredMongo := preferredServiceInstance(mongoInstances)
+	for _, instance := range mongoInstances {
+		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "mongodb", instance, len(mongoInstances))
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		uri, err := mongodbConnectionURL(values, instance)
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		certificates, err := backendCertificates(values[mongodbTLSCAKey(instance)])
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		entries := map[string]string{
+			"type":         "mongodb",
+			"provider":     "mongodb",
+			"host":         loopbackHost,
+			"port":         values[mongodbRuntimeKey(instance, "HOST_PORT")],
+			"database":     values[mongodbRuntimeKey(instance, "DB")],
+			"username":     values[mongodbRuntimeKey(instance, "USER")],
+			"password":     values[mongodbRuntimeKey(instance, "PASSWORD")],
+			"uri":          uri,
+			"certificates": certificates,
+		}
+		if err := writeBinding(binding, entries); err != nil {
+			return RuntimeContract{}, err
+		}
+		if instance == preferredMongo {
+			fmt.Fprintf(&env, "MONGODB_URL=%s\n", uri)
+			fmt.Fprintf(&env, "MONGO_URL=%s\n", uri)
+			fmt.Fprintf(&env, "MONGODB_CA_FILE=%s\n", values[mongodbTLSCAKey(instance)])
+		}
+		if instance != defaultServiceInstance {
+			token := envInstanceToken(instance)
+			fmt.Fprintf(&env, "MONGODB_%s_URL=%s\n", token, uri)
+		}
+		serviceRefs[serviceReferenceKey("mongodb", instance, len(mongoInstances))] = runtimeServiceRef{Binding: bindingRef}
+	}
+
 	applicationEnv := filepath.Join(files.Dir, "application.env")
 	if err := writeOwnerOnlyFile(applicationEnv, []byte(env.String())); err != nil {
 		return RuntimeContract{}, fmt.Errorf("write application environment contract: %w", err)
@@ -358,6 +399,29 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 			return "", fmt.Errorf("project workload RabbitMQ service binding %s: %w", name, err)
 		}
 	}
+
+	mongoInstances := DocumentDatabaseInstanceNames(m)
+	for _, instance := range mongoInstances {
+		name := workloadServiceBindingName("mongodb", instance, len(mongoInstances))
+		database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
+		if err != nil { return "", err }
+		username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
+		if err != nil { return "", err }
+		password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
+		if err != nil { return "", err }
+		certificates, err := backendCertificates(values[mongodbTLSCAKey(instance)])
+		if err != nil { return "", err }
+		host := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
+		if host == "" { host = mongodbAccessService(instance) }
+		uri := mongodbConnectionURI(host, "27017", database, username, password)
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type": "mongodb", "provider": "mongodb", "host": host, "port": "27017",
+			"database": database, "username": username, "password": password,
+			"uri": uri, "certificates": certificates,
+		}); err != nil {
+			return "", fmt.Errorf("project workload MongoDB service binding %s: %w", name, err)
+		}
+	}
 	return root, nil
 }
 
@@ -446,6 +510,28 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		}
 		if strings.TrimSpace(entries["certificates"]) == "" {
 			return fmt.Errorf("verify workload RabbitMQ binding %s: certificates entry is empty", instance)
+		}
+	}
+
+	mongoInstances := DocumentDatabaseInstanceNames(m)
+	for _, instance := range mongoInstances {
+		name := workloadServiceBindingName("mongodb", instance, len(mongoInstances))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil { return fmt.Errorf("verify workload MongoDB binding %s: %w", instance, err) }
+		if entries["type"] != "mongodb" || entries["provider"] != "mongodb" {
+			return fmt.Errorf("verify workload MongoDB binding %s: invalid type/provider", instance)
+		}
+		expectedHost := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
+		if expectedHost == "" { expectedHost = mongodbAccessService(instance) }
+		if entries["host"] != expectedHost || entries["port"] != "27017" {
+			return fmt.Errorf("verify workload MongoDB binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "mongodb" || u.Host != net.JoinHostPort(expectedHost, "27017") || u.Query().Get("tls") != "true" {
+			return fmt.Errorf("verify workload MongoDB binding %s: invalid uri", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload MongoDB binding %s: certificates entry is empty", instance)
 		}
 	}
 	return nil
@@ -614,6 +700,20 @@ func rabbitmqConnectionURL(values map[string]string, instance string) (string, e
 	}
 	return u.String(), nil
 }
+
+func mongodbConnectionURL(values map[string]string, instance string) (string, error) {
+	port, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "HOST_PORT"))
+	if err != nil { return "", err }
+	database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
+	if err != nil { return "", err }
+	username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
+	if err != nil { return "", err }
+	password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
+	if err != nil { return "", err }
+	if _, err := requireRuntimeValue(values, mongodbTLSCAKey(instance)); err != nil { return "", err }
+	return mongodbConnectionURI(loopbackHost, port, database, username, password), nil
+}
+
 
 func writeBinding(dir string, values map[string]string) error {
 	for name, value := range values {
