@@ -69,7 +69,7 @@ func appGuidedInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Detect the current project and create baseharbor.yaml",
-		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]...",
+		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...",
 		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			quick := false
