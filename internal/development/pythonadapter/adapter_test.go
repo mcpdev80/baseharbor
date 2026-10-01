@@ -17,7 +17,11 @@ func TestPythonRoundTrip(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "python")
 	result, err := development.CreateApplication(root, development.NewApplicationRequest{
 		Name: "python-app", Adapter: AdapterID,
-		Capabilities: []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP},
+		Capabilities: []capability.Kind{
+			capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+			capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
+			capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP,
+		},
 	}, registry)
 	if err != nil {
 		t.Fatal(err)
