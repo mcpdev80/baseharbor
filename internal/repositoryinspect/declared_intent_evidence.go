@@ -24,27 +24,19 @@ var declaredIntentEvidenceProfiles = map[string]DeclaredIntentEvidenceProfile{
 	},
 	"database.document": {
 		Environment: []string{"MONGODB_URL", "MONGO_URL", "MONGODB_CA_FILE"},
-		Tokens: []string{
-			"go.mongodb.org/mongo-driver", "mongodb", "pymongo", "quarkus-mongodb-client",
-		},
+		Tokens:      []string{"go.mongodb.org/mongo-driver", "mongodb", "pymongo", "quarkus-mongodb-client"},
 	},
 	"messaging.queue": {
 		Environment: []string{"AMQP_URL", "RABBITMQ_URL", "RABBITMQ_CA_FILE"},
-		Tokens: []string{
-			"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq",
-		},
+		Tokens:      []string{"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq"},
 	},
 	"messaging.pubsub": {
 		Environment: []string{"AMQP_URL", "RABBITMQ_URL", "RABBITMQ_CA_FILE"},
-		Tokens: []string{
-			"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq",
-		},
+		Tokens:      []string{"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq"},
 	},
 	"messaging.stream": {
 		Environment: []string{"AMQP_URL", "RABBITMQ_URL", "RABBITMQ_CA_FILE"},
-		Tokens: []string{
-			"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq",
-		},
+		Tokens:      []string{"amqp091-go", "amqplib", "pika", "quarkus-messaging-rabbitmq"},
 	},
 }
 
@@ -99,13 +91,13 @@ func declaredIntentEvidence(snapshot Snapshot, profile DeclaredIntentEvidencePro
 		if strings.HasPrefix(filepathBaseLower(path), ".env") {
 			for _, name := range readEnvNames(data) {
 				if _, ok := envSet[strings.ToUpper(strings.TrimSpace(name))]; ok {
-					evidence = append(evidence, Evidence{Kind: EvidenceEnv, Path: path, Detail: "standard capability binding "+name})
+					evidence = append(evidence, Evidence{Kind: EvidenceEnv, Path: path, Detail: "standard capability binding " + name})
 				}
 			}
 		}
 		for _, token := range tokens {
 			if bytes.Contains(lower, []byte(token)) {
-				evidence = append(evidence, Evidence{Kind: EvidenceDependency, Path: path, Detail: "compatible capability client/dependency "+token})
+				evidence = append(evidence, Evidence{Kind: EvidenceDependency, Path: path, Detail: "compatible capability client/dependency " + token})
 			}
 		}
 	}
