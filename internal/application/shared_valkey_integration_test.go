@@ -127,6 +127,43 @@ func TestSharedValkeyTwoApplicationIsolationDestroy(t *testing.T) {
 		t.Fatalf("appB sentinel after appA destroy = %q, want B-ONLY", got)
 	}
 
+	// Reconcile the surviving consumer again after appA has been released. This
+	// is the regression boundary for phantom reconciliation: stale provider
+	// state must never recreate appA's Valkey services.
+	if _, err := ReconcileSharedBackends(ctx, compose, issuer, dataDir, store.Namespace, appB, filesB); err != nil {
+		t.Fatalf("ReconcileSharedBackends(appB after appA destroy) error = %v", err)
+	}
+	state, err = loadSharedBackendState(shared.State, "dev")
+	if err != nil {
+		t.Fatalf("load state after surviving app reconcile: %v", err)
+	}
+	if _, exists := state.Applications[sharedBackendApplicationKey(appA)]; exists {
+		t.Fatal("appA registration was resurrected by later shared backend reconcile")
+	}
+	if _, exists := state.Applications[sharedBackendApplicationKey(appB)]; !exists {
+		t.Fatal("appB registration missing after surviving app reconcile")
+	}
+	running, err := compose.RunningServicesProject(ctx, shared.Project, shared.Compose, shared.Env)
+	if err != nil {
+		t.Fatalf("inspect shared Valkey services after surviving app reconcile: %v", err)
+	}
+	for _, removed := range []string{
+		sharedValkeyService(appA, "default"),
+		sharedValkeyService(appA, "sessions"),
+	} {
+		for _, service := range running {
+			if service == removed {
+				t.Fatalf("appA shared Valkey service %q was resurrected by later reconcile", removed)
+			}
+		}
+	}
+	if err := VerifySharedValkey(ctx, compose, dataDir, store.Namespace, appB); err != nil {
+		t.Fatalf("appB not usable after later shared backend reconcile: %v", err)
+	}
+	if got := readSharedValkeySentinel(t, ctx, compose, shared, appB, "default", bState.Cache["default"]); got != "B-ONLY" {
+		t.Fatalf("appB sentinel after later reconcile = %q, want B-ONLY", got)
+	}
+
 	if err := ReleaseSharedBackendApplication(ctx, compose, dataDir, store.Namespace, appB); err != nil {
 		t.Fatalf("ReleaseSharedBackendApplication(appB) error = %v", err)
 	}
