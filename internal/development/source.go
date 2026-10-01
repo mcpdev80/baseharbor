@@ -14,7 +14,10 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-var ErrWorkspaceSourceMissing = errors.New("workspace source is missing")
+var (
+	ErrWorkspaceSourceMissing = errors.New("workspace source is missing")
+	ErrWorkspaceModelMissing  = errors.New("workspace source model is not initialized")
+)
 
 type WorkspaceSourceError struct {
 	Source    string
@@ -184,6 +187,9 @@ func LoadSourceModel(manifestPath string) (SourceModel, string, error) {
 	path := filepath.Join(filepath.Dir(manifestPath), filepath.FromSlash(SourceModelRelativePath))
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return SourceModel{}, path, fmt.Errorf("%w: run 'baha app workspace init' to create %s", ErrWorkspaceModelMissing, SourceModelRelativePath)
+		}
 		return SourceModel{}, path, err
 	}
 	var model SourceModel
