@@ -174,3 +174,25 @@ func mustWriteBuildFile(t *testing.T, root, rel, value string) {
 		t.Fatal(err)
 	}
 }
+
+
+func TestFailedBuildCandidateInvalidatesVerifiedFingerprintState(t *testing.T) {
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	if err := persistRepositoryWorkloadBuildState(files, map[string]string{"api": "verified-good"}); err != nil {
+		t.Fatal(err)
+	}
+	execution := repositoryWorkloadExecution{
+		files: files,
+		buildChanged: map[string]struct{}{"api": {}},
+	}
+	if err := execution.invalidateFailedBuildCandidate(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := loadRepositoryWorkloadBuildState(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Services) != 0 {
+		t.Fatalf("failed candidate left source fingerprint state: %#v", state.Services)
+	}
+}
