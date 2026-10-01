@@ -26,7 +26,6 @@ func assumeYes(ctx context.Context) bool {
 	return value
 }
 
-
 func withMemoryPreflightOverride(ctx context.Context, enabled bool) context.Context {
 	if !enabled {
 		return ctx
