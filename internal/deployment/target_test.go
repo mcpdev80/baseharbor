@@ -285,3 +285,32 @@ func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T
 		t.Fatalf("stable identity changed across readable rename: %#v", got.Identity)
 	}
 }
+
+
+func TestDeleteDeploymentRecordRemovesDeploymentRoot(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	record := DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "deployment.json")); err != nil {
+		t.Fatalf("deployment record was not materialized: %v", err)
+	}
+	if err := DeleteDeploymentRecord(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("deployment root remains after delete: %s err=%v", root, err)
+	}
+	if err := DeleteDeploymentRecord(id); err != nil {
+		t.Fatalf("repeated delete must be idempotent: %v", err)
+	}
+}
