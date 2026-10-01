@@ -14,7 +14,7 @@ const (
 	postgresTLSCAContainerPrefix = "/run/baseharbor/bindings/postgres"
 	valkeyTLSCAContainerPrefix   = "/run/baseharbor/bindings/valkey"
 	rabbitmqTLSCAContainerPrefix = "/run/baseharbor/bindings/rabbitmq"
-	mongodbTLSCAContainerPrefix = "/run/baseharbor/bindings/mongodb"
+	mongodbTLSCAContainerPrefix  = "/run/baseharbor/bindings/mongodb"
 )
 
 func postgresAccessService(instance string) string {
