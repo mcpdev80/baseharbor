@@ -35,6 +35,28 @@ var (
 	MessagingStreamV1  = CapabilitySpecification{ID: "messaging.stream/v1", Kind: MessagingStream, Version: SpecificationV1}
 )
 
+// Specifications returns the deterministic shipped portable capability catalog.
+// Consumers should derive coverage from this catalog instead of maintaining partial lists.
+func Specifications() []CapabilitySpecification {
+	return []CapabilitySpecification{
+		SQLV1,
+		KeyValueV1,
+		DurableKeyValueV1,
+		DocumentDatabaseV1,
+		SecretsV1,
+		ExposureHTTPV1,
+		ObjectStorageS3V1,
+		TelemetryOTLPV1,
+		MetricsV1,
+		LogsV1,
+		TracesV1,
+		IdentityOIDCV1,
+		MessagingQueueV1,
+		MessagingPubSubV1,
+		MessagingStreamV1,
+	}
+}
+
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 	switch kind {
 	case SQL:
