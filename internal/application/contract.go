@@ -8,19 +8,19 @@ import "github.com/mcpdev80/baseharbor/internal/capability"
 type CapabilityKind = capability.Kind
 
 const (
-	CapabilitySQL             CapabilityKind = capability.SQL
-	CapabilityKeyValue        CapabilityKind = capability.KeyValue
-	CapabilityDurableKeyValue CapabilityKind = capability.DurableKeyValue
-	CapabilityDocumentDatabase CapabilityKind = capability.DocumentDatabase
-	CapabilityExposureHTTP    CapabilityKind = capability.ExposureHTTP
+	CapabilitySQL               CapabilityKind = capability.SQL
+	CapabilityKeyValue          CapabilityKind = capability.KeyValue
+	CapabilityDurableKeyValue   CapabilityKind = capability.DurableKeyValue
+	CapabilityDocumentDatabase  CapabilityKind = capability.DocumentDatabase
+	CapabilityExposureHTTP      CapabilityKind = capability.ExposureHTTP
 	CapabilityObjectStorageS3 CapabilityKind = capability.ObjectStorageS3
-	CapabilityTelemetryOTLP   CapabilityKind = capability.TelemetryOTLP
-	CapabilityMetrics         CapabilityKind = capability.Metrics
-	CapabilityLogs            CapabilityKind = capability.Logs
-	CapabilityIdentity        CapabilityKind = capability.Identity
-	CapabilityMessagingQueue  CapabilityKind = capability.MessagingQueue
-	CapabilityMessagingPubSub CapabilityKind = capability.MessagingPubSub
-	CapabilityMessagingStream CapabilityKind = capability.MessagingStream
+	CapabilityTelemetryOTLP     CapabilityKind = capability.TelemetryOTLP
+	CapabilityMetrics           CapabilityKind = capability.Metrics
+	CapabilityLogs              CapabilityKind = capability.Logs
+	CapabilityIdentity          CapabilityKind = capability.Identity
+	CapabilityMessagingQueue    CapabilityKind = capability.MessagingQueue
+	CapabilityMessagingPubSub   CapabilityKind = capability.MessagingPubSub
+	CapabilityMessagingStream   CapabilityKind = capability.MessagingStream
 )
 
 type CapabilityRequirement = capability.Requirement
