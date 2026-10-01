@@ -132,6 +132,7 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
+	c.collectMessagingCheck(ctx)
 	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
 }
@@ -265,6 +266,19 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		return
 	}
 	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and semantic Valkey verification passed", len(application.ValkeyInstanceNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context) {
+	if len(application.RabbitMQInstanceNames(c.manifest)) == 0 {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationRabbitMQStatusTimeout)
+	defer cancel()
+	if err := application.VerifyRabbitMQRuntime(checkCtx, c.manifest, c.files); err != nil {
+		c.result.AddCheck("rabbitmq", false, err.Error())
+		return
+	}
+	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d instance(s) passed AMQPS semantic verification", len(application.RabbitMQInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
