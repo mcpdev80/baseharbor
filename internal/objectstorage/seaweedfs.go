@@ -294,7 +294,7 @@ func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capab
 		return err
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
-	if err := application.MaterializeObjectStorageBinding(
+	if err := application.MaterializeObjectStorageBindingMaterial(
 		d.app,
 		d.files,
 		resource.Name,
