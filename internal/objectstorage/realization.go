@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -127,6 +128,10 @@ func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) 
 	if err != nil {
 		return SeaweedFSInstance{}, fmt.Errorf("load S3 service trust material: %w", err)
 	}
+	trustBundle, err := os.ReadFile(material.CA)
+	if err != nil {
+		return SeaweedFSInstance{}, fmt.Errorf("read S3 service trust bundle: %w", err)
+	}
 	workloadHost := "seaweedfs"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
 		workloadHost = strings.TrimSpace(policy.ServerName)
@@ -134,7 +139,7 @@ func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) 
 	return SeaweedFSInstance{
 		Endpoint:         endpoint,
 		WorkloadEndpoint: "https://" + workloadHost + ":8443",
-		TrustBundle:      append([]byte(nil), material.CA...),
+		TrustBundle:      append([]byte(nil), trustBundle...),
 		HTTPClient:       client,
 	}, nil
 }
