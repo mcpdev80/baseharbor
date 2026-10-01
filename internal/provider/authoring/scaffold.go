@@ -84,7 +84,7 @@ func Load(root string) (Descriptor, error) {
 
 func renderStarterGoMod(descriptor Descriptor) string {
 	name := strings.ReplaceAll(strings.TrimSpace(descriptor.ID), "/", "-")
-	return fmt.Sprintf("module example.com/%s\n\ngo 1.25.0\n\nrequire github.com/mcpdev80/baseharbor v0.4.18\n", name)
+	return fmt.Sprintf("module example.com/%s\n\ngo 1.25.0\n\nrequire github.com/mcpdev80/baseharbor v0.4.19\n", name)
 }
 
 func renderStarterProvider(descriptor Descriptor) string {
@@ -92,8 +92,14 @@ func renderStarterProvider(descriptor Descriptor) string {
 	capabilityKind := "provider.SQL"
 	if len(descriptor.ServiceContracts) > 0 {
 		switch strings.SplitN(descriptor.ServiceContracts[0], "/", 2)[0] {
+		case "database.sql":
+			capabilityKind = "provider.SQL"
 		case "cache.key-value":
 			capabilityKind = "provider.KeyValue"
+		case "database.key-value":
+			capabilityKind = "provider.DurableKeyValue"
+		case "database.document":
+			capabilityKind = "provider.DocumentDatabase"
 		case "object-storage.s3":
 			capabilityKind = "provider.ObjectStorageS3"
 		case "secrets":
@@ -108,6 +114,14 @@ func renderStarterProvider(descriptor Descriptor) string {
 			capabilityKind = "provider.Traces"
 		case "identity.oidc":
 			capabilityKind = "provider.Identity"
+		case "exposure.http":
+			capabilityKind = "provider.ExposureHTTP"
+		case "messaging.queue":
+			capabilityKind = "provider.MessagingQueue"
+		case "messaging.pubsub":
+			capabilityKind = "provider.MessagingPubSub"
+		case "messaging.stream":
+			capabilityKind = "provider.MessagingStream"
 		}
 	}
 	return fmt.Sprintf(`package providerimpl

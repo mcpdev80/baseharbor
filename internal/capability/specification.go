@@ -18,17 +18,44 @@ type CapabilitySpecification struct {
 }
 
 var (
-	SQLV1             = CapabilitySpecification{ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1}
-	KeyValueV1        = CapabilitySpecification{ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1}
-	SecretsV1         = CapabilitySpecification{ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1}
-	ExposureHTTPV1    = CapabilitySpecification{ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1}
-	ObjectStorageS3V1 = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
-	TelemetryOTLPV1   = CapabilitySpecification{ID: "telemetry.otlp/v1", Kind: TelemetryOTLP, Version: SpecificationV1}
-	MetricsV1         = CapabilitySpecification{ID: "metrics/v1", Kind: Metrics, Version: SpecificationV1}
-	LogsV1            = CapabilitySpecification{ID: "logs/v1", Kind: Logs, Version: SpecificationV1}
-	TracesV1          = CapabilitySpecification{ID: "traces/v1", Kind: Traces, Version: SpecificationV1}
-	IdentityOIDCV1    = CapabilitySpecification{ID: "identity.oidc/v1", Kind: Identity, Version: SpecificationV1}
+	SQLV1              = CapabilitySpecification{ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1}
+	KeyValueV1         = CapabilitySpecification{ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1}
+	DurableKeyValueV1  = CapabilitySpecification{ID: "database.key-value/v1", Kind: DurableKeyValue, Version: SpecificationV1}
+	DocumentDatabaseV1 = CapabilitySpecification{ID: "database.document/v1", Kind: DocumentDatabase, Version: SpecificationV1}
+	SecretsV1          = CapabilitySpecification{ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1}
+	ExposureHTTPV1     = CapabilitySpecification{ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1}
+	ObjectStorageS3V1  = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
+	TelemetryOTLPV1    = CapabilitySpecification{ID: "telemetry.otlp/v1", Kind: TelemetryOTLP, Version: SpecificationV1}
+	MetricsV1          = CapabilitySpecification{ID: "metrics/v1", Kind: Metrics, Version: SpecificationV1}
+	LogsV1             = CapabilitySpecification{ID: "logs/v1", Kind: Logs, Version: SpecificationV1}
+	TracesV1           = CapabilitySpecification{ID: "traces/v1", Kind: Traces, Version: SpecificationV1}
+	IdentityOIDCV1     = CapabilitySpecification{ID: "identity.oidc/v1", Kind: Identity, Version: SpecificationV1}
+	MessagingQueueV1   = CapabilitySpecification{ID: "messaging.queue/v1", Kind: MessagingQueue, Version: SpecificationV1}
+	MessagingPubSubV1  = CapabilitySpecification{ID: "messaging.pubsub/v1", Kind: MessagingPubSub, Version: SpecificationV1}
+	MessagingStreamV1  = CapabilitySpecification{ID: "messaging.stream/v1", Kind: MessagingStream, Version: SpecificationV1}
 )
+
+// Specifications returns the deterministic shipped portable capability catalog.
+// Consumers should derive coverage from this catalog instead of maintaining partial lists.
+func Specifications() []CapabilitySpecification {
+	return []CapabilitySpecification{
+		SQLV1,
+		KeyValueV1,
+		DurableKeyValueV1,
+		DocumentDatabaseV1,
+		SecretsV1,
+		ExposureHTTPV1,
+		ObjectStorageS3V1,
+		TelemetryOTLPV1,
+		MetricsV1,
+		LogsV1,
+		TracesV1,
+		IdentityOIDCV1,
+		MessagingQueueV1,
+		MessagingPubSubV1,
+		MessagingStreamV1,
+	}
+}
 
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 	switch kind {
@@ -36,6 +63,10 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return SQLV1, nil
 	case KeyValue:
 		return KeyValueV1, nil
+	case DurableKeyValue:
+		return DurableKeyValueV1, nil
+	case DocumentDatabase:
+		return DocumentDatabaseV1, nil
 	case Secrets:
 		return SecretsV1, nil
 	case ExposureHTTP:
@@ -52,6 +83,12 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return TracesV1, nil
 	case Identity:
 		return IdentityOIDCV1, nil
+	case MessagingQueue:
+		return MessagingQueueV1, nil
+	case MessagingPubSub:
+		return MessagingPubSubV1, nil
+	case MessagingStream:
+		return MessagingStreamV1, nil
 	default:
 		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
 	}

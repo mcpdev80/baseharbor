@@ -196,7 +196,7 @@ func resolveAccessBinding(ctx context.Context, store application.Store, appName,
 	if err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
-	instances := application.CacheInstanceNames(resolved.Manifest)
+	instances := application.ValkeyInstanceNames(resolved.Manifest)
 	if kind == "postgres" {
 		instances = application.SQLInstanceNames(resolved.Manifest)
 	}

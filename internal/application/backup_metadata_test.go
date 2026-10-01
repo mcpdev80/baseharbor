@@ -13,6 +13,8 @@ func TestBackupMetadataRoundTrip(t *testing.T) {
 	createdAt := time.Date(2026, 9, 11, 0, 30, 0, 0, time.UTC)
 	metadata := BackupMetadata{
 		Version:           LastBackupMetadataVersion,
+		ApplicationID:     "11111111-1111-4111-8111-111111111111",
+		DeploymentID:      "22222222-2222-4222-8222-222222222222",
 		Application:       "mailflow",
 		Environment:       "production",
 		CreatedAt:         createdAt,
@@ -27,7 +29,7 @@ func TestBackupMetadataRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Application != metadata.Application || got.Environment != metadata.Environment || !got.CreatedAt.Equal(createdAt) || got.ArchivePath != metadata.ArchivePath || len(got.PostgresResources) != 1 || got.PostgresResources[0] != "default" || !got.IncludesSecrets {
+	if got.ApplicationID != metadata.ApplicationID || got.DeploymentID != metadata.DeploymentID || got.Application != metadata.Application || got.Environment != metadata.Environment || !got.CreatedAt.Equal(createdAt) || got.ArchivePath != metadata.ArchivePath || len(got.PostgresResources) != 1 || got.PostgresResources[0] != "default" || !got.IncludesSecrets {
 		t.Fatalf("unexpected metadata: %#v", got)
 	}
 	info, err := os.Stat(filepath.Join(store.Root, "mailflow", lastBackupMetadataName))
@@ -50,11 +52,13 @@ func TestLastBackupMissingIsExplicit(t *testing.T) {
 func TestBackupMetadataRejectsInvalidIdentity(t *testing.T) {
 	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
 	err := store.RecordLastBackup(BackupMetadata{
-		Version:     LastBackupMetadataVersion,
-		Application: "../escape",
-		Environment: "production",
-		CreatedAt:   time.Now().UTC(),
-		ArchivePath: "/tmp/backup.bhbackup",
+		Version:       LastBackupMetadataVersion,
+		ApplicationID: "11111111-1111-4111-8111-111111111111",
+		DeploymentID:  "22222222-2222-4222-8222-222222222222",
+		Application:   "../escape",
+		Environment:   "production",
+		CreatedAt:     time.Now().UTC(),
+		ArchivePath:   "/tmp/backup.bhbackup",
 	})
 	if err == nil {
 		t.Fatal("expected invalid application identity to be rejected")

@@ -11,18 +11,19 @@ const defaultServiceInstance = "default"
 
 // Manifest is the declarative application backend request understood by BaseHarbor.
 type Manifest struct {
-	Version     int
-	Name        string
-	Environment string
-	Services    Services
-	Secrets     SecretRequirements
-	Workload    WorkloadConfig
-	Exposures   []HTTPExposureRequirement
-	Telemetry   TelemetryRequirements
-	Metrics     MetricsRequirements
-	Logs        LogsRequirements
-	Runtime     RuntimeRequirements
-	Identity    IdentityRequirements
+	Version       int
+	ApplicationID string
+	Name          string
+	Environment   string
+	Services      Services
+	Secrets       SecretRequirements
+	Workload      WorkloadConfig
+	Exposures     []HTTPExposureRequirement
+	Telemetry     TelemetryRequirements
+	Metrics       MetricsRequirements
+	Logs          LogsRequirements
+	Runtime       RuntimeRequirements
+	Identity      IdentityRequirements
 }
 
 type RuntimeRequirements struct {
@@ -59,20 +60,33 @@ type MetricsSourceRequirement struct {
 }
 
 type Services struct {
-	SQL                       bool
-	Cache                     bool
-	Secrets                   bool
-	ObjectStorage             bool
-	Identity                  bool
-	SQLManagementUI           bool
-	CacheManagementUI         bool
-	SecretsManagementUI       bool
-	ObjectStorageManagementUI bool
-	IdentityManagementUI      bool
-	ObservabilityManagementUI bool
-	SQLInstances              map[string]ServiceInstance
-	CacheInstances            map[string]ServiceInstance
-	ObjectStorageBuckets      map[string]ServiceInstance
+	SQL                          bool
+	Cache                        bool
+	KeyValue                     bool
+	DocumentDatabase             bool
+	MessagingQueue               bool
+	MessagingPubSub              bool
+	MessagingStream              bool
+	Secrets                      bool
+	ObjectStorage                bool
+	Identity                     bool
+	SQLManagementUI              bool
+	CacheManagementUI            bool
+	KeyValueManagementUI         bool
+	DocumentDatabaseManagementUI bool
+	MessagingManagementUI        bool
+	SecretsManagementUI          bool
+	ObjectStorageManagementUI    bool
+	IdentityManagementUI         bool
+	ObservabilityManagementUI    bool
+	SQLInstances                 map[string]ServiceInstance
+	CacheInstances               map[string]ServiceInstance
+	KeyValueInstances            map[string]ServiceInstance
+	DocumentDatabaseInstances    map[string]ServiceInstance
+	MessagingQueueInstances      map[string]ServiceInstance
+	MessagingPubSubInstances     map[string]ServiceInstance
+	MessagingStreamInstances     map[string]ServiceInstance
+	ObjectStorageBuckets         map[string]ServiceInstance
 }
 
 type IdentityRequirements struct {
@@ -167,7 +181,7 @@ func New(name, environment string, sql, cache, secrets bool) Manifest {
 	if !sql && !cache && !secrets {
 		sql = true
 	}
-	return Manifest{Version: CurrentVersion, Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
+	return Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
 }
 
 func WithSQLInstances(m Manifest, names ...string) Manifest {
@@ -195,6 +209,20 @@ func WithCacheInstances(m Manifest, names ...string) Manifest {
 		m.Services.CacheInstances[name] = ServiceInstance{}
 	}
 	m.Services.Cache = true
+	return m
+}
+
+func WithKeyValueInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.KeyValueInstances == nil {
+		m.Services.KeyValueInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.KeyValueInstances[name] = ServiceInstance{}
+	}
+	m.Services.KeyValue = true
 	return m
 }
 
@@ -291,6 +319,61 @@ func SQLInstanceNames(m Manifest) []string {
 
 func CacheInstanceNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.Cache, m.Services.CacheInstances)
+}
+
+func KeyValueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
+}
+
+func DocumentDatabaseInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+}
+
+func MessagingQueueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+}
+
+func MessagingPubSubInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+}
+
+func MessagingStreamInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+}
+
+func RabbitMQInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, names := range [][]string{
+		MessagingQueueInstanceNames(m),
+		MessagingPubSubInstanceNames(m),
+		MessagingStreamInstanceNames(m),
+	} {
+		for _, name := range names {
+			seen[name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func ValkeyInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, name := range CacheInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	for _, name := range KeyValueInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {

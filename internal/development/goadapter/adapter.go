@@ -23,6 +23,8 @@ const (
 	awsConfigVersion = "v1.33.6"
 	awsS3Version     = "v1.113.4"
 	otelVersion      = "v1.46.0"
+	mongoVersion     = "v2.9.1"
+	amqpVersion      = "v1.15.0"
 )
 
 type Adapter struct{}
@@ -38,6 +40,11 @@ func (Adapter) Descriptor() extension.Metadata {
 				"exposure.http/v1",
 				"database.sql/v1",
 				"cache.key-value/v1",
+				"database.key-value/v1",
+				"database.document/v1",
+				"messaging.queue/v1",
+				"messaging.pubsub/v1",
+				"messaging.stream/v1",
 				"object-storage.s3/v1",
 				"secrets/v1",
 				"telemetry.otlp/v1",
@@ -63,7 +70,9 @@ func (Adapter) Detect(root string) (development.Detection, error) {
 
 func (Adapter) Supports(requirement capability.Requirement) bool {
 	switch requirement.Kind {
-	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
+	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+		capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
+		capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
 		return true
 	default:
 		return false
@@ -98,6 +107,18 @@ func (Adapter) Plan(contract application.PortableContract, profile development.S
 			add(development.ActionDependency, requirement.Kind, "github.com/redis/go-redis/v9", redisVersion)
 			add(development.ActionBinding, requirement.Kind, "REDIS_URL", "")
 			add(development.ActionBinding, requirement.Kind, "REDIS_CA_FILE", "")
+		case capability.DurableKeyValue:
+			add(development.ActionDependency, requirement.Kind, "github.com/redis/go-redis/v9", redisVersion)
+			add(development.ActionBinding, requirement.Kind, "VALKEY_URL", "")
+			add(development.ActionBinding, requirement.Kind, "VALKEY_CA_FILE", "")
+		case capability.DocumentDatabase:
+			add(development.ActionDependency, requirement.Kind, "go.mongodb.org/mongo-driver/v2", mongoVersion)
+			add(development.ActionBinding, requirement.Kind, "MONGODB_URL", "")
+			add(development.ActionBinding, requirement.Kind, "MONGODB_CA_FILE", "")
+		case capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream:
+			add(development.ActionDependency, requirement.Kind, "github.com/rabbitmq/amqp091-go", amqpVersion)
+			add(development.ActionBinding, requirement.Kind, "AMQP_URL", "")
+			add(development.ActionBinding, requirement.Kind, "RABBITMQ_CA_FILE", "")
 		case capability.ObjectStorageS3:
 			add(development.ActionDependency, requirement.Kind, "github.com/aws/aws-sdk-go-v2/config", awsConfigVersion)
 			add(development.ActionDependency, requirement.Kind, "github.com/aws/aws-sdk-go-v2/service/s3", awsS3Version)
@@ -266,7 +287,7 @@ func renderMain(caps map[capability.Kind]bool, bindings map[string]struct{}) str
 	b.WriteString(")\n\n")
 	b.WriteString("func requiredEnv(name string) string {\n\tvalue := os.Getenv(name)\n\tif value == \"\" {\n\t\tlog.Fatalf(\"required environment variable %s is not set\", name)\n\t}\n\treturn value\n}\n\n")
 
-	if caps[capability.KeyValue] {
+	if caps[capability.KeyValue] || caps[capability.DurableKeyValue] || caps[capability.DocumentDatabase] || caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream] {
 		b.WriteString("func tlsConfigFromFile(path string) (*tls.Config, error) {\n\tpem, err := os.ReadFile(path)\n\tif err != nil { return nil, err }\n\troots, err := x509.SystemCertPool()\n\tif err != nil { return nil, err }\n\tif !roots.AppendCertsFromPEM(pem) { return nil, fmt.Errorf(\"no certificates found in %s\", path) }\n\treturn &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}, nil\n}\n\n")
 	}
 
@@ -276,6 +297,15 @@ func renderMain(caps map[capability.Kind]bool, bindings map[string]struct{}) str
 	}
 	if caps[capability.KeyValue] {
 		b.WriteString("\tredisOptions, err := redis.ParseURL(requiredEnv(\"REDIS_URL\"))\n\tif err != nil { log.Fatal(err) }\n\tredisOptions.TLSConfig, err = tlsConfigFromFile(requiredEnv(\"REDIS_CA_FILE\"))\n\tif err != nil { log.Fatal(err) }\n\tcache := redis.NewClient(redisOptions)\n\tdefer cache.Close()\n\tif err := cache.Ping(startup).Err(); err != nil { log.Fatalf(\"cache readiness: %v\", err) }\n")
+	}
+	if caps[capability.DurableKeyValue] {
+		b.WriteString("\tvalkeyOptions, err := redis.ParseURL(requiredEnv(\"VALKEY_URL\"))\n\tif err != nil { log.Fatal(err) }\n\tvalkeyOptions.TLSConfig, err = tlsConfigFromFile(requiredEnv(\"VALKEY_CA_FILE\"))\n\tif err != nil { log.Fatal(err) }\n\tdurableKV := redis.NewClient(valkeyOptions)\n\tdefer durableKV.Close()\n\tif err := durableKV.Ping(startup).Err(); err != nil { log.Fatalf(\"durable key-value readiness: %v\", err) }\n")
+	}
+	if caps[capability.DocumentDatabase] {
+		b.WriteString("\tmongoTLS, err := tlsConfigFromFile(requiredEnv(\"MONGODB_CA_FILE\"))\n\tif err != nil { log.Fatal(err) }\n\tmongoClient, err := mongo.Connect(options.Client().ApplyURI(requiredEnv(\"MONGODB_URL\")).SetTLSConfig(mongoTLS))\n\tif err != nil { log.Fatal(err) }\n\tdefer func() { _ = mongoClient.Disconnect(context.Background()) }()\n\tif err := mongoClient.Ping(startup, nil); err != nil { log.Fatalf(\"document database readiness: %v\", err) }\n")
+	}
+	if caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream] {
+		b.WriteString("\trabbitTLS, err := tlsConfigFromFile(requiredEnv(\"RABBITMQ_CA_FILE\"))\n\tif err != nil { log.Fatal(err) }\n\trabbit, err := amqp.DialConfig(requiredEnv(\"AMQP_URL\"), amqp.Config{TLSClientConfig: rabbitTLS})\n\tif err != nil { log.Fatalf(\"messaging readiness: %v\", err) }\n\tdefer rabbit.Close()\n\tchannel, err := rabbit.Channel()\n\tif err != nil { log.Fatalf(\"messaging channel readiness: %v\", err) }\n\t_ = channel.Close()\n")
 	}
 	if caps[capability.ObjectStorageS3] {
 		b.WriteString("\tawsCfg, err := awsconfig.LoadDefaultConfig(startup)\n\tif err != nil { log.Fatal(err) }\n\tendpoint := requiredEnv(\"S3_ENDPOINT\")\n\ts3Client := s3.NewFromConfig(awsCfg, func(options *s3.Options) { options.BaseEndpoint = &endpoint; options.UsePathStyle = true })\n\tbucket := requiredEnv(\"S3_BUCKET\")\n\tif _, err := s3Client.HeadBucket(startup, &s3.HeadBucketInput{Bucket: &bucket}); err != nil { log.Fatalf(\"object storage readiness: %v\", err) }\n")

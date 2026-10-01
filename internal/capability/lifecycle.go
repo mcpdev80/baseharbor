@@ -270,7 +270,10 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			if value.Direction != "collect" {
 				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: direction must be collect", application, request.Requirement.Name)
 			}
-			if value.Format != "syslog-rfc5424" {
+			if value.Format == "" {
+				value.Format = "runtime-stream"
+			}
+			if value.Format != "runtime-stream" && value.Format != "syslog-rfc5424" {
 				return Plan{}, fmt.Errorf("capability logs binding for %s/%s: unsupported format %q", application, request.Requirement.Name, value.Format)
 			}
 			if value.Service == "" {

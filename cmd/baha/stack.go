@@ -30,7 +30,7 @@ func stackCatalog() (development.Registry, development.ProfileCatalogEntries, er
 	if err != nil {
 		return development.Registry{}, nil, err
 	}
-	catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+	catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
 	if err != nil {
 		return development.Registry{}, nil, err
 	}

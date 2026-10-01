@@ -49,9 +49,11 @@ func collectApplicationEvidence(ctx context.Context, store application.Store, ap
 	}
 	m := resolved.Manifest
 	bundle := evidence.Bundle{
-		Target:      resolved.Target.Name,
-		Application: m.Name,
-		Environment: m.Environment,
+		Target:        resolved.Target.Name,
+		ApplicationID: m.ApplicationID,
+		DeploymentID:  resolved.DeploymentIdentity.DeploymentID,
+		Application:   m.Name,
+		Environment:   m.Environment,
 	}
 
 	plan, err := application.BuildPlan(m)

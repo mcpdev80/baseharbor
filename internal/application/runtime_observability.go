@@ -11,14 +11,14 @@ import (
 )
 
 func ManagedRuntimeProviderServiceNames(m Manifest) []string {
-	services := make([]string, 0, len(SQLInstanceNames(m))+len(CacheInstanceNames(m)))
+	services := make([]string, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m)))
 	if !UsesSharedPostgreSQL(m) {
 		for _, instance := range SQLInstanceNames(m) {
 			services = append(services, runtimeServiceName("postgres", instance))
 		}
 	}
 	if !UsesSharedValkey(m) {
-		for _, instance := range CacheInstanceNames(m) {
+		for _, instance := range ValkeyInstanceNames(m) {
 			services = append(services, runtimeServiceName("valkey", instance))
 		}
 	}
@@ -45,7 +45,7 @@ func reconcileManagedRuntimeObservability(m Manifest, project string) error {
 	if UsesSharedPostgreSQL(m) {
 		postgresInstances = nil
 	}
-	valkeyInstances := CacheInstanceNames(m)
+	valkeyInstances := ValkeyInstanceNames(m)
 	if UsesSharedValkey(m) {
 		valkeyInstances = nil
 	}

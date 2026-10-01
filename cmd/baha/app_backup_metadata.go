@@ -73,7 +73,9 @@ func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store ap
 	if err != nil {
 		return fmt.Errorf("record successful backup metadata: validate archive: %w", err)
 	}
-	if payload.Manifest.Application != resolved.Manifest.Name || payload.Manifest.Environment != resolved.Manifest.Environment {
+	if payload.Manifest.ApplicationID != resolved.Manifest.ApplicationID ||
+		payload.Manifest.Application != resolved.Manifest.Name ||
+		payload.Manifest.Environment != resolved.Manifest.Environment {
 		return fmt.Errorf("record successful backup metadata: archive identity does not match application")
 	}
 	recoveryManifest, found, err := applicationbackup.RecoveryManifestFromPayload(payload)
@@ -96,6 +98,8 @@ func executeApplicationBackupWithMetadataLifecycle(ctx context.Context, store ap
 	}
 	metadata := application.BackupMetadata{
 		Version:           application.LastBackupMetadataVersion,
+		ApplicationID:     resolved.Manifest.ApplicationID,
+		DeploymentID:      resolved.DeploymentIdentity.DeploymentID,
 		Application:       resolved.Manifest.Name,
 		Environment:       resolved.Manifest.Environment,
 		CreatedAt:         payload.Manifest.CreatedAt,

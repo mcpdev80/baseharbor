@@ -11,6 +11,7 @@ func TestReconcileOTLPSignalEvidenceSatisfiesDefaultIntent(t *testing.T) {
 		Version:     application.CurrentVersion,
 		Name:        "demo",
 		Environment: "dev",
+		Workload:    application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
 		Telemetry: application.TelemetryRequirements{
 			OTLP: &application.OTLPRequirement{Signals: []string{"traces"}},
 		},
@@ -26,7 +27,11 @@ func TestReconcileOTLPSignalEvidenceSatisfiesDefaultIntent(t *testing.T) {
 			Detail: "source references OTLP trace export",
 		}},
 	}}
-	_, items := Reconcile(findings, &manifest)
+	declared, err := CapabilityIntentsFromManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, items := Reconcile(findings, declared)
 	if len(items) != 1 {
 		t.Fatalf("items = %#v", items)
 	}

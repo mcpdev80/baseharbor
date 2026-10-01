@@ -18,13 +18,16 @@ func TestResolveRegisteredApplicationRecoversIncompleteDeploymentFromProtectedSt
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := deployment.DeploymentIdentity{Target: target.Name, Application: "demo", Environment: "dev"}
+	m := application.New("demo", "dev", true, true, false)
+	id, err := deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, m.Name, m.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
-	m := application.New("demo", "dev", true, true, false)
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +54,14 @@ func TestResolveRegisteredApplicationFailsClosedWhenIncompleteStateCannotBeRecon
 	if err != nil {
 		t.Fatal(err)
 	}
-	incomplete := filepath.Join(targetRoot, "deployments", "demo", "dev")
+	id, err := deployment.NewDeploymentIdentity(target.Name, application.MustNewApplicationID(), "demo", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	incomplete, err := deployment.DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(incomplete, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +77,7 @@ func TestResolveRegisteredApplicationFailsClosedWhenIncompleteStateCannotBeRecon
 	if typed.Code != machine.ErrorOwnershipAmbiguous || typed.CauseCode != "INCOMPLETE_DEPLOYMENT_STATE" {
 		t.Fatalf("unexpected machine error: %#v", typed)
 	}
-	if typed.Resource != "local/demo/dev" {
+	if typed.Resource != "local/"+id.DeploymentID {
 		t.Fatalf("resource = %q", typed.Resource)
 	}
 }

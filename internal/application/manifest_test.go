@@ -16,6 +16,7 @@ func TestManifestRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "OPENAI_API_KEY", "SMTP_PASSWORD")
+	expected.ApplicationID = want.ApplicationID
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("round trip mismatch: got %#v want %#v", got, expected)
 	}
@@ -86,6 +87,7 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:
@@ -390,5 +392,31 @@ func TestManifestLogsRejectUnknownSource(t *testing.T) {
 	m = WithLogsCollection(m, "everything")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {
 		t.Fatalf("expected unsupported logs source failure, got %v", err)
+	}
+}
+
+func TestApplicationIDRoundTripAndValidation(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	if err := ValidateApplicationID(m.ApplicationID); err != nil {
+		t.Fatalf("generated application ID: %v", err)
+	}
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "  id: "+m.ApplicationID+"\n") {
+		t.Fatalf("manifest does not render application ID:\n%s", rendered)
+	}
+	got, err := ParseYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ApplicationID != m.ApplicationID {
+		t.Fatalf("application ID changed on round trip: got %q want %q", got.ApplicationID, m.ApplicationID)
+	}
+}
+
+func TestApplicationIDRejectsNonV4Identity(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	m.ApplicationID = "00000000-0000-0000-0000-000000000000"
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected invalid application ID to fail")
 	}
 }
