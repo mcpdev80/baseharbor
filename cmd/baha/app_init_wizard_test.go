@@ -647,3 +647,70 @@ func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
 		}
 	}
 }
+
+
+func TestGuidedInitAddsUnambiguousDetectedHTTPSExposure(t *testing.T) {
+	root := t.TempDir()
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
+  demo-app:
+    image: example/demo
+    ports:
+      - "${DEMO_HTTPS_PORT:-8080}:8080"
+    labels:
+      io.baseharbor.workload.protocol: "https"
+`)
+	d, err := detectAppProject(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.WorkloadProtocols["demo-app"]; got != "https" {
+		t.Fatalf("detected workload protocol = %q, want https", got)
+	}
+	selection := guidedInitSelection{
+		name:             "demo",
+		environment:      "dev",
+		compose:          "compose.yaml",
+		workloadServices: []string{"demo-app"},
+		selected:         make([]bool, guidedCapabilityCount),
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	m, err := buildGuidedInitManifest(bufio.NewReader(strings.NewReader("")), io.Discard, d, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Exposures) != 1 {
+		t.Fatalf("exposures = %#v, want one detected exposure", m.Exposures)
+	}
+	got := m.Exposures[0]
+	if got.Name != "web" || got.Service != "demo-app" || got.Port != 8080 || got.Protocol != "http" {
+		t.Fatalf("detected exposure = %#v", got)
+	}
+	if err := m.Validate(); err != nil {
+		t.Fatalf("detected exposure manifest invalid: %v", err)
+	}
+}
+
+func TestGuidedInitDoesNotInventAmbiguousHTTPExposure(t *testing.T) {
+	d := appProjectDetection{
+		Compose:          "compose.yaml",
+		WorkloadServices: []string{"api", "web"},
+		WorkloadProtocols: map[string]string{
+			"api": "https",
+			"web": "http",
+		},
+		Ports: []repositoryinspect.PortEvidence{
+			{Service: "api", Value: "8443:8443"},
+			{Service: "web", Value: "8080:8080"},
+		},
+	}
+	if service, port, ok := detectedHTTPExposureTarget(d, d.WorkloadServices); ok {
+		t.Fatalf("ambiguous exposure unexpectedly resolved to %s:%d", service, port)
+	}
+}
