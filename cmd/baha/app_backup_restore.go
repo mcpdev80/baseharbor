@@ -374,8 +374,10 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
-
 func ensureRestoreDeploymentInitialization(ctx context.Context, resolved resolvedApplication) error {
+	if len(resolved.Manifest.Exposures) == 0 {
+		return nil
+	}
 	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return err
