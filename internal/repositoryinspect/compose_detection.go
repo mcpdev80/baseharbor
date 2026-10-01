@@ -72,7 +72,7 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 				lowerImage := strings.ToLower(image)
 				item.Postgres = item.Postgres || strings.Contains(lowerImage, "postgres") || strings.Contains(lowerImage, "postgresql")
 				item.Redis = item.Redis || strings.Contains(lowerImage, "redis") || strings.Contains(lowerImage, "valkey")
-				item.MongoDB = item.MongoDB || strings.Contains(lowerImage, "mongodb") || strings.Contains(lowerImage, "/mongo:")
+				item.MongoDB = item.MongoDB || strings.Contains(lowerImage, "mongodb") || strings.Contains(lowerImage, "/mongo:") || strings.HasPrefix(lowerImage, "mongo:")
 				item.RabbitMQ = item.RabbitMQ || strings.Contains(lowerImage, "rabbitmq")
 				item.ObjectStorage = item.ObjectStorage || composeObjectStorageMarker(lowerImage)
 				if !item.Postgres && !item.Redis && !item.MongoDB && !item.RabbitMQ && !item.ObjectStorage && composeUnsupportedDatabaseMarker(lowerImage) {
