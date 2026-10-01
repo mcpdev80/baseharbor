@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestParseAppBackupArgsRequiresPasswordFile(t *testing.T) {
@@ -57,5 +59,30 @@ func TestWriteBackupArchiveRefusesOverwrite(t *testing.T) {
 	}
 	if string(data) != "first" {
 		t.Fatalf("existing backup changed to %q", data)
+	}
+}
+
+func TestRestoreNeedsDeploymentInitializationOnlyForMissingDevExposureState(t *testing.T) {
+	devExposure := application.Manifest{
+		Environment: "dev",
+		Exposures: []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}},
+	}
+	if !restoreNeedsDeploymentInitialization(devExposure, repositoryInitState{}) {
+		t.Fatal("missing DEV exposure state must be initialized during restore")
+	}
+	if restoreNeedsDeploymentInitialization(devExposure, repositoryInitState{Hostname: "app.baha.localhost"}) {
+		t.Fatal("existing DEV exposure state must be reused")
+	}
+
+	prodExposure := devExposure
+	prodExposure.Environment = "prod"
+	if restoreNeedsDeploymentInitialization(prodExposure, repositoryInitState{}) {
+		t.Fatal("production restore must not invent development deployment initialization")
+	}
+
+	noExposure := devExposure
+	noExposure.Exposures = nil
+	if restoreNeedsDeploymentInitialization(noExposure, repositoryInitState{}) {
+		t.Fatal("restore without exposure must not initialize deployment access")
 	}
 }

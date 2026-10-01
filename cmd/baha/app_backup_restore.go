@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -216,6 +217,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("restore preflight workload security: %w", err)
 	}
+	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
+		return fmt.Errorf("restore deployment initialization: %w", err)
+	}
 	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
 		return fmt.Errorf("restore preflight managed exposure: %w", err)
@@ -368,6 +372,26 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
+}
+
+func ensureRestoreDeploymentInitialization(ctx context.Context, resolved resolvedApplication) error {
+	if len(resolved.Manifest.Exposures) == 0 {
+		return nil
+	}
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
+	if err != nil {
+		return err
+	}
+	if !restoreNeedsDeploymentInitialization(resolved.Manifest, state) {
+		return nil
+	}
+	return runRepositoryRuntimeInitResolved(ctx, resolved, resolved.repositoryRoot(), repositoryInitOptions{Yes: true}, io.Discard)
+}
+
+func restoreNeedsDeploymentInitialization(m application.Manifest, state repositoryInitState) bool {
+	return len(m.Exposures) > 0 &&
+		devaccess.Enabled(m.Environment) &&
+		strings.TrimSpace(state.Hostname) == ""
 }
 
 func verifyRestoredApplicationHealth(ctx context.Context, store application.Store, m application.Manifest) error {
