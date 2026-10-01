@@ -500,10 +500,16 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		return false, err
 	}
 	if err := execution.start(ctx, out); err != nil {
+		if invalidateErr := execution.invalidateFailedBuildCandidate(); invalidateErr != nil {
+			err = fmt.Errorf("%w; invalidate failed workload candidate: %v", err, invalidateErr)
+		}
 		execution.cleanup(ctx)
 		return false, err
 	}
 	if err := execution.waitReady(ctx, out); err != nil {
+		if invalidateErr := execution.invalidateFailedBuildCandidate(); invalidateErr != nil {
+			err = fmt.Errorf("%w; invalidate failed workload candidate: %v", err, invalidateErr)
+		}
 		execution.cleanup(ctx)
 		return false, err
 	}
