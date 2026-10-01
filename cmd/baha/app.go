@@ -239,26 +239,26 @@ func hasCreateName(args []string) bool {
 }
 
 type createManifestOptions struct {
-	name                     string
-	environment              string
-	sql                      bool
-	cache                    bool
-	keyValue                 bool
-	documentDatabase         bool
-	messagingQueue           bool
-	messagingPubSub          bool
-	messagingStream          bool
-	objectStorage            bool
-	secrets                  bool
-	sqlInstances             []string
-	cacheInstances           []string
-	keyValueInstances        []string
+	name                      string
+	environment               string
+	sql                       bool
+	cache                     bool
+	keyValue                  bool
+	documentDatabase          bool
+	messagingQueue            bool
+	messagingPubSub           bool
+	messagingStream           bool
+	objectStorage             bool
+	secrets                   bool
+	sqlInstances              []string
+	cacheInstances            []string
+	keyValueInstances         []string
 	documentDatabaseInstances []string
-	messagingQueueInstances  []string
-	messagingPubSubInstances []string
-	messagingStreamInstances []string
-	objectStorageBuckets     []string
-	requiredSecrets          []string
+	messagingQueueInstances   []string
+	messagingPubSubInstances  []string
+	messagingStreamInstances  []string
+	objectStorageBuckets      []string
+	requiredSecrets           []string
 }
 
 func manifestFromCreateArgs(args []string) (application.Manifest, error) {
@@ -388,55 +388,73 @@ func parseCreateArgs(args []string) (createManifestOptions, error) {
 			options.secrets = true
 		case arg == "--sql-instance":
 			value, err := nextValue(&i, arg, "--sql-instance analytics")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.sqlInstances = append(options.sqlInstances, value)
 		case strings.HasPrefix(arg, "--sql-instance="):
 			options.sqlInstances = append(options.sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
 		case arg == "--cache-instance":
 			value, err := nextValue(&i, arg, "--cache-instance sessions")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.cacheInstances = append(options.cacheInstances, value)
 		case strings.HasPrefix(arg, "--cache-instance="):
 			options.cacheInstances = append(options.cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
 		case arg == "--key-value-instance":
 			value, err := nextValue(&i, arg, "--key-value-instance durable")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.keyValueInstances = append(options.keyValueInstances, value)
 		case strings.HasPrefix(arg, "--key-value-instance="):
 			options.keyValueInstances = append(options.keyValueInstances, strings.TrimPrefix(arg, "--key-value-instance="))
 		case arg == "--document-db-instance":
 			value, err := nextValue(&i, arg, "--document-db-instance documents")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.documentDatabaseInstances = append(options.documentDatabaseInstances, value)
 		case strings.HasPrefix(arg, "--document-db-instance="):
 			options.documentDatabaseInstances = append(options.documentDatabaseInstances, strings.TrimPrefix(arg, "--document-db-instance="))
 		case arg == "--messaging-queue-instance":
 			value, err := nextValue(&i, arg, "--messaging-queue-instance jobs")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.messagingQueueInstances = append(options.messagingQueueInstances, value)
 		case strings.HasPrefix(arg, "--messaging-queue-instance="):
 			options.messagingQueueInstances = append(options.messagingQueueInstances, strings.TrimPrefix(arg, "--messaging-queue-instance="))
 		case arg == "--messaging-pubsub-instance":
 			value, err := nextValue(&i, arg, "--messaging-pubsub-instance events")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.messagingPubSubInstances = append(options.messagingPubSubInstances, value)
 		case strings.HasPrefix(arg, "--messaging-pubsub-instance="):
 			options.messagingPubSubInstances = append(options.messagingPubSubInstances, strings.TrimPrefix(arg, "--messaging-pubsub-instance="))
 		case arg == "--messaging-stream-instance":
 			value, err := nextValue(&i, arg, "--messaging-stream-instance audit")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.messagingStreamInstances = append(options.messagingStreamInstances, value)
 		case strings.HasPrefix(arg, "--messaging-stream-instance="):
 			options.messagingStreamInstances = append(options.messagingStreamInstances, strings.TrimPrefix(arg, "--messaging-stream-instance="))
 		case arg == "--s3-bucket":
 			value, err := nextValue(&i, arg, "--s3-bucket assets")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.objectStorageBuckets = append(options.objectStorageBuckets, value)
 		case strings.HasPrefix(arg, "--s3-bucket="):
 			options.objectStorageBuckets = append(options.objectStorageBuckets, strings.TrimPrefix(arg, "--s3-bucket="))
 		case arg == "--require-secret":
 			value, err := nextValue(&i, arg, "--require-secret OPENAI_API_KEY")
-			if err != nil { return createManifestOptions{}, err }
+			if err != nil {
+				return createManifestOptions{}, err
+			}
 			options.requiredSecrets = append(options.requiredSecrets, value)
 			options.secrets = true
 		case strings.HasPrefix(arg, "--require-secret="):

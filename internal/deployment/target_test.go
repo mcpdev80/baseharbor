@@ -286,7 +286,6 @@ func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T
 	}
 }
 
-
 func TestDeleteDeploymentRecordRemovesEntireDeploymentRoot(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")

@@ -170,7 +170,6 @@ func TestBuildPlanForWorkspaceCarriesStableSourceIdentity(t *testing.T) {
 	}
 }
 
-
 func TestLoadSourceModelClassifiesUninitializedWorkspace(t *testing.T) {
 	root := t.TempDir()
 	manifest := filepath.Join(root, "baseharbor.yaml")

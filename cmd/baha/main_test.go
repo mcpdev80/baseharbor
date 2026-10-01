@@ -168,7 +168,6 @@ func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	}
 }
 
-
 func TestClassifyMachineCLIErrorWorkspaceNotInitialized(t *testing.T) {
 	err := classifyMachineCLIError(development.ErrWorkspaceModelMissing)
 	var machineErr *machine.Error

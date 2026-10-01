@@ -587,20 +587,19 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	}
 }
 
-
 func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
 	selection := guidedInitSelection{
-		name:                        "demo",
-		environment:                 "dev",
-		selected:                    make([]bool, guidedCapabilityCount),
-		keyValueInstances:           []string{"durable"},
-		documentDatabaseInstances:   []string{"documents"},
-		messagingQueueInstances:     []string{"jobs"},
-		messagingPubSubInstances:    []string{"events"},
-		messagingStreamInstances:    []string{"audit"},
-		keyValueManagementUI:        true,
+		name:                         "demo",
+		environment:                  "dev",
+		selected:                     make([]bool, guidedCapabilityCount),
+		keyValueInstances:            []string{"durable"},
+		documentDatabaseInstances:    []string{"documents"},
+		messagingQueueInstances:      []string{"jobs"},
+		messagingPubSubInstances:     []string{"events"},
+		messagingStreamInstances:     []string{"audit"},
+		keyValueManagementUI:         true,
 		documentDatabaseManagementUI: true,
-		messagingManagementUI:       true,
+		messagingManagementUI:        true,
 	}
 	for _, index := range []int{
 		guidedCapabilityDurableKeyValue,

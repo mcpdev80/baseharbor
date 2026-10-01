@@ -12,29 +12,29 @@ import (
 )
 
 type guidedInitSelection struct {
-	name                      string
-	environment               string
-	compose                   string
-	workloadServices          []string
-	selected                  []bool
-	sqlInstances                   []string
-	cacheInstances                 []string
-	keyValueInstances              []string
-	documentDatabaseInstances      []string
-	messagingQueueInstances        []string
-	messagingPubSubInstances       []string
-	messagingStreamInstances       []string
-	objectStorageBuckets           []string
-	secretPolicies                 []guidedSecretPolicy
-	sqlManagementUI                bool
-	cacheManagementUI              bool
-	keyValueManagementUI           bool
-	documentDatabaseManagementUI   bool
-	messagingManagementUI          bool
-	objectStorageManagementUI      bool
-	secretsManagementUI            bool
-	identityManagementUI           bool
-	observabilityManagementUI      bool
+	name                         string
+	environment                  string
+	compose                      string
+	workloadServices             []string
+	selected                     []bool
+	sqlInstances                 []string
+	cacheInstances               []string
+	keyValueInstances            []string
+	documentDatabaseInstances    []string
+	messagingQueueInstances      []string
+	messagingPubSubInstances     []string
+	messagingStreamInstances     []string
+	objectStorageBuckets         []string
+	secretPolicies               []guidedSecretPolicy
+	sqlManagementUI              bool
+	cacheManagementUI            bool
+	keyValueManagementUI         bool
+	documentDatabaseManagementUI bool
+	messagingManagementUI        bool
+	objectStorageManagementUI    bool
+	secretsManagementUI          bool
+	identityManagementUI         bool
+	observabilityManagementUI    bool
 }
 
 func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (guidedInitSelection, error) {

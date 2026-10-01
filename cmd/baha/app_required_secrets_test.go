@@ -108,7 +108,6 @@ func TestManifestFromCreateArgsAllowsS3OnlyWithoutImplicitPostgres(t *testing.T)
 	}
 }
 
-
 func TestManifestFromCreateArgsSupportsAllV0419ServiceFamilies(t *testing.T) {
 	m, err := manifestFromCreateArgs([]string{
 		"platform",

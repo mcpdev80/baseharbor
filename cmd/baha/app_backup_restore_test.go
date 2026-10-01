@@ -65,7 +65,7 @@ func TestWriteBackupArchiveRefusesOverwrite(t *testing.T) {
 func TestRestoreNeedsDeploymentInitializationOnlyForMissingDevExposureState(t *testing.T) {
 	devExposure := application.Manifest{
 		Environment: "dev",
-		Exposures: []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}},
+		Exposures:   []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}},
 	}
 	if !restoreNeedsDeploymentInitialization(devExposure, repositoryInitState{}) {
 		t.Fatal("missing DEV exposure state must be initialized during restore")
