@@ -183,6 +183,7 @@ jobs:
             init) bash "$workdir/tests/init/run.sh" ;;
             mcp) bash "$workdir/tests/mcp/run.sh" ;;
             agent) bash "$workdir/tests/agent/run.sh" ;;
+            shell-ux) bash "$workdir/tests/shell-ux/run.sh" ;;
             *) echo "Unsupported static gate: $GATE" >&2; exit 2 ;;
           esac
 
