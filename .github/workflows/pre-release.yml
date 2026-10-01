@@ -389,9 +389,9 @@ jobs:
             done
           } | sort > "$expected_ids"
 
-          find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 \
-            | sort -z \
-            | xargs -0 jq -s '.' > "$manifests"
+          mapfile -d '' manifest_files < <(find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#manifest_files[@]}" -eq 36
+          jq -s '.' "${manifest_files[@]}" > "$manifests"
 
           jq -e \
             --arg candidate "$CANDIDATE_SHA" \
