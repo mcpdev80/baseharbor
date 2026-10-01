@@ -22,11 +22,10 @@ func DefaultEngine() Engine {
 	return Engine{Detectors: []Detector{
 		sqlDetector{},
 		keyValueDetector{},
+		documentDatabaseDetector{},
 		secretsDetector{},
 		httpExposureDetector{},
 		objectStorageDetector{},
-		httpExposureDetector{},
-		secretsDetector{},
 		openMetricsDetector{},
 		otlpDetector{},
 		runtimeAPIDetector{},
