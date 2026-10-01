@@ -718,26 +718,25 @@ func rabbitmqConnectionURL(values map[string]string, instance string) (string, e
 func mongodbConnectionURL(values map[string]string, instance string) (string, error) {
 	port, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "HOST_PORT"))
 	if err != nil {
-			return "", err
-		}
+		return "", err
+	}
 	database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
 	if err != nil {
-			return "", err
-		}
+		return "", err
+	}
 	username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
 	if err != nil {
-			return "", err
-		}
+		return "", err
+	}
 	password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
 	if err != nil {
-			return "", err
-		}
+		return "", err
+	}
 	if _, err := requireRuntimeValue(values, mongodbTLSCAKey(instance)); err != nil {
 		return "", err
 	}
 	return mongodbConnectionURI(loopbackHost, port, database, username, password), nil
 }
-
 
 func writeBinding(dir string, values map[string]string) error {
 	for name, value := range values {
