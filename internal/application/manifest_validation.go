@@ -429,6 +429,8 @@ func validateManagementUIPreferences(services Services) error {
 		{"sql", services.SQL || len(services.SQLInstances) > 0, services.SQLManagementUI},
 		{"cache", services.Cache || len(services.CacheInstances) > 0, services.CacheManagementUI},
 		{"key_value", services.KeyValue || len(services.KeyValueInstances) > 0, services.KeyValueManagementUI},
+		{"document_database", services.DocumentDatabase || len(services.DocumentDatabaseInstances) > 0, services.DocumentDatabaseManagementUI},
+		{"messaging", len(RabbitMQInstanceNames(Manifest{Services: services})) > 0, services.MessagingManagementUI},
 		{"object_storage", services.ObjectStorage || len(services.ObjectStorageBuckets) > 0, services.ObjectStorageManagementUI},
 		{"secrets", services.Secrets, services.SecretsManagementUI},
 		{"identity", services.Identity, services.IdentityManagementUI},

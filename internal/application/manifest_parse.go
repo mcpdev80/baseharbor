@@ -336,6 +336,10 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 			p.manifest.Services.CacheManagementUI = enabled
 		case "key_value":
 			p.manifest.Services.KeyValueManagementUI = enabled
+		case "document_database":
+			p.manifest.Services.DocumentDatabaseManagementUI = enabled
+		case "messaging_queue", "messaging_pubsub", "messaging_stream":
+			p.manifest.Services.MessagingManagementUI = enabled
 		case "object_storage":
 			p.manifest.Services.ObjectStorageManagementUI = enabled
 		case "secrets":

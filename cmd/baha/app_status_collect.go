@@ -298,6 +298,9 @@ func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.C
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
 	if !c.manifest.Services.SQLManagementUI &&
 		!c.manifest.Services.CacheManagementUI &&
+		!c.manifest.Services.KeyValueManagementUI &&
+		!c.manifest.Services.MessagingManagementUI &&
+		!c.manifest.Services.DocumentDatabaseManagementUI &&
 		!c.manifest.Services.ObjectStorageManagementUI &&
 		!c.manifest.Services.SecretsManagementUI &&
 		!c.manifest.Services.IdentityManagementUI &&

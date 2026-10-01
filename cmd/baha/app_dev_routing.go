@@ -49,7 +49,7 @@ func applicationCanonicalRouteHosts(target string, m application.Manifest) ([]st
 		if m.Services.SQLManagementUI && route.Owner == "shared/postgresql" {
 			include = true
 		}
-		if m.Services.CacheManagementUI && route.Owner == "shared/valkey" {
+		if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && route.Owner == "shared/valkey" {
 			include = true
 		}
 		if !include {
@@ -92,6 +92,9 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 		m.Services.Identity ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
+		m.Services.KeyValueManagementUI ||
+		m.Services.MessagingManagementUI ||
+		m.Services.DocumentDatabaseManagementUI ||
 		m.Services.ObjectStorageManagementUI ||
 		m.Services.SecretsManagementUI ||
 		m.Services.IdentityManagementUI ||
@@ -105,6 +108,9 @@ func requiresDevelopmentManagementAccess(m application.Manifest) bool {
 	return m.Services.Identity ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
+		m.Services.KeyValueManagementUI ||
+		m.Services.MessagingManagementUI ||
+		m.Services.DocumentDatabaseManagementUI ||
 		m.Services.ObjectStorageManagementUI ||
 		m.Services.SecretsManagementUI ||
 		m.Services.IdentityManagementUI ||
@@ -198,41 +204,74 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 			})
 		}
 	}
-	if !e.manifest.Services.CacheManagementUI {
-		return nil
-	}
-	placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderValkey)
-	if err != nil {
-		return err
-	}
-	if placement.Scope == capability.ScopeShared {
-		host, err := devaccess.SharedHost(plan.target, "cache")
+
+	if e.manifest.Services.CacheManagementUI || e.manifest.Services.KeyValueManagementUI {
+		placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderValkey)
 		if err != nil {
 			return err
 		}
-		shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, plan.target, e.manifest.Environment)
-		plan.groups = append(plan.groups, devgateway.OwnerRoutes{
-			Owner: "shared/valkey",
-			Routes: []devgateway.Route{{
-				Key: "shared/valkey", Host: host,
-				Upstream:   "https://shared-cache-ui-access:8443",
-				Network:    shared.Network,
-				TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
+		if placement.Scope == capability.ScopeShared {
+			host, err := devaccess.SharedHost(plan.target, "cache")
+			if err != nil {
+				return err
+			}
+			shared := application.SharedBackendFilesAt(e.resolved.TargetStateRoot, plan.target, e.manifest.Environment)
+			plan.groups = append(plan.groups, devgateway.OwnerRoutes{
+				Owner: "shared/valkey",
+				Routes: []devgateway.Route{{
+					Key: "shared/valkey", Host: host,
+					Upstream:   "https://shared-cache-ui-access:8443",
+					Network:    shared.Network,
+					TrustFile:  filepath.Join(shared.Dir, "management-ui", "cache", "pki", "ca.pem"),
+					ServerName: "localhost",
+				}},
+			})
+		} else {
+			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "cache")
+			if err != nil {
+				return err
+			}
+			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+				Key: plan.appOwner + "/cache", Host: host,
+				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
 				ServerName: "localhost",
-			}},
-		})
-	} else {
-		host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, "cache")
-		if err != nil {
-			return err
+			})
 		}
-		plan.appRoutes = append(plan.appRoutes, devgateway.Route{
-			Key: plan.appOwner + "/cache", Host: host,
-			Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, "cache") + ":8443",
-			Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
-			TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"),
-			ServerName: "localhost",
-		})
+	}
+
+	if e.manifest.Services.MessagingManagementUI {
+		for _, instance := range application.RabbitMQInstanceNames(e.manifest) {
+			routeName := application.RabbitMQManagementUIRouteName(instance)
+			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, routeName)
+			if err != nil {
+				return err
+			}
+			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+				Key: plan.appOwner + "/" + routeName, Host: host,
+				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, routeName) + ":8443",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki", "ca.pem"),
+				ServerName: "localhost",
+			})
+		}
+	}
+	if e.manifest.Services.DocumentDatabaseManagementUI {
+		for _, instance := range application.DocumentDatabaseInstanceNames(e.manifest) {
+			routeName := application.MongoDBManagementUIRouteName(instance)
+			host, err := devaccess.ApplicationHost(plan.target, e.manifest.Name, routeName)
+			if err != nil {
+				return err
+			}
+			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
+				Key: plan.appOwner + "/" + routeName, Host: host,
+				Upstream:   "https://" + devaccess.ApplicationAlias(e.manifest.Name, routeName) + ":8443",
+				Network:    application.ApplicationBackendNetworkNameForProject(e.files.ResourceProject),
+				TrustFile:  filepath.Join(e.files.Dir, "providers", "management-ui", "mongodb", instance, "pki", "ca.pem"),
+				ServerName: "localhost",
+			})
+		}
 	}
 	return nil
 }

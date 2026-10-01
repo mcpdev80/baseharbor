@@ -80,7 +80,7 @@ func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values
 		}
 		values[PostgresUIHostPortEnv] = strconv.Itoa(state.PostgresUIHostPort)
 	}
-	if m.Services.CacheManagementUI && UsesSharedValkey(m) {
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && UsesSharedValkey(m) {
 		if state.CacheUIHostPort == 0 {
 			port, err := allocateLoopbackPort(nil)
 			if err != nil {
@@ -90,7 +90,7 @@ func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values
 		}
 		values[CacheUIHostPortEnv] = strconv.Itoa(state.CacheUIHostPort)
 	}
-	if (m.Services.SQLManagementUI && UsesSharedPostgreSQL(m)) || (m.Services.CacheManagementUI && UsesSharedValkey(m)) {
+	if (m.Services.SQLManagementUI && UsesSharedPostgreSQL(m)) || ((m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && UsesSharedValkey(m)) {
 		username := strings.TrimSpace(values[CacheUIUserEnv])
 		if username == "" {
 			email := strings.TrimSpace(values[PostgresUIEmailEnv])
@@ -128,7 +128,7 @@ func ensureSharedManagementUIs(ctx context.Context, issuer serviceaccess.Issuer,
 			return err
 		}
 	}
-	if m.Services.CacheManagementUI && UsesSharedValkey(m) {
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && UsesSharedValkey(m) {
 		if err := ensureSharedCacheManagementUI(ctx, issuer, shared, m.Environment, state); err != nil {
 			return err
 		}

@@ -43,71 +43,76 @@ func canonicalDevelopmentManagementSurfaces(resolved resolvedApplication, surfac
 	for i := range result {
 		var host string
 		var err error
-		switch result[i].Service {
-		case "sql":
-			placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderPostgreSQL)
-			if placementErr != nil {
+		service := result[i].Service
+		if service == "rabbitmq" || strings.HasPrefix(service, "rabbitmq-") || service == "mongodb" || strings.HasPrefix(service, "mongodb-") {
+			host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, service)
+		} else {
+			switch service {
+			case "sql":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderPostgreSQL)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "pgadmin")
+				} else {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "pgadmin")
+				}
+			case "cache", "key-value":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderValkey)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "cache")
+				} else {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "cache")
+				}
+			case "object-storage":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderSeaweedFS)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "storage")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "storage")
+				}
+			case "secrets":
+				host, err = devaccess.SharedHost(resolved.Target.Name, "openbao")
+			case "identity", "identity-login":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderKeycloak)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "identity")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity")
+				}
+			case "identity-admin":
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderKeycloak)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "identity-admin")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity-admin")
+				}
+			case "observability":
+				placement, placementErr := metricsprovider.PlacementForAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest)
+				if placementErr != nil {
+					continue
+				}
+				if placement.Scope == capability.ScopeShared {
+					host, err = devaccess.SharedHost(resolved.Target.Name, "prometheus")
+				} else if placement.Scope == capability.ScopeApplication {
+					host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "prometheus")
+				}
+			default:
 				continue
 			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "pgadmin")
-			} else {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "pgadmin")
-			}
-		case "cache":
-			placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderValkey)
-			if placementErr != nil {
-				continue
-			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "cache")
-			} else {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "cache")
-			}
-		case "object-storage":
-			placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderSeaweedFS)
-			if placementErr != nil {
-				continue
-			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "storage")
-			} else if placement.Scope == capability.ScopeApplication {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "storage")
-			}
-		case "secrets":
-			host, err = devaccess.SharedHost(resolved.Target.Name, "openbao")
-		case "identity", "identity-login":
-			placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderKeycloak)
-			if placementErr != nil {
-				continue
-			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "identity")
-			} else if placement.Scope == capability.ScopeApplication {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity")
-			}
-		case "identity-admin":
-			placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderKeycloak)
-			if placementErr != nil {
-				continue
-			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "identity-admin")
-			} else if placement.Scope == capability.ScopeApplication {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "identity-admin")
-			}
-		case "observability":
-			placement, placementErr := metricsprovider.PlacementForAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest)
-			if placementErr != nil {
-				continue
-			}
-			if placement.Scope == capability.ScopeShared {
-				host, err = devaccess.SharedHost(resolved.Target.Name, "prometheus")
-			} else if placement.Scope == capability.ScopeApplication {
-				host, err = devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "prometheus")
-			}
-		default:
-			continue
 		}
 		if err == nil && strings.TrimSpace(host) != "" {
 			result[i].URL = devgateway.URLForTarget(resolved.Target.Name, host)
@@ -115,6 +120,7 @@ func canonicalDevelopmentManagementSurfaces(resolved resolvedApplication, surfac
 	}
 	return result
 }
+
 func collectApplicationStatusResult(ctx context.Context, store application.Store, args []string) (applicationStatusResult, error) {
 	result, err := collectApplicationStatus(ctx, store, args)
 	if err != nil {

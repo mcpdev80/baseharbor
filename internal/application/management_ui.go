@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -21,11 +23,56 @@ const (
 	CacheUIHostPortEnv    = "BASEHARBOR_CACHE_UI_HOST_PORT"
 	CacheUIUserEnv        = "BASEHARBOR_CACHE_UI_USER"
 	CacheUIPasswordEnv    = "BASEHARBOR_CACHE_UI_PASSWORD"
+	MongoDBUIUserEnv      = "BASEHARBOR_MONGODB_UI_USER"
+	MongoDBUIPasswordEnv  = "BASEHARBOR_MONGODB_UI_PASSWORD"
 
 	PostgresUIImage = "docker.io/dpage/pgadmin4:9.18"
 	CacheUIImage    = "ghcr.io/joeferner/redis-commander:0.9.1"
+	MongoDBUIImage  = "docker.io/huggingface/mongoku:2.11.3"
 	UIProxyImage    = "docker.io/library/caddy:2.11.4-alpine"
 )
+
+func rabbitmqUIHostPortKey(instance string) string {
+	return rabbitmqRuntimeKey(instance, "UI_HOST_PORT")
+}
+
+func rabbitmqUIServiceName(instance string) string {
+	return runtimeServiceName("rabbitmq", instance) + "-ui"
+}
+
+func rabbitmqUIRouteName(instance string) string {
+	if instance == defaultServiceInstance {
+		return "rabbitmq"
+	}
+	return "rabbitmq-" + instance
+}
+
+func RabbitMQManagementUIRouteName(instance string) string {
+	return rabbitmqUIRouteName(instance)
+}
+
+func mongodbUIHostPortKey(instance string) string {
+	return mongodbRuntimeKey(instance, "UI_HOST_PORT")
+}
+
+func mongodbUIServiceName(instance string) string {
+	return runtimeServiceName("mongodb", instance) + "-ui"
+}
+
+func mongodbUIAccessServiceName(instance string) string {
+	return runtimeServiceName("mongodb", instance) + "-ui-access"
+}
+
+func mongodbUIRouteName(instance string) string {
+	if instance == defaultServiceInstance {
+		return "mongodb"
+	}
+	return "mongodb-" + instance
+}
+
+func MongoDBManagementUIRouteName(instance string) string {
+	return mongodbUIRouteName(instance)
+}
 
 type ProviderInterfacePurpose string
 
@@ -57,9 +104,13 @@ func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer service
 		values[PostgresUIEmailEnv] = developmentPostgresUIEmail(username)
 		values[PostgresUIPasswordEnv] = password
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		values[CacheUIUserEnv] = username
 		values[CacheUIPasswordEnv] = password
+	}
+	if m.Services.DocumentDatabaseManagementUI {
+		values[MongoDBUIUserEnv] = username
+		values[MongoDBUIPasswordEnv] = password
 	}
 	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
 		return err
@@ -76,7 +127,7 @@ func developmentPostgresUIEmail(username string) string {
 }
 
 func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
-	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI {
+	if !m.Services.SQLManagementUI && !m.Services.CacheManagementUI && !m.Services.KeyValueManagementUI && !m.Services.MessagingManagementUI && !m.Services.DocumentDatabaseManagementUI {
 		return nil
 	}
 	if issuer == nil {
@@ -91,8 +142,18 @@ func EnsureApplicationManagementUIs(ctx context.Context, issuer serviceaccess.Is
 			return err
 		}
 	}
-	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		if err := ensureCacheManagementUI(ctx, issuer, files, m, values); err != nil {
+			return err
+		}
+	}
+	if m.Services.MessagingManagementUI {
+		if err := ensureRabbitMQManagementUI(ctx, issuer, files, m); err != nil {
+			return err
+		}
+	}
+	if m.Services.DocumentDatabaseManagementUI {
+		if err := ensureMongoDBManagementUI(ctx, issuer, files, m, values); err != nil {
 			return err
 		}
 	}
@@ -111,21 +172,82 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 		if m.Services.SQLManagementUI {
 			results = append(results, ManagementUICheckResult{Name: "pgadmin", Err: err})
 		}
-		if m.Services.CacheManagementUI {
+		if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 			results = append(results, ManagementUICheckResult{Name: "redis-commander", Err: err})
+		}
+		if m.Services.MessagingManagementUI {
+			for _, instance := range RabbitMQInstanceNames(m) {
+				results = append(results, ManagementUICheckResult{Name: rabbitmqUIRouteName(instance), Err: err})
+			}
+		}
+		if m.Services.DocumentDatabaseManagementUI {
+			for _, instance := range DocumentDatabaseInstanceNames(m) {
+				results = append(results, ManagementUICheckResult{Name: mongodbUIRouteName(instance), Err: err})
+			}
 		}
 		return results
 	}
 
 	checks := []struct {
-		enabled bool
-		name    string
-		portKey string
-		dir     string
-		path    string
+		enabled   bool
+		name      string
+		portKey   string
+		dir       string
+		path      string
+		basicAuth bool
 	}{
-		{m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m), "pgadmin", PostgresUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"), "/misc/ping"},
-		{m.Services.CacheManagementUI && !UsesSharedValkey(m), "redis-commander", CacheUIHostPortEnv, filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"), "/"},
+		{
+			enabled: m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m),
+			name:    "pgadmin",
+			portKey: PostgresUIHostPortEnv,
+			dir:     filepath.Join(files.Dir, "providers", "management-ui", "postgres", "pki"),
+			path:    "/misc/ping",
+		},
+		{
+			enabled: (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m),
+			name:    "redis-commander",
+			portKey: CacheUIHostPortEnv,
+			dir:     filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki"),
+			path:    "/",
+		},
+	}
+	if m.Services.MessagingManagementUI {
+		for _, instance := range RabbitMQInstanceNames(m) {
+			checks = append(checks, struct {
+				enabled   bool
+				name      string
+				portKey   string
+				dir       string
+				path      string
+				basicAuth bool
+			}{
+				enabled: true,
+				name:    rabbitmqUIRouteName(instance),
+				portKey: rabbitmqUIHostPortKey(instance),
+				dir:     filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki"),
+				path:    "/",
+			})
+		}
+	}
+
+	if m.Services.DocumentDatabaseManagementUI {
+		for _, instance := range DocumentDatabaseInstanceNames(m) {
+			checks = append(checks, struct {
+				enabled   bool
+				name      string
+				portKey   string
+				dir       string
+				path      string
+				basicAuth bool
+			}{
+				enabled:   true,
+				name:      mongodbUIRouteName(instance),
+				portKey:   mongodbUIHostPortKey(instance),
+				dir:       filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance, "pki"),
+				path:      "/servers",
+				basicAuth: true,
+			})
+		}
 	}
 
 	results := make([]ManagementUICheckResult, 0, len(checks))
@@ -152,7 +274,12 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 			if err != nil {
 				return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
 			}
-			client, err := serviceaccess.NewHTTPClient(material, false)
+			var client *http.Client
+			if check.basicAuth {
+				client, err = serviceaccess.NewHTTPClientWithBasicAuth(material, values[MongoDBUIUserEnv], values[MongoDBUIPasswordEnv])
+			} else {
+				client, err = serviceaccess.NewHTTPClient(material, false)
+			}
 			if err != nil {
 				return err
 			}
@@ -199,16 +326,46 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			Authentication: "pgadmin-native",
 		})
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		port, err := requireRuntimeValue(values, CacheUIHostPortEnv)
 		if err != nil {
 			return nil, err
 		}
+		service := "cache"
+		if m.Services.KeyValueManagementUI && !m.Services.CacheManagementUI {
+			service = "key-value"
+		}
 		result = append(result, ManagementUISurface{
-			Service: "cache", Purpose: ProviderInterfaceManagement,
+			Service: service, Purpose: ProviderInterfaceManagement,
 			URL:            "https://127.0.0.1:" + port + "/",
 			Authentication: "http-basic",
 		})
+	}
+	if m.Services.MessagingManagementUI {
+		for _, instance := range RabbitMQInstanceNames(m) {
+			port, err := requireRuntimeValue(values, rabbitmqUIHostPortKey(instance))
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, ManagementUISurface{
+				Service: rabbitmqUIRouteName(instance), Purpose: ProviderInterfaceManagement,
+				URL:            "https://127.0.0.1:" + port + "/",
+				Authentication: "rabbitmq-native",
+			})
+		}
+	}
+	if m.Services.DocumentDatabaseManagementUI {
+		for _, instance := range DocumentDatabaseInstanceNames(m) {
+			port, err := requireRuntimeValue(values, mongodbUIHostPortKey(instance))
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, ManagementUISurface{
+				Service: mongodbUIRouteName(instance), Purpose: ProviderInterfaceManagement,
+				URL:            "https://127.0.0.1:" + port + "/",
+				Authentication: "http-basic",
+			})
+		}
 	}
 	return result, nil
 }
@@ -362,6 +519,74 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 	caddy := "{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy cache-ui:8081\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureRabbitMQManagementUI(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest) error {
+	for _, instance := range RabbitMQInstanceNames(m) {
+		dir := filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		policy, err := serviceaccess.Resolve(m.Environment, "rabbitmq-management", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), "localhost", "127.0.0.1", rabbitmqUIServiceName(instance))
+		if err != nil {
+			return err
+		}
+		if err := projectUIReadableFile(material.ServerCertificate, filepath.Join(dir, "server.pem")); err != nil {
+			return err
+		}
+		if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
+			return err
+		}
+		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s:15672\n}\n", runtimeServiceName("rabbitmq", instance))
+		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureMongoDBManagementUI(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, values map[string]string) error {
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		dir := filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		policy, err := serviceaccess.Resolve(m.Environment, "mongodb-management", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), "localhost", "127.0.0.1", mongodbUIAccessServiceName(instance))
+		if err != nil {
+			return err
+		}
+		if err := projectUIReadableFile(material.ServerCertificate, filepath.Join(dir, "server.pem")); err != nil {
+			return err
+		}
+		if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
+			return err
+		}
+		user, err := requireRuntimeValue(values, MongoDBUIUserEnv)
+		if err != nil {
+			return err
+		}
+		password, err := requireRuntimeValue(values, MongoDBUIPasswordEnv)
+		if err != nil {
+			return err
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash MongoDB management UI password: %w", err)
+		}
+		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  handle /healthz {\n    respond \"ok\" 200\n  }\n  handle {\n    basic_auth {\n      %s %s\n    }\n    reverse_proxy %s:3100\n  }\n}\n", user, string(hash), mongodbUIServiceName(instance))
+		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
+			return err
+		}
 	}
 	return nil
 }

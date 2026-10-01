@@ -146,7 +146,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	app.Application = m.Name
 	app.Environment = m.Environment
 	app.SQLManagementUI = m.Services.SQLManagementUI && UsesSharedPostgreSQL(m)
-	app.CacheManagementUI = m.Services.CacheManagementUI && UsesSharedValkey(m)
+	app.CacheManagementUI = (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && UsesSharedValkey(m)
 	if app.SQL == nil {
 		app.SQL = map[string]sharedPostgresResource{}
 	}

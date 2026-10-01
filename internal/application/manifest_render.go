@@ -29,15 +29,28 @@ func (m Manifest) YAML() string {
 		}
 		if m.Services.DocumentDatabase || len(m.Services.DocumentDatabaseInstances) > 0 {
 			writeServiceYAML(&b, "document_database", m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+			writeManagementUIYAML(&b, m.Services.DocumentDatabaseManagementUI)
 		}
+		messagingUIRendered := false
 		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
 			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+			if m.Services.MessagingManagementUI {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
 		}
 		if m.Services.MessagingPubSub || len(m.Services.MessagingPubSubInstances) > 0 {
 			writeServiceYAML(&b, "messaging_pubsub", m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
 		}
 		if m.Services.MessagingStream || len(m.Services.MessagingStreamInstances) > 0 {
 			writeServiceYAML(&b, "messaging_stream", m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+			}
 		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
