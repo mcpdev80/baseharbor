@@ -69,7 +69,7 @@ jobs:
         id: setup_python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Reset persistent runner state
         id: reset
