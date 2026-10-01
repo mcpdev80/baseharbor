@@ -87,6 +87,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := ensureMongoDBInitFiles(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
