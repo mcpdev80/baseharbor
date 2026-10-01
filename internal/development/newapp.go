@@ -85,6 +85,10 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 			Services: profileComponentIDs(profile),
 		},
 	}
+	requested := map[capability.Kind]bool{}
+	for _, kind := range request.Capabilities {
+		requested[kind] = true
+	}
 	seen := map[capability.Kind]struct{}{}
 	for _, kind := range request.Capabilities {
 		if _, exists := seen[kind]; exists {
@@ -98,6 +102,22 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 			manifest.Services.SQL = true
 		case capability.KeyValue:
 			manifest.Services.Cache = true
+			if requested[capability.DurableKeyValue] {
+				manifest.Services.CacheInstances = map[string]application.ServiceInstance{"cache": {}}
+			}
+		case capability.DurableKeyValue:
+			manifest.Services.KeyValue = true
+			if requested[capability.KeyValue] {
+				manifest.Services.KeyValueInstances = map[string]application.ServiceInstance{"durable": {}}
+			}
+		case capability.DocumentDatabase:
+			manifest.Services.DocumentDatabase = true
+		case capability.MessagingQueue:
+			manifest.Services.MessagingQueue = true
+		case capability.MessagingPubSub:
+			manifest.Services.MessagingPubSub = true
+		case capability.MessagingStream:
+			manifest.Services.MessagingStream = true
 		case capability.ObjectStorageS3:
 			manifest.Services.ObjectStorage = true
 		case capability.Secrets:
