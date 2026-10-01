@@ -226,6 +226,62 @@ func WithKeyValueInstances(m Manifest, names ...string) Manifest {
 	return m
 }
 
+func WithDocumentDatabaseInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.DocumentDatabaseInstances == nil {
+		m.Services.DocumentDatabaseInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.DocumentDatabaseInstances[name] = ServiceInstance{}
+	}
+	m.Services.DocumentDatabase = true
+	return m
+}
+
+func WithMessagingQueueInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingQueueInstances == nil {
+		m.Services.MessagingQueueInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingQueueInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingQueue = true
+	return m
+}
+
+func WithMessagingPubSubInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingPubSubInstances == nil {
+		m.Services.MessagingPubSubInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingPubSubInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingPubSub = true
+	return m
+}
+
+func WithMessagingStreamInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingStreamInstances == nil {
+		m.Services.MessagingStreamInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingStreamInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingStream = true
+	return m
+}
+
 func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
 	if len(names) == 0 {
 		return m
