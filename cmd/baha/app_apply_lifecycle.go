@@ -178,6 +178,9 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	if devaccess.Enabled(e.manifest.Environment) &&
 		(e.manifest.Services.SQLManagementUI ||
 			e.manifest.Services.CacheManagementUI ||
+			e.manifest.Services.KeyValueManagementUI ||
+			e.manifest.Services.MessagingManagementUI ||
+			e.manifest.Services.DocumentDatabaseManagementUI ||
 			e.manifest.Services.ObjectStorageManagementUI ||
 			e.manifest.Services.SecretsManagementUI ||
 			e.manifest.Services.IdentityManagementUI ||

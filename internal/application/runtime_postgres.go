@@ -270,17 +270,23 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		b.WriteString(valkeyGatewayCompose(instance))
 	}
 	for _, instance := range rabbitInstances {
-		writeRabbitMQComposeService(&b, instance)
+		writeRabbitMQComposeService(&b, m, instance)
 		b.WriteString(rabbitmqGatewayCompose(instance))
+		if m.Services.MessagingManagementUI {
+			writeRabbitMQUIComposeService(&b, m, instance)
+		}
 	}
 	for _, instance := range mongoInstances {
 		writeMongoDBComposeService(&b, instance)
 		b.WriteString(mongodbGatewayCompose(instance))
+		if m.Services.DocumentDatabaseManagementUI {
+			writeMongoDBUIComposeServices(&b, m, instance)
+		}
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
 	}
-	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		writeCacheUIComposeServices(&b, m)
 	}
 	b.WriteString("\nvolumes:\n")
@@ -305,12 +311,16 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	return b.String(), nil
 }
 
-func writeRabbitMQComposeService(b *strings.Builder, instance string) {
+func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string) {
 	service := runtimeServiceName("rabbitmq", instance)
 	userKey := rabbitmqRuntimeKey(instance, "USER")
 	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+	image := "docker.io/library/rabbitmq:4.3.6-alpine"
+	if m.Services.MessagingManagementUI {
+		image = "docker.io/library/rabbitmq:4.3.6-management-alpine"
+	}
 	fmt.Fprintf(b, `  %s:
-    image: docker.io/library/rabbitmq:4.3.6-alpine
+    image: %s
     restart: unless-stopped
     user: "rabbitmq"
     read_only: true
@@ -331,7 +341,7 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 10s
 
-`, service, userKey, passwordKey, service)
+`, service, image, userKey, passwordKey, service)
 }
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
@@ -498,6 +508,39 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
 }
 
+func writeRabbitMQUIComposeService(b *strings.Builder, m Manifest, instance string) {
+	service := rabbitmqUIServiceName(instance)
+	portKey := rabbitmqUIHostPortKey(instance)
+	routeName := rabbitmqUIRouteName(instance)
+	fmt.Fprintf(b, `  %s:
+    image: %s
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${%s}:8443"
+    volumes:
+      - ./providers/management-ui/rabbitmq/%s/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./providers/management-ui/rabbitmq/%s/server.pem:/certs/server.pem:ro
+      - ./providers/management-ui/rabbitmq/%s/server-key.pem:/certs/server-key.pem:ro
+    networks:
+      default:
+        aliases:
+          - %q
+
+`, service, UIProxyImage, portKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
+}
+
 func ensureRuntimeEnv(path string, m Manifest) error {
 	values := map[string]string{}
 	if data, err := os.ReadFile(path); err == nil {
@@ -608,6 +651,17 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			values[portKey] = strconv.Itoa(port)
 			excluded[port] = struct{}{}
 		}
+		if m.Services.MessagingManagementUI {
+			uiPortKey := rabbitmqUIHostPortKey(instance)
+			if values[uiPortKey] == "" {
+				port, err := allocateLoopbackPort(excluded)
+				if err != nil {
+					return err
+				}
+				values[uiPortKey] = strconv.Itoa(port)
+				excluded[port] = struct{}{}
+			}
+		}
 	}
 	if err := ensureMongoDBRuntimeValues(values, m, excluded); err != nil {
 		return err
@@ -632,7 +686,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		if values[CacheUIUserEnv] == "" {
 			values[CacheUIUserEnv] = "baseharbor"
 		}
@@ -699,6 +753,10 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			key := rabbitmqRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
+		if m.Services.MessagingManagementUI {
+			key := rabbitmqUIHostPortKey(instance)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
 	}
 	appendMongoDBRuntimeEnv(&b, m, values)
 	if m.Services.SQLManagementUI {
@@ -706,7 +764,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
@@ -791,6 +849,15 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
+		if m.Services.MessagingManagementUI {
+			uiPortKey := rabbitmqUIHostPortKey(instance)
+			if values[uiPortKey] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", uiPortKey)
+			}
+			if err := validatePortValue(values[uiPortKey], uiPortKey); err != nil {
+				return err
+			}
+		}
 	}
 	if err := validateMongoDBRuntimeValues(values, m); err != nil {
 		return err
@@ -805,7 +872,7 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
-	if m.Services.CacheManagementUI {
+	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
 		for _, key := range []string{CacheUIHostPortEnv, CacheUIUserEnv, CacheUIPasswordEnv} {
 			if values[key] == "" {
 				return fmt.Errorf("application runtime environment is missing %s", key)

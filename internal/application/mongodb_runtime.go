@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 )
 
 const MongoDBImage = "docker.io/library/mongo:7.0.43"
@@ -27,6 +29,18 @@ func mongodbDatabaseName(m Manifest, instance string) string {
 }
 
 func ensureMongoDBRuntimeValues(values map[string]string, m Manifest, excluded map[int]struct{}) error {
+	if m.Services.DocumentDatabaseManagementUI {
+		if values[MongoDBUIUserEnv] == "" {
+			values[MongoDBUIUserEnv] = "baseharbor"
+		}
+		if values[MongoDBUIPasswordEnv] == "" {
+			password, err := randomApplicationSecret(24)
+			if err != nil {
+				return err
+			}
+			values[MongoDBUIPasswordEnv] = password
+		}
+	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		dbKey := mongodbRuntimeKey(instance, "DB")
 		userKey := mongodbRuntimeKey(instance, "USER")
@@ -65,20 +79,47 @@ func ensureMongoDBRuntimeValues(values map[string]string, m Manifest, excluded m
 			values[portKey] = strconv.Itoa(port)
 			excluded[port] = struct{}{}
 		}
+		if m.Services.DocumentDatabaseManagementUI {
+			uiPortKey := mongodbUIHostPortKey(instance)
+			if values[uiPortKey] == "" {
+				port, err := allocateLoopbackPort(excluded)
+				if err != nil {
+					return err
+				}
+				values[uiPortKey] = strconv.Itoa(port)
+				excluded[port] = struct{}{}
+			}
+		}
 	}
 	return nil
 }
 
 func appendMongoDBRuntimeEnv(b *strings.Builder, m Manifest, values map[string]string) {
+	if m.Services.DocumentDatabaseManagementUI {
+		for _, key := range []string{MongoDBUIUserEnv, MongoDBUIPasswordEnv} {
+			fmt.Fprintf(b, "%s=%s\n", key, values[key])
+		}
+	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := mongodbRuntimeKey(instance, suffix)
+			fmt.Fprintf(b, "%s=%s\n", key, values[key])
+		}
+		if m.Services.DocumentDatabaseManagementUI {
+			key := mongodbUIHostPortKey(instance)
 			fmt.Fprintf(b, "%s=%s\n", key, values[key])
 		}
 	}
 }
 
 func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
+	if m.Services.DocumentDatabaseManagementUI {
+		for _, key := range []string{MongoDBUIUserEnv, MongoDBUIPasswordEnv} {
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		for _, suffix := range []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT"} {
 			key := mongodbRuntimeKey(instance, suffix)
@@ -89,6 +130,15 @@ func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
 		portKey := mongodbRuntimeKey(instance, "HOST_PORT")
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
+		}
+		if m.Services.DocumentDatabaseManagementUI {
+			uiPortKey := mongodbUIHostPortKey(instance)
+			if values[uiPortKey] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", uiPortKey)
+			}
+			if err := validatePortValue(values[uiPortKey], uiPortKey); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -129,6 +179,62 @@ func writeMongoDBComposeService(b *strings.Builder, instance string) {
       start_period: 15s
 
 `, service, MongoDBImage, adminUserKey, adminPasswordKey, dbKey, userKey, passwordKey, service, initScript)
+}
+
+func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance string) {
+	uiService := mongodbUIServiceName(instance)
+	accessService := mongodbUIAccessServiceName(instance)
+	mongoAccess := mongodbAccessService(instance)
+	dbKey := mongodbRuntimeKey(instance, "DB")
+	userKey := mongodbRuntimeKey(instance, "USER")
+	passwordKey := mongodbRuntimeKey(instance, "PASSWORD")
+	uiPortKey := mongodbUIHostPortKey(instance)
+	routeName := mongodbUIRouteName(instance)
+	fmt.Fprintf(b, `  %s:
+    image: %s
+    restart: unless-stopped
+    user: "node"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    environment:
+      MONGOKU_DEFAULT_HOST: "mongodb://${%s}:${%s}@%s:27017/${%s}?authSource=${%s}&tls=true&tlsCAFile=/run/baseharbor/mongodb-ca.pem"
+      MONGOKU_SERVER_PROTOCOL_HEADER: "x-forwarded-proto"
+      MONGOKU_SERVER_HOST_HEADER: "x-forwarded-host"
+      MONGOKU_DATABASE_FILE: "/tmp/mongoku.db"
+    volumes:
+      - ./bindings/mongodb/%s/ca.pem:/run/baseharbor/mongodb-ca.pem:ro
+
+  %s:
+    image: %s
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${%s}:8443"
+    volumes:
+      - ./providers/management-ui/mongodb/%s/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./providers/management-ui/mongodb/%s/server.pem:/certs/server.pem:ro
+      - ./providers/management-ui/mongodb/%s/server-key.pem:/certs/server-key.pem:ro
+    networks:
+      default:
+        aliases:
+          - %q
+
+`, uiService, MongoDBUIImage, userKey, passwordKey, mongoAccess, dbKey, dbKey, instance,
+		accessService, UIProxyImage, uiPortKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
 }
 
 func ensureMongoDBInitFiles(files RuntimeFiles, m Manifest) error {

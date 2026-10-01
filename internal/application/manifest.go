@@ -60,31 +60,33 @@ type MetricsSourceRequirement struct {
 }
 
 type Services struct {
-	SQL                       bool
-	Cache                     bool
-	KeyValue                  bool
-	DocumentDatabase          bool
-	MessagingQueue            bool
-	MessagingPubSub           bool
-	MessagingStream           bool
-	Secrets                   bool
-	ObjectStorage             bool
-	Identity                  bool
-	SQLManagementUI           bool
-	CacheManagementUI         bool
-	KeyValueManagementUI      bool
-	SecretsManagementUI       bool
-	ObjectStorageManagementUI bool
-	IdentityManagementUI      bool
-	ObservabilityManagementUI bool
-	SQLInstances              map[string]ServiceInstance
-	CacheInstances            map[string]ServiceInstance
-	KeyValueInstances         map[string]ServiceInstance
-	DocumentDatabaseInstances map[string]ServiceInstance
-	MessagingQueueInstances   map[string]ServiceInstance
-	MessagingPubSubInstances  map[string]ServiceInstance
-	MessagingStreamInstances  map[string]ServiceInstance
-	ObjectStorageBuckets      map[string]ServiceInstance
+	SQL                          bool
+	Cache                        bool
+	KeyValue                     bool
+	DocumentDatabase             bool
+	MessagingQueue               bool
+	MessagingPubSub              bool
+	MessagingStream              bool
+	Secrets                      bool
+	ObjectStorage                bool
+	Identity                     bool
+	SQLManagementUI              bool
+	CacheManagementUI            bool
+	KeyValueManagementUI         bool
+	DocumentDatabaseManagementUI bool
+	MessagingManagementUI        bool
+	SecretsManagementUI          bool
+	ObjectStorageManagementUI    bool
+	IdentityManagementUI         bool
+	ObservabilityManagementUI    bool
+	SQLInstances                 map[string]ServiceInstance
+	CacheInstances               map[string]ServiceInstance
+	KeyValueInstances            map[string]ServiceInstance
+	DocumentDatabaseInstances    map[string]ServiceInstance
+	MessagingQueueInstances      map[string]ServiceInstance
+	MessagingPubSubInstances     map[string]ServiceInstance
+	MessagingStreamInstances     map[string]ServiceInstance
+	ObjectStorageBuckets         map[string]ServiceInstance
 }
 
 type IdentityRequirements struct {

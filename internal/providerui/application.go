@@ -57,7 +57,7 @@ func EnsureApplication(ctx context.Context, runtime Runtime, issuer serviceacces
 		return ApplicationState{}, errors.New("provider UI runtime is required")
 	}
 	wantPostgres := m.Services.SQLManagementUI
-	wantCache := m.Services.CacheManagementUI
+	wantCache := m.Services.CacheManagementUI || m.Services.KeyValueManagementUI
 	if !wantPostgres && !wantCache {
 		return ApplicationState{Version: 1, Application: m.Name, Environment: m.Environment}, nil
 	}
