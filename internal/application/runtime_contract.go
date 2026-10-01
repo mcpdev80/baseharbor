@@ -139,6 +139,47 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("valkey", instance, len(redisInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
+	rabbitInstances := RabbitMQInstanceNames(m)
+	preferredRabbit := preferredServiceInstance(rabbitInstances)
+	for _, instance := range rabbitInstances {
+		binding, bindingRef, err := ensureInstanceBindingDirs(bindingsDir, bindingsAbs, "rabbitmq", instance, len(rabbitInstances))
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		uri, err := rabbitmqConnectionURL(values, instance)
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		certificates, err := backendCertificates(values[rabbitmqTLSCAKey(instance)])
+		if err != nil {
+			return RuntimeContract{}, err
+		}
+		entries := map[string]string{
+			"type":         "rabbitmq",
+			"provider":     "rabbitmq",
+			"host":         loopbackHost,
+			"port":         values[rabbitmqRuntimeKey(instance, "HOST_PORT")],
+			"username":     values[rabbitmqRuntimeKey(instance, "USER")],
+			"password":     values[rabbitmqRuntimeKey(instance, "PASSWORD")],
+			"uri":          uri,
+			"certificates": certificates,
+		}
+		if err := writeBinding(binding, entries); err != nil {
+			return RuntimeContract{}, err
+		}
+		if instance == preferredRabbit {
+			fmt.Fprintf(&env, "AMQP_URL=%s\n", uri)
+			fmt.Fprintf(&env, "RABBITMQ_URL=%s\n", uri)
+			fmt.Fprintf(&env, "RABBITMQ_CA_FILE=%s\n", values[rabbitmqTLSCAKey(instance)])
+		}
+		if instance != defaultServiceInstance {
+			token := envInstanceToken(instance)
+			fmt.Fprintf(&env, "AMQP_%s_URL=%s\n", token, uri)
+			fmt.Fprintf(&env, "RABBITMQ_%s_URL=%s\n", token, uri)
+		}
+		serviceRefs[serviceReferenceKey("rabbitmq", instance, len(rabbitInstances))] = runtimeServiceRef{Binding: bindingRef}
+	}
+
 	applicationEnv := filepath.Join(files.Dir, "application.env")
 	if err := writeOwnerOnlyFile(applicationEnv, []byte(env.String())); err != nil {
 		return RuntimeContract{}, fmt.Errorf("write application environment contract: %w", err)
@@ -278,6 +319,45 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
 		}
 	}
+
+	rabbit := RabbitMQInstanceNames(m)
+	for _, instance := range rabbit {
+		name := workloadServiceBindingName("rabbitmq", instance, len(rabbit))
+		username, err := requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "USER"))
+		if err != nil {
+			return "", err
+		}
+		password, err := requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "PASSWORD"))
+		if err != nil {
+			return "", err
+		}
+		certificates, err := backendCertificates(values[rabbitmqTLSCAKey(instance)])
+		if err != nil {
+			return "", err
+		}
+		host := strings.TrimSpace(values[rabbitmqContainerHostKey(instance)])
+		if host == "" {
+			host = rabbitmqAccessService(instance)
+		}
+		uri := (&url.URL{
+			Scheme: "amqps",
+			User:   url.UserPassword(username, password),
+			Host:   net.JoinHostPort(host, "5672"),
+			Path:   "/",
+		}).String()
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+			"type":         "rabbitmq",
+			"provider":     "rabbitmq",
+			"host":         host,
+			"port":         "5672",
+			"username":     username,
+			"password":     password,
+			"uri":          uri,
+			"certificates": certificates,
+		}); err != nil {
+			return "", fmt.Errorf("project workload RabbitMQ service binding %s: %w", name, err)
+		}
+	}
 	return root, nil
 }
 
@@ -340,6 +420,32 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		}
 		if strings.TrimSpace(entries["certificates"]) == "" {
 			return fmt.Errorf("verify workload cache binding %s: certificates entry is empty", instance)
+		}
+	}
+
+	rabbit := RabbitMQInstanceNames(m)
+	for _, instance := range rabbit {
+		name := workloadServiceBindingName("rabbitmq", instance, len(rabbit))
+		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("verify workload RabbitMQ binding %s: %w", instance, err)
+		}
+		if entries["type"] != "rabbitmq" || entries["provider"] != "rabbitmq" {
+			return fmt.Errorf("verify workload RabbitMQ binding %s: invalid type/provider", instance)
+		}
+		expectedHost := strings.TrimSpace(values[rabbitmqContainerHostKey(instance)])
+		if expectedHost == "" {
+			expectedHost = rabbitmqAccessService(instance)
+		}
+		if entries["host"] != expectedHost || entries["port"] != "5672" {
+			return fmt.Errorf("verify workload RabbitMQ binding %s: invalid workload endpoint", instance)
+		}
+		u, err := url.Parse(entries["uri"])
+		if err != nil || u.Scheme != "amqps" || u.Host != net.JoinHostPort(expectedHost, "5672") {
+			return fmt.Errorf("verify workload RabbitMQ binding %s: invalid uri", instance)
+		}
+		if strings.TrimSpace(entries["certificates"]) == "" {
+			return fmt.Errorf("verify workload RabbitMQ binding %s: certificates entry is empty", instance)
 		}
 	}
 	return nil
@@ -480,6 +586,31 @@ func valkeyConnectionURL(values map[string]string, instance string) (string, err
 		User:   url.UserPassword("", password),
 		Host:   net.JoinHostPort(loopbackHost, port),
 		Path:   "/0",
+	}
+	return u.String(), nil
+}
+
+func rabbitmqConnectionURL(values map[string]string, instance string) (string, error) {
+	port, err := requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "HOST_PORT"))
+	if err != nil {
+		return "", err
+	}
+	username, err := requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "USER"))
+	if err != nil {
+		return "", err
+	}
+	password, err := requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "PASSWORD"))
+	if err != nil {
+		return "", err
+	}
+	if _, err := requireRuntimeValue(values, rabbitmqTLSCAKey(instance)); err != nil {
+		return "", err
+	}
+	u := &url.URL{
+		Scheme: "amqps",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(loopbackHost, port),
+		Path:   "/",
 	}
 	return u.String(), nil
 }

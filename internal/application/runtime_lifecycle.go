@@ -50,6 +50,7 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		service := runtimeServiceName("rabbitmq", instance)
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqAccessService(instance) + "-1"},
 			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
 		)
 	}

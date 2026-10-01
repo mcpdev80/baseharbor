@@ -267,6 +267,7 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	for _, instance := range rabbitInstances {
 		writeRabbitMQComposeService(&b, instance)
+		b.WriteString(rabbitmqGatewayCompose(instance))
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
@@ -296,7 +297,6 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("rabbitmq", instance)
 	userKey := rabbitmqRuntimeKey(instance, "USER")
 	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
-	portKey := rabbitmqRuntimeKey(instance, "HOST_PORT")
 	fmt.Fprintf(b, `  %s:
     image: docker.io/library/rabbitmq:4.3.6-management-alpine
     restart: unless-stopped
@@ -308,8 +308,6 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
     environment:
       RABBITMQ_DEFAULT_USER: ${%s}
       RABBITMQ_DEFAULT_PASS: ${%s}
-    ports:
-      - "127.0.0.1:${%s}:5672"
     volumes:
       - %s-data:/var/lib/rabbitmq
     healthcheck:
@@ -319,9 +317,8 @@ func writeRabbitMQComposeService(b *strings.Builder, instance string) {
       retries: 12
       start_period: 10s
 
-`, service, userKey, passwordKey, portKey, service)
+`, service, userKey, passwordKey, service)
 }
-
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
@@ -681,7 +678,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
-		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT"} {
+		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := rabbitmqRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
@@ -841,6 +838,10 @@ func valkeyRuntimeKey(instance, suffix string) string {
 
 func rabbitmqRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("RABBITMQ", instance, suffix)
+}
+
+func rabbitmqContainerHostKey(instance string) string {
+	return rabbitmqRuntimeKey(instance, "CONTAINER_HOST")
 }
 
 func s3RuntimeKey(bucket, suffix string) string {
