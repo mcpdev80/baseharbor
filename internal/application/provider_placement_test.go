@@ -129,7 +129,6 @@ func TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt(t *te
 	}
 }
 
-
 func TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
