@@ -1,6 +1,7 @@
 package development
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -166,5 +167,24 @@ func TestBuildPlanForWorkspaceCarriesStableSourceIdentity(t *testing.T) {
 	}
 	if plan.Sources[1].Component != "frontend" || plan.Sources[1].Identity != "https://git.example/frontend.git" {
 		t.Fatalf("frontend source identity lost: %#v", plan.Sources[1])
+	}
+}
+
+
+func TestLoadSourceModelClassifiesUninitializedWorkspace(t *testing.T) {
+	root := t.TempDir()
+	manifest := filepath.Join(root, "baseharbor.yaml")
+	if err := os.WriteFile(manifest, []byte("version: 1\napp:\n  name: demo\n  environment: dev\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, path, err := LoadSourceModel(manifest)
+	if err == nil {
+		t.Fatal("expected missing source model to fail")
+	}
+	if !errors.Is(err, ErrWorkspaceModelMissing) {
+		t.Fatalf("error = %T %v, want ErrWorkspaceModelMissing", err, err)
+	}
+	if filepath.Base(path) != "sources.yaml" {
+		t.Fatalf("source model path = %q", path)
 	}
 }

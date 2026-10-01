@@ -13,6 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func TestInitDoesNotCreateLegacyGlobalConfig(t *testing.T) {
@@ -163,5 +165,20 @@ func TestUnknownCommandSuggestsNearestMatch(t *testing.T) {
 	}
 	if !strings.Contains(usage.Hint, "status") {
 		t.Fatalf("expected status suggestion, got %q", usage.Hint)
+	}
+}
+
+
+func TestClassifyMachineCLIErrorWorkspaceNotInitialized(t *testing.T) {
+	err := classifyMachineCLIError(development.ErrWorkspaceModelMissing)
+	var machineErr *machine.Error
+	if !errors.As(err, &machineErr) {
+		t.Fatalf("expected machine error, got %T: %v", err, err)
+	}
+	if machineErr.Code != machine.ErrorSourceMissing || machineErr.CauseCode != "workspace_not_initialized" {
+		t.Fatalf("unexpected machine error: %#v", machineErr)
+	}
+	if !strings.Contains(machineErr.Next, "baha app workspace init") {
+		t.Fatalf("next action is not workspace init: %q", machineErr.Next)
 	}
 }
