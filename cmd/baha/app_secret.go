@@ -228,11 +228,18 @@ func readSecretSetValueInteractive(ctx context.Context, args []string, stdin io.
 }
 
 func readApplicationSecretFromTerminal(input io.Reader, out io.Writer, key string) ([]byte, error) {
+	return readApplicationSecretFromTerminalBuffered(input, nil, out, key)
+}
+
+func readApplicationSecretFromTerminalBuffered(input io.Reader, reader *bufio.Reader, out io.Writer, key string) ([]byte, error) {
 	file, ok := input.(*os.File)
 	if !ok {
 		return nil, errors.New("secure application secret entry requires a terminal")
 	}
-	value, err := readHiddenTerminalLine(file, out, key+" value: ")
+	if reader == nil {
+		reader = bufio.NewReader(file)
+	}
+	value, err := readHiddenTerminalLineBuffered(file, reader, out, key+" value: ")
 	if err != nil {
 		return nil, err
 	}
