@@ -176,7 +176,7 @@ var (
 		Services:        []ServiceKind{ServiceMessaging},
 		Capabilities:    []SpecificationID{MessagingQueueV1.ID, MessagingPubSubV1.ID, MessagingStreamV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
-		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 	}
 	MongoDBIntegration = IntegrationDescriptor{
 		ID: "baseharbor/mongodb", Version: "0.1.0",
@@ -184,7 +184,7 @@ var (
 		Services:        []ServiceKind{ServiceDocumentDatabase},
 		Capabilities:    []SpecificationID{DocumentDatabaseV1.ID},
 		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
-		Interfaces:      []ProviderInterface{{Name: "document-database", Class: InterfaceApplication, Protocol: "mongodb", Intrinsic: true}},
+		Interfaces:      []ProviderInterface{{Name: "document-database", Class: InterfaceApplication, Protocol: "mongodb", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
