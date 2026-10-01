@@ -301,7 +301,7 @@ func (e *repositoryWorkloadExecution) withFailureDiagnostic(ctx context.Context,
 }
 
 func sanitizeWorkloadDiagnostic(logs string, environment map[string]string) string {
-	logs = strings.ToValid(logs, "�")
+	logs = strings.ToValidUTF8(logs, "�")
 	for _, value := range environment {
 		if strings.TrimSpace(value) != "" && len(value) >= 6 {
 			logs = strings.ReplaceAll(logs, value, "<redacted>")
