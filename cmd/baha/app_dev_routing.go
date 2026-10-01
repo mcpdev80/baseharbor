@@ -431,7 +431,7 @@ func (e *applicationApplyExecution) addDevelopmentExposureRoutes(_ context.Conte
 			plan.appRoutes = append(plan.appRoutes, devgateway.Route{
 				Key:        plan.appOwner + "/exposure/" + route.Name,
 				Host:       host,
-				Upstream:   fmt.Sprintf("%s://baseharbor-internal-exposure-%s:%d", upstreamScheme, route.Name, containerPort),
+				Upstream:   fmt.Sprintf("%s://%s:%d", upstreamScheme, devaccess.ProviderAlias(state.Project, route.Name), containerPort),
 				Network:    state.Network,
 				TrustFile:  trustFile,
 				ServerName: serverName,
