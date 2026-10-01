@@ -90,6 +90,58 @@ jobs:
           BASEHARBOR_POSTGRES_BACKUP_INTEGRATION: "1"
         run: go test ./internal/application -run '^TestPostgresBackupDisasterRecovery$' -count=1 -v
 
+      - name: Shared PostgreSQL formatting
+        if: inputs.gate == 'shared-postgres'
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            internal/application/shared_backends.go
+            internal/application/shared_backends_test.go
+            internal/application/shared_postgres_integration_test.go
+            internal/application/postgres_backup.go
+            internal/application/backend_tls.go
+            internal/application/runtime_postgres.go
+            internal/application/runtime_lifecycle.go
+            internal/application/runtime_contract.go
+            internal/application/workload.go
+            internal/application/provider_placement.go
+            internal/application/provider_placement_test.go
+            internal/application/provider_registry_test.go
+            internal/capability/reference.go
+            cmd/baha/app_apply.go
+            cmd/baha/app_apply_lifecycle.go
+            cmd/baha/app_doctor_collect.go
+            cmd/baha/app_status_collect.go
+          )
+          bad="$(gofmt -l "${files[@]}")"
+          test -z "$bad" || { echo "gofmt required:" >&2; echo "$bad" >&2; exit 1; }
+
+      - name: Shared Valkey formatting
+        if: inputs.gate == 'shared-valkey'
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            internal/application/shared_backends.go
+            internal/application/shared_backends_test.go
+            internal/application/shared_valkey_integration_test.go
+            internal/application/runtime_postgres.go
+            internal/application/runtime_lifecycle.go
+            internal/application/runtime_contract.go
+            internal/application/workload.go
+            internal/application/provider_placement.go
+            internal/application/provider_placement_test.go
+            internal/application/provider_registry_test.go
+            internal/capability/reference.go
+            cmd/baha/app_apply.go
+            cmd/baha/app_apply_lifecycle.go
+            cmd/baha/app_doctor_collect.go
+            cmd/baha/app_status_collect.go
+          )
+          bad="$(gofmt -l "${files[@]}")"
+          test -z "$bad" || { echo "gofmt required:" >&2; echo "$bad" >&2; exit 1; }
+
       - name: Shared PostgreSQL focused checks
         if: inputs.gate == 'shared-postgres'
         shell: bash
