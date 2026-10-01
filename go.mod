@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/rabbitmq/amqp091-go v1.15.0
+	go.mongodb.org/mongo-driver/v2 v2.9.1
 	github.com/swaggest/swgui v1.8.5
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sys v0.47.0
