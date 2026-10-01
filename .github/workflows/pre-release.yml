@@ -418,6 +418,58 @@ jobs:
           cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
 
+      - name: Generate immutable release approval
+        id: approval
+        if: >-
+          steps.manifest.outcome == 'success' &&
+          needs.source.result == 'success' &&
+          needs.runtime_candidate.result == 'success' &&
+          needs.static_gates.result == 'success' &&
+          needs.runtime_gates.result == 'success'
+        shell: bash
+        env:
+          TAG: ${{ needs.source.outputs.tag }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_SHA: ${{ needs.source.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pre-release-approval"
+          mkdir -p "$out"
+          jq -n \
+            --arg schema "baseharbor.pre-release.approval/v1" \
+            --arg tag "$TAG" \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg demo_sha "$DEMO_SHA" \
+            --arg workflow "pre-release.yml" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg result "success" \
+            --argjson gate_count 36 \
+            '{
+              schema: $schema,
+              tag: $tag,
+              candidate_sha: $candidate_sha,
+              tested_sha: $candidate_sha,
+              demo_sha: $demo_sha,
+              workflow: $workflow,
+              workflow_run_id: ($run_id | tonumber),
+              workflow_run_attempt: ($run_attempt | tonumber),
+              gate_evidence_schema: "baseharbor.pre-release.gate-evidence/v1",
+              gate_count: $gate_count,
+              result: $result
+            }' > "$out/release-approved.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
+
+      - name: Upload immutable release approval
+        if: steps.approval.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-approval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-approval
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Generate final pre-release evidence
         if: always()
         shell: bash
