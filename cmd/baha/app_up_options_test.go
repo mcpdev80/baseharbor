@@ -50,14 +50,13 @@ func TestAssumeYesContext(t *testing.T) {
 }
 
 func TestAssumeYesDoesNotBootstrapMissingOperatorAuth(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := configureTestTarget(t)
 	t.Setenv("BASEHARBOR_OPERATOR_OIDC_ISSUER", "")
 	t.Setenv("BASEHARBOR_OPERATOR_OIDC_CLIENT_ID", "")
 
 	ctx := operatorauth.WithEnforcement(context.Background())
 	ctx = withAssumeYes(ctx, true)
-	_, err := resolveOperatorAuthBoundaryConfig(ctx, "missing-target", "test")
+	_, err := resolveOperatorAuthBoundaryConfig(ctx, target.Name, "test")
 	if !errors.Is(err, operatorauth.ErrConfigurationRequired) {
 		t.Fatalf("error = %v, want ErrConfigurationRequired", err)
 	}
