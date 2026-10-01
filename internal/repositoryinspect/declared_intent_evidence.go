@@ -19,7 +19,7 @@ var declaredIntentEvidenceProfiles = map[string]DeclaredIntentEvidenceProfile{
 	"database.key-value": {
 		Environment: []string{"VALKEY_URL", "VALKEY_CA_FILE"},
 		Tokens: []string{
-			"github.com/redis/go-redis", "quarkus-redis-client", "import redis", ""redis"",
+			"github.com/redis/go-redis", "quarkus-redis-client", "import redis", "\"redis\"",
 		},
 	},
 	"database.document": {
