@@ -247,13 +247,14 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	sqlInstances := SQLInstanceNames(m)
 	cacheInstances := ValkeyInstanceNames(m)
 	rabbitInstances := RabbitMQInstanceNames(m)
+	mongoInstances := DocumentDatabaseInstanceNames(m)
 	if UsesSharedPostgreSQL(m) {
 		sqlInstances = nil
 	}
 	if UsesSharedValkey(m) {
 		cacheInstances = nil
 	}
-	if len(sqlInstances) == 0 && len(cacheInstances) == 0 && len(rabbitInstances) == 0 {
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 && len(rabbitInstances) == 0 && len(mongoInstances) == 0 {
 		return "services: {}\n", nil
 	}
 	var b strings.Builder
@@ -268,6 +269,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	for _, instance := range rabbitInstances {
 		writeRabbitMQComposeService(&b, instance)
 		b.WriteString(rabbitmqGatewayCompose(instance))
+	}
+	for _, instance := range mongoInstances {
+		writeMongoDBComposeService(&b, instance)
+		b.WriteString(mongodbGatewayCompose(instance))
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
@@ -286,6 +291,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	for _, instance := range rabbitInstances {
 		service := runtimeServiceName("rabbitmq", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+	}
+	for _, instance := range mongoInstances {
+		service := runtimeServiceName("mongodb", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
@@ -597,6 +606,9 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
+	if err := ensureMongoDBRuntimeValues(values, m, excluded); err != nil {
+		return err
+	}
 	if m.Services.SQLManagementUI {
 		if values[PostgresUIEmailEnv] == "" {
 			values[PostgresUIEmailEnv] = "baseharbor@example.com"
@@ -685,6 +697,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
+	appendMongoDBRuntimeEnv(&b, m, values)
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
@@ -775,6 +788,9 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
+	}
+	if err := validateMongoDBRuntimeValues(values, m); err != nil {
+		return err
 	}
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
