@@ -362,7 +362,7 @@ func parseCreateArgs(args []string) (createManifestOptions, error) {
 		if *i+1 >= len(args) || strings.TrimSpace(args[*i+1]) == "" {
 			return "", usageError(option+" requires a name", "Example: "+example)
 		}
-		*i++
+		*i = *i + 1
 		return args[*i], nil
 	}
 	for i := 0; i < len(args); i++ {
@@ -534,6 +534,34 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, "key-value")
 		} else {
 			names = append(names, fmt.Sprintf("key-value(%d)", count))
+		}
+	}
+	if count := len(application.DocumentDatabaseInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "document-database")
+		} else {
+			names = append(names, fmt.Sprintf("document-database(%d)", count))
+		}
+	}
+	if count := len(application.MessagingQueueInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-queue")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-queue(%d)", count))
+		}
+	}
+	if count := len(application.MessagingPubSubInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-pubsub")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-pubsub(%d)", count))
+		}
+	}
+	if count := len(application.MessagingStreamInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-stream")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-stream(%d)", count))
 		}
 	}
 	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {
