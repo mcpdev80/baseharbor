@@ -293,8 +293,16 @@ func (e *repositoryWorkloadExecution) withFailureDiagnostic(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("%w; runtime diagnostic capture failed: %v", cause, err)
 	}
+	logs = sanitizeWorkloadDiagnostic(logs, e.environment)
+	if logs == "" {
+		return cause
+	}
+	return fmt.Errorf("%w; runtime output:\n%s", cause, logs)
+}
+
+func sanitizeWorkloadDiagnostic(logs string, environment map[string]string) string {
 	logs = strings.ToValid(logs, "�")
-	for _, value := range e.environment {
+	for _, value := range environment {
 		if strings.TrimSpace(value) != "" && len(value) >= 6 {
 			logs = strings.ReplaceAll(logs, value, "<redacted>")
 		}
@@ -304,10 +312,7 @@ func (e *repositoryWorkloadExecution) withFailureDiagnostic(ctx context.Context,
 		logs = logs[len(logs)-8192:]
 		logs = "[truncated]\n" + logs
 	}
-	if logs == "" {
-		return cause
-	}
-	return fmt.Errorf("%w; runtime output:\n%s", cause, logs)
+	return logs
 }
 
 func (e *repositoryWorkloadExecution) invalidateFailedBuildCandidate() error {
