@@ -55,6 +55,9 @@ func TestRabbitMQRuntimeSemanticAcceptanceInCI(t *testing.T) {
 		t.Fatalf("start RabbitMQ runtime: %v", err)
 	}
 	defer func() {
+		if t.Failed() && os.Getenv("BASEHARBOR_RABBITMQ_KEEP_ON_FAILURE") == "1" {
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		if err := runtime.DestroyProject(cleanupCtx, files.Project, files.Compose, files.Env); err != nil {
