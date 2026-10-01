@@ -40,10 +40,14 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 	if err != nil {
 		return "", err
 	}
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: m.Name,
-		Environment: m.Environment,
+	if existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+		return "", err
+	} else if found {
+		return "", fmt.Errorf("%w: %s/%s/%s [%s]", application.ErrExists, existing.Identity.Target, existing.Identity.Application, existing.Identity.Environment, existing.Identity.DeploymentID)
+	}
+	id, err := deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, m.Name, m.Environment)
+	if err != nil {
+		return "", err
 	}
 	root, err := deployment.DeploymentRoot(id)
 	if err != nil {
@@ -229,9 +233,10 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 		sql = true
 	}
 	m := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        name,
-		Environment: environment,
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          name,
+		Environment:   environment,
 		Services: application.Services{
 			SQL:           sql || len(sqlInstances) > 0,
 			Cache:         cache || len(cacheInstances) > 0,
@@ -399,6 +404,13 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, "cache")
 		} else {
 			names = append(names, fmt.Sprintf("cache(%d)", count))
+		}
+	}
+	if count := len(application.KeyValueInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "key-value")
+		} else {
+			names = append(names, fmt.Sprintf("key-value(%d)", count))
 		}
 	}
 	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {

@@ -8,7 +8,7 @@ import "fmt"
 // registry layers describe portable intent, placement and ownership.
 var (
 	PostgreSQL    = Provider{Kind: ProviderPostgreSQL, Capabilities: []Kind{SQL}}
-	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue}}
+	Valkey        = Provider{Kind: ProviderValkey, Capabilities: []Kind{KeyValue, DurableKeyValue}}
 	OpenBao       = Provider{Kind: ProviderOpenBao, Capabilities: []Kind{Secrets}}
 	Caddy         = Provider{Kind: ProviderCaddy, Capabilities: []Kind{ExposureHTTP}}
 	SeaweedFS     = Provider{Kind: ProviderSeaweedFS, Capabilities: []Kind{ObjectStorageS3}}
@@ -19,6 +19,8 @@ var (
 	Tempo         = Provider{Kind: ProviderTempo, Capabilities: []Kind{Traces}}
 	Keycloak      = Provider{Kind: ProviderKeycloak, Capabilities: []Kind{Identity}}
 	ExternalOIDC  = Provider{Kind: ProviderExternalOIDC, Capabilities: []Kind{Identity}}
+	RabbitMQ      = Provider{Kind: ProviderRabbitMQ, Capabilities: []Kind{MessagingQueue, MessagingPubSub, MessagingStream}}
+	MongoDB       = Provider{Kind: ProviderMongoDB, Capabilities: []Kind{DocumentDatabase}}
 )
 
 var (
@@ -38,8 +40,8 @@ var (
 	ValkeyIntegration = IntegrationDescriptor{
 		ID: "baseharbor/valkey", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: Valkey,
-		Services:        []ServiceKind{ServiceCache},
-		Capabilities:    []SpecificationID{KeyValueV1.ID},
+		Services:        []ServiceKind{ServiceCache, ServiceKeyValue},
+		Capabilities:    []SpecificationID{KeyValueV1.ID, DurableKeyValueV1.ID},
 		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
 		Interfaces:      []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
@@ -168,6 +170,22 @@ var (
 		SupportedScopes: []ProviderScope{ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "oidc", Class: InterfaceApplication, Protocol: "oidc", Intrinsic: true}, {Name: "login-account", Class: InterfaceUserFacing, Protocol: "https", Intrinsic: true}},
 	}
+	RabbitMQIntegration = IntegrationDescriptor{
+		ID: "baseharbor/rabbitmq", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: RabbitMQ,
+		Services:        []ServiceKind{ServiceMessaging},
+		Capabilities:    []SpecificationID{MessagingQueueV1.ID, MessagingPubSubV1.ID, MessagingStreamV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
+		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
+	}
+	MongoDBIntegration = IntegrationDescriptor{
+		ID: "baseharbor/mongodb", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: MongoDB,
+		Services:        []ServiceKind{ServiceDocumentDatabase},
+		Capabilities:    []SpecificationID{DocumentDatabaseV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
+		Interfaces:      []ProviderInterface{{Name: "document-database", Class: InterfaceApplication, Protocol: "mongodb", Intrinsic: true}},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -203,6 +221,10 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return KeycloakIntegration, nil
 	case ProviderExternalOIDC:
 		return ExternalOIDCIntegration, nil
+	case ProviderRabbitMQ:
+		return RabbitMQIntegration, nil
+	case ProviderMongoDB:
+		return MongoDBIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}

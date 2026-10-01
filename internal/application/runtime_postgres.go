@@ -87,6 +87,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := ensureRuntimeEnv(files.Env, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := ensureMongoDBInitFiles(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -123,14 +126,71 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 	return EnsureRuntime(ctx, issuer, store, m)
 }
 
-func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+type BackendProbeKind string
+
+const (
+	BackendProbeSQLSelectOne      BackendProbeKind = "sql.select-one"
+	BackendProbeCachePing         BackendProbeKind = "cache.ping"
+	BackendProbeDurableKeyValueRW BackendProbeKind = "database.key-value.write-read"
+)
+
+type BackendProbe struct {
+	Kind     BackendProbeKind
+	Instance string
+	Database string
+}
+
+type BackendProbeExecutor interface {
+	ProbeBackend(context.Context, BackendProbe) (string, error)
+}
+
+type RuntimeBackendProbeExecutor struct {
+	runtime bhruntime.RuntimeProvider
+	files   RuntimeFiles
+}
+
+func NewRuntimeBackendProbeExecutor(runtime bhruntime.RuntimeProvider, files RuntimeFiles) RuntimeBackendProbeExecutor {
+	return RuntimeBackendProbeExecutor{runtime: runtime, files: files}
+}
+
+func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe BackendProbe) (string, error) {
+	instance := strings.TrimSpace(probe.Instance)
+	if instance == "" {
+		instance = defaultServiceInstance
+	}
+	switch probe.Kind {
+	case BackendProbeSQLSelectOne:
+		service := runtimeServiceName("postgres", instance)
+		database := strings.TrimSpace(probe.Database)
+		if database == "" {
+			return "", errors.New("postgres verification database is required")
+		}
+		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), database)
+		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
+	case BackendProbeCachePing:
+		service := runtimeServiceName("valkey", instance)
+		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
+		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
+	case BackendProbeDurableKeyValueRW:
+		service := runtimeServiceName("valkey", instance)
+		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 del __baseharbor_verify__ >/dev/null`, valkeyAccessService(instance), valkeyAccessService(instance), valkeyAccessService(instance))
+		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
+	default:
+		return "", fmt.Errorf("unsupported backend probe %q", probe.Kind)
+	}
+}
+
+func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
 	if UsesSharedPostgreSQL(m) {
 		return nil
 	}
+	if executor == nil {
+		return errors.New("postgres verification executor is required")
+	}
 	for _, instance := range SQLInstanceNames(m) {
-		service := runtimeServiceName("postgres", instance)
-		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), postgresDatabaseName(m, instance))
-		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
+		out, err := executor.ProbeBackend(ctx, BackendProbe{
+			Kind: BackendProbeSQLSelectOne, Instance: instance, Database: postgresDatabaseName(m, instance),
+		})
 		if err != nil {
 			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
 		}
@@ -141,22 +201,39 @@ func VerifyPostgresRuntime(ctx context.Context, compose bhruntime.RuntimeProvide
 	return nil
 }
 
-func VerifyValkeyRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+func VerifyPostgresRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	return VerifyPostgresProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+}
+
+func VerifyValkeyProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
 	if UsesSharedValkey(m) {
 		return nil
 	}
+	if executor == nil {
+		return errors.New("valkey verification executor is required")
+	}
 	for _, instance := range CacheInstanceNames(m) {
-		service := runtimeServiceName("valkey", instance)
-		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
-		out, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "sh", "-ec", command)
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
 		if err != nil {
-			return fmt.Errorf("verify valkey instance %s: %w", instance, err)
+			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
 		}
 		if strings.TrimSpace(out) != "PONG" {
-			return fmt.Errorf("verify valkey instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	for _, instance := range KeyValueInstanceNames(m) {
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "durable" {
+			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
 		}
 	}
 	return nil
+}
+func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
@@ -171,14 +248,16 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		return "services: {}\n", nil
 	}
 	sqlInstances := SQLInstanceNames(m)
-	cacheInstances := CacheInstanceNames(m)
+	cacheInstances := ValkeyInstanceNames(m)
+	rabbitInstances := RabbitMQInstanceNames(m)
+	mongoInstances := DocumentDatabaseInstanceNames(m)
 	if UsesSharedPostgreSQL(m) {
 		sqlInstances = nil
 	}
 	if UsesSharedValkey(m) {
 		cacheInstances = nil
 	}
-	if len(sqlInstances) == 0 && len(cacheInstances) == 0 {
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 && len(rabbitInstances) == 0 && len(mongoInstances) == 0 {
 		return "services: {}\n", nil
 	}
 	var b strings.Builder
@@ -189,6 +268,14 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	for _, instance := range cacheInstances {
 		writeValkeyComposeService(&b, instance)
 		b.WriteString(valkeyGatewayCompose(instance))
+	}
+	for _, instance := range rabbitInstances {
+		writeRabbitMQComposeService(&b, instance)
+		b.WriteString(rabbitmqGatewayCompose(instance))
+	}
+	for _, instance := range mongoInstances {
+		writeMongoDBComposeService(&b, instance)
+		b.WriteString(mongodbGatewayCompose(instance))
 	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		writePostgresUIComposeService(&b, m)
@@ -205,11 +292,47 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		service := runtimeServiceName("valkey", instance)
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
+	for _, instance := range rabbitInstances {
+		service := runtimeServiceName("rabbitmq", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+	}
+	for _, instance := range mongoInstances {
+		service := runtimeServiceName("mongodb", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
 	return b.String(), nil
 }
 
+func writeRabbitMQComposeService(b *strings.Builder, instance string) {
+	service := runtimeServiceName("rabbitmq", instance)
+	userKey := rabbitmqRuntimeKey(instance, "USER")
+	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+	fmt.Fprintf(b, `  %s:
+    image: docker.io/library/rabbitmq:4.3.6-alpine
+    restart: unless-stopped
+    user: "rabbitmq"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    environment:
+      RABBITMQ_DEFAULT_USER: ${%s}
+      RABBITMQ_DEFAULT_PASS: ${%s}
+    volumes:
+      - %s-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+`, service, userKey, passwordKey, service)
+}
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
@@ -444,7 +567,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			excluded[port] = struct{}{}
 		}
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range ValkeyInstanceNames(m) {
 		passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 		portKey := valkeyRuntimeKey(instance, "HOST_PORT")
 		if values[passwordKey] == "" {
@@ -462,6 +585,32 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			values[portKey] = strconv.Itoa(port)
 			excluded[port] = struct{}{}
 		}
+	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		userKey := rabbitmqRuntimeKey(instance, "USER")
+		passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+		portKey := rabbitmqRuntimeKey(instance, "HOST_PORT")
+		if values[userKey] == "" {
+			values[userKey] = "baseharbor"
+		}
+		if values[passwordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[passwordKey] = password
+		}
+		if values[portKey] == "" {
+			port, err := allocateLoopbackPort(excluded)
+			if err != nil {
+				return err
+			}
+			values[portKey] = strconv.Itoa(port)
+			excluded[port] = struct{}{}
+		}
+	}
+	if err := ensureMongoDBRuntimeValues(values, m, excluded); err != nil {
+		return err
 	}
 	if m.Services.SQLManagementUI {
 		if values[PostgresUIEmailEnv] == "" {
@@ -539,12 +688,19 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range ValkeyInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+			key := rabbitmqRuntimeKey(instance, suffix)
+			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+		}
+	}
+	appendMongoDBRuntimeEnv(&b, m, values)
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
@@ -612,7 +768,7 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 			return err
 		}
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range ValkeyInstanceNames(m) {
 		for _, suffix := range []string{"PASSWORD", "HOST_PORT"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			if values[key] == "" {
@@ -623,6 +779,21 @@ func validateRuntimeValues(values map[string]string, m Manifest) error {
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
+	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT"} {
+			key := rabbitmqRuntimeKey(instance, suffix)
+			if values[key] == "" {
+				return fmt.Errorf("application runtime environment is missing %s", key)
+			}
+		}
+		portKey := rabbitmqRuntimeKey(instance, "HOST_PORT")
+		if err := validatePortValue(values[portKey], portKey); err != nil {
+			return err
+		}
+	}
+	if err := validateMongoDBRuntimeValues(values, m); err != nil {
+		return err
 	}
 	if m.Services.SQLManagementUI {
 		for _, key := range []string{PostgresUIHostPortEnv, PostgresUIEmailEnv, PostgresUIPasswordEnv} {
@@ -684,6 +855,14 @@ func postgresRuntimeKey(instance, suffix string) string {
 
 func valkeyRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("VALKEY", instance, suffix)
+}
+
+func rabbitmqRuntimeKey(instance, suffix string) string {
+	return runtimeInstanceKey("RABBITMQ", instance, suffix)
+}
+
+func rabbitmqContainerHostKey(instance string) string {
+	return rabbitmqRuntimeKey(instance, "CONTAINER_HOST")
 }
 
 func s3RuntimeKey(bucket, suffix string) string {

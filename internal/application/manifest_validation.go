@@ -12,6 +12,11 @@ func (m Manifest) Validate() error {
 	if m.Version != CurrentVersion {
 		return fmt.Errorf("unsupported manifest version %d (expected %d)", m.Version, CurrentVersion)
 	}
+	if m.ApplicationID != "" {
+		if err := ValidateApplicationID(m.ApplicationID); err != nil {
+			return err
+		}
+	}
 	if err := validateSlug("application name", m.Name); err != nil {
 		return err
 	}
@@ -20,8 +25,13 @@ func (m Manifest) Validate() error {
 	}
 	sql := SQLInstanceNames(m)
 	cache := CacheInstanceNames(m)
+	keyValue := KeyValueInstanceNames(m)
+	documentDatabase := DocumentDatabaseInstanceNames(m)
 	objectStorage := ObjectStorageBucketNames(m)
-	if len(sql) == 0 && len(cache) == 0 && len(objectStorage) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	messagingQueue := MessagingQueueInstanceNames(m)
+	messagingPubSub := MessagingPubSubInstanceNames(m)
+	messagingStream := MessagingStreamInstanceNames(m)
+	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(documentDatabase) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range sql {
@@ -34,9 +44,42 @@ func (m Manifest) Validate() error {
 			return err
 		}
 	}
+	for _, name := range keyValue {
+		if err := validateSlug("key-value database instance name", name); err != nil {
+			return err
+		}
+	}
+	for _, name := range documentDatabase {
+		if err := validateSlug("document database instance name", name); err != nil {
+			return err
+		}
+	}
+	cacheNames := make(map[string]struct{}, len(cache))
+	for _, name := range cache {
+		cacheNames[name] = struct{}{}
+	}
+	for _, name := range keyValue {
+		if _, exists := cacheNames[name]; exists {
+			return fmt.Errorf("service instance %q cannot be both cache.key-value and database.key-value", name)
+		}
+	}
 	for _, name := range objectStorage {
 		if err := validateSlug("object-storage bucket name", name); err != nil {
 			return err
+		}
+	}
+	for _, item := range []struct {
+		label string
+		names []string
+	}{
+		{label: "messaging queue instance name", names: messagingQueue},
+		{label: "messaging pubsub instance name", names: messagingPubSub},
+		{label: "messaging stream instance name", names: messagingStream},
+	} {
+		for _, name := range item.names {
+			if err := validateSlug(item.label, name); err != nil {
+				return err
+			}
 		}
 	}
 	if err := validateManagementUIPreferences(m.Services); err != nil {
@@ -385,6 +428,7 @@ func validateManagementUIPreferences(services Services) error {
 	}{
 		{"sql", services.SQL || len(services.SQLInstances) > 0, services.SQLManagementUI},
 		{"cache", services.Cache || len(services.CacheInstances) > 0, services.CacheManagementUI},
+		{"key_value", services.KeyValue || len(services.KeyValueInstances) > 0, services.KeyValueManagementUI},
 		{"object_storage", services.ObjectStorage || len(services.ObjectStorageBuckets) > 0, services.ObjectStorageManagementUI},
 		{"secrets", services.Secrets, services.SecretsManagementUI},
 		{"identity", services.Identity, services.IdentityManagementUI},

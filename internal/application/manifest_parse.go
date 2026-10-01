@@ -60,6 +60,12 @@ func ParseYAML(input string) (Manifest, error) {
 	if err := scanner.Err(); err != nil {
 		return Manifest{}, err
 	}
+	if parser.manifest.ApplicationID == "" {
+		return Manifest{}, fmt.Errorf("application id is required")
+	}
+	if err := ValidateApplicationID(parser.manifest.ApplicationID); err != nil {
+		return Manifest{}, err
+	}
 	if err := parser.manifest.Validate(); err != nil {
 		return Manifest{}, err
 	}
@@ -189,6 +195,8 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 		return fmt.Errorf("line %d: expected key: value", lineNo)
 	}
 	switch key {
+	case "id":
+		p.manifest.ApplicationID = strings.TrimSpace(value)
 	case "name":
 		p.manifest.Name = strings.TrimSpace(value)
 	case "environment":
@@ -202,7 +210,7 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
 	rawService := strings.TrimSuffix(trim, ":")
 	switch rawService {
-	case "sql", "cache", "object_storage", "secrets", "identity", "observability":
+	case "sql", "cache", "key_value", "document_database", "messaging_queue", "messaging_pubsub", "messaging_stream", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
 	default:
 		return fmt.Errorf("line %d: unsupported service %q", lineNo, rawService)
@@ -303,7 +311,7 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 }
 
 func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
-	if trim == "instances:" && (p.service == "sql" || p.service == "cache") {
+	if trim == "instances:" && (p.service == "sql" || p.service == "cache" || p.service == "key_value" || p.service == "document_database" || p.service == "messaging_queue" || p.service == "messaging_pubsub" || p.service == "messaging_stream") {
 		p.serviceField = "instances"
 		return nil
 	}
@@ -326,6 +334,8 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 			p.manifest.Services.SQLManagementUI = enabled
 		case "cache":
 			p.manifest.Services.CacheManagementUI = enabled
+		case "key_value":
+			p.manifest.Services.KeyValueManagementUI = enabled
 		case "object_storage":
 			p.manifest.Services.ObjectStorageManagementUI = enabled
 		case "secrets":
@@ -342,6 +352,16 @@ func (p *manifestYAMLParser) parseServiceField(lineNo int, trim string) error {
 		p.manifest.Services.SQL = enabled
 	case "cache":
 		p.manifest.Services.Cache = enabled
+	case "key_value":
+		p.manifest.Services.KeyValue = enabled
+	case "document_database":
+		p.manifest.Services.DocumentDatabase = enabled
+	case "messaging_queue":
+		p.manifest.Services.MessagingQueue = enabled
+	case "messaging_pubsub":
+		p.manifest.Services.MessagingPubSub = enabled
+	case "messaging_stream":
+		p.manifest.Services.MessagingStream = enabled
 	case "object_storage":
 		p.manifest.Services.ObjectStorage = enabled
 	case "secrets":
@@ -507,7 +527,7 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 	if p.section != "services" || (p.serviceField != "instances" && p.serviceField != "buckets") {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
-	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" {
+	if p.serviceField == "instances" && p.service != "sql" && p.service != "cache" && p.service != "key_value" && p.service != "document_database" && p.service != "messaging_queue" && p.service != "messaging_pubsub" && p.service != "messaging_stream" {
 		return fmt.Errorf("line %d: invalid manifest structure", lineNo)
 	}
 	if p.serviceField == "buckets" && p.service != "object_storage" {
@@ -536,6 +556,36 @@ func (p *manifestYAMLParser) parseServiceInstance(lineNo int, trim string) error
 		}
 		p.manifest.Services.CacheInstances[name] = ServiceInstance{}
 		p.manifest.Services.Cache = true
+	case "key_value":
+		if p.manifest.Services.KeyValueInstances == nil {
+			p.manifest.Services.KeyValueInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.KeyValueInstances[name] = ServiceInstance{}
+		p.manifest.Services.KeyValue = true
+	case "document_database":
+		if p.manifest.Services.DocumentDatabaseInstances == nil {
+			p.manifest.Services.DocumentDatabaseInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.DocumentDatabaseInstances[name] = ServiceInstance{}
+		p.manifest.Services.DocumentDatabase = true
+	case "messaging_queue":
+		if p.manifest.Services.MessagingQueueInstances == nil {
+			p.manifest.Services.MessagingQueueInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.MessagingQueueInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingQueue = true
+	case "messaging_pubsub":
+		if p.manifest.Services.MessagingPubSubInstances == nil {
+			p.manifest.Services.MessagingPubSubInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.MessagingPubSubInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingPubSub = true
+	case "messaging_stream":
+		if p.manifest.Services.MessagingStreamInstances == nil {
+			p.manifest.Services.MessagingStreamInstances = map[string]ServiceInstance{}
+		}
+		p.manifest.Services.MessagingStreamInstances[name] = ServiceInstance{}
+		p.manifest.Services.MessagingStream = true
 	case "object_storage":
 		if p.manifest.Services.ObjectStorageBuckets == nil {
 			p.manifest.Services.ObjectStorageBuckets = map[string]ServiceInstance{}

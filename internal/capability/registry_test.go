@@ -7,6 +7,11 @@ import (
 	"testing"
 )
 
+const (
+	testAlphaApplicationID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	testBetaApplicationID  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+)
+
 func TestRegistryAdoptsLegacyProviderDistributionMetadata(t *testing.T) {
 	registry := NewRegistry()
 	legacy := ProviderInstance{
@@ -64,7 +69,7 @@ func TestRegistryReusesOneSharedProviderAcrossApplications(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := registry.Bind(resource, shared.ID); err != nil {
+		if err := registry.Bind(resource, map[string]string{"alpha": testAlphaApplicationID, "beta": testBetaApplicationID}[app], shared.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -85,12 +90,12 @@ func TestRegistryRejectsDuplicateSharedProvider(t *testing.T) {
 
 func TestRegistryApplicationProviderCannotCrossApplicationBoundary(t *testing.T) {
 	registry := NewRegistry()
-	instance := ProviderInstance{ID: "postgresql/alpha/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplication: "alpha"}
+	instance := ProviderInstance{ID: "postgresql/application/" + testAlphaApplicationID + "/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplicationID: testAlphaApplicationID, OwnerApplication: "alpha"}
 	if err := registry.Register(instance); err != nil {
 		t.Fatal(err)
 	}
 	resource, _ := Resolve("beta", Requirement{Kind: SQL, Name: "default"}, PostgreSQL)
-	if err := registry.Bind(resource, instance.ID); err == nil {
+	if err := registry.Bind(resource, testBetaApplicationID, instance.ID); err == nil {
 		t.Fatal("cross-application binding accepted")
 	}
 }
@@ -102,10 +107,10 @@ func TestRegistryExternalProviderIsBindableButNeverLifecycleOwned(t *testing.T) 
 		t.Fatal(err)
 	}
 	resource, _ := Resolve("alpha", Requirement{Kind: SQL, Name: "primary"}, PostgreSQL)
-	if err := registry.Bind(resource, instance.ID); err != nil {
+	if err := registry.Bind(resource, testAlphaApplicationID, instance.ID); err != nil {
 		t.Fatal(err)
 	}
-	actions, err := registry.ApplicationLifecycle("alpha", LifecycleDestroy)
+	actions, err := registry.ApplicationLifecycle(testAlphaApplicationID, LifecycleDestroy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +121,7 @@ func TestRegistryExternalProviderIsBindableButNeverLifecycleOwned(t *testing.T) 
 
 func TestRegistryLifecycleOwnsOnlyDedicatedManagedProvider(t *testing.T) {
 	registry := NewRegistry()
-	dedicated := ProviderInstance{ID: "postgresql/alpha/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplication: "alpha"}
+	dedicated := ProviderInstance{ID: "postgresql/application/" + testAlphaApplicationID + "/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplicationID: testAlphaApplicationID, OwnerApplication: "alpha"}
 	shared := ProviderInstance{ID: "openbao/control-plane", Provider: OpenBao, Scope: ScopeShared, Ownership: OwnershipBaseHarbor}
 	for _, instance := range []ProviderInstance{dedicated, shared} {
 		if err := registry.Register(instance); err != nil {
@@ -125,13 +130,13 @@ func TestRegistryLifecycleOwnsOnlyDedicatedManagedProvider(t *testing.T) {
 	}
 	sql, _ := Resolve("alpha", Requirement{Kind: SQL, Name: "default"}, PostgreSQL)
 	secrets, _ := Resolve("alpha", Requirement{Kind: Secrets, Name: "default"}, OpenBao)
-	if err := registry.Bind(sql, dedicated.ID); err != nil {
+	if err := registry.Bind(sql, testAlphaApplicationID, dedicated.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Bind(secrets, shared.ID); err != nil {
+	if err := registry.Bind(secrets, testAlphaApplicationID, shared.ID); err != nil {
 		t.Fatal(err)
 	}
-	actions, err := registry.ApplicationLifecycle("alpha", LifecycleBackup)
+	actions, err := registry.ApplicationLifecycle(testAlphaApplicationID, LifecycleBackup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,8 +185,8 @@ func TestRegistryStorePersistsOwnerOnlyValidatedState(t *testing.T) {
 func TestRegistryStoreSerializesConcurrentUpdates(t *testing.T) {
 	store := RegistryStore{Path: filepath.Join(t.TempDir(), "provider-registry.json")}
 	instances := []ProviderInstance{
-		{ID: "postgresql/alpha/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplication: "alpha"},
-		{ID: "postgresql/beta/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplication: "beta"},
+		{ID: "postgresql/application/" + testAlphaApplicationID + "/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplicationID: testAlphaApplicationID, OwnerApplication: "alpha"},
+		{ID: "postgresql/application/" + testBetaApplicationID + "/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplicationID: testBetaApplicationID, OwnerApplication: "beta"},
 	}
 
 	start := make(chan struct{})
@@ -218,7 +223,7 @@ func TestRegistryStoreSerializesConcurrentUpdates(t *testing.T) {
 
 func TestReleaseManagedApplicationPreservesExternalBinding(t *testing.T) {
 	registry := NewRegistry()
-	managed := ProviderInstance{ID: "postgresql/alpha/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplication: "alpha"}
+	managed := ProviderInstance{ID: "postgresql/application/" + testAlphaApplicationID + "/default", Provider: PostgreSQL, Scope: ScopeApplication, Ownership: OwnershipBaseHarbor, OwnerApplicationID: testAlphaApplicationID, OwnerApplication: "alpha"}
 	external := ProviderInstance{ID: "postgresql/customer", Provider: PostgreSQL, Scope: ScopeExternal, Ownership: OwnershipExternal, Reference: "customer-postgres"}
 	for _, instance := range []ProviderInstance{managed, external} {
 		if err := registry.Register(instance); err != nil {
@@ -227,14 +232,14 @@ func TestReleaseManagedApplicationPreservesExternalBinding(t *testing.T) {
 	}
 	managedResource, _ := Resolve("alpha", Requirement{Kind: SQL, Name: "managed"}, PostgreSQL)
 	externalResource, _ := Resolve("alpha", Requirement{Kind: SQL, Name: "external"}, PostgreSQL)
-	if err := registry.Bind(managedResource, managed.ID); err != nil {
+	if err := registry.Bind(managedResource, testAlphaApplicationID, managed.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Bind(externalResource, external.ID); err != nil {
+	if err := registry.Bind(externalResource, testAlphaApplicationID, external.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	registry.ReleaseManagedApplication("alpha")
+	registry.ReleaseManagedApplication(testAlphaApplicationID)
 
 	if _, ok := registry.instance(managed.ID); ok {
 		t.Fatal("managed application provider was retained")
@@ -246,7 +251,7 @@ func TestReleaseManagedApplicationPreservesExternalBinding(t *testing.T) {
 		t.Fatalf("bindings=%#v", registry.Bindings)
 	}
 
-	registry.ReleaseApplication("alpha")
+	registry.ReleaseApplication(testAlphaApplicationID)
 	if len(registry.Bindings) != 0 {
 		t.Fatalf("destroy bindings=%#v", registry.Bindings)
 	}

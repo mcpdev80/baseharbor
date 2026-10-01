@@ -1,0 +1,57 @@
+name: "Loki Runtime Neutrality Targeted"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-loki-neutrality'
+    paths:
+      - '.ci/loki-neutrality-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  loki:
+    name: Core · Loki Runtime Neutrality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/logs/driver.go internal/logs/realization.go internal/capability/lifecycle.go internal/application/capability_model.go cmd/baha/app_logs.go
+          if ! git diff --exit-code -- internal/logs/driver.go internal/logs/realization.go internal/capability/lifecycle.go internal/application/capability_model.go cmd/baha/app_logs.go; then
+            echo "Loki runtime-neutrality changes require gofmt; diff shown above." >&2
+            exit 1
+          fi
+
+      - name: Compile focused packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/logs ./internal/capability ./internal/application ./cmd/baha -run '^$' -count=1
+
+      - name: Run Loki focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/logs ./internal/capability ./internal/application -count=1
+
+      - name: Run affected CLI tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run 'Logs|Capability|Observability' -count=1

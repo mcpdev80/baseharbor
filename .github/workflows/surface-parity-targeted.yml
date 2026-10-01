@@ -1,0 +1,51 @@
+name: "Surface Parity Targeted Gate"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-surface-parity*'
+    paths:
+      - '.ci/surface-parity-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  surface-parity:
+    name: Core · CLI JSON MCP Parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w cmd/baha internal/runtime
+          if ! git diff --exit-code -- cmd/baha internal/runtime; then
+            echo "Surface parity scope requires gofmt; diff shown above." >&2
+            exit 1
+          fi
+
+      - name: Run machine surface parity tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha             -run '^(TestAgentDescribeJSON|TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyTools|TestMachineCLIErrorClassification)$'             -count=1
+
+      - name: Run Core freeze guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/runtime             -run '^(TestPortableCoreRuntimeBoundary|TestRuntimeProviderPackageBoundaries)$'             -count=1

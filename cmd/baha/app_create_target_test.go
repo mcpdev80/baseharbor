@@ -12,25 +12,21 @@ import (
 
 func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.T) {
 	target := configureTestTarget(t)
-	manifest := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        "managed-demo",
-		Environment: "dev",
-		Services: application.Services{
-			SQL: true,
-		},
-	}
+	manifest := application.New("managed-demo", "dev", true, false, false)
 
 	path, err := createTargetManagedApplication(context.Background(), manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: manifest.Name,
-		Environment: manifest.Environment,
+	record, found, err := deployment.FindDeployment(target.Name, manifest.ApplicationID, manifest.Environment)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if !found {
+		t.Fatal("managed application deployment record not found")
+	}
+	id := record.Identity
 	root, err := deployment.DeploymentRoot(id)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +36,7 @@ func TestCreateTargetManagedApplicationRegistersResolvableDeployment(t *testing.
 		t.Fatalf("managed source path = %q, want %q", path, wantPath)
 	}
 
-	record, err := deployment.LoadDeploymentRecord(id)
+	record, err = deployment.LoadDeploymentRecord(id)
 	if err != nil {
 		t.Fatal(err)
 	}

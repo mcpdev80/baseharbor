@@ -1,0 +1,43 @@
+name: "Podman Destroy Targeted"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-podman-destroy'
+    paths:
+      - '.ci/podman-destroy-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  podman-destroy:
+    name: Podman · Destroy Adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/providers/runtime/podman/quadlet_runtime.go internal/providers/runtime/podman/quadlet_resources.go internal/providers/runtime/podman/quadlet_runtime_test.go
+          git diff --exit-code -- internal/providers/runtime/podman/quadlet_runtime.go internal/providers/runtime/podman/quadlet_resources.go internal/providers/runtime/podman/quadlet_runtime_test.go
+      - name: Compile Podman provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/podman -run TestDoesNotExist -count=1
+      - name: Run Quadlet teardown tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/podman -run 'TestQuadletRemoveRuntimeResourceArgs' -count=1
