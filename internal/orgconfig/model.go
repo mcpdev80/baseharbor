@@ -47,7 +47,7 @@ type EnvironmentDefaults struct {
 	Stack     string                     `yaml:"stack,omitempty" json:"stack,omitempty"`
 	Providers map[string]ProviderDefault `yaml:"providers,omitempty" json:"providers,omitempty"`
 	Trust     map[string]Reference       `yaml:"trust,omitempty" json:"trust,omitempty"`
-	Policies  []Reference               `yaml:"policies,omitempty" json:"policies,omitempty"`
+	Policies  []Reference                `yaml:"policies,omitempty" json:"policies,omitempty"`
 }
 
 type Config struct {
@@ -125,10 +125,10 @@ func (c Config) Validate() error {
 	}
 	for label, refs := range map[string]map[string]Reference{
 		"providers": c.Providers,
-		"targets": c.Targets,
-		"stacks": c.Stacks,
-		"trust": c.Trust,
-		"policies": c.Policies,
+		"targets":   c.Targets,
+		"stacks":    c.Stacks,
+		"trust":     c.Trust,
+		"policies":  c.Policies,
 	} {
 		if err := validateReferenceMap(label, refs); err != nil {
 			return err
