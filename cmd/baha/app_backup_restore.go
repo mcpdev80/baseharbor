@@ -378,14 +378,24 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 			}
 			failed = append(failed, fmt.Sprintf("%s=%s", check.Name, detail))
 		}
-		if status.TLS != nil && !status.TLS.Healthy {
+		if status.tlsErr != nil {
+			failed = append(failed, fmt.Sprintf("tls=%v", status.tlsErr))
+		} else if status.TLS != nil && !status.TLS.Healthy {
 			failed = append(failed, fmt.Sprintf("tls=%s", strings.TrimSpace(status.TLS.Detail)))
 		}
-		for _, observation := range status.ServiceTLS {
-			if observation.Healthy {
-				continue
+		if status.serviceTLSErr != nil {
+			failed = append(failed, fmt.Sprintf("service-tls=%v", status.serviceTLSErr))
+		} else {
+			for _, observation := range status.ServiceTLS {
+				if observation.Lifecycle.Health != "critical" && observation.Lifecycle.Health != "unknown" {
+					continue
+				}
+				detail := strings.TrimSpace(observation.Lifecycle.Warning)
+				if detail == "" {
+					detail = observation.Lifecycle.Health
+				}
+				failed = append(failed, fmt.Sprintf("service-tls/%s/%s=%s", observation.Kind, observation.Instance, detail))
 			}
-			failed = append(failed, fmt.Sprintf("service-tls/%s=%s", observation.Service, strings.TrimSpace(observation.Detail)))
 		}
 		if len(failed) == 0 {
 			return errors.New("final restore status verification did not reach READY")
