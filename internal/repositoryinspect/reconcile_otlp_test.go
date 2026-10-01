@@ -11,6 +11,7 @@ func TestReconcileOTLPSignalEvidenceSatisfiesDefaultIntent(t *testing.T) {
 		Version:     application.CurrentVersion,
 		Name:        "demo",
 		Environment: "dev",
+		Workload:    application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
 		Telemetry: application.TelemetryRequirements{
 			OTLP: &application.OTLPRequirement{Signals: []string{"traces"}},
 		},
