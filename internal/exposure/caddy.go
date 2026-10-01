@@ -261,7 +261,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 		probeCtx, probeCancel := context.WithTimeout(verifyCtx, 3*time.Second)
 		status = endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
 			Service: route.Service,
-			Scheme:  route.Protocol,
+			Scheme:  normalizedProviderProtocol(route),
 			Host:    d.state.Host,
 			Port:    route.PublishedPort,
 		}, "127.0.0.1", route.PublishedPort)
@@ -349,7 +349,7 @@ func Inspect(ctx context.Context, compose bhruntime.RuntimeProvider, runtime app
 	for _, route := range state.Routes {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		status := endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
-			Service: route.Service, Scheme: route.Protocol, Host: state.Host, Port: route.PublishedPort,
+			Service: route.Service, Scheme: normalizedProviderProtocol(route), Host: state.Host, Port: route.PublishedPort,
 		}, "127.0.0.1", route.PublishedPort)
 		cancel()
 		statuses = append(statuses, status)
