@@ -61,9 +61,11 @@ type (
 )
 
 const (
-	SQL             = capability.SQL
-	KeyValue        = capability.KeyValue
-	Secrets         = capability.Secrets
+	SQL              = capability.SQL
+	KeyValue         = capability.KeyValue
+	DurableKeyValue  = capability.DurableKeyValue
+	DocumentDatabase = capability.DocumentDatabase
+	Secrets          = capability.Secrets
 	ExposureHTTP    = capability.ExposureHTTP
 	ObjectStorageS3 = capability.ObjectStorageS3
 	TelemetryOTLP   = capability.TelemetryOTLP
@@ -71,6 +73,9 @@ const (
 	Logs            = capability.Logs
 	Traces          = capability.Traces
 	Identity        = capability.Identity
+	MessagingQueue  = capability.MessagingQueue
+	MessagingPubSub = capability.MessagingPubSub
+	MessagingStream = capability.MessagingStream
 
 	ScopeShared      = capability.ScopeShared
 	ScopeApplication = capability.ScopeApplication
