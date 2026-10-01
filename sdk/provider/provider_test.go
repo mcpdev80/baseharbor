@@ -35,3 +35,29 @@ func TestExternalPackageCanImplementDriver(t *testing.T) {
 		t.Fatalf("plan items = %d", len(plan.Items))
 	}
 }
+
+func TestSDKExportsAllNewV0419CapabilityKinds(t *testing.T) {
+	for _, kind := range []provider.Kind{
+		provider.DurableKeyValue,
+		provider.DocumentDatabase,
+		provider.MessagingQueue,
+		provider.MessagingPubSub,
+		provider.MessagingStream,
+	} {
+		driver := &externalDriver{provider: provider.Provider{
+			Kind: "example-provider",
+			Capabilities: []provider.Kind{kind},
+		}}
+		plan, err := provider.BuildPlan("demo", []provider.Request{{
+			Requirement: provider.Requirement{Kind: kind, Name: "default"},
+			Workload:    "app",
+			Driver:      driver,
+		}})
+		if err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+		if len(plan.Items) != 1 || plan.Items[0].Resource.Kind != kind {
+			t.Fatalf("%s plan = %#v", kind, plan)
+		}
+	}
+}
