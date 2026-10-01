@@ -14,6 +14,7 @@ const (
 	postgresTLSCAContainerPrefix = "/run/baseharbor/bindings/postgres"
 	valkeyTLSCAContainerPrefix   = "/run/baseharbor/bindings/valkey"
 	rabbitmqTLSCAContainerPrefix = "/run/baseharbor/bindings/rabbitmq"
+	mongodbTLSCAContainerPrefix = "/run/baseharbor/bindings/mongodb"
 )
 
 func postgresAccessService(instance string) string {
@@ -28,6 +29,10 @@ func rabbitmqAccessService(instance string) string {
 	return runtimeServiceName("rabbitmq", instance) + "-access"
 }
 
+func mongodbAccessService(instance string) string {
+	return runtimeServiceName("mongodb", instance) + "-access"
+}
+
 func postgresTLSCAKey(instance string) string {
 	return postgresRuntimeKey(instance, "TLS_CA_FILE")
 }
@@ -40,6 +45,10 @@ func rabbitmqTLSCAKey(instance string) string {
 	return rabbitmqRuntimeKey(instance, "TLS_CA_FILE")
 }
 
+func mongodbTLSCAKey(instance string) string {
+	return mongodbRuntimeKey(instance, "TLS_CA_FILE")
+}
+
 func postgresTLSCAContainerPath(instance string) string {
 	return postgresTLSCAContainerPrefix + "/" + instance + "/ca.pem"
 }
@@ -50,6 +59,10 @@ func valkeyTLSCAContainerPath(instance string) string {
 
 func rabbitmqTLSCAContainerPath(instance string) string {
 	return rabbitmqTLSCAContainerPrefix + "/" + instance + "/ca.pem"
+}
+
+func mongodbTLSCAContainerPath(instance string) string {
+	return mongodbTLSCAContainerPrefix + "/" + instance + "/ca.pem"
 }
 
 func backendAccessRoot(files RuntimeFiles, kind, instance string) string {
@@ -142,6 +155,32 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			return err
 		}
 		values[rabbitmqTLSCAKey(instance)] = ca
+	}
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		policy, err := serviceaccess.Resolve(m.Environment, "mongodb", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		root := backendAccessRoot(files, "mongodb", instance)
+		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
+			ServiceName:      mongodbAccessService(instance),
+			UpstreamHost:     runtimeServiceName("mongodb", instance),
+			UpstreamPort:     27017,
+			PublishedPortEnv: mongodbRuntimeKey(instance, "HOST_PORT"),
+			ContainerPort:    27017,
+		})
+		if err != nil {
+			return fmt.Errorf("prepare MongoDB TLS access for %s: %w", instance, err)
+		}
+		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+		if err != nil {
+			return err
+		}
+		ca, err := projectBackendCA(files, "mongodb", instance, material.CA)
+		if err != nil {
+			return err
+		}
+		values[mongodbTLSCAKey(instance)] = ca
 	}
 	return writeRuntimeEnv(files.Env, m, values)
 }
@@ -244,6 +283,19 @@ func rabbitmqGatewayCompose(instance string) string {
 	)
 }
 
+func mongodbGatewayCompose(instance string) string {
+	return serviceaccess.TCPGatewayComposeService(
+		backendGatewayComposeFiles("mongodb", instance),
+		serviceaccess.TCPGatewaySpec{
+			ServiceName:      mongodbAccessService(instance),
+			UpstreamHost:     runtimeServiceName("mongodb", instance),
+			UpstreamPort:     27017,
+			PublishedPortEnv: mongodbRuntimeKey(instance, "HOST_PORT"),
+			ContainerPort:    27017,
+		},
+	)
+}
+
 type BackendTLSLifecycleObservation struct {
 	Kind      string                             `json:"kind"`
 	Instance  string                             `json:"instance"`
@@ -251,7 +303,7 @@ type BackendTLSLifecycleObservation struct {
 }
 
 func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLifecycleObservation, error) {
-	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m))+len(RabbitMQInstanceNames(m)))
+	out := make([]BackendTLSLifecycleObservation, 0, len(SQLInstanceNames(m))+len(ValkeyInstanceNames(m))+len(RabbitMQInstanceNames(m))+len(DocumentDatabaseInstanceNames(m)))
 	if !UsesSharedPostgreSQL(m) {
 		for _, instance := range SQLInstanceNames(m) {
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "postgresql", instance), "service-access", "pki"))
@@ -276,6 +328,13 @@ func InspectBackendTLSLifecycle(files RuntimeFiles, m Manifest) ([]BackendTLSLif
 			return nil, fmt.Errorf("inspect RabbitMQ TLS lifecycle for %s: %w", instance, err)
 		}
 		out = append(out, BackendTLSLifecycleObservation{Kind: "messaging", Instance: instance, Lifecycle: lifecycle})
+	}
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(backendAccessRoot(files, "mongodb", instance), "service-access", "pki"))
+		if err != nil {
+			return nil, fmt.Errorf("inspect MongoDB TLS lifecycle for %s: %w", instance, err)
+		}
+		out = append(out, BackendTLSLifecycleObservation{Kind: "document-database", Instance: instance, Lifecycle: lifecycle})
 	}
 	return out, nil
 }
