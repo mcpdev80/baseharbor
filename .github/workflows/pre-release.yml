@@ -366,15 +366,54 @@ jobs:
       - name: Verify complete atomic evidence set
         id: manifest
         shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
         run: |
           set -euo pipefail
-          expected=30
-          actual="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
-          echo "Atomic gate evidence: $actual/$expected"
-          test "$actual" -eq "$expected"
+          expected_ids="$RUNNER_TEMP/expected-gate-ids.txt"
+          actual_ids="$RUNNER_TEMP/actual-gate-ids.txt"
+          manifests="$RUNNER_TEMP/gate-manifests.json"
+
+          {
+            for gate in config-matrix init mcp agent; do
+              printf 'static/%s\n' "$gate"
+            done
+            for runtime in docker podman; do
+              for gate in guided shell-ux lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy; do
+                printf '%s/%s\n' "$runtime" "$gate"
+              done
+            done
+          } | sort > "$expected_ids"
+
+          find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 \
+            | sort -z \
+            | xargs -0 jq -s '.' > "$manifests"
+
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            --arg demo "$DEMO_REF" \
+            '
+              length == 30 and
+              all(.[];
+                .schema == "baseharbor.pre-release.gate-evidence/v1" and
+                .candidate_sha == $candidate and
+                .demo_ref == $demo and
+                .outcome == "success"
+              ) and
+              ([.[].id] | unique | length) == 30
+            ' "$manifests" >/dev/null
+
+          jq -r '.[].id' "$manifests" | sort > "$actual_ids"
+          diff -u "$expected_ids" "$actual_ids"
+
+          summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
+          test "$summary_count" -eq 30
+
           mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
           cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
-          find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md -print | sort             > "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-files.txt"
+          cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
+          cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
 
       - name: Generate final pre-release evidence
         if: always()
