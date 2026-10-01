@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.4.19] - Unreleased
+## [0.4.19] - 2026-10-01
 
 ### Added
 
@@ -892,7 +892,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...HEAD
+[0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
+[0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
 [0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
 [0.4.16]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15.1...v0.4.16
 [0.4.15.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15...v0.4.15.1
