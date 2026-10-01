@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -236,7 +237,7 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 			services := attachWorkloadExposures(buildWorkloadServiceStatuses(e.expectedServices, states), exposures)
 			lastStatus = repositoryWorkloadStatus{Found: true, Workload: e.workload, Services: services, Exposures: exposures}
 			if terminalErr := terminalWorkloadServiceError(services); terminalErr != nil {
-				return terminalErr
+				return e.withFailureDiagnostic(verifyCtx, terminalErr, services)
 			}
 			lastErr = workloadExposureReadinessError(exposures)
 		}
@@ -267,6 +268,56 @@ func (e *repositoryWorkloadExecution) waitReady(ctx context.Context, out io.Writ
 		len(lastStatus.Exposures),
 		strings.Join(serviceDetails, ", "),
 	)
+}
+
+func (e *repositoryWorkloadExecution) withFailureDiagnostic(ctx context.Context, cause error, services []workloadServiceStatus) error {
+	type workloadLogProvider interface {
+		LogsProjectFilesEnv(context.Context, string, string, map[string]string, []string, ...string) (string, error)
+	}
+	provider, ok := e.compose.(workloadLogProvider)
+	if !ok {
+		return cause
+	}
+	failed := make([]string, 0, len(services))
+	for _, service := range services {
+		if service.Terminal || service.ExitCode != 0 {
+			failed = append(failed, service.Service)
+		}
+	}
+	if len(failed) == 0 {
+		failed = append(failed, e.expectedServices...)
+	}
+	diagCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	logs, err := provider.LogsProjectFilesEnv(diagCtx, e.workload.Project, e.workload.RepositoryRoot, e.environment, failed, e.composeFiles...)
+	if err != nil {
+		return fmt.Errorf("%w; runtime diagnostic capture failed: %v", cause, err)
+	}
+	logs = strings.ToValid(logs, "�")
+	for _, value := range e.environment {
+		if strings.TrimSpace(value) != "" && len(value) >= 6 {
+			logs = strings.ReplaceAll(logs, value, "<redacted>")
+		}
+	}
+	logs = strings.TrimSpace(logs)
+	if len(logs) > 8192 {
+		logs = logs[len(logs)-8192:]
+		logs = "[truncated]\n" + logs
+	}
+	if logs == "" {
+		return cause
+	}
+	return fmt.Errorf("%w; runtime output:\n%s", cause, logs)
+}
+
+func (e *repositoryWorkloadExecution) invalidateFailedBuildCandidate() error {
+	if len(e.buildChanged) == 0 {
+		return nil
+	}
+	if err := os.Remove(repositoryWorkloadBuildStatePath(e.files)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (e *repositoryWorkloadExecution) recordRunningUnverified(out io.Writer, status repositoryWorkloadStatus) error {
