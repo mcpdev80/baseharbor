@@ -187,7 +187,6 @@ func TestSharedPostgresStateContainsCredentialReferencesNotSecrets(t *testing.T)
 	}
 }
 
-
 func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 	var b strings.Builder
 	writeSharedValkeyCompose(&b, sharedBackendAppState{Application: "demo", Environment: "dev"}, "default")
