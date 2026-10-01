@@ -418,7 +418,11 @@ func (e *applicationApplyExecution) addDevelopmentExposureRoutes(_ context.Conte
 			upstreamScheme := "http"
 			trustFile := ""
 			serverName := ""
-			if route.Protocol == "https" {
+			providerProtocol := strings.ToLower(strings.TrimSpace(route.ProviderProtocol))
+			if providerProtocol == "" {
+				providerProtocol = strings.ToLower(strings.TrimSpace(route.Protocol))
+			}
+			if providerProtocol == "https" {
 				containerPort = 8443
 				upstreamScheme = "https"
 				trustFile = filepath.Join(providerFiles.Dir, "routes", route.Name, "cert.pem")
