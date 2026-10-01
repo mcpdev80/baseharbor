@@ -51,7 +51,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        if: inputs.candidate_artifact == '' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value'
+        if: inputs.candidate_artifact == '' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -94,7 +94,7 @@ jobs:
 
       - name: Download prebuilt candidate
         id: candidate_artifact
-        if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value'
+        if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
         uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.candidate_artifact }}
@@ -102,7 +102,7 @@ jobs:
 
       - name: Load prebuilt runtime image
         id: load_image
-        if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value'
+        if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
         shell: bash
         run: |
           set -euo pipefail
@@ -230,6 +230,18 @@ jobs:
             durable-key-value)
               BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
                 go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)$' -v
+              ;;
+            control-plane-recovery)
+              BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
+                go test -p 1 ./cmd/baha -count=1 -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -v
+              ;;
+            loki-runtime)
+              BASEHARBOR_LOGS_INTEGRATION=1 \
+                go test -p 1 ./internal/logs -count=1 -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -v
+              ;;
+            tempo-runtime)
+              BASEHARBOR_TRACES_INTEGRATION=1 \
+                go test -p 1 ./internal/traces -count=1 -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -v
               ;;
             *)
               echo "Unsupported provider integration gate: $GATE" >&2
