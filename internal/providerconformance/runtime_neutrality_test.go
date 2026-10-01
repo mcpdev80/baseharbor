@@ -11,27 +11,19 @@ import (
 )
 
 func TestAllShippedReferenceProvidersDeclareExplicitPlacement(t *testing.T) {
-	providers := []capability.ProviderKind{
-		capability.ProviderPostgreSQL,
-		capability.ProviderValkey,
-		capability.ProviderOpenBao,
-		capability.ProviderCaddy,
-		capability.ProviderSeaweedFS,
-		capability.ProviderOTelCollector,
-		capability.ProviderExternalOTLP,
-		capability.ProviderPrometheus,
-		capability.ProviderLoki,
-		capability.ProviderTempo,
-		capability.ProviderKeycloak,
-		capability.ProviderExternalOIDC,
+	integrations := capability.ReferenceIntegrations()
+	if len(integrations) == 0 {
+		t.Fatal("reference provider catalog is empty")
 	}
-	for _, provider := range providers {
-		descriptor, err := capability.ReferenceIntegration(provider)
-		if err != nil {
-			t.Fatalf("%s reference integration: %v", provider, err)
+	seen := map[capability.ProviderKind]struct{}{}
+	for _, descriptor := range integrations {
+		provider := descriptor.Provider.Kind
+		if _, duplicate := seen[provider]; duplicate {
+			t.Fatalf("provider %s appears more than once in reference catalog", provider)
 		}
-		if descriptor.Provider.Kind != provider {
-			t.Fatalf("%s descriptor provider = %s", provider, descriptor.Provider.Kind)
+		seen[provider] = struct{}{}
+		if err := descriptor.Validate(); err != nil {
+			t.Fatalf("%s reference integration: %v", provider, err)
 		}
 		if len(descriptor.Provider.Capabilities) == 0 {
 			t.Fatalf("%s declares no portable capability", provider)
