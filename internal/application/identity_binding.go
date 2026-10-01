@@ -106,11 +106,8 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 	}
 	for name, value := range workloadEntries {
 		path := filepath.Join(workload, name)
-		if err := os.WriteFile(path, []byte(value+"\n"), 0o444); err != nil {
+		if err := writeReadOnlyProjectionFile(path, []byte(value+"\n")); err != nil {
 			return fmt.Errorf("project workload identity binding %s: %w", name, err)
-		}
-		if err := os.Chmod(path, 0o444); err != nil {
-			return err
 		}
 	}
 
@@ -150,6 +147,48 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 		values["OIDC_CA_FILE"] = filepath.Join(binding, "ca.crt")
 	}
 	if err := writeApplicationEnvValues(files.ApplicationEnv, values); err != nil {
+		return err
+	}
+	return nil
+}
+
+
+func writeReadOnlyProjectionFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		cleanup()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o444); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	return nil
