@@ -14,6 +14,7 @@ const (
 	StateSecrets             RecoveryStateClass = "secrets"
 	StateSQL                 RecoveryStateClass = "database.sql"
 	StateDurableKeyValue     RecoveryStateClass = "database.key-value"
+	StateDocumentDatabase    RecoveryStateClass = "database.document"
 	StateObjectStorage       RecoveryStateClass = "object-storage.s3"
 	StateWorkloadStorage     RecoveryStateClass = "workload.storage"
 	StateLogs                RecoveryStateClass = "observability.logs"
@@ -73,7 +74,7 @@ func NewRecoverySelection(contributors []RecoveryContributor) (RecoverySelection
 
 func (c RecoveryContributor) Validate() error {
 	switch c.StateClass {
-	case StateApplicationMetadata, StateSecrets, StateSQL, StateDurableKeyValue, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
+	case StateApplicationMetadata, StateSecrets, StateSQL, StateDurableKeyValue, StateDocumentDatabase, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
 	default:
 		return fmt.Errorf("unsupported recovery state class %q", c.StateClass)
 	}
