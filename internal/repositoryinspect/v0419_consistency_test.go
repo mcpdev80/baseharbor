@@ -41,7 +41,7 @@ func TestCapabilityIntentsFromManifestCoversPortableApplicationContract(t *testi
 		Metrics: application.MetricsRequirements{
 			Sources: []application.MetricsSourceRequirement{{Name: "app", Service: "app", Port: 8080, Path: "/metrics"}},
 		},
-		Logs:     application.LogRequirements{Collect: []string{"app"}},
+		Logs:     application.LogsRequirements{Collect: []string{"app"}},
 		Workload: application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
 	}
 	intents, err := CapabilityIntentsFromManifest(m)
