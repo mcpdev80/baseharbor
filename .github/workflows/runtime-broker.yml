@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
 
+jobs:
   acceptance:
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     if: inputs.mode == 'acceptance'
