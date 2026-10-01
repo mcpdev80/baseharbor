@@ -285,3 +285,39 @@ func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T
 		t.Fatalf("stable identity changed across readable rename: %#v", got.Identity)
 	}
 }
+
+
+func TestDeleteDeploymentRecordRemovesEntireDeploymentRoot(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	record := DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "state", "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "state", "nested", "marker"), []byte("owned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteDeploymentRecord(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("deployment root remains after delete: err=%v", err)
+	}
+	records, err := ListDeployments("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("deployment registry still contains deleted record: %#v", records)
+	}
+}
