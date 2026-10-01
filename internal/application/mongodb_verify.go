@@ -109,7 +109,7 @@ func mongodbConnectionURI(host, port, database, username, password string) strin
 		Path:   "/" + database,
 	}
 	query := u.Query()
-	query.Set("authSource", "admin")
+	query.Set("authSource", database)
 	query.Set("tls", "true")
 	u.RawQuery = query.Encode()
 	return u.String()
