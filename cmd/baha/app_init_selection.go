@@ -297,6 +297,16 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	m = applyGuidedSecretPolicies(m, selection.secretPolicies)
 	if selection.compose != "" && len(selection.workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(selection.compose), selection.workloadServices...)
+		detection := d
+		if selection.compose != d.Compose {
+			if analysis, analyzeErr := repositoryinspect.AnalyzeComposeFile(".", selection.compose); analyzeErr == nil {
+				detection.WorkloadProtocols = analysis.WorkloadProtocols
+				detection.Ports = analysis.Ports
+			}
+		}
+		if service, port, ok := detectedHTTPExposureTarget(detection, selection.workloadServices); ok {
+			m = application.WithHTTPExposure(m, "web", service, port, "http")
+		}
 	}
 
 	var err error
