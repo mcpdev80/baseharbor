@@ -37,6 +37,7 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
+	ctx = withAssumeYes(ctx, opts.Yes)
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
