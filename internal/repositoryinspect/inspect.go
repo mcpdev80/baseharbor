@@ -177,6 +177,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		result.Findings = mergeFindings(result.Findings, findings)
 	}
+	result.Findings = enrichDeclaredIntentEvidence(snapshot, declared, result.Findings)
 	for i := range result.Findings {
 		normalizeFindingService(&result.Findings[i])
 	}
