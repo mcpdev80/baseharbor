@@ -549,7 +549,6 @@ func TestRenderComposeProjectQuadletsUsesResolvedWorkloadPortEnvironment(t *test
 	}
 }
 
-
 func TestRenderComposeProjectFilesJSONPreservesWorkloadVolumeAcrossOverlay(t *testing.T) {
 	root := t.TempDir()
 	base := filepath.Join(root, "compose.yaml")
