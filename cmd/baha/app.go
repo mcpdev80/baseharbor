@@ -23,6 +23,8 @@ func appCommand(store application.Store) *cli.Command {
 		Usage:   "baha app <command> [options]",
 		Long:    "Applications are independent consumers of BaseHarbor. Put baseharbor.yaml in the application repository and run app commands without NAME, or pass NAME explicitly for compatibility with stored application state. Manifests contain desired backend services and required secret names, never plaintext credentials.",
 		Children: []*cli.Command{
+			appNewCommand(),
+			appWorkspaceCommand(),
 			appInitCommand(),
 			appCreateCommand(),
 			appListCommand(),

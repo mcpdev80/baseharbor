@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type QuadletProject struct {
@@ -467,6 +467,52 @@ func quadletDocumentMap(document *yaml.Node) (*yaml.Node, error) {
 	return root, nil
 }
 
+func mergeQuadletComposeVolumeSequence(base, override *yaml.Node) {
+	indexByTarget := map[string]int{}
+	for i, item := range base.Content {
+		if target := quadletComposeVolumeTarget(item); target != "" {
+			indexByTarget[target] = i
+		}
+	}
+	for _, item := range override.Content {
+		copy := cloneQuadletYAMLNode(item)
+		target := quadletComposeVolumeTarget(item)
+		if target != "" {
+			if index, ok := indexByTarget[target]; ok {
+				base.Content[index] = copy
+				continue
+			}
+			indexByTarget[target] = len(base.Content)
+		}
+		base.Content = append(base.Content, copy)
+	}
+}
+
+func quadletComposeVolumeTarget(node *yaml.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Kind == yaml.ScalarNode {
+		value := strings.TrimSpace(node.Value)
+		if value == "" {
+			return ""
+		}
+		parts := strings.SplitN(value, ":", 3)
+		if len(parts) == 1 {
+			return strings.TrimSpace(parts[0])
+		}
+		return strings.TrimSpace(parts[1])
+	}
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == "target" {
+				return strings.TrimSpace(node.Content[i+1].Value)
+			}
+		}
+	}
+	return ""
+}
+
 func mergeQuadletYAMLMap(base, override *yaml.Node) {
 	for i := 0; i+1 < len(override.Content); i += 2 {
 		key := override.Content[i]
@@ -498,6 +544,10 @@ func mergeQuadletYAMLMap(base, override *yaml.Node) {
 		}
 		if baseValue.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
 			mergeQuadletYAMLMap(baseValue, value)
+			continue
+		}
+		if key.Value == "volumes" && baseValue.Kind == yaml.SequenceNode && value.Kind == yaml.SequenceNode {
+			mergeQuadletComposeVolumeSequence(baseValue, value)
 			continue
 		}
 		base.Content[found+1] = cloneQuadletYAMLNode(value)

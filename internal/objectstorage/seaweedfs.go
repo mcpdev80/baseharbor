@@ -392,7 +392,7 @@ func (d *Driver) runSeaweedShellOutput(ctx context.Context, files ProviderFiles,
 	input := []byte(command + "\n")
 	out, err := d.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell")
 	if err != nil {
-		return "", errors.New("SeaweedFS administrative command failed")
+		return "", fmt.Errorf("SeaweedFS administrative command failed: %w", err)
 	}
 	return out, nil
 }
@@ -561,7 +561,7 @@ func providerComposeYAMLWithAccessAndNetwork(_ serviceaccess.HTTPGatewayFiles, n
   seaweedfs:
     image: %s
     restart: unless-stopped
-    user: "seaweed"
+    user: "1000:1000"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]

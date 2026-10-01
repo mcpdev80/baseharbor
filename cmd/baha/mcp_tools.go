@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -32,6 +34,26 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 			return machineMCPFailure(err)
 		}
 		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("workspace.resolve", "Resolve canonical multi-repository component/source identity to the local XDG workspace mapping without changing source or runtime state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceResolveInput) (*mcp.CallToolResult, any, error) {
+		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		model, _, err := development.LoadSourceModel(manifestPath)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		mapping, _, err := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		resolved, err := development.ResolveWorkspace(manifestPath, model, mapping)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, resolved, nil
 	})
 
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
@@ -114,7 +136,104 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 }
 
+func registerMCPDevelopmentTools(server *mcp.Server) {
+	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
+		_ = ctx
+		name := strings.TrimSpace(input.Name)
+		if name == "" {
+			return machineMCPFailure(usageError("application name is required", "Provide name explicitly."))
+		}
+		var (
+			root string
+			err  error
+		)
+		if strings.TrimSpace(input.Path) != "" {
+			if strings.TrimSpace(input.Directory) != "" {
+				return machineMCPFailure(usageError("path and directory cannot be combined", "Use directory for new clients; path is retained only for MCP compatibility."))
+			}
+			root, err = expandUserPath(input.Path)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			if !filepath.IsAbs(root) {
+				root, err = filepath.Abs(root)
+				if err != nil {
+					return machineMCPFailure(err)
+				}
+			}
+		} else {
+			root, err = resolveNewApplicationRoot(name, input.Directory)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+		}
+		capabilities, err := developmentCapabilityKinds(input.Capabilities)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		registry, err := referenceDevelopmentRegistry()
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		var adapterID string
+		var profile *development.StackProfile
+		if strings.TrimSpace(input.StackProfile) != "" {
+			if strings.TrimSpace(input.Stack) != "" {
+				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
+			}
+			catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			resolved, err := development.ResolveStackProfile(input.StackProfile, development.ProfileMap(catalog))
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			profile = &resolved.Profile
+		} else {
+			adapterID, err = developmentAdapterID(input.Stack)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+		}
+		result, err := development.CreateApplication(root, development.NewApplicationRequest{
+			Name:               name,
+			Environment:        strings.TrimSpace(input.Environment),
+			Adapter:            adapterID,
+			Profile:            profile,
+			Capabilities:       capabilities,
+			Secrets:            append([]string(nil), input.Secrets...),
+			EmitBackstage:      input.EmitBackstage,
+			BackstageOwner:     input.BackstageOwner,
+			BackstageLifecycle: input.BackstageLifecycle,
+		}, registry)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, struct {
+			ContractVersion string                      `json:"contract_version"`
+			Application     string                      `json:"application"`
+			Environment     string                      `json:"environment"`
+			Profile         development.StackProfile    `json:"profile"`
+			DevelopmentPlan development.DevelopmentPlan `json:"development_plan"`
+			Files           []string                    `json:"files"`
+			Validation      development.Validation      `json:"validation"`
+		}{
+			ContractVersion: machine.ContractVersion,
+			Application:     result.Manifest.Name,
+			Environment:     result.Manifest.Environment,
+			Profile:         result.Profile,
+			DevelopmentPlan: result.Plan,
+			Files:           result.FilePaths,
+			Validation:      result.Validation,
+		}, nil
+	})
+
+}
+
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
+	registerMCPDevelopmentTools(server)
+
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)

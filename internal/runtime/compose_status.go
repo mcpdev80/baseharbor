@@ -18,6 +18,9 @@ func (c Compose) ServiceStatesProjectFilesEnv(ctx context.Context, project, work
 	if composeErr == nil {
 		states, parseErr := parseComposeServiceStates(out)
 		if parseErr == nil && len(states) > 0 {
+			if enriched, err := c.enrichServiceStatesFromRuntimeContainers(ctx, project, states); err == nil {
+				states = enriched
+			}
 			return states, nil
 		}
 	}
@@ -53,10 +56,15 @@ func (c Compose) serviceStatesFromRuntimeLabels(ctx context.Context, project str
 		}
 		current, exists := byService[container.Service]
 		if !exists || (current.State != "running" && state == "running") {
+			if strings.TrimSpace(container.State) != "" {
+				state = container.State
+			}
 			byService[container.Service] = ServiceState{
-				Service: container.Service,
-				State:   state,
-				Health:  container.Health,
+				Service:  container.Service,
+				State:    state,
+				Health:   container.Health,
+				ExitCode: container.ExitCode,
+				Error:    container.Error,
 			}
 		}
 	}
@@ -84,6 +92,8 @@ type composePSState struct {
 	Service    string               `json:"Service"`
 	State      string               `json:"State"`
 	Health     string               `json:"Health"`
+	ExitCode   int                  `json:"ExitCode"`
+	Error      string               `json:"Error"`
 	Publishers []composePSPublisher `json:"Publishers"`
 }
 
@@ -131,8 +141,43 @@ func parseComposeServiceStates(out string) ([]ServiceState, error) {
 			Service:    service,
 			State:      strings.TrimSpace(row.State),
 			Health:     strings.TrimSpace(row.Health),
+			ExitCode:   row.ExitCode,
+			Error:      strings.TrimSpace(row.Error),
 			Publishers: publishers,
 		})
 	}
 	return states, nil
+}
+
+func (c Compose) enrichServiceStatesFromRuntimeContainers(ctx context.Context, project string, states []ServiceState) ([]ServiceState, error) {
+	containers, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byService := map[string]RuntimeContainer{}
+	for _, container := range containers {
+		if container.Project != project {
+			continue
+		}
+		current, exists := byService[container.Service]
+		if !exists || (!current.Running && container.Running) {
+			byService[container.Service] = container
+		}
+	}
+	result := append([]ServiceState(nil), states...)
+	for i := range result {
+		container, ok := byService[result[i].Service]
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(container.State) != "" {
+			result[i].State = container.State
+		}
+		if strings.TrimSpace(result[i].Health) == "" {
+			result[i].Health = container.Health
+		}
+		result[i].ExitCode = container.ExitCode
+		result[i].Error = container.Error
+	}
+	return result, nil
 }

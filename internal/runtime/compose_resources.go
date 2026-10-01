@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -256,6 +257,114 @@ func (c Compose) RemoveProjectServices(ctx context.Context, project string, serv
 	return nil
 }
 
+func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) ([]ProjectResource, error) {
+	if c.command == "" {
+		return nil, ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil, errors.New("project is required")
+	}
+
+	type inventorySpec struct {
+		kind            string
+		listArgs        []string
+		inspectTemplate string
+	}
+	specs := []inventorySpec{
+		{
+			kind:            "container",
+			listArgs:        []string{"container", "ls", "-a", "--format", "{{.Names}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}`,
+		},
+		{
+			kind:            "network",
+			listArgs:        []string{"network", "ls", "--format", "{{.Name}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+		},
+		{
+			kind:            "volume",
+			listArgs:        []string{"volume", "ls", "--format", "{{.Name}}"},
+			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+		},
+	}
+
+	var resources []ProjectResource
+	for _, spec := range specs {
+		listed, err := c.directOutput(ctx, spec.listArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("list %s resources for project %s: %w", spec.kind, project, err)
+		}
+		var names []string
+		for _, line := range strings.Split(listed, "\n") {
+			if name := strings.TrimSpace(line); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+
+		args := []string{spec.kind, "inspect", "--format", spec.inspectTemplate}
+		args = append(args, names...)
+		inspected, err := c.directOutput(ctx, args...)
+		if err != nil {
+			return nil, fmt.Errorf("inspect %s resources for project %s: %w", spec.kind, project, err)
+		}
+		for _, line := range strings.Split(inspected, "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), "|", 3)
+			if len(parts) != 3 {
+				continue
+			}
+			name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+			owner := firstRuntimeLabel(parts[1], parts[2])
+			if name == "" || owner != project {
+				continue
+			}
+			resources = append(resources, ProjectResource{Kind: spec.kind, Name: name})
+		}
+	}
+	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Kind != resources[j].Kind {
+			return resources[i].Kind < resources[j].Kind
+		}
+		return resources[i].Name < resources[j].Name
+	})
+	return resources, nil
+}
+
+func (c Compose) StopOwnedProjectContainers(ctx context.Context, project string) error {
+	if c.command == "" {
+		return ErrRuntimeNotFound
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return errors.New("project is required")
+	}
+	containers, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if container.Project != project || !container.Running {
+			continue
+		}
+		if _, err := c.directOutput(ctx, "container", "stop", container.Name); err != nil {
+			return fmt.Errorf("stop owned container %s/%s (%s): %w", project, container.Service, container.Name, err)
+		}
+	}
+	remaining, err := c.ListRuntimeContainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, container := range remaining {
+		if container.Project == project && container.Running {
+			return fmt.Errorf("verify owned project stop: container %s/%s (%s) is still running", project, container.Service, container.Name)
+		}
+	}
+	return nil
+}
+
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
 	if c.command == "" {
 		return ErrRuntimeNotFound
@@ -285,6 +394,9 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 				return fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
 			}
 			if _, err := c.directOutput(ctx, args...); err != nil {
+				if resource.Kind == "network" && networkHasActiveConsumers(err) {
+					continue
+				}
 				return fmt.Errorf("remove owned %s %s: %w", resource.Kind, resource.Name, err)
 			}
 		}
@@ -320,7 +432,7 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	args := []string{
 		"container", "inspect", "--format",
-		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}`,
+		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
 	}
 	args = append(args, ids...)
 	inspected, err := c.directOutput(ctx, args...)
@@ -330,8 +442,8 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	var result []RuntimeContainer
 	for _, line := range strings.Split(inspected, "\n") {
-		parts := strings.Split(strings.TrimSpace(line), "|")
-		if len(parts) != 7 {
+		parts := strings.SplitN(strings.TrimSpace(line), "|", 10)
+		if len(parts) != 10 {
 			continue
 		}
 		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
@@ -340,12 +452,16 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 		if name == "" || project == "" || service == "" {
 			continue
 		}
+		exitCode, _ := strconv.Atoi(strings.TrimSpace(parts[8]))
 		result = append(result, RuntimeContainer{
-			Name:    name,
-			Project: project,
-			Service: service,
-			Running: strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
-			Health:  strings.TrimSpace(parts[6]),
+			Name:     name,
+			Project:  project,
+			Service:  service,
+			Running:  strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
+			Health:   strings.TrimSpace(parts[6]),
+			State:    strings.TrimSpace(parts[7]),
+			ExitCode: exitCode,
+			Error:    strings.TrimSpace(parts[9]),
 		})
 	}
 	return result, nil
@@ -442,4 +558,14 @@ func (c Compose) ContainerLogConfigProjectService(ctx context.Context, project, 
 		tag = strings.TrimSpace(parts[1])
 	}
 	return driver, tag, nil
+}
+
+func networkHasActiveConsumers(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "active endpoints") ||
+		strings.Contains(message, "network is being used") ||
+		strings.Contains(message, "network has connected containers")
 }

@@ -16,12 +16,15 @@ import (
 )
 
 type workloadServiceStatus struct {
-	Service   string
-	State     string
-	Health    string
-	Readiness string
-	Ready     bool
-	Exposures []workloadExposureStatus
+	Service      string
+	State        string
+	Health       string
+	Readiness    string
+	Ready        bool
+	Terminal     bool
+	ExitCode     int
+	RuntimeError string
+	Exposures    []workloadExposureStatus
 }
 
 type workloadExposureStatus = endpoint.ExposureStatus
@@ -148,7 +151,10 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 		} else if normalizedState == "running" && health == "" {
 			readiness = "unverified"
 		}
-		result = append(result, workloadServiceStatus{Service: service, State: normalizedState, Health: health, Readiness: readiness, Ready: ready})
+		result = append(result, workloadServiceStatus{
+			Service: service, State: normalizedState, Health: health, Readiness: readiness, Ready: ready,
+			Terminal: state.TerminalFailure(), ExitCode: state.ExitCode, RuntimeError: strings.TrimSpace(state.Error),
+		})
 	}
 	return result
 }
@@ -156,8 +162,7 @@ func buildWorkloadServiceStatuses(expected []string, states []bhruntime.ServiceS
 func terminalWorkloadServiceError(services []workloadServiceStatus) error {
 	var failures []string
 	for _, service := range services {
-		switch service.State {
-		case "exited", "dead":
+		if service.Terminal {
 			failures = append(failures, service.Service+" "+formatWorkloadServiceStatus(service))
 		}
 	}
@@ -376,6 +381,12 @@ func formatWorkloadServiceStatus(service workloadServiceStatus) string {
 	}
 	if service.Readiness != "" {
 		detail += " readiness=" + service.Readiness
+	}
+	if service.ExitCode != 0 {
+		detail += fmt.Sprintf(" exit_code=%d", service.ExitCode)
+	}
+	if service.RuntimeError != "" {
+		detail += " runtime_error=" + service.RuntimeError
 	}
 	for _, exposure := range service.Exposures {
 		detail += " exposure=" + formatWorkloadExposureStatus(exposure)

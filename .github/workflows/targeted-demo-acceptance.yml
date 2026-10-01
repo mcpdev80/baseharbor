@@ -1,6 +1,6 @@
-name: "Demo · Targeted Gate"
+name: "Targeted Runtime Gate"
 
-run-name: "Targeted Demo Gate · ${{ github.ref_name }}"
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('{0} · {1}', inputs.runtime == 'podman' && 'Podman' || 'Docker', inputs.gate) || github.event.head_commit.message }}"
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   selected-gate:
-    name: Targeted · ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
+    name: ${{ github.event_name == 'workflow_dispatch' && format('{0} · {1}', inputs.runtime == 'podman' && 'Podman' || 'Docker', inputs.gate) || github.event.head_commit.message }}
     runs-on:
       - self-hosted
       - Linux
@@ -55,9 +55,15 @@ jobs:
       INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
       INPUT_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || '' }}
       INPUT_DEMO_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_ref || '' }}
-      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || github.event.head_commit.message }}
+      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || '' }}
 
     steps:
+      - name: Checkout BaseHarbor
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
       - name: Resolve targeted gate
         id: target
         shell: bash
@@ -74,27 +80,21 @@ jobs:
               runtime-validation/targeted-docker*) runtime="docker" ;;
               *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
             esac
-            gate="$(printf '%s\n' "$INPUT_GATE" | awk '{print $(NF-1)}')"
-            demo_ref="$(printf '%s\n' "$INPUT_GATE" | awk '{print $NF}')"
+            test -s .ci/targeted-gate-trigger
+            trigger="$(tr -d '\r\n' < .ci/targeted-gate-trigger)"
+            gate="$(printf '%s\n' "$trigger" | awk '{print $1}')"
+            demo_ref="$(printf '%s\n' "$trigger" | awk '{print $2}')"
             ref="$GITHUB_SHA"
           fi
 
           case "$runtime" in docker|podman) ;; *) echo "Unsupported runtime: $runtime" >&2; exit 2 ;; esac
           test -n "$gate"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            test -n "$demo_ref"
-            [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
-          fi
+          test -n "$demo_ref"
+          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
           printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
           printf 'gate=%s\n' "$gate" >> "$GITHUB_OUTPUT"
           printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
           printf 'demo_ref=%s\n' "$demo_ref" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout BaseHarbor
-        id: checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ steps.target.outputs.ref }}
 
       - name: Resolve immutable demo revision
         id: demo_revision
@@ -119,6 +119,7 @@ jobs:
 
       - name: Set up Go
         id: setup_go
+        if: steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -131,7 +132,7 @@ jobs:
 
       - name: Reset runtime state
         id: reset
-        if: steps.target.outputs.gate != 'workload-routing'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         timeout-minutes: 3
         run: |
@@ -160,9 +161,17 @@ jobs:
           go test ./internal/repositoryinspect -run 'TestAnalyzeComposeFile.*Workload.*Protocol' -count=1
           go test ./cmd/baha -run 'TestDevelopmentWorkloadRoute|TestWorkloadExposureSchemeForService' -count=1
 
+      - name: Run focused Keycloak readiness checks
+        id: keycloak_readiness
+        if: steps.target.outputs.gate == 'debug-keycloak-readiness'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/identityprovider -run 'TestKeycloakCompose|Test.*IdentityEndpoint' -count=1
+
       - name: Verify Podman Quadlet runtime
         id: quadlet
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.runtime == 'podman'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.runtime == 'podman'
         shell: bash
         run: |
           set -euo pipefail
@@ -195,7 +204,7 @@ jobs:
 
       - name: Run selected demo gate
         id: demo
-        if: steps.target.outputs.gate != 'workload-routing'
+        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
@@ -215,7 +224,23 @@ jobs:
           git -C "$WORKDIR" checkout --detach FETCH_HEAD
           test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
           cd "$WORKDIR"
-          if [ "$DEMO_GATE" = "full" ]; then
+          if [ "$DEMO_GATE" = "debug-podman-container-lookup" ]; then
+            bash tests/debug-podman-container-lookup/run.sh
+          elif [ "$DEMO_GATE" = "debug-recovery-evidence" ]; then
+            bash tests/debug-recovery-evidence/run.sh
+          elif [ "$DEMO_GATE" = "debug-keycloak-runtime" ]; then
+            export DEMO_ROOT="$WORKDIR"
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash tests/debug-keycloak-runtime/run.sh
+          elif [ "$DEMO_GATE" = "debug-restore-route" ]; then
+            export DEMO_ROOT="$WORKDIR"
+            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
+              ARTIFACT_DIR="$ARTIFACT_DIR" \
+              bash tests/debug-restore-route/run.sh
+          elif [ "$DEMO_GATE" = "full" ]; then
             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
               BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
               ARTIFACT_DIR="$ARTIFACT_DIR" \
@@ -241,73 +266,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
           cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
 
-          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
-            runtime="${{ steps.target.outputs.runtime }}"
+          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.target.outputs.gate }}" != "debug-keycloak-readiness" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
             export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
             export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
             export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-            diagnostics="$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"
-            mkdir -p "$diagnostics"
-
-            runtime_cmd() {
-              if [ "$runtime" = "podman" ]; then
-                env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman "$@"
-              else
-                docker "$@"
-              fi
-            }
-
-            runtime_cmd ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-            runtime_cmd ps -a --format '{{.Names}}\t{{.Ports}}' | grep -E '(^|[[:space:]])(baseharbor-|bh-)|127\.0\.0\.1:443->' >"$diagnostics/baseharbor-ports.tsv" 2>&1 || true
-            runtime_cmd network ls >"$diagnostics/networks.txt" 2>&1 || true
-
             worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
             export BASEHARBOR_TARGET="demo-$worker_id"
-            baha_bin="$RUNNER_TEMP/baseharbor-demo-targeted-repo/.tools/bin/baha"
-            if [ -x "$baha_bin" ]; then
-              (
-                cd "$RUNNER_TEMP/baseharbor-demo-targeted-repo"
-                "$baha_bin" doctor --verbose
-              ) >"$diagnostics/baha-doctor-verbose.txt" 2>&1 || true
-            fi
-
-            if [ "$runtime" = "podman" ]; then
-              export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-              systemctl --user list-units --all --plain --no-legend 'bh-*.service' >"$diagnostics/systemd-units.txt" 2>&1 || true
-              mapfile -t units < <(systemctl --user list-units --all --plain --no-legend 'bh-*.service' 2>/dev/null | awk '{print $1}')
-              for unit in "${units[@]}"; do
-                [ -n "$unit" ] || continue
-                safe_unit="${unit//\//_}"
-                systemctl --user status --no-pager --full "$unit" >"$diagnostics/$safe_unit.status.txt" 2>&1 || true
-                journalctl --user --unit "$unit" --no-pager --lines 300 --output cat \
-                  | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
-                  >"$diagnostics/$safe_unit.journal.txt" 2>&1 || true
-              done
-            fi
-
-            mapfile -t ids < <(runtime_cmd ps -aq 2>/dev/null || true)
-            for id in "${ids[@]}"; do
-              meta=$(runtime_cmd inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "$id" 2>/dev/null || true)
-              IFS='|' read -r name docker_project podman_project <<< "$meta"
-              name="${name#/}"
-              project="$docker_project"
-              if [ -z "$project" ] || [ "$project" = "<no value>" ]; then project="$podman_project"; fi
-              case "$project:$name" in
-                baseharbor*:*|bh-*:*|*:baseharbor-*|*:bh-*) ;;
-                *) continue ;;
-              esac
-              [ -n "$name" ] || name="$id"
-              runtime_cmd inspect --format '{{json .State}}' "$id" >"$diagnostics/$name.state.json" 2>&1 || true
-              runtime_cmd inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$name.identity.txt" 2>&1 || true
-              runtime_cmd logs --tail 300 "$id" \
-                | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
-                >"$diagnostics/$name.log" 2>&1 || true
-            done
+            bash scripts/ci-failure-diagnostics.sh               "${{ steps.target.outputs.runtime }}"               "$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"               "$RUNNER_TEMP/baseharbor-demo-targeted-repo"               "$RUNNER_TEMP/baseharbor-demo-targeted-repo/.tools/bin/baha"
           fi
 
       - name: Cleanup runtime state
         id: cleanup
-        if: always() && steps.target.outputs.gate != 'workload-routing'
+        if: always() && steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
         shell: bash
         timeout-minutes: 3
         run: |
@@ -351,4 +321,4 @@ jobs:
           name: targeted-${{ steps.target.outputs.runtime }}-${{ steps.target.outputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/targeted-demo-evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1

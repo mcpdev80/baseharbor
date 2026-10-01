@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -12,14 +11,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
-	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
@@ -361,58 +358,15 @@ func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Conte
 	}
 
 	if c.manifest.Services.IdentityManagementUI {
-		files, err := identityprovider.ExistingKeycloakFilesAt(c.manifest, c.resolved.TargetStateRoot, c.resolved.Target.Name)
-		if err != nil {
-			record("identity-login", err, "")
-			record("identity-admin", err, "")
-		} else {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			client, checkErr := serviceaccess.NewHTTPClient(files.PublicAccess.Material, false)
-			if checkErr == nil {
-				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.PublicURL, "/")
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		results := verifyIdentityManagementBrowserSurfaces(checkCtx, c.manifest, c.resolved.TargetStateRoot, c.resolved.Target.Name)
+		cancel()
+		for _, result := range results {
+			detail := result.URL
+			if detail == "" {
+				detail = "Keycloak browser surface verified"
 			}
-			cancel()
-			loginDetail := "Keycloak user-facing identity UI reachable over TLS"
-			if devaccess.Enabled(c.manifest.Environment) {
-				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
-					var host string
-					var hostErr error
-					if placement.Scope == capability.ScopeShared {
-						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity")
-					} else {
-						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity")
-					}
-					if hostErr == nil {
-						loginDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
-					}
-				}
-			}
-			record("identity-login", checkErr, loginDetail)
-
-			checkCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-			client, checkErr = serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
-			if checkErr == nil {
-				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-				checkErr = serviceaccess.WaitHTTPS(checkCtx, client, files.AdminURL, "/")
-			}
-			cancel()
-			adminDetail := "Keycloak administration UI reachable over TLS"
-			if devaccess.Enabled(c.manifest.Environment) {
-				if placement, placementErr := application.ResolveProviderPlacement(c.manifest, capability.ProviderKeycloak); placementErr == nil {
-					var host string
-					var hostErr error
-					if placement.Scope == capability.ScopeShared {
-						host, hostErr = devaccess.SharedHost(c.resolved.Target.Name, "identity-admin")
-					} else {
-						host, hostErr = devaccess.ApplicationHost(c.resolved.Target.Name, c.manifest.Name, "identity-admin")
-					}
-					if hostErr == nil {
-						adminDetail = devgateway.URLForTarget(c.resolved.Target.Name, host)
-					}
-				}
-			}
-			record("identity-admin", checkErr, adminDetail)
+			record(result.Name, result.Err, detail)
 		}
 	}
 

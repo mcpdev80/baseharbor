@@ -3,6 +3,7 @@ package devgateway
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -193,5 +194,138 @@ func TestSelectGatewayHostPortMovesFromStalePersistedPort(t *testing.T) {
 	}
 	if selected != 18443 {
 		t.Fatalf("replacement fallback = %d, want 18443", selected)
+	}
+}
+
+func TestURLForRuntimeIgnoresUninitializedGatewayStateAndSelectsFallback(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := "gateway-zero-state"
+	files, err := FilesFor(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(files.State), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(files.State, state{Version: stateVersion, HostPort: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	available := func(port int) bool {
+		return port == 18443
+	}
+	got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}, available)
+	if got != "https://auth.baha.localhost:18443" {
+		t.Fatalf("canonical URL = %q, want persisted-selection fallback port", got)
+	}
+}
+
+func TestURLForRuntimeUsesPersistedEffectiveGatewayPort(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	target := "gateway-persisted-state"
+	files, err := FilesFor(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(files.State), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(files.State, state{Version: stateVersion, HostPort: 18443}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := urlForRuntime(target, "auth.baha.localhost", testRuntime{engine: "docker"}, func(int) bool { return false })
+	if got != "https://auth.baha.localhost:18443" {
+		t.Fatalf("canonical URL = %q, want persisted effective port", got)
+	}
+}
+
+type recordingGatewayRuntime struct {
+	destroyCalls int
+}
+
+func (*recordingGatewayRuntime) ConfigProject(context.Context, string, string, string) error {
+	return nil
+}
+func (*recordingGatewayRuntime) UpProject(context.Context, string, string, string) error { return nil }
+func (r *recordingGatewayRuntime) DestroyProject(context.Context, string, string, string) error {
+	r.destroyCalls++
+	return nil
+}
+
+func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Dir:     dir,
+		State:   filepath.Join(dir, "routes.json"),
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Project: "bh-dev-gateway",
+	}
+	if err := os.WriteFile(files.Compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &recordingGatewayRuntime{}
+	previous := state{Version: stateVersion, Routes: []Route{
+		{Key: "app", Network: "app-network"},
+		{Key: "shared", Network: "shared-network"},
+	}}
+	next := state{Version: stateVersion, Routes: []Route{
+		{Key: "shared", Network: "shared-network"},
+	}}
+	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.destroyCalls != 1 {
+		t.Fatalf("gateway destroy calls = %d, want 1 after route network removal", runtime.destroyCalls)
+	}
+	saved, err := loadState(files.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Routes) != 1 || saved.Routes[0].Network != "shared-network" {
+		t.Fatalf("saved routes = %#v", saved.Routes)
+	}
+}
+
+func TestSaveRouteStateKeepsMaterializedGatewayWhenNetworkSetIsStable(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Dir:     dir,
+		State:   filepath.Join(dir, "routes.json"),
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Project: "bh-dev-gateway",
+	}
+	if err := os.WriteFile(files.Compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &recordingGatewayRuntime{}
+	previous := state{Version: stateVersion, Routes: []Route{
+		{Key: "old", Network: "app-network"},
+	}}
+	next := state{Version: stateVersion, Routes: []Route{
+		{Key: "new", Network: "app-network"},
+	}}
+	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.destroyCalls != 0 {
+		t.Fatalf("gateway destroy calls = %d, want 0 for stable network set", runtime.destroyCalls)
+	}
+}
+
+func TestRelatedRedirectURLsAllowsPairedIdentityLoginOnly(t *testing.T) {
+	routes := []Route{
+		{Owner: "shared/keycloak", Key: "shared/keycloak/login", Host: "auth.baha.localhost"},
+		{Owner: "shared/keycloak", Key: "shared/keycloak/admin", Host: "auth-admin.baha.localhost"},
+		{Owner: "shared/postgresql", Key: "shared/postgresql", Host: "pgadmin.baha.localhost"},
+	}
+	got := relatedRedirectURLs(routes, routes[1], 18443)
+	if len(got) != 1 || got[0] != "https://auth.baha.localhost:18443" {
+		t.Fatalf("admin redirect authorities = %#v", got)
+	}
+	if got := relatedRedirectURLs(routes, routes[2], 18443); len(got) != 0 {
+		t.Fatalf("non-identity route unexpectedly allows redirects: %#v", got)
 	}
 }

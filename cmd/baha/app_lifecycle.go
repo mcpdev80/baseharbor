@@ -179,13 +179,13 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 		return nil
 	}
+	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
+		return err
+	}
 	if err := execution.destroyRuntimeResources(ctx); err != nil {
 		return err
 	}
 	if err := execution.cleanupProviderState(ctx); err != nil {
-		return err
-	}
-	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}
 	if err := execution.removeApplicationState(); err != nil {

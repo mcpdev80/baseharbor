@@ -538,7 +538,7 @@ func stopRuntimeBroker(ctx context.Context, compose bhruntime.RuntimeProvider, m
 	if err != nil {
 		return fmt.Errorf("application runtime broker state is missing: %w", err)
 	}
-	if err := compose.DownProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env); err != nil {
+	if err := compose.StopProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env); err != nil {
 		return fmt.Errorf("stop application runtime broker: %w", err)
 	}
 	services, err := compose.RunningServicesProject(ctx, runtimebroker.ProjectNameForRuntime(m, files), brokerFiles.Compose, files.Env)

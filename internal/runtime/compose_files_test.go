@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -51,5 +53,22 @@ func TestComposeBuildArgsForcePlainProgress(t *testing.T) {
 	got := strings.Join(composeBuildArgs([]string{"api"}), " ")
 	if got != "build --progress plain api" {
 		t.Fatalf("compose build args=%q want %q", got, "build --progress plain api")
+	}
+}
+
+func TestComposeUpProjectFilesUsesResolvedWorkloadPortEnvironment(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(root, "docker")
+	script := "#!/bin/sh\nif [ \"$HTTP_PORT\" != \"8082\" ]; then echo \"HTTP_PORT=$HTTP_PORT\" >&2; exit 42; fi\nexit 0\n"
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	backend := NewCLIBackend(command, "compose")
+	if err := backend.UpProjectFilesSelected(context.Background(), "demo", root, map[string]string{"HTTP_PORT": "8082"}, nil, compose); err != nil {
+		t.Fatal(err)
 	}
 }

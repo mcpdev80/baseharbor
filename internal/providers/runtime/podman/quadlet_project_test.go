@@ -518,3 +518,105 @@ secrets:
 		t.Fatalf("long-form secret target missing %q:\n%s", want, unit)
 	}
 }
+
+func TestRenderComposeProjectQuadletsUsesResolvedWorkloadPortEnvironment(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  app:
+    image: docker.io/library/alpine:3.22
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := RenderComposeProjectFilesQuadletsEnv(
+		[]string{compose},
+		"",
+		map[string]string{"HTTP_PORT": "8082"},
+		"workload-port-fallback",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["workload-port-fallback-app.container"]
+	if !strings.Contains(unit, "PublishPort=8082:8080") {
+		t.Fatalf("resolved workload port fallback was not rendered into Quadlet:\n%s", unit)
+	}
+	if strings.Contains(unit, "PublishPort=8080:8080") {
+		t.Fatalf("Compose default port leaked through despite resolved fallback:\n%s", unit)
+	}
+}
+
+func TestRenderComposeProjectFilesJSONPreservesWorkloadVolumeAcrossOverlay(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "compose.yaml")
+	override := filepath.Join(root, "override.yaml")
+	if err := os.WriteFile(base, []byte(`services:
+  app:
+    image: example/app:latest
+    volumes:
+      - app-state:/var/lib/app
+volumes:
+  app-state:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`services:
+  app:
+    volumes:
+      - ./bindings:/run/baseharbor/bindings:ro
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered, err := RenderComposeProjectFilesJSON([]string{base, override}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"app-state:/var/lib/app"`,
+		`"./bindings:/run/baseharbor/bindings:ro"`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("merged Compose JSON lost volume %s: %s", want, rendered)
+		}
+	}
+}
+
+func TestRenderComposeProjectFilesJSONReplacesVolumeWithSameTarget(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "compose.yaml")
+	override := filepath.Join(root, "override.yaml")
+	if err := os.WriteFile(base, []byte(`services:
+  app:
+    image: example/app:latest
+    volumes:
+      - app-state:/var/lib/app
+volumes:
+  app-state:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`services:
+  app:
+    volumes:
+      - replacement:/var/lib/app
+volumes:
+  replacement:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered, err := RenderComposeProjectFilesJSON([]string{base, override}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `"app-state:/var/lib/app"`) {
+		t.Fatalf("same-target override did not replace base volume: %s", rendered)
+	}
+	if !strings.Contains(rendered, `"replacement:/var/lib/app"`) {
+		t.Fatalf("same-target override volume missing: %s", rendered)
+	}
+}

@@ -321,7 +321,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.ObservabilityManagementUI {
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
@@ -348,6 +348,13 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				}
 				if err := verifyOpenBaoManagementUI(ctx, platformFiles); err != nil {
 					return err
+				}
+			}
+			if m.Services.IdentityManagementUI {
+				for _, result := range verifyIdentityManagementBrowserSurfaces(ctx, m, c.resolved.TargetStateRoot, c.resolved.Target.Name) {
+					if result.Err != nil {
+						return fmt.Errorf("%s: %w", result.Name, result.Err)
+					}
 				}
 			}
 			if m.Services.ObservabilityManagementUI {

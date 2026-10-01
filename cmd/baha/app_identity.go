@@ -56,7 +56,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 	}
 	switch identity.Resource.Provider {
 	case capability.ProviderKeycloak:
-		keycloak := identityprovider.NewKeycloakDriver(compose, m, files, issuer, resolved.TargetStateRoot, files.Namespace)
+		keycloak := identityprovider.NewKeycloakDriver(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 		driver = keycloak
 		prepared.keycloak = keycloak
 	case capability.ProviderExternalOIDC:

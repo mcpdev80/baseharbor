@@ -413,7 +413,7 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"postgres\"",
+		"user: \"70:70\"",
 		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",

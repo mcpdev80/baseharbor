@@ -353,18 +353,63 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
 		return fmt.Errorf("restore managed HTTP exposure: %w", err)
 	}
+	if err := reconcileRestoredDevelopmentRoutes(ctx, out, resolved, compose, platformFiles, issuer, files); err != nil {
+		return err
+	}
 	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, m); err != nil {
 		return fmt.Errorf("record provider registry after restore: %w", err)
 	}
 	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
 		return fmt.Errorf("record restored deployment: %w", err)
 	}
+	if err := verifyRestoredApplicationHealth(ctx, store, m); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
+	return nil
+
+}
+
+func verifyRestoredApplicationHealth(ctx context.Context, store application.Store, m application.Manifest) error {
 	status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
 		return fmt.Errorf("final restore status verification: %w", err)
 	}
 	if !status.Ready {
-		return errors.New("final restore status verification did not reach READY")
+		var failed []string
+		for _, check := range status.Checks {
+			if check.OK {
+				continue
+			}
+			detail := strings.TrimSpace(check.Detail)
+			if detail == "" {
+				detail = strings.TrimSpace(check.State)
+			}
+			failed = append(failed, fmt.Sprintf("%s=%s", check.Name, detail))
+		}
+		if status.tlsErr != nil {
+			failed = append(failed, fmt.Sprintf("tls=%v", status.tlsErr))
+		} else if status.TLS != nil && !status.TLS.Healthy {
+			failed = append(failed, fmt.Sprintf("tls=%s", strings.TrimSpace(status.TLS.Detail)))
+		}
+		if status.serviceTLSErr != nil {
+			failed = append(failed, fmt.Sprintf("service-tls=%v", status.serviceTLSErr))
+		} else {
+			for _, observation := range status.ServiceTLS {
+				if observation.Lifecycle.Health != "critical" && observation.Lifecycle.Health != "unknown" {
+					continue
+				}
+				detail := strings.TrimSpace(observation.Lifecycle.Warning)
+				if detail == "" {
+					detail = observation.Lifecycle.Health
+				}
+				failed = append(failed, fmt.Sprintf("service-tls/%s/%s=%s", observation.Kind, observation.Instance, detail))
+			}
+		}
+		if len(failed) == 0 {
+			return errors.New("final restore status verification did not reach READY")
+		}
+		return fmt.Errorf("final restore status verification did not reach READY: %s", strings.Join(failed, "; "))
 	}
 	doctor, err := collectApplicationDoctor(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
@@ -373,9 +418,30 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if !doctor.Healthy {
 		return errors.New("final restore doctor verification is not healthy")
 	}
-	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
+}
 
+func reconcileRestoredDevelopmentRoutes(ctx context.Context, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, issuer serviceaccess.Issuer, files application.RuntimeFiles) error {
+	m := resolved.Manifest
+	if !requiresDevelopmentGateway(m) {
+		return nil
+	}
+	routes := &applicationApplyExecution{
+		resolved:      resolved,
+		manifest:      m,
+		term:          cli.NewTerminal(ctx, out, io.Discard),
+		out:           out,
+		errOut:        io.Discard,
+		compose:       compose,
+		platformFiles: platformFiles,
+		issuer:        issuer,
+		files:         files,
+	}
+	if err := routes.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		_, _ = stopRepositoryWorkload(ctx, compose, resolved, files)
+		return fmt.Errorf("restore canonical development routes: %w", err)
+	}
+	return nil
 }
 
 func restoreSelectedWorkloadStorage(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, restoreData applicationRestoreData) error {

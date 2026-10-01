@@ -29,25 +29,26 @@ type Operation struct {
 type ErrorCode string
 
 const (
-	ErrorValidationFailed      ErrorCode = "validation_failed"
-	ErrorPortConflict          ErrorCode = "port_conflict"
-	ErrorRequiredSecretMissing ErrorCode = "required_secret_missing"
-	ErrorSourceMissing         ErrorCode = "source_missing"
-	ErrorApprovalRequired      ErrorCode = "approval_required"
-	ErrorWorkloadStartFailed   ErrorCode = "workload_start_failed"
-	ErrorImagePullFailed       ErrorCode = "image_pull_failed"
-	ErrorAuthenticationFailed  ErrorCode = "authentication_failed"
-	ErrorInvalidWorkload       ErrorCode = "invalid_workload"
-	ErrorCapabilityMissing     ErrorCode = "capability_missing"
-	ErrorPolicyDenied          ErrorCode = "policy_denied"
-	ErrorConflict              ErrorCode = "conflict"
-	ErrorOwnershipAmbiguous    ErrorCode = "ownership_ambiguous"
-	ErrorProviderUnavailable   ErrorCode = "provider_unavailable"
-	ErrorRuntimeUnavailable    ErrorCode = "runtime_unavailable"
-	ErrorTimeout               ErrorCode = "timeout"
-	ErrorVerificationFailed    ErrorCode = "verification_failed"
-	ErrorUnsupported           ErrorCode = "unsupported_operation"
-	ErrorInternal              ErrorCode = "internal_error"
+	ErrorValidationFailed         ErrorCode = "validation_failed"
+	ErrorPortConflict             ErrorCode = "port_conflict"
+	ErrorRequiredSecretMissing    ErrorCode = "required_secret_missing"
+	ErrorSourceMissing            ErrorCode = "source_missing"
+	ErrorApprovalRequired         ErrorCode = "approval_required"
+	ErrorWorkloadStartFailed      ErrorCode = "workload_start_failed"
+	ErrorImagePullFailed          ErrorCode = "image_pull_failed"
+	ErrorAuthenticationFailed     ErrorCode = "authentication_failed"
+	ErrorInvalidWorkload          ErrorCode = "invalid_workload"
+	ErrorCapabilityMissing        ErrorCode = "capability_missing"
+	ErrorPolicyDenied             ErrorCode = "policy_denied"
+	ErrorConflict                 ErrorCode = "conflict"
+	ErrorOwnershipAmbiguous       ErrorCode = "ownership_ambiguous"
+	ErrorProviderUnavailable      ErrorCode = "provider_unavailable"
+	ErrorRuntimeUnavailable       ErrorCode = "runtime_unavailable"
+	ErrorHostResourceInsufficient ErrorCode = "host_resource_insufficient"
+	ErrorTimeout                  ErrorCode = "timeout"
+	ErrorVerificationFailed       ErrorCode = "verification_failed"
+	ErrorUnsupported              ErrorCode = "unsupported_operation"
+	ErrorInternal                 ErrorCode = "internal_error"
 )
 
 type Error struct {
@@ -120,6 +121,8 @@ func Operations() []Operation {
 	return []Operation{
 		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.resolve", MCPTool: "baseharbor.workspace.resolve", Description: "Resolve canonical component/source identity to developer-local worktrees without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.new", MCPTool: "baseharbor.app.new", Description: "Create and validate a new ecosystem-native application from portable capability intent.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "status", MCPTool: "baseharbor.status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},

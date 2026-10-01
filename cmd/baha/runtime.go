@@ -12,19 +12,21 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
-	Yes              bool
-	ControlPlaneOnly bool
-	PostgresPort     int
-	OpenBaoPort      int
-	RecoveryFile     string
-	Environment      string
-	TrustHostCA      bool
+	Yes                 bool
+	ControlPlaneOnly    bool
+	PostgresPort        int
+	OpenBaoPort         int
+	RecoveryFile        string
+	Environment         string
+	TrustHostCA         bool
+	SkipMemoryPreflight bool
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -34,6 +36,7 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	}
 	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
 	defer restoreEnvironment()
+	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
@@ -53,6 +56,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			opts.ControlPlaneOnly = true
 		case "--trust-host-ca":
 			opts.TrustHostCA = true
+		case "--skip-memory-preflight":
+			opts.SkipMemoryPreflight = true
 		case "--environment", "-e":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
@@ -100,7 +105,7 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
 		}
 	}
 	return opts, nil
@@ -180,6 +185,14 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		fmt.Fprintln(out, "BaseHarbor control-plane ports:")
 		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
 		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
+	}
+
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return err
+	}
+	if err := runHostMemoryPreflight(parent, in, out, bhruntime.ProviderKind(target.RuntimeProvider), hostresource.EstimateControlPlane(), true); err != nil {
+		return err
 	}
 
 	if !opts.ControlPlaneOnly && repositoryApplicationDetectedForUp() {
