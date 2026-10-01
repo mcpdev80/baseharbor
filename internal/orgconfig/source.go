@@ -94,7 +94,7 @@ func resolveLocal(source Source) (Resolution, Config, error) {
 	resolution := Resolution{
 		Source:          source,
 		ResolvedVersion: config.APIVersion,
-		ResolvedDigest: digest,
+		ResolvedDigest:  digest,
 		Provenance:      "file://" + abs,
 	}
 	cachePath, err := writeCache(resolution, content)
