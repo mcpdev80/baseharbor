@@ -139,9 +139,9 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
 		fmt.Fprintln(out, "\nDeveloper management access")
 		fmt.Fprintln(out, "  Scope         target / dev")
-		fmt.Fprintln(out, "  Username      developer (default)")
-		fmt.Fprintln(out, "  Credentials   managed by BaseHarbor")
-		fmt.Fprintln(out, "  Reveal        baha dev credentials")
+		fmt.Fprintln(out, "  Username      target-scoped; configurable (default developer)")
+		fmt.Fprintln(out, "  Credentials   configured once and reused by compatible management surfaces")
+		fmt.Fprintln(out, "  Reveal/change baha dev credentials [--username USER] [--reset|--password-file FILE]")
 	}
 
 	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
