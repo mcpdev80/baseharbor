@@ -308,6 +308,7 @@ jobs:
           - init
           - mcp
           - agent
+          - shell-ux
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -326,7 +327,6 @@ jobs:
         runtime: [docker, podman]
         gate:
           - guided
-          - shell-ux
           - lifecycle
           - data-capabilities
           - observability
