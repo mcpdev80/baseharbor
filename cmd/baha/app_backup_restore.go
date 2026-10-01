@@ -362,6 +362,16 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
 		return fmt.Errorf("record restored deployment: %w", err)
 	}
+	if err := verifyRestoredApplicationHealth(ctx, store, m); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
+	return nil
+
+}
+
+
+func verifyRestoredApplicationHealth(ctx context.Context, store application.Store, m application.Manifest) error {
 	status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
 		return fmt.Errorf("final restore status verification: %w", err)
@@ -409,9 +419,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if !doctor.Healthy {
 		return errors.New("final restore doctor verification is not healthy")
 	}
-	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
-
 }
 
 func reconcileRestoredDevelopmentRoutes(ctx context.Context, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, issuer serviceaccess.Issuer, files application.RuntimeFiles) error {
