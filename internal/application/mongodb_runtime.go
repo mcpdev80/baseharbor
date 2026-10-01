@@ -132,33 +132,26 @@ func writeMongoDBComposeService(b *strings.Builder, instance string) {
 }
 
 func ensureMongoDBInitFiles(files RuntimeFiles, m Manifest) error {
-	values, err := readRuntimeEnv(files.Env)
-	if err != nil {
-		return err
-	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		dir := filepath.Join(files.Dir, "providers", "mongodb", instance)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create MongoDB provider directory: %w", err)
 		}
-		db, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
-		if err != nil {
-			return err
-		}
-		user, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
-		if err != nil {
-			return err
-		}
-		password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
-		if err != nil {
-			return err
-		}
-		script := fmt.Sprintf(
-			"const appdb = db.getSiblingDB(%s);\nappdb.createUser({user:%s,pwd:%s,roles:[{role:\"readWrite\",db:%s}]});\n",
-			strconv.Quote(db), strconv.Quote(user), strconv.Quote(password), strconv.Quote(db),
-		)
-		if err := writeOwnerOnlyFile(filepath.Join(dir, "init.js"), []byte(script)); err != nil {
+		script := `const dbName = process.env.MONGO_INITDB_DATABASE;
+const appUser = process.env.BASEHARBOR_MONGODB_USER;
+const appPassword = process.env.BASEHARBOR_MONGODB_PASSWORD;
+if (!dbName || !appUser || !appPassword) {
+  throw new Error("BaseHarbor MongoDB application credentials are not available");
+}
+const appdb = db.getSiblingDB(dbName);
+appdb.createUser({user: appUser, pwd: appPassword, roles: [{role: "readWrite", db: dbName}]});
+`
+		scriptPath := filepath.Join(dir, "init.js")
+		if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
 			return fmt.Errorf("write MongoDB application-user init script: %w", err)
+		}
+		if err := os.Chmod(scriptPath, 0o644); err != nil {
+			return fmt.Errorf("make MongoDB application-user init script readable: %w", err)
 		}
 	}
 	return nil
