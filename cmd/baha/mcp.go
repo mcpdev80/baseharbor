@@ -75,6 +75,13 @@ type machineApplicationInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
+type machineApplyInput struct {
+	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name                string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment         string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
+}
+
 type machineAppNewInput struct {
 	Path               string   `json:"path,omitempty" jsonschema:"deprecated compatibility field: exact empty project root; prefer directory for new clients"`
 	Directory          string   `json:"directory,omitempty" jsonschema:"parent directory in which BaseHarbor creates a child directory named after the application; required unless the current empty directory already matches the application name"`
