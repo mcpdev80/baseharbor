@@ -102,7 +102,7 @@ jobs:
 
       - name: Load prebuilt runtime image
         id: load_image
-        if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value'
+        if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
         shell: bash
         run: |
           set -euo pipefail
@@ -229,7 +229,8 @@ jobs:
               ;;
             durable-key-value)
               BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)          esac
+                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)
+          esac
 
       - name: Collect failure diagnostics
         if: failure() && inputs.runtime != 'static'
@@ -313,7 +314,8 @@ jobs:
               ;;
             control-plane-recovery)
               BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
-                go test -p 1 ./cmd/baha -count=1 -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile          esac
+                go test -p 1 ./cmd/baha -count=1 -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+          esac
 
       - name: Collect failure diagnostics
         if: failure() && inputs.runtime != 'static'
@@ -397,7 +399,8 @@ jobs:
               ;;
             loki-runtime)
               BASEHARBOR_LOGS_INTEGRATION=1 \
-                go test -p 1 ./internal/logs -count=1 -run '^TestManagedLokiIngestsRealComposeWorkloadLogs          esac
+                go test -p 1 ./internal/logs -count=1 -run '^TestManagedLokiIngestsRealComposeWorkloadLogs
+          esac
 
       - name: Collect failure diagnostics
         if: failure() && inputs.runtime != 'static'
@@ -481,7 +484,8 @@ jobs:
               ;;
             tempo-runtime)
               BASEHARBOR_TRACES_INTEGRATION=1 \
-                go test -p 1 ./internal/traces -count=1 -run '^TestManagedTempoReceivesVerificationTraceThroughCollector          esac
+                go test -p 1 ./internal/traces -count=1 -run '^TestManagedTempoReceivesVerificationTraceThroughCollector
+          esac
 
       - name: Collect failure diagnostics
         if: failure() && inputs.runtime != 'static'
