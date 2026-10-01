@@ -37,7 +37,8 @@ defaults:
     default:
       reference: trust:corp-pki
   policies:
-    - reference: policy:company-security
+    - policy: security
+      mandatory: true
 environments:
   prod:
     target: dev
@@ -78,6 +79,9 @@ func TestLocalActivationAndEffectiveProvenance(t *testing.T) {
 	p := effective.Providers["database.sql"]
 	if p.Provider != "company-postgres" || p.Reference != "external-provider:company-postgres" || p.Scope != "external" || p.Source != "organization.environment.prod" {
 		t.Fatalf("unexpected effective provider: %+v", p)
+	}
+	if len(effective.Policies) != 1 || effective.Policies[0].Policy != "security" || effective.Policies[0].Reference != "policy:company-security" || !effective.Policies[0].Mandatory {
+		t.Fatalf("mandatory policy reference/provenance was not preserved: %+v", effective.Policies)
 	}
 }
 
