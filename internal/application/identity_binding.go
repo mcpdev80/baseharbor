@@ -152,7 +152,6 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 	return nil
 }
 
-
 func writeReadOnlyProjectionFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
