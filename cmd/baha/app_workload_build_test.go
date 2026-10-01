@@ -175,7 +175,6 @@ func mustWriteBuildFile(t *testing.T, root, rel, value string) {
 	}
 }
 
-
 func TestFailedBuildCandidateInvalidatesVerifiedFingerprintState(t *testing.T) {
 	files := application.RuntimeFiles{Dir: t.TempDir()}
 	if err := persistRepositoryWorkloadBuildState(files, map[string]string{"api": "verified-good"}); err != nil {
@@ -194,5 +193,17 @@ func TestFailedBuildCandidateInvalidatesVerifiedFingerprintState(t *testing.T) {
 	}
 	if len(state.Services) != 0 {
 		t.Fatalf("failed candidate left source fingerprint state: %#v", state.Services)
+	}
+}
+
+
+func TestSanitizeWorkloadDiagnosticRedactsInjectedValues(t *testing.T) {
+	const secret = "super-secret-value"
+	got := sanitizeWorkloadDiagnostic("panic: token="+secret+"\n", map[string]string{"APP_SECRET": secret})
+	if strings.Contains(got, secret) {
+		t.Fatalf("diagnostic leaked injected environment value: %q", got)
+	}
+	if !strings.Contains(got, "<redacted>") {
+		t.Fatalf("diagnostic did not mark redaction: %q", got)
 	}
 }
