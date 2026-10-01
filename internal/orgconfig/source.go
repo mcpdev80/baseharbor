@@ -215,7 +215,7 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	resolution := Resolution{
 		Source:          source,
 		ResolvedVersion: config.APIVersion,
-		ResolvedDigest: digest,
+		ResolvedDigest:  digest,
 		Provenance:      immutableRef,
 	}
 	cachePath, err := writeCache(resolution, content)
