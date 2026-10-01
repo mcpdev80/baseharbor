@@ -404,15 +404,15 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 	for _, instance := range mongoInstances {
 		name := workloadServiceBindingName("mongodb", instance, len(mongoInstances))
 		database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
-		if err != nil { return "", err }
+		if err != nil {\n\t\t\treturn "", err\n\t\t}
 		username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
-		if err != nil { return "", err }
+		if err != nil {\n\t\t\treturn "", err\n\t\t}
 		password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
-		if err != nil { return "", err }
+		if err != nil {\n\t\t\treturn "", err\n\t\t}
 		certificates, err := backendCertificates(values[mongodbTLSCAKey(instance)])
-		if err != nil { return "", err }
+		if err != nil {\n\t\t\treturn "", err\n\t\t}
 		host := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
-		if host == "" { host = mongodbAccessService(instance) }
+		if host == "" {\n\t\t\thost = mongodbAccessService(instance)\n\t\t}
 		uri := mongodbConnectionURI(host, "27017", database, username, password)
 		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
 			"type": "mongodb", "provider": "mongodb", "host": host, "port": "27017",
@@ -517,12 +517,12 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 	for _, instance := range mongoInstances {
 		name := workloadServiceBindingName("mongodb", instance, len(mongoInstances))
 		entries, err := readWorkloadServiceBinding(filepath.Join(root, name))
-		if err != nil { return fmt.Errorf("verify workload MongoDB binding %s: %w", instance, err) }
+		if err != nil {\n\t\t\treturn fmt.Errorf("verify workload MongoDB binding %s: %w", instance, err)\n\t\t}
 		if entries["type"] != "mongodb" || entries["provider"] != "mongodb" {
 			return fmt.Errorf("verify workload MongoDB binding %s: invalid type/provider", instance)
 		}
 		expectedHost := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
-		if expectedHost == "" { expectedHost = mongodbAccessService(instance) }
+		if expectedHost == "" {\n\t\t\texpectedHost = mongodbAccessService(instance)\n\t\t}
 		if entries["host"] != expectedHost || entries["port"] != "27017" {
 			return fmt.Errorf("verify workload MongoDB binding %s: invalid workload endpoint", instance)
 		}
@@ -703,14 +703,14 @@ func rabbitmqConnectionURL(values map[string]string, instance string) (string, e
 
 func mongodbConnectionURL(values map[string]string, instance string) (string, error) {
 	port, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "HOST_PORT"))
-	if err != nil { return "", err }
+	if err != nil {\n\t\t\treturn "", err\n\t\t}
 	database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
-	if err != nil { return "", err }
+	if err != nil {\n\t\t\treturn "", err\n\t\t}
 	username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "USER"))
-	if err != nil { return "", err }
+	if err != nil {\n\t\t\treturn "", err\n\t\t}
 	password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "PASSWORD"))
-	if err != nil { return "", err }
-	if _, err := requireRuntimeValue(values, mongodbTLSCAKey(instance)); err != nil { return "", err }
+	if err != nil {\n\t\t\treturn "", err\n\t\t}
+	if _, err := requireRuntimeValue(values, mongodbTLSCAKey(instance)); err != nil {\n\t\treturn "", err\n\t}
 	return mongodbConnectionURI(loopbackHost, port, database, username, password), nil
 }
 
