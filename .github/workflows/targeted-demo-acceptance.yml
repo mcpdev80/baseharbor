@@ -24,7 +24,7 @@ on:
           - docker
           - podman
       gate:
-        description: Atomic gate from baseharbor-demo/tests/gates.json
+        description: Atomic gate from baseharbor-demo/tests/gate-resources.json
         required: true
         default: lifecycle
         type: string
