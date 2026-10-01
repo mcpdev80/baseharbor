@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
