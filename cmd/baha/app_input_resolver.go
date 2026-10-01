@@ -39,8 +39,14 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		manifestPath, err := application.FindRepositoryManifest(cwd)
+		// app init is rooted in the current directory. An ancestor application
+		// manifest must not silently capture a nested project that the user is
+		// explicitly adopting as its own application.
+		manifestPath, hasLocalManifest, err := currentRepositoryManifest(cwd)
 		if err != nil {
+			return err
+		}
+		if !hasLocalManifest {
 			if len(injected) != 0 {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
@@ -89,6 +95,21 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func currentRepositoryManifest(cwd string) (string, bool, error) {
+	path := filepath.Join(filepath.Clean(cwd), application.RepositoryManifestName)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return path, false, nil
+	}
+	if err != nil {
+		return path, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return path, false, fmt.Errorf("%s is not a regular file", path)
+	}
+	return path, true, nil
 }
 
 func extractDeclaredInputArgs(args []string) ([]string, map[string]string, error) {
