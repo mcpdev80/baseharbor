@@ -294,7 +294,7 @@ func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capab
 		return err
 	}
 	physical := PhysicalBucketName(d.app, resource.Name)
-	if err := application.MaterializeObjectStorageBindingMaterial(
+	if err := application.MaterializeObjectStorageBinding(
 		d.app,
 		d.files,
 		resource.Name,
@@ -702,12 +702,5 @@ func ServiceTrustBundle(files ProviderFiles) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(material.CA)
-	if err != nil {
-		return "", fmt.Errorf("read SeaweedFS trust bundle: %w", err)
-	}
-	if strings.TrimSpace(string(data)) == "" {
-		return "", errors.New("SeaweedFS trust bundle is empty")
-	}
-	return string(data), nil
+	return material.CA, nil
 }
