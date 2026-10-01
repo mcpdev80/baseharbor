@@ -22,6 +22,7 @@ type appProjectDetection struct {
 	ComposeCandidates      []string
 	Compose                string
 	WorkloadServices       []string
+	WorkloadProtocols      map[string]string
 	InfrastructureServices []string
 	AmbiguousServices      []string
 	SQL                    bool
@@ -211,6 +212,9 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	}
 	if d.Compose != "" && len(d.WorkloadServices) > 0 {
 		m = application.WithWorkload(m, d.Compose, d.WorkloadServices...)
+		if service, port, ok := detectedHTTPExposureTarget(d, d.WorkloadServices); ok {
+			m = application.WithHTTPExposure(m, "web", service, port, "http")
+		}
 	}
 	if quick && d.Metrics {
 		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)
