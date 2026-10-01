@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -29,10 +30,14 @@ func TestPromptAndStoreMissingRequiredSecretsInteractiveSuccess(t *testing.T) {
 	oldInput := appApplySecretInput
 	oldHidden := appApplySecretReadHidden
 	oldTerminal := appApplySecretIsTerminal
-	appApplySecretInput = strings.NewReader("\n")
+	appApplySecretInput = strings.NewReader("y\nvalue-for-API_TOKEN\nvalue-for-JWT_SECRET\n")
 	appApplySecretIsTerminal = func(io.Reader) bool { return true }
-	appApplySecretReadHidden = func(_ io.Reader, _ io.Writer, key string) ([]byte, error) {
-		return []byte("value-for-" + key), nil
+	appApplySecretReadHidden = func(_ io.Reader, reader *bufio.Reader, _ io.Writer, key string) ([]byte, error) {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		return []byte(strings.TrimSpace(line)), nil
 	}
 	t.Cleanup(func() {
 		appApplySecretInput = oldInput

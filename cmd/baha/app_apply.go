@@ -17,7 +17,7 @@ import (
 )
 
 var appApplySecretInput io.Reader = os.Stdin
-var appApplySecretReadHidden = readApplicationSecretFromTerminal
+var appApplySecretReadHidden = readApplicationSecretFromTerminalBuffered
 var appApplySecretIsTerminal = appInitReaderIsTerminal
 
 func appApplyCommand(store application.Store) *cli.Command {
@@ -148,7 +148,7 @@ func promptAndStoreMissingRequiredSecrets(
 	}
 
 	for _, status := range missing {
-		value, err := appApplySecretReadHidden(appApplySecretInput, out, status.Name)
+		value, err := appApplySecretReadHidden(appApplySecretInput, reader, out, status.Name)
 		if err != nil {
 			return err
 		}
