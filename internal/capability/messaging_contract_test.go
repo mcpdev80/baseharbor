@@ -40,7 +40,12 @@ func TestMessagingSpecificationsAndRabbitMQReferenceProvider(t *testing.T) {
 	if len(integration.Capabilities) != 3 {
 		t.Fatalf("capabilities = %#v", integration.Capabilities)
 	}
-	if len(integration.Interfaces) != 1 || integration.Interfaces[0].Protocol != "amqp" {
+	if len(integration.Interfaces) != 2 ||
+		integration.Interfaces[0].Name != "amqp" ||
+		integration.Interfaces[0].Protocol != "amqp" ||
+		integration.Interfaces[1].Name != "management-ui" ||
+		integration.Interfaces[1].Protocol != "https" ||
+		!integration.Interfaces[1].Optional {
 		t.Fatalf("interfaces = %#v", integration.Interfaces)
 	}
 }

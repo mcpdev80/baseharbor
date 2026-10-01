@@ -54,7 +54,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		Version:       application.CurrentVersion,
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          "mcp-demo",
-		Environment: "dev",
+		Environment:   "dev",
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
 			Services: []string{"api"},

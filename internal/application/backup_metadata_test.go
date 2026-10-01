@@ -56,9 +56,9 @@ func TestBackupMetadataRejectsInvalidIdentity(t *testing.T) {
 		ApplicationID: "11111111-1111-4111-8111-111111111111",
 		DeploymentID:  "22222222-2222-4222-8222-222222222222",
 		Application:   "../escape",
-		Environment: "production",
-		CreatedAt:   time.Now().UTC(),
-		ArchivePath: "/tmp/backup.bhbackup",
+		Environment:   "production",
+		CreatedAt:     time.Now().UTC(),
+		ArchivePath:   "/tmp/backup.bhbackup",
 	})
 	if err == nil {
 		t.Fatal("expected invalid application identity to be rejected")

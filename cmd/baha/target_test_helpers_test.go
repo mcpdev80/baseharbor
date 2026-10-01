@@ -48,7 +48,7 @@ func registerTestDeployment(t *testing.T, target deployment.ResolvedTarget, m ap
 	record := deployment.DeploymentRecord{
 		Version: deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{
-			DeploymentID: testDeploymentID,
+			DeploymentID:  testDeploymentID,
 			ApplicationID: m.ApplicationID,
 			Target:        target.Name,
 			Application:   m.Name,
@@ -73,7 +73,7 @@ func registerTestDeployment(t *testing.T, target deployment.ResolvedTarget, m ap
 func testDeploymentStore(t *testing.T, target deployment.ResolvedTarget, m application.Manifest) application.Store {
 	t.Helper()
 	identity := deployment.DeploymentIdentity{
-		DeploymentID: testDeploymentID,
+		DeploymentID:  testDeploymentID,
 		ApplicationID: m.ApplicationID,
 		Target:        target.Name,
 		Application:   m.Name,

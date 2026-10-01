@@ -170,7 +170,7 @@ func detectedApplicationManifest(name, environment string, sql, cache, objectSto
 		Version:       application.CurrentVersion,
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          name,
-		Environment: environment,
+		Environment:   environment,
 		Services: application.Services{
 			SQL:           sql,
 			Cache:         cache,
