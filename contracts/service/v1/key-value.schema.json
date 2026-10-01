@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/service/v1/key-value.schema.json",
+  "title": "BaseHarbor Durable Key-Value Service Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "key-value"},
+    "contractVersion": {"const": "v1"},
+    "name": {"type": "string", "minLength": 1},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "durable": {"const": true},
+        "readWrite": {"type": "boolean"},
+        "transactions": {"type": "boolean"},
+        "protocols": {
+          "type": "array",
+          "items": {"enum": ["resp"]},
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "required": ["kind", "contractVersion", "name"]
+}
