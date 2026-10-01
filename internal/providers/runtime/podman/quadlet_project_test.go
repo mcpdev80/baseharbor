@@ -548,3 +548,75 @@ func TestRenderComposeProjectQuadletsUsesResolvedWorkloadPortEnvironment(t *test
 		t.Fatalf("Compose default port leaked through despite resolved fallback:\n%s", unit)
 	}
 }
+
+func TestRenderComposeProjectFilesJSONPreservesWorkloadVolumeAcrossOverlay(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "compose.yaml")
+	override := filepath.Join(root, "override.yaml")
+	if err := os.WriteFile(base, []byte(`services:
+  app:
+    image: example/app:latest
+    volumes:
+      - app-state:/var/lib/app
+volumes:
+  app-state:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`services:
+  app:
+    volumes:
+      - ./bindings:/run/baseharbor/bindings:ro
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered, err := RenderComposeProjectFilesJSON([]string{base, override}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"app-state:/var/lib/app"`,
+		`"./bindings:/run/baseharbor/bindings:ro"`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("merged Compose JSON lost volume %s: %s", want, rendered)
+		}
+	}
+}
+
+func TestRenderComposeProjectFilesJSONReplacesVolumeWithSameTarget(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "compose.yaml")
+	override := filepath.Join(root, "override.yaml")
+	if err := os.WriteFile(base, []byte(`services:
+  app:
+    image: example/app:latest
+    volumes:
+      - app-state:/var/lib/app
+volumes:
+  app-state:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`services:
+  app:
+    volumes:
+      - replacement:/var/lib/app
+volumes:
+  replacement:
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered, err := RenderComposeProjectFilesJSON([]string{base, override}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, `"app-state:/var/lib/app"`) {
+		t.Fatalf("same-target override did not replace base volume: %s", rendered)
+	}
+	if !strings.Contains(rendered, `"replacement:/var/lib/app"`) {
+		t.Fatalf("same-target override volume missing: %s", rendered)
+	}
+}

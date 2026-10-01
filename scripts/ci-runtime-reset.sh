@@ -27,6 +27,16 @@ run_timeout() {
   fi
 }
 
+run_engine_timeout() {
+  local seconds="$1"
+  shift
+  if [ "$engine" = "podman" ]; then
+    run_timeout "$seconds" env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME "$engine" "$@"
+    return
+  fi
+  run_timeout "$seconds" "$engine" "$@"
+}
+
 log "engine=$engine scope=${scope:-all}"
 if ! command -v "$engine" >/dev/null 2>&1; then
   log "engine not installed; nothing to reset"
@@ -46,7 +56,7 @@ remove_containers() {
   local -a ids=() targets=()
 
   log "containers: discovering"
-  mapfile -t ids < <(run_timeout 20s "$engine" container ls -aq 2>/dev/null || true)
+  mapfile -t ids < <(run_engine_timeout 20s container ls -aq 2>/dev/null || true)
   if [ "${#ids[@]}" -eq 0 ]; then
     log "containers: none"
     return 0
@@ -64,7 +74,7 @@ remove_containers() {
       targets+=("$name")
     fi
   done < <(
-    run_timeout 30s "$engine" container inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_engine_timeout 30s container inspect --format '{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
   if [ "${#targets[@]}" -eq 0 ]; then
@@ -72,9 +82,9 @@ remove_containers() {
     return 0
   fi
   log "containers: stopping ${#targets[@]} target(s)"
-  run_timeout 30s "$engine" container stop -t 2 "${targets[@]}" >/dev/null 2>&1 || true
+  run_engine_timeout 30s container stop -t 2 "${targets[@]}" >/dev/null 2>&1 || true
   log "containers: removing ${#targets[@]} target(s)"
-  run_timeout 30s "$engine" container rm "${targets[@]}" >/dev/null 2>&1 || run_timeout 30s "$engine" container rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  run_engine_timeout 30s container rm "${targets[@]}" >/dev/null 2>&1 || run_engine_timeout 30s container rm -f "${targets[@]}" >/dev/null 2>&1 || true
   log "containers: done"
 }
 
@@ -83,7 +93,7 @@ remove_networks() {
   local -a ids=() targets=()
 
   log "networks: discovering"
-  mapfile -t ids < <(run_timeout 20s "$engine" network ls -q 2>/dev/null || true)
+  mapfile -t ids < <(run_engine_timeout 20s network ls -q 2>/dev/null || true)
   if [ "${#ids[@]}" -eq 0 ]; then
     log "networks: none"
     return 0
@@ -100,7 +110,7 @@ remove_networks() {
       targets+=("$name")
     fi
   done < <(
-    run_timeout 30s "$engine" network inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_engine_timeout 30s network inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
   if [ "${#targets[@]}" -eq 0 ]; then
@@ -108,7 +118,7 @@ remove_networks() {
     return 0
   fi
   log "networks: removing ${#targets[@]} target(s)"
-  run_timeout 30s "$engine" network rm "${targets[@]}" >/dev/null 2>&1 || true
+  run_engine_timeout 30s network rm "${targets[@]}" >/dev/null 2>&1 || true
   log "networks: done"
 }
 
@@ -117,7 +127,7 @@ remove_volumes() {
   local -a ids=() targets=()
 
   log "volumes: discovering"
-  mapfile -t ids < <(run_timeout 20s "$engine" volume ls -q 2>/dev/null || true)
+  mapfile -t ids < <(run_engine_timeout 20s volume ls -q 2>/dev/null || true)
   if [ "${#ids[@]}" -eq 0 ]; then
     log "volumes: none"
     return 0
@@ -134,7 +144,7 @@ remove_volumes() {
       targets+=("$name")
     fi
   done < <(
-    run_timeout 30s "$engine" volume inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
+    run_engine_timeout 30s volume inspect --format '{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}' "${ids[@]}" 2>/dev/null || true
   )
 
   if [ "${#targets[@]}" -eq 0 ]; then
@@ -142,7 +152,7 @@ remove_volumes() {
     return 0
   fi
   log "volumes: removing ${#targets[@]} target(s)"
-  run_timeout 30s "$engine" volume rm -f "${targets[@]}" >/dev/null 2>&1 || true
+  run_engine_timeout 30s volume rm -f "${targets[@]}" >/dev/null 2>&1 || true
   log "volumes: done"
 }
 
