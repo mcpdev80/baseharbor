@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- First-run repository deployment initialization now records ownership evidence before persisting deployment-local inputs, preventing a valid first `baha up` from being misclassified as incomplete deployment state.
+- Atomic `shell-ux` acceptance now runs as a zero-container static gate instead of bootstrapping a runtime stack.
+
 - Guided and deterministic application initialization now expose the full v0.4.19 capability catalog, including durable key-value, document database and queue/pub-sub/stream messaging, with matching optional management-UI intent.
 - Recovery discovery now makes durable key-value, document-database and messaging state classes explicitly addressable; unsupported scoped recovery fails closed instead of silently omitting those durable contributors.
 - Capability/provider conformance tests now derive coverage from the shipped specification catalog and include Keycloak, external OIDC, RabbitMQ and MongoDB reference integrations.
