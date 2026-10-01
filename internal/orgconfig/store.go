@@ -69,7 +69,7 @@ func LoadActiveOptional() (ActiveState, bool, error) {
 	}
 	var state ActiveState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return ActiveState{}, fmt.Errorf("decode active organization configuration: %w", err)
+		return ActiveState{}, false, fmt.Errorf("decode active organization configuration: %w", err)
 	}
 	if err := state.Config.Validate(); err != nil {
 		return ActiveState{}, false, fmt.Errorf("validate active organization configuration: %w", err)
