@@ -211,9 +211,9 @@ Docker serves these canonical development hosts on HTTPS port 443. Rootless
 Podman uses the fixed unprivileged HTTPS port 8443 and reports that port in
 canonical URLs; no host sysctl change is required.
 
-A Target-scoped development account defaults to username `developer` with
-a generated strong password, reused across selected development management
-surfaces. When managed Identity is present, the same developer identity is
+A Target- and environment-scoped development account defaults to username
+`developer`, but the username is configurable. Its generated strong password
+and identity are reused across selected development management surfaces. When managed Identity is present, the same developer identity is
 reconciled through OIDC. The password is never printed by normal `status`,
 `doctor`, plan or evidence output. Test and prod do not use this shared
 development credential; they keep the authenticated operator-OIDC boundary.
@@ -225,6 +225,7 @@ development access:
 baha dev domain
 baha dev domain dev.example.internal
 baha dev credentials
+baha dev credentials --username USER
 baha dev credentials --reset
 ```
 
