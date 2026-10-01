@@ -160,6 +160,45 @@ func (r Registry) ResolvePlacement(provider ProviderKind, placement ProviderPlac
 	return matches[0], nil
 }
 
+func (r Registry) BindingsForProviderInstance(providerInstanceID string) []ProviderBinding {
+	providerInstanceID = strings.TrimSpace(providerInstanceID)
+	var result []ProviderBinding
+	for _, binding := range r.Bindings {
+		if binding.ProviderInstanceID == providerInstanceID {
+			result = append(result, binding)
+		}
+	}
+	return result
+}
+
+func (r *Registry) UnregisterExternal(providerInstanceID string) error {
+	if r == nil {
+		return errors.New("provider registry is nil")
+	}
+	providerInstanceID = strings.TrimSpace(providerInstanceID)
+	if providerInstanceID == "" {
+		return errors.New("provider instance id is required")
+	}
+	instance, ok := r.instance(providerInstanceID)
+	if !ok {
+		return fmt.Errorf("provider instance %q not found", providerInstanceID)
+	}
+	if instance.Scope != ScopeExternal || instance.Ownership != OwnershipExternal {
+		return fmt.Errorf("provider instance %q is not externally owned", providerInstanceID)
+	}
+	if bindings := r.BindingsForProviderInstance(providerInstanceID); len(bindings) != 0 {
+		return fmt.Errorf("external provider instance %q still has %d application binding(s); release bindings before removal", providerInstanceID, len(bindings))
+	}
+	out := r.Instances[:0]
+	for _, candidate := range r.Instances {
+		if candidate.ID != providerInstanceID {
+			out = append(out, candidate)
+		}
+	}
+	r.Instances = out
+	return nil
+}
+
 func (r *Registry) Bind(resource Resource, applicationID, providerInstanceID string) error {
 	return r.BindDeployment(resource, applicationID, "", providerInstanceID)
 }

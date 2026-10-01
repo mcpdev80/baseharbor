@@ -16,6 +16,31 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
+type machineProviderIDInput struct {
+	ID string `json:"id" jsonschema:"registered external provider id"`
+}
+
+type machineProviderAddInput struct {
+	ID                string   `json:"id" jsonschema:"external provider registration id"`
+	ProviderID        string   `json:"provider_id" jsonschema:"provider descriptor id such as company/postgresql"`
+	ProviderVersion   string   `json:"provider_version,omitempty" jsonschema:"optional provider descriptor version"`
+	ProviderProtocol  string   `json:"provider_protocol,omitempty" jsonschema:"optional provider protocol version"`
+	Kind              string   `json:"kind" jsonschema:"provider implementation kind"`
+	Capabilities      []string `json:"capabilities" jsonschema:"portable BaseHarbor capabilities implemented by this provider"`
+	Endpoint          string   `json:"endpoint" jsonschema:"absolute application-facing provider endpoint without embedded credentials"`
+	CredentialRef     string   `json:"credential_ref,omitempty" jsonschema:"secret-safe credential reference; plaintext credentials are not accepted"`
+	TrustMode         string   `json:"trust_mode,omitempty" jsonschema:"system, custom-ca or mtls; defaults to system"`
+	CAReference       string   `json:"ca_reference,omitempty" jsonschema:"custom CA/trust reference when required"`
+	ClientCertificate string   `json:"client_certificate_reference,omitempty" jsonschema:"mTLS client certificate reference"`
+	ClientKey         string   `json:"client_key_reference,omitempty" jsonschema:"mTLS client private-key reference; key material is never accepted directly"`
+	CertificateDir    string   `json:"certificate_directory,omitempty" jsonschema:"directory containing BYOC certificate/trust material for safe discovery"`
+}
+
+type machineProviderRemoveInput struct {
+	ID       string `json:"id" jsonschema:"registered external provider id"`
+	Approval bool   `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
+}
+
 type machineTargetInput struct {
 	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 }

@@ -135,6 +135,11 @@ func Operations() []Operation {
 		{ID: "restore", MCPTool: "baseharbor.restore", Description: "Restore and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "destroy", MCPTool: "baseharbor.destroy", Description: "Permanently remove BaseHarbor-owned application runtime resources and state.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "policy.check", MCPTool: "baseharbor.policy.check", Description: "Evaluate effective environment policy without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "provider.list", MCPTool: "baseharbor.provider.list", Description: "List registered externally owned capability providers.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.inspect", MCPTool: "baseharbor.provider.inspect", Description: "Inspect one registered external capability provider.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.verify", MCPTool: "baseharbor.provider.verify", Description: "Verify external provider reachability and configured trust without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.add", MCPTool: "baseharbor.provider.add", Description: "Register externally owned provider deployment state and references.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "provider.remove", MCPTool: "baseharbor.provider.remove", Description: "Remove BaseHarbor external-provider registration without mutating foreign infrastructure.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "policy.explain", MCPTool: "baseharbor.policy.explain", Description: "Explain effective policy defaults and bounded overrides.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 	}
 }

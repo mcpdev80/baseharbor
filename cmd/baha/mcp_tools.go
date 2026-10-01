@@ -117,6 +117,30 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("provider.list", "List registered externally owned capability providers using the shared secret-safe provider state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		result, err := application.ListExternalProviders()
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("provider.inspect", "Inspect one external provider registration without revealing credential or private-key material.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		result, err := application.InspectExternalProvider(strings.TrimSpace(input.ID))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("provider.verify", "Verify external provider reachability and configured TLS trust without mutation.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		result, err := application.VerifyExternalProvider(ctx, strings.TrimSpace(input.ID))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("policy.check", "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
@@ -233,6 +257,51 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
+
+	mcp.AddTool(server, machineMCPTool("provider.add", "Register an externally owned provider from endpoint plus secret-safe credential/trust references.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderAddInput) (*mcp.CallToolResult, any, error) {
+		reg, err := providerExternalRegistration(providerExternalArgs{
+			ID:                input.ID,
+			ProviderID:        input.ProviderID,
+			ProviderVersion:   input.ProviderVersion,
+			ProviderProtocol:  input.ProviderProtocol,
+			Kind:              input.Kind,
+			Capabilities:      append([]string(nil), input.Capabilities...),
+			Endpoint:          input.Endpoint,
+			CredentialRef:     input.CredentialRef,
+			TrustMode:         input.TrustMode,
+			CAReference:       input.CAReference,
+			ClientCertificate: input.ClientCertificate,
+			ClientKey:         input.ClientKey,
+			Directory:         input.CertificateDir,
+		})
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := application.RegisterExternalProvider(reg); err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, reg.Public(), nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("provider.remove", "Remove BaseHarbor registration for an externally owned provider. Foreign infrastructure is never mutated.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderRemoveInput) (*mcp.CallToolResult, any, error) {
+		if err := applicationlifecycle.RequireApproval("provider.remove", input.Approval); err != nil {
+			return machineMCPFailure(err)
+		}
+		id := strings.TrimSpace(input.ID)
+		item, err := application.InspectExternalProvider(id)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := application.RemoveExternalProvider(id); err != nil {
+			return machineMCPFailure(err)
+		}
+		result := struct {
+			ID             string `json:"id"`
+			Removed        bool   `json:"removed"`
+			ForeignMutated bool   `json:"foreign_mutated"`
+		}{ID: item.ID, Removed: true, ForeignMutated: false}
+		return nil, result, nil
+	})
 
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
