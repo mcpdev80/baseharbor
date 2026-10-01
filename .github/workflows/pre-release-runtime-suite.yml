@@ -31,7 +31,7 @@ permissions:
 jobs:
   gate:
     name: ${{ inputs.runtime }} · ${{ inputs.gate }}
-    runs-on: ${{ inputs.runtime == 'static' && fromJSON('["self-hosted","Linux","X64","baseharbor","k3s"]') || (inputs.runtime == 'podman' && fromJSON('["self-hosted","Linux","X64","baseharbor","podman"]') || fromJSON('["self-hosted","Linux","X64","baseharbor","docker"]')) }}
+    runs-on: ${{ inputs.runtime == 'static' && fromJSON('["self-hosted","Linux","X64","baseharbor","kubernetes","k3s"]') || (inputs.runtime == 'podman' && fromJSON('["self-hosted","Linux","X64","baseharbor","podman"]') || fromJSON('["self-hosted","Linux","X64","baseharbor","docker"]')) }}
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
