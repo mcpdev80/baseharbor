@@ -649,7 +649,6 @@ func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
 	}
 }
 
-
 func TestGuidedInitAddsUnambiguousDetectedHTTPSExposure(t *testing.T) {
 	root := t.TempDir()
 	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), `services:
