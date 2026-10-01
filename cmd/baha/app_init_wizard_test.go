@@ -558,9 +558,9 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	text := out.String()
 	for _, want := range []string{
 		"Managed services",
-		"SQL Database  detected and confirmed",
-		"Cache         detected and confirmed",
-		"Object Storage detected and confirmed",
+		"SQL Database        detected and confirmed",
+		"Cache               detected and confirmed",
+		"Object Storage      detected and confirmed",
 		"Management UIs",
 		"PostgreSQL    pgAdmin",
 		"Cache         Redis Commander",
