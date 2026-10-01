@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.19] - Unreleased
+
+### Added
+
+- Provider-neutral durable key-value, document-database and messaging contracts with Valkey, MongoDB and RabbitMQ reference providers.
+- First-class External/BYO provider onboarding and verification with ownership-safe removal and provider-neutral TLS/trust/certificate references.
+- Organization/platform configuration distributed through local/system, Git or OCI sources with immutable resolution and provenance.
+- Optional management surfaces for RabbitMQ, durable Valkey and MongoDB using the existing secure developer-access model.
+- Versioned Runtime and Delivery provider contracts that keep future Kubernetes/OpenShift and GitOps realizations outside portable Application Intent.
+
+### Changed
+
+- Provider descriptors, SDK/scaffolding, service schemas, Development Adapters, repository inspection, CLI, JSON and MCP now cover the complete v0.4.19 capability set.
+- Durable `database.key-value` semantics are explicitly separated from reconstructable `cache.key-value` semantics.
+- Source/build resolution ends before the portable Runtime boundary; Runtime providers consume resolved OCI workload artifacts.
+
 ## [0.4.18] - 2026-09-30
 
 ### Added
