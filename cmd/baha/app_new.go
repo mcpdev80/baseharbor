@@ -269,7 +269,6 @@ func developmentAdapterID(stack string) (string, error) {
 	return id, nil
 }
 
-
 func organizationDefaultStack(environment string) (string, error) {
 	state, ok, err := orgconfig.LoadActiveOptional()
 	if err != nil || !ok {
