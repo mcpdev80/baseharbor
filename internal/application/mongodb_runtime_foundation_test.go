@@ -1,6 +1,8 @@
 package application
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,5 +61,47 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 	}
 	if !broker || !gateway || !volume {
 		t.Fatalf("MongoDB owned resources = %#v", resources)
+	}
+
+	root := t.TempDir()
+	files := RuntimeFiles{Dir: root, Env: filepath.Join(root, "runtime.env")}
+	if err := ensureRuntimeEnv(files.Env, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureMongoDBInitFiles(files, m); err != nil {
+		t.Fatal(err)
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appUser := values[mongodbRuntimeKey("primary", "USER")]
+	appPassword := values[mongodbRuntimeKey("primary", "PASSWORD")]
+	adminUser := values[mongodbRuntimeKey("primary", "ADMIN_USER")]
+	adminPassword := values[mongodbRuntimeKey("primary", "ADMIN_PASSWORD")]
+	if appUser == "" || appPassword == "" || adminUser == "" || adminPassword == "" {
+		t.Fatal("MongoDB application/admin credentials must all be present")
+	}
+	if appUser == adminUser || appPassword == adminPassword {
+		t.Fatal("MongoDB application credentials must be isolated from provider-admin credentials")
+	}
+	initPath := filepath.Join(root, "providers", "mongodb", "primary", "init.js")
+	info, err := os.Stat(initPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("MongoDB init script permissions = %o, want owner-only", info.Mode().Perm())
+	}
+	initData, err := os.ReadFile(initPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initText := string(initData)
+	if !strings.Contains(initText, "readWrite") || !strings.Contains(initText, values[mongodbRuntimeKey("primary", "DB")]) {
+		t.Fatalf("MongoDB scoped application user is missing from init script:\n%s", initText)
+	}
+	if strings.Contains(initText, adminPassword) {
+		t.Fatal("MongoDB provider-admin password leaked into application-user init script")
 	}
 }
