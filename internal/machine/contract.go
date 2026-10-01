@@ -171,11 +171,18 @@ func OperationByID(id string) (Operation, bool) {
 func CapabilitySpecifications() []string {
 	return []string{
 		"cache.key-value/v1",
+		"database.document/v1",
+		"database.key-value/v1",
 		"database.sql/v1",
 		"exposure.http/v1",
+		"identity.oidc/v1",
 		"logs/v1",
+		"messaging.pubsub/v1",
+		"messaging.queue/v1",
+		"messaging.stream/v1",
 		"metrics/v1",
 		"object-storage.s3/v1",
+		"secrets/v1",
 		"secure-binding/v1",
 		"telemetry.otlp/v1",
 		"traces/v1",
