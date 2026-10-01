@@ -10,7 +10,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/development"
-	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 var appNewInput io.Reader = os.Stdin
@@ -71,7 +70,7 @@ func appNewCommand() *cli.Command {
 				if options.StackExplicit {
 					return usageError("--stack and --stack-profile cannot be combined", "Select either a built-in adapter stack or one reusable Stack Profile.")
 				}
-				catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+				catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
 				if err != nil {
 					return err
 				}
@@ -291,19 +290,4 @@ func developmentAdapterID(stack string) (string, error) {
 		return "", usageError("development stack "+stack+" is not available", "Use 'baha stack list' to see registered stacks and profiles.")
 	}
 	return id, nil
-}
-
-func organizationDefaultStack(environment string) (string, error) {
-	state, ok, err := orgconfig.LoadActiveOptional()
-	if err != nil || !ok {
-		return "", err
-	}
-	effective, err := orgconfig.ResolveEffective(state, environment)
-	if err != nil {
-		return "", fmt.Errorf("resolve organization stack default: %w", err)
-	}
-	if effective.Stack == nil {
-		return "", nil
-	}
-	return strings.TrimSpace(effective.Stack.Value), nil
 }

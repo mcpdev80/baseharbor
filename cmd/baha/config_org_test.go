@@ -14,6 +14,13 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
+func writeOrganizationParityArtifacts(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "company-dev"), []byte("kind: target\nname: company-dev\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 const organizationParityYAML = `apiVersion: baseharbor.organization/v1
 organization: parity
 targets:
@@ -47,6 +54,7 @@ func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "organization.yaml"), []byte(organizationParityYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeOrganizationParityArtifacts(t, source)
 
 	var out bytes.Buffer
 	if err := runWithIO(context.Background(), []string{
@@ -134,6 +142,7 @@ func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) 
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
 	source := filepath.Join(root, "organization.yaml")
+	writeOrganizationParityArtifacts(t, root)
 	write := func(name string) {
 		t.Helper()
 		body := bytes.ReplaceAll([]byte(organizationParityYAML), []byte("organization: parity"), []byte("organization: "+name))

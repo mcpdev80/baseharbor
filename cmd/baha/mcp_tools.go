@@ -233,7 +233,7 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 			if strings.TrimSpace(input.Stack) != "" {
 				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
 			}
-			catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+			catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
 			if err != nil {
 				return machineMCPFailure(err)
 			}

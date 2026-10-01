@@ -9,6 +9,18 @@ import (
 	"testing"
 )
 
+func writeOrgArtifactFixtures(t *testing.T, root string) {
+	t.Helper()
+	for name, content := range map[string]string{
+		"company-dev":    "kind: target\nname: company-dev\n",
+		"company-go-api": "apiVersion: baseharbor.dev/v1\nkind: StackProfile\nmetadata:\n  name: go-api\ncomponents:\n  - id: app\n    role: application\n    adapter: go\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 const testOrgYAML = `apiVersion: baseharbor.organization/v1
 organization: acme
 targets:
@@ -59,6 +71,7 @@ func TestLocalActivationAndEffectiveProvenance(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sourceDir, "organization.yaml"), []byte(testOrgYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeOrgArtifactFixtures(t, sourceDir)
 	state, err := Activate(context.Background(), Source{Kind: SourceLocal, Location: sourceDir})
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +129,9 @@ func TestGitResolutionPinsRevisionAndCheckDoesNotActivate(t *testing.T) {
 		runGitTest(t, repo, "add", "organization.yaml")
 		runGitTest(t, repo, "commit", "-q", "-m", "org config")
 	}
+	writeOrgArtifactFixtures(t, repo)
+	runGitTest(t, repo, "add", "company-dev", "company-go-api")
+	runGitTest(t, repo, "commit", "-q", "-m", "org artifacts")
 	write(testOrgYAML)
 	state, err := Activate(context.Background(), Source{Kind: SourceGit, Location: repo, Requested: "HEAD"})
 	if err != nil {
@@ -153,6 +169,7 @@ func TestSystemSourceUsesExplicitManagedPath(t *testing.T) {
 	if err := os.WriteFile(path, []byte(testOrgYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeOrgArtifactFixtures(t, root)
 	resolution, config, err := Resolve(context.Background(), Source{Kind: SourceSystem, Location: path})
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +203,7 @@ func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
 	if err := os.WriteFile(fixture, []byte(testOrgYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeOrgArtifactFixtures(t, root)
 	bin := filepath.Join(root, "bin")
 	if err := os.MkdirAll(bin, 0o700); err != nil {
 		t.Fatal(err)
@@ -200,7 +218,7 @@ func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
 		"    ref=\"$2\"; shift 2; out=\"\"\n" +
 		"    while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --output ]; then out=\"$2\"; shift 2; else shift; fi; done\n" +
 		"    case \"$ref\" in *@'" + digest + "') ;; *) echo bad-ref >&2; exit 9 ;; esac\n" +
-		"    mkdir -p \"$out\"; cp \"$ORG_FIXTURE\" \"$out/organization.yaml\" ;;\n" +
+		"    mkdir -p \"$out\"; cp \"$ORG_FIXTURE\" \"$out/organization.yaml\"; cp \"$(dirname \"$ORG_FIXTURE\")/company-dev\" \"$out/company-dev\"; cp \"$(dirname \"$ORG_FIXTURE\")/company-go-api\" \"$out/company-go-api\" ;;\n" +
 		"  *) exit 8 ;;\n" +
 		"esac\n"
 	if err := os.WriteFile(oras, []byte(script), 0o700); err != nil {
