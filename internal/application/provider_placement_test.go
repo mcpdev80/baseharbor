@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 func TestResolveProviderPlacementUsesSimpleSafeDefault(t *testing.T) {
@@ -125,5 +126,84 @@ func TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt(t *te
 	)
 	if err == nil || !strings.Contains(err.Error(), "is not supported by the current openbao adapter") {
 		t.Fatalf("expected unsupported adapter boundary rejection, got %v", err)
+	}
+}
+
+
+func TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	state := orgconfig.ActiveState{
+		Resolution: orgconfig.Resolution{
+			Source:         orgconfig.Source{Kind: orgconfig.SourceLocal, Location: "/managed/acme/organization.yaml"},
+			ResolvedDigest: "sha256:" + strings.Repeat("a", 64),
+			Provenance:     "file:///managed/acme/organization.yaml",
+		},
+		Config: orgconfig.Config{
+			APIVersion:   orgconfig.ContractVersion,
+			Organization: "acme",
+			Providers: map[string]orgconfig.Reference{
+				"company-postgres": {Reference: "external-provider:company-postgres"},
+			},
+			Defaults: orgconfig.EnvironmentDefaults{
+				Providers: map[string]orgconfig.ProviderDefault{
+					string(capability.SQL): {Provider: "company-postgres", Scope: "external"},
+				},
+			},
+		},
+	}
+	if err := orgconfig.SaveActive(state); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := Manifest{Name: "demo", Environment: "dev"}
+	before := manifest
+	placement, err := ResolveProviderPlacement(manifest, capability.ProviderPostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if placement.Scope != capability.ScopeExternal ||
+		placement.Ownership != capability.OwnershipExternal ||
+		placement.ExternalReference != "company-postgres" {
+		t.Fatalf("placement=%#v", placement)
+	}
+	if manifest != before {
+		t.Fatalf("organization placement mutated portable application intent: before=%#v after=%#v", before, manifest)
+	}
+}
+
+func TestExplicitProviderPlacementOverridesOrganizationDefault(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	state := orgconfig.ActiveState{
+		Resolution: orgconfig.Resolution{
+			Source:         orgconfig.Source{Kind: orgconfig.SourceLocal, Location: "/managed/acme/organization.yaml"},
+			ResolvedDigest: "sha256:" + strings.Repeat("b", 64),
+			Provenance:     "file:///managed/acme/organization.yaml",
+		},
+		Config: orgconfig.Config{
+			APIVersion:   orgconfig.ContractVersion,
+			Organization: "acme",
+			Providers: map[string]orgconfig.Reference{
+				"company-postgres": {Reference: "external-provider:company-postgres"},
+			},
+			Defaults: orgconfig.EnvironmentDefaults{
+				Providers: map[string]orgconfig.ProviderDefault{
+					string(capability.SQL): {Provider: "company-postgres", Scope: "external"},
+				},
+			},
+		},
+	}
+	if err := orgconfig.SaveActive(state); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	placement, err := ResolveProviderPlacement(Manifest{Name: "demo", Environment: "dev"}, capability.ProviderPostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if placement.Scope != capability.ScopeApplication || placement.Ownership != capability.OwnershipBaseHarbor || placement.ExternalReference != "" {
+		t.Fatalf("explicit operator placement did not override organization default: %#v", placement)
 	}
 }
