@@ -338,6 +338,9 @@ jobs:
           - failure
           - backup-restore
           - full-destroy
+          - rabbitmq-runtime
+          - mongodb-runtime
+          - durable-key-value
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -380,7 +383,7 @@ jobs:
               printf 'static/%s\n' "$gate"
             done
             for runtime in docker podman; do
-              for gate in guided shell-ux lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy; do
+              for gate in guided shell-ux lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy rabbitmq-runtime mongodb-runtime durable-key-value; do
                 printf '%s/%s\n' "$runtime" "$gate"
               done
             done
@@ -394,21 +397,21 @@ jobs:
             --arg candidate "$CANDIDATE_SHA" \
             --arg demo "$DEMO_REF" \
             '
-              length == 30 and
+              length == 36 and
               all(.[];
                 .schema == "baseharbor.pre-release.gate-evidence/v1" and
                 .candidate_sha == $candidate and
                 .demo_ref == $demo and
                 .outcome == "success"
               ) and
-              ([.[].id] | unique | length) == 30
+              ([.[].id] | unique | length) == 36
             ' "$manifests" >/dev/null
 
           jq -r '.[].id' "$manifests" | sort > "$actual_ids"
           diff -u "$expected_ids" "$actual_ids"
 
           summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
-          test "$summary_count" -eq 30
+          test "$summary_count" -eq 36
 
           mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
           cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
@@ -424,8 +427,8 @@ jobs:
           Source	${{ needs.source.result }}	exact candidate source/contracts/docs
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
           Static gates	${{ needs.static_gates.result }}	4 independently rerunnable static gates
-          Runtime gates	${{ needs.runtime_gates.result }}	26 independently rerunnable Docker/Podman gates
-          Evidence manifest	${{ steps.manifest.outcome }}	30 gate evidence bundles bound to the candidate SHA
+          Runtime gates	${{ needs.runtime_gates.result }}	32 independently rerunnable Docker/Podman gates
+          Evidence manifest	${{ steps.manifest.outcome }}	36 gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
 
