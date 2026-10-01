@@ -1,6 +1,7 @@
 package application
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -167,7 +168,7 @@ func TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingI
 		placement.ExternalReference != "company-postgres" {
 		t.Fatalf("placement=%#v", placement)
 	}
-	if manifest != before {
+	if !reflect.DeepEqual(manifest, before) {
 		t.Fatalf("organization placement mutated portable application intent: before=%#v after=%#v", before, manifest)
 	}
 }
