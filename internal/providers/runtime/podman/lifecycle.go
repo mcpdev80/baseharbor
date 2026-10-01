@@ -119,6 +119,14 @@ func (p PodmanProvider) LogsProject(ctx context.Context, project, composeFile, e
 	return quadletLogs(ctx, p.CommandPath(), q, services)
 }
 
+func (p PodmanProvider) LogsProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) (string, error) {
+	q, err := quadletRenderProjectFiles(composeFiles, environment, project, nil)
+	if err != nil {
+		return "", err
+	}
+	return quadletLogs(ctx, p.CommandPath(), q, services)
+}
+
 func (p PodmanProvider) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
 	q, renderErr := quadletRenderProject(composeFile, envFile, project)
 	status, statusErr := p.StatusProject(ctx, project, composeFile, envFile)
