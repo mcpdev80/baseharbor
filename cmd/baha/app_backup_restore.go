@@ -367,7 +367,30 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		return fmt.Errorf("final restore status verification: %w", err)
 	}
 	if !status.Ready {
-		return errors.New("final restore status verification did not reach READY")
+		var failed []string
+		for _, check := range status.Checks {
+			if check.OK {
+				continue
+			}
+			detail := strings.TrimSpace(check.Detail)
+			if detail == "" {
+				detail = strings.TrimSpace(check.State)
+			}
+			failed = append(failed, fmt.Sprintf("%s=%s", check.Name, detail))
+		}
+		if status.TLS != nil && !status.TLS.Healthy {
+			failed = append(failed, fmt.Sprintf("tls=%s", strings.TrimSpace(status.TLS.Detail)))
+		}
+		for _, observation := range status.ServiceTLS {
+			if observation.Healthy {
+				continue
+			}
+			failed = append(failed, fmt.Sprintf("service-tls/%s=%s", observation.Service, strings.TrimSpace(observation.Detail)))
+		}
+		if len(failed) == 0 {
+			return errors.New("final restore status verification did not reach READY")
+		}
+		return fmt.Errorf("final restore status verification did not reach READY: %s", strings.Join(failed, "; "))
 	}
 	doctor, err := collectApplicationDoctor(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
