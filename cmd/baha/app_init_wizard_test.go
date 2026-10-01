@@ -649,7 +649,6 @@ func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
 	}
 }
 
-
 func TestBuildGuidedInitManifestPreservesExplicitHTTPSExposureEvidence(t *testing.T) {
 	selection := guidedInitSelection{
 		name:              "demo",

@@ -336,7 +336,6 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	return m, nil
 }
 
-
 func addGuidedDetectedExposures(m application.Manifest, selection guidedInitSelection) (application.Manifest, error) {
 	for _, service := range selection.workloadServices {
 		protocol := strings.ToLower(strings.TrimSpace(selection.workloadProtocols[service]))
