@@ -69,7 +69,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: Caddy,
 		Services:        []ServiceKind{ServiceExposure},
 		Capabilities:    []SpecificationID{ExposureHTTPV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
+		SupportedScopes: []ProviderScope{ScopeApplication},
 		Interfaces:      []ProviderInterface{{Name: "ingress", Class: InterfaceApplication, Protocol: "http", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
@@ -183,7 +183,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: MongoDB,
 		Services:        []ServiceKind{ServiceDocumentDatabase},
 		Capabilities:    []SpecificationID{DocumentDatabaseV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "document-database", Class: InterfaceApplication, Protocol: "mongodb", Intrinsic: true}},
 	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
