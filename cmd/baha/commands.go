@@ -18,7 +18,7 @@ func rootCommand() *cli.Command {
 		switch child.Name {
 		case "init":
 			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]..."
+			initCmd.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]"
 			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
 			appCmd.Children[i] = initCmd
 		case "show":
