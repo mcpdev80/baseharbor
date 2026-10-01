@@ -110,7 +110,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		for _, service := range services {
 			if manifest == nil && rel == result.SelectedCompose {
-				if service.Postgres || service.Redis || service.ObjectStorage {
+				if service.Postgres || service.Redis || service.MongoDB || service.RabbitMQ || service.ObjectStorage {
 					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
 				} else if service.AmbiguousInfrastructure || service.Unresolved {
 					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
