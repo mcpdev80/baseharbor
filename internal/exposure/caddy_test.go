@@ -75,16 +75,43 @@ func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t 
 	}
 }
 
-func TestHTTPSRequiresExistingTLS(t *testing.T) {
+func TestHTTPSAllowsLocalGatewayTerminationAndRejectsUnsupportedTLS(t *testing.T) {
 	m := application.Manifest{
 		Version: 1, Name: "demo", Environment: "dev",
 		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "https"}},
 	}
-	driver := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.example", TLSMode: "acme"})
 	resource := capabilityResource(m, "public")
-	if err := driver.Preflight(context.Background(), resource, bindingFor(resource, "web")); err == nil || !strings.Contains(err.Error(), "existing/BYOC") {
+
+	local := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.baha.localhost", TLSMode: "local"})
+	if err := local.Preflight(context.Background(), resource, bindingFor(resource, "web")); err != nil {
+		t.Fatalf("local development HTTPS must terminate at the development gateway: %v", err)
+	}
+
+	acme := NewDriver(structCompose{}, m, application.RuntimeFiles{}, Deployment{Hostname: "demo.example", TLSMode: "acme"})
+	if err := acme.Preflight(context.Background(), resource, bindingFor(resource, "web")); err == nil || !strings.Contains(err.Error(), "local development TLS termination or existing/BYOC") {
 		t.Fatalf("expected managed HTTPS TLS boundary, got %v", err)
+	}
+}
+
+func TestLocalHTTPSUsesPlainInternalProviderTransport(t *testing.T) {
+	route := Route{
+		Name: "public", Service: "web", TargetPort: 8080,
+		Protocol: "https", ProviderProtocol: "http", Visibility: "public", PublishedPort: 18080,
+	}
+	got := caddyfile(route)
+	if strings.Contains(got, "tls /certs/") {
+		t.Fatalf("local development exposure must not duplicate TLS inside Caddy:\n%s", got)
+	}
+	if !strings.Contains(got, ":8080") {
+		t.Fatalf("local development exposure must use the internal HTTP listener:\n%s", got)
+	}
+	compose := composeYAML(State{Routes: []Route{route}}, Files{Dir: "/tmp/provider"})
+	if !strings.Contains(compose, "\"18080:8080\"") {
+		t.Fatalf("local development exposure must publish the internal HTTP provider port:\n%s", compose)
+	}
+	if strings.Contains(compose, "cert.pem:/certs/cert.pem") {
+		t.Fatalf("local development exposure must not mount a leaf certificate into Caddy:\n%s", compose)
 	}
 }
 
