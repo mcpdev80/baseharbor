@@ -59,29 +59,67 @@ nav:
   - Getting Started:
       - First application: tutorials/getting-started.md
 
-  - Using BaseHarbor:
-      - Targets: explanation/targets.md
+  - CLI:
+      - Overview: cli/index.md
+      - Core workflow: cli/core.md
+      - Applications: cli/applications.md
+      - Targets: cli/targets.md
+      - Providers: cli/providers.md
+      - Development: cli/development.md
+      - Organization & Policy: cli/organization-policy.md
+      - Security & Trust: cli/security-trust.md
+      - Automation & Agents: cli/automation-agents.md
+      - Shell & UX: cli/shell-ux.md
+      - Global options: cli/global-options.md
+
+  - Applications:
+      - Application contract: explanation/application-contract.md
       - Environments: how-to/environments.md
+      - Backup & restore: how-to/backup-restore.md
+      - Dynamic application secrets: how-to/dynamic-application-secrets.md
+
+  - Targets:
+      - Target concepts: explanation/targets.md
+      - Developer access: how-to/developer-access.md
+
+  - Providers:
+      - Provider model: explanation/providers.md
+      - External / BYO providers: how-to/external-providers.md
       - PostgreSQL: how-to/postgres.md
       - Cache: how-to/cache.md
-      - Secrets: how-to/secrets.md
-      - Dynamic application secrets: how-to/dynamic-application-secrets.md
+      - Durable key-value: how-to/durable-key-value.md
+      - Document database: how-to/document-database.md
+      - Messaging: how-to/messaging.md
       - Object storage: how-to/object-storage.md
+      - Secrets: how-to/secrets.md
       - Observability: how-to/observability.md
-      - Developer access: how-to/developer-access.md
-      - Backup & restore: how-to/backup-restore.md
 
-  - CLI & Automation:
-      - CLI reference: reference/cli.md
-      - MCP / agent interface: reference/mcp.md
+  - Workspaces:
+      - CLI workspace commands: cli/development.md
+
+  - Development Stacks:
+      - Stack Profile CLI: cli/development.md
+      - Backstage integration: how-to/backstage.md
+
+  - Organization / Platform Configuration:
+      - Concepts & distribution: explanation/organization-configuration.md
+      - CLI & policy: cli/organization-policy.md
+
+  - Security / Trust:
+      - Security model: explanation/security.md
+      - Authentication: explanation/authentication.md
+      - Trust CLI: cli/security-trust.md
+
+  - Operations:
+      - Core lifecycle CLI: cli/core.md
+      - Backup & restore: how-to/backup-restore.md
+      - Troubleshooting: troubleshooting/index.md
       - Errors: reference/errors.md
 
-  - Concepts:
-      - Architecture: explanation/architecture.md
-      - Application contract: explanation/application-contract.md
-      - Providers: explanation/providers.md
-      - Security: explanation/security.md
-      - Authentication: explanation/authentication.md
+  - Automation / Agents:
+      - CLI automation: cli/automation-agents.md
+      - MCP / agent interface: reference/mcp.md
+      - Machine Interface v1: spec/machine-interface-v1.md
 
   - Reference:
       - Manifest: reference/manifest.md
@@ -93,6 +131,12 @@ nav:
       - Runtime Resource API: reference/runtime-resource-api.md
       - Runtime secret broker: reference/runtime-secret-broker.md
       - Secrets & OpenBao: reference/secrets-and-openbao.md
+      - Runtime Provider Contract v1: spec/runtime-provider-contract-v1.md
+      - Runtime Provider Conformance v1: spec/runtime-provider-conformance-v1.md
+      - Delivery Provider Contract v1: spec/delivery-provider-contract-v1.md
+
+  - Concepts:
+      - Architecture: explanation/architecture.md
 
   - Developer:
       - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md
@@ -103,6 +147,7 @@ nav:
           - Overview: spec/README.md
           - Application Contract v1: spec/application-contract-v1.md
           - Provider Contract v1: spec/provider-contract-v1.md
+          - Development Extension v1: spec/development-extension-v1.md
           - Reconciliation v1: spec/reconciliation-v1.md
           - Machine Interface v1: spec/machine-interface-v1.md
           - Audit & Evidence v1: spec/audit-evidence-v1.md
@@ -112,6 +157,8 @@ nav:
           - Application Runtime Broker: spec/application-runtime-broker.md
           - Application runtime identity: spec/application-runtime-identity.md
           - Runtime broker security: spec/runtime-secret-broker-security.md
+          - Standards-first contracts: spec/standards-first.md
+          - Standards matrix: spec/standards-matrix.md
 
   - Project:
       - Roadmap: roadmap.md
