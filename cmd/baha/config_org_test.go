@@ -22,12 +22,18 @@ targets:
 providers:
   company-postgres:
     reference: external-provider:company-postgres
+policies:
+  security:
+    reference: policy:company-security
 defaults:
   target: dev
   providers:
     database.sql:
       provider: company-postgres
       scope: external
+  policies:
+    - policy: security
+      mandatory: true
 `
 
 func TestOrganizationCLIJSONAndMCPShareEffectiveResolution(t *testing.T) {
@@ -114,5 +120,69 @@ func assertOrganizationParityEffective(t *testing.T, effective orgconfig.Effecti
 		provider.Scope != "external" ||
 		provider.Source != "organization.defaults" {
 		t.Fatalf("unexpected provider default: %+v", provider)
+	}
+	if len(effective.Policies) != 1 || effective.Policies[0].Policy != "security" ||
+		effective.Policies[0].Reference != "policy:company-security" ||
+		!effective.Policies[0].Mandatory ||
+		effective.Policies[0].Source != "organization.defaults" {
+		t.Fatalf("unexpected mandatory policy reference: %+v", effective.Policies)
+	}
+}
+
+func TestOrganizationCheckDoesNotReplaceAndUpdateRequiresApproval(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	source := filepath.Join(root, "organization.yaml")
+	write := func(name string) {
+		t.Helper()
+		body := bytes.ReplaceAll([]byte(organizationParityYAML), []byte("organization: parity"), []byte("organization: "+name))
+		if err := os.WriteFile(source, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("parity")
+
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{
+		"config", "organization", "set", "--source", "local", "--location", source, "-o", "json",
+	}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	write("parity-next")
+
+	out.Reset()
+	if err := runWithIO(context.Background(), []string{"config", "organization", "check", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var check organizationCheckView
+	if err := json.Unmarshal(out.Bytes(), &check); err != nil {
+		t.Fatal(err)
+	}
+	if !check.Status.Changed || check.Available.Organization != "parity-next" {
+		t.Fatalf("check did not report new immutable config: %+v", check)
+	}
+
+	active, err := orgconfig.LoadActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Config.Organization != "parity" {
+		t.Fatalf("check silently replaced active config: %+v", active.Config)
+	}
+
+	if err := runWithIO(context.Background(), []string{"config", "organization", "update"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("organization update must require explicit --yes")
+	}
+	out.Reset()
+	if err := runWithIO(context.Background(), []string{"config", "organization", "update", "--yes", "-o", "json"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	active, err = orgconfig.LoadActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Config.Organization != "parity-next" {
+		t.Fatalf("explicit update did not activate resolved config: %+v", active.Config)
 	}
 }
