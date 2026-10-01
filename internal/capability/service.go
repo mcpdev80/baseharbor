@@ -11,6 +11,7 @@ const (
 	ServiceSQL           ServiceKind = "sql"
 	ServiceCache         ServiceKind = "cache"
 	ServiceKeyValue      ServiceKind = "key-value"
+	ServiceDocument      ServiceKind = "document"
 	ServiceObjectStorage ServiceKind = "object-storage"
 	ServiceSecrets       ServiceKind = "secrets"
 	ServiceObservability ServiceKind = "observability"
@@ -31,6 +32,8 @@ func ServiceKindForCapability(kind Kind) (ServiceKind, error) {
 		return ServiceCache, nil
 	case DurableKeyValue:
 		return ServiceKeyValue, nil
+	case DocumentDatabase:
+		return ServiceDocument, nil
 	case ObjectStorageS3:
 		return ServiceObjectStorage, nil
 	case Secrets:

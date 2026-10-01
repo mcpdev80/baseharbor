@@ -20,6 +20,7 @@ var (
 	Keycloak      = Provider{Kind: ProviderKeycloak, Capabilities: []Kind{Identity}}
 	ExternalOIDC  = Provider{Kind: ProviderExternalOIDC, Capabilities: []Kind{Identity}}
 	RabbitMQ      = Provider{Kind: ProviderRabbitMQ, Capabilities: []Kind{MessagingQueue, MessagingPubSub, MessagingStream}}
+	MongoDB       = Provider{Kind: ProviderMongoDB, Capabilities: []Kind{DocumentDatabase}}
 )
 
 var (
@@ -177,6 +178,14 @@ var (
 		SupportedScopes: []ProviderScope{ScopeApplication},
 		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
 	}
+	MongoDBIntegration = IntegrationDescriptor{
+		ID: "baseharbor/mongodb", Version: "0.1.0",
+		Protocol: ProviderProtocolV1, Provider: MongoDB,
+		Services:        []ServiceKind{ServiceDocument},
+		Capabilities:    []SpecificationID{DocumentDatabaseV1.ID},
+		SupportedScopes: []ProviderScope{ScopeApplication},
+		Interfaces:      []ProviderInterface{{Name: "document", Class: InterfaceApplication, Protocol: "mongodb", Intrinsic: true}},
+	}
 	ExternalOTLPIntegration = IntegrationDescriptor{
 		ID: "baseharbor/external-otlp", Version: "0.1.0",
 		Protocol: ProviderProtocolV1, Provider: ExternalOTLP,
@@ -214,6 +223,8 @@ func ReferenceIntegration(provider ProviderKind) (IntegrationDescriptor, error) 
 		return ExternalOIDCIntegration, nil
 	case ProviderRabbitMQ:
 		return RabbitMQIntegration, nil
+	case ProviderMongoDB:
+		return MongoDBIntegration, nil
 	default:
 		return IntegrationDescriptor{}, fmt.Errorf("reference integration for provider %q is not defined", provider)
 	}
