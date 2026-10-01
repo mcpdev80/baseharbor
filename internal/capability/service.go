@@ -8,17 +8,17 @@ import "fmt"
 type ServiceKind string
 
 const (
-	ServiceSQL           ServiceKind = "sql"
-	ServiceCache         ServiceKind = "cache"
-	ServiceKeyValue      ServiceKind = "key-value"
-	ServiceDocumentDatabase ServiceKind = "document-database"
-	ServiceObjectStorage ServiceKind = "object-storage"
-	ServiceSecrets       ServiceKind = "secrets"
-	ServiceObservability ServiceKind = "observability"
-	ServiceIdentity      ServiceKind = "identity"
-	ServiceMessaging     ServiceKind = "messaging"
-	ServiceVector        ServiceKind = "vector"
-	ServiceExposure      ServiceKind = "exposure"
+	ServiceSQL               ServiceKind = "sql"
+	ServiceCache             ServiceKind = "cache"
+	ServiceKeyValue          ServiceKind = "key-value"
+	ServiceDocumentDatabase  ServiceKind = "document-database"
+	ServiceObjectStorage     ServiceKind = "object-storage"
+	ServiceSecrets           ServiceKind = "secrets"
+	ServiceObservability     ServiceKind = "observability"
+	ServiceIdentity          ServiceKind = "identity"
+	ServiceMessaging         ServiceKind = "messaging"
+	ServiceVector            ServiceKind = "vector"
+	ServiceExposure          ServiceKind = "exposure"
 )
 
 // ServiceKindForCapability maps shipped v0.4 capability specifications onto
