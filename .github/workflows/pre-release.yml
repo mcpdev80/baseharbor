@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate, for example v0.4.17 or v0.4.17.1
+        description: Release tag to validate, for example v0.4.19
         required: true
         type: string
       ref:
@@ -27,11 +27,10 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Source · Build & Contracts
-    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
-    timeout-minutes: 75
+  source:
+    name: Source · Contracts · Docs
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 45
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
@@ -42,18 +41,12 @@ jobs:
         id: checkout
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
           fetch-depth: 0
 
       - name: Enforce workflow policy
         id: workflow_policy
         run: bash scripts/ci-workflow-policy.sh
-
-      - name: Reset persistent runner state
-        id: reset
-        shell: bash
-        timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Resolve release candidate
         id: release
@@ -64,7 +57,6 @@ jobs:
           INPUT_DEMO_REF: ${{ inputs.demo_ref }}
         run: |
           set -euo pipefail
-
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
           else
@@ -108,18 +100,15 @@ jobs:
               echo "Demo revision must be an exact 40-character commit SHA, got: $INPUT_DEMO_REF" >&2
               exit 1
             }
-            if [ "$INPUT_DEMO_REF" != "$pinned_demo_ref" ]; then
+            test "$INPUT_DEMO_REF" = "$pinned_demo_ref" || {
               echo "Requested demo revision does not match $demo_ref_file." >&2
-              echo "requested: $INPUT_DEMO_REF" >&2
-              echo "pinned:    $pinned_demo_ref" >&2
               exit 1
-            fi
+            }
           fi
-          demo_ref="$pinned_demo_ref"
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "demo_ref=$demo_ref" >> "$GITHUB_OUTPUT"
+          echo "demo_ref=$pinned_demo_ref" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         id: setup_go
@@ -127,6 +116,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Set up Python
+        id: setup_python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install validation tooling
+        id: tooling
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
       - name: Check Go formatting
         id: formatting
@@ -154,19 +156,11 @@ jobs:
           go test ./internal/... ./spec/... 2>&1 | tee "$logs/go-test-internal-spec.log"
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
           go vet ./... 2>&1 | tee "$logs/go-vet.log"
-          go build ./cmd/baha 2>&1 | tee "$logs/go-build.log"
-
-      - name: Set up Python
-        id: setup_python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.14'
 
       - name: Validate documentation
         id: docs
         shell: bash
         run: |
-          python -m pip install --disable-pip-version-check -r requirements-docs.txt
           mkdocs build --strict --config-file mkdocs.yml
           mkdocs build --strict --config-file mkdocs.de.yml
           bash scripts/documentation-audit.sh
@@ -174,9 +168,7 @@ jobs:
       - name: Validate workflow syntax
         id: workflow_syntax
         shell: bash
-        run: |
-          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+        run: "$RUNNER_TEMP/bin/actionlint -shellcheck="
 
       - name: Build release snapshot
         id: snapshot
@@ -196,18 +188,78 @@ jobs:
           grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
           grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
 
-      - name: Build pre-release candidate binary
+      - name: Build exact candidate binary
         id: candidate_binary
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pre-release-candidate"
-          CGO_ENABLED=0 go build -trimpath \
-            -ldflags="-s -w -X main.version=${{ steps.release.outputs.tag }} -X main.commit=${{ steps.release.outputs.candidate_sha }} -X main.date=unknown" \
-            -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
+          CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=${{ steps.release.outputs.tag }} -X main.commit=${{ steps.release.outputs.candidate_sha }} -X main.date=unknown"             -o "$RUNNER_TEMP/pre-release-candidate/baha" ./cmd/baha
           "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ steps.release.outputs.candidate_sha }}"
 
-      - name: Build runtime image without publishing
+      - name: Upload source candidate
+        id: source_candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-source-candidate
+          path: ${{ runner.temp }}/pre-release-candidate
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Generate source evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/pre-release-source-evidence.tsv"
+          cat >"$rows" <<EOF
+          Candidate resolution	${{ steps.release.outcome }}	release metadata, exact candidate SHA and pinned demo SHA
+          Workflow policy	${{ steps.workflow_policy.outcome }}	fixed reviewed workflow surface
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Source readability	${{ steps.source_readability.outcome }}	production source guard
+          Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests and vet
+          Documentation	${{ steps.docs.outcome }}	strict EN/DE docs and audit
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
+          Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
+          Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives
+          Candidate binary	${{ steps.candidate_binary.outcome }}	exact SHA-stamped binary
+          Source candidate	${{ steps.source_candidate.outcome }}	shared binary for static/runtime gates
+          EOF
+          mkdir -p "$RUNNER_TEMP/pre-release-source-evidence/source-logs"
+          cp -a "$RUNNER_TEMP/pre-release-source-logs/." "$RUNNER_TEMP/pre-release-source-evidence/source-logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-source-evidence"             "BaseHarbor Source Pre-Release Evidence"             "pre-release/source"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ steps.release.outputs.candidate_sha || github.sha }}"             "$rows"
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-source-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-source-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  runtime_candidate:
+    name: Candidate · Runtime Image
+    needs: source
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Reset Docker runner state
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Download source candidate
+        uses: actions/download-artifact@v6
+        with:
+          name: pre-release-source-candidate
+          path: ${{ runner.temp }}/pre-release-candidate
+
+      - name: Build runtime image once
         id: runtime_image
         uses: docker/build-push-action@v6
         with:
@@ -218,21 +270,20 @@ jobs:
           load: true
           tags: localhost/baseharbor-runtime:pre-release
           build-args: |
-            VERSION=${{ steps.release.outputs.tag }}
-            COMMIT=${{ steps.release.outputs.candidate_sha }}
+            VERSION=${{ needs.source.outputs.tag }}
+            COMMIT=${{ needs.source.outputs.candidate_sha }}
 
-      - name: Export reusable runtime candidate
-        id: candidate_export
+      - name: Export runtime image
+        id: export
         shell: bash
         run: |
           set -euo pipefail
           docker image inspect localhost/baseharbor-runtime:pre-release >/dev/null
-          docker save localhost/baseharbor-runtime:pre-release \
-            -o "$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+          docker save localhost/baseharbor-runtime:pre-release             -o "$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
           test -s "$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
 
-      - name: Upload reusable runtime candidate
-        id: candidate_upload
+      - name: Upload shared runtime candidate
+        id: upload
         uses: actions/upload-artifact@v6
         with:
           name: pre-release-runtime-candidate
@@ -241,98 +292,151 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Cleanup persistent runner state
-        id: cleanup
+      - name: Cleanup Docker runner state
         if: always()
-        shell: bash
-        timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
-      - name: Generate Source/Build pre-release evidence
+  static_gates:
+    name: Static · ${{ matrix.gate }}
+    needs: source
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        gate:
+          - config-matrix
+          - init
+          - mcp
+          - agent
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: static
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-source-candidate
+
+  runtime_gates:
+    name: ${{ matrix.runtime }} · ${{ matrix.gate }}
+    needs: [source, runtime_candidate]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        runtime: [docker, podman]
+        gate:
+          - guided
+          - shell-ux
+          - lifecycle
+          - data-capabilities
+          - observability
+          - policy
+          - identity
+          - connectivity
+          - security
+          - reconciliation
+          - failure
+          - backup-restore
+          - full-destroy
+          - rabbitmq-runtime
+          - mongodb-runtime
+          - durable-key-value
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-runtime-candidate
+
+  evidence:
+    name: Evidence · Candidate Manifest
+    if: always()
+    needs: [source, runtime_candidate, static_gates, runtime_gates]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout evidence tooling
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha || github.sha }}
+
+      - name: Download gate evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-gate-*-evidence-*
+          path: ${{ runner.temp }}/gate-evidence
+
+      - name: Verify complete atomic evidence set
+        id: manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          expected_ids="$RUNNER_TEMP/expected-gate-ids.txt"
+          actual_ids="$RUNNER_TEMP/actual-gate-ids.txt"
+          manifests="$RUNNER_TEMP/gate-manifests.json"
+
+          {
+            for gate in config-matrix init mcp agent; do
+              printf 'static/%s\n' "$gate"
+            done
+            for runtime in docker podman; do
+              for gate in guided shell-ux lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy rabbitmq-runtime mongodb-runtime durable-key-value; do
+                printf '%s/%s\n' "$runtime" "$gate"
+              done
+            done
+          } | sort > "$expected_ids"
+
+          mapfile -d '' manifest_files < <(find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#manifest_files[@]}" -eq 36
+          jq -s '.' "${manifest_files[@]}" > "$manifests"
+
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            --arg demo "$DEMO_REF" \
+            '
+              length == 36 and
+              all(.[];
+                .schema == "baseharbor.pre-release.gate-evidence/v1" and
+                .candidate_sha == $candidate and
+                .demo_ref == $demo and
+                .outcome == "success"
+              ) and
+              ([.[].id] | unique | length) == 36
+            ' "$manifests" >/dev/null
+
+          jq -r '.[].id' "$manifests" | sort > "$actual_ids"
+          diff -u "$expected_ids" "$actual_ids"
+
+          summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
+          test "$summary_count" -eq 36
+
+          mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
+          cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
+          cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
+          cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
+
+      - name: Generate final pre-release evidence
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          rows="$RUNNER_TEMP/pre-release-source-evidence.tsv"
+          rows="$RUNNER_TEMP/pre-release-final.tsv"
           cat >"$rows" <<EOF
-          Candidate resolution	${{ steps.release.outcome }}	release tag, changelog, release notes, exact demo SHA and develop/main-hotfix ancestry
-          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
-          Source readability	${{ steps.source_readability.outcome }}	production file/function size guard
-          Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests, vet and CLI build
-          Documentation	${{ steps.docs.outcome }}	strict EN/DE MkDocs builds plus documentation architecture audit
-          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
-          Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
-          Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives and checksums
-          Candidate binary	${{ steps.candidate_binary.outcome }}	linux/amd64 baha binary stamped with exact candidate commit
-          Runtime image build	${{ steps.runtime_image.outcome }}	linux/amd64 runtime image built once and loaded locally
-          Candidate export	${{ steps.candidate_export.outcome }}	runtime image exported once for all four runtime workers
-          Candidate upload	${{ steps.candidate_upload.outcome }}	prebuilt binary and runtime image shared with runtime suites
-          Runner cleanup	${{ steps.cleanup.outcome }}	persistent Docker runner reset
+          Source	${{ needs.source.result }}	exact candidate source/contracts/docs
+          Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
+          Static gates	${{ needs.static_gates.result }}	4 independently rerunnable static gates
+          Runtime gates	${{ needs.runtime_gates.result }}	32 independently rerunnable Docker/Podman gates
+          Evidence manifest	${{ steps.manifest.outcome }}	36 gate evidence bundles bound to the candidate SHA
           EOF
-          mkdir -p "$RUNNER_TEMP/pre-release-evidence/source-logs"
-          cp -a "$RUNNER_TEMP/pre-release-source-logs/." "$RUNNER_TEMP/pre-release-evidence/source-logs/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$RUNNER_TEMP/pre-release-evidence" \
-            "BaseHarbor Source/Build Pre-Release Evidence" \
-            "pre-release/source-build" \
-            "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}" \
-            "${{ steps.release.outputs.candidate_sha || github.sha }}" \
-            "$rows"
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
 
-      - name: Upload Source/Build pre-release evidence
+      - name: Upload final pre-release evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: pre-release-source-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pre-release-evidence
+          name: pre-release-final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-final-evidence
           if-no-files-found: error
-          retention-days: 1
-
-
-  docker_normal:
-    name: Docker · Core Journey
-    needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    uses: ./.github/workflows/pre-release-runtime-suite.yml
-    with:
-      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
-      demo_ref: ${{ needs.validate.outputs.demo_ref }}
-      runtime: docker
-      suite: normal
-
-  docker_operations:
-    name: Docker · Operations
-    # Keep one full Docker acceptance environment alive at a time. Core Journey
-    # must release its provider fleet before Operations starts on Docker runners.
-    needs: [validate, docker_normal]
-    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    uses: ./.github/workflows/pre-release-runtime-suite.yml
-    with:
-      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
-      demo_ref: ${{ needs.validate.outputs.demo_ref }}
-      runtime: docker
-      suite: operations
-
-  podman_normal:
-    name: Podman · Core Journey
-    needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    uses: ./.github/workflows/pre-release-runtime-suite.yml
-    with:
-      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
-      demo_ref: ${{ needs.validate.outputs.demo_ref }}
-      runtime: podman
-      suite: normal
-
-  podman_operations:
-    name: Podman · Operations
-    # Keep one full Podman acceptance environment alive at a time. Docker and
-    # Podman remain parallel lanes, but suites within one runtime are serialized.
-    needs: [validate, podman_normal]
-    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
-    uses: ./.github/workflows/pre-release-runtime-suite.yml
-    with:
-      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && inputs.ref || github.sha) }}
-      demo_ref: ${{ needs.validate.outputs.demo_ref }}
-      runtime: podman
-      suite: operations
+          retention-days: 30

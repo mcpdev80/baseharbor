@@ -1,6 +1,6 @@
-name: "Targeted Runtime Gate"
+name: "Targeted Atomic Gate"
 
-run-name: "${{ github.event_name == 'workflow_dispatch' && format('{0} · {1}', inputs.runtime == 'podman' && 'Podman' || 'Docker', inputs.gate) || github.event.head_commit.message }}"
+run-name: "${{ inputs.runtime }} · ${{ inputs.gate }} · ${{ inputs.ref }}"
 
 on:
   workflow_dispatch:
@@ -15,310 +15,33 @@ on:
         required: true
         type: string
       runtime:
-        description: Container runtime
+        description: Gate execution class/runtime
         required: true
         default: docker
         type: choice
         options:
+          - static
           - docker
           - podman
       gate:
-        description: Demo gate name from baseharbor-demo/tests/gates.json
+        description: Atomic gate from baseharbor-demo/tests/gate-resources.json
         required: true
         default: lifecycle
         type: string
-  push:
-    branches:
-      - 'runtime-validation/targeted-podman*'
-      - 'runtime-validation/targeted-docker*'
-    paths:
-      - '.ci/targeted-gate-trigger'
-
-concurrency:
-  group: targeted-demo-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: targeted-atomic-${{ inputs.runtime }}-${{ inputs.gate }}-${{ inputs.ref }}
+  cancel-in-progress: true
+
 jobs:
-  selected-gate:
-    name: ${{ github.event_name == 'workflow_dispatch' && format('{0} · {1}', inputs.runtime == 'podman' && 'Podman' || 'Docker', inputs.gate) || github.event.head_commit.message }}
-    runs-on:
-      - self-hosted
-      - Linux
-      - X64
-      - baseharbor
-      - ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || (contains(github.ref_name, 'targeted-podman') && 'podman' || 'docker') }}
-    timeout-minutes: 60
-    env:
-      INPUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
-      INPUT_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || '' }}
-      INPUT_DEMO_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_ref || '' }}
-      INPUT_GATE: ${{ github.event_name == 'workflow_dispatch' && inputs.gate || '' }}
-
-    steps:
-      - name: Checkout BaseHarbor
-        id: checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
-
-      - name: Resolve targeted gate
-        id: target
-        shell: bash
-        run: |
-          set -euo pipefail
-          runtime="$INPUT_RUNTIME"
-          gate="$INPUT_GATE"
-          ref="$INPUT_REF"
-          demo_ref="$INPUT_DEMO_REF"
-
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            case "$GITHUB_REF_NAME" in
-              runtime-validation/targeted-podman*) runtime="podman" ;;
-              runtime-validation/targeted-docker*) runtime="docker" ;;
-              *) echo "Unsupported targeted branch: $GITHUB_REF_NAME" >&2; exit 2 ;;
-            esac
-            test -s .ci/targeted-gate-trigger
-            trigger="$(tr -d '\r\n' < .ci/targeted-gate-trigger)"
-            gate="$(printf '%s\n' "$trigger" | awk '{print $1}')"
-            demo_ref="$(printf '%s\n' "$trigger" | awk '{print $2}')"
-            ref="$GITHUB_SHA"
-          fi
-
-          case "$runtime" in docker|podman) ;; *) echo "Unsupported runtime: $runtime" >&2; exit 2 ;; esac
-          test -n "$gate"
-          test -n "$demo_ref"
-          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "demo_ref must be an exact 40-character commit SHA" >&2; exit 2; }
-          printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
-          printf 'gate=%s\n' "$gate" >> "$GITHUB_OUTPUT"
-          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
-          printf 'demo_ref=%s\n' "$demo_ref" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve immutable demo revision
-        id: demo_revision
-        shell: bash
-        env:
-          INPUT_DEMO_REF: ${{ steps.target.outputs.demo_ref }}
-        run: |
-          set -euo pipefail
-          demo_ref="$INPUT_DEMO_REF"
-          if [ -z "$demo_ref" ]; then
-            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
-            test -n "$version"
-            file="docs/releases/v${version}.demo-ref"
-            test -s "$file"
-            demo_ref="$(tr -d '[:space:]' < "$file")"
-          fi
-          [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "demo_ref must be an exact 40-character commit SHA" >&2
-            exit 2
-          }
-          echo "demo_ref=$demo_ref" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Go
-        id: setup_go
-        if: steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence'
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Resolve candidate SHA
-        id: candidate
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Reset runtime state
-        id: reset
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
-        shell: bash
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
-          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
-          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          if [ "${{ steps.target.outputs.runtime }}" = "podman" ]; then
-            # Quadlet generators scan the whole user unit directory. A stale
-            # BaseHarbor unit from a previous logical worker can therefore
-            # invalidate this worker before its own scope is even loaded.
-            # Self-hosted runners execute one job at a time, so clear all
-            # BaseHarbor-owned Podman state on this physical runner.
-            bash scripts/ci-runtime-reset.sh "podman"
-          else
-            bash scripts/ci-runtime-reset.sh "docker" "demo-$worker_id"
-          fi
-
-      - name: Run focused workload routing checks
-        id: focused
-        if: steps.target.outputs.gate == 'workload-routing'
-        shell: bash
-        run: |
-          set -euo pipefail
-          go test ./internal/repositoryinspect -run 'TestAnalyzeComposeFile.*Workload.*Protocol' -count=1
-          go test ./cmd/baha -run 'TestDevelopmentWorkloadRoute|TestWorkloadExposureSchemeForService' -count=1
-
-      - name: Run focused Keycloak readiness checks
-        id: keycloak_readiness
-        if: steps.target.outputs.gate == 'debug-keycloak-readiness'
-        shell: bash
-        run: |
-          set -euo pipefail
-          go test ./internal/identityprovider -run 'TestKeycloakCompose|Test.*IdentityEndpoint' -count=1
-
-      - name: Verify Podman Quadlet runtime
-        id: quadlet
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness' && steps.target.outputs.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          podman info >/tmp/targeted-podman-info.txt
-
-          generator=""
-          for candidate in \
-            "$(command -v podman-system-generator 2>/dev/null || true)" \
-            /usr/lib/systemd/system-generators/podman-system-generator \
-            /usr/libexec/podman/quadlet
-          do
-            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-              generator="$candidate"
-              break
-            fi
-          done
-          test -n "$generator"
-          verify_units="$RUNNER_TEMP/targeted-quadlet-verify"
-          rm -rf "$verify_units"
-          mkdir -p "$verify_units"
-          QUADLET_UNIT_DIRS="$verify_units" "$generator" --user --dryrun >/tmp/targeted-podman-quadlet-generator.txt
-
-          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
-          #!/bin/sh
-          echo "podman compose is forbidden in Podman Quadlet targeted validation" >&2
-          exit 97
-          EOF
-          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
-          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
-
-      - name: Run selected demo gate
-        id: demo
-        if: steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-keycloak-readiness'
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
-          BASEHARBOR_TEST_RUNTIME: ${{ steps.target.outputs.runtime }}
-          DEMO_GATE: ${{ steps.target.outputs.gate }}
-        run: |
-          set -euo pipefail
-          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
-          export WORKDIR="$RUNNER_TEMP/baseharbor-demo-targeted-repo"
-          export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-demo-targeted"
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
-          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
-          export BASEHARBOR_TARGET="demo-${worker_id}"
-          rm -rf "$WORKDIR" "$ARTIFACT_DIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
-          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$WORKDIR"
-          git -C "$WORKDIR" fetch --depth 1 origin "${{ steps.demo_revision.outputs.demo_ref }}"
-          git -C "$WORKDIR" checkout --detach FETCH_HEAD
-          test "$(git -C "$WORKDIR" rev-parse HEAD)" = "${{ steps.demo_revision.outputs.demo_ref }}"
-          cd "$WORKDIR"
-          if [ "$DEMO_GATE" = "debug-podman-container-lookup" ]; then
-            bash tests/debug-podman-container-lookup/run.sh
-          elif [ "$DEMO_GATE" = "debug-recovery-evidence" ]; then
-            bash tests/debug-recovery-evidence/run.sh
-          elif [ "$DEMO_GATE" = "debug-keycloak-runtime" ]; then
-            export DEMO_ROOT="$WORKDIR"
-            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-              ARTIFACT_DIR="$ARTIFACT_DIR" \
-              bash tests/debug-keycloak-runtime/run.sh
-          elif [ "$DEMO_GATE" = "debug-restore-route" ]; then
-            export DEMO_ROOT="$WORKDIR"
-            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-              ARTIFACT_DIR="$ARTIFACT_DIR" \
-              bash tests/debug-restore-route/run.sh
-          elif [ "$DEMO_GATE" = "full" ]; then
-            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-              ARTIFACT_DIR="$ARTIFACT_DIR" \
-              bash scripts/acceptance.sh
-          elif [ "$DEMO_GATE" = "release-focused" ]; then
-            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-              ARTIFACT_DIR="$ARTIFACT_DIR" \
-              bash scripts/acceptance.sh identity security backup-restore full-destroy
-          else
-            BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
-              BASEHARBOR_TEST_RUNTIME="$BASEHARBOR_TEST_RUNTIME" \
-              ARTIFACT_DIR="$ARTIFACT_DIR" \
-              bash scripts/acceptance.sh "$DEMO_GATE"
-          fi
-
-      - name: Snapshot demo artifacts
-        id: snapshot
-        if: always()
-        shell: bash
-        run: |
-          rm -rf "$RUNNER_TEMP/targeted-demo-raw"
-          mkdir -p "$RUNNER_TEMP/targeted-demo-raw"
-          cp -a "$RUNNER_TEMP/baseharbor-demo-targeted/." "$RUNNER_TEMP/targeted-demo-raw/" 2>/dev/null || true
-
-          if [ "${{ steps.target.outputs.gate }}" != "workload-routing" ] && [ "${{ steps.target.outputs.gate }}" != "debug-podman-container-lookup" ] && [ "${{ steps.target.outputs.gate }}" != "debug-recovery-evidence" ] && [ "${{ steps.target.outputs.gate }}" != "debug-keycloak-readiness" ] && [ "${{ steps.demo.outcome }}" != "success" ]; then
-            export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
-            export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
-            export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-            worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
-            export BASEHARBOR_TARGET="demo-$worker_id"
-            bash scripts/ci-failure-diagnostics.sh               "${{ steps.target.outputs.runtime }}"               "$RUNNER_TEMP/targeted-demo-raw/runtime-diagnostics"               "$RUNNER_TEMP/baseharbor-demo-targeted-repo"               "$RUNNER_TEMP/baseharbor-demo-targeted-repo/.tools/bin/baha"
-          fi
-
-      - name: Cleanup runtime state
-        id: cleanup
-        if: always() && steps.target.outputs.gate != 'workload-routing' && steps.target.outputs.gate != 'debug-podman-container-lookup' && steps.target.outputs.gate != 'debug-recovery-evidence' && steps.target.outputs.gate != 'debug-keycloak-readiness'
-        shell: bash
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          worker_id="${GITHUB_REF_NAME#runtime-validation/targeted-}"
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
-          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
-          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          bash scripts/ci-runtime-reset.sh "${{ steps.target.outputs.runtime }}" "demo-$worker_id"
-
-      - name: Generate targeted gate evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/targeted-demo-evidence"
-          rows="$RUNNER_TEMP/targeted-demo-evidence.tsv"
-          cat >"$rows" <<EOF
-          Checkout	${{ steps.checkout.outcome }}	Exact requested BaseHarbor ref
-          Runtime reset	${{ steps.reset.outcome }}	Skipped for workload-routing focused checks
-          Focused workload routing	${{ steps.focused.outcome }}	No provider/container startup
-          Podman Quadlet runtime	${{ steps.quadlet.outcome }}	Required for Podman; Compose provider blocked
-          Demo revision	success	${{ steps.demo_revision.outputs.demo_ref }}
-          Demo ${{ steps.target.outputs.gate }}	${{ steps.demo.outcome }}	Skipped for workload-routing focused checks
-          Cleanup	${{ steps.cleanup.outcome }}	Skipped for workload-routing focused checks
-          EOF
-          mkdir -p "$out/demo"
-          cp -a "$RUNNER_TEMP/targeted-demo-raw/." "$out/demo/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$out" \
-            "BaseHarbor Targeted Demo Evidence" \
-            "targeted/${{ steps.target.outputs.runtime }}/${{ steps.target.outputs.gate }}" \
-            "${{ steps.target.outputs.ref }}" \
-            "${{ steps.candidate.outputs.sha || github.sha }}" \
-            "$rows"
-
-      - name: Upload targeted gate evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: targeted-${{ steps.target.outputs.runtime }}-${{ steps.target.outputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/targeted-demo-evidence
-          if-no-files-found: error
-          retention-days: 1
+  selected_gate:
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ inputs.ref }}
+      demo_ref: ${{ inputs.demo_ref }}
+      runtime: ${{ inputs.runtime }}
+      gate: ${{ inputs.gate }}
+      candidate_artifact: ""
