@@ -33,7 +33,7 @@ func TestCapabilityIntentsFromManifestCoversPortableApplicationContract(t *testi
 		Exposures: []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}},
 		Telemetry: application.TelemetryRequirements{OTLP: &application.OTLPRequirement{Signals: []string{"traces", "metrics", "logs"}}},
 		Metrics:   application.MetricsRequirements{Sources: []application.MetricsSourceRequirement{{Name: "app", Service: "app", Port: 8080, Path: "/metrics"}}},
-		Logs:      application.LogsRequirements{Collect: []string{"app"}},
+		Logs:      application.LogsRequirements{Collect: []string{"application"}},
 		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
 	}
 	intents, err := CapabilityIntentsFromManifest(m)
