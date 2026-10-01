@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,8 @@ type guidedInitSelection struct {
 	environment                  string
 	compose                      string
 	workloadServices             []string
+	workloadProtocols            map[string]string
+	workloadPorts                []repositoryinspect.PortEvidence
 	selected                     []bool
 	sqlInstances                 []string
 	cacheInstances               []string
@@ -58,7 +61,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		return selection, errors.New("environment cannot be empty")
 	}
 
-	selection.compose, selection.workloadServices, err = guidedWorkloadSelection(reader, out, d)
+	selection.compose, selection.workloadServices, selection.workloadProtocols, selection.workloadPorts, err = guidedWorkloadSelection(reader, out, d)
 	if err != nil {
 		return selection, err
 	}
@@ -205,7 +208,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	return selection, nil
 }
 
-func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (string, []string, error) {
+func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (string, []string, map[string]string, []repositoryinspect.PortEvidence, error) {
 	compose := d.Compose
 	workloadServices := append([]string(nil), d.WorkloadServices...)
 	ambiguousServices := append([]string(nil), d.AmbiguousServices...)
@@ -214,11 +217,11 @@ func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDe
 		var err error
 		compose, err = promptCompose(reader, out, d.ComposeCandidates)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, nil, err
 		}
 		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, nil, err
 		}
 		workloadServices = append([]string(nil), analysis.WorkloadServices...)
 		ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
@@ -226,11 +229,23 @@ func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDe
 	if len(ambiguousServices) > 0 {
 		confirmedWorkload, err := promptAmbiguousComposeServices(reader, out, ambiguousServices)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, nil, err
 		}
 		workloadServices = uniqueSorted(append(workloadServices, confirmedWorkload...))
 	}
-	return compose, workloadServices, nil
+	protocols := map[string]string{}
+	ports := append([]repositoryinspect.PortEvidence(nil), d.Ports...)
+	if strings.TrimSpace(compose) != "" {
+		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		for service, protocol := range analysis.WorkloadProtocols {
+			protocols[service] = protocol
+		}
+		ports = append([]repositoryinspect.PortEvidence(nil), analysis.Ports...)
+	}
+	return compose, workloadServices, protocols, ports, nil
 }
 
 func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection) (application.Manifest, error) {
@@ -297,6 +312,11 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	m = applyGuidedSecretPolicies(m, selection.secretPolicies)
 	if selection.compose != "" && len(selection.workloadServices) > 0 {
 		m = application.WithWorkload(m, filepath.ToSlash(selection.compose), selection.workloadServices...)
+		var exposureErr error
+		m, exposureErr = addGuidedDetectedExposures(m, selection)
+		if exposureErr != nil {
+			return application.Manifest{}, exposureErr
+		}
 	}
 
 	var err error
@@ -312,6 +332,48 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 		for capabilityID, operations := range d.RuntimePermissions {
 			m = application.WithRuntimePermission(m, capabilityID, services, operations...)
 		}
+	}
+	return m, nil
+}
+
+
+func addGuidedDetectedExposures(m application.Manifest, selection guidedInitSelection) (application.Manifest, error) {
+	selected := map[string]struct{}{}
+	for _, service := range selection.workloadServices {
+		selected[service] = struct{}{}
+	}
+	for _, service := range selection.workloadServices {
+		protocol := strings.ToLower(strings.TrimSpace(selection.workloadProtocols[service]))
+		if protocol == "" {
+			continue
+		}
+		if protocol != "http" && protocol != "https" {
+			return application.Manifest{}, fmt.Errorf("workload service %s declares unsupported protocol %q", service, protocol)
+		}
+		ports := map[int]struct{}{}
+		for _, evidence := range selection.workloadPorts {
+			if evidence.Service != service {
+				continue
+			}
+			if port, ok := composeTargetPort(evidence.Value); ok {
+				ports[port] = struct{}{}
+			}
+		}
+		if len(ports) != 1 {
+			return application.Manifest{}, usageError(
+				fmt.Sprintf("workload service %s declares %s but its HTTP target port is ambiguous", service, protocol),
+				"Declare one unambiguous target port for the service or add exposure.http explicitly.",
+			)
+		}
+		var port int
+		for value := range ports {
+			port = value
+		}
+		name := slugifyAppName(service)
+		if name == "" {
+			return application.Manifest{}, fmt.Errorf("workload service %q cannot be converted to a stable exposure name", service)
+		}
+		m = application.WithHTTPExposure(m, name, service, port, protocol)
 	}
 	return m, nil
 }
