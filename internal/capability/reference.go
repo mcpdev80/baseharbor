@@ -29,7 +29,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: PostgreSQL,
 		Services:        []ServiceKind{ServiceSQL},
 		Capabilities:    []SpecificationID{SQLV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "sql", Class: InterfaceApplication, Protocol: "postgresql", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
@@ -42,7 +42,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: Valkey,
 		Services:        []ServiceKind{ServiceCache, ServiceKeyValue},
 		Capabilities:    []SpecificationID{KeyValueV1.ID, DurableKeyValueV1.ID},
-		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeShared, ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "cache", Class: InterfaceApplication, Protocol: "resp", Intrinsic: true}, {Name: "management-ui", Class: InterfaceAdministration, Protocol: "https", Optional: true}},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
 			{Name: "metrics", Kind: ObservabilityMetrics, Status: ObservabilityRequiresAdapter, Mode: ObservabilityAdapter, Protocol: "openmetrics", Verification: ObservabilityVerifyNone},
@@ -69,7 +69,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: Caddy,
 		Services:        []ServiceKind{ServiceExposure},
 		Capabilities:    []SpecificationID{ExposureHTTPV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "ingress", Class: InterfaceApplication, Protocol: "http", Intrinsic: true}},
 		Optional:        OptionalLifecycleSupport{Status: true, Update: true, Destroy: true},
 		Observability: ProviderObservability{Signals: []ProviderObservabilitySignal{
@@ -175,7 +175,7 @@ var (
 		Protocol: ProviderProtocolV1, Provider: RabbitMQ,
 		Services:        []ServiceKind{ServiceMessaging},
 		Capabilities:    []SpecificationID{MessagingQueueV1.ID, MessagingPubSubV1.ID, MessagingStreamV1.ID},
-		SupportedScopes: []ProviderScope{ScopeApplication},
+		SupportedScopes: []ProviderScope{ScopeApplication, ScopeExternal},
 		Interfaces:      []ProviderInterface{{Name: "amqp", Class: InterfaceApplication, Protocol: "amqp", Intrinsic: true}},
 	}
 	MongoDBIntegration = IntegrationDescriptor{
