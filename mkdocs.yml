@@ -61,6 +61,7 @@ nav:
 
   - CLI:
       - Overview: cli/index.md
+      - Complete command index: cli/command-index.md
       - Core workflow: cli/core.md
       - Applications: cli/applications.md
       - Targets: cli/targets.md
