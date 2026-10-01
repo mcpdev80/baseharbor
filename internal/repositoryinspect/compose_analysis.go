@@ -38,12 +38,19 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 	name := slugify(serviceName)
 	prefixes := []string{kind + "-"}
 	suffixes := []string{"-" + kind}
-	if kind == "postgres" {
+	switch kind {
+	case "postgres":
 		prefixes = append(prefixes, "postgresql-", "pg-")
 		suffixes = append(suffixes, "-postgresql", "-pg")
-	} else {
+	case "redis":
 		prefixes = append(prefixes, "valkey-", "redis-")
 		suffixes = append(suffixes, "-valkey", "-redis")
+	case "mongodb":
+		prefixes = append(prefixes, "mongo-")
+		suffixes = append(suffixes, "-mongo")
+	case "rabbitmq":
+		prefixes = append(prefixes, "rabbit-")
+		suffixes = append(suffixes, "-rabbit")
 	}
 	for _, prefix := range prefixes {
 		name = strings.TrimPrefix(name, prefix)
@@ -86,10 +93,16 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 		if service.Redis {
 			analysis.CacheInstances = append(analysis.CacheInstances, detectedLogicalInstanceName(service.Name, "redis"))
 		}
+		if service.MongoDB {
+			analysis.DocumentDatabaseInstances = append(analysis.DocumentDatabaseInstances, detectedLogicalInstanceName(service.Name, "mongodb"))
+		}
+		if service.RabbitMQ {
+			analysis.MessagingServices = append(analysis.MessagingServices, service.Name)
+		}
 		if service.ObjectStorage {
 			analysis.ObjectStorageServices = append(analysis.ObjectStorageServices, service.Name)
 		}
-		if service.Postgres || service.Redis || service.ObjectStorage {
+		if service.Postgres || service.Redis || service.MongoDB || service.RabbitMQ || service.ObjectStorage {
 			analysis.InfrastructureServices = append(analysis.InfrastructureServices, service.Name)
 		} else if service.AmbiguousInfrastructure || service.Unresolved {
 			analysis.AmbiguousServices = append(analysis.AmbiguousServices, service.Name)
@@ -116,6 +129,8 @@ func AnalyzeComposeFile(root, rel string) (ComposeAnalysis, error) {
 	}
 	analysis.SQLInstances = uniqueSorted(analysis.SQLInstances)
 	analysis.CacheInstances = uniqueSorted(analysis.CacheInstances)
+	analysis.DocumentDatabaseInstances = uniqueSorted(analysis.DocumentDatabaseInstances)
+	analysis.MessagingServices = uniqueSorted(analysis.MessagingServices)
 	analysis.ObjectStorageServices = uniqueSorted(analysis.ObjectStorageServices)
 	analysis.InfrastructureServices = uniqueSorted(analysis.InfrastructureServices)
 	analysis.AmbiguousServices = uniqueSorted(analysis.AmbiguousServices)
