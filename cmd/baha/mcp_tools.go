@@ -359,8 +359,9 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		return nil, organizationView{ContractVersion: orgconfig.ContractVersion, State: state, Effective: effective}, nil
 	})
 
-	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)

@@ -16,6 +16,7 @@ type Result struct {
 	Name   string `json:"name"`
 	OK     bool   `json:"ok"`
 	Detail string `json:"detail,omitempty"`
+	Err    error  `json:"-"`
 }
 
 func Run(ctx context.Context, checks []Check) ([]Result, bool) {
@@ -40,7 +41,7 @@ func run(ctx context.Context, checks []Check, timeout time.Duration) ([]Result, 
 		}
 		err := check.Run(checkCtx)
 		cancel()
-		result := Result{Name: check.Name, OK: err == nil}
+		result := Result{Name: check.Name, OK: err == nil, Err: err}
 		if err != nil {
 			result.Detail = err.Error()
 			allOK = false
