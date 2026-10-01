@@ -46,6 +46,24 @@ func BuildPlan(m Manifest) (Plan, error) {
 				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure durable key-value database capability resource %s", capability.Name)},
 				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify durable application-facing key-value write/read access for %s", capability.Name)},
 			)
+		case CapabilityMessagingQueue:
+			resource := "messaging.queue:" + capability.Name
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure messaging queue capability resource %s", capability.Name)},
+				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify publish/consume/ack semantics for %s", capability.Name)},
+			)
+		case CapabilityMessagingPubSub:
+			resource := "messaging.pubsub:" + capability.Name
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure messaging pubsub capability resource %s", capability.Name)},
+				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify subscribe/publish/receive semantics for %s", capability.Name)},
+			)
+		case CapabilityMessagingStream:
+			resource := "messaging.stream:" + capability.Name
+			p.Actions = append(p.Actions,
+				Action{Kind: "ensure", Resource: resource, Description: fmt.Sprintf("ensure messaging stream capability resource %s", capability.Name)},
+				Action{Kind: "verify", Resource: resource, Description: fmt.Sprintf("verify supported stream semantics for %s", capability.Name)},
+			)
 		case CapabilityObjectStorageS3:
 			p.Actions = append(p.Actions,
 				Action{Kind: "ensure", Resource: "s3-bucket:" + capability.Name, Description: fmt.Sprintf("ensure isolated S3 bucket %s", capability.Name)},

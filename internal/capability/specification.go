@@ -29,6 +29,9 @@ var (
 	LogsV1            = CapabilitySpecification{ID: "logs/v1", Kind: Logs, Version: SpecificationV1}
 	TracesV1          = CapabilitySpecification{ID: "traces/v1", Kind: Traces, Version: SpecificationV1}
 	IdentityOIDCV1    = CapabilitySpecification{ID: "identity.oidc/v1", Kind: Identity, Version: SpecificationV1}
+	MessagingQueueV1  = CapabilitySpecification{ID: "messaging.queue/v1", Kind: MessagingQueue, Version: SpecificationV1}
+	MessagingPubSubV1 = CapabilitySpecification{ID: "messaging.pubsub/v1", Kind: MessagingPubSub, Version: SpecificationV1}
+	MessagingStreamV1 = CapabilitySpecification{ID: "messaging.stream/v1", Kind: MessagingStream, Version: SpecificationV1}
 )
 
 func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
@@ -55,6 +58,12 @@ func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
 		return TracesV1, nil
 	case Identity:
 		return IdentityOIDCV1, nil
+	case MessagingQueue:
+		return MessagingQueueV1, nil
+	case MessagingPubSub:
+		return MessagingPubSubV1, nil
+	case MessagingStream:
+		return MessagingStreamV1, nil
 	default:
 		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
 	}

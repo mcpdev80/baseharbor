@@ -21,6 +21,9 @@ const (
 	Logs            Kind = "logs"
 	Traces          Kind = "traces"
 	Identity        Kind = "identity.oidc"
+	MessagingQueue  Kind = "messaging.queue"
+	MessagingPubSub Kind = "messaging.pubsub"
+	MessagingStream Kind = "messaging.stream"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -48,6 +51,7 @@ const (
 	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
 	ProviderKeycloak        ProviderKind = "keycloak"
 	ProviderExternalOIDC    ProviderKind = "external-oidc"
+	ProviderRabbitMQ        ProviderKind = "rabbitmq"
 )
 
 // Provider describes the capability surface of one provider implementation.

@@ -27,6 +27,15 @@ func (m Manifest) YAML() string {
 			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
 			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
 		}
+		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
+			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+		}
+		if m.Services.MessagingPubSub || len(m.Services.MessagingPubSubInstances) > 0 {
+			writeServiceYAML(&b, "messaging_pubsub", m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+		}
+		if m.Services.MessagingStream || len(m.Services.MessagingStreamInstances) > 0 {
+			writeServiceYAML(&b, "messaging_stream", m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
 			writeManagementUIYAML(&b, m.Services.ObjectStorageManagementUI)
@@ -162,8 +171,8 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.KeyValue || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
-		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+	return services.SQL || services.Cache || services.KeyValue || services.MessagingQueue || services.MessagingPubSub || services.MessagingStream || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
+		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.MessagingQueueInstances) > 0 || len(services.MessagingPubSubInstances) > 0 || len(services.MessagingStreamInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
 func writeManagementUIYAML(b *strings.Builder, enabled bool) {
