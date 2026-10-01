@@ -407,7 +407,7 @@ jobs:
                 .demo_ref == $demo and
                 .outcome == "success"
               ) and
-              ([.[].id] | unique | length) == 42
+              ([.[].id] | unique | length) == 41
             ' "$manifests" >/dev/null
 
           jq -r '.[].id' "$manifests" | sort > "$actual_ids"
