@@ -239,6 +239,34 @@ jobs:
           cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh             "$out"             "BaseHarbor Atomic Gate Evidence"             "pre-release/gate/${{ inputs.runtime }}/${{ inputs.gate }}"             "${{ inputs.ref }}"             "${{ steps.candidate.outputs.sha || github.sha }}"             "$rows"
 
+          capabilities='${{ steps.resource_profile.outputs.capabilities }}'
+          [ -n "$capabilities" ] || capabilities='[]'
+          if [ "${{ inputs.runtime }}" = "static" ]; then
+            gate_outcome="${{ steps.static_gate.outcome }}"
+          else
+            gate_outcome="${{ steps.runtime_gate.outcome }}"
+          fi
+          jq -n \
+            --arg id "${{ inputs.runtime }}/${{ inputs.gate }}" \
+            --arg runtime "${{ inputs.runtime }}" \
+            --arg gate "${{ inputs.gate }}" \
+            --arg profile "${{ steps.resource_profile.outputs.profile }}" \
+            --arg candidate_sha "${{ steps.candidate.outputs.sha || github.sha }}" \
+            --arg demo_ref "${{ inputs.demo_ref }}" \
+            --arg outcome "$gate_outcome" \
+            --argjson capabilities "$capabilities" \
+            '{
+              schema: "baseharbor.pre-release.gate-evidence/v1",
+              id: $id,
+              runtime: $runtime,
+              gate: $gate,
+              profile: $profile,
+              capabilities: $capabilities,
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
       - name: Upload atomic gate evidence
         if: always()
         uses: actions/upload-artifact@v6
