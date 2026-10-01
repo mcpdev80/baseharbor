@@ -370,7 +370,6 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
-
 func verifyRestoredApplicationHealth(ctx context.Context, store application.Store, m application.Manifest) error {
 	status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
