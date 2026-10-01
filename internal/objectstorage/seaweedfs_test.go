@@ -32,6 +32,26 @@ func TestPhysicalBucketNameIsStableAndBounded(t *testing.T) {
 	}
 }
 
+func TestServiceTrustBundleReturnsPEMContents(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", state)
+
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := ServiceTrustBundle(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bundle, "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("trust bundle does not contain PEM certificate: %q", bundle)
+	}
+	if strings.TrimSpace(bundle) == strings.TrimSpace(filepath.Join(files.Dir, "service-access", "pki", "ca.pem")) {
+		t.Fatalf("trust bundle returned CA path instead of contents: %q", bundle)
+	}
+}
+
 func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
