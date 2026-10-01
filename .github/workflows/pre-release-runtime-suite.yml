@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Checkout BaseHarbor candidate
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
@@ -88,7 +88,7 @@ jobs:
 
       - name: Download prebuilt candidate
         id: candidate_artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: pre-release-runtime-candidate
           path: ${{ runner.temp }}/pre-release-candidate
@@ -177,7 +177,7 @@ jobs:
 
       - name: Upload runtime suite evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-${{ inputs.runtime }}-${{ inputs.suite }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-${{ inputs.runtime }}-${{ inputs.suite }}-evidence
