@@ -173,7 +173,6 @@ func runGitTest(t *testing.T, dir string, args ...string) {
 	}
 }
 
-
 func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
