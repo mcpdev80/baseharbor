@@ -133,6 +133,7 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
 	c.collectMessagingCheck(ctx)
+	c.collectDocumentDatabaseCheck(ctx)
 	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
 }
@@ -279,6 +280,19 @@ func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context)
 		return
 	}
 	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d instance(s) passed AMQPS semantic verification", len(application.RabbitMQInstanceNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.Context) {
+	if len(application.DocumentDatabaseInstanceNames(c.manifest)) == 0 {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationMongoDBStatusTimeout)
+	defer cancel()
+	if err := application.VerifyMongoDBRuntime(checkCtx, c.manifest, c.files); err != nil {
+		c.result.AddCheck("mongodb", false, err.Error())
+		return
+	}
+	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document write/read/delete verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
