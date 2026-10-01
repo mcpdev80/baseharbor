@@ -220,19 +220,16 @@ jobs:
             rabbitmq-runtime)
               BASEHARBOR_RABBITMQ_ACCEPTANCE=1 \
               BASEHARBOR_RABBITMQ_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 \
-                  -run '^(TestRabbitMQRuntimeSemanticAcceptanceInCI|TestRabbitMQManagementUIRuntimeAcceptanceInCI)$' -v
+                go test -p 1 ./internal/application -count=1 -run '^(TestRabbitMQRuntimeSemanticAcceptanceInCI|TestRabbitMQManagementUIRuntimeAcceptanceInCI)$' -v
               ;;
             mongodb-runtime)
               BASEHARBOR_MONGODB_ACCEPTANCE=1 \
               BASEHARBOR_MONGODB_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 \
-                  -run '^(TestMongoDBRuntimeSemanticAcceptanceInCI|TestMongoDBManagementUIRuntimeAcceptanceInCI)$' -v
+                go test -p 1 ./internal/application -count=1 -run '^(TestMongoDBRuntimeSemanticAcceptanceInCI|TestMongoDBManagementUIRuntimeAcceptanceInCI)$' -v
               ;;
             durable-key-value)
               BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 \
-                  -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)$' -v
+                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)$' -v
               ;;
             *)
               echo "Unsupported provider integration gate: $GATE" >&2
@@ -247,11 +244,7 @@ jobs:
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          bash scripts/ci-failure-diagnostics.sh \
-            "${{ inputs.runtime }}" \
-            "$ARTIFACT_DIR/runtime-diagnostics" \
-            "${{ steps.demo.outputs.workdir }}" \
-            "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$ARTIFACT_DIR/runtime-diagnostics"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
 
       - name: Cleanup runtime state
         id: cleanup
@@ -272,7 +265,7 @@ jobs:
           Candidate artifact	${{ steps.candidate_artifact.outcome }}	shared prebuilt candidate when supplied by pre-release
           Runtime reset	${{ steps.reset.outcome }}	isolated runtime state; skipped for static gates
           Podman Quadlet	${{ steps.quadlet.outcome }}	native Quadlet proof; skipped otherwise
-          Resource profile	${{ steps.resource_profile.outcome }}	class=${{ steps.resource_profile.outputs.class }} profile=${{ steps.resource_profile.outputs.profile }} capabilities=${{ steps.resource_profile.outputs.capabilities }}
+          Resource profile	${{ steps.resource_profile.outcome }}	profile=${{ steps.resource_profile.outputs.profile }} capabilities=${{ steps.resource_profile.outputs.capabilities }}
           Static gate	${{ steps.static_gate.outcome }}	${{ inputs.gate }}
           Runtime gate	${{ steps.runtime_gate.outcome }}	${{ inputs.gate }}
           Integration gate	${{ steps.integration_gate.outcome }}	${{ inputs.gate }}
@@ -280,13 +273,7 @@ jobs:
           EOF
           mkdir -p "$out/demo"
           cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$out" \
-            "BaseHarbor Atomic Gate Evidence" \
-            "pre-release/gate/${{ inputs.runtime }}/${{ inputs.gate }}" \
-            "${{ inputs.ref }}" \
-            "${{ steps.candidate.outputs.sha || github.sha }}" \
-            "$rows"
+          bash scripts/ci-evidence.sh             "$out"             "BaseHarbor Atomic Gate Evidence"             "pre-release/gate/${{ inputs.runtime }}/${{ inputs.gate }}"             "${{ inputs.ref }}"             "${{ steps.candidate.outputs.sha || github.sha }}"             "$rows"
 
           capabilities='${{ steps.resource_profile.outputs.capabilities }}'
           [ -n "$capabilities" ] || capabilities='[]'
