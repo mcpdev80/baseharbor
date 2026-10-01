@@ -16,7 +16,8 @@ func TestQuarkusRoundTrip(t *testing.T) {
 	result, err := development.CreateApplication(filepath.Join(t.TempDir(), "quarkus"), development.NewApplicationRequest{
 		Name: "quarkus-app", Adapter: AdapterID,
 		Capabilities: []capability.Kind{
-			capability.ExposureHTTP, capability.SQL, capability.KeyValue,
+			capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+			capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
 			capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP,
 		},
 	}, registry)

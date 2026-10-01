@@ -217,8 +217,18 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 			return err
 		}
 	}
-	if m.Services.Cache {
+	if m.Services.Cache || m.Services.KeyValue {
 		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
+			return err
+		}
+	}
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
+			return err
+		}
+	}
+	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
+		if err := application.VerifyMongoDBRuntime(ctx, m, files); err != nil {
 			return err
 		}
 	}
@@ -230,8 +240,14 @@ func renderRuntimeReady(term *cli.Terminal, m application.Manifest) {
 	if m.Services.SQL {
 		term.Result("READY", "PostgreSQL", "authenticated SELECT 1")
 	}
-	if m.Services.Cache {
-		term.Result("READY", "Valkey", "authenticated PING")
+	if m.Services.Cache || m.Services.KeyValue {
+		term.Result("READY", "Valkey", "semantic verification passed")
+	}
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		term.Result("READY", "RabbitMQ", "AMQPS queue/pubsub/stream semantics verified")
+	}
+	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
+		term.Result("READY", "MongoDB", "TLS document write/read/delete verified")
 	}
 	if m.Services.Secrets {
 		term.Result("VERIFIED", "secrets", "isolated OpenBao application scope")

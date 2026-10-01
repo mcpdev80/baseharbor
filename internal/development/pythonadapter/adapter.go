@@ -25,6 +25,8 @@ func (Adapter) Descriptor() extension.Metadata {
 		ID:            AdapterID, Family: extension.FamilyDevelopment, Version: "0.1.0",
 		Compatibility: extension.Compatibility{Contracts: []string{
 			"exposure.http/v1", "database.sql/v1", "cache.key-value/v1",
+			"database.key-value/v1", "database.document/v1",
+			"messaging.queue/v1", "messaging.pubsub/v1", "messaging.stream/v1",
 			"object-storage.s3/v1", "secrets/v1", "telemetry.otlp/v1",
 		}},
 	}
@@ -44,7 +46,8 @@ func (Adapter) Detect(root string) (development.Detection, error) {
 
 func (Adapter) Supports(r capability.Requirement) bool {
 	switch r.Kind {
-	case capability.ExposureHTTP, capability.SQL, capability.KeyValue,
+	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+		capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
 		capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
 		return true
 	default:
@@ -73,6 +76,19 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 		case capability.KeyValue:
 			add(development.ActionDependency, r.Kind, "redis", "8.1.0")
 			add(development.ActionBinding, r.Kind, "REDIS_URL", "")
+			add(development.ActionBinding, r.Kind, "REDIS_CA_FILE", "")
+		case capability.DurableKeyValue:
+			add(development.ActionDependency, r.Kind, "redis", "8.1.0")
+			add(development.ActionBinding, r.Kind, "VALKEY_URL", "")
+			add(development.ActionBinding, r.Kind, "VALKEY_CA_FILE", "")
+		case capability.DocumentDatabase:
+			add(development.ActionDependency, r.Kind, "pymongo", "4.15.3")
+			add(development.ActionBinding, r.Kind, "MONGODB_URL", "")
+			add(development.ActionBinding, r.Kind, "MONGODB_CA_FILE", "")
+		case capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream:
+			add(development.ActionDependency, r.Kind, "pika", "1.3.2")
+			add(development.ActionBinding, r.Kind, "AMQP_URL", "")
+			add(development.ActionBinding, r.Kind, "RABBITMQ_CA_FILE", "")
 		case capability.ObjectStorageS3:
 			add(development.ActionDependency, r.Kind, "boto3", "1.43.104")
 			for _, n := range []string{"S3_ENDPOINT", "S3_BUCKET", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} {
@@ -138,8 +154,14 @@ func renderPython(caps map[capability.Kind]bool, bindings []string) string {
 	if caps[capability.SQL] {
 		imports = append(imports, "import psycopg")
 	}
-	if caps[capability.KeyValue] {
+	if caps[capability.KeyValue] || caps[capability.DurableKeyValue] {
 		imports = append(imports, "import redis")
+	}
+	if caps[capability.DocumentDatabase] {
+		imports = append(imports, "import pymongo")
+	}
+	if caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream] {
+		imports = append(imports, "import pika")
 	}
 	if caps[capability.ObjectStorageS3] {
 		imports = append(imports, "import boto3")

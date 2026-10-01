@@ -20,7 +20,7 @@ func TestOpenBaoSecretPayloadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := Build("mailflow", "dev", time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC), []PayloadEntry{entry}, []byte("correct horse battery staple"))
+	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC), []PayloadEntry{entry}, []byte("correct horse battery staple"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestOpenBaoBackupFromPayloadRejectsCrossApplicationRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := Build("mailflow", "dev", time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC), []PayloadEntry{entry}, []byte("password-123456"))
+	archive, err := Build("11111111-1111-4111-8111-111111111111", "mailflow", "dev", time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC), []PayloadEntry{entry}, []byte("password-123456"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,16 +10,21 @@ import (
 type Kind string
 
 const (
-	SQL             Kind = "database.sql"
-	KeyValue        Kind = "cache.key-value"
-	Secrets         Kind = "secrets"
-	ExposureHTTP    Kind = "exposure.http"
-	ObjectStorageS3 Kind = "object-storage.s3"
-	TelemetryOTLP   Kind = "telemetry.otlp"
-	Metrics         Kind = "metrics"
-	Logs            Kind = "logs"
-	Traces          Kind = "traces"
-	Identity        Kind = "identity.oidc"
+	SQL              Kind = "database.sql"
+	KeyValue         Kind = "cache.key-value"
+	DurableKeyValue  Kind = "database.key-value"
+	DocumentDatabase Kind = "database.document"
+	Secrets          Kind = "secrets"
+	ExposureHTTP     Kind = "exposure.http"
+	ObjectStorageS3  Kind = "object-storage.s3"
+	TelemetryOTLP    Kind = "telemetry.otlp"
+	Metrics          Kind = "metrics"
+	Logs             Kind = "logs"
+	Traces           Kind = "traces"
+	Identity         Kind = "identity.oidc"
+	MessagingQueue   Kind = "messaging.queue"
+	MessagingPubSub  Kind = "messaging.pubsub"
+	MessagingStream  Kind = "messaging.stream"
 )
 
 // Requirement is one application-owned logical capability request.
@@ -47,6 +52,8 @@ const (
 	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
 	ProviderKeycloak        ProviderKind = "keycloak"
 	ProviderExternalOIDC    ProviderKind = "external-oidc"
+	ProviderRabbitMQ        ProviderKind = "rabbitmq"
+	ProviderMongoDB         ProviderKind = "mongodb"
 )
 
 // Provider describes the capability surface of one provider implementation.

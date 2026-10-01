@@ -8,7 +8,11 @@ import (
 
 func (m Manifest) YAML() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "version: %d\napp:\n  name: %s\n  environment: %s\n", m.Version, m.Name, m.Environment)
+	fmt.Fprintf(&b, "version: %d\napp:\n", m.Version)
+	if m.ApplicationID != "" {
+		fmt.Fprintf(&b, "  id: %s\n", m.ApplicationID)
+	}
+	fmt.Fprintf(&b, "  name: %s\n  environment: %s\n", m.Name, m.Environment)
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
@@ -18,6 +22,35 @@ func (m Manifest) YAML() string {
 		if m.Services.Cache || len(m.Services.CacheInstances) > 0 {
 			writeServiceYAML(&b, "cache", m.Services.Cache, m.Services.CacheInstances)
 			writeManagementUIYAML(&b, m.Services.CacheManagementUI)
+		}
+		if m.Services.KeyValue || len(m.Services.KeyValueInstances) > 0 {
+			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
+			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
+		}
+		if m.Services.DocumentDatabase || len(m.Services.DocumentDatabaseInstances) > 0 {
+			writeServiceYAML(&b, "document_database", m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+			writeManagementUIYAML(&b, m.Services.DocumentDatabaseManagementUI)
+		}
+		messagingUIRendered := false
+		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
+			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+			if m.Services.MessagingManagementUI {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
+		}
+		if m.Services.MessagingPubSub || len(m.Services.MessagingPubSubInstances) > 0 {
+			writeServiceYAML(&b, "messaging_pubsub", m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
+		}
+		if m.Services.MessagingStream || len(m.Services.MessagingStreamInstances) > 0 {
+			writeServiceYAML(&b, "messaging_stream", m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+			}
 		}
 		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
 			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
@@ -154,8 +187,8 @@ func writeSecretRequirementsYAML(b *strings.Builder, field string, source []Secr
 }
 
 func hasManifestServices(services Services) bool {
-	return services.SQL || services.Cache || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
-		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+	return services.SQL || services.Cache || services.KeyValue || services.DocumentDatabase || services.MessagingQueue || services.MessagingPubSub || services.MessagingStream || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
+		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.DocumentDatabaseInstances) > 0 || len(services.MessagingQueueInstances) > 0 || len(services.MessagingPubSubInstances) > 0 || len(services.MessagingStreamInstances) > 0 || len(services.ObjectStorageBuckets) > 0
 }
 
 func writeManagementUIYAML(b *strings.Builder, enabled bool) {

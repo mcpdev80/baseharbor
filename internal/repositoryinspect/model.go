@@ -140,6 +140,8 @@ type ComposeAnalysis struct {
 	AmbiguousServices         []string          `json:"ambiguous_services,omitempty"`
 	SQLInstances              []string          `json:"sql_instances,omitempty"`
 	CacheInstances            []string          `json:"cache_instances,omitempty"`
+	DocumentDatabaseInstances []string          `json:"document_database_instances,omitempty"`
+	MessagingServices         []string          `json:"messaging_services,omitempty"`
 	ObjectStorageServices     []string          `json:"object_storage_services,omitempty"`
 	Ports                     []PortEvidence    `json:"ports,omitempty"`
 	HealthChecks              []Evidence        `json:"health_checks,omitempty"`

@@ -37,7 +37,7 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		}
 	}
 	if !UsesSharedValkey(m) {
-		for _, instance := range CacheInstanceNames(m) {
+		for _, instance := range ValkeyInstanceNames(m) {
 			service := runtimeServiceName("valkey", instance)
 			resources = append(resources,
 				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
@@ -46,10 +46,35 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 			)
 		}
 	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		service := runtimeServiceName("rabbitmq", instance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqAccessService(instance) + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+		)
+		if m.Services.MessagingManagementUI {
+			resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqUIServiceName(instance) + "-1"})
+		}
+	}
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		service := runtimeServiceName("mongodb", instance)
+		resources = append(resources,
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbAccessService(instance) + "-1"},
+			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
+		)
+		if m.Services.DocumentDatabaseManagementUI {
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbUIServiceName(instance) + "-1"},
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbUIAccessServiceName(instance) + "-1"},
+			)
+		}
+	}
 	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
 		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-postgres-ui-1"})
 	}
-	if m.Services.CacheManagementUI && !UsesSharedValkey(m) {
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
 		resources = append(resources,
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-1"},
 			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-cache-ui-access-1"},

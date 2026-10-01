@@ -8,11 +8,13 @@ Specification identifiers are versioned:
 <capability>/v<major>
 ```
 
-Current examples:
+Current specifications include:
 
 ```text
 database.sql/v1
 cache.key-value/v1
+database.key-value/v1
+database.document/v1
 secrets/v1
 exposure.http/v1
 object-storage.s3/v1
@@ -20,11 +22,7 @@ telemetry.otlp/v1
 metrics/v1
 logs/v1
 traces/v1
-```
-
-Future examples include:
-
-```text
+identity.oidc/v1
 messaging.queue/v1
 messaging.pubsub/v1
 messaging.stream/v1
@@ -40,10 +38,14 @@ The mapping intentionally separates service identity from protocol compatibility
 | --- | --- |
 | `database.sql/v1` | SQL service semantics; keep compatible while `sql/v1` service contract is frozen |
 | `cache.key-value/v1` | cache service semantics; RESP is a provider compatibility declaration, not the service identity |
+| `database.key-value/v1` | durable key-value service semantics; persistence is part of the capability guarantee |
+| `database.document/v1` | provider-neutral document database semantics |
 | `secrets/v1` | secrets service contract |
 | `object-storage.s3/v1` | S3-compatible object-storage semantics; migrate toward generic object-storage service + S3 compatibility |
 | `telemetry.otlp/v1` | OTLP protocol/transport capability under backend-neutral observability intent |
 | `metrics/v1`, `logs/v1`, `traces/v1` | observability intent/storage semantics; telemetry transport remains OpenTelemetry/OTLP |
+| `identity.oidc/v1` | identity service semantics defined by OIDC/OAuth2 |
+| `messaging.queue/v1`, `messaging.pubsub/v1`, `messaging.stream/v1` | messaging service semantics; AsyncAPI/CloudEvents where applicable, broker protocol separate |
 
 Existing IDs remain accepted until their compatibility migration is documented and tested.
 
@@ -88,6 +90,8 @@ A future provider can therefore implement a newer capability specification witho
 
 - [database.sql/v1](database.sql/v1.md)
 - [cache.key-value/v1](cache.key-value/v1.md)
+- [database.key-value/v1](database.key-value/v1.md)
+- [database.document/v1](database.document/v1.md)
 - [secrets/v1](secrets/v1.md)
 - [exposure.http/v1](exposure.http/v1.md)
 - [object-storage.s3/v1](object-storage.s3/v1.md)
@@ -95,3 +99,7 @@ A future provider can therefore implement a newer capability specification witho
 - [metrics/v1](metrics/v1.md)
 - [logs/v1](logs/v1.md)
 - [traces/v1](traces/v1.md)
+- [identity.oidc/v1](identity.oidc/v1.md)
+- [messaging.queue/v1](messaging.queue/v1.md)
+- [messaging.pubsub/v1](messaging.pubsub/v1.md)
+- [messaging.stream/v1](messaging.stream/v1.md)

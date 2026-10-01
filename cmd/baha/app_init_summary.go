@@ -136,7 +136,7 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
-	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
 		fmt.Fprintln(out, "\nDeveloper management access")
 		fmt.Fprintln(out, "  Scope         target / dev")
 		fmt.Fprintln(out, "  Username      developer (default)")
@@ -144,7 +144,7 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		fmt.Fprintln(out, "  Reveal        baha dev credentials")
 	}
 
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		fmt.Fprintln(out, "\nManagement UIs")
 		if m.Services.SQLManagementUI {
 			fmt.Fprintln(out, "  PostgreSQL    pgAdmin")
