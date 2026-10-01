@@ -51,12 +51,15 @@ Supported values are `http` and `https`. An invalid declared value fails closed.
 
 ## Development management login
 
-A development Target also owns one management login when Identity or a management UI is selected. The default username is `developer`; BaseHarbor generates a strong password unless the guided setup receives an explicit password.
+A development Target/environment owns one management login when Identity or a management UI is selected. The default username is `developer`, but it is only a default. BaseHarbor generates a strong password unless the guided setup receives an explicit password.
 
 ```bash
 baha dev credentials
+baha dev credentials --username USER
 baha dev credentials --reset
 ```
+
+Changing the username or password updates the Target/environment development credential used by compatible shared management surfaces. Later applications in the same Target/environment reuse that identity instead of creating per-application UI credentials.
 
 The same development identity is reconciled through managed OIDC when Identity is present. Provider UIs that require native authentication receive a provider-specific adapter using the same development credentials. Database passwords, S3 credentials, runtime identities and other service credentials remain separate least-privilege credentials.
 

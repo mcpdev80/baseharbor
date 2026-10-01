@@ -302,7 +302,9 @@ jobs:
 
   docker_operations:
     name: Docker · Operations
-    needs: validate
+    # Keep one full Docker acceptance environment alive at a time. Core Journey
+    # must release its provider fleet before Operations starts on Docker runners.
+    needs: [validate, docker_normal]
     if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
@@ -324,7 +326,9 @@ jobs:
 
   podman_operations:
     name: Podman · Operations
-    needs: validate
+    # Keep one full Podman acceptance environment alive at a time. Docker and
+    # Podman remain parallel lanes, but suites within one runtime are serialized.
+    needs: [validate, podman_normal]
     if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/heads/release-candidate/') || startsWith(github.ref, 'refs/heads/validation/pre-release/')) || (github.event_name == 'pull_request' && github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
