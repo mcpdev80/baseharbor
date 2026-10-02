@@ -136,7 +136,6 @@ jobs:
           BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
           Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Docker and Compose and reports READY
           Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
-          Provider HA	${{ steps.provider_ha.outcome }}	RabbitMQ, Valkey and MongoDB member failover with stable management continuity
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
           Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
