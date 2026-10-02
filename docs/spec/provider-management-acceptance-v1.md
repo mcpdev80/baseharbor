@@ -25,7 +25,7 @@ Legend: source `managed-secret` means the selected managed secret provider is au
 | Loki | C | protected-state/managed PKI | protected runtime projection | n/a | n/a | isolated | cert/config lifecycle | UNSUPPORTED |
 | Tempo | C | protected-state/managed PKI | protected runtime projection | n/a | n/a | isolated | cert/config lifecycle | UNSUPPORTED |
 | OpenTelemetry Collector | C | protected-state/managed PKI | protected runtime projection | n/a | n/a | isolated | cert/config lifecycle | UNSUPPORTED |
-| Caddy exposure | C for managed boundary | protected-state/managed PKI | protected runtime projection | n/a | n/a | isolated | certificate/config lifecycle | UNSUPPORTED |
+| Caddy exposure | C for managed boundary | protected-state/managed PKI | protected runtime projection | n/a | n/a | isolated | hot-reload certificate/config lifecycle | UNSUPPORTED for redundant ingress on single-host Docker/Podman: one loopback HTTPS port has one owner; stable routing and config/TLS reload continuity are verified, but member/host failure tolerance is not claimed |
 | External OIDC / OTLP | provider-declared | external provider | provider contract | provider-declared | provider-declared | explicit external policy | provider-declared | UNSUPPORTED until an external provider explicitly declares and proves the requested guarantee |
 
 ## Acceptance rules
