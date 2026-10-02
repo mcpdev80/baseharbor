@@ -83,6 +83,14 @@ REVOKE ALL ON DATABASE openbao FROM PUBLIC;
 SELECT format('GRANT CONNECT ON DATABASE openbao TO %I', :'openbao_user')
 \gexec
 EOSQL
+
+PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 \
+  --username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB" \
+  -Atqc 'SELECT 1' >/dev/null
+
+PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql -v ON_ERROR_STOP=1 \
+  --username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao \
+  -Atqc 'SELECT 1' >/dev/null
 `
 	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
 }
