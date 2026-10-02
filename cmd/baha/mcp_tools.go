@@ -16,8 +16,17 @@ import (
 )
 
 func registerMCPReadTools(server *mcp.Server, store application.Store) {
+	registerMCPDiscoveryReadTools(server)
+	registerMCPApplicationReadTools(server, store)
+	registerMCPPlatformReadTools(server, store)
+}
+
+func registerMCPDiscoveryReadTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		if err := authorizeCurrentMCPContext(ctx, "target", input.Target, "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := collectTargetInspection(ctx)
 		if err != nil {
 			return machineMCPFailure(err)
@@ -30,6 +39,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		if path == "" {
 			path = "."
 		}
+		environment := "dev"
+		if selection, selectionErr := application.ResolveRepositoryEnvironment(path, ""); selectionErr == nil {
+			environment = selection.Manifest.Environment
+		}
+		if err := authorizeCurrentMCPContext(ctx, "inspect", "", environment, path); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := inspectRepositorySource(ctx, path)
 		if err != nil {
 			return machineMCPFailure(err)
@@ -40,6 +56,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("workspace.resolve", "Resolve canonical multi-repository component/source identity to the local XDG workspace mapping without changing source or runtime state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceResolveInput) (*mcp.CallToolResult, any, error) {
 		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.resolve", "", manifest.Environment, manifestPath); err != nil {
 			return machineMCPFailure(err)
 		}
 		model, _, err := development.LoadSourceModel(manifestPath)
@@ -62,6 +81,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.status", "", manifest.Environment, manifestPath); err != nil {
+			return machineMCPFailure(err)
+		}
 		model, _, err := development.LoadSourceModel(manifestPath)
 		if err != nil {
 			return machineMCPFailure(err)
@@ -77,10 +99,16 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, status, nil
 	})
 
+}
+
+func registerMCPApplicationReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "plan", resolved, ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		result, err := application.BuildPlan(resolved.Manifest)
@@ -92,7 +120,15 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("status", "Read-only runtime and readiness observation for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		result, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(input.Name, input.Environment))
+		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "status")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "status", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectApplicationStatusResult(ctx, store, args)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -101,7 +137,15 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("doctor", "Read-only diagnostic verification for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		result, err := collectApplicationDoctor(ctx, store, machineApplicationArgs(input.Name, input.Environment))
+		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "doctor")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "doctor", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectApplicationDoctor(ctx, store, args)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -111,6 +155,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("observe", "Return one secret-safe diagnostics view combining application readiness and doctor verification, including observability checks already supported by BaseHarbor.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "observe")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "observe", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		status, err := collectApplicationStatusResult(ctx, store, args)
 		if err != nil {
 			return machineMCPFailure(err)
@@ -131,6 +182,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("evidence", "Export deterministic secret-safe lifecycle, policy, verification, recovery and audit evidence for the selected application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		resolved, err := resolveApplicationEnvironment(ctx, store, machineApplicationArgs(input.Name, ""), "evidence", strings.TrimSpace(input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "evidence", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := collectApplicationEvidence(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -138,7 +196,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+}
+
+func registerMCPPlatformReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("provider.list", "List registered externally owned capability providers using the shared secret-safe provider state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "provider.list", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := application.ListExternalProviders()
 		if err != nil {
 			return machineMCPFailure(err)
@@ -147,6 +211,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.inspect", "Inspect one external provider registration without revealing credential or private-key material.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "provider.inspect", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := application.InspectExternalProvider(strings.TrimSpace(input.ID))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -155,6 +222,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.verify", "Verify external provider reachability and configured TLS trust without mutation.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "provider.verify", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := application.VerifyExternalProvider(ctx, strings.TrimSpace(input.ID))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -163,6 +233,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("organization.inspect", "Inspect the active organization/platform source, immutable resolution and effective defaults with provenance.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineOrganizationInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "organization.inspect", "", input.Environment, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		state, err := orgconfig.LoadActive()
 		if err != nil {
 			return machineMCPFailure(err)
@@ -175,6 +248,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("organization.check", "Resolve the configured organization source and report a newer immutable digest/revision without changing the active configuration.", true), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "organization.check", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		status, available, err := orgconfig.Check(ctx)
 		if err != nil {
 			return machineMCPFailure(err)
@@ -184,6 +260,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("policy.check", "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		resolved, err := resolveApplicationEnvironment(ctx, store, machineApplicationArgs(input.Name, ""), "policy check", strings.TrimSpace(input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "policy.check", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := collectApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -193,6 +276,13 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("policy.explain", "Read-only explanation of effective environment policy defaults, rules and bounded operator overrides.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		resolved, err := resolveApplicationEnvironment(ctx, store, machineApplicationArgs(input.Name, ""), "policy explain", strings.TrimSpace(input.Environment))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeResolvedMCPOperation(ctx, "policy.explain", resolved, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		result, err := explainApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
 		if err != nil {
 			return machineMCPFailure(err)
@@ -205,6 +295,9 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("workspace.update", "Safely fetch and fast-forward mapped Git repositories. Dirty, detached, ahead or diverged repositories are never modified.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceUpdateInput) (*mcp.CallToolResult, any, error) {
 		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.update", "", manifest.Environment, manifestPath); err != nil {
 			return machineMCPFailure(err)
 		}
 		model, _, err := development.LoadSourceModel(manifestPath)
@@ -223,10 +316,12 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
-		_ = ctx
 		name := strings.TrimSpace(input.Name)
 		if name == "" {
 			return machineMCPFailure(usageError("application name is required", "Provide name explicitly."))
+		}
+		if err := authorizeMCPOperation(ctx, "app.new", "", input.Environment, name, ""); err != nil {
+			return machineMCPFailure(err)
 		}
 		var (
 			root string
@@ -325,15 +420,25 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
-
 	registerMCPProviderOrganizationTools(server)
+	registerMCPApplicationMutationTools(server, store)
+	registerMCPRecoveryTools(server, store)
+}
 
+func registerMCPApplicationMutationTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "apply")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeMCPOperation(ctx, "apply", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
-		args := machineApplicationArgs(input.Name, input.Environment)
 		if err := executeApplicationApplyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
@@ -360,13 +465,16 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("update", "Fast-forward the current Git-backed application safely, preserving the existing backup/recovery policy and full post-update verification.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineUpdateInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		environment := strings.TrimSpace(input.Environment)
 		resolved, err := resolveApplicationEnvironment(ctx, store, nil, "update", environment)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
+		if err := authorizeMCPOperation(ctx, "update", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		if applicationUpdateHasDurableState(resolved.Manifest) && strings.TrimSpace(input.BackupPasswordFile) == "" && !input.NoBackup {
 			return machineMCPFailure(&machine.Error{
 				Code:        machine.ErrorApprovalRequired,
@@ -403,9 +511,16 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("repair", "Run the existing guarded drift/doctor repair path. Only BaseHarbor-owned findings classified as safely repairable are mutated.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "repair")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeMCPOperation(ctx, "repair", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
-		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--fix")
 		if err := executeApplicationRepairLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
@@ -422,15 +537,25 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+}
+
+func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("backup", "Create the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineBackupInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		passwordFile := strings.TrimSpace(input.PasswordFile)
 		if passwordFile == "" {
 			return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed, "password_file is required.", "Provide an owner-only local password file; plaintext backup passwords are never accepted through MCP.", false))
 		}
 		args := machineApplicationArgs(input.Name, input.Environment)
+		resolved, err := resolveApplication(ctx, store, args, "backup")
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeMCPOperation(ctx, "backup", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args = append(args, "--password-file", passwordFile)
 		if output := strings.TrimSpace(input.OutputPath); output != "" {
 			args = append(args, "--output", output)
@@ -444,7 +569,7 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := executeApplicationBackupWithMetadataLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "backup")
+		resolved, err = resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "backup")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -461,13 +586,16 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		backupPath := strings.TrimSpace(input.BackupPath)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
 		if backupPath == "" || passwordFile == "" {
 			return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed, "backup_path and password_file are required.", "Provide the encrypted recovery archive and an owner-only local password file.", false))
 		}
+		if err := authorizeMCPOperation(ctx, "restore", input.Target, input.Environment, input.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args := []string{backupPath}
 		if name := strings.TrimSpace(input.Name); name != "" {
 			args = append(args, name)
@@ -501,12 +629,15 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "destroy")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
+		if err := authorizeMCPOperation(ctx, "destroy", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--yes")
 		if input.FullReset {

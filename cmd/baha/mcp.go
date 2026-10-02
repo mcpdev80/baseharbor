@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 type machineProviderIDInput struct {
@@ -225,6 +227,81 @@ func machineMCPTool(operationID, description string, openWorld bool) *mcp.Tool {
 			OpenWorldHint:   boolPointer(openWorld),
 		},
 	}
+}
+
+func authorizeMCPOperation(ctx context.Context, operationID, target, environment, applicationName, workspace string) error {
+	operation, ok := machine.OperationByID(operationID)
+	if !ok {
+		return machine.NewError(machine.ErrorValidationFailed, "Unknown BaseHarbor machine operation.", "Use a registered machine operation.", false)
+	}
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		environment = "dev"
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		if resolved, err := effectiveTarget(ctx); err == nil {
+			target = resolved.Name
+		}
+	}
+	if operatorauth.ManagedEnvironment(environment) {
+		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+			return &machine.Error{
+				Code:        machine.ErrorAuthenticationFailed,
+				CauseCode:   "operator_authentication_required",
+				Message:     "Managed-environment machine operations require an authenticated BaseHarbor operator.",
+				Resource:    strings.TrimSpace(target) + "/" + environment,
+				Remediation: "authenticate the BaseHarbor operator",
+				Next:        "Configure operator OIDC if required, run 'baha login' for the selected Target/environment, then retry.",
+				Cause:       err,
+			}
+		}
+	}
+	_, err := operatorauth.AuthorizeMachineOperation(ctx, operatorauth.AuthorizationRequest{
+		Operation: operation,
+		Context: operatorauth.OperationContext{
+			Application: strings.TrimSpace(applicationName),
+			Environment: environment,
+			Target:      target,
+			Workspace:   strings.TrimSpace(workspace),
+		},
+	})
+	return err
+}
+
+func authorizeResolvedMCPOperation(ctx context.Context, operationID string, resolved resolvedApplication, workspace string) error {
+	return authorizeMCPOperation(
+		ctx,
+		operationID,
+		resolved.Target.Name,
+		resolved.Manifest.Environment,
+		resolved.Manifest.Name,
+		workspace,
+	)
+}
+
+func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, environment, workspace string) error {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		environment = "dev"
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, ""); selectionErr == nil {
+				environment = selection.Manifest.Environment
+			}
+		}
+	}
+
+	targetName = strings.TrimSpace(targetName)
+	if targetName == "" && !operatorauth.ManagedEnvironment(environment) {
+		return authorizeMCPOperation(ctx, operationID, "", environment, "", workspace)
+	}
+
+	ctx = withTargetOverride(ctx, targetName)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
 
 func machineApplicationArgs(name, environment string) []string {

@@ -37,7 +37,14 @@ func recordApplicationAudit(ctx context.Context, resolved resolvedApplication, o
 		operation,
 		outcome,
 	)
-	if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
+	if decision, ok := operatorauth.AuthorizationDecisionFromContext(ctx); ok && decision.Allowed {
+		event.Actor.Identity = decision.Actor.Subject
+		event.Actor.Issuer = decision.Actor.Issuer
+		event.Actor.Subject = decision.Actor.Subject
+		event.Actor.Assurance = decision.Actor.Assurance
+		event.Actor.Methods = append([]string(nil), decision.Actor.Methods...)
+		event.AuthorizationResult = "allow"
+	} else if principal, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		event.Actor.Identity = principal.Subject
 		event.Actor.Issuer = principal.Issuer
 		event.Actor.Subject = principal.Subject
