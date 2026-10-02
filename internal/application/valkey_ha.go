@@ -104,6 +104,8 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("          printf 'dir /data\\n'\n")
 		if ordinal > 0 {
 			fmt.Fprintf(b, "          printf 'replicaof %s 6379\\n'\n", primary)
+			fmt.Fprintf(b, "          printf 'replica-announce-ip %s\\n'\n", service)
+			b.WriteString("          printf 'replica-announce-port 6379\\n'\n")
 		}
 		b.WriteString("        } > /tmp/valkey.conf\n")
 		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
@@ -134,6 +136,8 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("          printf 'port 26379\\n'\n")
 		b.WriteString("          printf 'sentinel resolve-hostnames yes\\n'\n")
 		b.WriteString("          printf 'sentinel announce-hostnames yes\\n'\n")
+		fmt.Fprintf(b, "          printf 'sentinel announce-ip %s\\n'\n", service)
+		b.WriteString("          printf 'sentinel announce-port 26379\\n'\n")
 		fmt.Fprintf(b, "          printf 'sentinel monitor %s %s 6379 2\\n'\n", valkeySentinelMasterName, primary)
 		fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
 		fmt.Fprintf(b, "          printf 'sentinel down-after-milliseconds %s 5000\\n'\n", valkeySentinelMasterName)
