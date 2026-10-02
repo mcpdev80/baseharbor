@@ -25,9 +25,9 @@ type ServiceObservation struct {
 
 func Observe(requirement Requirement, instances []InstanceObservation, endpoints []string) ServiceObservation {
 	result := ServiceObservation{
-		Component: requirement.Component,
+		Component:       requirement.Component,
 		StableEndpoints: append([]string(nil), endpoints...),
-		Instances: append([]InstanceObservation(nil), instances...),
+		Instances:       append([]InstanceObservation(nil), instances...),
 	}
 	for _, instance := range instances {
 		if instance.Ready {
