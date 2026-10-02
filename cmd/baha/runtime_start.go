@@ -15,7 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const controlPlaneStartTimeout = 5 * time.Minute
+const controlPlaneStartTimeout = 10 * time.Minute
 
 func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
