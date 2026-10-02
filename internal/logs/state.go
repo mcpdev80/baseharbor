@@ -196,7 +196,11 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.AlloyConfig, []byte(alloyConfigForModeSources(registrations, providerSources, mode, platformSyslogPort)), 0o644); err != nil {
+	alloy := alloyConfigForModeSources(registrations, providerSources, mode, platformSyslogPort)
+	if storage != nil {
+		alloy = lokiHAAlloyConfig(alloy)
+	}
+	if err := os.WriteFile(files.AlloyConfig, []byte(alloy), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.AlloyConfig, 0o644); err != nil {
