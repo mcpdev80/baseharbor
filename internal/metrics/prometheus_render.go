@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -147,7 +148,7 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 	renderMember("prometheus-1", "prometheus-data-1")
 	renderMember("prometheus-2", "prometheus-data-2")
 
-	accessSpec := prometheusHAAccessSpec("./members/service-access/runtime/ca.pem")
+	accessSpec := prometheusHAAccessSpec(filepath.Join(placement.Dir, "members", "service-access", "runtime", "ca.pem"))
 	if placement.Scope == capability.ScopeApplication {
 		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
 	}
