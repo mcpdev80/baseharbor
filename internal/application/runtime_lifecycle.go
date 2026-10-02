@@ -70,12 +70,15 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		}
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
-		service := runtimeServiceName("mongodb", instance)
-		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbAccessService(instance) + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-		)
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			service := mongodbMemberServiceName(instance, ordinal)
+			volume := mongodbMemberVolumeName(instance, ordinal)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + volume},
+			)
+		}
+		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbAccessService(instance) + "-1"})
 		if m.Services.DocumentDatabaseManagementUI {
 			resources = append(resources,
 				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbUIServiceName(instance) + "-1"},
