@@ -1,6 +1,9 @@
 package objectstorage
 
 import (
+	"crypto/x509"
+	"crypto/tls"
+	"bytes"
 	"context"
 	"net/http"
 	"os"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -152,6 +156,85 @@ func TestSeaweedFSHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	if status != http.StatusOK {
 		t.Fatalf("SeaweedFS bucket is not reachable after member recovery: HTTP %d", status)
+	}
+
+	servicePolicy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servicePolicy.ServerName = "seaweedfs"
+	oldMaterial, err := serviceaccess.ExistingTLSMaterial(servicePolicy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCA, err := os.ReadFile(oldMaterial.CA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCert, err := os.ReadFile(oldMaterial.ServerCertificate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldKey, err := os.ReadFile(oldMaterial.ServerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rotatedIssuer := serviceissuer.New(t)
+	if err := RotateProviderPKIAt(ctx, runtime, rotatedIssuer, dataDir, namespace); err != nil {
+		t.Fatalf("rotate SeaweedFS provider PKI: %v", err)
+	}
+	if err := driver.Verify(ctx, resource, binding); err != nil {
+		t.Fatalf("verify S3 after provider PKI rotation: %v", err)
+	}
+	if err := VerifyManagementUIAt(ctx, dataDir, namespace); err != nil {
+		t.Fatalf("verify management UI after provider PKI rotation: %v", err)
+	}
+	newMaterial, err := serviceaccess.ExistingTLSMaterial(servicePolicy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCA, err := os.ReadFile(newMaterial.CA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCert, err := os.ReadFile(newMaterial.ServerCertificate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newKey, err := os.ReadFile(newMaterial.ServerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(oldCA, newCA) || bytes.Equal(oldCert, newCert) || bytes.Equal(oldKey, newKey) {
+		t.Fatal("SeaweedFS PKI rotation did not replace CA, server certificate and server key")
+	}
+
+	oldRoots := x509.NewCertPool()
+	if !oldRoots.AppendCertsFromPEM(oldCA) {
+		t.Fatal("old SeaweedFS CA cannot be parsed")
+	}
+	oldTrustClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    oldRoots,
+				ServerName: "seaweedfs",
+			},
+		},
+		Timeout: 5 * time.Second,
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := oldTrustClient.Do(request); err == nil {
+		_ = response.Body.Close()
+		t.Fatal("retired SeaweedFS CA still validates the rotated service certificate")
 	}
 }
 
