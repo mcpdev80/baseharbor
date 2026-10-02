@@ -120,7 +120,10 @@ func ResultError(err error) ErrorResult {
 func Operations() []Operation {
 	return []Operation{
 		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "target.list", MCPTool: "baseharbor.target.list", Description: "List configured BaseHarbor deployment targets using secret-safe target metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.list", MCPTool: "baseharbor.app.list", Description: "List registered application deployments using stable identity and secret-safe observed state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.list", MCPTool: "baseharbor.workspace.list", Description: "List developer-local workspace mappings without mutating source or runtime state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.resolve", MCPTool: "baseharbor.workspace.resolve", Description: "Resolve canonical component/source identity to developer-local worktrees without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.status", MCPTool: "baseharbor.workspace.status", Description: "Inspect Git state for mapped repository sources without changing checked-out revisions.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.update", MCPTool: "baseharbor.workspace.update", Description: "Safely fetch and fast-forward mapped repository sources when Git state is unambiguous.", Safety: SafetyMutating, ContractVersion: ContractVersion},

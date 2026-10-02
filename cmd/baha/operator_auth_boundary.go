@@ -17,6 +17,9 @@ func ensureOperatorAuthForBoundary(ctx context.Context, target, environment stri
 	if !operatorauth.ManagedEnvironment(environment) || !operatorauth.EnforcementEnabled(ctx) {
 		return nil
 	}
+	if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
+		return nil
+	}
 	cfg, err := resolveOperatorAuthBoundaryConfig(ctx, target, environment)
 	if err != nil {
 		return err

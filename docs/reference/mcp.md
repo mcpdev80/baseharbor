@@ -20,6 +20,9 @@ The current surface is intentionally small:
 
 ```text
 baseharbor.target
+baseharbor.target.list
+baseharbor.app.list
+baseharbor.workspace.list
 baseharbor.workspace.resolve
 baseharbor.workspace.status
 baseharbor.workspace.update

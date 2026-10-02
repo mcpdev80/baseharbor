@@ -9,20 +9,9 @@ import (
 
 const AuthorizationContractVersion = "v1"
 
-type MachineActorRef struct {
-	Mode      string   `json:"mode"`
-	Issuer    string   `json:"issuer,omitempty"`
-	Subject   string   `json:"subject,omitempty"`
-	Assurance string   `json:"assurance,omitempty"`
-	Methods   []string `json:"authentication_methods,omitempty"`
-}
+type MachineActorRef = machine.ActorRef
 
-type OperationContext struct {
-	Application string `json:"application,omitempty"`
-	Environment string `json:"environment,omitempty"`
-	Target      string `json:"target,omitempty"`
-	Workspace   string `json:"workspace,omitempty"`
-}
+type OperationContext = machine.OperationContext
 
 type AuthorizationRequest struct {
 	Operation machine.Operation

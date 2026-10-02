@@ -23,6 +23,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
+	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
@@ -112,7 +113,7 @@ func (d serverDependencies) close() {
 	}
 }
 
-func buildServerHandler(ctx context.Context, cfg Config, deps serverDependencies) (http.Handler, error) {
+func buildServerHandler(ctx context.Context, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) (http.Handler, error) {
 	runtimeHandler, err := buildRuntimeHandler(ctx, cfg, deps)
 	if err != nil {
 		return nil, err
@@ -136,7 +137,7 @@ func buildServerHandler(ctx context.Context, cfg Config, deps serverDependencies
 		serverHandler = observer.Wrap(mux)
 	}
 
-	if err := registerOperatorAPI(ctx, mux, cfg, deps); err != nil {
+	if err := registerOperatorAPI(ctx, mux, cfg, deps, machineExecutor); err != nil {
 		return nil, err
 	}
 	return serverHandler, nil
@@ -192,7 +193,7 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 	})
 }
 
-func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies) error {
+func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
 		return nil
 	}
@@ -216,7 +217,16 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	if err != nil {
 		return err
 	}
-	protected, err := controlplaneapi.New(security, secretHandler)
+	operatorMux := http.NewServeMux()
+	operatorMux.Handle("/api/v1/apps/", secretHandler)
+	if machineExecutor != nil {
+		machineHandler, err := machinehttp.New(machineExecutor)
+		if err != nil {
+			return err
+		}
+		operatorMux.Handle("/api/v1/machine/", machineHandler)
+	}
+	protected, err := controlplaneapi.New(security, operatorMux)
 	if err != nil {
 		return err
 	}
