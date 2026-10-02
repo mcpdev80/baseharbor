@@ -144,8 +144,17 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 		return err
 	}
 	if !bootstrapRestart {
-		if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres", "sh", "-ec", "kill -HUP 1"); err != nil {
-			return fmt.Errorf("reload PostgreSQL native TLS material: %w", err)
+		for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+			script := `python3 - <<'PY'
+import urllib.request
+req = urllib.request.Request("http://127.0.0.1:8008/reload", data=b"", method="POST")
+with urllib.request.urlopen(req, timeout=5) as response:
+    if response.status < 200 or response.status >= 300:
+        raise SystemExit("unexpected Patroni reload status %s" % response.status)
+PY`
+			if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "sh", "-ec", script); err != nil {
+				return fmt.Errorf("reload PostgreSQL native TLS material on %s: %w", member, err)
+			}
 		}
 	}
 
