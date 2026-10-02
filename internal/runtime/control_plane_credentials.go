@@ -50,9 +50,9 @@ func LoadControlPlaneCredentials(files Files) (ControlPlaneCredentials, error) {
 		PostgresInternalUser:     values["BASEHARBOR_POSTGRES_INTERNAL_USER"],
 		PostgresInternalPassword: values["BASEHARBOR_POSTGRES_INTERNAL_PASSWORD"],
 		PostgresReplicationUser:  values["BASEHARBOR_POSTGRES_REPLICATION_USER"],
-		PostgresReplicationPass: values["BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"],
-		OpenBaoDBUser:           values["BASEHARBOR_OPENBAO_DB_USER"],
-		OpenBaoDBPassword:       values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
+		PostgresReplicationPass:  values["BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"],
+		OpenBaoDBUser:            values["BASEHARBOR_OPENBAO_DB_USER"],
+		OpenBaoDBPassword:        values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
 	}
 	if credentials.PostgresInternalUser == "" {
 		credentials.PostgresInternalUser = "postgres"
@@ -85,7 +85,7 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 		"BASEHARBOR_POSTGRES_INTERNAL_USER":          next.PostgresInternalUser,
 		"BASEHARBOR_POSTGRES_INTERNAL_PASSWORD":      next.PostgresInternalPassword,
 		"BASEHARBOR_POSTGRES_REPLICATION_USER":       next.PostgresReplicationUser,
-		"BASEHARBOR_POSTGRES_REPLICATION_PASSWORD":   next.PostgresReplicationPass,
+		"BASEHARBOR_POSTGRES_REPLICATION_PASSWORD": next.PostgresReplicationPass,
 		"BASEHARBOR_OPENBAO_DB_USER":                 next.OpenBaoDBUser,
 		"BASEHARBOR_OPENBAO_DB_PASSWORD":             next.OpenBaoDBPassword,
 	}
