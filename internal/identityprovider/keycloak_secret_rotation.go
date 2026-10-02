@@ -14,7 +14,7 @@ type keycloakSecretCredential struct {
 }
 
 func (a *keycloakAdmin) currentClientSecret(ctx context.Context, realm, clientUUID string) (string, error) {
-	status, body, err := a.do(ctx, http.MethodGet, keycloakClientSecretPath(realm, clientUUID), nil)
+	status, body, err := a.do(ctx, http.MethodGet, keycloakAdminClientSecretPath(realm, clientUUID), nil)
 	if err != nil {
 		return "", err
 	}
@@ -33,7 +33,7 @@ func (a *keycloakAdmin) currentClientSecret(ctx context.Context, realm, clientUU
 }
 
 func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUID string) (current, rotated string, err error) {
-	status, body, err := a.do(ctx, http.MethodPost, keycloakClientSecretPath(realm, clientUUID), nil)
+	status, body, err := a.do(ctx, http.MethodPost, keycloakAdminClientSecretPath(realm, clientUUID), nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -49,7 +49,7 @@ func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUI
 		return "", "", fmt.Errorf("rotated Keycloak client secret is empty")
 	}
 
-	status, body, err = a.do(ctx, http.MethodGet, keycloakClientSecretPath(realm, clientUUID)+"/rotated", nil)
+	status, body, err = a.do(ctx, http.MethodGet, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -68,7 +68,7 @@ func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUI
 }
 
 func (a *keycloakAdmin) retireRotatedClientSecret(ctx context.Context, realm, clientUUID string) error {
-	status, body, err := a.do(ctx, http.MethodDelete, keycloakClientSecretPath(realm, clientUUID)+"/rotated", nil)
+	status, body, err := a.do(ctx, http.MethodDelete, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
 	if err != nil {
 		return err
 	}
@@ -114,6 +114,6 @@ func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, re
 	return nil
 }
 
-func keycloakClientSecretPath(realm, clientUUID string) string {
+func keycloakAdminClientSecretPath(realm, clientUUID string) string {
 	return "/admin/realms/" + url.PathEscape(realm) + "/clients/" + url.PathEscape(clientUUID) + "/client-secret"
 }
