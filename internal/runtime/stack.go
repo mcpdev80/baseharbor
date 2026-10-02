@@ -229,7 +229,10 @@ hostssl all all ::/0 scram-sha-256
 hostnossl all all 0.0.0.0/0 reject
 hostnossl all all ::/0 reject
 `
-	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
+	if err := os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
+		return err
+	}
+	return writeControlPlanePostgresHAProxyConfig(runtimeDir)
 }
 
 func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMaterial) error {
@@ -283,11 +286,17 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 
 func renderSecureControlPlanePostgres(rendered string) (string, error) {
 	for _, required := range []string{
+		"  postgres-member-1:\n",
+		"  postgres-member-2:\n",
+		"  postgres-member-3:\n",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"gcr.io/etcd-development/etcd:v3.7.2",
 		"  postgres:\n",
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"docker.io/library/haproxy:3.2.23-alpine",
+		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"BASEHARBOR_POSTGRES_REPLICATION_PASSWORD",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
-		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",
 	} {
 		if !strings.Contains(rendered, required) {
 			return "", fmt.Errorf("embedded runtime compose is missing secure PostgreSQL runtime %q", required)
