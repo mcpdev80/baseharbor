@@ -132,6 +132,39 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 	}
 }
 
+func TestIdentityOnlyWorkloadProjectsOIDCEnvironment(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Services.Identity = true
+	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	runtime := RuntimeFiles{
+		Dir:      filepath.Join(t.TempDir(), "runtime"),
+		Bindings: filepath.Join(t.TempDir(), "bindings"),
+	}
+	values := map[string]string{
+		"IDENTITY_CONTAINER_ISSUER": "https://identity:8443/realms/bh-demo-dev",
+		"IDENTITY_CLIENT_ID":        "baseharbor-demo-dev",
+		"IDENTITY_CLIENT_SECRET":    "secret",
+		"IDENTITY_CA_FILE":          filepath.Join(runtime.Dir, "identity-ca.pem"),
+	}
+
+	got, err := workloadOverrideYAMLForFiles(m, []string{"api"}, values, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"OIDC_ISSUER: " + strconv.Quote(values["IDENTITY_CONTAINER_ISSUER"]),
+		"OIDC_CLIENT_ID: " + strconv.Quote(values["IDENTITY_CLIENT_ID"]),
+		"OIDC_CLIENT_SECRET_FILE: " + strconv.Quote(IdentityWorkloadClientSecretFile),
+		"OIDC_CA_FILE: " + strconv.Quote("/run/baseharbor/service-bindings/identity/ca.crt"),
+		"SERVICE_BINDING_ROOT: " + strconv.Quote(workloadServiceBindingRoot),
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("identity-only workload override missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestWorkloadOverrideProjectsStandardServiceBindingRoot(t *testing.T) {
 	m := New("demo", "dev", true, true, false)
 	runtime := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
