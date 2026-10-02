@@ -265,7 +265,7 @@ func rabbitMQVerificationName(kind string) (string, error) {
 }
 
 type rabbitMQHAProbeRuntime interface {
-	ExecProject(context.Context, string, string, string, string, ...string) (string, error)
+	Run(context.Context, string, ...string) (string, error)
 }
 
 func VerifyRabbitMQHACluster(ctx context.Context, runtime rabbitMQHAProbeRuntime, m Manifest, files RuntimeFiles) error {
@@ -278,12 +278,12 @@ func VerifyRabbitMQHACluster(ctx context.Context, runtime rabbitMQHAProbeRuntime
 	for _, instance := range RabbitMQInstanceNames(m) {
 		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
 			service := rabbitmqMemberServiceName(instance, ordinal)
-			if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "rabbitmq-diagnostics", "-q", "ping"); err != nil {
+			if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err != nil {
 				return fmt.Errorf("RabbitMQ HA member %s is not ready: %w", service, err)
 			}
 		}
 		leader := rabbitmqMemberServiceName(instance, 0)
-		status, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, leader, "rabbitmqctl", "cluster_status")
+		status, err := runtime.Run(ctx, leader, "rabbitmqctl", "cluster_status")
 		if err != nil {
 			return fmt.Errorf("inspect RabbitMQ HA cluster %s: %w", instance, err)
 		}
