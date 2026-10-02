@@ -187,6 +187,50 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	return nil
 }
 
+
+func RetireControlPlaneServiceAccessOverlap(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
+	if issuer == nil {
+		return errors.New("control-plane service access requires an issuer")
+	}
+	stateDir := filepath.Dir(files.Compose)
+
+	openBaoPolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	openBaoPolicy.ServerName = "openbao"
+	openBaoRoot := filepath.Join(stateDir, "providers", "openbao")
+	openBaoPKI := filepath.Join(openBaoRoot, "service-access", "pki")
+	if err := serviceaccess.RetireTLSOverlap(ctx, issuer, openBaoPolicy, openBaoPKI); err != nil {
+		return fmt.Errorf("retire previous OpenBao CA: %w", err)
+	}
+	openBaoMaterial, err := serviceaccess.ExistingTLSMaterial(openBaoPolicy, openBaoPKI)
+	if err != nil {
+		return fmt.Errorf("load retired OpenBao TLS material: %w", err)
+	}
+	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
+		return fmt.Errorf("project retired OpenBao trust: %w", err)
+	}
+
+	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postgresRoot := filepath.Join(stateDir, "providers", "postgresql")
+	postgresPKI := filepath.Join(postgresRoot, "service-access", "pki")
+	if err := serviceaccess.RetireTLSOverlap(ctx, issuer, postgresPolicy, postgresPKI); err != nil {
+		return fmt.Errorf("retire previous control-plane PostgreSQL CA: %w", err)
+	}
+	postgresMaterial, err := serviceaccess.ExistingTLSMaterial(postgresPolicy, postgresPKI)
+	if err != nil {
+		return fmt.Errorf("load retired control-plane PostgreSQL TLS material: %w", err)
+	}
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+		return fmt.Errorf("project retired control-plane PostgreSQL trust: %w", err)
+	}
+	return nil
+}
+
 func ControlPlaneNetworkName(resourceProject string) string {
 	resourceProject = strings.TrimSpace(resourceProject)
 	if resourceProject == "" {
