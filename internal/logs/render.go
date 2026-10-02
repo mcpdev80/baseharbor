@@ -374,10 +374,12 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			fmt.Fprintf(&b, "    image: %s\n", LokiImage)
 			fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 			mode := "worker"
+			workerArg := ", \"-compactor.worker.num-sub-workers=4\""
 			if ordinal == 1 {
 				mode = "main"
+				workerArg = ""
 			}
-			fmt.Fprintf(&b, "    command: [\"-config.file=/etc/loki/loki.yaml\", \"-config.expand-env=true\", \"-target=all\", \"-compactor.horizontal-scaling-mode=%s\"]\n", mode)
+			fmt.Fprintf(&b, "    command: [\"-config.file=/etc/loki/loki.yaml\", \"-config.expand-env=true\", \"-target=all\", \"-compactor.horizontal-scaling-mode=%s\"%s]\n", mode, workerArg)
 			b.WriteString("    read_only: true\n")
 			b.WriteString("    cap_drop: [\"ALL\"]\n")
 			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
