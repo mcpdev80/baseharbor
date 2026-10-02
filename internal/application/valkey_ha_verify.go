@@ -60,8 +60,12 @@ func VerifyValkeyHACluster(ctx context.Context, runtime valkeyHAProbeRuntime, m 
 			if len(lines) < 2 {
 				return fmt.Errorf("Valkey Sentinel %s returned incomplete master address", sentinel)
 			}
-			if lines[0] != observedMaster {
-				return fmt.Errorf("Valkey Sentinel %s reports master %s, observed primary is %s", sentinel, lines[0], observedMaster)
+			observedMasterAddr, err := valkeyMemberAddressFromSentinel(ctx, runtime, sentinel, observedMaster, password)
+			if err != nil {
+				return fmt.Errorf("resolve observed Valkey primary %s from %s: %w", observedMaster, sentinel, err)
+			}
+			if lines[0] != observedMasterAddr {
+				return fmt.Errorf("Valkey Sentinel %s reports master %s, observed primary %s resolves to %s", sentinel, lines[0], observedMaster, observedMasterAddr)
 			}
 			if lines[1] != "6379" {
 				return fmt.Errorf("Valkey Sentinel %s reports unexpected master port %s", sentinel, lines[1])
@@ -85,6 +89,14 @@ func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifes
 	if valkeyMemberCount(m, instance) <= 1 {
 		return valkeyMemberServiceName(instance, 0), nil
 	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return "", err
+	}
+	password, err := requireRuntimeValue(values, valkeyRuntimeKey(instance, "PASSWORD"))
+	if err != nil {
+		return "", err
+	}
 	sentinel := valkeySentinelServiceName(instance, 0)
 	out, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
 	if err != nil {
@@ -96,11 +108,35 @@ func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifes
 	}
 	for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
 		member := valkeyMemberServiceName(instance, ordinal)
-		if lines[0] == member {
+		address, addrErr := valkeyMemberAddressFromSentinel(ctx, runtime, sentinel, member, password)
+		if addrErr != nil {
+			continue
+		}
+		if lines[0] == address {
 			return member, nil
 		}
 	}
 	return "", fmt.Errorf("Valkey Sentinel %s reported unknown master %s", sentinel, lines[0])
+}
+
+func valkeyMemberAddressFromSentinel(ctx context.Context, runtime valkeyHAProbeRuntime, sentinel, member, password string) (string, error) {
+	script := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h \"$1\" -p 6379 --raw CLIENT INFO"
+	out, err := runtime.RunSensitive(ctx, sentinel, []byte(password+"\n"), "sh", "-ec", script, "sh", member)
+	if err != nil {
+		return "", err
+	}
+	for _, field := range strings.Fields(strings.ReplaceAll(out, "\r", "")) {
+		if !strings.HasPrefix(field, "laddr=") {
+			continue
+		}
+		hostPort := strings.TrimPrefix(field, "laddr=")
+		idx := strings.LastIndex(hostPort, ":")
+		if idx <= 0 {
+			continue
+		}
+		return hostPort[:idx], nil
+	}
+	return "", fmt.Errorf("Valkey member %s CLIENT INFO has no laddr", member)
 }
 
 func parseValkeyReplicationRole(out string) string {
