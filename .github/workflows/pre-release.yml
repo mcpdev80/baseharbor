@@ -12,7 +12,7 @@ on:
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: develop
+        default: release/v0.4.20
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
