@@ -17,7 +17,8 @@ type rabbitMQCredentialRotationMaterial struct {
 	OldAppPassword string `json:"old_app_password"`
 	NewAppUser     string `json:"new_app_user"`
 	NewAppPassword string `json:"new_app_password"`
-	AdminUser      string `json:"admin_user,omitempty"`
+	OldAdminUser   string `json:"old_admin_user,omitempty"`
+	NewAdminUser   string `json:"new_admin_user,omitempty"`
 	OldAdminPass   string `json:"old_admin_password,omitempty"`
 	NewAdminPass   string `json:"new_admin_password,omitempty"`
 }
@@ -97,7 +98,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 					NewAppPassword: newPassword,
 				}
 				if m.Services.MessagingManagementUI {
-					material.AdminUser, err = requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "ADMIN_USER"))
+					material.OldAdminUser, err = requireRuntimeValue(values, rabbitmqRuntimeKey(instance, "ADMIN_USER"))
 					if err != nil {
 						return err
 					}
@@ -105,6 +106,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 					if err != nil {
 						return err
 					}
+					material.NewAdminUser = material.OldAdminUser + "_r_" + strings.ReplaceAll(token, "-", "_")
 					material.NewAdminPass, err = randomApplicationSecret(32)
 					if err != nil {
 						return err
@@ -124,6 +126,11 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			if err := rabbitMQCreateApplicationUser(ctx, runtime, files, service, material.NewAppUser, material.NewAppPassword); err != nil {
 				return fmt.Errorf("prepare RabbitMQ application credential: %w", err)
 			}
+			if material.NewAdminUser != "" {
+				if err := rabbitMQCreateAdminUser(ctx, runtime, files, service, material.NewAdminUser, material.NewAdminPass); err != nil {
+					return fmt.Errorf("prepare RabbitMQ management credential: %w", err)
+				}
+			}
 			return nil
 		},
 		Reconcile: func(ctx context.Context) error {
@@ -131,19 +138,14 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			if err != nil {
 				return err
 			}
-			service := rabbitmqMemberServiceName(instance, 0)
-			if material.AdminUser != "" {
-				if err := rabbitMQChangePassword(ctx, runtime, files, service, material.AdminUser, material.NewAdminPass); err != nil {
-					return fmt.Errorf("rotate RabbitMQ management credential: %w", err)
-				}
-			}
 			values, err := readRuntimeEnv(files.Env)
 			if err != nil {
 				return err
 			}
 			values[rabbitmqRuntimeKey(instance, "USER")] = material.NewAppUser
 			values[rabbitmqRuntimeKey(instance, "PASSWORD")] = material.NewAppPassword
-			if material.AdminUser != "" {
+			if material.NewAdminUser != "" {
+				values[rabbitmqRuntimeKey(instance, "ADMIN_USER")] = material.NewAdminUser
 				values[rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")] = material.NewAdminPass
 			}
 			if err := writeRuntimeEnv(files.Env, m, values); err != nil {
@@ -161,8 +163,8 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.NewAppUser, material.NewAppPassword, true); err != nil {
 				return err
 			}
-			if material.AdminUser != "" {
-				if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.AdminUser, material.NewAdminPass, true); err != nil {
+			if material.NewAdminUser != "" {
+				if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.NewAdminUser, material.NewAdminPass, true); err != nil {
 					return err
 				}
 			}
@@ -189,8 +191,11 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.OldAppUser, material.OldAppPassword, false); err != nil {
 				return err
 			}
-			if material.AdminUser != "" {
-				if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.AdminUser, material.OldAdminPass, false); err != nil {
+			if material.NewAdminUser != "" {
+				if err := rabbitMQDeleteUser(ctx, runtime, files, service, material.OldAdminUser); err != nil {
+					return fmt.Errorf("retire previous RabbitMQ management credential: %w", err)
+				}
+				if err := rabbitMQVerifyCredential(ctx, runtime, files, service, material.OldAdminUser, material.OldAdminPass, false); err != nil {
 					return err
 				}
 			}
@@ -202,18 +207,14 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 				return err
 			}
 			service := rabbitmqMemberServiceName(instance, 0)
-			if material.AdminUser != "" {
-				if err := rabbitMQChangePassword(ctx, runtime, files, service, material.AdminUser, material.OldAdminPass); err != nil {
-					return err
-				}
-			}
 			values, err := readRuntimeEnv(files.Env)
 			if err != nil {
 				return err
 			}
 			values[rabbitmqRuntimeKey(instance, "USER")] = material.OldAppUser
 			values[rabbitmqRuntimeKey(instance, "PASSWORD")] = material.OldAppPassword
-			if material.AdminUser != "" {
+			if material.NewAdminUser != "" {
+				values[rabbitmqRuntimeKey(instance, "ADMIN_USER")] = material.OldAdminUser
 				values[rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")] = material.OldAdminPass
 			}
 			if err := writeRuntimeEnv(files.Env, m, values); err != nil {
@@ -223,6 +224,9 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 				return err
 			}
 			_ = rabbitMQDeleteUser(ctx, runtime, files, service, material.NewAppUser)
+			if material.NewAdminUser != "" {
+				_ = rabbitMQDeleteUser(ctx, runtime, files, service, material.NewAdminUser)
+			}
 			return nil
 		},
 	}).Run(ctx)
