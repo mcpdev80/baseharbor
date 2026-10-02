@@ -21,6 +21,7 @@ type keycloakAdmin struct {
 }
 
 type keycloakRealm struct {
+	ID                                            string            `json:"id,omitempty"`
 	Realm                                         string            `json:"realm"`
 	Enabled                                       bool              `json:"enabled"`
 	DisplayName                                   string            `json:"displayName,omitempty"`
