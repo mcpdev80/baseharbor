@@ -90,6 +90,25 @@ func TestMongoDBHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	waitMongoDBHAReady(t, ctx, op, m, files)
 
+	oldProviderCA, err := os.ReadFile(afterRotation[mongodbTLSCAKey(defaultServiceInstance)])
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldUICA, err := os.ReadFile(filepath.Join(files.Dir, "providers", "management-ui", "mongodb", defaultServiceInstance, "pki", "ca.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RotateManagedProviderPKI(ctx, runtime, serviceissuer.New(t), m, files, ManagedProviderPKIMongoDB, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate MongoDB HA PKI: %v", err)
+	}
+	rotatedValues, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOldCARootRejected(t, oldProviderCA, rotatedValues[mongodbMemberHostPortKey(defaultServiceInstance, 0)])
+	assertOldCARootRejected(t, oldUICA, rotatedValues[mongodbUIHostPortKey(defaultServiceInstance)])
+	waitMongoDBHAReady(t, ctx, op, m, files)
+
 	failedMember, err := MongoDBHAPrimary(ctx, op, m, defaultServiceInstance)
 	if err != nil {
 		t.Fatal(err)
