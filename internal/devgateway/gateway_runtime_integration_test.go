@@ -82,9 +82,7 @@ networks:
 	if err := ReplaceOwnerRoutes(ctx, runtime, issuer, target, "acceptance", []Route{route}); err != nil {
 		t.Fatalf("start canonical gateway route: %v", err)
 	}
-	if err := VerifyHosts(ctx, target, []string{host}); err != nil {
-		t.Fatalf("verify initial canonical gateway route: %v", err)
-	}
+	waitForGatewayHost(t, ctx, target, host, "initial canonical route")
 
 	// Reconcile only the Caddy route configuration while preserving the same
 	// canonical host, host port and attached network. The gateway runs Caddy
@@ -99,7 +97,21 @@ networks:
 	if err := runtime.StopProjectFilesSelected(ctx, upstreamProject, upstreamDir, map[string]string{}, []string{"upstream-a"}, composePath); err != nil {
 		t.Fatalf("stop retired gateway upstream: %v", err)
 	}
-	if err := VerifyHosts(ctx, target, []string{host}); err != nil {
-		t.Fatalf("stable canonical gateway route did not survive backend replacement: %v", err)
+	waitForGatewayHost(t, ctx, target, host, "backend replacement")
+}
+
+func waitForGatewayHost(t *testing.T, ctx context.Context, target, host, phase string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		last = VerifyHosts(probeCtx, target, []string{host})
+		cancel()
+		if last == nil {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
+	t.Fatalf("%s did not become reachable through stable gateway host: %v", phase, last)
 }
