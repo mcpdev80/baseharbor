@@ -28,7 +28,7 @@ func ReconcileMongoDBHA(ctx context.Context, runtime mongoDBHAProbeRuntime, m Ma
 			members = append(members, fmt.Sprintf("{_id:%d,host:%q}", ordinal, mongodbMemberServiceName(instance, ordinal)+":27017"))
 		}
 		service := mongodbMemberServiceName(instance, 0)
-		script := fmt.Sprintf("mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
+		script := fmt.Sprintf("mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
 		if _, err := runtime.Run(ctx, service, "sh", "-ec", script); err != nil {
 			return fmt.Errorf("initialize MongoDB replica set %s: %w", instance, err)
 		}
@@ -82,7 +82,7 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 	replicaSet := mongodbReplicaSetName(instance)
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'JSON.stringify(db.adminCommand({hello:1}))'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'JSON.stringify(db.adminCommand({hello:1}))'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("inspect MongoDB HA member %s: %w", service, err)
@@ -123,7 +123,7 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 func MongoDBHAPrimary(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, instance string) (string, error) {
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({hello:1}).isWritablePrimary ? \"primary\" : \"other\"'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({hello:1}).isWritablePrimary ? \"primary\" : \"other\"'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			continue
