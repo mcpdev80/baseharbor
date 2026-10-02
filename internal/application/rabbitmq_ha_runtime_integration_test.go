@@ -107,7 +107,7 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	); err != nil {
 		t.Fatalf("restart RabbitMQ HA member %s: %v", failedMember, err)
 	}
-	waitRabbitMQHAReady(t, ctx, runtime, m, files)
+	waitRabbitMQHAReady(t, ctx, provideroperation.New(runtime, files.Project, files.Compose, files.Env), m, files)
 }
 
 func waitRabbitMQHAReady(t *testing.T, ctx context.Context, runtime rabbitMQHAProbeRuntime, m Manifest, files RuntimeFiles) {
