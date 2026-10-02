@@ -34,9 +34,9 @@ func inventoryResource(target, provider string, item InventoryResource) (Resourc
 			Kind:       item.Kind,
 			ResourceID: strings.TrimSpace(item.ResourceID),
 		},
-		DisplayName:  strings.TrimSpace(item.Name),
-		RuntimeName:  strings.TrimSpace(item.Name),
-		Ownership:    OwnershipUnmanaged,
+		DisplayName: strings.TrimSpace(item.Name),
+		RuntimeName: strings.TrimSpace(item.Name),
+		Ownership:   OwnershipUnmanaged,
 		State: ResourceState{
 			Observed: strings.TrimSpace(item.State),
 			Health:   strings.TrimSpace(item.Health),
