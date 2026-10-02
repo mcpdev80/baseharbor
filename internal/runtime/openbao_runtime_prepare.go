@@ -130,13 +130,19 @@ func writeOpenBaoRuntimeConfig(stateDir, user, secret string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	escapedUser := url.QueryEscape(user)
-	escaped := url.QueryEscape(secret)
+	connectionURL := (&url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, secret),
+		Host:   "postgres:5432",
+		Path:   "/openbao",
+		RawQuery: "sslmode=verify-full&sslrootcert=" +
+			url.QueryEscape("/run/baseharbor/postgres-ca/ca.pem"),
+	}).String()
 	config := fmt.Sprintf(`ui = true
 disable_mlock = true
 
 storage "postgresql" {
-  connection_url      = "postgres://%s:%s@postgres:5432/openbao?sslmode=verify-full&sslrootcert=/run/baseharbor/postgres-ca/ca.pem"
+  connection_url      = "%s"
   ha_enabled          = "true"
   max_connect_retries = 0
   max_parallel        = "20"
@@ -155,6 +161,6 @@ listener "tcp" {
 }
 
 api_addr = "https://openbao:8200"
-`, escapedUser, escaped)
+`, connectionURL)
 	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
 }
