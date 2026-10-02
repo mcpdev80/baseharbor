@@ -75,11 +75,12 @@ exist?"* but *"does the application actually work?"*
 ## What you get
 
 - **Create new applications** — `baha app new` turns capability intent into a normal Go, Next.js, Python or Quarkus project, validates it, and keeps ecosystem-native libraries instead of introducing a BaseHarbor app framework.
-- **Multi-repo workspaces** — one logical application can span monorepos, multiple existing worktrees and OCI components; guided workspace mapping keeps local checkout paths out of portable intent.
+- **Multi-repo workspaces** — one logical application can span monorepos, multiple existing worktrees and OCI components; guided workspace mapping keeps local checkout paths out of portable intent. `baha app workspace status` and fast-forward-only `workspace update` provide safe Git synchronization without hiding normal Git decisions.
 - **Adopt existing repositories** — `baha` inspects your code, dependencies,
-  Compose files and ports deterministically (parsers, rules, repository
-  evidence — no LLM or external AI service), and turns them into a portable
-  contract with **Detected / Suggested / Possible** evidence.
+  workload sources and ports deterministically (parsers, rules, repository
+  evidence — no LLM or external AI service). v0.4.20 understands Compose,
+  repository-authored Podman Quadlet and raw Kubernetes YAML through one
+  source-neutral evidence model, while keeping source syntax out of portable intent.
 - **Declare needs, not products** — SQL, cache, durable key-value, document database,
   queue/pub-sub/stream messaging, secrets, object storage, identity and HTTPS exposure
   are logical capabilities; PostgreSQL, Valkey, MongoDB, RabbitMQ, S3-compatible
@@ -115,11 +116,12 @@ exist?"* but *"does the application actually work?"*
   explicit trust boundaries, fail-closed behavior.
 
 > **Runtime status:** Docker and Podman are implemented Runtime Providers
-> behind the same portable contract. Docker realizes Compose workload input
-> through Docker Compose; Podman realizes the same portable semantics through
-> native Quadlet units managed by rootless `systemd --user`; there is no
-> `podman compose` fallback. Kubernetes and OpenShift are planned runtime
-> providers and are not implemented yet.
+> behind the same portable contract. Repository understanding is separate from
+> runtime realization: v0.4.20 can inspect/adopt Compose, repository-authored
+> Quadlet and raw Kubernetes YAML. The current repository-workload realization
+> path remains Compose-based for Docker/Podman; Podman realizes that portable
+> workload through native Quadlet units managed by rootless `systemd --user`.
+> Kubernetes and OpenShift Runtime Providers are planned and are not implemented yet.
 
 ## A CLI first — agent-ready if you want it
 
@@ -285,11 +287,13 @@ baha version
 
 BaseHarbor is **pre-v1**. Manifest v1 is the current v0.4 compatibility surface.
 
-Docker and Podman are the implemented Runtime Providers today. Docker
-realizes Compose workload input through Docker Compose; Podman realizes the
-same portable semantics through native Quadlet units managed by rootless
-`systemd --user`. Kubernetes and OpenShift remain future runtime tracks and
-must preserve the same application contract when implemented.
+Docker and Podman are the implemented Runtime Providers today. The portable
+application contract uses logical workload components rather than source-native
+Compose/Quadlet/Kubernetes identity. Compose is currently the realizable
+repository-workload source for Docker/Podman; raw Kubernetes and repository-authored
+Quadlet can already be inspected/adopted but require future realization support.
+Kubernetes and OpenShift remain future runtime tracks and must preserve the same
+application contract when implemented.
 
 Normal feature, fix, chore and dependency pull requests target `develop`.
 The `main` branch represents released source.

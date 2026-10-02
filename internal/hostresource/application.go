@@ -89,7 +89,7 @@ func EstimateApplication(m application.Manifest) MemoryEstimate {
 		components = append(components, baseline("observability management UI", 128))
 	}
 
-	if len(m.Workload.Services) > 0 || m.Workload.Compose != "" {
+	if application.HasExplicitWorkload(m) {
 		components = append(components, heuristic("application workload", 256))
 	}
 	if len(m.Exposures) > 0 {

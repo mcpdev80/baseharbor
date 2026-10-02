@@ -78,14 +78,13 @@ func TestPortableContractExcludesDeploymentContext(t *testing.T) {
 	}
 }
 
-func TestPortableContractExcludesComposeWorkloadDetails(t *testing.T) {
+func TestPortableContractUsesLogicalWorkloadComponents(t *testing.T) {
 	m := Manifest{
 		Version:     CurrentVersion,
 		Name:        "frontend",
 		Environment: "dev",
 		Workload: WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"web"},
+			Components: []string{"web"},
 		},
 	}
 
@@ -134,7 +133,7 @@ func TestPortableContractIncludesProviderNeutralExposureIntent(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "frontend",
 		Environment: "production",
-		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:    WorkloadConfig{Components: []string{"web"}},
 		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
 	}
 	contract, err := PortableContractFromManifest(m)
@@ -154,7 +153,7 @@ func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *te
 		Version:     CurrentVersion,
 		Name:        "api",
 		Environment: "dev",
-		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}},
+		Workload:    WorkloadConfig{Components: []string{"api"}},
 		Metrics: MetricsRequirements{Sources: []MetricsSourceRequirement{{
 			Name: "application", Service: "api", Port: 8080, Path: "/metrics",
 		}}},
@@ -174,7 +173,7 @@ func TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct(t *te
 func TestPortableContractCarriesExplicitLogsIntent(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithWorkloadComponents(m, "api", "worker")
 	m = WithLogsCollection(m, "application")
 
 	contract, err := PortableContractFromManifest(m)
@@ -201,7 +200,7 @@ func TestPortableContractCarriesExplicitLogsIntent(t *testing.T) {
 
 func TestPortableContractDoesNotInventProviderCapabilities(t *testing.T) {
 	m := New("demo", "dev", true, true, true)
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 
 	contract, err := PortableContractFromManifest(m)
 	if err != nil {
@@ -218,7 +217,7 @@ func TestPortableContractDoesNotInventProviderCapabilities(t *testing.T) {
 func TestCapabilityBindingsIncludeLogsOnlyWhenDeclared(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 
 	bindings, err := CapabilityBindings(m)
 	if err != nil {

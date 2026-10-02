@@ -418,8 +418,9 @@ func (e *applicationApplyExecution) startRepositoryWorkload(ctx context.Context)
 		return err
 	}); err != nil {
 		resource := "repository workload"
-		if len(e.manifest.Workload.Services) == 1 {
-			resource = e.manifest.Workload.Services[0]
+		components := application.WorkloadComponentNames(e.manifest)
+		if len(components) == 1 {
+			resource = components[0]
 		}
 		return classifyOperationalFailure(err, resource)
 	}

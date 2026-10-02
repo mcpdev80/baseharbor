@@ -49,6 +49,30 @@ func TestDevelopmentWorkloadRouteDefaultsToHTTP(t *testing.T) {
 	}
 }
 
+func TestDevelopmentGatewayAllowsNonRoutableWorkload(t *testing.T) {
+	m := application.New("worker", "dev", false, false, false)
+	m.Services.SQL = false
+	m = application.WithWorkloadComponents(m, "worker")
+	if !requiresDevelopmentGateway(m) {
+		t.Fatal("development workload should still participate in route reconciliation")
+	}
+	if requiresDeclaredDevelopmentGatewaySurface(m) {
+		t.Fatal("non-routable workload must not require a canonical development URL")
+	}
+}
+
+func TestDevelopmentGatewayRequiresExplicitExposure(t *testing.T) {
+	m := application.New("web", "dev", false, false, false)
+	m.Services.SQL = false
+	m = application.WithWorkloadComponents(m, "web")
+	m.Exposures = []application.HTTPExposureRequirement{{
+		Name: "public", Service: "web", Port: 8080, Protocol: "http",
+	}}
+	if !requiresDeclaredDevelopmentGatewaySurface(m) {
+		t.Fatal("explicit exposure must require a canonical development URL")
+	}
+}
+
 func TestDevelopmentExposureUpstreamUsesProviderAlias(t *testing.T) {
 	got := developmentExposureUpstream("bh-demo-dev-exposure", "demo-app", "http", 8080)
 	want := "http://bh-dev-bh-demo-dev-exposure-demo-app:8080"

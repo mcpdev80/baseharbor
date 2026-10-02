@@ -109,7 +109,7 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 		ApplicationID: MustNewApplicationID(),
 		Name:          "frontend",
 		Environment:   "production",
-		Workload:      WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:      WorkloadConfig{Components: []string{"web"}},
 		Exposures:     []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}},
 	}
 	if err := registerReferenceProviders(&registry, m); err != nil {
@@ -139,7 +139,7 @@ func TestRegisterReferenceProvidersTracksApplicationScopedCaddy(t *testing.T) {
 func TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy(t *testing.T) {
 	m := New("demo", "production", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 	t.Setenv(MetricsEnabledEnv, "false")
@@ -169,7 +169,7 @@ func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testin
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("runtime-metrics", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithRuntimePermission(m, string(capability.MetricsV1.ID), []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
 	registry := capability.NewRegistry()
@@ -198,7 +198,7 @@ func TestRegisteredProviderPlacementSurvivesDesiredOverrideChange(t *testing.T) 
 
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 	if err := ReconcileReferenceProviderRegistry(m); err != nil {

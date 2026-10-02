@@ -12,7 +12,7 @@ import (
 func telemetryManifest() Manifest {
 	return WithOTLPTelemetry(Manifest{
 		Version: 1, ApplicationID: MustNewApplicationID(), Name: "demo", Environment: "dev",
-		Workload: WorkloadConfig{Services: []string{"api"}},
+		Workload: WorkloadConfig{Components: []string{"api"}},
 	}, "traces", "metrics")
 }
 
@@ -43,7 +43,7 @@ func TestOTLPTelemetryManifestRoundTrip(t *testing.T) {
 
 func TestOTLPTelemetryRequiresExplicitWorkloadIdentity(t *testing.T) {
 	m := telemetryManifest()
-	m.Workload.Services = nil
+	m.Workload.Components = nil
 	if err := m.Validate(); err == nil {
 		t.Fatal("expected deterministic workload identity validation error")
 	}

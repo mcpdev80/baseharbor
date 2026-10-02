@@ -2,6 +2,7 @@ package objectstorage
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"os"
@@ -111,6 +112,22 @@ func (r *runtimeSeaweedFSRealization) Destroy(ctx context.Context) error {
 	return DestroySharedProviderAt(ctx, r.runtime, dataDir, r.namespace)
 }
 
+func readSeaweedFSTrustBundle(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("S3 service trust bundle path is empty")
+	}
+	trustBundle, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read S3 service trust bundle: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(trustBundle) {
+		return nil, fmt.Errorf("S3 service trust bundle contains no valid certificates")
+	}
+	return trustBundle, nil
+}
+
 func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) {
 	endpoint, err := providerEndpoint(files)
 	if err != nil {
@@ -128,9 +145,9 @@ func seaweedFSInstanceFromFiles(files ProviderFiles) (SeaweedFSInstance, error) 
 	if err != nil {
 		return SeaweedFSInstance{}, fmt.Errorf("load S3 service trust material: %w", err)
 	}
-	trustBundle, err := os.ReadFile(material.CA)
+	trustBundle, err := readSeaweedFSTrustBundle(material.CA)
 	if err != nil {
-		return SeaweedFSInstance{}, fmt.Errorf("read S3 service trust bundle: %w", err)
+		return SeaweedFSInstance{}, err
 	}
 	workloadHost := "seaweedfs"
 	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {

@@ -64,7 +64,7 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
 	m.Services.ObservabilityManagementUI = true
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"demo-app"}}
+	m.Workload = WorkloadConfig{Components: []string{"demo-app"}}
 	m.Metrics.Sources = []MetricsSourceRequirement{{Name: "application", Service: "demo-app", Port: 8080, Path: "/metrics"}}
 
 	rendered := m.YAML()
@@ -193,7 +193,7 @@ func TestParserRejectsUnknownFields(t *testing.T) {
 func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "web")
+	m = WithWorkloadComponents(m, "web")
 	m = WithHTTPExposure(m, "public", "web", 8080, "http")
 
 	got, err := ParseYAML(m.YAML())
@@ -210,16 +210,15 @@ func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	}
 }
 
-func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
+func TestManifestHTTPExposureRequiresExplicitSelectedComponent(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
-	m.Services.SQL = false
-	m.Workload = WorkloadConfig{Compose: "compose.yaml"}
+	m.Services.SQL = true
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
-	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.services") {
-		t.Fatalf("expected deterministic workload service validation, got %v", err)
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.components") {
+		t.Fatalf("expected deterministic workload component validation, got %v", err)
 	}
 
-	m.Workload.Services = []string{"api"}
+	m.Workload.Components = []string{"api"}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "not selected") {
 		t.Fatalf("expected target selection validation, got %v", err)
 	}
@@ -228,7 +227,7 @@ func TestManifestHTTPExposureRequiresExplicitSelectedService(t *testing.T) {
 func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
+	m.Workload = WorkloadConfig{Components: []string{"web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "private-ish"}}
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "visibility must be public or internal") {
 		t.Fatalf("expected invalid visibility rejection, got %v", err)
@@ -251,7 +250,7 @@ func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
 func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
 	got, err := ParseYAML(m.YAML())
@@ -301,7 +300,7 @@ func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
 func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithWorkloadComponents(m, "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 	got, err := ParseYAML(m.YAML())
@@ -329,7 +328,7 @@ func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 	base := New("demo", "dev", false, false, false)
 	base.Services.SQL = false
-	base = WithWorkload(base, "compose.yaml", "api")
+	base = WithWorkloadComponents(base, "api")
 
 	cases := []MetricsSourceRequirement{
 		{Name: "application", Service: "worker", Port: 8080, Path: "/metrics"},
@@ -358,7 +357,7 @@ func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
 func TestManifestLogsRoundTrip(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithLogsCollection(m, "application")
 
 	got, err := ParseYAML(m.YAML())
@@ -375,12 +374,11 @@ func TestManifestLogsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
+func TestManifestLogsRequireExplicitWorkloadComponents(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml")
 	m = WithLogsCollection(m, "application")
-	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.services") {
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.components") {
 		t.Fatalf("expected logs/workload validation failure, got %v", err)
 	}
 }
@@ -388,7 +386,7 @@ func TestManifestLogsRequireExplicitWorkloadServices(t *testing.T) {
 func TestManifestLogsRejectUnknownSource(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithLogsCollection(m, "everything")
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {
 		t.Fatalf("expected unsupported logs source failure, got %v", err)

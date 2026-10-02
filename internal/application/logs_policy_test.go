@@ -18,7 +18,7 @@ func TestLogsCollectionPolicyDefaultsDisabledWithoutManifestIntent(t *testing.T)
 
 func TestLogsCollectionEnabledByManifestIntent(t *testing.T) {
 	m := WithLogsCollection(New("demo", "dev", false, false, false), "application")
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	m.Workload = WorkloadConfig{Components: []string{"api"}}
 	enabled, err := LogsCollectionEnabled(m)
 	if err != nil || !enabled {
 		t.Fatalf("manifest logs intent enabled=%t err=%v", enabled, err)
@@ -36,7 +36,7 @@ func TestLogsEnabledEnvCannotCreateUndeclaredIntent(t *testing.T) {
 func TestLogsEnabledEnvCanDisableDeclaredIntent(t *testing.T) {
 	t.Setenv(LogsEnabledEnv, "false")
 	m := WithLogsCollection(New("demo", "dev", false, false, false), "application")
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	m.Workload = WorkloadConfig{Components: []string{"api"}}
 	enabled, err := LogsCollectionEnabled(m)
 	if err != nil || enabled {
 		t.Fatalf("declared logs intent was not disabled: enabled=%t err=%v", enabled, err)
@@ -46,7 +46,7 @@ func TestLogsEnabledEnvCanDisableDeclaredIntent(t *testing.T) {
 func TestLogsPolicyExplicitSourceClasses(t *testing.T) {
 	t.Setenv(LogsCollectSourcesEnv, "application")
 	m := WithLogsCollection(New("demo", "production", false, false, false), "application")
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	m.Workload = WorkloadConfig{Components: []string{"api"}}
 	policy, err := LogsPolicy(m)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestLogsPolicyExplicitSourceClasses(t *testing.T) {
 func TestLogsPolicyRejectsUnknownSourceClass(t *testing.T) {
 	t.Setenv(LogsCollectSourcesEnv, "application,everything")
 	m := WithLogsCollection(New("demo", "dev", false, false, false), "application")
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	m.Workload = WorkloadConfig{Components: []string{"api"}}
 	if _, err := LogsPolicy(m); err == nil {
 		t.Fatal("unsupported logs source class accepted")
 	}

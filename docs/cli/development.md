@@ -27,4 +27,16 @@ Application workspace commands manage local source mappings for multi-repository
 
 Workspace paths are developer-local state and never become portable application identity.
 
-See the application namespace help for the current `baha app workspace ...` command tree.
+The normal workspace surface is:
+
+```text
+baha app workspace status
+baha app workspace update --check
+baha app workspace update
+```
+
+`status` is read-only. `update --check` fetches upstream state and previews safe changes without moving checked-out revisions. `update` uses native Git and only performs fast-forward-only updates of clean branches with a configured upstream.
+
+BaseHarbor never automatically stashes, resets, rebases, merges divergent history, resolves conflicts or switches branches. Dirty, detached, ahead-only and diverged repositories are left untouched with an actionable native-Git next step.
+
+The existing `init`, `map`, `show` and `resolve` commands remain available for deterministic workspace mapping and resolution.

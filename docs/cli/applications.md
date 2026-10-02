@@ -16,6 +16,29 @@ Application commands operate on the portable Application Contract and its deploy
 
 v0.4.19 capability flags remain semantic rather than product-specific. Applications request capabilities such as durable key-value, document database or messaging; they do not request MongoDB/RabbitMQ by product name.
 
+### Source-neutral repository adoption
+
+`baha app inspect` and `baha app init` understand these v0.4.20 repository workload sources through the same source-adapter contract:
+
+- Compose;
+- repository-authored Podman Quadlet;
+- raw Kubernetes YAML.
+
+Human inspection reports the standardized source-resolution state. JSON/MCP expose `baseharbor.workload-source-resolution/v1`.
+
+For deterministic non-interactive adoption, use logical component identity plus an explicit repository source when ambiguity exists:
+
+```text
+baha app init my-app \
+  --workload-source kubernetes:deploy/k8s \
+  --workload-component api \
+  --workload-component worker
+```
+
+`--quick` fails safely when source ambiguity cannot be resolved deterministically. Guided init asks once and persists `baseharbor.repository.yaml` only when a repository really needs an explicit source choice.
+
+Helm and Kustomize are not v0.4.20 source adapters.
+
 ## Lifecycle
 
 | Command | Purpose |

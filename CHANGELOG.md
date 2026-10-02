@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Source-neutral Workload Source Adapter and normalized Workload Evidence contracts for Compose, repository-authored Podman Quadlet and raw Kubernetes YAML, including deterministic fingerprints, provenance and logical workload-component identity.
+- Safe-to-commit `baseharbor.repository.yaml` selection metadata for genuinely ambiguous repositories.
+- Developer workspace Git status and fast-forward-only synchronization across mapped repositories, with CLI/JSON/MCP parity and preview-only checks.
+- Pinned 30-example real-world repository corpus with 10 Compose, 10 repository-authored Podman Quadlet and 10 raw Kubernetes YAML cases, plus mixed-source ambiguity evidence.
+
+### Changed
+
+- Portable workload identity now uses logical components instead of treating Compose service names as the canonical application model.
+- Repository understanding is separated from Runtime Provider realization; Kubernetes/Quadlet sources can be inspected and adopted while unsupported runtime realization fails later with a typed actionable preflight result.
+- Mixed workload-source families fail closed instead of silently preferring a product/source format.
+- Helm and Kustomize are deferred to later Workload Source Adapters and are not claimed as v0.4.20 support.
+
+
 ## [0.4.19] - 2026-10-01
 
 ### Added

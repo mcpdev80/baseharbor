@@ -183,7 +183,7 @@ func (e *repositoryWorkloadExecution) recreateConfigurationChangedServices(ctx c
 
 func (e *repositoryWorkloadExecution) start(ctx context.Context, out io.Writer) error {
 	var startServices []string
-	if e.workload.Partial || len(e.resolved.Manifest.Workload.Services) > 0 {
+	if e.workload.Partial || len(application.WorkloadComponentNames(e.resolved.Manifest)) > 0 {
 		startServices = e.expectedServices
 	}
 	if err := startRepositoryWorkloadWithPortFallback(ctx, runtimeInput, out, e.compose, e.workload, e.files, e.environment, startServices, e.composeFiles); err != nil {

@@ -22,7 +22,13 @@ type composeService struct {
 	HasBuild                bool
 	HasImage                bool
 	HasPorts                bool
+	Image                   string
+	Build                   string
 	Ports                   []string
+	EnvironmentRefs         []string
+	ConfigRefs              []string
+	Dependencies            []string
+	Volumes                 []string
 	HealthCheck             bool
 	DatabaseBootstrap       bool
 	WorkloadProtocol        string
@@ -45,16 +51,17 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		return nil, nil
 	}
 
-	result := make([]composeService, 0, len(document.Services))
-	for name, definition := range document.Services {
+	resolvedServices, err := resolveComposeServiceDefinitions(document.Services)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]composeService, 0, len(resolvedServices))
+	for name, definition := range resolvedServices {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
-		if _, inherited := definition["extends"]; inherited {
-			return nil, fmt.Errorf("Compose service %q uses extends, which repository inspection cannot resolve safely yet", name)
-		}
-
 		item := composeService{Name: name}
 		lowerName := strings.ToLower(name)
 		item.Postgres = strings.Contains(lowerName, "postgres") || strings.Contains(lowerName, "postgresql")
@@ -67,8 +74,10 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 
 		if raw, ok := definition["image"]; ok {
 			image := strings.TrimSpace(fmt.Sprint(raw))
+			image = resolveComposeDeterministicDefaults(image)
 			if image != "" && image != "<nil>" {
 				item.HasImage = true
+				item.Image = image
 				lowerImage := strings.ToLower(image)
 				item.Postgres = item.Postgres || strings.Contains(lowerImage, "postgres") || strings.Contains(lowerImage, "postgresql")
 				item.Redis = item.Redis || strings.Contains(lowerImage, "redis") || strings.Contains(lowerImage, "valkey")
@@ -82,9 +91,26 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		}
 		if raw, ok := definition["build"]; ok && raw != nil {
 			item.HasBuild = true
+			switch value := raw.(type) {
+			case string:
+				item.Build = strings.TrimSpace(value)
+			case map[string]any:
+				item.Build = strings.TrimSpace(fmt.Sprint(value["context"]))
+			}
+			if item.Build == "<nil>" {
+				item.Build = ""
+			}
+			item.Build = resolveComposeDeterministicDefaults(item.Build)
 		}
+		item.EnvironmentRefs = composeReferenceValues(definition["env_file"])
+		item.ConfigRefs = composeReferenceValues(definition["configs"])
+		item.Dependencies = composeReferenceKeys(definition["depends_on"])
+		item.Volumes = composeReferenceValues(definition["volumes"])
 		if raw, ok := definition["ports"]; ok {
 			item.Ports = composePortValues(raw)
+			for i, port := range item.Ports {
+				item.Ports[i] = resolveComposeDeterministicDefaults(port)
+			}
 			item.HasPorts = len(item.Ports) > 0
 		}
 		if raw, ok := definition["healthcheck"]; ok && raw != nil {
@@ -107,10 +133,214 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 			item.Unresolved = true
 		}
 		item.Ports = uniqueSorted(item.Ports)
+		item.EnvironmentRefs = uniqueSorted(item.EnvironmentRefs)
+		item.ConfigRefs = uniqueSorted(item.ConfigRefs)
+		item.Dependencies = uniqueSorted(item.Dependencies)
+		item.Volumes = uniqueSorted(item.Volumes)
 		result = append(result, item)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
+}
+
+func resolveComposeDeterministicDefaults(value string) string {
+	for {
+		start := strings.LastIndex(value, "${")
+		if start < 0 {
+			return value
+		}
+		end := strings.Index(value[start:], "}")
+		if end < 0 {
+			return value
+		}
+		end += start
+		expression := value[start+2 : end]
+		fallback := ""
+		hasFallback := false
+		if index := strings.Index(expression, ":-"); index >= 0 {
+			fallback = expression[index+2:]
+			hasFallback = true
+		} else if index := strings.Index(expression, "-"); index >= 0 {
+			fallback = expression[index+1:]
+			hasFallback = true
+		}
+		if !hasFallback {
+			// External repository/runtime configuration remains explicit.
+			// Do not consult the operator process environment during deterministic inspection.
+			return value
+		}
+		value = value[:start] + resolveComposeDeterministicDefaults(fallback) + value[end+1:]
+	}
+}
+
+func composeInterpolationReferences(value string) []string {
+	var refs []string
+	for {
+		start := strings.Index(value, "${")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(value[start:], "}")
+		if end < 0 {
+			refs = append(refs, value[start:])
+			break
+		}
+		end += start
+		token := value[start : end+1]
+		refs = append(refs, token)
+		value = value[end+1:]
+	}
+	return uniqueSorted(refs)
+}
+
+func resolveComposeServiceDefinitions(services map[string]map[string]any) (map[string]map[string]any, error) {
+	resolved := make(map[string]map[string]any, len(services))
+	visiting := map[string]bool{}
+
+	var resolve func(string) (map[string]any, error)
+	resolve = func(name string) (map[string]any, error) {
+		if existing, ok := resolved[name]; ok {
+			return existing, nil
+		}
+		if visiting[name] {
+			return nil, fmt.Errorf("Compose service %q has cyclic extends inheritance", name)
+		}
+		definition, ok := services[name]
+		if !ok {
+			return nil, fmt.Errorf("Compose service %q extends unknown service", name)
+		}
+		visiting[name] = true
+		defer delete(visiting, name)
+
+		merged := map[string]any{}
+		if raw, ok := definition["extends"]; ok && raw != nil {
+			extends, ok := raw.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("Compose service %q has invalid extends definition", name)
+			}
+			if file := strings.TrimSpace(fmt.Sprint(extends["file"])); file != "" && file != "<nil>" {
+				return nil, fmt.Errorf("Compose service %q uses external extends file %q, which repository inspection cannot resolve safely yet", name, file)
+			}
+			parent := strings.TrimSpace(fmt.Sprint(extends["service"]))
+			if parent == "" || parent == "<nil>" {
+				return nil, fmt.Errorf("Compose service %q extends without a service name", name)
+			}
+			base, err := resolve(parent)
+			if err != nil {
+				return nil, err
+			}
+			merged = composeMergeDefinition(merged, base)
+		}
+		child := make(map[string]any, len(definition))
+		for key, value := range definition {
+			if key == "extends" {
+				continue
+			}
+			child[key] = value
+		}
+		merged = composeMergeDefinition(merged, child)
+		resolved[name] = merged
+		return merged, nil
+	}
+
+	for name := range services {
+		if _, err := resolve(name); err != nil {
+			return nil, err
+		}
+	}
+	return resolved, nil
+}
+
+func composeMergeDefinition(base, override map[string]any) map[string]any {
+	out := make(map[string]any, len(base)+len(override))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range override {
+		switch typed := value.(type) {
+		case map[string]any:
+			if existing, ok := out[key].(map[string]any); ok {
+				out[key] = composeMergeDefinition(existing, typed)
+			} else {
+				out[key] = typed
+			}
+		case []any:
+			if existing, ok := out[key].([]any); ok {
+				combined := append([]any(nil), existing...)
+				combined = append(combined, typed...)
+				out[key] = combined
+			} else {
+				out[key] = append([]any(nil), typed...)
+			}
+		default:
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func composeReferenceValues(raw any) []string {
+	switch value := raw.(type) {
+	case nil:
+		return nil
+	case string:
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	case []any:
+		var out []string
+		for _, item := range value {
+			switch typed := item.(type) {
+			case string:
+				if v := strings.TrimSpace(typed); v != "" {
+					out = append(out, v)
+				}
+			case map[string]any:
+				for _, key := range []string{"source", "target", "path"} {
+					if v := strings.TrimSpace(fmt.Sprint(typed[key])); v != "" && v != "<nil>" {
+						out = append(out, v)
+						break
+					}
+				}
+			}
+		}
+		return out
+	case map[string]any:
+		var out []string
+		for key := range value {
+			if v := strings.TrimSpace(key); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func composeReferenceKeys(raw any) []string {
+	switch value := raw.(type) {
+	case []any:
+		var out []string
+		for _, item := range value {
+			if v := strings.TrimSpace(fmt.Sprint(item)); v != "" && v != "<nil>" {
+				out = append(out, v)
+			}
+		}
+		return out
+	case map[string]any:
+		var out []string
+		for key := range value {
+			if v := strings.TrimSpace(key); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	default:
+		return composeReferenceValues(raw)
+	}
 }
 
 type ReclaimableComposeVolume struct {

@@ -290,7 +290,7 @@ func TestInspectCollectsDockerfilePortsAndHealthcheck(t *testing.T) {
 	}
 }
 
-func TestInspectPrefersExistingManifestAsAuthoritativeContract(t *testing.T) {
+func TestInspectCombinesPortableManifestWithRepositorySourceMetadata(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "baseharbor.yaml", `version: 1
 app:
@@ -307,9 +307,13 @@ secrets:
   required:
     - name: SECRET_KEY
 workload:
-  compose: deploy/compose.yaml
-  services:
+  components:
     - api
+`)
+	writeTestFile(t, root, RepositoryMetadataName, `version: 1
+workload-source:
+  kind: compose
+  path: deploy/compose.yaml
 `)
 	writeTestFile(t, root, "deploy/compose.yaml", `services:
   api:
@@ -328,11 +332,11 @@ workload:
 	if result.Application != "mailflow" {
 		t.Fatalf("Application = %q, want manifest identity", result.Application)
 	}
-	if result.SelectedCompose != "deploy/compose.yaml" {
-		t.Fatalf("SelectedCompose = %q, want manifest workload", result.SelectedCompose)
+	if result.SelectedWorkloadSource == nil || result.SelectedWorkloadSource.Path != "deploy/compose.yaml" {
+		t.Fatalf("SelectedWorkloadSource = %#v", result.SelectedWorkloadSource)
 	}
 	if len(result.WorkloadServices) != 1 || result.WorkloadServices[0] != "api" {
-		t.Fatalf("WorkloadServices = %#v, want manifest services", result.WorkloadServices)
+		t.Fatalf("WorkloadServices = %#v, want portable manifest components", result.WorkloadServices)
 	}
 	assertFindingConfidence(t, result, "database.sql", ConfidenceDetected)
 	assertFindingConfidence(t, result, "cache.key-value", ConfidenceDetected)
@@ -654,19 +658,53 @@ services:
 	}
 }
 
-func TestInspectFailsClosedOnComposeExtends(t *testing.T) {
+func TestInspectResolvesInFileComposeExtends(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "compose.yaml", `services:
   base:
     image: example/base
+    ports:
+      - "8080:8080"
   api:
     extends:
+      service: base
+    image: example/api
+`)
+
+	result, err := Inspect(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.WorkloadEvidence == nil {
+		t.Fatal("workload evidence missing")
+	}
+	var api *WorkloadComponent
+	for i := range result.WorkloadEvidence.Components {
+		if result.WorkloadEvidence.Components[i].ID == "api" {
+			api = &result.WorkloadEvidence.Components[i]
+			break
+		}
+	}
+	if api == nil {
+		t.Fatalf("api component missing: %#v", result.WorkloadEvidence.Components)
+	}
+	if api.Image != "example/api" || len(api.Ports) == 0 {
+		t.Fatalf("extends evidence not merged: %#v", api)
+	}
+}
+
+func TestInspectFailsClosedOnExternalComposeExtends(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "compose.yaml", `services:
+  api:
+    extends:
+      file: base.yaml
       service: base
 `)
 
 	_, err := Inspect(context.Background(), root)
-	if err == nil || !strings.Contains(err.Error(), "uses extends") {
-		t.Fatalf("Inspect error = %v, want explicit extends failure", err)
+	if err == nil || !strings.Contains(err.Error(), "external extends file") {
+		t.Fatalf("Inspect error = %v, want explicit external extends failure", err)
 	}
 }
 

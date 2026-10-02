@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func appCommand(store application.Store) *cli.Command {
@@ -102,7 +103,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-compose FILE --workload-service NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [capability options] [--workload-component NAME]... [--workload-source compose|quadlet|kubernetes:PATH]",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive capability picker uses detected defaults and lets you confirm them with a terminal checkbox UI; flags provide the deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -116,8 +117,58 @@ func appInitCommand() *cli.Command {
 			if !hasExplicitInitContract(prepared) {
 				return usageError(
 					"deterministic app init requires an explicit capability or workload selection",
-					"Use 'baha app init --quick' for repository detection, or pass explicit capability flags such as --sql, --cache, --key-value, --document-db, --messaging-queue, --s3, --secrets or --workload-compose/--workload-service.",
+					"Use 'baha app init --quick' for repository detection, or pass explicit capability flags or --workload-component/--workload-source.",
 				)
+			}
+			sourceSelection, sourceExplicit, err := parseWorkloadSourceArg(prepared)
+			if err != nil {
+				return err
+			}
+			persistSourceSelection := false
+			if sourceExplicit {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				inspection, err := repositoryinspect.Inspect(ctx, cwd)
+				if err != nil {
+					return fmt.Errorf("inspect explicit workload source: %w", err)
+				}
+				selected, err := selectExplicitWorkloadSource(inspection.WorkloadSourceCandidates, sourceSelection)
+				if err != nil {
+					return err
+				}
+				autoSelected := inspection.WorkloadSourceResolution.Selected
+				persistSourceSelection = autoSelected == nil ||
+					autoSelected.Kind != sourceSelection.Kind ||
+					filepath.ToSlash(autoSelected.Path) != filepath.ToSlash(sourceSelection.Path)
+				if !hasExplicitWorkloadComponents(prepared) {
+					evidence, err := repositoryinspect.NormalizeRepositoryWorkloadSource(cwd, selected)
+					if err != nil {
+						return fmt.Errorf("normalize explicit workload source: %w", err)
+					}
+					for _, component := range evidence.Components {
+						if component.InfrastructureClass == "" {
+							prepared = append(prepared, "--workload-component="+component.ID)
+						}
+					}
+				}
+			}
+			if !sourceExplicit && hasExplicitWorkloadComponents(prepared) {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				inspection, err := repositoryinspect.Inspect(ctx, cwd)
+				if err != nil {
+					return fmt.Errorf("inspect repository workload source: %w", err)
+				}
+				if len(inspection.WorkloadSourceCandidates) > 1 && inspection.SelectedWorkloadSource == nil {
+					return usageError(
+						"multiple workload sources were detected but no explicit source was selected",
+						"Pass --workload-source KIND:PATH using one of the sources shown by 'baha app inspect . --verbose'.",
+					)
+				}
 			}
 			if !hasExplicitWorkloadSelection(prepared) {
 				cwd, err := os.Getwd()
@@ -128,10 +179,10 @@ func appInitCommand() *cli.Command {
 				if err != nil {
 					return fmt.Errorf("inspect repository workload before deterministic init: %w", err)
 				}
-				if len(detected.ComposeCandidates) > 0 || strings.TrimSpace(detected.Compose) != "" || len(detected.WorkloadServices) > 0 {
+				if len(detected.WorkloadSourceCandidates) > 0 || len(detected.WorkloadServices) > 0 {
 					return usageError(
 						"deterministic app init found repository workload evidence but no explicit workload selection",
-						"Use 'baha app init --quick' for verified repository detection, or pass --workload-compose and --workload-service explicitly.",
+						"Use 'baha app init --quick' for verified repository detection, or pass --workload-component and optionally --workload-source KIND:PATH explicitly.",
 					)
 				}
 			}
@@ -155,9 +206,20 @@ func appInitCommand() *cli.Command {
 			if err := file.Close(); err != nil {
 				return err
 			}
+			var repositoryMetadataPath string
+			if sourceExplicit && persistSourceSelection {
+				repositoryMetadataPath, err = repositoryinspect.WriteRepositoryMetadata(".", sourceSelection)
+				if err != nil {
+					_ = os.Remove(path)
+					return fmt.Errorf("write repository workload source selection: %w", err)
+				}
+			}
 			absolute, _ := filepath.Abs(path)
 			fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
 			fmt.Fprintf(out, "manifest: %s\n", absolute)
+			if repositoryMetadataPath != "" {
+				fmt.Fprintf(out, "repository source selection: %s\n", repositoryMetadataPath)
+			}
 			fmt.Fprintln(out, "next: review baseharbor.yaml, commit it, then run 'baha up'")
 			return nil
 		},
@@ -194,10 +256,10 @@ func hasExplicitInitContract(args []string) bool {
 			strings.HasPrefix(arg, "--s3-bucket="),
 			arg == "--require-secret",
 			strings.HasPrefix(arg, "--require-secret="),
-			arg == "--workload-compose",
-			strings.HasPrefix(arg, "--workload-compose="),
-			arg == "--workload-service",
-			strings.HasPrefix(arg, "--workload-service="):
+			arg == "--workload-component",
+			strings.HasPrefix(arg, "--workload-component="),
+			arg == "--workload-source",
+			strings.HasPrefix(arg, "--workload-source="):
 			return true
 		}
 	}
@@ -206,10 +268,10 @@ func hasExplicitInitContract(args []string) bool {
 
 func hasExplicitWorkloadSelection(args []string) bool {
 	for _, arg := range args {
-		if arg == "--workload-compose" ||
-			strings.HasPrefix(arg, "--workload-compose=") ||
-			arg == "--workload-service" ||
-			strings.HasPrefix(arg, "--workload-service=") {
+		if arg == "--workload-component" ||
+			strings.HasPrefix(arg, "--workload-component=") ||
+			arg == "--workload-source" ||
+			strings.HasPrefix(arg, "--workload-source=") {
 			return true
 		}
 	}
@@ -227,7 +289,7 @@ func hasCreateName(args []string) bool {
 		case "--environment", "-e",
 			"--sql-instance", "--cache-instance", "--key-value-instance", "--document-db-instance",
 			"--messaging-queue-instance", "--messaging-pubsub-instance", "--messaging-stream-instance",
-			"--s3-bucket", "--require-secret", "--workload-compose", "--workload-service":
+			"--s3-bucket", "--require-secret", "--workload-component", "--workload-source":
 			skipNext = true
 			continue
 		}
@@ -266,7 +328,7 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	if err != nil {
 		return application.Manifest{}, err
 	}
-	workloadCompose, workloadServices, err := parseCreateWorkloadArgs(args)
+	workloadComponents, err := parseCreateWorkloadComponents(args)
 	if err != nil {
 		return application.Manifest{}, err
 	}
@@ -278,7 +340,8 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 		!options.messagingPubSub && len(options.messagingPubSubInstances) == 0 &&
 		!options.messagingStream && len(options.messagingStreamInstances) == 0 &&
 		!options.objectStorage && len(options.objectStorageBuckets) == 0 &&
-		!options.secrets {
+		!options.secrets &&
+		len(workloadComponents) == 0 {
 		options.sql = true
 	}
 	m := application.Manifest{
@@ -347,8 +410,8 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 		m = application.WithObjectStorageBuckets(m, options.objectStorageBuckets...)
 	}
 	m = application.WithRequiredSecrets(m, options.requiredSecrets...)
-	if workloadCompose != "" {
-		m = application.WithWorkload(m, workloadCompose, workloadServices...)
+	if len(workloadComponents) > 0 {
+		m = application.WithWorkloadComponents(m, workloadComponents...)
 	}
 	if err := m.Validate(); err != nil {
 		return application.Manifest{}, err
@@ -468,13 +531,13 @@ func parseCreateArgs(args []string) (createManifestOptions, error) {
 			options.environment = args[i]
 		case strings.HasPrefix(arg, "--environment="):
 			options.environment = strings.TrimPrefix(arg, "--environment=")
-		case arg == "--workload-compose" || arg == "--workload-service":
+		case arg == "--workload-component" || arg == "--workload-source":
 			if i+1 >= len(args) {
 				return createManifestOptions{}, usageError(arg+" requires a value", "Run 'baha app init --help' for available options.")
 			}
 			i++
-		case strings.HasPrefix(arg, "--workload-compose=") || strings.HasPrefix(arg, "--workload-service="):
-			// Parsed separately by parseCreateWorkloadArgs.
+		case strings.HasPrefix(arg, "--workload-component=") || strings.HasPrefix(arg, "--workload-source="):
+			// Parsed separately by workload-source/workload-component helpers.
 		case strings.HasPrefix(arg, "-"):
 			return createManifestOptions{}, usageError("unknown option "+arg, "Run 'baha app init --help' for available options.")
 		default:
@@ -490,45 +553,84 @@ func parseCreateArgs(args []string) (createManifestOptions, error) {
 	return options, nil
 }
 
-func parseCreateWorkloadArgs(args []string) (string, []string, error) {
-	var compose string
-	var services []string
+func parseCreateWorkloadComponents(args []string) ([]string, error) {
+	var components []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "--workload-compose":
+		case arg == "--workload-component":
 			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
-				return "", nil, usageError("--workload-compose requires a file path", "Example: --workload-compose compose.yaml")
+				return nil, usageError("--workload-component requires a logical component name", "Example: --workload-component api")
 			}
 			i++
-			compose = strings.TrimSpace(args[i])
-		case strings.HasPrefix(arg, "--workload-compose="):
-			compose = strings.TrimSpace(strings.TrimPrefix(arg, "--workload-compose="))
-			if compose == "" {
-				return "", nil, usageError("--workload-compose requires a file path", "Example: --workload-compose compose.yaml")
+			components = append(components, strings.TrimSpace(args[i]))
+		case strings.HasPrefix(arg, "--workload-component="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--workload-component="))
+			if value == "" {
+				return nil, usageError("--workload-component requires a logical component name", "Example: --workload-component api")
 			}
-		case arg == "--workload-service":
-			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
-				return "", nil, usageError("--workload-service requires a service name", "Example: --workload-service api")
-			}
-			i++
-			services = append(services, strings.TrimSpace(args[i]))
-		case strings.HasPrefix(arg, "--workload-service="):
-			service := strings.TrimSpace(strings.TrimPrefix(arg, "--workload-service="))
-			if service == "" {
-				return "", nil, usageError("--workload-service requires a service name", "Example: --workload-service api")
-			}
-			services = append(services, service)
+			components = append(components, value)
 		}
 	}
-	services = uniqueSorted(services)
-	switch {
-	case compose == "" && len(services) > 0:
-		return "", nil, usageError("--workload-service requires --workload-compose", "Example: --workload-compose compose.yaml --workload-service api")
-	case compose != "" && len(services) == 0:
-		return "", nil, usageError("--workload-compose requires at least one --workload-service", "Example: --workload-compose compose.yaml --workload-service api")
+	return uniqueSorted(components), nil
+}
+
+func hasExplicitWorkloadComponents(args []string) bool {
+	for _, arg := range args {
+		if arg == "--workload-component" || strings.HasPrefix(arg, "--workload-component=") {
+			return true
+		}
 	}
-	return compose, services, nil
+	return false
+}
+
+func parseWorkloadSourceArg(args []string) (repositoryinspect.WorkloadSourceCandidate, bool, error) {
+	var raw string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--workload-source":
+			if i+1 >= len(args) {
+				return repositoryinspect.WorkloadSourceCandidate{}, false, usageError("--workload-source requires KIND:PATH", "Example: --workload-source kubernetes:deploy/k8s")
+			}
+			i++
+			if raw != "" {
+				return repositoryinspect.WorkloadSourceCandidate{}, false, usageError("--workload-source may be specified only once", "Choose one authoritative repository workload source.")
+			}
+			raw = strings.TrimSpace(args[i])
+		case strings.HasPrefix(arg, "--workload-source="):
+			if raw != "" {
+				return repositoryinspect.WorkloadSourceCandidate{}, false, usageError("--workload-source may be specified only once", "Choose one authoritative repository workload source.")
+			}
+			raw = strings.TrimSpace(strings.TrimPrefix(arg, "--workload-source="))
+		}
+	}
+	if raw == "" {
+		return repositoryinspect.WorkloadSourceCandidate{}, false, nil
+	}
+	kindText, path, ok := strings.Cut(raw, ":")
+	if !ok || strings.TrimSpace(path) == "" {
+		return repositoryinspect.WorkloadSourceCandidate{}, false, usageError("--workload-source requires KIND:PATH", "Supported kinds: compose, quadlet, kubernetes.")
+	}
+	kind := repositoryinspect.WorkloadSourceKind(strings.ToLower(strings.TrimSpace(kindText)))
+	switch kind {
+	case repositoryinspect.WorkloadSourceCompose, repositoryinspect.WorkloadSourceQuadlet, repositoryinspect.WorkloadSourceKubernetes:
+	default:
+		return repositoryinspect.WorkloadSourceCandidate{}, false, usageError("unsupported workload source kind "+string(kind), "Supported kinds: compose, quadlet, kubernetes.")
+	}
+	return repositoryinspect.WorkloadSourceCandidate{Kind: kind, Path: filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))}, true, nil
+}
+
+func selectExplicitWorkloadSource(candidates []repositoryinspect.WorkloadSourceCandidate, requested repositoryinspect.WorkloadSourceCandidate) (repositoryinspect.WorkloadSourceCandidate, error) {
+	for _, candidate := range candidates {
+		if candidate.Kind == requested.Kind && filepath.ToSlash(candidate.Path) == filepath.ToSlash(requested.Path) {
+			return candidate, nil
+		}
+	}
+	return repositoryinspect.WorkloadSourceCandidate{}, usageError(
+		fmt.Sprintf("requested workload source %s:%s was not detected", requested.Kind, requested.Path),
+		"Run 'baha app inspect . --verbose' and choose one of the detected workload sources.",
+	)
 }
 
 func serviceNames(m application.Manifest) string {

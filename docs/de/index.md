@@ -15,15 +15,15 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 
 - [Architektur](explanation/architecture.md)
 - [Kontexte und Deployment-Ziele](explanation/targets.md)
-- [Application Contract](explanation/application-contract.md)
+- [Anwendungsvertrag](explanation/application-contract.md)
 - [Provider](explanation/providers.md)
-- [Security](explanation/security.md)
+- [Sicherheit](explanation/security.md)
 
-## Exakte technische Details
+## Genaue technische Details
 
 Nutze die englischen kanonischen Bereiche:
 
-- [Reference](https://mcpdev80.github.io/baseharbor/reference/cli/)
-- [Specs](https://mcpdev80.github.io/baseharbor/spec/)
+- [Technische Referenz](https://mcpdev80.github.io/baseharbor/reference/cli/)
+- [Spezifikationen](https://mcpdev80.github.io/baseharbor/spec/)
 
 Übersetzungen dürfen normative Semantik nicht neu definieren.

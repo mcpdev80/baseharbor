@@ -122,6 +122,8 @@ func Operations() []Operation {
 		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.resolve", MCPTool: "baseharbor.workspace.resolve", Description: "Resolve canonical component/source identity to developer-local worktrees without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.status", MCPTool: "baseharbor.workspace.status", Description: "Inspect Git state for mapped repository sources without changing checked-out revisions.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.update", MCPTool: "baseharbor.workspace.update", Description: "Safely fetch and fast-forward mapped repository sources when Git state is unambiguous.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "app.new", MCPTool: "baseharbor.app.new", Description: "Create and validate a new ecosystem-native application from portable capability intent.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},

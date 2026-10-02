@@ -43,6 +43,7 @@ Start with the [CLI overview](cli/index.md), then use the categorized command do
 - [Targets and deployment destinations](explanation/targets.md)
 - [Organization / Platform Configuration](explanation/organization-configuration.md)
 - [Providers](explanation/providers.md)
+- [Repository workload sources](explanation/workload-sources.md)
 - [Security](explanation/security.md)
 - [Authentication](explanation/authentication.md)
 

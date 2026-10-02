@@ -7,7 +7,7 @@ func TestBuildPlanIncludesManagedHTTPExposure(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "frontend",
 		Environment: "dev",
-		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:    WorkloadConfig{Components: []string{"web"}},
 		Exposures:   []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "public"}},
 	}
 	plan, err := BuildPlan(m)

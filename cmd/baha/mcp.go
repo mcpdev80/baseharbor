@@ -69,6 +69,16 @@ type machineWorkspaceResolveInput struct {
 	Manifest string `json:"manifest,omitempty" jsonschema:"canonical baseharbor.yaml path or directory containing it; defaults to the current repository"`
 }
 
+type machineWorkspaceStatusInput struct {
+	Manifest string `json:"manifest,omitempty" jsonschema:"canonical baseharbor.yaml path or directory containing it; defaults to the current repository"`
+	Fetch    bool   `json:"fetch,omitempty" jsonschema:"fetch the configured upstream before reporting status; read-only for the worktree"`
+}
+
+type machineWorkspaceUpdateInput struct {
+	Manifest string `json:"manifest,omitempty" jsonschema:"canonical baseharbor.yaml path or directory containing it; defaults to the current repository"`
+	Check    bool   `json:"check,omitempty" jsonschema:"fetch and report safe updates without changing checked-out revisions"`
+}
+
 type machineApplicationInput struct {
 	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`

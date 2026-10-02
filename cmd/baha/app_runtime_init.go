@@ -305,8 +305,15 @@ func validateRuntimeHostname(hostname string) error {
 }
 
 func repositoryWorkloadLooksTLS(repoRoot string, m application.Manifest) (bool, error) {
-	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, m)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repoRoot, m)
+	if err != nil {
+		return false, err
+	}
+	if composeSource == "" {
+		return false, nil
+	}
+	composePath, err := application.ResolveWorkloadComposeSource(repoRoot, composeSource)
+	if err != nil {
 		return false, err
 	}
 	data, err := os.ReadFile(composePath)

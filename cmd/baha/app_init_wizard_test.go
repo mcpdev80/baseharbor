@@ -81,7 +81,7 @@ SECRET_KEY=also-must-not-be-copied
 	for _, want := range []string{
 		"sql:",
 		"cache:",
-		"compose: docker-compose.yml",
+		"components:",
 		"- web",
 	} {
 		if !strings.Contains(manifest, want) {
@@ -166,15 +166,19 @@ func TestGuidedInitDeterministicExplicitWorkloadSelectionSucceeds(t *testing.T) 
 	withWizardTestDir(t, dir)
 
 	var out bytes.Buffer
-	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--workload-compose", "compose.yaml", "--workload-service", "app"}, &out, &bytes.Buffer{}); err != nil {
+	if err := appGuidedInitCommand().Run(context.Background(), []string{"demo", "--sql", "--workload-source", "compose:compose.yaml", "--workload-component", "app"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	m, err := application.LoadManifestFile(filepath.Join(dir, application.RepositoryManifestName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Workload.Compose != "compose.yaml" || len(m.Workload.Services) != 1 || m.Workload.Services[0] != "app" {
+	components := application.WorkloadComponentNames(m)
+	if len(components) != 1 || components[0] != "app" {
 		t.Fatalf("unexpected explicit workload: %#v", m.Workload)
+	}
+	if strings.Contains(m.YAML(), "compose:") {
+		t.Fatalf("source identity leaked into portable manifest:\n%s", m.YAML())
 	}
 }
 
@@ -256,7 +260,8 @@ func TestQuickInitPreservesWorkloadOnlyRepository(t *testing.T) {
 	if m.Services.SQL || m.Services.Cache || m.Services.Secrets {
 		t.Fatalf("quick init invented backend capability: %#v", m.Services)
 	}
-	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "api" {
+	components := application.WorkloadComponentNames(m)
+	if len(components) != 1 || components[0] != "api" {
 		t.Fatalf("workload = %#v", m.Workload)
 	}
 }
@@ -515,7 +520,7 @@ func TestGuidedSecretSummaryShowsPolicyWithoutValues(t *testing.T) {
 
 func TestAdoptionSummaryMinimal(t *testing.T) {
 	m := detectedApplicationManifest("demo", "dev", false, false, false, false, true)
-	m = application.WithWorkload(m, "compose.yaml", "api")
+	m = application.WithWorkloadComponents(m, "api")
 	var out bytes.Buffer
 	printAdoptionSummary(&out, m, appProjectDetection{}, nil)
 	text := out.String()
@@ -525,8 +530,7 @@ func TestAdoptionSummaryMinimal(t *testing.T) {
 		"Name          demo",
 		"Environment   dev",
 		"Workload",
-		"compose.yaml (repository-owned, read-only)",
-		"Services      api",
+		"Components    api",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
@@ -545,7 +549,7 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	m.Services.SecretsManagementUI = true
 	m.Services.IdentityManagementUI = true
 	m.Services.ObservabilityManagementUI = true
-	m = application.WithWorkload(m, "compose.yaml", "api")
+	m = application.WithWorkloadComponents(m, "api")
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithOTLPTelemetry(m, "traces")
 	m = application.WithLogsCollection(m, "application")

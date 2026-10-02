@@ -17,7 +17,7 @@ func appInspectCommand() *cli.Command {
 		Name:    "inspect",
 		Summary: "Inspect a repository without changing it",
 		Usage:   "baha app inspect [PATH] [--verbose] [-o json|--output json|--json]",
-		Long:    "Analyzes a local repository/path or remote Git URL read-only. Human output summarizes detected service intent and Compose roles; --verbose adds detailed evidence. -o json, --output json and --json emit the complete shared machine-readable result.",
+		Long:    "Analyzes a local repository/path or remote Git URL read-only. Human output summarizes source-neutral workload evidence and detected capability intent; --verbose adds source provenance and detailed evidence. -o json, --output json and --json emit the complete shared machine-readable result.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			root, format, verbose, err := parseAppInspectArgs(args)
 			if err != nil {
@@ -84,30 +84,56 @@ func printRepositoryInspection(out io.Writer, result repositoryinspect.Result, v
 		}
 	}
 
-	if len(result.ComposeCandidates) == 1 {
-		fmt.Fprintf(out, "Compose: %s\n", result.ComposeCandidates[0])
-	} else if len(result.ComposeCandidates) > 1 {
-		fmt.Fprintf(out, "Compose: %d candidates (confirmation required)\n", len(result.ComposeCandidates))
-		for _, path := range result.ComposeCandidates {
-			analysis, err := repositoryinspect.AnalyzeComposeFile(result.Root, path)
-			if err != nil {
-				fmt.Fprintf(out, "  - %s\n", path)
-				continue
-			}
-			roles := []string{}
-			if len(analysis.WorkloadServices) > 0 {
-				roles = append(roles, "workload: "+strings.Join(analysis.WorkloadServices, ", "))
-			}
-			if len(analysis.InfrastructureServices) > 0 {
-				roles = append(roles, "infrastructure: "+strings.Join(analysis.InfrastructureServices, ", "))
-			}
-			if len(roles) == 0 {
-				fmt.Fprintf(out, "  - %s\n", path)
+	fmt.Fprintf(out, "Workload source resolution: %s (%s)\n", result.WorkloadSourceResolution.State, result.WorkloadSourceResolution.Reason)
+	if len(result.WorkloadSourceCandidates) > 0 {
+		if result.SelectedWorkloadSource != nil {
+			if len(result.WorkloadSourceCandidates) > 1 {
+				fmt.Fprintf(out, "Workload source: %s (%s; selected from %d candidates)\n", result.SelectedWorkloadSource.Kind, result.SelectedWorkloadSource.Path, len(result.WorkloadSourceCandidates))
 			} else {
-				fmt.Fprintf(out, "  - %s (%s)\n", path, strings.Join(roles, "; "))
+				fmt.Fprintf(out, "Workload source: %s (%s)\n", result.SelectedWorkloadSource.Kind, result.SelectedWorkloadSource.Path)
+			}
+		} else {
+			fmt.Fprintf(out, "Workload source: %d candidates (explicit selection required)\n", len(result.WorkloadSourceCandidates))
+		}
+		if verbose || result.SelectedWorkloadSource == nil || len(result.WorkloadSourceCandidates) > 1 {
+			fmt.Fprintln(out, "Workload source candidates:")
+			for _, candidate := range result.WorkloadSourceCandidates {
+				fmt.Fprintf(out, "  - %s: %s\n", candidate.Kind, candidate.Path)
+				if candidate.Kind == repositoryinspect.WorkloadSourceCompose {
+					if analysis, err := repositoryinspect.AnalyzeComposeFile(result.Root, candidate.Path); err == nil {
+						if len(analysis.WorkloadServices) > 0 {
+							fmt.Fprintf(out, "      workload: %s\n", strings.Join(analysis.WorkloadServices, ", "))
+						}
+						if len(analysis.InfrastructureServices) > 0 {
+							fmt.Fprintf(out, "      infrastructure: %s\n", strings.Join(analysis.InfrastructureServices, ", "))
+						}
+						if len(analysis.AmbiguousServices) > 0 {
+							fmt.Fprintf(out, "      ambiguous: %s\n", strings.Join(analysis.AmbiguousServices, ", "))
+						}
+					}
+				}
 			}
 		}
 	}
+	if result.WorkloadEvidence != nil && len(result.WorkloadEvidence.Components) > 0 {
+		fmt.Fprintln(out, "Workload components:")
+		for _, component := range result.WorkloadEvidence.Components {
+			detail := ""
+			if component.InfrastructureClass != "" {
+				detail = " [" + component.InfrastructureClass + "]"
+			}
+			fmt.Fprintf(out, "  - %s%s\n", component.ID, detail)
+			if verbose {
+				for _, source := range component.Source {
+					fmt.Fprintf(out, "      %s %s %s\n", source.Kind, source.Path, source.Resource)
+				}
+			}
+		}
+		if verbose {
+			fmt.Fprintf(out, "Workload fingerprint: %s\n", result.WorkloadEvidence.Fingerprint)
+		}
+	}
+
 	if len(result.WorkloadServices) > 0 {
 		fmt.Fprintf(out, "Workload services: %s\n", strings.Join(result.WorkloadServices, ", "))
 	}

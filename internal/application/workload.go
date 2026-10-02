@@ -54,25 +54,10 @@ func WorkloadProjectNameForRuntime(m Manifest, runtime RuntimeFiles) string {
 	return WorkloadProjectName(m)
 }
 
-func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, error) {
+func ResolveWorkloadCompose(repositoryRoot string) (string, bool, error) {
 	if strings.TrimSpace(repositoryRoot) == "" {
 		return "", false, nil
 	}
-	if m.Workload.Compose != "" {
-		path := filepath.Join(repositoryRoot, m.Workload.Compose)
-		info, err := os.Stat(path)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return "", false, fmt.Errorf("%w: %s", ErrWorkloadComposeNotFound, m.Workload.Compose)
-			}
-			return "", false, err
-		}
-		if !info.Mode().IsRegular() {
-			return "", false, fmt.Errorf("workload compose path %s is not a regular file", m.Workload.Compose)
-		}
-		return path, true, nil
-	}
-
 	var found []string
 	for _, candidate := range conventionalWorkloadComposePaths {
 		path := filepath.Join(repositoryRoot, candidate)
@@ -95,21 +80,55 @@ func ResolveWorkloadCompose(repositoryRoot string, m Manifest) (string, bool, er
 			rel = append(rel, value)
 		}
 		sort.Strings(rel)
-		return "", false, fmt.Errorf("%w: %s; set workload.compose in baseharbor.yaml", ErrWorkloadComposeAmbiguous, strings.Join(rel, ", "))
+		return "", false, fmt.Errorf("%w: %s; select the authoritative repository workload source", ErrWorkloadComposeAmbiguous, strings.Join(rel, ", "))
 	}
 	return found[0], true, nil
 }
 
+func ResolveWorkloadComposeSource(repositoryRoot, sourcePath string) (string, error) {
+	if strings.TrimSpace(repositoryRoot) == "" {
+		return "", errors.New("repository root is required")
+	}
+	sourcePath = filepath.Clean(strings.TrimSpace(sourcePath))
+	if sourcePath == "" || sourcePath == "." || filepath.IsAbs(sourcePath) || sourcePath == ".." || strings.HasPrefix(sourcePath, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("Compose source path %q must stay inside the repository", sourcePath)
+	}
+	path := filepath.Join(repositoryRoot, sourcePath)
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("%w: %s", ErrWorkloadComposeNotFound, sourcePath)
+		}
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("Compose source path %s is not a regular file", sourcePath)
+	}
+	return path, nil
+}
+
 func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles) (WorkloadFiles, bool, error) {
-	composePath, found, err := ResolveWorkloadCompose(repositoryRoot, m)
+	composePath, found, err := ResolveWorkloadCompose(repositoryRoot)
 	if err != nil || !found {
 		return WorkloadFiles{}, found, err
 	}
+	return materializeWorkloadFromComposePath(repositoryRoot, composePath, m, runtime)
+}
+
+func MaterializeWorkloadFromCompose(repositoryRoot, sourcePath string, m Manifest, runtime RuntimeFiles) (WorkloadFiles, bool, error) {
+	composePath, err := ResolveWorkloadComposeSource(repositoryRoot, sourcePath)
+	if err != nil {
+		return WorkloadFiles{}, false, err
+	}
+	return materializeWorkloadFromComposePath(repositoryRoot, composePath, m, runtime)
+}
+
+func materializeWorkloadFromComposePath(repositoryRoot, composePath string, m Manifest, runtime RuntimeFiles) (WorkloadFiles, bool, error) {
 	services, err := composeServiceNames(composePath)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	selected, err := selectWorkloadServices(m, services, m.Workload.Services)
+	selected, err := selectWorkloadServices(m, services, WorkloadComponentNames(m))
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -136,7 +155,7 @@ func MaterializeWorkload(repositoryRoot string, m Manifest, runtime RuntimeFiles
 }
 
 func SelectedWorkloadServices(repositoryRoot string, m Manifest) ([]string, string, bool, error) {
-	composePath, found, err := ResolveWorkloadCompose(repositoryRoot, m)
+	composePath, found, err := ResolveWorkloadCompose(repositoryRoot)
 	if err != nil || !found {
 		return nil, composePath, found, err
 	}
@@ -144,11 +163,27 @@ func SelectedWorkloadServices(repositoryRoot string, m Manifest) ([]string, stri
 	if err != nil {
 		return nil, composePath, true, err
 	}
-	selected, err := selectWorkloadServices(m, services, m.Workload.Services)
+	selected, err := selectWorkloadServices(m, services, WorkloadComponentNames(m))
 	if err != nil {
 		return nil, composePath, true, err
 	}
 	return selected, composePath, true, nil
+}
+
+func SelectedWorkloadServicesFromCompose(repositoryRoot, sourcePath string, m Manifest) ([]string, string, error) {
+	composePath, err := ResolveWorkloadComposeSource(repositoryRoot, sourcePath)
+	if err != nil {
+		return nil, "", err
+	}
+	services, err := composeServiceNames(composePath)
+	if err != nil {
+		return nil, composePath, err
+	}
+	selected, err := selectWorkloadServices(m, services, WorkloadComponentNames(m))
+	if err != nil {
+		return nil, composePath, err
+	}
+	return selected, composePath, nil
 }
 
 func composeServiceNames(path string) ([]string, error) {

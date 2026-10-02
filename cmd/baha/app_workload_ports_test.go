@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func TestWorkloadPublishedPortVariables(t *testing.T) {
@@ -102,12 +103,14 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 	if err := os.WriteFile(filepath.Join(repo, "docker-compose.yml"), []byte(compose), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte("version: 1\\nname: demo\\nenvironment: dev\\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(m.YAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	m := application.New("demo", "dev", false, false, false)
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: docker-compose.yml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
 		Manifest:            m,
@@ -153,13 +156,17 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte(compose), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte("version: 1\\nname: demo\\nenvironment: dev\\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stateRoot := t.TempDir()
 	resolved := resolvedApplication{
-		Manifest:            application.New("demo", "dev", false, false, false),
+		Manifest:            manifest,
 		ManifestPath:        manifestPath,
 		DeploymentStateRoot: stateRoot,
 		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
@@ -274,14 +281,15 @@ func TestResolvedRepositoryWorkloadPortsPreferDeploymentStateOverLegacyOverride(
 	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte("version: 1\nname: demo\nenvironment: dev\nworkload:\n  compose: compose.yaml\n  services: [app]\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stateRoot := t.TempDir()
-	manifest := application.New("demo", "dev", false, false, false)
-	manifest.Workload.Compose = "compose.yaml"
-	manifest.Workload.Services = []string{"app"}
 	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
 	files := application.RuntimeFiles{Dir: t.TempDir()}
 	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT=8081\n"), 0o600); err != nil {
@@ -305,14 +313,15 @@ func TestResolvedRepositoryWorkloadPortsPreserveExplicitOperatorValue(t *testing
 	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte("version: 1\nname: demo\nenvironment: dev\nworkload:\n  compose: compose.yaml\n  services: [app]\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stateRoot := t.TempDir()
-	manifest := application.New("demo", "dev", false, false, false)
-	manifest.Workload.Compose = "compose.yaml"
-	manifest.Workload.Services = []string{"app"}
 	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
 	files := application.RuntimeFiles{Dir: t.TempDir()}
 	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT=8081\n"), 0o600); err != nil {
@@ -337,14 +346,15 @@ func TestRepositoryWorkloadEnvironmentAppliesDeploymentPersistedPort(t *testing.
 	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte("version: 1\nname: demo\nenvironment: dev\nworkload:\n  compose: compose.yaml\n  services: [app]\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stateRoot := t.TempDir()
-	manifest := application.New("demo", "dev", false, false, false)
-	manifest.Workload.Compose = "compose.yaml"
-	manifest.Workload.Services = []string{"app"}
 	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
 	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8082"}); err != nil {
 		t.Fatal(err)
