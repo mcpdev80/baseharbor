@@ -455,6 +455,7 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
 	registerMCPProviderOrganizationTools(server)
+	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPApplicationMutationTools(server, store)
 	registerMCPRecoveryTools(server, store)
 }
