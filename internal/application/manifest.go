@@ -28,6 +28,7 @@ type Manifest struct {
 	Identity      IdentityRequirements
 	HA            bool
 	Availability  map[string]availability.Override
+	Consumes      []ConsumptionRequirement
 }
 
 type RuntimeRequirements struct {
