@@ -19,7 +19,7 @@ func (f *fakeBackend) Kind() runtimecontract.ProviderKind { return runtimecontra
 func (f *fakeBackend) ListRuntimeContainers(context.Context) ([]runtimecontract.RuntimeContainer, error) {
 	return append([]runtimecontract.RuntimeContainer(nil), f.containers...), nil
 }
-func (f *fakeBackend) ContainerLogs(context.Context, string, *time.Time, int) (io.ReadCloser, error) {
+func (f *fakeBackend) ContainerLogs(context.Context, string, *time.Time, int, bool) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("line-1\nline-2\n")), nil
 }
 func (f *fakeBackend) OperateContainer(_ context.Context, id string, operation Operation, _ []string) (string, error) {
