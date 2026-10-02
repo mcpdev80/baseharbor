@@ -118,13 +118,13 @@ func KeycloakManagementSurfaces(app application.Manifest, dataDir, namespace str
 			Service: "identity-login", Purpose: application.ProviderInterfaceUserFacing,
 			URL: files.CanonicalPublicURL, Authentication: "oidc",
 			AuthenticationClass: application.ManagementAuthNativeOIDC,
-			RoleMappings: application.OIDCManagementRoleMappings(),
+			RoleMappings:        application.OIDCManagementRoleMappings(),
 		},
 		{
 			Service: "identity-admin", Purpose: application.ProviderInterfaceAdministration,
 			URL: files.AdminURL, Authentication: "keycloak-native",
 			AuthenticationClass: application.ManagementAuthNativeCredential,
-			RoleMappings: application.NativeCredentialRoleMappings("realm-admin", "user"),
+			RoleMappings:        application.NativeCredentialRoleMappings("realm-admin", "user"),
 		},
 	}, nil
 }
