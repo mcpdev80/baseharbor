@@ -16,7 +16,15 @@ func TestEveryReferenceProviderHasAvailabilityClassification(t *testing.T) {
 			t.Fatalf("%s: %v", descriptor.ID, err)
 		}
 		if support.Level == availability.Supported {
-			t.Fatalf("%s claims HA support without a v0.4.21 realization proof", descriptor.ID)
+			if support.RecommendedInstances < 2 {
+				t.Fatalf("%s claims HA support with recommended instances %d", descriptor.ID, support.RecommendedInstances)
+			}
+			if !support.Guarantees.MemberFailureTolerance {
+				t.Fatalf("%s claims HA support without member-failure tolerance", descriptor.ID)
+			}
+			if support.Guarantees.FailureDomain == "" {
+				t.Fatalf("%s claims HA support without an explicit failure domain", descriptor.ID)
+			}
 		}
 	}
 }
