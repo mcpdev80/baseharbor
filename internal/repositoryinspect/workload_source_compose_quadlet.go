@@ -110,7 +110,6 @@ func normalizeQuadletSource(snapshot Snapshot, candidate WorkloadSourceCandidate
 	return mergeComponents(components), nil
 }
 
-
 func parseINIValues(content string) map[string][]string {
 	result := map[string][]string{}
 	section := ""
@@ -142,7 +141,6 @@ func firstINIValue(values map[string][]string, keys ...string) string {
 	return ""
 }
 
-
 func isComposeSourceFile(base string) bool {
 	switch strings.ToLower(base) {
 	case "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
@@ -160,4 +158,3 @@ func isQuadletFile(base string) bool {
 		return false
 	}
 }
-
