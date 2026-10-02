@@ -66,6 +66,13 @@ func VerifyValkeyHACluster(ctx context.Context, runtime valkeyHAProbeRuntime, m 
 			if lines[1] != "6379" {
 				return fmt.Errorf("Valkey Sentinel %s reports unexpected master port %s", sentinel, lines[1])
 			}
+			quorum, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "CKQUORUM", valkeySentinelMasterName)
+			if err != nil {
+				return fmt.Errorf("verify Valkey Sentinel quorum on %s: %w", sentinel, err)
+			}
+			if !strings.Contains(strings.ToUpper(quorum), "OK") {
+				return fmt.Errorf("Valkey Sentinel %s cannot satisfy quorum/majority: %s", sentinel, strings.TrimSpace(quorum))
+			}
 		}
 	}
 	return nil
