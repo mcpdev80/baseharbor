@@ -111,7 +111,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		fmt.Fprintf(b, "      - %s:/data\n", valkeyMemberVolumeName(instance, ordinal))
 		fmt.Fprintf(b, "      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro\n", instance)
 		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"VALKEYCLI_AUTH=\\\"$${VALKEY_PASSWORD}\\\" valkey-cli ping | grep -q '^PONG$'\"]\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"valkey-cli ping 2>&1 | grep -Eq '^PONG$|^NOAUTH '\" ]\n")
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 5s\n\n")
 	}
 	if count <= 1 {
