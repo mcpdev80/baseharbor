@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	openBaoStorageCredentialKey        = "BASEHARBOR_OPENBAO_DB_PASSWORD"
+	openBaoStorageCredentialKey      = "BASEHARBOR_OPENBAO_DB_PASSWORD"
 	postgresReplicationCredentialKey = "BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"
 )
 
