@@ -48,14 +48,11 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("workspace.resolve", "Resolve canonical multi-repository component/source identity to the local XDG workspace mapping without changing source or runtime state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceResolveInput) (*mcp.CallToolResult, any, error) {
-		if err := authorizeCurrentMCPContext(ctx, "workspace.resolve", "", "dev", input.Manifest); err != nil {
-			return machineMCPFailure(err)
-		}
-		if err := authorizeCurrentMCPContext(ctx, "workspace.status", "", "dev", input.Manifest); err != nil {
-			return machineMCPFailure(err)
-		}
 		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.resolve", "", manifest.Environment, manifestPath); err != nil {
 			return machineMCPFailure(err)
 		}
 		model, _, err := development.LoadSourceModel(manifestPath)
@@ -76,6 +73,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("workspace.status", "Inspect Git state for every mapped repository source without changing checked-out revisions.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceStatusInput) (*mcp.CallToolResult, any, error) {
 		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.status", "", manifest.Environment, manifestPath); err != nil {
 			return machineMCPFailure(err)
 		}
 		model, _, err := development.LoadSourceModel(manifestPath)
@@ -281,11 +281,11 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 
 func registerMCPDevelopmentTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("workspace.update", "Safely fetch and fast-forward mapped Git repositories. Dirty, detached, ahead or diverged repositories are never modified.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceUpdateInput) (*mcp.CallToolResult, any, error) {
-		if err := authorizeMCPOperation(ctx, "workspace.update", "", "dev", "", input.Manifest); err != nil {
-			return machineMCPFailure(err)
-		}
 		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
 		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := authorizeCurrentMCPContext(ctx, "workspace.update", "", manifest.Environment, manifestPath); err != nil {
 			return machineMCPFailure(err)
 		}
 		model, _, err := development.LoadSourceModel(manifestPath)
