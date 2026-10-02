@@ -17,7 +17,7 @@ import (
 
 const (
 	controlPlaneStartTimeout        = 10 * time.Minute
-	controlPlaneComposeStartTimeout = 4 * time.Minute
+	controlPlaneComposeStartTimeout = 8 * time.Minute
 )
 
 func runtimeUp(parent context.Context, out io.Writer) error {
