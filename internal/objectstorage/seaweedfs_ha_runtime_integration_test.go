@@ -181,7 +181,6 @@ func waitSeaweedFSHAReady(t *testing.T, ctx context.Context, driver *Driver, res
 	}
 }
 
-
 func assertSeaweedFSManagementUIPublished(t *testing.T, ctx context.Context, runtime interface {
 	StatusProject(context.Context, string, string, string) (string, error)
 }, files ProviderFiles, stage string) {
