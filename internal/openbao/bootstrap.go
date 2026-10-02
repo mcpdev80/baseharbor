@@ -379,8 +379,10 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 var openBaoHAMembers = []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"}
 
 func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
-	script := "BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null\n" +
-		"code=$?\nif [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\nexit \"$code\""
+	script := "code=0\n" +
+		"BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null || code=$?\n" +
+		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
+		"exit \"$code\""
 	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-ec", script)
 	if err != nil {
 		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
