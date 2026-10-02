@@ -125,6 +125,30 @@ func (s *Service) Metrics(context.Context, ResourceRef) (MetricsHandle, error) {
 	return MetricsHandle{Available: false}, nil
 }
 
+func (s *Service) Exec(ctx context.Context, request OperationRequest) (io.ReadCloser, error) {
+	if request.Operation != OperationExec {
+		return nil, errors.New("runtime exec stream requires exec operation")
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	if err := s.validateRef(request.Resource); err != nil {
+		return nil, err
+	}
+	resource, err := s.Inspect(ctx, request.Resource)
+	if err != nil {
+		return nil, err
+	}
+	if resource.Ownership == OwnershipExternal || resource.Ownership == OwnershipUnmanaged {
+		return nil, fmt.Errorf("runtime resource ownership %q does not permit exec", resource.Ownership)
+	}
+	output, err := s.backend.OperateContainer(ctx, request.Resource.ResourceID, OperationExec, request.Command)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(strings.NewReader(output)), nil
+}
+
 func (s *Service) Operate(ctx context.Context, request OperationRequest) (OperationResult, error) {
 	if err := request.Validate(); err != nil {
 		return OperationResult{}, err
