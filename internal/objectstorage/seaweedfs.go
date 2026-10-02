@@ -28,7 +28,7 @@ const (
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
 	sharedProviderReconcileTimeout = 60 * time.Second
-	providerReadinessTimeout       = 15 * time.Second
+	providerReadinessTimeout       = 45 * time.Second
 	existingProviderProbeTimeout   = 3 * time.Second
 )
 
