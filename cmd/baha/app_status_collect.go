@@ -301,7 +301,11 @@ func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.C
 		c.result.AddCheck("mongodb", false, err.Error())
 		return
 	}
-	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document write/read/delete verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
+	if err := application.VerifyMongoDBHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
+		c.result.AddCheck("mongodb", false, err.Error())
+		return
+	}
+	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document semantics and availability verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
