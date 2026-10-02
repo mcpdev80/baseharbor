@@ -14,7 +14,6 @@ func TestTCPGatewayConfigTerminatesTLS(t *testing.T) {
 	}
 }
 
-
 func TestTCPGatewayConfigSupportsMultipleHealthyMembers(t *testing.T) {
 	got := tcpGatewayConfig(TCPGatewaySpec{
 		ContainerPort: 5672,
