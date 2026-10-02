@@ -106,6 +106,20 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 			t.Fatalf("OpenBao bootstrap prerequisite %s: %v", path, err)
 		}
 	}
+	initScript, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql`,
+		`--username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB"`,
+		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql`,
+		`--username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao`,
+	} {
+		if !strings.Contains(string(initScript), want) {
+			t.Fatalf("OpenBao PostgreSQL init script missing credential verification %q", want)
+		}
+	}
 	for _, path := range []string{
 		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
 		filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"),
