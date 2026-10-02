@@ -80,6 +80,13 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := runtimeFiles
+	initialCredentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeControlPlanePostgresCredential(ctx, compose, files, initialCredentials.OpenBaoDBUser, initialCredentials.OpenBaoDBPassword, "openbao"); err != nil {
+		t.Fatalf("OpenBao storage credential before bootstrap: %v", err)
+	}
 	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
 	if err := platformopenbao.Bootstrap(ctx, compose, files, recovery); err != nil {
 		t.Fatalf("bootstrap OpenBao: %v", err)
