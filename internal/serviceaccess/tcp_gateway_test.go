@@ -34,3 +34,46 @@ func TestTCPGatewayConfigSupportsMultipleHealthyMembers(t *testing.T) {
 		}
 	}
 }
+
+
+func TestTCPGatewaySupportsProviderAwareHealthChecksWithoutEmbeddingSecret(t *testing.T) {
+	spec := TCPGatewaySpec{
+		ServiceName:      "valkey-access",
+		ContainerPort:    6379,
+		PublishedPortEnv: "VALKEY_HOST_PORT",
+		Environment: map[string]string{
+			"VALKEY_HEALTH_PASSWORD": "${VALKEY_PASSWORD}",
+		},
+		Upstreams: []TCPGatewayUpstream{
+			{Name: "valkey", Host: "valkey", Port: 6379},
+			{Name: "valkey-2", Host: "valkey-2", Port: 6379},
+		},
+		BackendDirectives: []string{
+			"option tcp-check",
+			"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\\n\"",
+			"tcp-check expect string +OK",
+			"tcp-check send info\\ replication\\r\\n",
+			"tcp-check expect string role:master",
+		},
+	}
+	cfg := tcpGatewayConfig(spec)
+	for _, want := range []string{
+		"option tcp-check",
+		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\\n\"",
+		"tcp-check expect string role:master",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Fatalf("TCP gateway config missing %q:\n%s", want, cfg)
+		}
+	}
+	if strings.Contains(cfg, "super-secret") {
+		t.Fatal("TCP gateway config embeds provider secret")
+	}
+	compose := TCPGatewayComposeService(TCPGatewayFiles{
+		Config: "/tmp/haproxy.cfg",
+		PEM:    "/tmp/server.pem",
+	}, spec)
+	if !strings.Contains(compose, "VALKEY_HEALTH_PASSWORD: \"${VALKEY_PASSWORD}\"") {
+		t.Fatalf("TCP gateway compose missing secret environment projection:\n%s", compose)
+	}
+}
