@@ -77,7 +77,10 @@ func appDownCommand(store application.Store) *cli.Command {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
 			}
 			if err := removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m); err != nil {
-				return err
+				term.Warn(
+					"development-routes",
+					"canonical development-route reconciliation deferred; application shutdown will continue: "+err.Error(),
+				)
 			}
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
