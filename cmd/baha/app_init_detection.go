@@ -19,17 +19,52 @@ func detectAppProject(root string) (appProjectDetection, error) {
 	if err != nil {
 		return appProjectDetection{}, err
 	}
+	if result.WorkloadSourceResolution.State == repositoryinspect.WorkloadSourceResolutionInvalid {
+		detail := result.WorkloadSourceResolution.Message
+		if strings.TrimSpace(detail) == "" {
+			detail = string(result.WorkloadSourceResolution.Reason)
+		}
+		return appProjectDetection{}, usageError(
+			"repository workload source selection is invalid",
+			detail+"; fix or remove "+repositoryinspect.RepositoryMetadataName+" and run app init again.",
+		)
+	}
 	d := appProjectDetection{
-		Name:                   result.Application,
-		ComposeCandidates:      append([]string(nil), result.ComposeCandidates...),
-		Compose:                result.SelectedCompose,
-		WorkloadServices:       append([]string(nil), result.WorkloadServices...),
-		InfrastructureServices: append([]string(nil), result.InfrastructureServices...),
-		AmbiguousServices:      append([]string(nil), result.AmbiguousServices...),
-		Ports:                  append([]repositoryinspect.PortEvidence(nil), result.Ports...),
-		SecretCandidates:       append([]string(nil), result.SecretCandidates...),
-		SecretSources:          map[string]string{},
-		RuntimePermissions:     map[string][]string{},
+		Name:                     result.Application,
+		WorkloadSourceCandidates: append([]repositoryinspect.WorkloadSourceCandidate(nil), result.WorkloadSourceCandidates...),
+		SelectedWorkloadSource:   result.SelectedWorkloadSource,
+		WorkloadEvidence:         result.WorkloadEvidence,
+		ComposeCandidates:        append([]string(nil), result.ComposeCandidates...),
+		Compose:                  result.SelectedCompose,
+		WorkloadServices:         append([]string(nil), result.WorkloadServices...),
+		InfrastructureServices:   append([]string(nil), result.InfrastructureServices...),
+		AmbiguousServices:        append([]string(nil), result.AmbiguousServices...),
+		Ports:                    append([]repositoryinspect.PortEvidence(nil), result.Ports...),
+		SecretCandidates:         append([]string(nil), result.SecretCandidates...),
+		SecretSources:            map[string]string{},
+		RuntimePermissions:       map[string][]string{},
+	}
+	if result.WorkloadEvidence != nil {
+		var workload []string
+		var infrastructure []string
+		d.Ports = nil
+		for _, component := range result.WorkloadEvidence.Components {
+			if component.InfrastructureClass != "" {
+				infrastructure = append(infrastructure, component.ID)
+				continue
+			}
+			workload = append(workload, component.ID)
+			for _, port := range component.Ports {
+				d.Ports = append(d.Ports, repositoryinspect.PortEvidence{Path: result.WorkloadEvidence.Source.Path, Service: component.ID, Value: port})
+			}
+		}
+		if len(workload) > 0 {
+			d.WorkloadServices = uniqueSorted(workload)
+		}
+		if len(infrastructure) > 0 {
+			d.InfrastructureServices = uniqueSorted(infrastructure)
+		}
+		d.Ports = uniquePortEvidence(d.Ports)
 	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
@@ -119,72 +154,6 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		d.RuntimePermissions[capabilityID] = uniqueSorted(operations)
 	}
 	return d, nil
-}
-
-func detectComposeServices(path string) ([]composeServiceDetection, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	inServices := false
-	current := ""
-	items := map[string]*composeServiceDetection{}
-	for scanner.Scan() {
-		raw := strings.TrimRight(scanner.Text(), " \t\r")
-		trim := strings.TrimSpace(raw)
-		if trim == "" || strings.HasPrefix(trim, "#") {
-			continue
-		}
-		indent := len(raw) - len(strings.TrimLeft(raw, " "))
-		if indent == 0 {
-			inServices = trim == "services:"
-			current = ""
-			continue
-		}
-		if !inServices {
-			continue
-		}
-		if indent == 2 && strings.HasSuffix(trim, ":") {
-			name := strings.TrimSpace(strings.TrimSuffix(trim, ":"))
-			if name == "" || strings.Contains(name, " ") {
-				continue
-			}
-			current = name
-			items[name] = &composeServiceDetection{Name: name}
-			continue
-		}
-		if current == "" || indent < 4 {
-			continue
-		}
-		item := items[current]
-		lower := strings.ToLower(trim)
-		if strings.HasPrefix(lower, "image:") {
-			item.HasImage = true
-		}
-		if strings.HasPrefix(lower, "build:") {
-			item.HasBuild = true
-		}
-		if lower == "ports:" || strings.HasPrefix(lower, "ports:") {
-			item.HasPorts = true
-		}
-		combined := strings.ToLower(current + " " + trim)
-		if strings.Contains(combined, "postgres") || strings.Contains(combined, "postgresql") {
-			item.Postgres = true
-		}
-		if strings.Contains(combined, "redis") || strings.Contains(combined, "valkey") {
-			item.Redis = true
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]composeServiceDetection, 0, len(items))
-	for _, item := range items {
-		result = append(result, *item)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
-	return result, nil
 }
 
 func readEnvNames(path string) ([]string, error) {
@@ -279,6 +248,29 @@ func detectedLogicalInstanceName(serviceName, kind string) string {
 		return slugifyAppName(serviceName)
 	}
 	return name
+}
+
+func uniquePortEvidence(input []repositoryinspect.PortEvidence) []repositoryinspect.PortEvidence {
+	seen := map[string]struct{}{}
+	out := make([]repositoryinspect.PortEvidence, 0, len(input))
+	for _, item := range input {
+		key := item.Path + "\x00" + item.Service + "\x00" + item.Value
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Service != out[j].Service {
+			return out[i].Service < out[j].Service
+		}
+		if out[i].Value != out[j].Value {
+			return out[i].Value < out[j].Value
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out
 }
 
 func detectedMetricsTarget(d appProjectDetection, workloadServices []string) (string, int, bool) {

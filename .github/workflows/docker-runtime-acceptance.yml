@@ -14,7 +14,7 @@ on:
       ref:
         description: Git ref to test
         required: false
-        default: develop
+        default: release/v0.4.20
         type: string
 
   push:

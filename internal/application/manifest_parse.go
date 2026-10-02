@@ -223,15 +223,10 @@ func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error 
 }
 
 func (p *manifestYAMLParser) parseWorkloadField(lineNo int, trim string) error {
-	if trim == "services:" {
-		p.workloadField = "services"
-		return nil
+	if trim != "components:" {
+		return fmt.Errorf("line %d: unsupported workload field %q; expected components:", lineNo, trim)
 	}
-	key, value, ok := strings.Cut(trim, ":")
-	if !ok || key != "compose" {
-		return fmt.Errorf("line %d: expected compose: PATH or services:", lineNo)
-	}
-	p.manifest.Workload.Compose = strings.TrimSpace(value)
+	p.workloadField = "components"
 	return nil
 }
 
@@ -243,8 +238,12 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 		return p.parseServiceField(lineNo, trim)
 	case p.section == "secrets" && (p.secretField == "required" || p.secretField == "optional") && strings.HasPrefix(trim, "- "):
 		return p.parseSecretRequirement(lineNo, trim)
-	case p.section == "workload" && p.workloadField == "services" && strings.HasPrefix(trim, "- "):
-		p.manifest.Workload.Services = append(p.manifest.Workload.Services, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
+	case p.section == "workload" && p.workloadField == "components" && strings.HasPrefix(trim, "- "):
+		component := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+		if component == "" {
+			return fmt.Errorf("line %d: workload component is empty", lineNo)
+		}
+		p.manifest.Workload.Components = append(p.manifest.Workload.Components, component)
 		return nil
 	case p.section == "telemetry" && p.telemetryField == "otlp" && trim == "signals:":
 		p.telemetryField = "otlp-signals"

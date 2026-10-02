@@ -1,7 +1,7 @@
 # Runtime Standards Audit
 
-Status: v0.4.17 pre-freeze review  
-Verified against upstream specifications: 2026-09-28
+Status: v0.4.20 pre-freeze review  
+Verified against upstream specifications: 2026-10-02
 
 This audit records which external standards define BaseHarbor runtime behavior, which are delegated to an underlying runtime or cluster, and which BaseHarbor extensions remain necessary.
 
@@ -108,9 +108,11 @@ BaseHarbor adds deployment-owned provider selection, ownership labels/state, sec
 
 ### Compatibility Impact
 
-`compose` is a workload-source identity, not a Runtime Provider identity. Repository Compose input remains compatible even when the selected runtime is not Docker Compose.
+`compose` is a repository workload-source identity, not a Runtime Provider identity. In v0.4.20 Compose is one built-in Workload Source Adapter beside repository-authored Podman Quadlet and raw Kubernetes YAML.
 
-Broader repository source adoption (for example native Quadlet, Helm, Kustomize or Kubernetes manifests) is a separate source-normalization concern and must not change portable Runtime Provider identity.
+All three built-ins normalize into the same source-neutral Workload Evidence model and logical workload-component identity. Source kind/path remain repository provenance rather than portable Application Intent.
+
+Helm and Kustomize are intentionally deferred to later Workload Source Adapters. Their later addition must not change portable Runtime Provider identity or Application Intent.
 
 ## Kubernetes API
 
@@ -122,9 +124,9 @@ The Kubernetes API is a resource-oriented HTTP API for declarative cluster state
 
 ### Adopted Standards
 
-Not executable in v0.4.17.
+Raw Kubernetes YAML is statically inspectable as a repository workload source in v0.4.20. Inspection recognizes standard workload/supporting resources without requiring a live cluster and keeps unknown CRDs as opaque evidence where relevant.
 
-A future Kubernetes Runtime Provider should use the Kubernetes API as its primary lifecycle boundary rather than shelling out to container runtimes on cluster nodes.
+Kubernetes runtime execution is still not implemented in v0.4.20. A future Kubernetes Runtime Provider should use the Kubernetes API as its primary lifecycle boundary rather than shelling out to container runtimes on cluster nodes.
 
 ### Deviations
 
@@ -293,14 +295,15 @@ Crossplane may later be an optional integration or realization technique. Portab
 
 ## Result
 
-For v0.4.17:
+For v0.4.20:
 
 - OCI image/distribution/runtime standards are delegated to conforming runtime stacks.
-- Compose Specification is the current repository workload-source standard.
+- Compose, repository-authored Podman Quadlet and raw Kubernetes YAML are built-in repository Workload Source Adapters behind one versioned source/evidence boundary.
+- Helm and Kustomize are deferred source adapters, not v0.4.20 support.
 - Service Binding 1.1 is the application-facing managed-service binding boundary.
 - Docker and Podman are explicit Runtime Providers behind `baseharbor.runtime/v1`.
-- Podman realization is Quadlet + `systemd --user`, with no `podman compose` fallback.
-- Kubernetes API and Gateway API are future provider realization standards.
+- Podman runtime realization remains generated Quadlet + `systemd --user`, separate from repository-authored Quadlet as an input source.
+- Kubernetes API and Gateway API remain future provider realization standards even though raw Kubernetes YAML can already be inspected/adopted statically.
 - CRI, CNI and CSI remain cluster/runtime implementation boundaries and are not reimplemented by BaseHarbor.
 - Crossplane is an optional pattern/integration, not a runtime prerequisite.
 - BaseHarbor-specific extensions are limited to portable intent, provider negotiation, ownership, policy, lifecycle semantics and verification where the reviewed standards do not define those concerns.

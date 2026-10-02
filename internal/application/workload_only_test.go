@@ -20,10 +20,7 @@ func workloadOnlyManifest() Manifest {
 			Cache:   false,
 			Secrets: false,
 		},
-		Workload: WorkloadConfig{
-			Compose:  "docker-compose.yml",
-			Services: []string{"coordinator", "docker-engine", "web"},
-		},
+		Workload: WorkloadConfig{Components: []string{"coordinator", "docker-engine", "web"}},
 	}
 }
 
@@ -56,7 +53,7 @@ func TestSecretsOnlyApplicationStillFailsClosed(t *testing.T) {
 		Name:        "secret-only",
 		Environment: "dev",
 		Services:    Services{Secrets: true},
-		Workload:    WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}},
+		Workload:    WorkloadConfig{Components: []string{"api"}},
 	}
 	if err := m.Validate(); err != nil {
 		t.Fatalf("manifest syntax should be valid before runtime capability check: %v", err)
@@ -183,10 +180,7 @@ func TestWorkloadOverrideKeepsBackendAliasFreeWhenDevAliasIsRequired(t *testing.
 		Services: Services{
 			SQL: true,
 		},
-		Workload: WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"api"},
-		},
+		Workload: WorkloadConfig{Components: []string{"api"}},
 	}
 	override, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{
 		"POSTGRES_DB":       "app",

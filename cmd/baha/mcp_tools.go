@@ -57,6 +57,26 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, resolved, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("workspace.status", "Inspect Git state for every mapped repository source without changing checked-out revisions.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceStatusInput) (*mcp.CallToolResult, any, error) {
+		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		model, _, err := development.LoadSourceModel(manifestPath)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		mapping, _, err := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		status, err := development.InspectWorkspaceGit(ctx, model, mapping, input.Fetch)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, status, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
@@ -182,6 +202,26 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 }
 
 func registerMCPDevelopmentTools(server *mcp.Server) {
+	mcp.AddTool(server, machineMCPTool("workspace.update", "Safely fetch and fast-forward mapped Git repositories. Dirty, detached, ahead or diverged repositories are never modified.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineWorkspaceUpdateInput) (*mcp.CallToolResult, any, error) {
+		manifestPath, manifest, err := resolveWorkspaceManifest(input.Manifest)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		model, _, err := development.LoadSourceModel(manifestPath)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		mapping, _, err := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := development.UpdateWorkspaceGit(ctx, model, mapping, input.Check)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("app.new", "Create and validate a new ecosystem-native application from portable capability intent. This writes only the generated application files and exposes no shell or runtime escape hatch.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineAppNewInput) (*mcp.CallToolResult, any, error) {
 		_ = ctx
 		name := strings.TrimSpace(input.Name)

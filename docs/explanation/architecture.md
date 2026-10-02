@@ -22,6 +22,28 @@ The application describes what it needs, not which infrastructure product must p
 
 Examples are SQL, cache, object storage, secrets, identity, HTTP exposure and telemetry.
 
+## Repository workload sources
+
+Repository syntax is interpreted before portable Application Intent and is not itself a provider axis.
+
+```text
+Repository
+    ↓
+Workload Source Adapter
+    ↓
+Normalized Workload Evidence
+    ↓
+Inspection / adoption
+    ↓
+Portable Application Intent
+```
+
+v0.4.20 proves this boundary with Compose, repository-authored Podman Quadlet and raw Kubernetes YAML. Source-native identity remains provenance. Logical workload components are the portable identity.
+
+Helm and Kustomize are intentionally later source adapters. Kubernetes and OpenShift remain later Runtime Providers.
+
+See [Workload sources](workload-sources.md).
+
 ## Three provider axes
 
 BaseHarbor keeps three concerns separate:

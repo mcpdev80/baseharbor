@@ -36,7 +36,7 @@ func TestGoAdapterPlansCommonCapabilityMatrix(t *testing.T) {
 		Telemetry: application.TelemetryRequirements{
 			OTLP: &application.OTLPRequirement{Signals: []string{"traces"}},
 		},
-		Workload: application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
+		Workload: application.WorkloadConfig{Components: []string{"app"}},
 	}
 	contract, err := application.PortableContractFromManifest(manifest)
 	if err != nil {

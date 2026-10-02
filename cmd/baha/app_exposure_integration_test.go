@@ -176,10 +176,7 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
 		Version:     application.CurrentVersion,
 		Name:        name,
 		Environment: "dev",
-		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"web"},
-		},
+		Workload:    application.WorkloadConfig{Components: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{
 			Name: "public", Service: "web", Port: targetPort, Protocol: "http", Visibility: "internal",
 		}},

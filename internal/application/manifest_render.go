@@ -109,18 +109,13 @@ func (m Manifest) YAML() string {
 			}
 		}
 	}
-	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
+	if len(m.Workload.Components) > 0 {
 		b.WriteString("workload:\n")
-		if m.Workload.Compose != "" {
-			fmt.Fprintf(&b, "  compose: %s\n", m.Workload.Compose)
-		}
-		if len(m.Workload.Services) > 0 {
-			services := append([]string(nil), m.Workload.Services...)
-			sort.Strings(services)
-			b.WriteString("  services:\n")
-			for _, service := range services {
-				fmt.Fprintf(&b, "    - %s\n", service)
-			}
+		components := append([]string(nil), m.Workload.Components...)
+		sort.Strings(components)
+		b.WriteString("  components:\n")
+		for _, component := range components {
+			fmt.Fprintf(&b, "    - %s\n", component)
 		}
 	}
 	if len(m.Metrics.Sources) > 0 {

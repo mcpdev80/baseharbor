@@ -15,24 +15,20 @@ import (
 
 func TestWorkloadManifestRoundTrip(t *testing.T) {
 	m := New("mailflow", "prod", true, true, false)
-	m = WithWorkload(m, "infrastructure/docker-compose.yml", "api", "worker", "web")
+	m = WithWorkloadComponents(m, "api", "worker", "web")
 	parsed, err := ParseYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Workload.Compose != "infrastructure/docker-compose.yml" {
-		t.Fatalf("unexpected compose path %q", parsed.Workload.Compose)
-	}
-	if strings.Join(parsed.Workload.Services, ",") != "api,web,worker" {
-		t.Fatalf("unexpected workload services %#v", parsed.Workload.Services)
+	if strings.Join(WorkloadComponentNames(parsed), ",") != "api,web,worker" {
+		t.Fatalf("unexpected workload components %#v", parsed.Workload.Components)
 	}
 }
 
-func TestWorkloadComposePathCannotEscapeRepository(t *testing.T) {
-	m := New("demo", "dev", true, false, false)
-	m = WithWorkload(m, "../compose.yaml")
-	if err := m.Validate(); err == nil {
-		t.Fatal("expected escaping workload compose path to be rejected")
+func TestResolveWorkloadComposeSourceCannotEscapeRepository(t *testing.T) {
+	root := t.TempDir()
+	if _, err := ResolveWorkloadComposeSource(root, "../compose.yaml"); err == nil {
+		t.Fatal("expected escaping repository source path to be rejected")
 	}
 }
 
@@ -42,7 +38,7 @@ func TestResolveWorkloadComposeDetectsUnambiguousConvention(t *testing.T) {
 	if err := os.WriteFile(path, []byte("services:\n  api:\n    image: alpine\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	resolved, found, err := ResolveWorkloadCompose(root, New("demo", "dev", true, false, false))
+	resolved, found, err := ResolveWorkloadCompose(root)
 	if err != nil || !found {
 		t.Fatalf("resolve workload compose: found=%v err=%v", found, err)
 	}
@@ -58,7 +54,7 @@ func TestResolveWorkloadComposeFailsClosedWhenAmbiguous(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, _, err := ResolveWorkloadCompose(root, New("demo", "dev", true, false, false))
+	_, _, err := ResolveWorkloadCompose(root)
 	if !errors.Is(err, ErrWorkloadComposeAmbiguous) {
 		t.Fatalf("expected ambiguity error, got %v", err)
 	}
@@ -98,7 +94,7 @@ func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.
 	}
 	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
 	m := New("demo", "dev", true, true, false)
-	m = WithWorkload(m, "docker-compose.yml", "api")
+	m = WithWorkloadComponents(m, "api")
 	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +132,7 @@ func TestIdentityOnlyWorkloadProjectsOIDCEnvironment(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
 	m.Services.Identity = true
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api"}}
+	m = WithWorkloadComponents(m, "api")
 	runtime := RuntimeFiles{
 		Dir:      filepath.Join(t.TempDir(), "runtime"),
 		Bindings: filepath.Join(t.TempDir(), "bindings"),
@@ -192,7 +188,7 @@ func TestWorkloadOverrideProjectsStandardServiceBindingRoot(t *testing.T) {
 func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"api", "web"}}
+	m.Workload = WorkloadConfig{Components: []string{"api", "web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 	got, err := workloadOverrideYAML(m, []string{"api", "web"}, map[string]string{})
 	if err != nil {
@@ -220,7 +216,7 @@ func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing
 func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *testing.T) {
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithWorkloadComponents(m, "api", "worker")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
 	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
@@ -254,7 +250,7 @@ func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
 	t.Setenv(MetricsEnabledEnv, "true")
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api", "worker")
+	m = WithWorkloadComponents(m, "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
@@ -308,7 +304,7 @@ func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
 
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 
 	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
 	if err != nil {
@@ -325,7 +321,7 @@ func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *test
 
 	m := New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 
 	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
 	if err != nil {

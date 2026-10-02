@@ -91,8 +91,14 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
 	}
+	return application.HasExplicitWorkload(m) || requiresDeclaredDevelopmentGatewaySurface(m)
+}
+
+func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {
+	if !devaccess.Enabled(m.Environment) {
+		return false
+	}
 	return len(m.Exposures) > 0 ||
-		application.HasExplicitWorkload(m) ||
 		m.Services.Identity ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||

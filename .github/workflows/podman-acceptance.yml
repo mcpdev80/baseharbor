@@ -14,7 +14,7 @@ on:
       ref:
         description: Git ref to test
         required: false
-        default: develop
+        default: release/v0.4.20
         type: string
   push:
     branches:
@@ -163,14 +163,15 @@ jobs:
 
           $RUNNER_TEMP/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
           $RUNNER_TEMP/baha app plan podman-ci | tee /tmp/podman-plan.txt
-          grep -q "dedicated PostgreSQL service" /tmp/podman-plan.txt
+          grep -q "ensure database.sql:default" /tmp/podman-plan.txt
+          grep -q "ensure cache.key-value:default" /tmp/podman-plan.txt
 
           $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
           timeout 180s $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
 
           $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
-          grep -q "authenticated PING returned PONG" /tmp/podman-status.txt
+          grep -q "semantic Valkey verification passed" /tmp/podman-status.txt
 
           $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
           grep -q '^READY$' /tmp/podman-app-doctor.txt

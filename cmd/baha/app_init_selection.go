@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -15,6 +14,8 @@ import (
 type guidedInitSelection struct {
 	name                         string
 	environment                  string
+	workloadSource               *repositoryinspect.WorkloadSourceCandidate
+	persistWorkloadSource        bool
 	compose                      string
 	workloadServices             []string
 	workloadProtocols            map[string]string
@@ -61,7 +62,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		return selection, errors.New("environment cannot be empty")
 	}
 
-	selection.compose, selection.workloadServices, selection.workloadProtocols, selection.workloadPorts, err = guidedWorkloadSelection(reader, out, d)
+	selection.workloadSource, selection.persistWorkloadSource, selection.compose, selection.workloadServices, selection.workloadProtocols, selection.workloadPorts, err = guidedWorkloadSelection(reader, out, d)
 	if err != nil {
 		return selection, err
 	}
@@ -208,44 +209,74 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 	return selection, nil
 }
 
-func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (string, []string, map[string]string, []repositoryinspect.PortEvidence, error) {
+func guidedWorkloadSelection(reader *bufio.Reader, out io.Writer, d appProjectDetection) (*repositoryinspect.WorkloadSourceCandidate, bool, string, []string, map[string]string, []repositoryinspect.PortEvidence, error) {
+	selected := d.SelectedWorkloadSource
+	persist := false
+	if selected == nil && len(d.WorkloadSourceCandidates) > 1 {
+		fmt.Fprintln(out, "\nMultiple workload sources detected:")
+		for i, candidate := range d.WorkloadSourceCandidates {
+			fmt.Fprintf(out, "  %d. %-12s %s\n", i+1, candidate.Kind, candidate.Path)
+		}
+		choice, err := promptNumber(reader, out, "Workload source", 1, len(d.WorkloadSourceCandidates), 1)
+		if err != nil {
+			return nil, false, "", nil, nil, nil, err
+		}
+		chosen := d.WorkloadSourceCandidates[choice-1]
+		selected = &chosen
+		persist = true
+	} else if selected == nil && len(d.WorkloadSourceCandidates) == 1 {
+		chosen := d.WorkloadSourceCandidates[0]
+		selected = &chosen
+	}
+
 	compose := d.Compose
 	workloadServices := append([]string(nil), d.WorkloadServices...)
 	ambiguousServices := append([]string(nil), d.AmbiguousServices...)
+	ports := append([]repositoryinspect.PortEvidence(nil), d.Ports...)
+	protocols := map[string]string{}
 
-	if len(d.ComposeCandidates) > 1 {
-		var err error
-		compose, err = promptCompose(reader, out, d.ComposeCandidates)
+	if selected != nil {
+		evidence, err := repositoryinspect.NormalizeRepositoryWorkloadSource(".", *selected)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return nil, false, "", nil, nil, nil, err
 		}
-		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
-		if err != nil {
-			return "", nil, nil, nil, err
+		workloadServices = nil
+		ports = nil
+		for _, component := range evidence.Components {
+			if component.InfrastructureClass != "" {
+				continue
+			}
+			workloadServices = append(workloadServices, component.ID)
+			for _, port := range component.Ports {
+				ports = append(ports, repositoryinspect.PortEvidence{Path: selected.Path, Service: component.ID, Value: port})
+			}
 		}
-		workloadServices = append([]string(nil), analysis.WorkloadServices...)
-		ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
+		workloadServices = uniqueSorted(workloadServices)
+		if selected.Kind == repositoryinspect.WorkloadSourceCompose {
+			compose = selected.Path
+			analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
+			if err != nil {
+				return nil, false, "", nil, nil, nil, err
+			}
+			ambiguousServices = append([]string(nil), analysis.AmbiguousServices...)
+			for service, protocol := range analysis.WorkloadProtocols {
+				protocols[service] = protocol
+			}
+			ports = append([]repositoryinspect.PortEvidence(nil), analysis.Ports...)
+		} else {
+			compose = ""
+			ambiguousServices = nil
+		}
 	}
+
 	if len(ambiguousServices) > 0 {
 		confirmedWorkload, err := promptAmbiguousComposeServices(reader, out, ambiguousServices)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return nil, false, "", nil, nil, nil, err
 		}
 		workloadServices = uniqueSorted(append(workloadServices, confirmedWorkload...))
 	}
-	protocols := map[string]string{}
-	ports := append([]repositoryinspect.PortEvidence(nil), d.Ports...)
-	if strings.TrimSpace(compose) != "" {
-		analysis, err := repositoryinspect.AnalyzeComposeFile(".", compose)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
-		for service, protocol := range analysis.WorkloadProtocols {
-			protocols[service] = protocol
-		}
-		ports = append([]repositoryinspect.PortEvidence(nil), analysis.Ports...)
-	}
-	return compose, workloadServices, protocols, ports, nil
+	return selected, persist, compose, workloadServices, protocols, ports, nil
 }
 
 func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDetection, selection guidedInitSelection) (application.Manifest, error) {
@@ -310,8 +341,8 @@ func buildGuidedInitManifest(reader *bufio.Reader, out io.Writer, d appProjectDe
 	m.Services.IdentityManagementUI = selection.identityManagementUI
 	m.Services.ObservabilityManagementUI = selection.observabilityManagementUI
 	m = applyGuidedSecretPolicies(m, selection.secretPolicies)
-	if selection.compose != "" && len(selection.workloadServices) > 0 {
-		m = application.WithWorkload(m, filepath.ToSlash(selection.compose), selection.workloadServices...)
+	if len(selection.workloadServices) > 0 {
+		m = application.WithWorkloadComponents(m, selection.workloadServices...)
 		var exposureErr error
 		m, exposureErr = addGuidedDetectedExposures(m, selection)
 		if exposureErr != nil {

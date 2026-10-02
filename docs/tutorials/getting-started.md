@@ -48,7 +48,7 @@ BaseHarbor detects what it can and asks only for ambiguous or user-owned decisio
 
 The guided flow may ask you to:
 
-- choose the application Compose file when multiple candidates exist;
+- choose the authoritative workload source when multiple Compose, Quadlet or Kubernetes candidates exist;
 - confirm application workload versus replaceable infrastructure;
 - confirm provider-neutral SQL, cache, object-storage and observability intent;
 - name application-owned secrets and mark them required or optional;
@@ -65,7 +65,7 @@ For deterministic automation with unambiguous evidence:
 baha app init --quick
 ```
 
-`--quick` fails closed on ambiguity and never silently promotes heuristic secret candidates.
+`--quick` fails closed on source ambiguity and never silently promotes heuristic secret candidates. Unambiguous Compose, repository-authored Quadlet and raw Kubernetes YAML can be inspected/adopted without turning their source-native names into portable intent.
 
 ## 3. Start the application
 

@@ -48,8 +48,7 @@ services:
   secrets:
     enabled: false
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - pg-probe
     - valkey-probe
 `
@@ -187,8 +186,7 @@ services:
   secrets:
     enabled: false
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - app
 `
 	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
@@ -321,8 +319,7 @@ services:
   secrets:
     enabled: false
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - app
 `
 	composeYAML := `services:

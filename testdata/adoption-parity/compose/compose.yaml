@@ -1,0 +1,13 @@
+services:
+  api:
+    image: example/api:1
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "true"]
+  worker:
+    image: example/worker:1
+  db:
+    image: postgres:17
+  cache:
+    image: valkey/valkey:8

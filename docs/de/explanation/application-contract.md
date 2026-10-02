@@ -1,6 +1,6 @@
-# Application Contract
+# Anwendungsvertrag
 
-Der Application Contract beschreibt, was eine Anwendung braucht.
+Der Anwendungsvertrag beschreibt, was eine Anwendung benötigt.
 
 Er soll klein und portabel bleiben.
 
@@ -25,9 +25,9 @@ secrets:
 Die wichtigste Regel:
 
 ```text
-Application Intent != Provider-Konfiguration
+Anwendungsanforderung != Provider-Konfiguration
 ```
 
-Runtime-spezifische Namen, Provider-Auswahl, Placement und generierte Credentials gehören nicht in den portablen Contract.
+Runtime-spezifische Namen, Provider-Auswahl, Platzierung und generierte Zugangsdaten gehören nicht in den portablen Vertrag.
 
-Die normative Definition steht in der englischen [Application Contract v1 Spec](https://mcpdev80.github.io/baseharbor/spec/application-contract-v1/).
+Die normative Definition steht in der englischen [Spezifikation des Anwendungsvertrags v1](https://mcpdev80.github.io/baseharbor/spec/application-contract-v1/).

@@ -110,7 +110,7 @@ func PortableContractFromManifest(m Manifest) (PortableContract, error) {
 		contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityMetrics, Name: source.Name})
 	}
 	if HasLogsCollection(m) {
-		for _, service := range m.Workload.Services {
+		for _, service := range WorkloadComponentNames(m) {
 			contract.Capabilities = append(contract.Capabilities, CapabilityRequirement{Kind: CapabilityLogs, Name: service})
 		}
 	}

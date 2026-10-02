@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -28,8 +29,15 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 		return nil
 	}
 	repositoryRoot := resolved.repositoryRoot()
-	composePath, found, err := application.ResolveWorkloadCompose(repositoryRoot, resolved.Manifest)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repositoryRoot, resolved.Manifest)
+	if err != nil {
+		return err
+	}
+	if composeSource == "" {
+		return nil
+	}
+	composePath, err := application.ResolveWorkloadComposeSource(repositoryRoot, composeSource)
+	if err != nil {
 		return err
 	}
 	rel, err := filepath.Rel(repositoryRoot, composePath)
@@ -47,7 +55,7 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 		)
 	}
 	selected := map[string]struct{}{}
-	for _, service := range resolved.Manifest.Workload.Services {
+	for _, service := range application.WorkloadComponentNames(resolved.Manifest) {
 		selected[service] = struct{}{}
 	}
 	for service, protocol := range analysis.WorkloadProtocols {
@@ -76,13 +84,64 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	return nil
 }
 
+func selectedRepositoryComposeSource(repositoryRoot string, manifest application.Manifest) (string, error) {
+	if !application.HasExplicitWorkload(manifest) {
+		return "", nil
+	}
+	result, err := repositoryinspect.Inspect(context.Background(), repositoryRoot)
+	if err != nil {
+		return "", &machine.Error{
+			Code:      machine.ErrorInvalidWorkload,
+			CauseCode: "workload_source_inspection_failed",
+			Message:   "BaseHarbor could not resolve the repository workload source before runtime realization.",
+			Resource:  repositoryRoot,
+			Next:      "Run 'baha app inspect . --verbose' and resolve the reported source ambiguity or invalid source metadata.",
+			Cause:     err,
+		}
+	}
+	if result.SelectedWorkloadSource == nil {
+		return "", &machine.Error{
+			Code:      machine.ErrorUnsupported,
+			CauseCode: "workload_source_selection_required",
+			Message:   "The portable workload has no unambiguous repository source selected for runtime realization.",
+			Resource:  repositoryRoot,
+			Next:      "Select the authoritative workload source with 'baha app init' or commit baseharbor.repository.yaml when multiple sources are intentional.",
+		}
+	}
+	if result.SelectedWorkloadSource.Kind != repositoryinspect.WorkloadSourceCompose {
+		return "", &machine.Error{
+			Code:      machine.ErrorUnsupported,
+			CauseCode: "workload_source_runtime_unsupported",
+			Message:   fmt.Sprintf("BaseHarbor understands the %s workload source but the current v0.4.20 repository runtime path realizes Compose sources only.", result.SelectedWorkloadSource.Kind),
+			Resource:  result.SelectedWorkloadSource.Path,
+			Next:      "Use inspection/adoption now or choose a Runtime Provider that realizes this workload source when available.",
+		}
+	}
+	return result.SelectedWorkloadSource.Path, nil
+}
+
+func preflightRepositoryWorkloadSourceRealization(repositoryRoot string, manifest application.Manifest) error {
+	if !application.HasExplicitWorkload(manifest) {
+		return nil
+	}
+	_, err := selectedRepositoryComposeSource(repositoryRoot, manifest)
+	return err
+}
+
 func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication) (application.WorkloadSecurityReport, error) {
 	if !resolved.FromRepository {
 		return application.WorkloadSecurityReport{}, nil
 	}
 	repositoryRoot := resolved.repositoryRoot()
-	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repositoryRoot, resolved.Manifest)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	if composeSource == "" {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	selected, composePath, err := application.SelectedWorkloadServicesFromCompose(repositoryRoot, composeSource, resolved.Manifest)
+	if err != nil {
 		return application.WorkloadSecurityReport{}, err
 	}
 	environment := workloadSecurityPreflightEnvironment(resolved.Manifest)
@@ -116,8 +175,15 @@ func preflightRepositoryWorkloadSecuritySource(resolved resolvedApplication) (ap
 		return application.WorkloadSecurityReport{}, nil
 	}
 	repositoryRoot := resolved.repositoryRoot()
-	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, resolved.Manifest)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repositoryRoot, resolved.Manifest)
+	if err != nil {
+		return application.WorkloadSecurityReport{}, err
+	}
+	if composeSource == "" {
+		return application.WorkloadSecurityReport{}, nil
+	}
+	selected, composePath, err := application.SelectedWorkloadServicesFromCompose(repositoryRoot, composeSource, resolved.Manifest)
+	if err != nil {
 		return application.WorkloadSecurityReport{}, err
 	}
 	data, err := os.ReadFile(composePath)
@@ -223,7 +289,14 @@ func materializeRepositoryWorkload(resolved resolvedApplication, files applicati
 		return application.WorkloadFiles{}, false, nil
 	}
 	repositoryRoot := resolved.repositoryRoot()
-	return application.MaterializeWorkload(repositoryRoot, resolved.Manifest, files)
+	composeSource, err := selectedRepositoryComposeSource(repositoryRoot, resolved.Manifest)
+	if err != nil {
+		return application.WorkloadFiles{}, false, err
+	}
+	if composeSource == "" {
+		return application.WorkloadFiles{}, false, nil
+	}
+	return application.MaterializeWorkloadFromCompose(repositoryRoot, composeSource, resolved.Manifest, files)
 }
 
 type renderedComposeConfig struct {
