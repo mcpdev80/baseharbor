@@ -175,6 +175,13 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
+	if resolved.DeploymentRecord == nil {
+		pending, err := recordPendingDeployment(ctx, resolved)
+		if err != nil {
+			return fmt.Errorf("record pending deployment before restore mutation: %w", err)
+		}
+		resolved.DeploymentRecord = &pending
+	}
 	compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
 	if err != nil {
 		return err
