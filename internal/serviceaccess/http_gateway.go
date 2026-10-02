@@ -283,9 +283,9 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n")
 	if files.AuthToken != "" {
-		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	} else {
-		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	}
 	if strings.TrimSpace(spec.PublishedPortEnv) != "" {
 		b.WriteString("    ports:\n")
