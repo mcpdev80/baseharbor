@@ -178,7 +178,6 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 	return nil, nil
 }
 
-
 func isTestHarnessSourcePath(path string) bool {
 	path = strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
 	for _, prefix := range []string{
