@@ -26,6 +26,7 @@ Prefer machine-readable authority where practical:
 - [Machine Interface v1](machine-interface-v1.md)
 - [Audit & Evidence v1](audit-evidence-v1.md)
 - [Security invariants](security-invariants.md)
+- [Credential and access ownership v1](credential-access-v1.md)
 
 ## Runtime and access contracts
 
