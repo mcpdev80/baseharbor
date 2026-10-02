@@ -16,6 +16,12 @@ import (
 )
 
 func registerMCPReadTools(server *mcp.Server, store application.Store) {
+	registerMCPDiscoveryReadTools(server)
+	registerMCPApplicationReadTools(server, store)
+	registerMCPPlatformReadTools(server, store)
+}
+
+func registerMCPDiscoveryReadTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := authorizeCurrentMCPContext(ctx, "target", input.Target, "", ""); err != nil {
@@ -93,6 +99,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, status, nil
 	})
 
+}
+
+func registerMCPApplicationReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
@@ -187,6 +196,9 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+}
+
+func registerMCPPlatformReadTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("provider.list", "List registered externally owned capability providers using the shared secret-safe provider state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
 		if err := authorizeCurrentMCPContext(ctx, "provider.list", "", "", ""); err != nil {
 			return machineMCPFailure(err)
