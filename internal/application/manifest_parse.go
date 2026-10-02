@@ -29,6 +29,7 @@ type manifestYAMLParser struct {
 	runtimePermissionList  string
 	identityField          string
 	availabilityComponent string
+	consumptionIndex       int
 	serviceSeen            map[string]string
 }
 
@@ -39,6 +40,7 @@ func newManifestYAMLParser() *manifestYAMLParser {
 		metricsIndex:           -1,
 		runtimePermissionIndex: -1,
 		serviceSeen:            map[string]string{},
+		consumptionIndex:       -1,
 	}
 }
 
@@ -110,6 +112,7 @@ func (p *manifestYAMLParser) resetNestedState() {
 	p.runtimePermissionList = ""
 	p.identityField = ""
 	p.availabilityComponent = ""
+	p.consumptionIndex = -1
 }
 
 func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
@@ -130,6 +133,8 @@ func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
 		p.section = ""
 	case trim == "availability:":
 		p.section = "availability"
+	case trim == "consumes:":
+		p.section = "consumes"
 	case trim == "app:":
 		p.section = "app"
 	case trim == "services:":
@@ -162,6 +167,15 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 	p.secretGenerate = false
 
 	switch {
+	case p.section == "consumes" && strings.HasPrefix(trim, "- "):
+		item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+		key, value, ok := strings.Cut(item, ":")
+		if !ok || key != "name" || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("line %d: consumption must start with - name: NAME", lineNo)
+		}
+		p.manifest.Consumes = append(p.manifest.Consumes, ConsumptionRequirement{Name: strings.TrimSpace(value)})
+		p.consumptionIndex = len(p.manifest.Consumes)-1
+		return nil
 	case p.section == "availability" && strings.HasSuffix(trim, ":"):
 		component := strings.TrimSpace(strings.TrimSuffix(trim, ":"))
 		if component == "" { return fmt.Errorf("line %d: availability component is empty", lineNo) }
@@ -253,6 +267,19 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 	p.secretGenerate = false
 
 	switch {
+	case p.section == "consumes" && p.consumptionIndex >= 0:
+		key, value, ok := strings.Cut(trim, ":")
+		if !ok { return fmt.Errorf("line %d: expected consumption key: value", lineNo) }
+		value = strings.TrimSpace(value)
+		item := &p.manifest.Consumes[p.consumptionIndex]
+		switch key {
+		case "application_id": item.ApplicationID = value
+		case "component": item.Component = value
+		case "interface": item.Interface = value
+		case "protocol": item.Protocol = value
+		default: return fmt.Errorf("line %d: unsupported consumption field %q", lineNo, key)
+		}
+		return nil
 	case p.section == "availability" && p.availabilityComponent != "":
 		key, value, ok := strings.Cut(trim, ":")
 		if !ok { return fmt.Errorf("line %d: expected availability key: value", lineNo) }
