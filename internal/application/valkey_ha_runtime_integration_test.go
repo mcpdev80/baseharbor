@@ -42,7 +42,8 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
+	issuer := serviceissuer.New(t)
+	files, err := EnsureRuntime(ctx, issuer, store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +65,23 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}()
 
 	op := provideroperation.New(runtime, files.Project, files.Compose, files.Env)
+	waitValkeyHAReady(t, ctx, runtime, op, m, files)
+
+	beforeRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPassword := beforeRotation[valkeyRuntimeKey(defaultServiceInstance, "PASSWORD")]
+	if err := RotateValkeyCredential(ctx, runtime, issuer, m, files, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate Valkey HA credential: %v", err)
+	}
+	afterRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRotation[valkeyRuntimeKey(defaultServiceInstance, "PASSWORD")] == "" || afterRotation[valkeyRuntimeKey(defaultServiceInstance, "PASSWORD")] == oldPassword {
+		t.Fatal("Valkey credential rotation did not replace the application password")
+	}
 	waitValkeyHAReady(t, ctx, runtime, op, m, files)
 
 	failedMember, err := ValkeyHAMaster(ctx, op, m, files, defaultServiceInstance)
