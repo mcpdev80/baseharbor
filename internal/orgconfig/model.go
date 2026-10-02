@@ -1,7 +1,6 @@
 package orgconfig
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -69,10 +68,7 @@ type Config struct {
 }
 
 var (
-	ErrNotConfigured       = errors.New("organization configuration not configured")
-	ErrUnsupportedSource   = errors.New("unsupported organization source kind")
-	ErrSourceUnavailable   = errors.New("organization source unavailable")
-	namePattern            = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	namePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 )
 
@@ -80,7 +76,7 @@ func (s Source) Validate() error {
 	switch s.Kind {
 	case SourceOCI, SourceGit, SourceLocal, SourceSystem:
 	default:
-		return fmt.Errorf("%w: organization source kind %q is unsupported", ErrUnsupportedSource, s.Kind)
+		return fmt.Errorf("organization source kind %q is unsupported", s.Kind)
 	}
 	if strings.TrimSpace(s.Location) == "" {
 		return fmt.Errorf("organization source location is required")
