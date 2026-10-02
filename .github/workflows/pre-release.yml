@@ -245,6 +245,7 @@ jobs:
           Source readability	${{ steps.source_readability.outcome }}	production source guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests and vet
           Documentation	${{ steps.docs.outcome }}	strict EN/DE docs and audit
+          v0.4.20 contract hygiene	${{ steps.v0420_hygiene.outcome }}	source-neutral contract and user-facing release-note hygiene
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
           Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives
