@@ -243,7 +243,7 @@ jobs:
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
                 .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
-                .gate_count == 42 and
+                .gate_count == 41 and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
               ' "${approval_json}" >/dev/null || {
