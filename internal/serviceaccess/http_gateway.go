@@ -55,8 +55,10 @@ type HTTPGatewaySpec struct {
 	ServiceName        string
 	Upstream           string
 	Upstreams          []string
-	UpstreamTrustFile  string
-	UpstreamServerName string
+	UpstreamTrustFile        string
+	UpstreamServerName       string
+	UpstreamClientCertificate string
+	UpstreamClientKey         string
 	PublishedPortEnv   string
 	ContainerPort      int
 	Networks           []string
@@ -144,7 +146,20 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfileWithUpstreamsTLSHealth(spec.Upstreams, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.HealthURI, spec.HealthStatus, spec.DenyPaths...)
+	config := caddyfileWithUpstreamsTLSHealthClient(
+		spec.Upstreams,
+		spec.UpstreamTrustFile,
+		spec.UpstreamServerName,
+		spec.UpstreamClientCertificate,
+		spec.UpstreamClientKey,
+		spec.ContainerPort,
+		authentication,
+		basicAuthUsername,
+		basicAuthHash,
+		spec.HealthURI,
+		spec.HealthStatus,
+		spec.DenyPaths...,
+	)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -313,8 +328,22 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	if files.AuthToken != "" {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
 	}
-	if strings.TrimSpace(spec.UpstreamTrustFile) != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(spec.UpstreamTrustFile)+":/upstream:ro"))
+	upstreamMaterialDir := ""
+	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		dir := filepath.Dir(candidate)
+		if upstreamMaterialDir == "" {
+			upstreamMaterialDir = dir
+			continue
+		}
+		if dir != upstreamMaterialDir {
+			panic("HTTP gateway upstream TLS material must share one projection directory")
+		}
+	}
+	if upstreamMaterialDir != "" {
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(upstreamMaterialDir+":/upstream:ro"))
 	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
@@ -545,6 +574,10 @@ func caddyfileWithUpstreamsTLSStatus(upstreams []string, upstreamTrustFile, upst
 }
 
 func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealthClient(upstreams, upstreamTrustFile, upstreamServerName, "", "", port, authentication, basicAuthUsername, basicAuthHash, healthURI, healthStatus, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealthClient(upstreams []string, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -600,6 +633,11 @@ func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upst
 		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + activeHealth + "    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
+		}
+		if strings.TrimSpace(upstreamClientCertificate) != "" || strings.TrimSpace(upstreamClientKey) != "" {
+			if strings.TrimSpace(upstreamClientCertificate) != "" && strings.TrimSpace(upstreamClientKey) != "" {
+				proxy += "      tls_client_auth /upstream/" + filepath.Base(upstreamClientCertificate) + " /upstream/" + filepath.Base(upstreamClientKey) + "\n"
+			}
 		}
 		proxy += "    }\n  }\n"
 	}
