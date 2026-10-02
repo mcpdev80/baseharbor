@@ -15,7 +15,7 @@ import (
 
 const (
 	projectName     = "baseharbor"
-	serviceName     = "openbao"
+	serviceName     = "openbao-admin"
 	adminFileName   = "openbao-admin.env"
 	recoveryVersion = 1
 )
@@ -144,7 +144,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 	}
 	keepRecoveryFile = true
 
-	if err := unsealWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
+	if err := unsealAllMembersWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
 		return err
 	}
 
@@ -188,14 +188,11 @@ func Unseal(ctx context.Context, executor Executor, files bhruntime.Files, recov
 	if !state.Initialized {
 		return ErrNotInitialized
 	}
-	if !state.Sealed {
-		return nil
-	}
 	bundle, err := loadRecoveryFile(recoveryPath)
 	if err != nil {
 		return err
 	}
-	return unsealWithKey(ctx, executor, files, bundle.UnsealKeys[0])
+	return unsealAllMembersWithKey(ctx, executor, files, bundle.UnsealKeys[0])
 }
 
 func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files) error {
@@ -326,6 +323,52 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 		return recoveryBundle{}, ErrInvalidRecoveryFile
 	}
 	return bundle, nil
+}
+
+var openBaoHAMembers = []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"}
+
+func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
+	script := "BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null\n" +
+		"code=$?\nif [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\nexit \"$code\""
+	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-ec", script)
+	if err != nil {
+		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
+	}
+	var state State
+	if err := json.Unmarshal([]byte(out), &state); err != nil {
+		return State{}, fmt.Errorf("inspect OpenBao HA member %s: invalid status response", member)
+	}
+	return state, nil
+}
+
+func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhruntime.Files, key string) error {
+	payload, err := json.Marshal(map[string]string{"key": key})
+	if err != nil {
+		return errors.New("encode OpenBao unseal request")
+	}
+	for _, member := range openBaoHAMembers {
+		state, err := memberState(ctx, executor, files, member)
+		if err != nil {
+			return err
+		}
+		if !state.Initialized {
+			return fmt.Errorf("OpenBao HA member %s is not initialized", member)
+		}
+		if state.Sealed {
+			script := "BAO_ADDR=https://" + member + ":8200 exec bao write -format=json sys/unseal -"
+			if _, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName, "sh", "-ec", script); err != nil {
+				return fmt.Errorf("unseal OpenBao HA member %s: %w", member, err)
+			}
+		}
+		state, err = memberState(ctx, executor, files, member)
+		if err != nil {
+			return err
+		}
+		if state.Sealed {
+			return fmt.Errorf("%w: member %s remains sealed", ErrSealed, member)
+		}
+	}
+	return nil
 }
 
 func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files, key string) error {
