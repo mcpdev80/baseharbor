@@ -232,6 +232,8 @@ func ManagementUISurfaceAt(dataDir, namespace string) (application.ManagementUIS
 		Service: "object-storage", Purpose: application.ProviderInterfaceManagement,
 		URL:            "https://127.0.0.1:" + strconv.Itoa(port) + "/",
 		Authentication: "seaweedfs-native",
+		AuthenticationClass: application.ManagementAuthNativeCredential,
+		RoleMappings: application.NativeCredentialRoleMappings("admin", "user"),
 	}, nil
 }
 
