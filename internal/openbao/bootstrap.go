@@ -674,4 +674,8 @@ path "baseharbor-pki/cert/*" {
 path "baseharbor-pki/revoke" {
   capabilities = ["create", "update"]
 }
+
+path "baseharbor-pki/root/rotate/internal" {
+  capabilities = ["create", "update"]
+}
 `
