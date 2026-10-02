@@ -270,7 +270,6 @@ func TestMachineCLIErrorClassification(t *testing.T) {
 	}
 }
 
-
 func TestMachineCLIErrorClassificationExpectedPreconditions(t *testing.T) {
 	tests := []struct {
 		name string
