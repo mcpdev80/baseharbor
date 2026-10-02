@@ -344,8 +344,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		}
 	}
 	for _, instance := range mongoInstances {
-		service := runtimeServiceName("mongodb", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			volume := mongodbMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
