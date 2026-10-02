@@ -78,7 +78,6 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + volume},
 			)
 		}
-		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbAccessService(instance) + "-1"})
 		if m.Services.DocumentDatabaseManagementUI {
 			resources = append(resources,
 				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + mongodbUIServiceName(instance) + "-1"},
