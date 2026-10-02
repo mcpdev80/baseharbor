@@ -130,7 +130,7 @@ func verifyRabbitMQQueue(ctx context.Context, ch *amqp.Channel, m Manifest, inst
 		autoDelete = false
 		exclusive = false
 		args = amqp.Table{
-			"x-queue-type":                 "quorum",
+			"x-queue-type":                "quorum",
 			"x-quorum-initial-group-size": rabbitmqMemberCount(m),
 		}
 	}
@@ -268,7 +268,6 @@ func rabbitMQVerificationName(kind string) (string, error) {
 type rabbitMQHAProbeRuntime interface {
 	ExecProject(context.Context, string, string, string, string, ...string) (string, error)
 }
-
 func VerifyRabbitMQHACluster(ctx context.Context, runtime rabbitMQHAProbeRuntime, m Manifest, files RuntimeFiles) error {
 	if rabbitmqMemberCount(m) <= 1 || len(RabbitMQInstanceNames(m)) == 0 {
 		return nil
