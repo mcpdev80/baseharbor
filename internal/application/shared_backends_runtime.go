@@ -423,8 +423,8 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		}
 	}
 	gatewayFiles := serviceaccess.TCPGatewayFiles{
-		Config: root + "/service-access/haproxy.cfg",
-		PEM: root + "/service-access/runtime/server.pem",
+		Config:   root + "/service-access/haproxy.cfg",
+		PEM:      root + "/service-access/runtime/server.pem",
 		Material: serviceaccess.TLSMaterial{},
 	}
 	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, sharedValkeyGatewaySpec(app, instance)))
