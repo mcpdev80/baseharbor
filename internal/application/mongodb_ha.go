@@ -57,8 +57,13 @@ func mongodbReplicaSetName(instance string) string {
 }
 
 func mongodbGatewaySpec(instance string, ordinal int) serviceaccess.TCPGatewaySpec {
+	dirName := "service-access"
+	if ordinal > 0 {
+		dirName = fmt.Sprintf("service-access-%d", ordinal+1)
+	}
 	return serviceaccess.TCPGatewaySpec{
 		ServiceName:      mongodbMemberAccessService(instance, ordinal),
+		DirectoryName:    dirName,
 		UpstreamHost:     mongodbMemberServiceName(instance, ordinal),
 		UpstreamPort:     27017,
 		PublishedPortEnv: mongodbMemberHostPortKey(instance, ordinal),
