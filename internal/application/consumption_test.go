@@ -41,3 +41,20 @@ func TestConsumptionIntentRejectsAddressLeakage(t *testing.T) {
 		t.Fatal("runtime/provider address leaked into portable consumption protocol")
 	}
 }
+
+
+func TestConsumptionIntentRoundTrip(t *testing.T) {
+	m := New("consumer", "prod", false, false, false)
+	m.ApplicationID = "7a9dc6a7-9cab-4c62-a0dd-e55d5bf7ff75"
+	m.Consumes = []ConsumptionRequirement{
+		{Name: "producer-api", ApplicationID: "b6e60b14-e4d3-4d27-bb91-26589f9dced5", Component: "api", Interface: "http", Protocol: "https"},
+	}
+	data := m.YAML()
+	got, err := ParseYAML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Consumes) != 1 || got.Consumes[0] != m.Consumes[0] {
+		t.Fatalf("round-trip consumes = %#v, want %#v", got.Consumes, m.Consumes)
+	}
+}
