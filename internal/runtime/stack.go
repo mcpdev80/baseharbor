@@ -129,6 +129,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		openBaoPolicy,
 		filepath.Join(openBaoRoot, "service-access", "pki"),
 		"openbao",
+		"openbao-member-1",
+		"openbao-member-2",
+		"openbao-member-3",
 		"127.0.0.1",
 	)
 	if err != nil {
@@ -145,6 +148,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		postgresPolicy,
 		filepath.Join(postgresRoot, "service-access", "pki"),
 		"postgres",
+		"postgres-member-1",
+		"postgres-member-2",
+		"postgres-member-3",
 		"127.0.0.1",
 	)
 	if err != nil {
