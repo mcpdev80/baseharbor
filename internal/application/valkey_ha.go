@@ -75,6 +75,7 @@ func valkeyGatewaySpec(m Manifest, instance string) serviceaccess.TCPGatewaySpec
 			"tcp-check send-lf \"QUIT\\r\\n\"",
 			"tcp-check expect string +OK",
 		}
+		spec.ServerDirectives = []string{"init-state fully-down", "inter 1s", "rise 1", "fall 1"}
 	}
 	return spec
 }
@@ -206,5 +207,6 @@ func sharedValkeyGatewaySpec(app sharedBackendAppState, instance string) service
 		"tcp-check send-lf \"QUIT\\r\\n\"",
 		"tcp-check expect string +OK",
 	}
+	spec.ServerDirectives = []string{"init-state fully-down", "inter 1s", "rise 1", "fall 1"}
 	return spec
 }
