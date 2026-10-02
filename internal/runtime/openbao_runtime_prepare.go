@@ -80,7 +80,7 @@ frontend openbao
 backend members
   balance roundrobin
   option tcp-check
-  default-server check inter 2s fall 2 rise 2
+  default-server check inter 2s fall 2 rise 2 init-addr last,libc,none
   server openbao-1 openbao-member-1:8200
   server openbao-2 openbao-member-2:8200
   server openbao-3 openbao-member-3:8200
