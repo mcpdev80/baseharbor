@@ -50,19 +50,22 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 	// the allowlist narrow makes every new direct runtime-lifecycle dependency
 	// an architecture-review event instead of silently weakening the portable
 	// semantic core boundary.
-	runtimeAdapterFiles := map[string]struct{}{
-		"internal/application/mongodb_credential_rotation_helpers.go":  {},
-		"internal/application/postgres_backup.go":                       {},
-		"internal/application/provider_pki_rotation_runtime.go":         {},
-		"internal/application/rabbitmq_credential_rotation_helpers.go": {},
-		"internal/application/runtime_lifecycle.go":                     {},
-		"internal/application/runtime_postgres.go":                      {},
-		"internal/application/shared_backends.go":                       {},
-		"internal/application/shared_backends_runtime.go":               {},
-		"internal/application/valkey_credential_rotation.go":            {},
-		"internal/application/valkey_credential_rotation_helpers.go":    {},
-		"internal/application/valkey_credential_rotation_runtime.go":    {},
-		"internal/application/workload.go":                              {},
+	runtimeAdapterFiles := map[string]struct{}{}
+	for _, adapter := range []string{
+		"internal/application/mongodb_credential_rotation_helpers.go",
+		"internal/application/postgres_backup.go",
+		"internal/application/provider_pki_rotation_runtime.go",
+		"internal/application/rabbitmq_credential_rotation_helpers.go",
+		"internal/application/runtime_lifecycle.go",
+		"internal/application/runtime_postgres.go",
+		"internal/application/shared_backends.go",
+		"internal/application/shared_backends_runtime.go",
+		"internal/application/valkey_credential_rotation.go",
+		"internal/application/valkey_credential_rotation_helpers.go",
+		"internal/application/valkey_credential_rotation_runtime.go",
+		"internal/application/workload.go",
+	} {
+		runtimeAdapterFiles[adapter] = struct{}{}
 	}
 	forbiddenCoreSelectors := map[string]struct{}{
 		"ExecProject":                 {},
