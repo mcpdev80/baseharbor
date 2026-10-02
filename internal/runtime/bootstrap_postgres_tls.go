@@ -112,7 +112,7 @@ frontend postgres
 backend primary
   option httpchk GET /primary
   http-check expect status 200
-  default-server check port 8008 inter 2s fall 2 rise 2
+  default-server check port 8008 inter 2s fall 2 rise 2 init-addr last,libc,none
   server postgres-1 postgres-member-1:5432 check
   server postgres-2 postgres-member-2:5432 check
   server postgres-3 postgres-member-3:5432 check
