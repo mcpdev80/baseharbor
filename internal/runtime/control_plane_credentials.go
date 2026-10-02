@@ -11,12 +11,14 @@ import (
 )
 
 type ControlPlaneCredentials struct {
-	PostgresUser            string `json:"postgres_user"`
-	PostgresPassword        string `json:"postgres_password"`
-	PostgresReplicationUser string `json:"postgres_replication_user"`
-	PostgresReplicationPass string `json:"postgres_replication_password"`
-	OpenBaoDBUser           string `json:"openbao_db_user"`
-	OpenBaoDBPassword       string `json:"openbao_db_password"`
+	PostgresUser             string `json:"postgres_user"`
+	PostgresPassword         string `json:"postgres_password"`
+	PostgresInternalUser     string `json:"postgres_internal_user"`
+	PostgresInternalPassword string `json:"postgres_internal_password"`
+	PostgresReplicationUser  string `json:"postgres_replication_user"`
+	PostgresReplicationPass  string `json:"postgres_replication_password"`
+	OpenBaoDBUser            string `json:"openbao_db_user"`
+	OpenBaoDBPassword        string `json:"openbao_db_password"`
 }
 
 type ControlPlaneCredentialRotationPhase string
@@ -179,6 +181,7 @@ func ClearControlPlaneCredentialRotation(files Files) error {
 
 func validateControlPlaneCredentials(credentials ControlPlaneCredentials) error {
 	if credentials.PostgresUser == "" || credentials.PostgresPassword == "" ||
+		credentials.PostgresInternalUser == "" || credentials.PostgresInternalPassword == "" ||
 		credentials.PostgresReplicationUser == "" || credentials.PostgresReplicationPass == "" ||
 		credentials.OpenBaoDBUser == "" || credentials.OpenBaoDBPassword == "" {
 		return errors.New("control-plane credential state is incomplete")
