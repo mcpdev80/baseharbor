@@ -42,7 +42,8 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
+	issuer := serviceissuer.New(t)
+	files, err := EnsureRuntime(ctx, issuer, store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,29 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := ReconcileRabbitMQCredentials(ctx, provideroperation.New(runtime, files.Project, files.Compose, files.Env), m, files); err != nil {
 		t.Fatal(err)
 	}
-	waitRabbitMQHAReady(t, ctx, provideroperation.New(runtime, files.Project, files.Compose, files.Env), m, files)
+	op := provideroperation.New(runtime, files.Project, files.Compose, files.Env)
+	waitRabbitMQHAReady(t, ctx, op, m, files)
+
+	beforeRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldUser := beforeRotation[rabbitmqRuntimeKey(defaultServiceInstance, "USER")]
+	oldPassword := beforeRotation[rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD")]
+	oldAdminPassword := beforeRotation[rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")]
+	if err := RotateRabbitMQCredential(ctx, runtime, m, files, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate RabbitMQ HA credentials: %v", err)
+	}
+	afterRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRotation[rabbitmqRuntimeKey(defaultServiceInstance, "USER")] == oldUser ||
+		afterRotation[rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD")] == oldPassword ||
+		afterRotation[rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")] == oldAdminPassword {
+		t.Fatal("RabbitMQ credential rotation did not replace application/admin credentials")
+	}
+	waitRabbitMQHAReady(t, ctx, op, m, files)
 
 	environment, err := RuntimeEnvironment(files)
 	if err != nil {
