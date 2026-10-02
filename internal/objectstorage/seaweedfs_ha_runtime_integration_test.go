@@ -72,7 +72,14 @@ func TestSeaweedFSHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		Name:        "default",
 		Provider:    capability.ProviderSeaweedFS,
 	}
-	binding := capability.Binding{ObjectStorageS3: &capability.ObjectStorageS3Binding{Bucket: "default"}}
+	security := application.ObjectStorageSecureBinding(app, resource.Name)
+	if err := security.Validate(); err != nil {
+		t.Fatalf("build S3 secure binding: %v", err)
+	}
+	binding := capability.Binding{
+		ObjectStorageS3: &capability.ObjectStorageS3Binding{Bucket: "default"},
+		Security:        &security,
+	}
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
