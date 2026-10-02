@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate, for example v0.4.19
+        description: Release tag to validate, for example v0.4.20
         required: true
         type: string
       ref:
@@ -296,12 +296,62 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh docker
 
+  adoption:
+    name: Adoption · ${{ matrix.gate }}
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        gate:
+          - conformance
+          - realworld-compose
+          - realworld-quadlet
+          - realworld-kubernetes
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run adoption gate
+        shell: bash
+        env:
+          GATE: ${{ matrix.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            conformance)
+              go test ./internal/repositoryinspect -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution' -count=1
+              ;;
+            realworld-compose)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=compose bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            realworld-quadlet)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=quadlet bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            realworld-kubernetes)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=kubernetes bash scripts/realworld-workload-source-corpus.sh
+              ;;
+          esac
+
   static_gates:
     name: Static · ${{ matrix.gate }}
     needs: source
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 5
       matrix:
         gate:
           - config-matrix
@@ -319,7 +369,7 @@ jobs:
 
   runtime_light_gates:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, adoption]
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -343,7 +393,7 @@ jobs:
 
   runtime_heavy_gates:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, adoption]
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -372,7 +422,7 @@ jobs:
   evidence:
     name: Evidence · Candidate Manifest
     if: always()
-    needs: [source, runtime_candidate, static_gates, runtime_light_gates, runtime_heavy_gates]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -444,6 +494,7 @@ jobs:
           steps.manifest.outcome == 'success' &&
           needs.source.result == 'success' &&
           needs.runtime_candidate.result == 'success' &&
+          needs.adoption.result == 'success' &&
           needs.static_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
           needs.runtime_heavy_gates.result == 'success'
@@ -501,6 +552,7 @@ jobs:
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
           Static gates	${{ needs.static_gates.result }}	5 independently rerunnable static gates
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
+          Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
           Evidence manifest	${{ steps.manifest.outcome }}	41 gate evidence bundles bound to the candidate SHA
           EOF
