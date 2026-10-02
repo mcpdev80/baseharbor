@@ -285,7 +285,6 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
-
 	mcp.AddTool(server, machineMCPTool("provider.add", "Register an externally owned provider from endpoint plus secret-safe credential/trust references.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderAddInput) (*mcp.CallToolResult, any, error) {
 		reg, err := providerExternalRegistration(providerExternalArgs{
 			ID:                input.ID,
