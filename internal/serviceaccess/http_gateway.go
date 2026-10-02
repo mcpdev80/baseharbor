@@ -300,6 +300,21 @@ func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, erro
 	material.CA = ca
 	material.ServerCertificate = cert
 	material.ServerKey = key
+	if strings.TrimSpace(material.ClientCertificate) != "" || strings.TrimSpace(material.ClientKey) != "" {
+		if strings.TrimSpace(material.ClientCertificate) == "" || strings.TrimSpace(material.ClientKey) == "" {
+			return TLSMaterial{}, errors.New("project service client identity requires both certificate and key")
+		}
+		clientCert, err := project(material.ClientCertificate, "client-cert.pem")
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("project service client certificate: %w", err)
+		}
+		clientKey, err := project(material.ClientKey, "client-key.pem")
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("project service client key: %w", err)
+		}
+		material.ClientCertificate = clientCert
+		material.ClientKey = clientKey
+	}
 	return material, nil
 }
 
