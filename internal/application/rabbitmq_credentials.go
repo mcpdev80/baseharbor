@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
 )
 
 type rabbitMQCredentialRuntime interface {
