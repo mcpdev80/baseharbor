@@ -56,7 +56,10 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-		b.WriteString("    command:\n")
+		b.WriteString("    depends_on:\n")
+	b.WriteString("      keycloak-db-tls-init:\n")
+	b.WriteString("        condition: service_completed_successfully\n")
+	b.WriteString("    command:\n")
 		b.WriteString("      - /usr/local/bin/etcd\n")
 		fmt.Fprintf(&b, "      - --name=%s\n", name)
 		b.WriteString("      - --data-dir=/etcd-data\n")
@@ -72,12 +75,34 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("    networks:\n      identity-internal: {}\n\n")
 	}
 
+	b.WriteString("  keycloak-db-tls-init:\n")
+	fmt.Fprintf(&b, "    image: %s\n", keycloakPostgresImage)
+	b.WriteString("    restart: \"no\"\n")
+	b.WriteString("    user: \"0:0\"\n")
+	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+	b.WriteString("    command:\n")
+	b.WriteString("      - |\n")
+	b.WriteString("        uid=$(id -u postgres); gid=$(id -g postgres)\n")
+	b.WriteString("        cp /source/ca.pem /target/ca.pem\n")
+	b.WriteString("        cp /source/server.pem /target/server.pem\n")
+	b.WriteString("        cp /source/server-key.pem /target/server-key.pem\n")
+	b.WriteString("        chown \"$uid:$gid\" /target/ca.pem /target/server.pem /target/server-key.pem\n")
+	b.WriteString("        chmod 0644 /target/ca.pem /target/server.pem\n")
+	b.WriteString("        chmod 0600 /target/server-key.pem\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./db-ha/runtime:/source:ro\n")
+	b.WriteString("      - keycloak-db-tls:/target\n")
+	b.WriteString("    networks:\n      identity-internal: {}\n\n")
+
 	for ordinal := 1; ordinal <= 3; ordinal++ {
 		name := fmt.Sprintf("keycloak-db-member-%d", ordinal)
 		fmt.Fprintf(&b, "  %s:\n", name)
 		fmt.Fprintf(&b, "    image: %s\n", keycloakPostgresImage)
 		b.WriteString("    restart: unless-stopped\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    depends_on:\n")
+		b.WriteString("      keycloak-db-tls-init:\n")
+		b.WriteString("        condition: service_completed_successfully\n")
 		b.WriteString("    environment:\n")
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		b.WriteString("      SCOPE: baseharbor-keycloak-db\n")
@@ -94,7 +119,7 @@ func keycloakHADataLayerCompose() string {
 		fmt.Fprintf(&b, "      SPILO_CONFIGURATION: |\n        postgresql:\n          connect_address: %s:5432\n        restapi:\n          connect_address: %s:8008\n", name, name)
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(&b, "      - keycloak-db-data-%d:/home/postgres/pgroot\n", ordinal)
-		b.WriteString("      - ./db-ha/runtime:/run/baseharbor/db-tls:ro\n")
+		b.WriteString("      - keycloak-db-tls:/run/baseharbor/db-tls:ro\n")
 		b.WriteString("    networks:\n      identity-internal: {}\n\n")
 	}
 
@@ -120,10 +145,10 @@ func keycloakHADataLayerCompose() string {
 	b.WriteString("      BASEHARBOR_KEYCLOAK_DB_USER: ${BASEHARBOR_KEYCLOAK_DB_USER}\n")
 	b.WriteString("      BASEHARBOR_KEYCLOAK_DB_NAME: ${BASEHARBOR_KEYCLOAK_DB_NAME}\n")
 	b.WriteString("      PGSSLMODE: verify-full\n")
-	b.WriteString("      PGSSLROOTCERT: /run/baseharbor/db-ca/ca.pem\n")
+	b.WriteString("      PGSSLROOTCERT: /run/baseharbor/db-tls/ca.pem\n")
 	b.WriteString("      PGCONNECT_TIMEOUT: \"1\"\n")
 	b.WriteString("    volumes:\n")
-	b.WriteString("      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-ca/ca.pem:ro\n")
+	b.WriteString("      - keycloak-db-tls:/run/baseharbor/db-tls:ro\n")
 	b.WriteString("    command:\n")
 	b.WriteString("      - /bin/sh\n")
 	b.WriteString("      - -ec\n")
@@ -137,6 +162,7 @@ func keycloakHADataLayerCompose() string {
 
 func keycloakHAVolumesCompose() string {
 	var b strings.Builder
+	b.WriteString("  keycloak-db-tls:\n")
 	for ordinal := 1; ordinal <= 3; ordinal++ {
 		fmt.Fprintf(&b, "  keycloak-db-data-%d:\n", ordinal)
 		fmt.Fprintf(&b, "  keycloak-db-etcd-data-%d:\n", ordinal)
