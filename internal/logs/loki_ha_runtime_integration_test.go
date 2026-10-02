@@ -24,7 +24,9 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	defer cancel()
 
 	runtime, err := testruntime.Resolve(ctx)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	dataDir := filepath.Join(t.TempDir(), "data")
 	namespace := "loki-ha-acceptance"
 	t.Setenv(application.LogsEnabledEnv, "true")
@@ -40,11 +42,15 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	if err := driver.Preflight(ctx, resource, binding); err != nil { t.Fatal(err) }
 	if err := driver.Provision(ctx, resource, binding); err != nil { t.Fatalf("provision Loki HA: %v", err) }
-	defer func(){ _ = logs.DestroyProviderAt(context.Background(), runtime, m, dataDir, namespace) }()
+	defer func() {
+		_ = logs.DestroyProviderAt(context.Background(), runtime, m, dataDir, namespace)
+	}()
 	if err := driver.Bind(ctx, resource, binding); err != nil { t.Fatal(err) }
 
 	registration, err := logs.ApplicationRegistrationAt(dataDir, namespace, m)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	workdir := t.TempDir()
 	composeFile := filepath.Join(workdir, "compose.yaml")
 	envFile := filepath.Join(workdir, "runtime.env")
@@ -63,13 +69,19 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(envFile, nil, 0o600); err != nil { t.Fatal(err) }
 	if err := runtime.UpProject(ctx, project, composeFile, envFile); err != nil { t.Fatal(err) }
-	defer func(){ _ = runtime.DestroyProject(context.Background(), project, composeFile, envFile) }()
+	defer func() {
+		_ = runtime.DestroyProject(context.Background(), project, composeFile, envFile)
+	}()
 
 	waitLokiHA(t, ctx, driver, resource, binding)
 	files, err := logs.ExistingProviderFilesAt(dataDir, namespace, m)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	placement, err := logs.PlacementForAt(dataDir, namespace, m)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	env := readLokiHAEnv(t, files.Env)
 
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
@@ -89,7 +101,9 @@ func waitLokiHA(t *testing.T, ctx context.Context, driver interface {
 	deadline := time.Now().Add(75 * time.Second)
 	var last error
 	for time.Now().Before(deadline) {
-		if last = driver.Verify(ctx, resource, binding); last == nil { return }
+		if last = driver.Verify(ctx, resource, binding); last == nil {
+			return
+		}
 		time.Sleep(time.Second)
 	}
 	t.Fatalf("stable Loki endpoint lost ingestion/query continuity: %v", last)
@@ -98,13 +112,19 @@ func waitLokiHA(t *testing.T, ctx context.Context, driver interface {
 func readLokiHAEnv(t *testing.T, path string) map[string]string {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	values := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") { continue }
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok { t.Fatalf("invalid Loki env line %q", line) }
+		if !ok {
+			t.Fatalf("invalid Loki env line %q", line)
+		}
 		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
 	}
 	return values
