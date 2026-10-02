@@ -251,7 +251,6 @@ func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
 	}
 }
 
-
 func TestTypedOrganizationSourceErrors(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
