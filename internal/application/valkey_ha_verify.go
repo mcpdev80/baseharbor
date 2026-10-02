@@ -39,9 +39,17 @@ func VerifyValkeyHACluster(ctx context.Context, runtime valkeyHAProbeRuntime, m 
 			role := parseValkeyReplicationRole(out)
 			switch role {
 			case "master":
+				wantReplicas := valkeyMemberCount(m, instance) - 1
+				connected := parseValkeyReplicationField(out, "connected_slaves")
+				if connected != fmt.Sprintf("%d", wantReplicas) {
+					return fmt.Errorf("Valkey HA master %s has connected_slaves=%q, want %d", service, connected, wantReplicas)
+				}
 				masterCount++
 				observedMaster = service
 			case "slave", "replica":
+				if link := parseValkeyReplicationField(out, "master_link_status"); link != "up" {
+					return fmt.Errorf("Valkey HA replica %s has master_link_status=%q, require up", service, link)
+				}
 			default:
 				return fmt.Errorf("Valkey HA member %s reported unsupported replication role %q", service, role)
 			}
@@ -156,6 +164,17 @@ func valkeyMemberAddressFromSentinel(ctx context.Context, runtime valkeyHAProbeR
 		return hostPort[:idx], nil
 	}
 	return "", fmt.Errorf("Valkey member %s CLIENT INFO has no laddr", member)
+}
+
+func parseValkeyReplicationField(out, key string) string {
+	prefix := key + ":"
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r", ""), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
 }
 
 func parseValkeyReplicationRole(out string) string {
