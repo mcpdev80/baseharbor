@@ -236,7 +236,41 @@ func VerifyValkeyProvider(ctx context.Context, executor BackendProbeExecutor, m 
 	return nil
 }
 func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
-	return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+	if UsesSharedValkey(m) {
+		return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+	}
+	executor := NewRuntimeBackendProbeExecutor(runtime, files)
+	for _, instance := range CacheInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, false); err != nil {
+				return fmt.Errorf("verify Valkey HA cache instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	for _, instance := range KeyValueInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, true); err != nil {
+				return fmt.Errorf("verify durable Valkey HA instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "durable" {
+			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
