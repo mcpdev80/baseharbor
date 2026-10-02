@@ -197,9 +197,6 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		return ProviderFiles{}, err
 	}
 	alloy := alloyConfigForModeSources(registrations, providerSources, mode, platformSyslogPort)
-	if storage != nil {
-		alloy = lokiHAAlloyConfig(alloy)
-	}
 	if err := os.WriteFile(files.AlloyConfig, []byte(alloy), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
@@ -223,6 +220,12 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
+	}
+	if storage != nil {
+		alloy = lokiHAAlloyConfig(alloy, accessPolicy.AuthenticationRequired && accessPolicy.Authentication == serviceaccess.AuthenticationMTLS)
+		if err := os.WriteFile(files.AlloyConfig, []byte(alloy), 0o644); err != nil {
+			return ProviderFiles{}, err
+		}
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork)), 0o600); err != nil {
 		return ProviderFiles{}, err
