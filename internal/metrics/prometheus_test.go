@@ -102,7 +102,7 @@ func TestBindWritesAttributedTargetAndPrunesOnlySameApplication(t *testing.T) {
 
 	alpha := application.New("alpha", "dev", false, false, false)
 	alpha.Services.SQL = false
-	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithWorkloadComponents(alpha, "api")
 	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
 
 	beta := alpha
@@ -185,7 +185,7 @@ func TestSharedProviderUsesSeparateNetworkPerApplication(t *testing.T) {
 
 	alpha := application.New("alpha", "dev", false, false, false)
 	alpha.Services.SQL = false
-	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithWorkloadComponents(alpha, "api")
 	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
 
 	beta := alpha
@@ -432,7 +432,7 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 
 	alpha := application.New("alpha", "dev", false, false, false)
 	alpha.Services.SQL = false
-	alpha = application.WithWorkload(alpha, "compose.yaml", "api")
+	alpha = application.WithWorkloadComponents(alpha, "api")
 	alpha = application.WithMetricsSource(alpha, "application", "api", 8080, "/metrics")
 
 	beta := alpha

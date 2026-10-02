@@ -18,35 +18,38 @@ import (
 var appInitInput io.Reader = os.Stdin
 
 type appProjectDetection struct {
-	Name                   string
-	ComposeCandidates      []string
-	Compose                string
-	WorkloadServices       []string
-	InfrastructureServices []string
-	AmbiguousServices      []string
-	SQL                    bool
-	SQLSource              string
-	SQLInstances           []string
-	Cache                  bool
-	CacheSource            string
-	CacheInstances         []string
-	ObjectStorage          bool
-	ObjectStorageSuggested bool
-	ObjectStorageSource    string
-	Metrics                bool
-	MetricsSuggested       bool
-	MetricsSource          string
-	OTLP                   bool
-	OTLPSuggested          bool
-	OTLPSignals            []string
-	OTLPSource             string
-	LogsSuggested          bool
-	RuntimeAPI             bool
-	RuntimePermissions     map[string][]string
-	Ports                  []repositoryinspect.PortEvidence
-	SecretCandidates       []string
-	SecretSources          map[string]string
-	EnvFiles               []string
+	Name                     string
+	WorkloadSourceCandidates []repositoryinspect.WorkloadSourceCandidate
+	SelectedWorkloadSource   *repositoryinspect.WorkloadSourceCandidate
+	WorkloadEvidence         *repositoryinspect.WorkloadEvidence
+	ComposeCandidates        []string
+	Compose                  string
+	WorkloadServices         []string
+	InfrastructureServices   []string
+	AmbiguousServices        []string
+	SQL                      bool
+	SQLSource                string
+	SQLInstances             []string
+	Cache                    bool
+	CacheSource              string
+	CacheInstances           []string
+	ObjectStorage            bool
+	ObjectStorageSuggested   bool
+	ObjectStorageSource      string
+	Metrics                  bool
+	MetricsSuggested         bool
+	MetricsSource            string
+	OTLP                     bool
+	OTLPSuggested            bool
+	OTLPSignals              []string
+	OTLPSource               string
+	LogsSuggested            bool
+	RuntimeAPI               bool
+	RuntimePermissions       map[string][]string
+	Ports                    []repositoryinspect.PortEvidence
+	SecretCandidates         []string
+	SecretSources            map[string]string
+	EnvFiles                 []string
 }
 
 type guidedSecretPolicy struct {
@@ -54,15 +57,6 @@ type guidedSecretPolicy struct {
 	Source    string
 	Required  bool
 	Provision string
-}
-
-type composeServiceDetection struct {
-	Name     string
-	Postgres bool
-	Redis    bool
-	HasBuild bool
-	HasImage bool
-	HasPorts bool
 }
 
 func appGuidedInitCommand() *cli.Command {
@@ -159,7 +153,23 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	if err := applyGuidedDevAccess(devSetup); err != nil {
 		return fmt.Errorf("configure local development access: %w", err)
 	}
-	return writeRepositoryManifest(m, out)
+	var repositoryMetadataPath string
+	if selection.persistWorkloadSource && selection.workloadSource != nil {
+		repositoryMetadataPath, err = repositoryinspect.WriteRepositoryMetadata(".", *selection.workloadSource)
+		if err != nil {
+			return fmt.Errorf("persist workload source selection: %w", err)
+		}
+	}
+	if err := writeRepositoryManifest(m, out); err != nil {
+		if repositoryMetadataPath != "" {
+			_ = os.Remove(repositoryMetadataPath)
+		}
+		return err
+	}
+	if repositoryMetadataPath != "" {
+		fmt.Fprintf(out, "Repository source selection: %s\n", repositoryMetadataPath)
+	}
+	return nil
 }
 
 func detectedApplicationManifest(name, environment string, sql, cache, objectStorage, secrets, hasWorkload bool) application.Manifest {
@@ -181,8 +191,18 @@ func detectedApplicationManifest(name, environment string, sql, cache, objectSto
 }
 
 func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
-	if quick && len(d.ComposeCandidates) > 1 && strings.TrimSpace(d.Compose) == "" {
-		return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
+	if quick && len(d.WorkloadSourceCandidates) > 1 && d.SelectedWorkloadSource == nil {
+		allCompose := true
+		for _, candidate := range d.WorkloadSourceCandidates {
+			if candidate.Kind != repositoryinspect.WorkloadSourceCompose {
+				allCompose = false
+				break
+			}
+		}
+		if allCompose {
+			return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
+		}
+		return application.Manifest{}, usageError("multiple workload sources were detected", "Run 'baha app init' interactively to choose the authoritative Compose, Quadlet or Kubernetes source.")
 	}
 	if quick && len(d.AmbiguousServices) > 0 {
 		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
@@ -192,7 +212,7 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	// Quick mode must never promote them into required portable contract entries
 	// without an explicit developer confirmation.
 	secrets := false
-	hasWorkload := d.Compose != "" && len(d.WorkloadServices) > 0
+	hasWorkload := len(d.WorkloadServices) > 0
 	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
 			"no unambiguous application requirements were detected",
@@ -209,8 +229,8 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	if !quick {
 		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
 	}
-	if d.Compose != "" && len(d.WorkloadServices) > 0 {
-		m = application.WithWorkload(m, d.Compose, d.WorkloadServices...)
+	if len(d.WorkloadServices) > 0 {
+		m = application.WithWorkloadComponents(m, d.WorkloadServices...)
 	}
 	if quick && d.Metrics {
 		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)

@@ -52,7 +52,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	}
 
 	m := application.New("observability-fullstack-ci", "dev", true, true, false)
-	m = application.WithWorkload(m, "compose.yaml", "api", "trace-probe")
+	m = application.WithWorkloadComponents(m, "api", "trace-probe")
 	m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 	m = application.WithLogsCollection(m, "application")
 	m = application.WithOTLPTelemetry(m, "traces")

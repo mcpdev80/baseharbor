@@ -3,9 +3,9 @@ package application
 import (
 	"errors"
 	"fmt"
-	"github.com/mcpdev80/baseharbor/internal/capability"
-	"path/filepath"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func (m Manifest) Validate() error {
@@ -138,8 +138,8 @@ func (m Manifest) Validate() error {
 
 func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePermission) error {
 	seenCapabilities := map[string]struct{}{}
-	selectedServices := make(map[string]struct{}, len(workload.Services))
-	for _, service := range workload.Services {
+	selectedServices := make(map[string]struct{}, len(workloadComponentNames(workload)))
+	for _, service := range workloadComponentNames(workload) {
 		selectedServices[service] = struct{}{}
 	}
 	for _, permission := range permissions {
@@ -153,7 +153,7 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 		}
 		seenCapabilities[canonical] = struct{}{}
 		if len(permission.Services) == 0 {
-			return fmt.Errorf("runtime permission %q requires at least one workload service", canonical)
+			return fmt.Errorf("runtime permission %q requires at least one workload component", canonical)
 		}
 		seenServices := map[string]struct{}{}
 		for _, service := range permission.Services {
@@ -161,12 +161,12 @@ func validateRuntimePermissions(workload WorkloadConfig, permissions []RuntimePe
 				return fmt.Errorf("runtime permission %q: %w", canonical, err)
 			}
 			if _, exists := seenServices[service]; exists {
-				return fmt.Errorf("runtime permission %q repeats workload service %q", canonical, service)
+				return fmt.Errorf("runtime permission %q repeats workload component %q", canonical, service)
 			}
 			seenServices[service] = struct{}{}
 			if len(selectedServices) > 0 {
 				if _, exists := selectedServices[service]; !exists {
-					return fmt.Errorf("runtime permission %q targets workload service %q which is not selected", canonical, service)
+					return fmt.Errorf("runtime permission %q targets workload component %q which is not selected", canonical, service)
 				}
 			}
 		}
@@ -194,8 +194,8 @@ func validateLogsRequirements(workload WorkloadConfig, logs LogsRequirements) er
 	if len(logs.Collect) == 0 {
 		return nil
 	}
-	if len(workload.Services) == 0 {
-		return errors.New("logs collection requires explicit workload.services")
+	if len(workloadComponentNames(workload)) == 0 {
+		return errors.New("logs collection requires explicit workload.components")
 	}
 	seen := map[string]struct{}{}
 	for _, raw := range logs.Collect {
@@ -215,11 +215,11 @@ func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequ
 	if len(sources) == 0 {
 		return nil
 	}
-	if len(workload.Services) == 0 {
-		return fmt.Errorf("metrics sources require explicit workload.services so service identity is deterministic")
+	if len(workloadComponentNames(workload)) == 0 {
+		return fmt.Errorf("metrics sources require explicit workload.components so service identity is deterministic")
 	}
-	selected := make(map[string]struct{}, len(workload.Services))
-	for _, service := range workload.Services {
+	selected := make(map[string]struct{}, len(workloadComponentNames(workload)))
+	for _, service := range workloadComponentNames(workload) {
 		selected[service] = struct{}{}
 	}
 	seen := map[string]struct{}{}
@@ -235,7 +235,7 @@ func validateMetricsSources(workload WorkloadConfig, sources []MetricsSourceRequ
 			return fmt.Errorf("metrics source %q: %w", source.Name, err)
 		}
 		if _, ok := selected[source.Service]; !ok {
-			return fmt.Errorf("metrics source %q targets workload service %q which is not selected", source.Name, source.Service)
+			return fmt.Errorf("metrics source %q targets workload component %q which is not selected", source.Name, source.Service)
 		}
 		if source.Port < 1 || source.Port > 65535 {
 			return fmt.Errorf("metrics source %q has invalid target port %d", source.Name, source.Port)
@@ -251,8 +251,8 @@ func validateOTLPTelemetry(workload WorkloadConfig, requirement *OTLPRequirement
 	if requirement == nil {
 		return nil
 	}
-	if len(workload.Services) == 0 {
-		return fmt.Errorf("OTLP telemetry requires explicit workload.services so service identity is deterministic")
+	if len(workloadComponentNames(workload)) == 0 {
+		return fmt.Errorf("OTLP telemetry requires explicit workload.components so service identity is deterministic")
 	}
 	if len(requirement.Signals) == 0 {
 		return fmt.Errorf("OTLP telemetry requires at least one signal")
@@ -274,12 +274,12 @@ func validateOTLPTelemetry(workload WorkloadConfig, requirement *OTLPRequirement
 }
 
 func validateHTTPExposures(workload WorkloadConfig, exposures []HTTPExposureRequirement) error {
-	if len(exposures) > 0 && len(workload.Services) == 0 {
-		return fmt.Errorf("managed HTTP exposure requires explicit workload.services so endpoint identity is deterministic")
+	if len(exposures) > 0 && len(workloadComponentNames(workload)) == 0 {
+		return fmt.Errorf("managed HTTP exposure requires explicit workload.components so endpoint identity is deterministic")
 	}
 	seen := make(map[string]struct{}, len(exposures))
-	selected := make(map[string]struct{}, len(workload.Services))
-	for _, service := range workload.Services {
+	selected := make(map[string]struct{}, len(workloadComponentNames(workload)))
+	for _, service := range workloadComponentNames(workload) {
 		selected[service] = struct{}{}
 	}
 	for _, exposure := range exposures {
@@ -295,7 +295,7 @@ func validateHTTPExposures(workload WorkloadConfig, exposures []HTTPExposureRequ
 		}
 		if len(selected) > 0 {
 			if _, ok := selected[exposure.Service]; !ok {
-				return fmt.Errorf("HTTP exposure %q targets workload service %q which is not selected", exposure.Name, exposure.Service)
+				return fmt.Errorf("HTTP exposure %q targets workload component %q which is not selected", exposure.Name, exposure.Service)
 			}
 		}
 		if exposure.Port < 1 || exposure.Port > 65535 {
@@ -348,35 +348,42 @@ func validateSecretGeneration(name string, generation *SecretGeneration) error {
 }
 
 func validateWorkload(workload WorkloadConfig) error {
-	if workload.Compose != "" {
-		clean := filepath.Clean(workload.Compose)
-		if filepath.IsAbs(workload.Compose) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("workload compose path %q must stay inside the application repository", workload.Compose)
-		}
-		if clean != workload.Compose {
-			return fmt.Errorf("workload compose path %q must be normalized", workload.Compose)
-		}
-	}
-	seen := make(map[string]struct{}, len(workload.Services))
-	for _, service := range workload.Services {
-		if err := validateComposeServiceName(service); err != nil {
+	seen := make(map[string]struct{}, len(workload.Components))
+	for _, component := range workload.Components {
+		if err := validateWorkloadComponentName(component); err != nil {
 			return err
 		}
-		if _, exists := seen[service]; exists {
-			return fmt.Errorf("duplicate workload service %q", service)
+		if _, exists := seen[component]; exists {
+			return fmt.Errorf("duplicate workload component %q", component)
 		}
-		seen[service] = struct{}{}
+		seen[component] = struct{}{}
+	}
+	return nil
+}
+
+func workloadComponentNames(workload WorkloadConfig) []string {
+	return workload.Components
+}
+
+func validateWorkloadComponentName(name string) error {
+	if name == "" || len(name) > 128 {
+		return fmt.Errorf("invalid workload component name %q", name)
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.') {
+			return fmt.Errorf("invalid workload component name %q", name)
+		}
 	}
 	return nil
 }
 
 func validateComposeServiceName(name string) error {
 	if name == "" || len(name) > 128 {
-		return fmt.Errorf("invalid workload service name %q", name)
+		return fmt.Errorf("invalid workload component name %q", name)
 	}
 	for _, r := range name {
 		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.') {
-			return fmt.Errorf("invalid workload service name %q", name)
+			return fmt.Errorf("invalid workload component name %q", name)
 		}
 	}
 	return nil

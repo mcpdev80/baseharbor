@@ -17,11 +17,11 @@ func appWorkspaceCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "workspace",
 		Summary: "Manage local multi-repository workspace mappings",
-		Usage:   "baha app workspace [<init|map|show|resolve> [options]]",
+		Usage:   "baha app workspace [<init|map|show|resolve|status|update> [options]]",
 		Long:    "With no subcommand, opens the guided multi-repository workspace setup. Portable source identity is kept in .baseharbor/sources.yaml while developer-local checkout paths stay in XDG configuration and never become Application Intent.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) != 0 {
-				return usageError("baha app workspace does not accept positional arguments", "Run 'baha app workspace' for guided setup or choose init, map, show or resolve.")
+				return usageError("baha app workspace does not accept positional arguments", "Run 'baha app workspace' for guided setup or choose init, map, show, resolve, status or update.")
 			}
 			if noInput(ctx) || !readerIsTerminal(appWorkspaceInput) {
 				return usageError("interactive app workspace requires a terminal", "Use 'baha app workspace init' and 'baha app workspace map' for deterministic non-interactive setup.")
@@ -33,6 +33,8 @@ func appWorkspaceCommand() *cli.Command {
 			appWorkspaceMapCommand(),
 			appWorkspaceShowCommand(),
 			appWorkspaceResolveCommand(),
+			appWorkspaceStatusCommand(),
+			appWorkspaceUpdateCommand(),
 		},
 	}
 }

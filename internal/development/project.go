@@ -105,6 +105,28 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		}
 		generated["compose.yaml"] = GeneratedFile{Path: "compose.yaml", Content: compose, Mode: 0o644}
 	}
+	if application.HasExplicitWorkload(manifest) {
+		if _, hasCompose := generated["compose.yaml"]; hasCompose {
+			metadata, err := yaml.Marshal(repositoryinspect.RepositoryMetadata{
+				Version: 1,
+				WorkloadSource: repositoryinspect.RepositoryWorkloadSourceMetadata{
+					Kind: repositoryinspect.WorkloadSourceCompose,
+					Path: "compose.yaml",
+				},
+			})
+			if err != nil {
+				return ProjectResult{}, fmt.Errorf("encode repository workload source metadata: %w", err)
+			}
+			if _, exists := generated[repositoryinspect.RepositoryMetadataName]; exists {
+				return ProjectResult{}, fmt.Errorf("generated file collision at %q", repositoryinspect.RepositoryMetadataName)
+			}
+			generated[repositoryinspect.RepositoryMetadataName] = GeneratedFile{
+				Path:    repositoryinspect.RepositoryMetadataName,
+				Content: metadata,
+				Mode:    0o644,
+			}
+		}
+	}
 
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return ProjectResult{}, err

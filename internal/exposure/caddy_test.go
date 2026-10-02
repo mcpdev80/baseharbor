@@ -78,7 +78,7 @@ func TestComposeConsumesStableWorkloadOwnedExposureNetworkAndNoProviderVolume(t 
 func TestHTTPSAllowsLocalGatewayTerminationAndRejectsUnsupportedTLS(t *testing.T) {
 	m := application.Manifest{
 		Version: 1, Name: "demo", Environment: "dev",
-		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:  application.WorkloadConfig{Components: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "https"}},
 	}
 	resource := capabilityResource(m, "public")
@@ -97,7 +97,7 @@ func TestHTTPSAllowsLocalGatewayTerminationAndRejectsUnsupportedTLS(t *testing.T
 func TestLifecycleAllowsLocalGatewayTermination(t *testing.T) {
 	m := application.Manifest{
 		Version: 1, Name: "demo", Environment: "dev",
-		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}},
+		Workload:  application.WorkloadConfig{Components: []string{"web"}},
 		Exposures: []application.HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "https"}},
 	}
 	resource := capabilityResource(m, "public")

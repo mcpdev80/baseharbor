@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to validate, for example v0.4.19
+        description: Release tag to validate, for example v0.4.20
         required: true
         type: string
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: develop
+        default: release/v0.4.20
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
@@ -165,6 +165,21 @@ jobs:
           mkdocs build --strict --config-file mkdocs.de.yml
           bash scripts/documentation-audit.sh
 
+      - name: Validate v0.4.20 release-note hygiene
+        id: v0420_hygiene
+        if: steps.release.outputs.tag == 'v0.4.20'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_internal="$(
+            grep -n -Ei 'corpus|unit test|conformance|schema_version|fingerprint|adapter v1|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.20.md || true
+          )"
+          test -z "$release_internal" || {
+            echo "Internal validation detail leaked into user-facing release notes:" >&2
+            echo "$release_internal" >&2
+            exit 1
+          }
+
       - name: Validate workflow syntax
         id: workflow_syntax
         shell: bash
@@ -220,6 +235,7 @@ jobs:
           Source readability	${{ steps.source_readability.outcome }}	production source guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests and vet
           Documentation	${{ steps.docs.outcome }}	strict EN/DE docs and audit
+          v0.4.20 release-note hygiene	${{ steps.v0420_hygiene.outcome }}	user-facing release notes exclude internal validation details
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Release snapshot	${{ steps.snapshot.outcome }}	GoReleaser snapshot
           Snapshot verification	${{ steps.snapshot_verify.outcome }}	linux amd64/arm64 archives
@@ -238,6 +254,7 @@ jobs:
           path: ${{ runner.temp }}/pre-release-source-evidence
           if-no-files-found: error
           retention-days: 30
+
 
   runtime_candidate:
     name: Candidate · Runtime Image
@@ -296,12 +313,99 @@ jobs:
         if: always()
         run: bash scripts/ci-runtime-reset.sh docker
 
+  adoption:
+    name: Adoption · ${{ matrix.gate }}
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        gate:
+          - conformance
+          - realworld-compose
+          - realworld-quadlet
+          - realworld-kubernetes
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run adoption gate
+        id: adoption_gate
+        shell: bash
+        env:
+          GATE: ${{ matrix.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            conformance)
+              go test ./internal/repositoryinspect -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution' -count=1
+              legacy="$(
+                find cmd internal docs -type f \( -name '*.go' -o -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) -print0 |
+                  xargs -0 grep -n -E -- '--workload-compose|--workload-service|workload\\.compose|workload\\.services|Manifest\\.Workload\\.(Compose|Services)' || true
+              )"
+              if [ -n "$legacy" ]; then
+                echo "$legacy" >&2
+                exit 1
+              fi
+              ;;
+            realworld-compose)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=compose bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            realworld-quadlet)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=quadlet bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            realworld-kubernetes)
+              go build -trimpath -o /tmp/baha ./cmd/baha
+              BAHA=/tmp/baha CORPUS_CATEGORY=kubernetes bash scripts/realworld-workload-source-corpus.sh
+              ;;
+          esac
+
+      - name: Generate adoption evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/adoption-evidence"
+          mkdir -p "$out"
+          jq -n \
+            --arg schema "baseharbor.pre-release.adoption-evidence/v1" \
+            --arg gate "${{ matrix.gate }}" \
+            --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
+            --arg outcome "${{ steps.adoption_gate.outcome }}" \
+            '{
+              schema: $schema,
+              gate: $gate,
+              candidate_sha: $candidate_sha,
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload adoption evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-adoption-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/adoption-evidence
+          if-no-files-found: error
+          retention-days: 30
+
   static_gates:
     name: Static · ${{ matrix.gate }}
     needs: source
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 5
       matrix:
         gate:
           - config-matrix
@@ -319,7 +423,7 @@ jobs:
 
   runtime_light_gates:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, adoption]
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -343,7 +447,7 @@ jobs:
 
   runtime_heavy_gates:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, adoption]
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -372,7 +476,7 @@ jobs:
   evidence:
     name: Evidence · Candidate Manifest
     if: always()
-    needs: [source, runtime_candidate, static_gates, runtime_light_gates, runtime_heavy_gates]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -385,6 +489,34 @@ jobs:
         with:
           pattern: pre-release-gate-*-evidence-*
           path: ${{ runner.temp }}/gate-evidence
+
+      - name: Download adoption evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-adoption-*-evidence-*
+          path: ${{ runner.temp }}/adoption-evidence
+
+      - name: Verify adoption evidence
+        id: adoption_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find "$RUNNER_TEMP/adoption-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 4
+          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/adoption-manifests.json"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            '
+              length == 4 and
+              all(.[];
+                .schema == "baseharbor.pre-release.adoption-evidence/v1" and
+                .candidate_sha == $candidate and
+                .outcome == "success"
+              ) and
+              ([.[].gate] | sort) == ["conformance","realworld-compose","realworld-kubernetes","realworld-quadlet"]
+            ' "$RUNNER_TEMP/adoption-manifests.json" >/dev/null
 
       - name: Verify complete atomic evidence set
         id: manifest
@@ -437,6 +569,7 @@ jobs:
           cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
           cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
+          cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
 
       - name: Generate immutable release approval
         id: approval
@@ -444,6 +577,8 @@ jobs:
           steps.manifest.outcome == 'success' &&
           needs.source.result == 'success' &&
           needs.runtime_candidate.result == 'success' &&
+          needs.adoption.result == 'success' &&
+          steps.adoption_manifest.outcome == 'success' &&
           needs.static_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
           needs.runtime_heavy_gates.result == 'success'
@@ -465,7 +600,7 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg result "success" \
-            --argjson gate_count 41 \
+            --argjson gate_count 45 \
             '{
               schema: $schema,
               tag: $tag,
@@ -481,6 +616,7 @@ jobs:
             }' > "$out/release-approved.json"
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json" "$out/adoption-manifests.json"
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
@@ -499,10 +635,12 @@ jobs:
           cat >"$rows" <<EOF
           Source	${{ needs.source.result }}	exact candidate source/contracts/docs
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
-          Static gates	${{ needs.static_gates.result }}	5 independently rerunnable static gates
+          Static gates	${{ needs.static_gates.result }}	5 independently rerunnable demo/static gates
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
+          Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
-          Evidence manifest	${{ steps.manifest.outcome }}	41 gate evidence bundles bound to the candidate SHA
+          Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
+          Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
 

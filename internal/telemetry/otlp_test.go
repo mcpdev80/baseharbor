@@ -34,7 +34,7 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 	}))
 	defer server.Close()
 	t.Setenv(application.OTLPEndpointEnv, server.URL)
-	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
+	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Components: []string{"api"}}}, "traces")
 	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
 	if err := d.Verify(context.Background(), resource, capability.Binding{}); err != nil {
@@ -51,7 +51,7 @@ func TestExternalOTLPVerifySendsRealProtobufTrace(t *testing.T) {
 func TestExternalOTLPPreflightRejectsInvalidEndpoint(t *testing.T) {
 	_ = os.Setenv(application.OTLPEndpointEnv, "ftp://bad.example")
 	defer os.Unsetenv(application.OTLPEndpointEnv)
-	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Services: []string{"api"}}}, "traces")
+	m := application.WithOTLPTelemetry(application.Manifest{Version: 1, Name: "demo", Environment: "test", Workload: application.WorkloadConfig{Components: []string{"api"}}}, "traces")
 	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	resource := capability.Resource{Application: "demo", Kind: capability.TelemetryOTLP, Name: "default", Provider: capability.ProviderExternalOTLP}
 	binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: []string{"traces"}}}
@@ -80,7 +80,7 @@ func TestExternalProviderSelectionWithoutEndpointFailsClosed(t *testing.T) {
 	t.Setenv(application.OTLPEndpointEnv, "")
 	m := application.WithOTLPTelemetry(application.Manifest{
 		Version: 1, Name: "demo", Environment: "test",
-		Workload: application.WorkloadConfig{Services: []string{"api"}},
+		Workload: application.WorkloadConfig{Components: []string{"api"}},
 	}, "traces")
 	d := NewDriver(noopRuntime{}, m, application.RuntimeFiles{}, serviceissuer.New(t))
 	if d.Descriptor().Kind != capability.ProviderExternalOTLP {

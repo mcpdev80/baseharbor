@@ -48,8 +48,15 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 		return err
 	}
 
-	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repoRoot, resolved.Manifest)
+	if err != nil {
+		return err
+	}
+	if composeSource == "" {
+		return nil
+	}
+	composePath, err := application.ResolveWorkloadComposeSource(repoRoot, composeSource)
+	if err != nil {
 		return err
 	}
 	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
@@ -141,8 +148,15 @@ func mergeRepositoryDeploymentWorkloadPorts(environment map[string]string, resol
 		return nil
 	}
 	repoRoot := resolved.repositoryRoot()
-	composePath, found, err := application.ResolveWorkloadCompose(repoRoot, resolved.Manifest)
-	if err != nil || !found {
+	composeSource, err := selectedRepositoryComposeSource(repoRoot, resolved.Manifest)
+	if err != nil {
+		return err
+	}
+	if composeSource == "" {
+		return nil
+	}
+	composePath, err := application.ResolveWorkloadComposeSource(repoRoot, composeSource)
+	if err != nil {
 		return err
 	}
 	variables, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})

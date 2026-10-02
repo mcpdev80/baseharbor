@@ -11,8 +11,7 @@ func TestBuildPlanSupportsCurrentObservabilityCapabilities(t *testing.T) {
 		Name:        "demo",
 		Environment: "dev",
 		Workload: WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"api"},
+			Components: []string{"api"},
 		},
 		Metrics: MetricsRequirements{Sources: []MetricsSourceRequirement{
 			{Name: "application", Service: "api", Port: 8080, Path: "/metrics"},

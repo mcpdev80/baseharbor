@@ -11,7 +11,29 @@ import (
 	"strings"
 )
 
-const maxInspectionFileSize = 2 << 20
+const (
+	maxInspectionFileSize   = 2 << 20
+	maxInspectionFiles      = 10000
+	maxInspectionTotalBytes = 64 << 20
+	maxInspectionDepth      = 64
+)
+
+type inspectionBudget struct {
+	files int
+	bytes int64
+}
+
+func (b *inspectionBudget) add(size int64) error {
+	b.files++
+	if b.files > maxInspectionFiles {
+		return fmt.Errorf("repository inspection file limit exceeded: more than %d relevant files", maxInspectionFiles)
+	}
+	b.bytes += size
+	if b.bytes > maxInspectionTotalBytes {
+		return fmt.Errorf("repository inspection size limit exceeded: more than %d bytes of relevant files", maxInspectionTotalBytes)
+	}
+	return nil
+}
 
 var ignoredDirectories = map[string]struct{}{
 	".git": {}, ".baseharbor": {}, "node_modules": {}, "vendor": {},
@@ -67,6 +89,43 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		result.Application = "app"
 	}
 
+	workloadCandidates, err := InspectWorkloadSources(snapshot)
+	if err != nil {
+		return Result{}, fmt.Errorf("inspect workload sources: %w", err)
+	}
+	result.WorkloadSourceCandidates = workloadCandidates
+	repositoryMetadata, metadataErr := repositoryMetadataFromSnapshot(snapshot)
+	if metadataErr != nil {
+		result.WorkloadSourceResolution = WorkloadSourceResolution{
+			SchemaVersion:  "baseharbor.workload-source-resolution/v1",
+			State:          WorkloadSourceResolutionInvalid,
+			Reason:         WorkloadSourceReasonInvalidRepositoryMetadata,
+			CandidateCount: len(workloadCandidates),
+			Message:        metadataErr.Error(),
+		}
+	} else {
+		var explicit *WorkloadSourceCandidate
+		if repositoryMetadata != nil {
+			explicit = &WorkloadSourceCandidate{
+				Kind: repositoryMetadata.WorkloadSource.Kind,
+				Path: repositoryMetadata.WorkloadSource.Path,
+			}
+		}
+		result.WorkloadSourceResolution = ResolveWorkloadSource(workloadCandidates, explicit)
+		if result.WorkloadSourceResolution.State == WorkloadSourceResolutionInvalid && result.WorkloadSourceResolution.Message == "" {
+			result.WorkloadSourceResolution.Message = fmt.Sprintf("%s does not match any detected workload source", RepositoryMetadataName)
+		}
+	}
+	selected := result.WorkloadSourceResolution.Selected
+	if selected != nil {
+		result.SelectedWorkloadSource = selected
+		evidence, normalizeErr := NormalizeWorkloadSource(snapshot, *selected)
+		if normalizeErr != nil {
+			return Result{}, fmt.Errorf("normalize workload source %s %s: %w", selected.Kind, selected.Path, normalizeErr)
+		}
+		result.WorkloadEvidence = &evidence
+	}
+
 	var manifest *application.Manifest
 	var declared []CapabilityIntent
 	if _, ok := snapshot.Files["baseharbor.yaml"]; ok {
@@ -94,18 +153,17 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 	}
 	result.ComposeCandidates = artifactPaths(artifacts, "compose")
-	if manifest != nil && strings.TrimSpace(manifest.Workload.Compose) != "" {
-		result.SelectedCompose = filepath.ToSlash(manifest.Workload.Compose)
-		result.WorkloadServices = append([]string(nil), manifest.Workload.Services...)
-	} else if rootCompose := singleRootComposeCandidate(result.ComposeCandidates); rootCompose != "" {
-		result.SelectedCompose = rootCompose
-	} else if len(result.ComposeCandidates) == 1 {
-		result.SelectedCompose = result.ComposeCandidates[0]
+	if manifest != nil {
+		result.WorkloadServices = append([]string(nil), application.WorkloadComponentNames(*manifest)...)
 	}
-	for _, rel := range result.ComposeCandidates {
+	if result.SelectedWorkloadSource != nil && result.SelectedWorkloadSource.Kind == WorkloadSourceCompose {
+		result.SelectedCompose = result.SelectedWorkloadSource.Path
+	}
+	if result.SelectedCompose != "" {
+		rel := result.SelectedCompose
 		services, detectErr := detectComposeServices(snapshot.Files[rel])
 		if detectErr != nil {
-			return Result{}, fmt.Errorf("inspect Compose file %s: %w", rel, detectErr)
+			return Result{}, fmt.Errorf("inspect selected Compose file %s: %w", rel, detectErr)
 		}
 		for _, service := range services {
 			if manifest == nil && rel == result.SelectedCompose {
@@ -167,11 +225,12 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}})
 	}
 
+	detectorSnapshot := snapshotForSelectedWorkloadSource(snapshot, result.SelectedWorkloadSource)
 	for _, detector := range e.Detectors {
 		if detector == nil {
 			continue
 		}
-		findings, err := detector.Detect(ctx, snapshot)
+		findings, err := detector.Detect(ctx, detectorSnapshot)
 		if err != nil {
 			return Result{}, fmt.Errorf("repository detector %s: %w", detector.Name(), err)
 		}
@@ -184,6 +243,22 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.Declared, result.Reconciliation = Reconcile(result.Findings, declared)
 	sortResult(&result)
 	return result, nil
+}
+
+func snapshotForSelectedWorkloadSource(snapshot Snapshot, selected *WorkloadSourceCandidate) Snapshot {
+	filtered := Snapshot{Root: snapshot.Root, Files: make(map[string][]byte, len(snapshot.Files))}
+	selectedCompose := ""
+	if selected != nil && selected.Kind == WorkloadSourceCompose {
+		selectedCompose = filepath.ToSlash(selected.Path)
+	}
+	for path, data := range snapshot.Files {
+		base := strings.ToLower(filepath.Base(path))
+		if isComposeFile(base) && filepath.ToSlash(path) != selectedCompose {
+			continue
+		}
+		filtered.Files[path] = data
+	}
+	return filtered
 }
 
 func singleRootComposeCandidate(candidates []string) string {
@@ -204,6 +279,7 @@ func singleRootComposeCandidate(candidates []string) string {
 func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, error) {
 	snapshot := Snapshot{Root: root, Files: map[string][]byte{}}
 	var artifacts []Artifact
+	var budget inspectionBudget
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -216,6 +292,12 @@ func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, er
 			return err
 		}
 		if rel == "." {
+			return nil
+		}
+		if len(strings.Split(filepath.ToSlash(rel), "/")) > maxInspectionDepth {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if entry.IsDir() {
@@ -238,6 +320,9 @@ func collectSnapshot(ctx context.Context, root string) (Snapshot, []Artifact, er
 		}
 		if info.Size() > maxInspectionFileSize {
 			return nil
+		}
+		if err := budget.add(info.Size()); err != nil {
+			return err
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -272,6 +357,8 @@ func classifyFile(rel string) (string, bool) {
 	switch base {
 	case "baseharbor.yaml":
 		return "baseharbor-manifest", true
+	case RepositoryMetadataName:
+		return "baseharbor-repository-metadata", true
 	case "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
 		return "compose", true
 	case "dockerfile":
@@ -286,6 +373,8 @@ func classifyFile(rel string) (string, bool) {
 	}
 	ext := strings.ToLower(filepath.Ext(base))
 	switch ext {
+	case ".container", ".pod", ".network", ".volume", ".kube":
+		return "quadlet", true
 	case ".json", ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties":
 		return "config", true
 	case ".go", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".kt", ".kts":

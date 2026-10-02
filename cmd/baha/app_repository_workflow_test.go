@@ -142,13 +142,16 @@ func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := os.WriteFile("compose.yaml", []byte("services:\n  demo-app:\n    image: example/demo:1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	if err := runWithIO(context.Background(), []string{
 		"app", "init", "demo",
 		"--sql",
 		"--cache",
-		"--workload-compose", "compose.yaml",
-		"--workload-service", "demo-app",
+		"--workload-source", "compose:compose.yaml",
+		"--workload-component", "demo-app",
 	}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -156,10 +159,14 @@ func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Workload.Compose != "compose.yaml" {
-		t.Fatalf("workload compose = %q want compose.yaml", m.Workload.Compose)
+	components := application.WorkloadComponentNames(m)
+	if len(components) != 1 || components[0] != "demo-app" {
+		t.Fatalf("unexpected workload components: %#v", components)
 	}
-	if len(m.Workload.Services) != 1 || m.Workload.Services[0] != "demo-app" {
-		t.Fatalf("unexpected workload services: %#v", m.Workload.Services)
+	if strings.Contains(m.YAML(), "compose:") || strings.Contains(m.YAML(), "services:\n    - demo-app") {
+		t.Fatalf("source-specific workload identity leaked into manifest:\n%s", m.YAML())
+	}
+	if _, err := os.Stat("baseharbor.repository.yaml"); !os.IsNotExist(err) {
+		t.Fatalf("unambiguous source selection should not require repository metadata: %v", err)
 	}
 }

@@ -1,26 +1,26 @@
-# Security
+# Sicherheit
 
-BaseHarbor behandelt Security als Verhalten, nicht als Label.
+BaseHarbor behandelt Sicherheit als Verhalten, nicht als Etikett.
 
 Die wichtigsten Regeln:
 
-- bei Unsicherheit fail closed;
-- Least Privilege;
-- Ownership explizit prüfen;
-- keine Secrets in normalen Ausgaben;
-- generierte Credentials bleiben geschützter State;
-- keine Mutation ohne Plan und Preflight;
+- bei Unsicherheit sicher abbrechen;
+- minimale notwendige Rechte;
+- Besitz explizit prüfen;
+- keine Geheimnisse in normalen Ausgaben;
+- generierte Zugangsdaten bleiben geschützter Zustand;
+- keine Mutation ohne Plan und Vorprüfung;
 - Erfolg erst nach Verifikation.
 
-Dev darf bequem sein, aber nicht Isolation, Ownership oder Secret-Sicherheit abschalten.
+Die Entwicklungsumgebung darf bequem sein, aber weder Isolation noch Besitzprüfung oder Geheimnissicherheit abschalten.
 
-Normative Security-Regeln stehen in den englischen [Security Invariants](https://mcpdev80.github.io/baseharbor/spec/security-invariants/).
+Normative Sicherheitsregeln stehen in den englischen [Sicherheitsinvarianten](https://mcpdev80.github.io/baseharbor/spec/security-invariants/).
 
 ## Administrationsgrenze bei gemeinsam genutzten Datenbanken
 
-Gemeinsam genutzte Infrastruktur bedeutet niemals gemeinsam genutzte Credentials.
+Gemeinsam genutzte Infrastruktur bedeutet niemals gemeinsam genutzte Zugangsdaten.
 
-Beim Shared-PostgreSQL-Provider ist `baseharbor_admin` ausschließlich ein internes Control-Plane-Credential. Workloads erhalten nur ihre eigene App-Rolle, ihr eigenes Passwort und ihre eigene Datenbankbindung. Provider-Admin-Credentials erscheinen weder in Application Bindings noch in Environment Contracts, Status, Doctor, Evidence oder normalen Diagnosen.
+Beim gemeinsam genutzten PostgreSQL-Provider ist `baseharbor_admin` ausschließlich eine interne Zugangsdaten-Identität der Steuerungsebene. Workloads erhalten nur ihre eigene App-Rolle, ihr eigenes Passwort und ihre eigene Datenbankbindung. Provider-Administrationszugangsdaten erscheinen weder in Anwendungsbindungen noch in Umgebungsverträgen, Status, Doctor, Nachweisen oder normalen Diagnosen.
 
-Destruktive Operationen werden aus Registry/geschütztem Provider-State autorisiert und schlagen bei unklarer Ownership fehl. Vor dem Löschen muss BaseHarbor nachweisen, dass Datenbank und Rolle exakt zur registrierten Kombination aus Application, Environment und SQL-Instanz gehören.
+Destruktive Operationen werden aus der Registrierung und dem geschützten Provider-Zustand autorisiert und schlagen bei unklarem Besitz fehl. Vor dem Löschen muss BaseHarbor nachweisen, dass Datenbank und Rolle exakt zur registrierten Kombination aus Anwendung, Umgebung und SQL-Instanz gehören.
 

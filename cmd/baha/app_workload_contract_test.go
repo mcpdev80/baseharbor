@@ -25,7 +25,7 @@ func TestPreflightRepositoryWorkloadFailsFastForHTTPSContractGap(t *testing.T) {
 			Version:     application.CurrentVersion,
 			Name:        "demo",
 			Environment: "dev",
-			Workload:    application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"demo-app"}},
+			Workload:    application.WorkloadConfig{Components: []string{"demo-app"}},
 		},
 		ManifestPath:   filepath.Join(root, "baseharbor.yaml"),
 		RepositoryRoot: root,

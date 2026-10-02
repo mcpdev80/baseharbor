@@ -21,6 +21,8 @@ The current surface is intentionally small:
 ```text
 baseharbor.target
 baseharbor.workspace.resolve
+baseharbor.workspace.status
+baseharbor.workspace.update
 baseharbor.app.new
 baseharbor.inspect
 baseharbor.plan
@@ -77,6 +79,8 @@ For clients that normalize the server name `baha` plus MCP tool dots into unders
     "baha_*": "ask",
     "baha_baseharbor_target": "allow",
     "baha_baseharbor_status": "allow",
+    "baha_baseharbor_workspace_resolve": "allow",
+    "baha_baseharbor_workspace_status": "allow",
     "baha_baseharbor_inspect": "allow",
     "baha_baseharbor_plan": "allow",
     "baha_baseharbor_doctor": "allow",
@@ -88,7 +92,7 @@ For clients that normalize the server name `baha` plus MCP tool dots into unders
 }
 ```
 
-Permission-key syntax is client-specific. The behavioral rule is not: read-only understanding/planning/verification may be allowed automatically, while `apply`, `update`, `repair`, `backup`, `restore` and `destroy` remain approval-gated.
+Permission-key syntax is client-specific. The behavioral rule is not: read-only understanding/planning/verification may be allowed automatically, while `apply`, lifecycle `update`, `workspace.update`, `repair`, `backup`, `restore` and `destroy` remain approval-gated.
 
 `baseharbor.inspect` is read-only but can inspect repository paths or Git URLs. Environments with stricter information-boundary requirements may therefore keep it on `ask` even though it does not mutate state.
 
@@ -129,4 +133,8 @@ destruction requires explicit BaseHarbor approval too
 
 `baseharbor.app.new` is the semantic greenfield creation operation. It uses the same Application Contract, Stack Profile, Development Plan and adapter model as the human CLI and does not expose a generic shell.
 
-`baseharbor.workspace.resolve` is read-only. It resolves canonical component/source identity against the developer-local XDG workspace mapping and never clones, fetches, checks out or mutates repositories.
+`baseharbor.workspace.resolve` is read-only. It resolves canonical component/source identity against the developer-local XDG workspace mapping.
+
+`baseharbor.workspace.status` exposes the same per-repository Git state model as the human CLI. Optional fetch refreshes remote-tracking state but never changes checked-out revisions.
+
+`baseharbor.workspace.update` uses the same guarded native-Git core as `baha app workspace update`: only clean, non-diverged branches with a configured upstream may fast-forward. MCP cannot bypass dirty/diverged/detached/missing-upstream safety restrictions. `check=true` performs preview-only evaluation.

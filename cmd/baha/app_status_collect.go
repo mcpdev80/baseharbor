@@ -559,7 +559,9 @@ func (c *applicationStatusCollection) collectCanonicalDevelopmentCheck(ctx conte
 		return
 	}
 	if len(hosts) == 0 {
-		c.result.AddCheck("canonical-development-urls", false, "development gateway is required but the application contract defines no canonical route; declare the required exposure.http or management surface")
+		if requiresDeclaredDevelopmentGatewaySurface(c.manifest) {
+			c.result.AddCheck("canonical-development-urls", false, "development gateway is required but the application contract defines no canonical route; declare the required exposure.http or management surface")
+		}
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)

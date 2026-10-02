@@ -7,11 +7,11 @@ Anwendung
    ↓
 Portable Anforderungen
    ↓
-Environment + Policy
+Umgebung + Richtlinie
    ↓
 BaseHarbor Core
    ↓
-Runtime + Capability + Delivery Provider
+Runtime- + Fähigkeits- + Auslieferungs-Provider
    ↓
 Verifiziertes Ergebnis
 ```
@@ -26,13 +26,13 @@ Die Anwendung beschreibt, was sie braucht. Sie schreibt nicht vor, welches Infra
 runtime != capability != delivery
 ```
 
-- Runtime Provider: wo Workloads laufen.
-- Capability Provider: wie eine fachliche Infrastruktur-Anforderung umgesetzt wird.
-- Delivery Provider: wie gewünschter Runtime-State ausgerollt und reconciled wird.
+- Runtime-Provider: wo Workloads laufen.
+- Fähigkeits-Provider: wie eine fachliche Infrastruktur-Anforderung umgesetzt wird.
+- Auslieferungs-Provider: wie der gewünschte Runtime-Zustand ausgerollt und abgeglichen wird.
 
-Aktuell verwendet Docker Docker Compose. Podman uebersetzt dieselben Compose-basierten Workload-/Runtime-Definitionen in native Quadlets und verwaltet sie rootless ueber `systemd --user`. `podman-compose` ist dafuer nicht erforderlich. Kubernetes und OpenShift folgen spaeter.
+Aktuell verwendet Docker Docker Compose. Podman übersetzt dieselben Workload-/Runtime-Anforderungen in native Quadlets und verwaltet sie ohne Root-Rechte über `systemd --user`. `podman-compose` ist dafür nicht erforderlich. Kubernetes und OpenShift folgen später.
 
-## Ownership und Placement
+## Besitz und Platzierung
 
 Wo anwendbar:
 
@@ -44,12 +44,12 @@ external
 
 BaseHarbor verändert nur Ressourcen, die es besitzt.
 
-## Lifecycle
+## Lebenszyklus
 
 ```text
-plan -> preflight -> apply -> verify
+planen -> vorprüfen -> anwenden -> verifizieren
 ```
 
 CLI, JSON und MCP benutzen dieselbe Semantik.
 
-Normative Details stehen ausschließlich in den englischen [Specs](https://mcpdev80.github.io/baseharbor/spec/).
+Normative Details stehen ausschließlich in den englischen [Spezifikationen](https://mcpdev80.github.io/baseharbor/spec/).

@@ -81,8 +81,7 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		Name:          name,
 		Environment:   environment,
 		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: profileComponentIDs(profile),
+			Components: profileComponentIDs(profile),
 		},
 	}
 	requested := map[capability.Kind]bool{}

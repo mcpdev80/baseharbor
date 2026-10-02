@@ -54,7 +54,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	for _, name := range apps {
 		m := application.New(name, "dev", false, false, false)
 		m.Services.SQL = false
-		m = application.WithWorkload(m, "compose.yaml", "api")
+		m = application.WithWorkloadComponents(m, "api")
 		m = application.WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 		driver := NewDriver(compose, m, serviceissuer.New(t))

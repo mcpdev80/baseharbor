@@ -55,10 +55,7 @@ func TestDirectedCrossApplicationConnectivityInCI(t *testing.T) {
 		Version:     application.CurrentVersion,
 		Name:        "connect-source-ci",
 		Environment: "dev",
-		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"api"},
-		},
+		Workload:    application.WorkloadConfig{Components: []string{"api"}},
 	}
 	if err := os.WriteFile(filepath.Join(sourceRoot, "compose.yaml"), []byte(`services:
   api:

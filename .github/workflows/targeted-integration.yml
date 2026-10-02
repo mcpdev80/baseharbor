@@ -18,6 +18,10 @@ on:
           - postgres-backup
           - shared-postgres
           - shared-valkey
+          - adoption-conformance
+          - adoption-realworld-compose
+          - adoption-realworld-quadlet
+          - adoption-realworld-kubernetes
       ref:
         description: Git ref or commit SHA to test
         required: true
@@ -33,6 +37,7 @@ concurrency:
 
 jobs:
   focused:
+    if: ${{ !startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
@@ -170,3 +175,41 @@ jobs:
         if: always()
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
+
+  adoption:
+    if: ${{ startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac

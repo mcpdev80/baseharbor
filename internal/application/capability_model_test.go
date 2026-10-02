@@ -58,7 +58,7 @@ func TestCapabilityBindingsUseStableApplicationWorkloadIdentity(t *testing.T) {
 func TestCapabilityBindingsUseLogicalServiceForHTTPExposure(t *testing.T) {
 	m := New("frontend", "production", false, false, false)
 	m.Services.SQL = false
-	m.Workload = WorkloadConfig{Compose: "compose.yaml", Services: []string{"web"}}
+	m.Workload = WorkloadConfig{Components: []string{"web"}}
 	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
 
 	bindings, err := CapabilityBindings(m)
@@ -88,10 +88,7 @@ func TestExposureCapabilityUsesCaddyAndServiceBinding(t *testing.T) {
 		Version:     CurrentVersion,
 		Name:        "frontend",
 		Environment: "production",
-		Workload: WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"web"},
-		},
+		Workload:    WorkloadConfig{Components: []string{"web"}},
 		Exposures: []HTTPExposureRequirement{
 			{Name: "public", Service: "web", Port: 8080, Protocol: "http"},
 		},
@@ -158,7 +155,7 @@ func TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled(t *testing
 	t.Setenv(MetricsEnabledEnv, "false")
 	m := New("demo", "production", false, false, false)
 	m.Services.SQL = false
-	m = WithWorkload(m, "compose.yaml", "api")
+	m = WithWorkloadComponents(m, "api")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
 	bindings, err := CapabilityBindings(m)

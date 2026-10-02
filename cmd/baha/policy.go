@@ -10,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/policy"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -112,11 +113,11 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 	if !resolved.FromRepository {
 		return result, nil
 	}
-	_, found, err := application.ResolveWorkloadCompose(resolved.repositoryRoot(), resolved.Manifest)
+	inspection, err := repositoryinspect.Inspect(ctx, resolved.repositoryRoot())
 	if err != nil {
 		return policy.Result{}, err
 	}
-	if !found {
+	if inspection.SelectedWorkloadSource == nil || inspection.SelectedWorkloadSource.Kind != repositoryinspect.WorkloadSourceCompose {
 		return result, nil
 	}
 
