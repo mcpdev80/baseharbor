@@ -88,6 +88,23 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if spec.ContainerPort < 1 || spec.ContainerPort > 65535 {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway container port is invalid")
 	}
+	if (strings.TrimSpace(spec.UpstreamClientCertificate) == "") != (strings.TrimSpace(spec.UpstreamClientKey) == "") {
+		return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream mTLS requires both client certificate and key")
+	}
+	upstreamMaterialDir := ""
+	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		dir := filepath.Dir(candidate)
+		if upstreamMaterialDir == "" {
+			upstreamMaterialDir = dir
+			continue
+		}
+		if dir != upstreamMaterialDir {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream TLS material must share one projection directory")
+		}
+	}
 	dir := filepath.Join(providerDir, "service-access")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return HTTPGatewayFiles{}, fmt.Errorf("create service access state: %w", err)
@@ -330,16 +347,9 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	}
 	upstreamMaterialDir := ""
 	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
-		if strings.TrimSpace(candidate) == "" {
-			continue
-		}
-		dir := filepath.Dir(candidate)
-		if upstreamMaterialDir == "" {
-			upstreamMaterialDir = dir
-			continue
-		}
-		if dir != upstreamMaterialDir {
-			panic("HTTP gateway upstream TLS material must share one projection directory")
+		if strings.TrimSpace(candidate) != "" {
+			upstreamMaterialDir = filepath.Dir(candidate)
+			break
 		}
 	}
 	if upstreamMaterialDir != "" {
