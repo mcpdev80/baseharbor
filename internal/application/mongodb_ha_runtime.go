@@ -45,6 +45,30 @@ func ReconcileMongoDBHA(ctx context.Context, runtime mongoDBHAProbeRuntime, m Ma
 	return nil
 }
 
+func waitMongoDBBootstrapMember(ctx context.Context, runtime mongoDBHAProbeRuntime, service string) error {
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	command := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'"
+	var lastErr error
+	for {
+		if _, err := runtime.Run(ctx, service, "sh", "-ec", command); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("member did not become ready: %w", lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
 func VerifyMongoDBHACluster(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, files RuntimeFiles) error {
 	if runtime == nil {
 		return fmt.Errorf("MongoDB HA verification requires a runtime provider")
