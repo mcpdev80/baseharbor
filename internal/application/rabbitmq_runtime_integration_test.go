@@ -54,6 +54,9 @@ func TestRabbitMQRuntimeSemanticAcceptanceInCI(t *testing.T) {
 	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		t.Fatalf("start RabbitMQ runtime: %v", err)
 	}
+	if err := ReconcileRabbitMQCredentials(ctx, runtime, m, files); err != nil {
+		t.Fatalf("reconcile RabbitMQ credentials: %v", err)
+	}
 	defer func() {
 		if t.Failed() && os.Getenv("BASEHARBOR_RABBITMQ_KEEP_ON_FAILURE") == "1" {
 			return
