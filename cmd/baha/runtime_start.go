@@ -15,12 +15,14 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+const controlPlaneStartTimeout = 5 * time.Minute
+
 func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
 }
 
 func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports) error {
-	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
 	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
@@ -66,7 +68,7 @@ func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvi
 }
 
 func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
-	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
 	files, err := existingTargetRuntimeFiles(parent)
