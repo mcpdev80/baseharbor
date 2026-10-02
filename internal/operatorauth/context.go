@@ -50,3 +50,9 @@ func AuthorizationDecisionFromContext(ctx context.Context) (AuthorizationDecisio
 	}
 	return *state.decision, true
 }
+
+func WithVerifiedPrincipal(ctx context.Context, principal *identity.Principal) context.Context {
+	ctx = WithEnforcement(ctx)
+	setPrincipal(ctx, principal)
+	return ctx
+}

@@ -121,6 +121,7 @@ nav:
       - CLI automation: cli/automation-agents.md
       - MCP / agent interface: reference/mcp.md
       - Machine Interface v1: spec/machine-interface-v1.md
+      - Protected Machine HTTP v1: spec/machine-http-v1.md
 
   - Reference:
       - Manifest: reference/manifest.md
@@ -151,6 +152,7 @@ nav:
           - Development Extension v1: spec/development-extension-v1.md
           - Reconciliation v1: spec/reconciliation-v1.md
           - Machine Interface v1: spec/machine-interface-v1.md
+          - Protected Machine HTTP v1: spec/machine-http-v1.md
           - Audit & Evidence v1: spec/audit-evidence-v1.md
           - Security invariants: spec/security-invariants.md
           - Input resolution: spec/input-resolution.md

@@ -37,7 +37,7 @@ func serveCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return controlplaneruntime.Run(ctx, cfg, store)
+			return controlplaneruntime.Run(ctx, cfg, store, newBahaMachineExecutor(store))
 		},
 	}
 }

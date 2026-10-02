@@ -22,6 +22,39 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 }
 
 func registerMCPDiscoveryReadTools(server *mcp.Server) {
+	mcp.AddTool(server, machineMCPTool("workspace.list", "List developer-local workspace mappings using structured workspace state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "workspace.list", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectMachineWorkspaceList()
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("target.list", "List configured BaseHarbor deployment targets using secret-safe runtime/access metadata.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "target.list", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectMachineTargetList(ctx)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("app.list", "List registered application deployments using stable identity and secret-safe observed state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationListInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "app.list", input.Target, input.Environment, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectMachineApplicationList(withTargetOverride(ctx, input.Target), input)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := authorizeCurrentMCPContext(ctx, "target", input.Target, "", ""); err != nil {
