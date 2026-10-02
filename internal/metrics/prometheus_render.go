@@ -68,7 +68,7 @@ func providerComposeYAMLWithProviderNetworks(placement Placement, registrations 
 	return providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, false, access)
 }
 
-func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, _ serviceaccess.HTTPGatewayFiles, providerSources ...[]observability.MetricsSource) string {
+func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, registrations []sourceRegistration, providerNetworks []string, hasRuntimeCA, hasProviderSecurity bool, access serviceaccess.HTTPGatewayFiles, providerSources ...[]observability.MetricsSource) string {
 	registrations = append([]sourceRegistration(nil), registrations...)
 	sort.Slice(registrations, func(i, j int) bool {
 		if registrations[i].Application != registrations[j].Application {
@@ -77,80 +77,66 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 		return registrations[i].Environment < registrations[j].Environment
 	})
 
-	serviceName := ProviderService
-	if placement.Scope == capability.ScopeApplication {
-		serviceName = "baseharbor-internal-prometheus"
+	securityFiles := map[string]struct{}{}
+	if hasProviderSecurity && len(providerSources) > 0 {
+		for _, source := range providerSources[0] {
+			if !source.Security.TLSRequired {
+				continue
+			}
+			token := providerSourceToken(source.ID)
+			securityFiles[token+"-ca.pem"] = struct{}{}
+			if source.Security.ClientCertificate != "" {
+				securityFiles[token+"-client.pem"] = struct{}{}
+				securityFiles[token+"-client-key.pem"] = struct{}{}
+			}
+		}
 	}
+
 	var b strings.Builder
 	b.WriteString("services:\n")
-	fmt.Fprintf(&b, "  %s:\n", serviceName)
-	fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
-	b.WriteString("    restart: unless-stopped\n")
-	b.WriteString("    user: \"65534:65534\"\n")
-	b.WriteString("    read_only: true\n")
-	b.WriteString("    command:\n")
-	b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
-	b.WriteString("      - --storage.tsdb.path=/prometheus\n")
-	b.WriteString("      - --web.enable-lifecycle\n")
-	b.WriteString("      - --web.config.file=/etc/prometheus/web-config.yml\n")
-	b.WriteString("    volumes:\n")
-	b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
-	b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
-	b.WriteString("      - ./web-config.yml:/etc/prometheus/web-config.yml:ro\n")
-	b.WriteString("      - ./service-access/runtime:/run/baseharbor/tls:ro\n")
-	if hasRuntimeCA {
-		b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
-	}
-	if hasProviderSecurity {
-		securityFiles := map[string]struct{}{}
-		if len(providerSources) > 0 {
-			for _, source := range providerSources[0] {
-				if !source.Security.TLSRequired {
-					continue
+	renderMember := func(name, dataVolume string) {
+		fmt.Fprintf(&b, "  %s:\n", name)
+		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"65534:65534\"\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - --config.file=/etc/prometheus/prometheus.yml\n")
+		b.WriteString("      - --storage.tsdb.path=/prometheus\n")
+		b.WriteString("      - --web.enable-lifecycle\n")
+		b.WriteString("      - --web.config.file=/etc/prometheus/web-config.yml\n")
+		b.WriteString("    volumes:\n")
+		b.WriteString("      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro\n")
+		b.WriteString("      - ./targets:/etc/prometheus/targets:ro\n")
+		b.WriteString("      - ./web-config.yml:/etc/prometheus/web-config.yml:ro\n")
+		b.WriteString("      - ./members/service-access/runtime:/run/baseharbor/tls:ro\n")
+		if hasRuntimeCA {
+			b.WriteString("      - ./baseharbor-runtime-ca.pem:/etc/prometheus/baseharbor-runtime-ca.pem:ro\n")
+		}
+		if hasProviderSecurity {
+			if len(securityFiles) == 0 {
+				b.WriteString("      - ./provider-security:/etc/prometheus/provider-security:ro\n")
+			} else {
+				names := make([]string, 0, len(securityFiles))
+				for file := range securityFiles {
+					names = append(names, file)
 				}
-				token := providerSourceToken(source.ID)
-				securityFiles[token+"-ca.pem"] = struct{}{}
-				if source.Security.ClientCertificate != "" {
-					securityFiles[token+"-client.pem"] = struct{}{}
-					securityFiles[token+"-client-key.pem"] = struct{}{}
+				sort.Strings(names)
+				for _, file := range names {
+					fmt.Fprintf(&b, "      - %s\n", strconv.Quote("./provider-security/"+file+":/etc/prometheus/provider-security/"+file+":ro"))
 				}
 			}
 		}
-		if len(securityFiles) == 0 {
-			b.WriteString("      - ./provider-security:/etc/prometheus/provider-security:ro\n")
-		} else {
-			names := make([]string, 0, len(securityFiles))
-			for name := range securityFiles {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				fmt.Fprintf(&b, "      - %s\n", strconv.Quote("./provider-security/"+name+":/etc/prometheus/provider-security/"+name+":ro"))
+		fmt.Fprintf(&b, "      - %s:/prometheus\n", dataVolume)
+		for i, registration := range registrations {
+			if registration.RuntimeVolume != "" {
+				fmt.Fprintf(&b, "      - runtime-targets-%d:/etc/prometheus/runtime-targets/%d:ro\n", i, i)
 			}
 		}
-	}
-	b.WriteString("      - prometheus-data:/prometheus\n")
-	for i, registration := range registrations {
-		if registration.RuntimeVolume != "" {
-			fmt.Fprintf(&b, "      - runtime-targets-%d:/etc/prometheus/runtime-targets/%d:ro\n", i, i)
-		}
-	}
-	b.WriteString("    tmpfs:\n      - /tmp\n")
-	b.WriteString("    cap_drop:\n      - ALL\n")
-	b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
-	b.WriteString("    ports:\n")
-	b.WriteString("      - \"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090\"\n")
-	b.WriteString("    networks:\n")
-	publishAlias := "prometheus-access"
-	if placement.Scope == capability.ScopeApplication {
-		b.WriteString("      access:\n        aliases:\n          - prometheus\n")
-		publishAlias = "baseharbor-internal-prometheus-access"
-	} else {
-		b.WriteString("      access: {}\n")
-	}
-	b.WriteString("      publish:\n        aliases:\n")
-	fmt.Fprintf(&b, "          - %s\n", publishAlias)
-	if len(registrations) > 0 || len(providerNetworks) > 0 {
+		b.WriteString("    tmpfs:\n      - /tmp\n")
+		b.WriteString("    cap_drop:\n      - ALL\n")
+		b.WriteString("    security_opt:\n      - no-new-privileges:true\n")
+		b.WriteString("    networks:\n      access: {}\n")
 		for i := range registrations {
 			fmt.Fprintf(&b, "      metrics-%d: {}\n", i)
 		}
@@ -158,21 +144,28 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 			fmt.Fprintf(&b, "      provider-%d: {}\n", i)
 		}
 	}
+	renderMember("prometheus-1", "prometheus-data-1")
+	renderMember("prometheus-2", "prometheus-data-2")
+
+	accessSpec := prometheusHAAccessSpec("./members/service-access/runtime/ca.pem")
+	if placement.Scope == capability.ScopeApplication {
+		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
+
 	b.WriteString("\nnetworks:\n")
-	// Prometheus terminates TLS natively. The publish network carries only the
-	// native HTTPS endpoint and preserves the historical prometheus-access alias.
 	b.WriteString("  access:\n    internal: true\n")
 	fmt.Fprintf(&b, "  publish:\n    name: %s\n", strconv.Quote(PublishNetworkName(placement.Project)))
-	if len(registrations) > 0 || len(providerNetworks) > 0 {
-		for i, registration := range registrations {
-			fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
-		}
-		for i, network := range providerNetworks {
-			fmt.Fprintf(&b, "  provider-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(network))
-		}
+	for i, registration := range registrations {
+		fmt.Fprintf(&b, "  metrics-%d:\n    name: %s\n", i, strconv.Quote(registration.Network))
 	}
+	for i, network := range providerNetworks {
+		fmt.Fprintf(&b, "  provider-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(network))
+	}
+
 	b.WriteString("\nvolumes:\n")
-	fmt.Fprintf(&b, "  prometheus-data:\n    name: %s\n", strconv.Quote(placement.Volume))
+	fmt.Fprintf(&b, "  prometheus-data-1:\n    name: %s\n", strconv.Quote(placement.Volume))
+	fmt.Fprintf(&b, "  prometheus-data-2:\n    name: %s\n", strconv.Quote(placement.Volume+"-replica-2"))
 	for i, registration := range registrations {
 		if registration.RuntimeVolume != "" {
 			fmt.Fprintf(&b, "  runtime-targets-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(registration.RuntimeVolume))
