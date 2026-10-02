@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type rabbitMQCredentialRuntime interface {
+	Run(context.Context, string, ...string) (string, error)
 	RunSensitive(context.Context, string, []byte, ...string) (string, error)
 }
 
@@ -71,9 +73,35 @@ fi
 		}
 		input := []byte(appUser + "\n" + appPassword + "\n" + adminUser + "\n" + adminPassword + "\n")
 		service := rabbitmqMemberServiceName(instance, 0)
+		if err := waitRabbitMQNodeReady(ctx, runtime, service); err != nil {
+			return fmt.Errorf("wait for RabbitMQ credential authority %s: %w", instance, err)
+		}
 		if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err != nil {
 			return fmt.Errorf("reconcile RabbitMQ credentials for %s: %w", instance, err)
 		}
 	}
 	return nil
+}
+
+
+func waitRabbitMQNodeReady(ctx context.Context, runtime rabbitMQCredentialRuntime, service string) error {
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(ctx.Err(), lastErr)
+		case <-deadline.C:
+			return fmt.Errorf("RabbitMQ node %s did not become ready: %w", service, lastErr)
+		case <-ticker.C:
+		}
+	}
 }
