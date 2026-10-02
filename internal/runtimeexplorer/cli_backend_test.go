@@ -2,6 +2,7 @@ package runtimeexplorer
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -21,6 +22,10 @@ func (f *fakeDirectRuntime) ListRuntimeContainers(context.Context) ([]runtimecon
 func (f *fakeDirectRuntime) DirectOutput(_ context.Context, args ...string) (string, error) {
 	f.args = append([]string(nil), args...)
 	return "ok", nil
+}
+func (f *fakeDirectRuntime) DirectStream(_ context.Context, args ...string) (io.ReadCloser, error) {
+	f.args = append([]string(nil), args...)
+	return io.NopCloser(strings.NewReader("ok")), nil
 }
 
 func TestCLIContainerBackendUsesBoundedContainerCommands(t *testing.T) {
