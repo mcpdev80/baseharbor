@@ -459,5 +459,8 @@ func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testi
 				t.Fatalf("embedded runtime missing stable Patroni identity %q", want)
 			}
 		}
+		if got := strings.Count(text, "      PATRONI_NAME: "+member+"\n"); got != 1 {
+			t.Fatalf("embedded runtime PATRONI_NAME for %s appears %d times, want exactly 1", member, got)
+		}
 	}
 }
