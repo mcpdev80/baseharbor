@@ -322,8 +322,14 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 			t.Fatalf("embedded runtime missing native-TLS bootstrap %q", want)
 		}
 	}
-	if strings.Contains(text, "-dev") {
-		t.Fatal("openbao must not run in dev mode")
+	for _, forbidden := range []string{
+		"command: [\"server\", \"-dev",
+		"openbao server -dev",
+		"bao server -dev",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("openbao must not run in dev mode: found %q", forbidden)
+		}
 	}
 }
 
