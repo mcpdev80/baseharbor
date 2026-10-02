@@ -44,9 +44,48 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 		"loki-1:",
 		"loki-2:",
 		"loki-3:",
+		"-compactor.horizontal-scaling-mode=main",
+		"-compactor.horizontal-scaling-mode=worker",
+		"-compactor.worker.num-sub-workers=4",
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("Loki HA compose missing %q:\n%s", want, compose)
 		}
+	}
+}
+
+
+func TestLokiHACompactorTopologyHasOneMainAndTwoWorkers(t *testing.T) {
+	placement := Placement{
+		Scope:       capability.ScopeShared,
+		Project:     "bh-test-shared",
+		Network:     "bh-test-logs",
+		LokiVolume:  "bh-test-loki",
+		AlloyVolume: "bh-test-alloy",
+	}
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: "./service-access/Caddyfile",
+		Material: serviceaccess.TLSMaterial{
+			CA:                "./service-access/runtime/ca.pem",
+			ServerCertificate: "./service-access/runtime/server.pem",
+			ServerKey:         "./service-access/runtime/server-key.pem",
+		},
+	}
+	compose := providerComposeYAMLForModeAndAccess(
+		placement,
+		nil,
+		bhruntime.LogCollectionSyslog,
+		access,
+		0,
+		"bh-test-object-storage",
+	)
+	if got := strings.Count(compose, "-compactor.horizontal-scaling-mode=main"); got != 1 {
+		t.Fatalf("main compactor count = %d, want 1\n%s", got, compose)
+	}
+	if got := strings.Count(compose, "-compactor.horizontal-scaling-mode=worker"); got != 2 {
+		t.Fatalf("worker compactor count = %d, want 2\n%s", got, compose)
+	}
+	if got := strings.Count(compose, "-compactor.worker.num-sub-workers=4"); got != 2 {
+		t.Fatalf("worker runner count = %d, want 2\n%s", got, compose)
 	}
 }
