@@ -10,6 +10,8 @@ import (
 const (
 	openBaoStorageUserKey            = "BASEHARBOR_OPENBAO_DB_USER"
 	openBaoStorageCredentialKey      = "BASEHARBOR_OPENBAO_DB_PASSWORD"
+	postgresInternalUserKey          = "BASEHARBOR_POSTGRES_INTERNAL_USER"
+	postgresInternalCredentialKey    = "BASEHARBOR_POSTGRES_INTERNAL_PASSWORD"
 	postgresReplicationUserKey       = "BASEHARBOR_POSTGRES_REPLICATION_USER"
 	postgresReplicationCredentialKey = "BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"
 )
@@ -17,6 +19,15 @@ const (
 func ensureOpenBaoStorageUser(envPath string) (string, error) {
 	return ensureRuntimeFixedValue(envPath, openBaoStorageUserKey, "openbao")
 }
+
+func ensurePostgresInternalUser(envPath string) (string, error) {
+	return ensureRuntimeFixedValue(envPath, postgresInternalUserKey, "postgres")
+}
+
+func ensurePostgresInternalCredential(envPath string) (string, error) {
+	return ensureRuntimeCredential(envPath, postgresInternalCredentialKey)
+}
+
 
 func ensurePostgresReplicationUser(envPath string) (string, error) {
 	return ensureRuntimeFixedValue(envPath, postgresReplicationUserKey, "baseharbor_replication")
