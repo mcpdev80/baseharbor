@@ -171,7 +171,7 @@ jobs:
 
           $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
-          grep -q "authenticated PING returned PONG" /tmp/podman-status.txt
+          grep -q "semantic Valkey verification passed" /tmp/podman-status.txt
 
           $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
           grep -q '^READY$' /tmp/podman-app-doctor.txt
