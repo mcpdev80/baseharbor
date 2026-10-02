@@ -112,3 +112,57 @@ func TestFileRotationJournalIsOwnerOnly(t *testing.T) {
 		t.Fatalf("journal mode = %o, want 600", got)
 	}
 }
+
+
+func TestFilePreparedMaterialStoreSurvivesRestartAndProtectsSecret(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "prepared")
+	key := "provider/rabbitmq/app/default"
+	first := FilePreparedMaterialStore{Dir: dir}
+	if err := first.Save(key, []byte("new-secret-material")); err != nil {
+		t.Fatal(err)
+	}
+
+	second := FilePreparedMaterialStore{Dir: dir}
+	got, err := second.Load(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new-secret-material" {
+		t.Fatalf("prepared material = %q", got)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("prepared material files = %d, want 1", len(entries))
+	}
+	if entries[0].Name() == key || filepath.Base(entries[0].Name()) == "default" {
+		t.Fatalf("prepared material filename exposes rotation key: %q", entries[0].Name())
+	}
+	info, err := entries[0].Info()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("prepared material mode = %o, want 600", got)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("prepared material directory mode = %o, want 700", got)
+	}
+	if err := second.Clear(key); err != nil {
+		t.Fatal(err)
+	}
+	got, err = second.Load(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("prepared material remains after clear: %q", got)
+	}
+}
