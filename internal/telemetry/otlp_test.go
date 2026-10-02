@@ -238,7 +238,6 @@ func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
 	}
 }
 
-
 func TestManagedCollectorHAGatewayMountsUpstreamMTLSProjection(t *testing.T) {
 	text := providerComposeYAML()
 	for _, want := range []string{
