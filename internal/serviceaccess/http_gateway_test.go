@@ -188,3 +188,47 @@ func TestHTTPGatewayKeepsPrivateStateSeparateFromReadableRuntimeConfig(t *testin
 		t.Fatalf("Caddy runtime config escaped private service-access state: %s", files.Caddyfile)
 	}
 }
+
+
+func TestProjectGatewayMaterialProjectsClientIdentity(t *testing.T) {
+	dir := t.TempDir()
+	source := t.TempDir()
+	write := func(name, value string) string {
+		t.Helper()
+		path := filepath.Join(source, name)
+		if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	material := TLSMaterial{
+		CA:                write("ca.pem", "ca"),
+		ServerCertificate: write("server.pem", "server-cert"),
+		ServerKey:         write("server-key.pem", "server-key"),
+		ClientCertificate: write("client.pem", "client-cert"),
+		ClientKey:         write("client-key.pem", "client-key"),
+	}
+	projected, err := projectGatewayMaterial(dir, material)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeDir := filepath.Join(dir, "runtime")
+	for _, path := range []string{
+		projected.CA,
+		projected.ServerCertificate,
+		projected.ServerKey,
+		projected.ClientCertificate,
+		projected.ClientKey,
+	} {
+		if filepath.Dir(path) != runtimeDir {
+			t.Fatalf("projected material %s is outside runtime projection %s", path, runtimeDir)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o644 {
+			t.Fatalf("projected material %s mode = %o, want 644", path, got)
+		}
+	}
+}
