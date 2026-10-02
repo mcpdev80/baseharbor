@@ -36,6 +36,7 @@ type TCPGatewaySpec struct {
 	Network           string
 	Environment       map[string]string
 	BackendDirectives []string
+	ServerDirectives  []string
 }
 
 func EnsureTCPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec TCPGatewaySpec) (TCPGatewayFiles, error) {
@@ -206,8 +207,19 @@ backend upstream
 		}
 		fmt.Fprintf(&b, "  %s\n", directive)
 	}
+	serverDirectives := make([]string, 0, len(spec.ServerDirectives))
+	for _, directive := range spec.ServerDirectives {
+		directive = strings.TrimSpace(directive)
+		if directive != "" {
+			serverDirectives = append(serverDirectives, directive)
+		}
+	}
+	suffix := ""
+	if len(serverDirectives) > 0 {
+		suffix = " " + strings.Join(serverDirectives, " ")
+	}
 	for _, upstream := range upstreams {
-		fmt.Fprintf(&b, "  server %s %s:%d check\n", upstream.Name, upstream.Host, upstream.Port)
+		fmt.Fprintf(&b, "  server %s %s:%d check%s\n", upstream.Name, upstream.Host, upstream.Port, suffix)
 	}
 	return b.String()
 }
