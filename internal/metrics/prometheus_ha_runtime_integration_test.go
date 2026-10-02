@@ -70,10 +70,10 @@ func TestPrometheusHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	containerName := "baseharbor-prometheus-ha-target"
 	script := `from http.server import BaseHTTPRequestHandler, HTTPServer
 
-payload = b"# TYPE baseharbor_ha_acceptance gauge
+payload = b"""# TYPE baseharbor_ha_acceptance gauge
 baseharbor_ha_acceptance 1
 # EOF
-"
+"""
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
