@@ -54,9 +54,28 @@ func TestWriteJSONUsesStructuredPlanFields(t *testing.T) {
 }
 
 func TestRequestsJSONOutput(t *testing.T) {
-	for _, args := range [][]string{{"-o", "json"}, {"--output", "json"}, {"--output=json"}, {"--json"}} {
+	for _, args := range [][]string{{"-o", "json"}, {"--output", "json"}, {"--output=json"}, {"--json"}, {"-ojson"}} {
 		if !requestsJSONOutput(args) {
 			t.Fatalf("expected JSON detection for %v", args)
+		}
+	}
+}
+
+
+func TestParseReadOutputArgsAcceptsAllJSONSpellings(t *testing.T) {
+	for _, args := range [][]string{
+		{"--json"},
+		{"-o", "json"},
+		{"--output", "json"},
+		{"--output=json"},
+		{"-ojson"},
+	} {
+		filtered, format, err := parseReadOutputArgs(args, "test")
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if format != outputJSON || len(filtered) != 0 {
+			t.Fatalf("%v => filtered=%v format=%q", args, filtered, format)
 		}
 	}
 }
