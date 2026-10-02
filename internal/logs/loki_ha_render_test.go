@@ -54,7 +54,6 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 	}
 }
 
-
 func TestLokiHACompactorTopologyHasOneMainAndTwoWorkers(t *testing.T) {
 	placement := Placement{
 		Scope:       capability.ScopeShared,
@@ -87,5 +86,21 @@ func TestLokiHACompactorTopologyHasOneMainAndTwoWorkers(t *testing.T) {
 	}
 	if got := strings.Count(compose, "-compactor.worker.num-sub-workers=4"); got != 2 {
 		t.Fatalf("worker runner count = %d, want 2\n%s", got, compose)
+	}
+}
+
+
+func TestLokiHAConfigEnablesHorizontalCompactorWorkerBackend(t *testing.T) {
+	cfg := lokiHAConfig()
+	for _, want := range []string{
+		"retention_enabled: true",
+		"delete_request_store: s3",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Fatalf("Loki HA config missing horizontal compactor worker prerequisite %q:\n%s", want, cfg)
+		}
+	}
+	if strings.Contains(cfg, "retention_period:") {
+		t.Fatalf("Loki HA config must not invent a data-retention period:\n%s", cfg)
 	}
 }
