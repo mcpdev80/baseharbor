@@ -38,8 +38,9 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	}
 
 	manifest := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        "mcp-lifecycle",
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          "mcp-lifecycle",
 		Environment: "dev",
 		Services:    application.Services{SQL: true},
 		Workload:    application.WorkloadConfig{Components: []string{"api"}},
