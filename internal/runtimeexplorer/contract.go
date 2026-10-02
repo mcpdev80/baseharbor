@@ -107,6 +107,7 @@ type LogRequest struct {
 	Resource ResourceRef `json:"resource"`
 	Since    *time.Time  `json:"since,omitempty"`
 	Tail     int         `json:"tail,omitempty"`
+	Follow   bool        `json:"follow,omitempty"`
 }
 
 type MetricsHandle struct {
