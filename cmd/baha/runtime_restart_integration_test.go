@@ -39,6 +39,17 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	if runtimeCommand == "podman" {
+		configHome := t.TempDir()
+		dataHome := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", configHome)
+		t.Setenv("XDG_DATA_HOME", dataHome)
+		t.Setenv("BASEHARBOR_TARGET", "")
+		var targetOut bytes.Buffer
+		if err := runWithIO(ctx, []string{"target", "create", "podman-ci", "--provider", "podman", "--access", "podman-ci", "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
+			t.Fatalf("create isolated Podman target: %v\n%s", err, targetOut.String())
+		}
+	}
 
 	postgresPort, err := selectControlPlanePort(&bytes.Buffer{}, "PostgreSQL", "--postgres-port", 0, bhruntime.DefaultPostgresPort, 15432)
 	if err != nil {
