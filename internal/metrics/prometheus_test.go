@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -500,5 +501,34 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("reconciled shared Prometheus compose contains authority material %q:\n%s", forbidden, text)
 		}
+	}
+}
+
+
+func TestPrometheusHAFrontendUsesBindMountedMemberTrust(t *testing.T) {
+	root := t.TempDir()
+	placement := Placement{
+		Scope:   capability.ScopeShared,
+		Project: "bh-prometheus-ha-test",
+		Network: "bh-prometheus-ha-test-network",
+		Volume:  "bh-prometheus-ha-test-data",
+		Dir:     root,
+	}
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: filepath.Join(root, "service-access", "config", "Caddyfile"),
+		Material: serviceaccess.TLSMaterial{
+			CA:                filepath.Join(root, "service-access", "pki", "ca.pem"),
+			ServerCertificate: filepath.Join(root, "service-access", "pki", "server.pem"),
+			ServerKey:         filepath.Join(root, "service-access", "pki", "server-key.pem"),
+			ServerName:        "prometheus",
+		},
+	}
+	got := providerComposeYAMLWithProviderNetworksAndAccess(placement, nil, nil, false, false, access)
+	want := filepath.Join(root, "members", "service-access", "runtime") + ":/upstream:ro"
+	if !strings.Contains(got, want) {
+		t.Fatalf("Prometheus HA frontend does not bind member trust directory %q:\n%s", want, got)
+	}
+	if strings.Contains(got, "      - members/service-access/runtime:/upstream:ro") {
+		t.Fatalf("Prometheus HA frontend rendered member trust as named volume:\n%s", got)
 	}
 }
