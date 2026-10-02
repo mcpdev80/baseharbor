@@ -29,14 +29,16 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			return err
 		}
 		next := bhruntime.ControlPlaneCredentials{
-			PostgresUser:            "baseharbor_admin_" + suffix,
-			PostgresPassword:        mustControlPlaneSecret(),
-			PostgresReplicationUser: "baseharbor_rep_" + suffix,
+			PostgresUser:             "baseharbor_admin_" + suffix,
+			PostgresPassword:         mustControlPlaneSecret(),
+			PostgresInternalUser:     "baseharbor_internal_" + suffix,
+			PostgresInternalPassword: mustControlPlaneSecret(),
+			PostgresReplicationUser:  "baseharbor_rep_" + suffix,
 			PostgresReplicationPass: mustControlPlaneSecret(),
 			OpenBaoDBUser:           "openbao_runtime_" + suffix,
 			OpenBaoDBPassword:       mustControlPlaneSecret(),
 		}
-		if next.PostgresPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
+		if next.PostgresPassword == "" || next.PostgresInternalPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
 			return fmt.Errorf("generate replacement control-plane credentials")
 		}
 		state = bhruntime.ControlPlaneCredentialRotationState{
@@ -131,8 +133,9 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 
 	if state.Phase == bhruntime.ControlPlaneRotationVerified {
 		retireSQL := fmt.Sprintf(
-			"ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN;",
+			"ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN;",
 			quoteControlPlaneIdent(current.PostgresUser),
+			quoteControlPlaneIdent(current.PostgresInternalUser),
 			quoteControlPlaneIdent(current.PostgresReplicationUser),
 			quoteControlPlaneIdent(current.OpenBaoDBUser),
 		)
@@ -144,6 +147,7 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			user, password, database string
 		}{
 			{current.PostgresUser, current.PostgresPassword, "postgres"},
+			{current.PostgresInternalUser, current.PostgresInternalPassword, "postgres"},
 			{current.PostgresReplicationUser, current.PostgresReplicationPass, "postgres"},
 			{current.OpenBaoDBUser, current.OpenBaoDBPassword, "openbao"},
 		} {
@@ -177,12 +181,16 @@ func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime b
 		"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
 			"ALTER ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
 			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
+			"ALTER ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
+			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
 			"ALTER ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
 			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
 			"ALTER ROLE %s WITH LOGIN PASSWORD %s;\n"+
 			"GRANT %s TO %s;\n",
 		quoteControlPlaneLiteral(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresUser),
 		quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
+		quoteControlPlaneLiteral(next.PostgresInternalUser), quoteControlPlaneLiteral(next.PostgresInternalUser),
+		quoteControlPlaneIdent(next.PostgresInternalUser), quoteControlPlaneLiteral(next.PostgresInternalPassword),
 		quoteControlPlaneLiteral(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationUser),
 		quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
 		quoteControlPlaneLiteral(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBUser),
@@ -196,6 +204,7 @@ func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime b
 		user, password, database string
 	}{
 		{next.PostgresUser, next.PostgresPassword, "postgres"},
+		{next.PostgresInternalUser, next.PostgresInternalPassword, "postgres"},
 		{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
 		{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
 	} {
