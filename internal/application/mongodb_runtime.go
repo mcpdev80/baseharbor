@@ -237,10 +237,10 @@ func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string)
 			fmt.Fprintf(b, "      BASEHARBOR_MONGODB_REPLICA_KEY: ${%s}\n", replicaKeyKey)
 			b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 			b.WriteString("    command:\n      - |\n")
-			b.WriteString("        printf '- \"%s\"\\n' \"$BASEHARBOR_MONGODB_REPLICA_KEY\" > /tmp/mongodb-keyfile\n")
+			b.WriteString("        printf '- \"%s\"\\n' \"$$BASEHARBOR_MONGODB_REPLICA_KEY\" > /tmp/mongodb-keyfile\n")
 			b.WriteString("        chmod 0400 /tmp/mongodb-keyfile\n")
 			b.WriteString("        chown mongodb:mongodb /tmp/mongodb-keyfile\n")
-			b.WriteString("        exec /usr/local/bin/docker-entrypoint.sh mongod --bind_ip_all --replSet \"$BASEHARBOR_MONGODB_REPLICA_SET\" --keyFile /tmp/mongodb-keyfile --tlsMode requireTLS --tlsCertificateKeyFile /run/baseharbor/tls/server.pem --tlsCAFile /run/baseharbor/tls/ca.pem --tlsAllowConnectionsWithoutCertificates --setParameter tlsWithholdClientCertificate=true\n")
+			b.WriteString("        exec /usr/local/bin/docker-entrypoint.sh mongod --bind_ip_all --replSet \"$$BASEHARBOR_MONGODB_REPLICA_SET\" --keyFile /tmp/mongodb-keyfile --tlsMode requireTLS --tlsCertificateKeyFile /run/baseharbor/tls/server.pem --tlsCAFile /run/baseharbor/tls/ca.pem --tlsAllowConnectionsWithoutCertificates --setParameter tlsWithholdClientCertificate=true\n")
 		} else {
 			b.WriteString("    command: [\"mongod\", \"--bind_ip_all\", \"--tlsMode\", \"requireTLS\", \"--tlsCertificateKeyFile\", \"/run/baseharbor/tls/server.pem\", \"--tlsCAFile\", \"/run/baseharbor/tls/ca.pem\", \"--tlsAllowConnectionsWithoutCertificates\"]\n")
 		}
