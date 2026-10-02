@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -443,15 +444,48 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 	if !ok {
 		return fmt.Errorf("shared Valkey application registration is missing")
 	}
+	op := provideroperation.New(compose, shared.Project, shared.Compose, shared.Env)
 	appKey := sharedBackendApplicationKey(m)
 	for instance, resource := range app.Cache {
 		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 		if err != nil {
 			return fmt.Errorf("load shared Valkey credential %s: %w", instance, err)
 		}
-		service := sharedValkeyService(m, instance)
-		script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(password))
-		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
+		primary := sharedValkeyMemberServiceName(app, instance, 0)
+		if sharedValkeyMemberCount(resource) > 1 {
+			masterCount := 0
+			for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
+				service := sharedValkeyMemberServiceName(app, instance, ordinal)
+				script := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h 127.0.0.1 -p 6379 info replication"
+				out, probeErr := op.RunSensitive(ctx, service, []byte(password+"\n"), "sh", "-ec", script)
+				if probeErr != nil {
+					return fmt.Errorf("inspect shared Valkey HA member %s: %w", service, probeErr)
+				}
+				role := parseValkeyReplicationRole(out)
+				if role == "master" {
+					masterCount++
+					primary = service
+				} else if role != "slave" && role != "replica" {
+					return fmt.Errorf("shared Valkey member %s reported unsupported role %q", service, role)
+				}
+			}
+			if masterCount != 1 {
+				return fmt.Errorf("shared Valkey %s has %d masters, require exactly one", instance, masterCount)
+			}
+			for ordinal := 0; ordinal < 3; ordinal++ {
+				sentinel := sharedValkeySentinelServiceName(app, instance, ordinal)
+				out, sentinelErr := op.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
+				if sentinelErr != nil {
+					return fmt.Errorf("inspect shared Valkey Sentinel %s: %w", sentinel, sentinelErr)
+				}
+				lines := nonEmptyLines(out)
+				if len(lines) < 2 || lines[0] != primary || lines[1] != "6379" {
+					return fmt.Errorf("shared Valkey Sentinel %s does not agree on primary %s", sentinel, primary)
+				}
+			}
+		}
+		pingScript := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h 127.0.0.1 -p 6379 ping"
+		out, err := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", pingScript)
 		if err != nil {
 			return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
 		}
@@ -462,8 +496,8 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 			if durableInstance != instance {
 				continue
 			}
-			writeRead := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 del __baseharbor_verify__ >/dev/null", shellQuote(password), shellQuote(password), shellQuote(password))
-			value, verifyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", writeRead)
+			writeRead := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; valkey-cli -h 127.0.0.1 -p 6379 set __baseharbor_verify__ durable >/dev/null && valkey-cli -h 127.0.0.1 -p 6379 get __baseharbor_verify__ && valkey-cli -h 127.0.0.1 -p 6379 del __baseharbor_verify__ >/dev/null"
+			value, verifyErr := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", writeRead)
 			if verifyErr != nil {
 				return fmt.Errorf("verify durable shared Valkey %s: %w", instance, verifyErr)
 			}
@@ -476,9 +510,9 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 				continue
 			}
 			for otherInstance := range otherApp.Cache {
-				otherService := sharedValkeyServiceFor(otherApp.Application, otherApp.Environment, otherInstance)
-				deny := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h %s -p 6379 ping", shellQuote(password), shellQuote(otherService))
-				if denyOut, denyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", deny); denyErr == nil && strings.TrimSpace(denyOut) == "PONG" {
+				otherService := sharedValkeyMemberServiceName(otherApp, otherInstance, 0)
+				denyScript := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h " + shellQuote(otherService) + " -p 6379 ping"
+				if denyOut, denyErr := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", denyScript); denyErr == nil && strings.TrimSpace(denyOut) == "PONG" {
 					return fmt.Errorf("shared Valkey isolation failed: %s/%s can authenticate to %s/%s", app.Application, instance, otherApp.Application, otherInstance)
 				}
 			}
