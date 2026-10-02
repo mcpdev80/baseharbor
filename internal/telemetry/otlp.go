@@ -356,17 +356,17 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 		return ProviderFiles{}, err
 	}
 	accessSpec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:        "otel-collector-access",
-		Upstreams:          []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
+		ServiceName:               "otel-collector-access",
+		Upstreams:                 []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
 		UpstreamTrustFile:         memberTLS.Material.CA,
 		UpstreamServerName:        "otel-collector",
 		UpstreamClientCertificate: memberTLS.Material.ClientCertificate,
 		UpstreamClientKey:         memberTLS.Material.ClientKey,
-		PublishedPortEnv:   "BASEHARBOR_OTLP_PORT",
-		ContainerPort:      4318,
-		Networks:           []string{"telemetry"},
-		NetworkAliases:     []string{"otel-collector"},
-		RequireClient:      requireClientCertificate,
+		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
+		ContainerPort:             4318,
+		Networks:                  []string{"telemetry"},
+		NetworkAliases:            []string{"otel-collector"},
+		RequireClient:             requireClientCertificate,
 	}
 	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
