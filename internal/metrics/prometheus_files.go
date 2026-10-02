@@ -492,6 +492,7 @@ func prometheusHAAccessSpec(memberCA string) serviceaccess.HTTPGatewaySpec {
 		Networks:           []string{"access", "publish"},
 		NetworkAliases:     []string{"prometheus"},
 		RequireClient:      true,
+		HealthURI:          "/-/ready",
 	}
 }
 
