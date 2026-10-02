@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 type machineProviderIDInput struct {
@@ -225,6 +226,38 @@ func machineMCPTool(operationID, description string, openWorld bool) *mcp.Tool {
 			OpenWorldHint:   boolPointer(openWorld),
 		},
 	}
+}
+
+func authorizeMCPOperation(ctx context.Context, operationID, target, environment, applicationName, workspace string) error {
+	operation, ok := machine.OperationByID(operationID)
+	if !ok {
+		return machine.NewError(machine.ErrorValidationFailed, "Unknown BaseHarbor machine operation.", "Use a registered machine operation.", false)
+	}
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		environment = "dev"
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		if resolved, err := effectiveTarget(ctx); err == nil {
+			target = resolved.Name
+		}
+	}
+	if operatorauth.ManagedEnvironment(environment) {
+		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+			return err
+		}
+	}
+	_, err := operatorauth.AuthorizeMachineOperation(ctx, operatorauth.AuthorizationRequest{
+		Operation: operation,
+		Context: operatorauth.OperationContext{
+			Application: strings.TrimSpace(applicationName),
+			Environment: environment,
+			Target:      target,
+			Workspace:   strings.TrimSpace(workspace),
+		},
+	})
+	return err
 }
 
 func machineApplicationArgs(name, environment string) []string {
