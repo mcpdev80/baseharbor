@@ -1,6 +1,7 @@
 package identityprovider
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -83,7 +84,7 @@ func signedTestJWT(t *testing.T, privateKey *rsa.PrivateKey, kid string) string 
 	h := base64.RawURLEncoding.EncodeToString(header)
 	p := base64.RawURLEncoding.EncodeToString(payload)
 	sum := sha256.Sum256([]byte(h + "." + p))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, 0, sum[:])
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, sum[:])
 	if err != nil {
 		t.Fatal(err)
 	}
