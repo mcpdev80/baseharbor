@@ -9,10 +9,9 @@ import (
 )
 
 func mongoDBUpsertUser(ctx context.Context, runtime bhruntime.RuntimeProvider, files RuntimeFiles, service, authUser, authPassword, database, username, password, role string) error {
-	script := "IFS= read -r auth_user\nIFS= read -r auth_password\nIFS= read -r database\nIFS= read -r username\nIFS= read -r password\nIFS= read -r role\nmongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$auth_user\" --password \"$auth_password\" --authenticationDatabase admin --eval 'const d=db.getSiblingDB(process.env.ROTATE_DB); const u=process.env.ROTATE_USER; const p=process.env.ROTATE_PASSWORD; const r=process.env.ROTATE_ROLE; if (d.getUser(u)) { d.updateUser(u,{pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); } else { d.createUser({user:u,pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); }'\n"
-	envScript := "export ROTATE_DB=\"$database\" ROTATE_USER=\"$username\" ROTATE_PASSWORD=\"$password\" ROTATE_ROLE=\"$role\"\n" + script
+	script := "IFS= read -r auth_user\nIFS= read -r auth_password\nIFS= read -r database\nIFS= read -r username\nIFS= read -r password\nIFS= read -r role\nexport ROTATE_DB=\"$database\" ROTATE_USER=\"$username\" ROTATE_PASSWORD=\"$password\" ROTATE_ROLE=\"$role\"\nmongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$auth_user\" --password \"$auth_password\" --authenticationDatabase admin --eval 'const d=db.getSiblingDB(process.env.ROTATE_DB); const u=process.env.ROTATE_USER; const p=process.env.ROTATE_PASSWORD; const r=process.env.ROTATE_ROLE; if (d.getUser(u)) { d.updateUser(u,{pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); } else { d.createUser({user:u,pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); }'\n"
 	input := []byte(authUser+"\n"+authPassword+"\n"+database+"\n"+username+"\n"+password+"\n"+role+"\n")
-	_, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, service, "sh", "-ceu", envScript)
+	_, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, service, "sh", "-ceu", script)
 	return err
 }
 
