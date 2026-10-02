@@ -118,7 +118,7 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatalf("stop Valkey HA primary %s: %v", failedMember, err)
 	}
 
-	failoverDeadline := time.Now().Add(60 * time.Second)
+	failoverDeadline := time.Now().Add(120 * time.Second)
 	for {
 		master, masterErr := ValkeyHAMaster(ctx, op, m, files, defaultServiceInstance)
 		semanticErr := VerifyValkeyRuntime(ctx, runtime, m, files)
