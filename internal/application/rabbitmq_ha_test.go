@@ -64,6 +64,16 @@ func TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig(t *testing.T)
 		}
 	}
 
+	upstreams := rabbitmqGatewayUpstreams(m, defaultServiceInstance)
+	if len(upstreams) != 3 {
+		t.Fatalf("RabbitMQ HA gateway upstream count = %d, want 3", len(upstreams))
+	}
+	for i, want := range []string{"rabbitmq", "rabbitmq-2", "rabbitmq-3"} {
+		if upstreams[i].Host != want || upstreams[i].Port != 5672 {
+			t.Fatalf("RabbitMQ HA gateway upstream %d = %#v, want host %q port 5672", i, upstreams[i], want)
+		}
+	}
+
 	files := RuntimeFiles{Dir: t.TempDir()}
 	if err := ensureRabbitMQHAConfigFiles(files, m); err != nil {
 		t.Fatal(err)
