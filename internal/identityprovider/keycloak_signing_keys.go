@@ -250,6 +250,89 @@ func (a *keycloakAdmin) ensureManagedSigningProvider(ctx context.Context, realm 
 	return best, active, nil
 }
 
+func (a *keycloakAdmin) ensureSigningRotationProbeClient(ctx context.Context, realm, clientID, secret string) (string, error) {
+	clientID = strings.TrimSpace(clientID)
+	secret = strings.TrimSpace(secret)
+	if clientID == "" || secret == "" {
+		return "", errors.New("Keycloak signing rotation probe client is incomplete")
+	}
+	return a.reconcileClient(ctx, realm, keycloakClient{
+		ClientID:                  clientID,
+		Name:                      "BaseHarbor signing rotation probe",
+		Enabled:                   true,
+		Protocol:                  "openid-connect",
+		PublicClient:              false,
+		StandardFlowEnabled:       false,
+		DirectAccessGrantsEnabled: false,
+		ServiceAccountsEnabled:    true,
+		Secret:                    secret,
+		Attributes: map[string]string{
+			"baseharbor.owner": "signing-key-rotation",
+		},
+	})
+}
+
+func (a *keycloakAdmin) mintSigningProbeToken(ctx context.Context, realm, clientID, secret string) (string, error) {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", clientID)
+	form.Set("client_secret", secret)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		strings.TrimRight(a.endpoint, "/")+"/realms/"+url.PathEscape(realm)+"/protocol/openid-connect/token",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("mint Keycloak signing rotation probe token: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("mint Keycloak signing rotation probe token: HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	payload.AccessToken = strings.TrimSpace(payload.AccessToken)
+	if payload.AccessToken == "" {
+		return "", errors.New("Keycloak signing rotation probe token is empty")
+	}
+	return payload.AccessToken, nil
+}
+
+func (a *keycloakAdmin) deleteSigningRotationProbeClient(ctx context.Context, realm, clientUUID string) error {
+	clientUUID = strings.TrimSpace(clientUUID)
+	if clientUUID == "" {
+		return nil
+	}
+	status, body, err := a.do(ctx, http.MethodDelete, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientUUID), nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("delete Keycloak signing rotation probe client: HTTP %d: %s", status, body)
+	}
+	return nil
+}
+
+func kidForSigningComponent(keys keycloakKeysMetadata, componentID string) string {
+	componentID = strings.TrimSpace(componentID)
+	for _, key := range keys.Keys {
+		if strings.TrimSpace(key.ProviderID) == componentID && strings.EqualFold(strings.TrimSpace(key.Algorithm), "RS256") {
+			return strings.TrimSpace(key.Kid)
+		}
+	}
+	return ""
+}
+
 func fetchKeycloakJWKS(ctx context.Context, client *http.Client, baseURL, realm string) (keycloakJWKS, error) {
 	if client == nil {
 		return keycloakJWKS{}, errors.New("Keycloak HTTP client is required")
