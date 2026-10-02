@@ -109,7 +109,7 @@ func reloadManagedProviderManagementUI(ctx context.Context, runtime bhruntime.Ru
 	if service == "" {
 		return nil
 	}
-	_, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "/run/baseharbor/caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile")
+	_, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "/run/baseharbor/caddy", "reload", "--force", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile")
 	return err
 }
 
