@@ -99,6 +99,7 @@ type ListRequest struct {
 	Ownership     []Ownership    `json:"ownership,omitempty"`
 	ApplicationID string         `json:"application_id,omitempty"`
 	DeploymentID  string         `json:"deployment_id,omitempty"`
+	Environment   string         `json:"environment,omitempty"`
 	Component     string         `json:"component,omitempty"`
 }
 
