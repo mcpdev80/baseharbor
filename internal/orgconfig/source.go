@@ -15,12 +15,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-var (
-	ErrNotConfigured     = errors.New("organization configuration is not configured")
-	ErrUnsupportedSource = errors.New("organization source is unsupported")
-	ErrSourceUnavailable = errors.New("organization source is unavailable")
-)
-
 type UpdateStatus struct {
 	Current   Resolution `json:"current"`
 	Available Resolution `json:"available"`
