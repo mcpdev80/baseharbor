@@ -14,7 +14,7 @@ func TestResolveAvailabilityFailsBeforeMutationForUnsupportedRuntimeHA(t *testin
 	m.Workload.Components = []string{"api"}
 	m.HA = true
 	_, err := ResolveAvailability(m, "docker", availability.Support{
-		Level: availability.Unsupported,
+		Level:  availability.Unsupported,
 		Limits: "single-host runtime",
 	})
 	var typed *availability.UnsupportedGuaranteeError
@@ -31,7 +31,7 @@ func TestResolveAvailabilityAllowsExplicitNonHAException(t *testing.T) {
 	disabled := false
 	m = WithAvailabilityOverride(m, "api", &disabled, 0)
 	got, err := ResolveAvailability(m, "docker", availability.Support{
-		Level: availability.Unsupported,
+		Level:  availability.Unsupported,
 		Limits: "single-host runtime",
 	})
 	if err != nil {
