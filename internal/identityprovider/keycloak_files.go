@@ -331,6 +331,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
         condition: service_completed_successfully
     command:
       - start
+      - --features=client-secret-rotation
       - --cache=ispn
       - --cache-stack=jdbc-ping
       - --http-enabled=false
