@@ -647,6 +647,10 @@ path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "auth/approle/role/baseharbor-manager/role-id" {
+  capabilities = ["read"]
+}
+
 path "auth/approle/role/baseharbor-manager/secret-id" {
   capabilities = ["create", "update"]
 }
