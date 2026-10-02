@@ -76,3 +76,97 @@ func TestNegotiationCarriesTruthfulGuarantees(t *testing.T) {
 		t.Fatalf("failure domain = %q", got.Guarantees.FailureDomain)
 	}
 }
+
+
+func TestRuntimeAndCapabilityNegotiationRemainIndependent(t *testing.T) {
+	runtimeResult, runtimeErr := Negotiate(
+		Requirement{Component: "api", HA: true},
+		"docker",
+		Support{Level: Unsupported, Limits: "single-host workload runtime"},
+	)
+	var runtimeUnsupported *UnsupportedGuaranteeError
+	if !errors.As(runtimeErr, &runtimeUnsupported) {
+		t.Fatalf("runtime error = %v, want UnsupportedGuaranteeError", runtimeErr)
+	}
+	if runtimeResult.Satisfied || runtimeResult.Provider != "docker" {
+		t.Fatalf("runtime result = %#v", runtimeResult)
+	}
+
+	capabilityResult, capabilityErr := Negotiate(
+		Requirement{Component: "sql", HA: true},
+		"external/postgresql",
+		Support{
+			Level:                Supported,
+			RecommendedInstances: 3,
+			Guarantees: Guarantees{
+				HostFailureTolerance: true,
+				RollingMaintenance:   true,
+				FailureDomain:        "provider-managed",
+			},
+		},
+	)
+	if capabilityErr != nil {
+		t.Fatal(capabilityErr)
+	}
+	if !capabilityResult.Satisfied || !capabilityResult.Guarantees.HostFailureTolerance {
+		t.Fatalf("capability result = %#v", capabilityResult)
+	}
+	if capabilityResult.Provider != "external/postgresql" {
+		t.Fatalf("capability provider = %q", capabilityResult.Provider)
+	}
+}
+
+func TestObservationDistinguishesHealthyDegradedUnavailableAndUnsatisfied(t *testing.T) {
+	tests := []struct {
+		name      string
+		req       Requirement
+		instances []InstanceObservation
+		want      Health
+	}{
+		{
+			name: "healthy",
+			req:  Requirement{Component: "api"},
+			instances: []InstanceObservation{
+				{ID: "a", Ready: true},
+				{ID: "b", Ready: true},
+			},
+			want: Healthy,
+		},
+		{
+			name: "degraded",
+			req:  Requirement{Component: "api"},
+			instances: []InstanceObservation{
+				{ID: "a", Ready: true},
+				{ID: "b", Ready: false},
+			},
+			want: Degraded,
+		},
+		{
+			name:      "unavailable",
+			req:       Requirement{Component: "api"},
+			instances: []InstanceObservation{{ID: "a", Ready: false}},
+			want:      Unavailable,
+		},
+		{
+			name: "unsatisfied-ha",
+			req:  Requirement{Component: "api", HA: true, Instances: 3},
+			instances: []InstanceObservation{
+				{ID: "a", Ready: true},
+				{ID: "b", Ready: true},
+				{ID: "c", Ready: false},
+			},
+			want: UnsatisfiedGuarantee,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Observe(tt.req, tt.instances, []string{"https://stable.invalid"})
+			if got.Health != tt.want {
+				t.Fatalf("health = %q, want %q; observation=%#v", got.Health, tt.want, got)
+			}
+			if len(got.Instances) != len(tt.instances) {
+				t.Fatalf("instances collapsed: got %d, want %d", len(got.Instances), len(tt.instances))
+			}
+		})
+	}
+}
