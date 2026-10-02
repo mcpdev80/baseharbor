@@ -129,6 +129,21 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		}
 	}
 	if len(matches) == 0 {
+		// Native Quadlet services use a deterministic container name even when
+		// Podman inspect does not surface Compose compatibility labels.
+		wantName := project + "-" + service
+		nameOut, nameErr := exec.CommandContext(ctx, runtime, "ps", "--format", "{{.ID}} {{.Names}}").Output()
+		if nameErr != nil {
+			return "", fmt.Errorf("list running Podman containers by name: %w", nameErr)
+		}
+		for _, line := range strings.Split(string(nameOut), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[1] == wantName {
+				matches = append(matches, fields[0])
+			}
+		}
+	}
+	if len(matches) == 0 {
 		return "", fmt.Errorf("running container for %s/%s not found", project, service)
 	}
 	if len(matches) != 1 {
