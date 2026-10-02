@@ -23,7 +23,7 @@ import (
 
 const (
 	ProviderProject = "baseharbor-object-storage"
-	ProviderService = "seaweedfs"
+	ProviderService = "seaweedfs-filer-1"
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
@@ -492,14 +492,13 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		return ProviderFiles{}, err
 	}
 	accessPolicy.ServerName = "seaweedfs"
-	accessMaterial, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, accessPolicy, filepath.Join(files.Dir, "service-access", "pki"), "seaweedfs", "127.0.0.1")
+	accessSpec := s3AccessSpec()
+	accessSpec.Networks = []string{"object-storage", "object-storage-internal"}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := projectSeaweedNativeTLS(filepath.Join(files.Dir, "service-access", "runtime"), accessMaterial); err != nil {
-		return ProviderFiles{}, err
-	}
-	rendered := providerComposeYAMLWithAccessAndNetwork(serviceaccess.HTTPGatewayFiles{Material: accessMaterial}, files.Network)
+	rendered := providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)
 	if managementUI {
 		adminPolicy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
 		if err != nil {
@@ -661,10 +660,12 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "seaweedfs-access",
-		Upstream:         "http://seaweedfs:8333",
+		Upstreams:        []string{"http://seaweedfs-s3-1:8333", "http://seaweedfs-s3-2:8333"},
 		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
 		ContainerPort:    8443,
-		Networks:         []string{"object-storage"},
+		Networks:         []string{"object-storage", "object-storage-internal"},
+		NetworkAliases:   []string{"seaweedfs"},
+		CertificateNames: []string{"seaweedfs"},
 		RequireClient:    false,
 	}
 }
