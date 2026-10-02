@@ -7,7 +7,7 @@ import (
 
 func TestTCPGatewayConfigTerminatesTLS(t *testing.T) {
 	got := tcpGatewayConfig(TCPGatewaySpec{UpstreamHost: "postgres", UpstreamPort: 5432, ContainerPort: 5432})
-	for _, want := range []string{"mode tcp", "bind :5432 ssl crt", "server provider postgres:5432 check", "ssl-min-ver TLSv1.2"} {
+	for _, want := range []string{"mode tcp", "bind :5432 ssl crt", "server provider postgres:5432 check", "ssl-min-ver TLSv1.2", "bind 127.0.0.1:8404", "stats uri /stats", "option log-health-checks"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("TCP gateway config missing %q:\n%s", want, got)
 		}
@@ -49,16 +49,18 @@ func TestTCPGatewaySupportsProviderAwareHealthChecksWithoutEmbeddingSecret(t *te
 		},
 		BackendDirectives: []string{
 			"option tcp-check",
-			"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\\n\"",
+			"tcp-check connect",
+			"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\"",
 			"tcp-check expect string +OK",
-			"tcp-check send info\\ replication\\r\\n",
+			"tcp-check send-lf \"INFO replication\\r\"",
 			"tcp-check expect string role:master",
 		},
 	}
 	cfg := tcpGatewayConfig(spec)
 	for _, want := range []string{
 		"option tcp-check",
-		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\\n\"",
+		"tcp-check connect",
+		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\"",
 		"tcp-check expect string role:master",
 	} {
 		if !strings.Contains(cfg, want) {
