@@ -98,6 +98,19 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 	if err := runtime.UpProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
+	credentials, credentialPath, err := EnsureAdminCredentials(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	command := fmt.Sprintf(
+		"s3.configure -access_key=%s -secret_key=%s -user=baseharbor-runtime-admin -actions=Admin,Read,Write,List,Tagging -apply",
+		credentials.AccessKeyID,
+		credentials.SecretAccessKey,
+	)
+	if err := reconcileRuntimeAdminIdentity(reconcileCtx, runtime, files, command); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+
 	endpoint, err := providerEndpoint(files)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
@@ -119,20 +132,29 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 		}
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
-	credentials, credentialPath, err := EnsureAdminCredentials(files)
-	if err != nil {
-		return ProviderFiles{}, AdminCredentials{}, "", err
-	}
-	command := fmt.Sprintf(
-		"s3.configure -access_key=%s -secret_key=%s -user=baseharbor-runtime-admin -actions=Admin,Read,Write,List,Tagging -apply",
-		credentials.AccessKeyID,
-		credentials.SecretAccessKey,
-	)
-	input := []byte(command + "\n")
-	if _, err := runtime.ExecProjectInput(reconcileCtx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
-		return ProviderFiles{}, AdminCredentials{}, "", errors.New("configure SeaweedFS runtime admin identity failed")
-	}
 	return files, credentials, credentialPath, nil
+}
+
+func reconcileRuntimeAdminIdentity(ctx context.Context, runtime Runtime, files ProviderFiles, command string) error {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var last error
+	for {
+		input := []byte(command + "\n")
+		if _, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+		select {
+		case <-ctx.Done():
+			if last == nil {
+				last = ctx.Err()
+			}
+			return fmt.Errorf("configure SeaweedFS runtime admin identity: %w", last)
+		case <-ticker.C:
+		}
+	}
 }
 
 func ExistingReadySharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
