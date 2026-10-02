@@ -269,8 +269,8 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		writePostgresComposeService(&b, instance)
 	}
 	for _, instance := range cacheInstances {
-		writeValkeyComposeService(&b, instance)
-		b.WriteString(valkeyGatewayCompose(instance))
+		writeValkeyHAComposeServices(&b, m, instance)
+		b.WriteString(valkeyGatewayCompose(m, instance))
 	}
 	for _, instance := range rabbitInstances {
 		writeRabbitMQComposeService(&b, m, instance)
@@ -298,8 +298,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	for _, instance := range cacheInstances {
-		service := runtimeServiceName("valkey", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+			volume := valkeyMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	for _, instance := range rabbitInstances {
 		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
@@ -361,39 +363,6 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       start_period: 5s
 
 `, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot, tlsRoot)
-}
-
-func writeValkeyComposeService(b *strings.Builder, instance string) {
-	service := runtimeServiceName("valkey", instance)
-	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/valkey/valkey:9.1.2-alpine
-    restart: unless-stopped
-    user: "999:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      VALKEY_PASSWORD: ${%s}
-    command:
-      - sh
-      - -ec
-      - |
-        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
-        exec valkey-server /tmp/valkey.conf
-    volumes:
-      - %s-data:/data
-      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
-    healthcheck:
-      test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-
-`, service, passwordKey, service, instance)
 }
 
 func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
