@@ -20,16 +20,16 @@ import (
 const sharedBackendStateVersion = 2
 
 type sharedBackendState struct {
-	Version                 int                              `json:"version"`
-	Environment             string                           `json:"environment"`
+	Version                       int                              `json:"version"`
+	Environment                   string                           `json:"environment"`
 	PostgresAdminCredential       string                           `json:"postgres_admin_credential,omitempty"`
 	PostgresReplicationCredential string                           `json:"postgres_replication_credential,omitempty"`
 	PostgresHostPort              int                              `json:"postgres_host_port,omitempty"`
-	PostgresUIHostPort      int                              `json:"postgres_ui_host_port,omitempty"`
-	CacheUIHostPort         int                              `json:"cache_ui_host_port,omitempty"`
-	ManagementUsername      string                           `json:"management_username,omitempty"`
-	ManagementPassword      string                           `json:"management_password,omitempty"`
-	Applications            map[string]sharedBackendAppState `json:"applications"`
+	PostgresUIHostPort            int                              `json:"postgres_ui_host_port,omitempty"`
+	CacheUIHostPort               int                              `json:"cache_ui_host_port,omitempty"`
+	ManagementUsername            string                           `json:"management_username,omitempty"`
+	ManagementPassword            string                           `json:"management_password,omitempty"`
+	Applications                  map[string]sharedBackendAppState `json:"applications"`
 }
 
 type sharedBackendAppState struct {
