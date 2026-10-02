@@ -195,15 +195,18 @@ func cloneState(input state) state {
 }
 
 func saveRouteStateForReconcile(ctx context.Context, runtime Runtime, files Files, previous, next state) error {
-	if len(next.Routes) > 0 && routeNetworkSetChanged(previous.Routes, next.Routes) {
-		if _, err := os.Stat(files.Compose); err == nil {
-			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-				return fmt.Errorf("restart development gateway after route network change: %w", err)
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
+	// Route/network changes are reconciled in place by Reconcile through
+	// ConfigProject + UpProject. Do not destroy the currently healthy gateway
+	// before the replacement configuration has even been validated. Compose
+	// may still need to recreate the single ingress container when its attached
+	// network set changes, but the existing capacity remains available until
+	// the validated reconciliation actually starts. This is the strongest
+	// continuity possible on a single-host runtime where one loopback host port
+	// has a single owner.
+	_ = ctx
+	_ = runtime
+	_ = files
+	_ = previous
 	return saveState(files.State, next)
 }
 
