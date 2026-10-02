@@ -28,6 +28,12 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	if runtimeCommand == "" {
 		runtimeCommand = "docker"
 	}
+	if runtimeCommand == "podman" {
+		var targetOut bytes.Buffer
+		if err := runWithIO(ctx, []string{"target", "create", "podman-restart-ci", "--provider", "podman", "--access", "podman-restart-ci", "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
+			t.Fatalf("create Podman restart target: %v\n%s", err, targetOut.String())
+		}
+	}
 	if output, err := exec.CommandContext(
 		ctx,
 		runtimeCommand, "ps", "-a",
