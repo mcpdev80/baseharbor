@@ -419,11 +419,22 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 		if err != nil {
 			return "", err
 		}
-		host := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
-		if host == "" {
-			host = mongodbAccessService(instance)
+		seedHosts := mongodbContainerSeedHosts(m, instance)
+		if len(seedHosts) == 0 {
+			return "", fmt.Errorf("project workload MongoDB service binding %s has no replica-set seeds", name)
 		}
-		uri := mongodbConnectionURI(host, "27017", database, username, password)
+		host, _, err := net.SplitHostPort(seedHosts[0])
+		if err != nil {
+			return "", fmt.Errorf("project workload MongoDB service binding %s has invalid seed: %w", name, err)
+		}
+		replicaSet := ""
+		if mongodbMemberCount(m, instance) > 1 {
+			replicaSet, err = requireRuntimeValue(values, mongodbReplicaSetKey(instance))
+			if err != nil {
+				return "", err
+			}
+		}
+		uri := mongodbSeedURI(seedHosts, database, username, password, replicaSet)
 		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
 			"type": "mongodb", "provider": "mongodb", "host": host, "port": "27017",
 			"database": database, "username": username, "password": password,
@@ -533,16 +544,28 @@ func VerifyWorkloadServiceBindings(m Manifest, files RuntimeFiles) error {
 		if entries["type"] != "mongodb" || entries["provider"] != "mongodb" {
 			return fmt.Errorf("verify workload MongoDB binding %s: invalid type/provider", instance)
 		}
-		expectedHost := strings.TrimSpace(values[mongodbContainerHostKey(instance)])
-		if expectedHost == "" {
-			expectedHost = mongodbAccessService(instance)
+		seedHosts := mongodbContainerSeedHosts(m, instance)
+		if len(seedHosts) == 0 {
+			return fmt.Errorf("verify workload MongoDB binding %s: no replica-set seeds", instance)
+		}
+		expectedHost, _, err := net.SplitHostPort(seedHosts[0])
+		if err != nil {
+			return fmt.Errorf("verify workload MongoDB binding %s: invalid seed: %w", instance, err)
 		}
 		if entries["host"] != expectedHost || entries["port"] != "27017" {
 			return fmt.Errorf("verify workload MongoDB binding %s: invalid workload endpoint", instance)
 		}
 		u, err := url.Parse(entries["uri"])
-		if err != nil || u.Scheme != "mongodb" || u.Host != net.JoinHostPort(expectedHost, "27017") || u.Query().Get("tls") != "true" {
+		if err != nil || u.Scheme != "mongodb" || u.Query().Get("tls") != "true" {
 			return fmt.Errorf("verify workload MongoDB binding %s: invalid uri", instance)
+		}
+		for _, seed := range seedHosts {
+			if !strings.Contains(u.Host, seed) {
+				return fmt.Errorf("verify workload MongoDB binding %s: uri missing seed %s", instance, seed)
+			}
+		}
+		if mongodbMemberCount(m, instance) > 1 && u.Query().Get("replicaSet") != mongodbReplicaSetName(instance) {
+			return fmt.Errorf("verify workload MongoDB binding %s: replica-set identity missing", instance)
 		}
 		if strings.TrimSpace(entries["certificates"]) == "" {
 			return fmt.Errorf("verify workload MongoDB binding %s: certificates entry is empty", instance)
