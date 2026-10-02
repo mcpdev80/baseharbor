@@ -172,7 +172,6 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 	return nil
 }
 
-
 func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, current, next bhruntime.ControlPlaneCredentials) error {
 	prepareSQL := fmt.Sprintf(
 		"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
