@@ -211,6 +211,44 @@ PY`
 	if err := serviceaccess.WaitHTTPS(verifyCtx, client, endpoint, "/v1/sys/health"); err != nil {
 		return fmt.Errorf("verify OpenBao native HTTPS endpoint: %w", err)
 	}
+	if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-admin",
+		"sh", "-ec",
+		"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\""); err != nil {
+		return fmt.Errorf("verify control-plane PostgreSQL after native TLS reconcile: %w", err)
+	}
+
+	// Retire previous trust only after both stable service paths have accepted
+	// the replacement leaves. Re-project the new-only CA bundles afterwards
+	// and verify the operator path one more time.
+	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
+		return err
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao manager after CA retirement: %w", err)
+	}
+	postRetirePolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postRetirePolicy.ServerName = "openbao"
+	postRetireMaterial, err := serviceaccess.ExistingTLSMaterial(postRetirePolicy, filepath.Join(filepath.Dir(files.Compose), "providers", "openbao", "service-access", "pki"))
+	if err != nil {
+		return err
+	}
+	postRetireClient, err := serviceaccess.NewHTTPClient(postRetireMaterial, false)
+	if err != nil {
+		return err
+	}
+	postRetireCtx, postRetireCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer postRetireCancel()
+	if err := serviceaccess.WaitHTTPS(postRetireCtx, postRetireClient, endpoint, "/v1/sys/health"); err != nil {
+		return fmt.Errorf("verify OpenBao native HTTPS endpoint after CA retirement: %w", err)
+	}
+	if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-admin",
+		"sh", "-ec",
+		"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\""); err != nil {
+		return fmt.Errorf("verify control-plane PostgreSQL after CA retirement: %w", err)
+	}
 	return nil
 }
 
