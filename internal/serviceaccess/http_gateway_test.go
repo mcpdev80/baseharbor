@@ -116,3 +116,33 @@ func TestGatewayComposeRunsCaddyWithLeastPrivilege(t *testing.T) {
 		t.Fatalf("gateway on privileged port must add NET_BIND_SERVICE:\n%s", privilegedPort)
 	}
 }
+
+
+func TestHTTPGatewayMultipleUpstreams(t *testing.T) {
+	got := caddyfileWithUpstreamsTLS(
+		[]string{"http://member-a:8080", "http://member-b:8080"},
+		"",
+		"",
+		8443,
+		AuthenticationNone,
+		"",
+		"",
+	)
+	for _, want := range []string{
+		"reverse_proxy http://member-a:8080 http://member-b:8080",
+		"lb_policy round_robin",
+		"lb_try_duration 5s",
+		"fail_duration 30s",
+		"max_fails 2",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("gateway config missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestNormalizeGatewayUpstreamsRejectsInvalidScheme(t *testing.T) {
+	if _, err := normalizedGatewayUpstreams("", []string{"member-a:8080"}); err == nil {
+		t.Fatal("invalid upstream scheme accepted")
+	}
+}
