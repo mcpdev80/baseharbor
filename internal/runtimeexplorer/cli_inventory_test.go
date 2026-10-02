@@ -42,7 +42,6 @@ func (f *inventoryDirectRuntime) DirectStream(_ context.Context, args ...string)
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
-
 func TestCLIInventoryExposesStableReadOnlyResourceIDs(t *testing.T) {
 	runtime := &inventoryDirectRuntime{kind: runtimecontract.ProviderDocker}
 	backend, err := NewCLIContainerBackend(runtime)
