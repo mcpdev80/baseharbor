@@ -1,6 +1,7 @@
 package serviceaccess
 
 import (
+	"os"
 	"context"
 	"path/filepath"
 	"strings"
@@ -143,5 +144,48 @@ func TestHTTPGatewayMultipleUpstreams(t *testing.T) {
 func TestNormalizeGatewayUpstreamsRejectsInvalidScheme(t *testing.T) {
 	if _, err := normalizedGatewayUpstreams("", []string{"member-a:8080"}); err == nil {
 		t.Fatal("invalid upstream scheme accepted")
+	}
+}
+
+
+func TestHTTPGatewayKeepsPrivateStateSeparateFromReadableRuntimeConfig(t *testing.T) {
+	dir := t.TempDir()
+	policy, err := Resolve("prod", "gateway-permissions", AuthenticationNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := EnsureHTTPGateway(context.Background(), newTestIssuer(t), policy, dir, HTTPGatewaySpec{
+		ServiceName:   "gateway-permissions",
+		Upstream:      "http://upstream:8080",
+		ContainerPort: 8443,
+		Networks:      []string{"provider"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateInfo, err := os.Stat(files.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stateInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("service-access state mode = %o, want 700", got)
+	}
+	configDir := filepath.Dir(files.Caddyfile)
+	configInfo, err := os.Stat(configDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configInfo.Mode().Perm(); got != 0o755 {
+		t.Fatalf("gateway runtime config dir mode = %o, want 755", got)
+	}
+	configInfo, err = os.Stat(files.Caddyfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("Caddyfile mode = %o, want 644", got)
+	}
+	if filepath.Dir(configDir) != files.Dir {
+		t.Fatalf("Caddy runtime config escaped private service-access state: %s", files.Caddyfile)
 	}
 }
