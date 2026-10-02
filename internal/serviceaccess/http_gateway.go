@@ -579,18 +579,15 @@ func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upst
 	}
 	proxyTargets := strings.Join(normalized, " ")
 	healthURI = strings.TrimSpace(healthURI)
-	if healthURI == "" {
-		healthURI = "/"
+	activeHealth := ""
+	if healthURI != "" && strings.HasPrefix(healthURI, "/") && !strings.ContainsAny(healthURI, "\r\n{}") {
+		activeHealth = "    health_uri " + healthURI + "\n"
+		if healthStatus >= 100 && healthStatus <= 599 {
+			activeHealth += fmt.Sprintf("    health_status %d\n", healthStatus)
+		}
+		activeHealth += "    health_interval 5s\n    health_timeout 2s\n"
 	}
-	if !strings.HasPrefix(healthURI, "/") || strings.ContainsAny(healthURI, "\r\n{}") {
-		healthURI = "/"
-	}
-	healthStatusLine := ""
-	if healthStatus >= 100 && healthStatus <= 599 {
-		healthStatusLine = fmt.Sprintf("    health_status %d\n", healthStatus)
-	}
-	healthLine := "    health_uri " + healthURI + "\n"
-	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + healthLine + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n  }\n"
+	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + activeHealth + "    fail_duration 30s\n    max_fails 2\n  }\n"
 	allHTTPS := true
 	for _, upstream := range normalized {
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") {
@@ -600,7 +597,7 @@ func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upst
 	}
 	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + healthLine + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + activeHealth + "    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
 		}
