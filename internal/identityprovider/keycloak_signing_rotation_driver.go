@@ -110,14 +110,14 @@ func (d *KeycloakDriver) RotateSigningKey(ctx context.Context) error {
 			return errors.New("Keycloak JWKS did not publish old and replacement signing keys before promotion")
 		}
 		material := preparedKeycloakSigningRotation{
-			OldComponent: oldComponent,
-			NewComponent: newComponent,
-			OldKid: oldKid,
-			NewKid: newKid,
-			OldToken: oldToken,
-			ProbeClientID: probeClientID,
+			OldComponent:    oldComponent,
+			NewComponent:    newComponent,
+			OldKid:          oldKid,
+			NewKid:          newKid,
+			OldToken:        oldToken,
+			ProbeClientID:   probeClientID,
 			ProbeClientUUID: probeUUID,
-			ProbeSecret: probeSecret,
+			ProbeSecret:     probeSecret,
 		}
 		if err := savePreparedKeycloakSigningRotation(prepared, key, material); err != nil {
 			return err
