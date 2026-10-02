@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -187,7 +188,7 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.R
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
 		if err == nil {
-			if err := application.ReconcileRabbitMQCredentials(ctx, compose, m, files); err != nil {
+			if err := application.ReconcileRabbitMQCredentials(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
 				return err
 			}
 			return nil
@@ -229,7 +230,7 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
 			return err
 		}
-		if err := application.VerifyRabbitMQHACluster(ctx, compose, m, files); err != nil {
+		if err := application.VerifyRabbitMQHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
 			return err
 		}
 	}
