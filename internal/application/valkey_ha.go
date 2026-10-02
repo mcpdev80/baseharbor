@@ -144,3 +144,66 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 5s\n\n")
 	}
 }
+
+
+func sharedValkeyMemberCount(resource sharedValkeyResource) int {
+	if resource.Instances > 1 {
+		return resource.Instances
+	}
+	return 1
+}
+
+func sharedValkeyMemberServiceName(app sharedBackendAppState, instance string, ordinal int) string {
+	base := sharedValkeyServiceFor(app.Application, app.Environment, instance)
+	if ordinal <= 0 {
+		return base
+	}
+	return fmt.Sprintf("%s-%d", base, ordinal+1)
+}
+
+func sharedValkeyMemberVolumeName(app sharedBackendAppState, instance string, ordinal int) string {
+	return sharedValkeyMemberServiceName(app, instance, ordinal) + "-data"
+}
+
+func sharedValkeySentinelServiceName(app sharedBackendAppState, instance string, ordinal int) string {
+	base := sharedValkeyServiceFor(app.Application, app.Environment, instance) + "-sentinel"
+	if ordinal <= 0 {
+		return base
+	}
+	return fmt.Sprintf("%s-%d", base, ordinal+1)
+}
+
+func sharedValkeyGatewaySpec(app sharedBackendAppState, instance string) serviceaccess.TCPGatewaySpec {
+	resource := app.Cache[instance]
+	service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
+	spec := serviceaccess.TCPGatewaySpec{
+		ServiceName:      sharedValkeyAccessServiceFor(app.Application, app.Environment, instance),
+		UpstreamHost:     service,
+		UpstreamPort:     6379,
+		PublishedPortEnv: sharedValkeyPortEnvFor(app.Application, app.Environment, instance),
+		ContainerPort:    6379,
+		Network:          "shared-backend",
+	}
+	count := sharedValkeyMemberCount(resource)
+	if count <= 1 {
+		return spec
+	}
+	spec.Upstreams = make([]serviceaccess.TCPGatewayUpstream, 0, count)
+	for ordinal := 0; ordinal < count; ordinal++ {
+		member := sharedValkeyMemberServiceName(app, instance, ordinal)
+		spec.Upstreams = append(spec.Upstreams, serviceaccess.TCPGatewayUpstream{Name: member, Host: member, Port: 6379})
+	}
+	spec.Environment = map[string]string{
+		"VALKEY_HEALTH_PASSWORD": " + sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance) + ",
+	}
+	spec.BackendDirectives = []string{
+		"option tcp-check",
+		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\\n\"",
+		"tcp-check expect string +OK",
+		"tcp-check send info\\ replication\\r\\n",
+		"tcp-check expect string role:master",
+		"tcp-check send QUIT\\r\\n",
+		"tcp-check expect string +OK",
+	}
+	return spec
+}
