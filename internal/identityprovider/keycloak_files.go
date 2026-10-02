@@ -402,7 +402,10 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 }
 
 func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
 		return serviceaccess.TLSMaterial{}, err
 	}
 	project := func(source, name string) (string, error) {
