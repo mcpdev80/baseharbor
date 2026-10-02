@@ -83,7 +83,7 @@ func keycloakHADataLayerCompose() string {
 	b.WriteString("        cp /source/ca.pem /target/ca.pem\n")
 	b.WriteString("        cp /source/server.pem /target/server.pem\n")
 	b.WriteString("        cp /source/server-key.pem /target/server-key.pem\n")
-	b.WriteString("        chown \"$uid:$gid\" /target/ca.pem /target/server.pem /target/server-key.pem\n")
+	b.WriteString("        chown \"$$uid:$$gid\" /target/ca.pem /target/server.pem /target/server-key.pem\n")
 	b.WriteString("        chmod 0644 /target/ca.pem /target/server.pem\n")
 	b.WriteString("        chmod 0600 /target/server-key.pem\n")
 	b.WriteString("    volumes:\n")
