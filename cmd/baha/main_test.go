@@ -183,7 +183,6 @@ func TestClassifyMachineCLIErrorWorkspaceNotInitialized(t *testing.T) {
 	}
 }
 
-
 func TestVersionCommandStructuredOutput(t *testing.T) {
 	oldVersion, oldCommit, oldDate := version, commit, date
 	version, commit, date = "0.4.21-test", "abc123", "2026-10-02"
