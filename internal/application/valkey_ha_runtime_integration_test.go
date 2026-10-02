@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/provideroperation"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -96,15 +97,11 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	waitValkeyHAReady(t, ctx, runtime, op, m, files)
 }
 
-func waitValkeyHAReady(t *testing.T, ctx context.Context, runtime interface {
-	ExecProject(context.Context, string, string, string, string, ...string) (string, error)
-}, op valkeyHAProbeRuntime, m Manifest, files RuntimeFiles) {
+func waitValkeyHAReady(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, op valkeyHAProbeRuntime, m Manifest, files RuntimeFiles) {
 	t.Helper()
 	deadline := time.Now().Add(120 * time.Second)
 	for {
-		semanticErr := VerifyValkeyRuntime(ctx, runtime.(interface {
-			ExecProject(context.Context, string, string, string, string, ...string) (string, error)
-		}), m, files)
+		semanticErr := VerifyValkeyRuntime(ctx, runtime, m, files)
 		haErr := VerifyValkeyHACluster(ctx, op, m, files)
 		uiErr := VerifyApplicationManagementUIs(ctx, m, files)
 		if semanticErr == nil && haErr == nil && uiErr == nil {
