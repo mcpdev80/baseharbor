@@ -13,6 +13,9 @@ import (
 
 func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("provider.add", "Register an externally owned provider from endpoint plus secret-safe credential/trust references.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderAddInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeMCPOperation(ctx, "provider.add", "", "dev", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		reg, err := providerExternalRegistration(providerExternalArgs{
 			ID:                input.ID,
 			ProviderID:        input.ProviderID,
@@ -38,6 +41,9 @@ func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.remove", "Remove BaseHarbor registration for an externally owned provider. Foreign infrastructure is never mutated.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderRemoveInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeMCPOperation(ctx, "provider.remove", "", "dev", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		if err := applicationlifecycle.RequireApproval("provider.remove", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
@@ -58,6 +64,9 @@ func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("organization.set", "Resolve and activate one organization/platform configuration source. The immutable digest/revision and provenance are persisted explicitly.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineOrganizationSetInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeMCPOperation(ctx, "organization.set", "", input.Environment, "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		source := orgconfig.Source{Kind: orgconfig.SourceKind(strings.ToLower(strings.TrimSpace(input.Source))), Location: strings.TrimSpace(input.Location), Requested: strings.TrimSpace(input.Requested)}
 		state, err := orgconfig.Activate(ctx, source)
 		if err != nil {
@@ -71,6 +80,9 @@ func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("organization.update", "Explicitly activate the configured organization source at its newly resolved immutable version after prior review.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineOrganizationUpdateInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeMCPOperation(ctx, "organization.update", "", input.Environment, "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
 		if err := applicationlifecycle.RequireApproval("organization.update", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
