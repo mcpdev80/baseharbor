@@ -102,8 +102,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		"python", "-c", script,
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("start Prometheus HA target: %v
-%s", err, output)
+		t.Fatalf("start Prometheus HA target: %v\\n%s", err, output)
 	}
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
