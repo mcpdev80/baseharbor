@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 func TestAgentDescribeJSON(t *testing.T) {
@@ -265,5 +267,57 @@ func TestMachineCLIErrorClassification(t *testing.T) {
 	}
 	if got.Next != "use a valid input" {
 		t.Fatalf("next = %q", got.Next)
+	}
+}
+
+
+func TestMachineCLIErrorClassificationExpectedPreconditions(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code machine.ErrorCode
+	}{
+		{
+			name: "repository manifest missing",
+			err:  application.ErrRepositoryManifestNotFound,
+			code: machine.ErrorSourceMissing,
+		},
+		{
+			name: "organization not configured",
+			err:  orgconfig.ErrNotConfigured,
+			code: machine.ErrorValidationFailed,
+		},
+		{
+			name: "organization source unsupported",
+			err:  orgconfig.ErrUnsupportedSource,
+			code: machine.ErrorUnsupported,
+		},
+		{
+			name: "organization source unavailable",
+			err:  orgconfig.ErrSourceUnavailable,
+			code: machine.ErrorProviderUnavailable,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := machine.Classify(classifyMachineCLIError(tc.err))
+			if got == nil || got.Code != tc.code {
+				t.Fatalf("classified = %#v, want %q", got, tc.code)
+			}
+		})
+	}
+}
+
+func TestMachineClassifyPreservesTypedNotFound(t *testing.T) {
+	input := &machine.Error{
+		Code:      machine.ErrorNotFound,
+		CauseCode: "application_deployment_not_found",
+		Message:   "application not found",
+		Next:      "inspect applications",
+		Cause:     errors.New("missing"),
+	}
+	got := machine.Classify(classifyMachineCLIError(input))
+	if got.Code != machine.ErrorNotFound || got.CauseCode != input.CauseCode || got.Next != input.Next {
+		t.Fatalf("typed not-found changed: %#v", got)
 	}
 }
