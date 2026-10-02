@@ -87,7 +87,7 @@ Provider-specific details belong in the extension field.
 
 Clients MUST negotiate capabilities and MUST NOT hard-code behavior by provider name.
 
-Initial capabilities include:
+The capability vocabulary includes:
 
 ```text
 resources.inspect
@@ -98,7 +98,7 @@ container.exec
 pod.inspect
 ```
 
-Unsupported capabilities fail explicitly.
+Providers advertise only capabilities they actually implement. Unsupported capabilities fail explicitly.
 
 ## Operations
 
@@ -109,7 +109,9 @@ Bounded v1 container operations are:
 - `restart`;
 - `exec`.
 
-Exec requires an explicit command. It does not imply a host shell.
+The Machine Interface exposes `runtime.start`, `runtime.stop` and `runtime.restart` as separate authorized semantic operations. This keeps safety/policy metadata stable and prevents a generic operation string from changing meaning after authorization.
+
+Exec requires an explicit command and uses the protected runtime exec stream boundary. It does not imply a host shell and is not exposed as a generic command passthrough.
 
 Runtime Explorer MUST NOT expose a generic provider command passthrough.
 
@@ -141,13 +143,16 @@ Docker and Podman reuse the existing BaseHarbor Runtime Provider implementations
 
 The reference explorer:
 
-- inventories containers using stable runtime ids;
-- retains unmanaged containers rather than dropping them;
-- exposes state and health;
-- delegates bounded logs/lifecycle/exec through container-scoped runtime commands;
+- inventories Docker containers, images, volumes and networks;
+- inventories Podman containers, images, volumes, networks and pods;
+- uses stable runtime ids where the engine exposes them; volume names are the runtime-native stable identifiers;
+- retains unmanaged resources rather than dropping them;
+- exposes state and health where the runtime supplies them;
+- keeps image/volume/network/pod inventory read-only in v1;
+- delegates bounded container logs/lifecycle/exec through resource-scoped runtime commands;
 - never falls back to a host shell.
 
-Ownership is supplied by BaseHarbor evidence through a separate resolver rather than guessed from runtime names.
+Managed container ownership is supplied by BaseHarbor deployment evidence through a separate resolver rather than guessed from display names. Inventory resources without authoritative ownership evidence remain `unmanaged`; the explorer does not promote them to managed based on naming conventions.
 
 ## Kubernetes/OpenShift compatibility
 
