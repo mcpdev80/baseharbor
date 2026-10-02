@@ -32,7 +32,7 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 	case ProviderOpenBao:
 		return unsupported("current BaseHarbor OpenBao reference realization uses one managed server"), nil
 	case ProviderCaddy:
-		return unsupported("current BaseHarbor exposure reference realization has no redundant runtime topology"), nil
+		return unsupported("single-host exposure owns one loopback HTTPS port; stable routing and config/TLS hot reload are supported, but redundant ingress/member-failure tolerance is not"), nil
 	case ProviderSeaweedFS:
 		return availability.Support{
 			Level:                availability.Supported,
