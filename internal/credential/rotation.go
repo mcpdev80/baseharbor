@@ -19,6 +19,7 @@ type Rotation struct {
 	Retire    func(context.Context) error
 	Rollback  func(context.Context) error
 	Journal   RotationJournal
+	Prepared  PreparedMaterialStore
 	Key       string
 }
 
@@ -85,6 +86,11 @@ func (r Rotation) Run(ctx context.Context) error {
 			return fmt.Errorf("clear completed credential rotation journal: %w", err)
 		}
 	}
+	if r.Prepared != nil {
+		if err := r.Prepared.Clear(r.Key); err != nil {
+			return fmt.Errorf("clear completed prepared credential material: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -105,6 +111,11 @@ func (r Rotation) rollbackAndReset(ctx context.Context) error {
 	if r.Journal != nil {
 		if err := r.Journal.Clear(r.Key); err != nil {
 			return fmt.Errorf("clear rolled-back credential rotation journal: %w", err)
+		}
+	}
+	if r.Prepared != nil {
+		if err := r.Prepared.Clear(r.Key); err != nil {
+			return fmt.Errorf("clear rolled-back prepared credential material: %w", err)
 		}
 	}
 	return nil
