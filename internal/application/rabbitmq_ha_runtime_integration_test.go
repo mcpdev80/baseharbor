@@ -53,6 +53,15 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
+		if t.Failed() {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 20*time.Second)
+			if logs, logErr := runtime.LogsProject(diagnosticCtx, files.Project, files.Compose, files.Env); logErr == nil {
+				t.Logf("RabbitMQ HA project logs:\n%s", logs)
+			} else {
+				t.Logf("RabbitMQ HA project log capture failed: %v", logErr)
+			}
+			diagnosticCancel()
+		}
 		if t.Failed() && os.Getenv("BASEHARBOR_RABBITMQ_HA_KEEP_ON_FAILURE") == "1" {
 			return
 		}
