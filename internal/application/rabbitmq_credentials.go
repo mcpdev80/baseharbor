@@ -8,7 +8,7 @@ import (
 )
 
 type rabbitMQCredentialRuntime interface {
-	ExecProjectInput(context.Context, string, string, string, []byte, string, ...string) (string, error)
+	RunSensitive(context.Context, string, []byte, ...string) (string, error)
 }
 
 func ReconcileRabbitMQCredentials(ctx context.Context, runtime rabbitMQCredentialRuntime, m Manifest, files RuntimeFiles) error {
@@ -71,10 +71,7 @@ fi
 		}
 		input := []byte(appUser + "\n" + appPassword + "\n" + adminUser + "\n" + adminPassword + "\n")
 		service := rabbitmqMemberServiceName(instance, 0)
-		if _, err := runtime.ExecProjectInput(
-			ctx, files.Project, files.Compose, files.Env, input, service,
-			"sh", "-ceu", script,
-		); err != nil {
+		if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err != nil {
 			return fmt.Errorf("reconcile RabbitMQ credentials for %s: %w", instance, err)
 		}
 	}
