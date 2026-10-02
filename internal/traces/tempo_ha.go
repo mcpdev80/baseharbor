@@ -134,17 +134,18 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
     command:
       - |
         brokers=redpanda-0:9092,redpanda-1:9092,redpanda-2:9092
+        admin_hosts=redpanda-0:9644,redpanda-1:9644,redpanda-2:9644
         attempts=0
-        until rpk cluster health -X brokers="$$brokers" >/dev/null 2>&1; do
-          attempts=$$((attempts+1))
-          if [ "$$attempts" -ge 45 ]; then
+        until rpk cluster health -X admin.hosts="$admin_hosts" --exit-when-healthy >/dev/null 2>&1; do
+          attempts=$((attempts+1))
+          if [ "$attempts" -ge 45 ]; then
             echo "Tempo Redpanda cluster did not become healthy" >&2
-            rpk cluster health -X brokers="$$brokers" || true
+            rpk cluster health -X admin.hosts="$admin_hosts" || true
             exit 1
           fi
           sleep 1
         done
-        rpk topic create tempo-traces -X brokers="$$brokers" --partitions 3 --replicas 3 --topic-config min.insync.replicas=2 || true
+        rpk topic create tempo-traces -X brokers="$brokers" --partitions 3 --replicas 3 --topic-config min.insync.replicas=2 || true
     networks: [traces]
 
 `)
