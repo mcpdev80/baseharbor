@@ -556,7 +556,7 @@ func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamSe
 		normalized = []string{"http://127.0.0.1:1"}
 	}
 	proxyTargets := strings.Join(normalized, " ")
-	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n  }\n"
+	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n  }\n"
 	allHTTPS := true
 	for _, upstream := range normalized {
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") {
@@ -566,7 +566,7 @@ func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamSe
 	}
 	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
 		}
