@@ -211,6 +211,15 @@ func TestProjectGatewayMaterialProjectsClientIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, path := range []string{material.ServerKey, material.ClientKey} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("authoritative private material %s mode = %o, want 600", path, got)
+		}
+	}
 	runtimeDir := filepath.Join(dir, "runtime")
 	for _, path := range []string{
 		projected.CA,
