@@ -71,7 +71,6 @@ func VerifyValkeyHACluster(ctx context.Context, runtime valkeyHAProbeRuntime, m 
 	return nil
 }
 
-
 func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifest, files RuntimeFiles, instance string) (string, error) {
 	if runtime == nil {
 		return "", fmt.Errorf("Valkey HA master lookup requires a runtime provider")
