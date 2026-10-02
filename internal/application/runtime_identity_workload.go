@@ -159,7 +159,6 @@ func projectRuntimeIdentityWorkloadFile(files RuntimeFiles, source, targetName s
 	return absolute, nil
 }
 
-
 func projectRuntimeSecretWorkloadFile(files RuntimeFiles, source, targetName string) (string, error) {
 	info, err := os.Lstat(source)
 	if err != nil {
