@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -258,6 +259,35 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 		},
 	})
 	return err
+}
+
+func authorizeResolvedMCPOperation(ctx context.Context, operationID string, resolved resolvedApplication, workspace string) error {
+	return authorizeMCPOperation(
+		ctx,
+		operationID,
+		resolved.Target.Name,
+		resolved.Manifest.Environment,
+		resolved.Manifest.Name,
+		workspace,
+	)
+}
+
+func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, environment, workspace string) error {
+	ctx = withTargetOverride(ctx, targetName)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	if environment == "" {
+		environment = "dev"
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, ""); selectionErr == nil {
+				environment = selection.Manifest.Environment
+			}
+		}
+	}
+	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
 
 func machineApplicationArgs(name, environment string) []string {
