@@ -136,6 +136,15 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	}
 	instance, err := d.realization.Apply(ctx)
 	if err != nil {
+		detail := ""
+		if diagnostics, ok := d.realization.(keycloakRealizationDiagnostics); ok {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail = strings.TrimSpace(diagnostics.Diagnostics(diagnosticCtx))
+			diagnosticCancel()
+		}
+		if detail != "" {
+			return fmt.Errorf("realize Keycloak provider: %w\n%s", err, detail)
+		}
 		return fmt.Errorf("realize Keycloak provider: %w", err)
 	}
 	d.instance = instance
