@@ -35,14 +35,20 @@ func ManagementUISurfaceAt(dataDir, namespace string, m application.Manifest) (a
 		return application.ManagementUISurface{}, err
 	}
 	authentication := "none"
+	authClass := application.ManagementAuthUnsupported
+	roleMappings := []application.ManagementRoleMapping(nil)
 	if policy.AuthenticationRequired {
 		authentication = string(policy.Authentication)
+		authClass = application.ManagementAuthNativeCredential
+		roleMappings = application.NativeCredentialRoleMappings("operator", "reader")
 	}
 	return application.ManagementUISurface{
 		Service:        "observability",
 		Purpose:        application.ProviderInterfaceObservability,
 		URL:            strings.TrimRight(endpoint, "/") + "/",
 		Authentication: authentication,
+		AuthenticationClass: authClass,
+		RoleMappings: roleMappings,
 	}, nil
 }
 
