@@ -38,12 +38,21 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 	}
 	if !UsesSharedValkey(m) {
 		for _, instance := range ValkeyInstanceNames(m) {
-			service := runtimeServiceName("valkey", instance)
-			resources = append(resources,
-				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"},
-				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-			)
+			for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+				service := valkeyMemberServiceName(instance, ordinal)
+				volume := valkeyMemberVolumeName(instance, ordinal)
+				resources = append(resources,
+					bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+					bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + volume},
+				)
+			}
+			if valkeyMemberCount(m, instance) > 1 {
+				for ordinal := 0; ordinal < 3; ordinal++ {
+					service := valkeySentinelServiceName(instance, ordinal)
+					resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"})
+				}
+			}
+			resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + valkeyAccessService(instance) + "-1"})
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
