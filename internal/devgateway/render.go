@@ -58,7 +58,7 @@ func renderCompose(files Files, routes []Route, trustTargets map[string]string, 
 	b.WriteString("    cap_drop: [\"ALL\"]\n    cap_add: [\"NET_BIND_SERVICE\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
-	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+	b.WriteString("    command:\n      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	fmt.Fprintf(&b, "    ports:\n      - \"127.0.0.1:%d:%d\"\n", hostPort, hostPort)
 	b.WriteString("    volumes:\n")
 	fmt.Fprintf(&b, "      - %q\n", files.Caddyfile+":/etc/caddy/Caddyfile:ro")
