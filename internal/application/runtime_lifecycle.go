@@ -47,12 +47,15 @@ func ExpectedRuntimeResourcesForIdentity(m Manifest, composeProject, resourcePro
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
-		service := runtimeServiceName("rabbitmq", instance)
-		resources = append(resources,
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
-			bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqAccessService(instance) + "-1"},
-			bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + service + "-data"},
-		)
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			service := rabbitmqMemberServiceName(instance, ordinal)
+			volume := rabbitmqMemberVolumeName(instance, ordinal)
+			resources = append(resources,
+				bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + service + "-1"},
+				bhruntime.ProjectResource{Kind: "volume", Name: resourceProject + "_" + volume},
+			)
+		}
+		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqAccessService(instance) + "-1"})
 		if m.Services.MessagingManagementUI {
 			resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: composeProject + "-" + rabbitmqUIServiceName(instance) + "-1"})
 		}
