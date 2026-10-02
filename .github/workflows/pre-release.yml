@@ -317,8 +317,8 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
 
-  runtime_gates:
-    name: ${{ matrix.runtime }} · ${{ matrix.gate }}
+  runtime_light_gates:
+    name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs: [source, runtime_candidate]
     strategy:
       fail-fast: false
@@ -328,16 +328,33 @@ jobs:
         gate:
           - guided
           - lifecycle
-          - data-capabilities
-          - observability
           - policy
-          - identity
           - connectivity
-          - security
           - reconciliation
           - failure
-          - backup-restore
           - full-destroy
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-runtime-candidate
+
+  runtime_heavy_gates:
+    name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
+    needs: [source, runtime_candidate]
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+        gate:
+          - data-capabilities
+          - observability
+          - identity
+          - security
+          - backup-restore
           - rabbitmq-runtime
           - mongodb-runtime
           - durable-key-value
@@ -355,7 +372,7 @@ jobs:
   evidence:
     name: Evidence · Candidate Manifest
     if: always()
-    needs: [source, runtime_candidate, static_gates, runtime_gates]
+    needs: [source, runtime_candidate, static_gates, runtime_light_gates, runtime_heavy_gates]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -428,7 +445,8 @@ jobs:
           needs.source.result == 'success' &&
           needs.runtime_candidate.result == 'success' &&
           needs.static_gates.result == 'success' &&
-          needs.runtime_gates.result == 'success'
+          needs.runtime_light_gates.result == 'success' &&
+          needs.runtime_heavy_gates.result == 'success'
         shell: bash
         env:
           TAG: ${{ needs.source.outputs.tag }}
@@ -482,7 +500,8 @@ jobs:
           Source	${{ needs.source.result }}	exact candidate source/contracts/docs
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
           Static gates	${{ needs.static_gates.result }}	5 independently rerunnable static gates
-          Runtime gates	${{ needs.runtime_gates.result }}	36 independently rerunnable Docker/Podman gates
+          Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
+          Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
           Evidence manifest	${{ steps.manifest.outcome }}	41 gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
