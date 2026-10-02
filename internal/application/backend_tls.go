@@ -157,19 +157,23 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			return err
 		}
 		root := backendAccessRoot(files, "mongodb", instance)
-		_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-			ServiceName:      mongodbAccessService(instance),
-			UpstreamHost:     runtimeServiceName("mongodb", instance),
-			UpstreamPort:     27017,
-			PublishedPortEnv: mongodbRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    27017,
-		})
-		if err != nil {
-			return fmt.Errorf("prepare MongoDB TLS access for %s: %w", instance, err)
+		names := make([]string, 0, mongodbMemberCount(m, instance)+2)
+		names = append(names, "localhost", "127.0.0.1")
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			names = append(names, mongodbMemberServiceName(instance, ordinal))
 		}
-		material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(root, "service-access", "pki"))
+		material, err := serviceaccess.EnsureTLSMaterial(
+			ctx,
+			issuer,
+			policy,
+			filepath.Join(root, "service-access", "pki"),
+			names...,
+		)
 		if err != nil {
-			return err
+			return fmt.Errorf("prepare MongoDB native TLS for %s: %w", instance, err)
+		}
+		if err := projectMongoDBServerMaterial(root, material); err != nil {
+			return fmt.Errorf("project MongoDB native TLS for %s: %w", instance, err)
 		}
 		ca, err := projectBackendCA(files, "mongodb", instance, material.CA)
 		if err != nil {
@@ -217,6 +221,44 @@ hostnossl all all ::/0 reject
 `
 	if err := os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
 		return err
+	}
+	return nil
+}
+
+func projectMongoDBServerMaterial(root string, material serviceaccess.TLSMaterial) error {
+	runtimeDir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(runtimeDir, 0o700); err != nil {
+		return err
+	}
+	cert, err := os.ReadFile(material.ServerCertificate)
+	if err != nil {
+		return err
+	}
+	key, err := os.ReadFile(material.ServerKey)
+	if err != nil {
+		return err
+	}
+	ca, err := os.ReadFile(material.CA)
+	if err != nil {
+		return err
+	}
+	if len(cert) == 0 || len(key) == 0 || len(ca) == 0 {
+		return fmt.Errorf("MongoDB TLS material is incomplete")
+	}
+	serverPEM := append(append([]byte(nil), cert...), key...)
+	for path, data := range map[string][]byte{
+		filepath.Join(runtimeDir, "server.pem"): serverPEM,
+		filepath.Join(runtimeDir, "ca.pem"):     ca,
+	} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			return err
+		}
+		if err := os.Chmod(path, 0o644); err != nil {
+			return err
+		}
 	}
 	return nil
 }
