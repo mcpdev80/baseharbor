@@ -89,6 +89,8 @@ type ManagementUISurface struct {
 	Purpose        ProviderInterfacePurpose `json:"purpose"`
 	URL            string                   `json:"url"`
 	Authentication string                   `json:"authentication"`
+	AuthenticationClass ManagementAuthenticationClass `json:"authentication_class"`
+	RoleMappings []ManagementRoleMapping `json:"role_mappings,omitempty"`
 }
 
 func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, username, password string) error {
@@ -324,6 +326,8 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			Service: "sql", Purpose: ProviderInterfaceManagement,
 			URL:            "https://127.0.0.1:" + port + "/",
 			Authentication: "pgadmin-native",
+			AuthenticationClass: ManagementAuthNativeCredential,
+			RoleMappings: NativeCredentialRoleMappings("administrator", "user"),
 		})
 	}
 	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
@@ -339,6 +343,8 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			Service: service, Purpose: ProviderInterfaceManagement,
 			URL:            "https://127.0.0.1:" + port + "/",
 			Authentication: "http-basic",
+			AuthenticationClass: ManagementAuthStandardsAdapter,
+			RoleMappings: NativeCredentialRoleMappings("developer", "developer"),
 		})
 	}
 	if m.Services.MessagingManagementUI {
@@ -351,6 +357,8 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 				Service: rabbitmqUIRouteName(instance), Purpose: ProviderInterfaceManagement,
 				URL:            "https://127.0.0.1:" + port + "/",
 				Authentication: "rabbitmq-native",
+				AuthenticationClass: ManagementAuthNativeCredential,
+				RoleMappings: NativeCredentialRoleMappings("administrator", "management"),
 			})
 		}
 	}
@@ -364,6 +372,8 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 				Service: mongodbUIRouteName(instance), Purpose: ProviderInterfaceManagement,
 				URL:            "https://127.0.0.1:" + port + "/",
 				Authentication: "http-basic",
+				AuthenticationClass: ManagementAuthStandardsAdapter,
+				RoleMappings: NativeCredentialRoleMappings("developer", "developer"),
 			})
 		}
 	}
