@@ -191,6 +191,12 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 				return errors.New("runtime is running but not ready")
 			}
 		}
+		availability := evaluateControlPlaneAvailability(running, health.RuntimeChecksForFiles(files))
+		state := "SATISFIED"
+		if !availability.Satisfied {
+			state = "UNSATISFIED"
+		}
+		fmt.Fprintf(out, "  %-9s availability · %s\n", state, availability.Detail())
 	}
 
 	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)
