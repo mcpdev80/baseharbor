@@ -89,11 +89,13 @@ func RotateProviderPKIAt(ctx context.Context, runtime Runtime, issuer serviceacc
 	if err != nil {
 		return err
 	}
-	if err := waitS3(probeCtx, client, endpoint); err != nil {
+	postRetireCtx, postRetireCancel := context.WithTimeout(ctx, providerReadinessTimeout)
+	defer postRetireCancel()
+	if err := waitS3(postRetireCtx, client, endpoint); err != nil {
 		return fmt.Errorf("verify SeaweedFS PKI after CA retirement: %w", err)
 	}
 	if managementUI {
-		if err := VerifyManagementUIAt(probeCtx, dataDir, namespace); err != nil {
+		if err := VerifyManagementUIAt(postRetireCtx, dataDir, namespace); err != nil {
 			return fmt.Errorf("verify SeaweedFS management PKI after CA retirement: %w", err)
 		}
 	}
