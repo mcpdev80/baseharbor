@@ -23,7 +23,7 @@ import (
 
 const (
 	ProviderProject = "baseharbor-object-storage"
-	ProviderService = "seaweedfs-filer-1"
+	ProviderService = "seaweedfs-node-1"
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
@@ -577,44 +577,52 @@ func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string
 	return providerComposeYAMLWithAccessAndNetwork(access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithAccessAndNetwork(_ serviceaccess.HTTPGatewayFiles, network string) string {
-	return fmt.Sprintf(`services:
-  seaweedfs:
-    image: %s
-    restart: unless-stopped
-    user: "1000:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    command:
-      - server
-      - -s3
-      - -iam=true
-      - -s3.iam.readOnly=false
-      - -s3.port.https=8443
-      - -s3.cert.file=/run/baseharbor/tls/server.pem
-      - -s3.key.file=/run/baseharbor/tls/server-key.pem
-    ports:
-      - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8443"
-    volumes:
-      - seaweedfs-data:/data
-      - ./service-access/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
-      - ./service-access/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
-      - ./service-access/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
-    networks:
-      object-storage:
-        aliases:
-          - seaweedfs
-
-volumes:
-  seaweedfs-data:
-
-networks:
-  object-storage:
-    name: %s
-`, ProviderImage, network)
+func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string) string {
+	const peers = "seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333"
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for i := 1; i <= 3; i++ {
+		name := fmt.Sprintf("seaweedfs-node-%d", i)
+		volume := fmt.Sprintf("seaweedfs-data-%d", i)
+		dc := fmt.Sprintf("dc%d", i)
+		fmt.Fprintf(&b, "  %s:\n", name)
+		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"1000:1000\"\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - server\n")
+		b.WriteString("      - -master=true\n")
+		b.WriteString("      - -volume=true\n")
+		b.WriteString("      - -filer=true\n")
+		b.WriteString("      - -s3=true\n")
+		fmt.Fprintf(&b, "      - -ip=%s\n", name)
+		b.WriteString("      - -ip.bind=0.0.0.0\n")
+		fmt.Fprintf(&b, "      - -dataCenter=%s\n", dc)
+		fmt.Fprintf(&b, "      - -master.peers=%s\n", peers)
+		b.WriteString("      - -master.defaultReplication=100\n")
+		b.WriteString("      - -master.telemetry=false\n")
+		b.WriteString("      - -filer.defaultReplicaPlacement=100\n")
+		b.WriteString("      - -s3.port=8333\n")
+		b.WriteString("      - -s3.iam=true\n")
+		b.WriteString("      - -s3.iam.readOnly=false\n")
+		b.WriteString("      - -s3.port.iceberg=0\n")
+		b.WriteString("      - -s3.port.lance=0\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(&b, "      - %s:/data\n", volume)
+		b.WriteString("    networks:\n      object-storage-internal: {}\n")
+	}
+	accessSpec := s3AccessSpec()
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
+	b.WriteString("\nvolumes:\n")
+	for i := 1; i <= 3; i++ {
+		fmt.Fprintf(&b, "  seaweedfs-data-%d:\n\n", i)
+	}
+	b.WriteString("networks:\n")
+	fmt.Fprintf(&b, "  object-storage:\n    name: %s\n", strconv.Quote(network))
+	fmt.Fprintf(&b, "  object-storage-internal:\n    name: %s\n    internal: true\n", strconv.Quote(network+"-internal"))
+	return b.String()
 }
 
 func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) error {
@@ -660,7 +668,7 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "seaweedfs-access",
-		Upstreams:        []string{"http://seaweedfs-s3-1:8333", "http://seaweedfs-s3-2:8333"},
+		Upstreams:        []string{"http://seaweedfs-node-1:8333", "http://seaweedfs-node-2:8333", "http://seaweedfs-node-3:8333"},
 		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
 		ContainerPort:    8443,
 		Networks:         []string{"object-storage", "object-storage-internal"},
