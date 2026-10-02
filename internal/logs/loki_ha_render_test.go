@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-		"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
