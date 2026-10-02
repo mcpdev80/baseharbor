@@ -61,6 +61,7 @@ type HTTPGatewaySpec struct {
 	ContainerPort      int
 	Networks           []string
 	NetworkAliases     []string
+	CertificateNames   []string
 	RequireClient      bool
 	DenyPaths          []string
 	BasicAuthUsername  string
@@ -87,7 +88,8 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return HTTPGatewayFiles{}, fmt.Errorf("create service access state: %w", err)
 	}
-	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
+	certificateNames := append([]string{spec.ServiceName, "127.0.0.1"}, spec.CertificateNames...)
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), certificateNames...)
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
