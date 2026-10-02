@@ -2,239 +2,135 @@ package application
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func ReconcileMongoDBHA(ctx context.Context, m Manifest, files RuntimeFiles) error {
-	values, err := readRuntimeEnv(files.Env)
-	if err != nil {
-		return err
+type mongoDBHAProbeRuntime interface {
+	Run(context.Context, string, ...string) (string, error)
+	RunSensitive(context.Context, string, []byte, ...string) (string, error)
+}
+
+// ReconcileMongoDBHA bootstraps a managed MongoDB replica set after all members
+// are running. It is idempotent and leaves an already initialized set intact.
+func ReconcileMongoDBHA(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, files RuntimeFiles) error {
+	if runtime == nil {
+		return fmt.Errorf("MongoDB HA reconciliation requires a runtime provider")
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		if mongodbMemberCount(m, instance) <= 1 {
 			continue
 		}
-		if err := reconcileMongoDBReplicaSet(ctx, m, values, instance); err != nil {
-			return fmt.Errorf("reconcile MongoDB replica set %s: %w", instance, err)
+		members := make([]string, 0, mongodbMemberCount(m, instance))
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			members = append(members, fmt.Sprintf("{_id:%d,host:%q}", ordinal, mongodbMemberServiceName(instance, ordinal)+":27017"))
+		}
+		service := mongodbMemberServiceName(instance, 0)
+		script := fmt.Sprintf("mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
+		if _, err := runtime.Run(ctx, service, "sh", "-ec", script); err != nil {
+			return fmt.Errorf("initialize MongoDB replica set %s: %w", instance, err)
+		}
+		if err := waitMongoDBHACluster(ctx, runtime, m, instance); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func reconcileMongoDBReplicaSet(ctx context.Context, m Manifest, values map[string]string, instance string) error {
-	client, err := mongoDBDirectAdminClient(ctx, values, instance, 0)
-	if err != nil {
-		return err
-	}
-	defer client.Disconnect(context.Background())
-
-	var status bson.M
-	err = client.Database("admin").RunCommand(ctx, bson.D{{Key: "replSetGetStatus", Value: 1}}).Decode(&status)
-	if err != nil {
-		var cmdErr mongo.CommandError
-		if !errors.As(err, &cmdErr) || cmdErr.Code != 94 {
-			return fmt.Errorf("inspect replica-set status: %w", err)
-		}
-		replicaSet, err := requireRuntimeValue(values, mongodbReplicaSetKey(instance))
-		if err != nil {
-			return err
-		}
-		members := bson.A{}
-		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
-			members = append(members, bson.D{
-				{Key: "_id", Value: ordinal},
-				{Key: "host", Value: mongodbMemberServiceName(instance, ordinal) + ":27017"},
-			})
-		}
-		config := bson.D{
-			{Key: "_id", Value: replicaSet},
-			{Key: "members", Value: members},
-		}
-		if err := client.Database("admin").RunCommand(ctx, bson.D{
-			{Key: "replSetInitiate", Value: config},
-		}).Err(); err != nil {
-			return fmt.Errorf("initiate replica set: %w", err)
-		}
-	}
-
-	deadline := time.Now().Add(90 * time.Second)
-	for {
-		if err := VerifyMongoDBHACluster(ctx, m, RuntimeFiles{Env: filesEnvPath(values)}); err == nil {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	// VerifyMongoDBHACluster requires the real runtime.env path. The compact
-	// loop above intentionally falls back to a direct status probe below when
-	// called during reconciliation.
-	for {
-		var current bson.M
-		err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "replSetGetStatus", Value: 1}}).Decode(&current)
-		if err == nil && mongoDBStatusReady(current, mongodbMemberCount(m, instance)) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("replica set did not become ready: %w", err)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-}
-
-// filesEnvPath is deliberately empty; it keeps reconciliation independent from
-// a second environment-file read. The real readiness check is the direct
-// replSetGetStatus fallback immediately below.
-func filesEnvPath(map[string]string) string { return "" }
-
-func mongoDBDirectAdminClient(ctx context.Context, values map[string]string, instance string, ordinal int) (*mongo.Client, error) {
-	hostPort, err := requireRuntimeValue(values, mongodbMemberHostPortKey(instance, ordinal))
-	if err != nil {
-		return nil, err
-	}
-	username, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "ADMIN_USER"))
-	if err != nil {
-		return nil, err
-	}
-	password, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "ADMIN_PASSWORD"))
-	if err != nil {
-		return nil, err
-	}
-	tlsConfig, err := mongoDBTLSConfig(values, instance)
-	if err != nil {
-		return nil, err
-	}
-	uri := mongodbConnectionURI(loopbackHost, hostPort, "admin", username, password)
-	client, err := mongo.Connect(options.Client().
-		ApplyURI(uri).
-		SetDirect(true).
-		SetTLSConfig(tlsConfig).
-		SetConnectTimeout(10*time.Second).
-		SetServerSelectionTimeout(10*time.Second))
-	if err != nil {
-		return nil, err
-	}
-	if err := client.Ping(ctx, nil); err != nil {
-		_ = client.Disconnect(context.Background())
-		return nil, err
-	}
-	return client, nil
-}
-
-func mongoDBTLSConfig(values map[string]string, instance string) (*tls.Config, error) {
-	caPath, err := requireRuntimeValue(values, mongodbTLSCAKey(instance))
-	if err != nil {
-		return nil, err
-	}
-	ca, err := os.ReadFile(caPath)
-	if err != nil {
-		return nil, fmt.Errorf("read MongoDB trust bundle: %w", err)
-	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(ca) {
-		return nil, fmt.Errorf("MongoDB trust bundle contains no certificate")
-	}
-	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    roots,
-		ServerName: loopbackHost,
-	}, nil
-}
-
-func VerifyMongoDBHACluster(ctx context.Context, m Manifest, files RuntimeFiles) error {
-	values, err := readRuntimeEnv(files.Env)
-	if err != nil {
-		return err
+func VerifyMongoDBHACluster(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, files RuntimeFiles) error {
+	if runtime == nil {
+		return fmt.Errorf("MongoDB HA verification requires a runtime provider")
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
 		if mongodbMemberCount(m, instance) <= 1 {
 			continue
 		}
-		replicaSet, err := requireRuntimeValue(values, mongodbReplicaSetKey(instance))
-		if err != nil {
+		if err := verifyMongoDBHAInstance(ctx, runtime, m, instance); err != nil {
 			return err
-		}
-		primary := 0
-		secondary := 0
-		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
-			client, err := mongoDBDirectAdminClient(ctx, values, instance, ordinal)
-			if err != nil {
-				return fmt.Errorf("connect MongoDB HA member %s: %w", mongodbMemberServiceName(instance, ordinal), err)
-			}
-			var hello struct {
-				SetName   string `bson:"setName"`
-				IsPrimary bool   `bson:"isWritablePrimary"`
-				Secondary bool   `bson:"secondary"`
-			}
-			err = client.Database("admin").RunCommand(ctx, bson.D{{Key: "hello", Value: 1}}).Decode(&hello)
-			_ = client.Disconnect(context.Background())
-			if err != nil {
-				return fmt.Errorf("inspect MongoDB HA member %s: %w", mongodbMemberServiceName(instance, ordinal), err)
-			}
-			if strings.TrimSpace(hello.SetName) != replicaSet {
-				return fmt.Errorf("MongoDB HA member %s reports replica set %q, want %q", mongodbMemberServiceName(instance, ordinal), hello.SetName, replicaSet)
-			}
-			if hello.IsPrimary {
-				primary++
-			} else if hello.Secondary {
-				secondary++
-			} else {
-				return fmt.Errorf("MongoDB HA member %s is neither PRIMARY nor SECONDARY", mongodbMemberServiceName(instance, ordinal))
-			}
-		}
-		if primary != 1 {
-			return fmt.Errorf("MongoDB HA instance %s has %d primary members, require exactly one", instance, primary)
-		}
-		if secondary != mongodbMemberCount(m, instance)-1 {
-			return fmt.Errorf("MongoDB HA instance %s has %d secondary members, want %d", instance, secondary, mongodbMemberCount(m, instance)-1)
 		}
 	}
 	return nil
 }
 
-func mongoDBStatusReady(status bson.M, members int) bool {
-	rawMembers, ok := status["members"].(bson.A)
-	if !ok {
-		if v, ok := status["members"].([]interface{}); ok {
-			rawMembers = bson.A(v)
+func waitMongoDBHACluster(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, instance string) error {
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		if err := verifyMongoDBHAInstance(ctx, runtime, m, instance); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("MongoDB replica set %s did not become ready: %w", instance, lastErr)
+		case <-ticker.C:
 		}
 	}
-	if len(rawMembers) != members {
-		return false
-	}
+}
+
+func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, instance string) error {
 	primary := 0
-	secondary := 0
-	for _, raw := range rawMembers {
-		member, ok := raw.(bson.M)
-		if !ok {
-			continue
+	secondaries := 0
+	replicaSet := mongodbReplicaSetName(instance)
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		service := mongodbMemberServiceName(instance, ordinal)
+		script := "mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'JSON.stringify(db.adminCommand({hello:1}))'"
+		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
+		if err != nil {
+			return fmt.Errorf("inspect MongoDB HA member %s: %w", service, err)
 		}
-		switch member["stateStr"] {
-		case "PRIMARY":
+		var hello struct {
+			SetName   string `json:"setName"`
+			IsPrimary bool   `json:"isWritablePrimary"`
+			Secondary bool   `json:"secondary"`
+		}
+		line := strings.TrimSpace(out)
+		if idx := strings.LastIndex(line, "{"); idx >= 0 {
+			line = line[idx:]
+		}
+		if err := json.Unmarshal([]byte(line), &hello); err != nil {
+			return fmt.Errorf("decode MongoDB hello from %s: %w", service, err)
+		}
+		if hello.SetName != replicaSet {
+			return fmt.Errorf("MongoDB HA member %s reports replica set %q, want %q", service, hello.SetName, replicaSet)
+		}
+		switch {
+		case hello.IsPrimary:
 			primary++
-		case "SECONDARY":
-			secondary++
+		case hello.Secondary:
+			secondaries++
+		default:
+			return fmt.Errorf("MongoDB HA member %s is neither PRIMARY nor SECONDARY", service)
 		}
 	}
-	return primary == 1 && secondary == members-1
+	if primary != 1 {
+		return fmt.Errorf("MongoDB HA instance %s has %d primary members, require exactly one", instance, primary)
+	}
+	if secondaries != mongodbMemberCount(m, instance)-1 {
+		return fmt.Errorf("MongoDB HA instance %s has %d secondary members, want %d", instance, secondaries, mongodbMemberCount(m, instance)-1)
+	}
+	return nil
+}
+
+func MongoDBHAPrimary(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, instance string) (string, error) {
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		service := mongodbMemberServiceName(instance, ordinal)
+		script := "mongosh --quiet --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({hello:1}).isWritablePrimary ? \"primary\" : \"other\"'"
+		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(out) == "primary" {
+			return service, nil
+		}
+	}
+	return "", fmt.Errorf("MongoDB HA instance %s has no observable primary", instance)
 }
