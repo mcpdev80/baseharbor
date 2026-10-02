@@ -213,6 +213,40 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		}
 	})
 
+	t.Run("managed read fails closed before repository inspection", func(t *testing.T) {
+		prodRoot := t.TempDir()
+		prodManifest := application.Manifest{
+			Version:       application.CurrentVersion,
+			ApplicationID: application.MustNewApplicationID(),
+			Name:          "managed-read-denied",
+			Environment:   "prod",
+			Workload:      application.WorkloadConfig{Components: []string{"api"}},
+		}
+		if err := prodManifest.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(prodRoot, application.RepositoryManifestName), []byte(prodManifest.YAML()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "baseharbor.inspect",
+			Arguments: map[string]any{"path": prodRoot},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("managed read without authenticated operator unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"authentication_failed"`)) {
+			t.Fatalf("managed read authorization error is not typed: %s", encoded)
+		}
+	})
+
 	t.Run("managed mutation fails closed before filesystem mutation", func(t *testing.T) {
 		parent := t.TempDir()
 		name := "managed-denied"
