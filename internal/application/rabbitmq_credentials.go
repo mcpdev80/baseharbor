@@ -79,7 +79,7 @@ fi
 		}
 		input := []byte(appUser + "\n" + appPassword + "\n" + adminUser + "\n" + adminPassword + "\n")
 		service := rabbitmqMemberServiceName(instance, 0)
-		if err := waitRabbitMQNodeReady(ctx, runtime, service); err != nil {
+		if err := waitRabbitMQCredentialAuthority(ctx, runtime, m, instance, service); err != nil {
 			return fmt.Errorf("wait for RabbitMQ credential authority %s: %w", instance, err)
 		}
 		if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err != nil {
@@ -89,23 +89,45 @@ fi
 	return nil
 }
 
-func waitRabbitMQNodeReady(ctx context.Context, runtime rabbitMQCredentialRuntime, service string) error {
+func waitRabbitMQCredentialAuthority(ctx context.Context, runtime rabbitMQCredentialRuntime, m Manifest, instance, service string) error {
 	deadline := time.NewTimer(90 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+
+	consecutive := 0
 	var lastErr error
 	for {
-		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "is_running"); err == nil {
-			return nil
+		status, err := runtime.Run(ctx, service, "rabbitmqctl", "cluster_status")
+		if err == nil {
+			missing := ""
+			for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+				node := "rabbit@" + rabbitmqMemberServiceName(instance, ordinal)
+				if !strings.Contains(status, node) {
+					missing = node
+					break
+				}
+			}
+			if missing == "" {
+				consecutive++
+				if consecutive >= 2 {
+					return nil
+				}
+				lastErr = nil
+			} else {
+				consecutive = 0
+				lastErr = fmt.Errorf("cluster status is missing member %s", missing)
+			}
 		} else {
+			consecutive = 0
 			lastErr = err
 		}
+
 		select {
 		case <-ctx.Done():
 			return errors.Join(ctx.Err(), lastErr)
 		case <-deadline.C:
-			return fmt.Errorf("RabbitMQ node %s did not become ready: %w", service, lastErr)
+			return fmt.Errorf("RabbitMQ credential authority %s did not become stable: %w", service, lastErr)
 		case <-ticker.C:
 		}
 	}
