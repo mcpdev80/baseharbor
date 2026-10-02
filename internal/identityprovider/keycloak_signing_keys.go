@@ -227,7 +227,7 @@ func (a *keycloakAdmin) ensureManagedSigningProvider(ctx context.Context, realm 
 	}
 	managed := managedSigningComponents(components)
 	if len(managed) == 0 {
-		component, err := a.createManagedSigningProvider(ctx, realm, managedSigningPrefix+"initial", 200)
+		component, err := a.createManagedSigningProvider(ctx, realm, managedSigningPrefix+"initial", 1000)
 		if err != nil {
 			return keycloakComponent{}, "", err
 		}
@@ -244,8 +244,23 @@ func (a *keycloakAdmin) ensureManagedSigningProvider(ctx context.Context, realm 
 		return keycloakComponent{}, "", err
 	}
 	active := strings.TrimSpace(keys.Active["RS256"])
-	if active == "" {
-		return keycloakComponent{}, "", errors.New("Keycloak has no active RS256 signing key")
+	managedKid := kidForSigningComponent(keys, best.ID)
+	if managedKid == "" {
+		return keycloakComponent{}, "", fmt.Errorf("BaseHarbor signing provider %q has no published RS256 key", best.Name)
+	}
+	if active != managedKid {
+		if err := a.updateSigningProviderPriority(ctx, realm, best, 10000); err != nil {
+			return keycloakComponent{}, "", err
+		}
+		best.Config["priority"] = []string{"10000"}
+		keys, err = a.signingKeys(ctx, realm)
+		if err != nil {
+			return keycloakComponent{}, "", err
+		}
+		active = strings.TrimSpace(keys.Active["RS256"])
+		if active != managedKid {
+			return keycloakComponent{}, "", fmt.Errorf("BaseHarbor signing provider %q did not become active", best.Name)
+		}
 	}
 	return best, active, nil
 }
