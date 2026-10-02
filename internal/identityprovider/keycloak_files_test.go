@@ -29,8 +29,11 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 	if !strings.Contains(got, "--https-port=8443") {
 		t.Fatalf("Keycloak compose missing native HTTPS port:\n%s", got)
 	}
-	if !strings.Contains(got, "condition: service_healthy") {
-		t.Fatalf("Keycloak compose must wait for the database healthcheck:\n%s", got)
+	if !strings.Contains(got, "keycloak-db-init:") || !strings.Contains(got, "condition: service_completed_successfully") {
+		t.Fatalf("Keycloak compose must wait for the verified HA database bootstrap:\n%s", got)
+	}
+	if !strings.Contains(got, "keycloak-db-member-1") || !strings.Contains(got, "keycloak-db-member-2") || !strings.Contains(got, "keycloak-db-member-3") {
+		t.Fatalf("Keycloak compose must include the three Patroni database members:\n%s", got)
 	}
 	if !strings.Contains(got, "pg_isready") {
 		t.Fatalf("Keycloak compose missing PostgreSQL readiness probe:\n%s", got)
