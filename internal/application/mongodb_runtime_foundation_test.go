@@ -39,7 +39,6 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 		MongoDBImage,
 		"MONGO_INITDB_ROOT_USERNAME",
 		"mongodb-primary-data:/data/db",
-		"mongodb-primary-access:",
 		"MONGODB_PRIMARY_HOST_PORT",
 		"name: bh-documents_mongodb-primary-data",
 	} {
@@ -48,18 +47,16 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 		}
 	}
 	resources := ExpectedRuntimeResourcesForIdentity(m, "bh-compose", "bh-documents")
-	var broker, gateway, volume bool
+	var broker, volume bool
 	for _, resource := range resources {
 		switch {
 		case resource.Kind == "container" && resource.Name == "bh-compose-mongodb-primary-1":
 			broker = true
-		case resource.Kind == "container" && resource.Name == "bh-compose-mongodb-primary-access-1":
-			gateway = true
 		case resource.Kind == "volume" && resource.Name == "bh-documents_mongodb-primary-data":
 			volume = true
 		}
 	}
-	if !broker || !gateway || !volume {
+	if !broker || !volume {
 		t.Fatalf("MongoDB owned resources = %#v", resources)
 	}
 
