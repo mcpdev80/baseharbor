@@ -488,7 +488,7 @@ export BAO_TOKEN
 	return executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
 }
 
-const managerPolicy = `path "baseharbor/data/apps/*" {
+const managerPolicy = `path "baseharbor/data/managed/*" {\n  capabilities = ["create", "update", "read", "delete"]\n}\n\npath "baseharbor/metadata/managed/*" {\n  capabilities = ["read", "list", "delete"]\n}\n\npath "baseharbor/data/apps/*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
