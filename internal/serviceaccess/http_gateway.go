@@ -97,9 +97,16 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return HTTPGatewayFiles{}, fmt.Errorf("create service access runtime config: %w", err)
+	}
+	if err := os.Chmod(configDir, 0o755); err != nil {
+		return HTTPGatewayFiles{}, fmt.Errorf("set service access runtime config permissions: %w", err)
+	}
 	files := HTTPGatewayFiles{
 		Dir:       dir,
-		Caddyfile: filepath.Join(dir, "Caddyfile"),
+		Caddyfile: filepath.Join(configDir, "Caddyfile"),
 		Material:  gatewayMaterial,
 	}
 	authentication, err := reconcileGatewayAuthentication(dir, policy)
@@ -294,9 +301,11 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
 	}
 	b.WriteString("    volumes:\n")
-	// Config and active certificates are directory-mounted. Managed files are
-	// replaced atomically; directory mounts make replacement inodes visible to
-	// the running Caddy process so --watch can reload without container churn.
+	// Runtime config and active certificates are directory-mounted. The config
+	// directory contains only the public Caddyfile and is traversable by the
+	// unprivileged gateway UID; private service-access state remains owner-only.
+	// Managed files are replaced atomically, so directory mounts make replacement
+	// inodes visible to the running Caddy process and --watch can reload in place.
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Caddyfile)+":/etc/caddy:ro"))
 	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Material.ServerCertificate)+":/certs:ro"))
 	if files.AuthToken != "" {
