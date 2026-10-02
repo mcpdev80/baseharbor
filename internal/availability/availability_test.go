@@ -49,3 +49,31 @@ func TestObservationRetainsAllInstancesAndDetectsDegradedState(t *testing.T) {
 		t.Fatalf("observation = %#v", got)
 	}
 }
+
+
+func TestNegotiationCarriesTruthfulGuarantees(t *testing.T) {
+	got, err := Negotiate(
+		Requirement{Component: "sql", HA: true},
+		"baseharbor/postgresql",
+		Support{
+			Level: Supported,
+			RecommendedInstances: 3,
+			Guarantees: Guarantees{
+				MemberFailureTolerance: true,
+				RollingMaintenance: true,
+				CredentialRotation: true,
+				PKIRotation: true,
+				FailureDomain: "runtime-host",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Guarantees.MemberFailureTolerance || got.Guarantees.HostFailureTolerance {
+		t.Fatalf("guarantees = %#v", got.Guarantees)
+	}
+	if got.Guarantees.FailureDomain != "runtime-host" {
+		t.Fatalf("failure domain = %q", got.Guarantees.FailureDomain)
+	}
+}
