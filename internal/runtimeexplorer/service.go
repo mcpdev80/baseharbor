@@ -245,6 +245,9 @@ func matchesListRequest(resource Resource, request ListRequest) bool {
 	if request.DeploymentID != "" && request.DeploymentID != resource.Relationship.DeploymentID {
 		return false
 	}
+	if request.Environment != "" && request.Environment != resource.Relationship.Environment {
+		return false
+	}
 	if request.Component != "" && request.Component != resource.Relationship.Component {
 		return false
 	}
