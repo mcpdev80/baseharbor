@@ -504,7 +504,6 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	}
 }
 
-
 func TestPrometheusHAFrontendUsesBindMountedMemberTrust(t *testing.T) {
 	root := t.TempDir()
 	placement := Placement{
