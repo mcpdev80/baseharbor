@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   docker-runtime:
+    if: github.event_name != 'push' || !startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
@@ -157,3 +158,59 @@ jobs:
           path: ${{ runner.temp }}/docker-runtime-evidence
           if-no-files-found: error
           retention-days: 1
+
+
+  provider-ha:
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [rabbitmq, valkey, mongodb]
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset Docker runtime
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Run provider HA acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.provider }}" in
+            rabbitmq)
+              export BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1
+              test_name=TestRabbitMQHARuntimeFailoverAcceptanceInCI
+              ;;
+            valkey)
+              export BASEHARBOR_VALKEY_HA_ACCEPTANCE=1
+              test_name=TestValkeyHARuntimeFailoverAcceptanceInCI
+              ;;
+            mongodb)
+              export BASEHARBOR_MONGODB_HA_ACCEPTANCE=1
+              test_name=TestMongoDBHARuntimeFailoverAcceptanceInCI
+              ;;
+            *)
+              exit 2
+              ;;
+          esac
+          go test ./internal/application -run "^${test_name}$" -count=1 -v
+
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
