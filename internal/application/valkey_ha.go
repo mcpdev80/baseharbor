@@ -130,7 +130,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordKey)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
-		fmt.Fprintf(b, "        primary_ip=\"$(ping -c 1 %s | sed -n '1s/.*(\\([^)]*\\)).*/\\1/p')\"\n", primary)
+		fmt.Fprintf(b, "        primary_ip=\"$(getent hosts %s | awk 'NR==1 { print $1 }')\"\n", primary)
 		b.WriteString("        test -n \"$primary_ip\"\n")
 		b.WriteString("        {\n")
 		b.WriteString("          printf 'port 26379\\n'\n")
