@@ -27,7 +27,7 @@ func prepareOpenBaoStorage(stateDir, envPath string) error {
 	if err := writeOpenBaoRuntimeConfig(stateDir, secret); err != nil {
 		return err
 	}
-	return nil
+	return writeOpenBaoHAProxyConfig(stateDir)
 }
 
 func writeOpenBaoPostgresInit(stateDir string) error {
@@ -49,6 +49,36 @@ GRANT CONNECT ON DATABASE openbao TO openbao;
 EOSQL
 `
 	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
+}
+
+func writeOpenBaoHAProxyConfig(stateDir string) error {
+	dir := filepath.Join(stateDir, "providers", "openbao", "runtime")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	const config = `global
+  log stdout format raw local0
+
+defaults
+  mode tcp
+  log global
+  timeout connect 5s
+  timeout client 60s
+  timeout server 60s
+
+frontend openbao
+  bind :8200
+  default_backend members
+
+backend members
+  balance roundrobin
+  option tcp-check
+  default-server check inter 2s fall 2 rise 2
+  server openbao-1 openbao-member-1:8200
+  server openbao-2 openbao-member-2:8200
+  server openbao-3 openbao-member-3:8200
+`
+	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }
 
 func writeOpenBaoRuntimeConfig(stateDir, secret string) error {
