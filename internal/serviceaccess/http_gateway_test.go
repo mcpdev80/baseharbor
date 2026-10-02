@@ -241,7 +241,6 @@ func TestProjectGatewayMaterialProjectsClientIdentity(t *testing.T) {
 	}
 }
 
-
 func TestHTTPGatewayRelativeUpstreamTLSBindIsExplicit(t *testing.T) {
 	compose := HTTPGatewayComposeService(
 		HTTPGatewayFiles{
