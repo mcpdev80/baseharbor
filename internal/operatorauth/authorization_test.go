@@ -14,7 +14,8 @@ func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T)
 		t.Fatal("apply operation is not registered")
 	}
 
-	dev, err := AuthorizeMachineOperation(context.Background(), AuthorizationRequest{
+	devCtx := WithEnforcement(context.Background())
+	dev, err := AuthorizeMachineOperation(devCtx, AuthorizationRequest{
 		Operation: operation,
 		Context:   OperationContext{Application: "demo", Environment: "dev", Target: "local"},
 	})
@@ -27,8 +28,13 @@ func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T)
 	if dev.Safety != machine.SafetyMutating || !dev.PolicyRequired {
 		t.Fatalf("machine safety metadata was not preserved: %#v", dev)
 	}
+	storedDev, ok := AuthorizationDecisionFromContext(devCtx)
+	if !ok || storedDev.Actor.Subject != "trusted-local" || !storedDev.Allowed {
+		t.Fatalf("trusted-local decision was not retained: %#v", storedDev)
+	}
 
-	managed, err := AuthorizeMachineOperation(context.Background(), AuthorizationRequest{
+	managedCtx := WithEnforcement(context.Background())
+	managed, err := AuthorizeMachineOperation(managedCtx, AuthorizationRequest{
 		Operation: operation,
 		Context:   OperationContext{Application: "demo", Environment: "prod", Target: "prod-eu"},
 	})
@@ -41,6 +47,10 @@ func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T)
 	classified := machine.Classify(err)
 	if classified.Code != machine.ErrorAuthenticationFailed {
 		t.Fatalf("managed denial code = %q", classified.Code)
+	}
+	storedManaged, ok := AuthorizationDecisionFromContext(managedCtx)
+	if !ok || storedManaged.Allowed || storedManaged.ReasonCode != "operator_authentication_required" {
+		t.Fatalf("managed denial decision was not retained: %#v", storedManaged)
 	}
 }
 
@@ -74,5 +84,9 @@ func TestAuthorizeMachineOperationReturnsSecretSafeStableActor(t *testing.T) {
 	}
 	if decision.Safety != machine.SafetyDestructive || !decision.PolicyRequired || !decision.ConfirmationRequired {
 		t.Fatalf("operation metadata mismatch: %#v", decision)
+	}
+	stored, ok := AuthorizationDecisionFromContext(ctx)
+	if !ok || stored.Actor.Subject != "user-123" || stored.Actor.Issuer != "https://issuer.example" {
+		t.Fatalf("authenticated decision was not retained: %#v", stored)
 	}
 }
