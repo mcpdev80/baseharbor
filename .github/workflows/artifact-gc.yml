@@ -1,21 +1,24 @@
-name: Artifact GC
-run-name: Artifact GC
+name: Repository GC
+run-name: Repository GC
 
 on:
   schedule:
     - cron: "17 * * * *"
+    - cron: "37 */2 * * *"
   workflow_dispatch:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
+  pull-requests: read
 
 jobs:
-  prune:
-    name: Delete evidence older than 2h
+  artifacts:
+    name: Delete ephemeral artifacts older than 2h
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Delete expired ephemeral evidence
+      - name: Delete expired ephemeral artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -31,14 +34,17 @@ jobs:
           repo = os.environ["REPOSITORY"]
           token = os.environ["GH_TOKEN"]
           cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+
+          # Keep Pre-Release and Release evidence. Only disposable build/test
+          # artifacts are garbage-collected here.
           prefixes = (
               "targeted-",
               "demo-",
               "ci-evidence-",
               "docker-runtime-evidence-",
               "podman-evidence-",
-              "pre-release-",
-              "pre-release-runtime-",
+              "pre-release-source-candidate",
+              "pre-release-runtime-candidate",
           )
 
           def request(url, method="GET"):
@@ -88,15 +94,221 @@ jobs:
                   if run_state.get("status") != "completed":
                       print(f"keep active-run artifact {artifact['id']} {artifact['name']}")
                       continue
+
               request(
                   f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}",
                   method="DELETE",
               )
               deleted += 1
               print(
-                  f"deleted {artifact['id']} {artifact['name']} "
+                  f"deleted artifact {artifact['id']} {artifact['name']} "
                   f"created={artifact['created_at']}"
               )
 
-          print(f"deleted={deleted} cutoff={cutoff.isoformat()}")
+          print(f"deleted_artifacts={deleted} cutoff={cutoff.isoformat()}")
+          PY
+
+  repository-hygiene:
+    name: Prune completed runs and stale branches
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '37 */2 * * *' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete completed non-evidence runs and stale branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          repo = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          current_run_id = int(os.environ["CURRENT_RUN_ID"])
+          branch_cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+
+          preserved_workflows = {
+              ".github/workflows/pre-release.yml",
+              ".github/workflows/release.yml",
+          }
+
+          preserved_branches = {
+              "main",
+              "develop",
+              "feature/kubernetes-runtime-foundation",
+              "test/kubernetes-adoption-contract-demo",
+              "release/v0.4.21",
+          }
+
+          ephemeral_prefixes = (
+              "backup/",
+              "ci/",
+              "diag/",
+              "rebase/",
+              "rebase2/",
+              "rebase-base/",
+              "rebase-candidate/",
+              "rebase-work/",
+              "release-prep/",
+              "runtime-validation/",
+              "validation/",
+          )
+
+          merged_work_prefixes = (
+              "feature/",
+              "fix/",
+              "release/",
+              "chore/",
+          )
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def request(url, method="GET"):
+              req = urllib.request.Request(url, method=method, headers=headers)
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      if response.status == 204:
+                          return None
+                      return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return None
+                  raise
+
+          def paged(url):
+              page = 1
+              while True:
+                  sep = "&" if "?" in url else "?"
+                  items = request(f"{url}{sep}per_page=100&page={page}")
+                  if not items:
+                      break
+                  if isinstance(items, dict):
+                      yield items
+                      break
+                  for item in items:
+                      yield item
+                  if len(items) < 100:
+                      break
+                  page += 1
+
+          # Workflow runs: retain the complete Pre-Release + Release evidence chain.
+          deleted_runs = 0
+          max_run_deletes = 2000
+          page = 1
+          while deleted_runs < max_run_deletes:
+              payload = request(
+                  f"https://api.github.com/repos/{repo}/actions/runs"
+                  f"?per_page=100&page={page}"
+              )
+              runs = payload.get("workflow_runs", [])
+              if not runs:
+                  break
+
+              for run in runs:
+                  if deleted_runs >= max_run_deletes:
+                      break
+                  if run["id"] == current_run_id:
+                      continue
+                  if run.get("status") != "completed":
+                      continue
+                  if run.get("path") in preserved_workflows:
+                      continue
+
+                  request(
+                      f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}",
+                      method="DELETE",
+                  )
+                  deleted_runs += 1
+                  print(
+                      f"deleted run {run['id']} "
+                      f"path={run.get('path')} conclusion={run.get('conclusion')}"
+                  )
+
+              # Deletions shrink the collection, so keep reading page 1 until it
+              # contains no more deletable runs; then advance.
+              if deleted_runs < max_run_deletes:
+                  page += 1
+
+          # Open PR branches are always protected from cleanup.
+          open_pr_heads = set()
+          for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=open"):
+              head = pr.get("head") or {}
+              head_repo = (head.get("repo") or {}).get("full_name")
+              if head_repo == repo and head.get("ref"):
+                  open_pr_heads.add(head["ref"])
+
+          # Squash/rebase merges do not necessarily leave the branch tip as an
+          # ancestor of main/develop. A merged PR is therefore authoritative
+          # evidence that its former head branch is disposable.
+          merged_pr_heads = set()
+          for pr in paged(
+              f"https://api.github.com/repos/{repo}/pulls?state=closed&sort=updated&direction=desc"
+          ):
+              if not pr.get("merged_at"):
+                  continue
+              head = pr.get("head") or {}
+              head_repo = (head.get("repo") or {}).get("full_name")
+              if head_repo == repo and head.get("ref"):
+                  merged_pr_heads.add(head["ref"])
+
+          branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          deleted_branches = 0
+
+          for branch in branches:
+              name = branch["name"]
+              if name in preserved_branches:
+                  continue
+              if branch.get("protected"):
+                  continue
+              if name in open_pr_heads:
+                  continue
+
+              ephemeral = name.startswith(ephemeral_prefixes)
+              merged_work = (
+                  name.startswith(merged_work_prefixes)
+                  and name in merged_pr_heads
+              )
+              if not (ephemeral or merged_work):
+                  continue
+
+              commit = request(
+                  f"https://api.github.com/repos/{repo}/commits/"
+                  f"{urllib.parse.quote(branch['commit']['sha'], safe='')}"
+              )
+              if commit:
+                  commit_meta = commit.get("commit") or {}
+                  committer = commit_meta.get("committer") or {}
+                  authored = committer.get("date")
+                  if authored:
+                      head_time = datetime.fromisoformat(
+                          authored.replace("Z", "+00:00")
+                      )
+                      if head_time > branch_cutoff:
+                          print(f"keep recent branch {name} head={authored}")
+                          continue
+
+              encoded = urllib.parse.quote(name, safe="")
+              request(
+                  f"https://api.github.com/repos/{repo}/git/refs/heads/{encoded}",
+                  method="DELETE",
+              )
+              deleted_branches += 1
+              print(f"deleted branch {name}")
+
+          print(
+              f"deleted_runs={deleted_runs} "
+              f"deleted_branches={deleted_branches} "
+              f"branch_cutoff={branch_cutoff.isoformat()}"
+          )
           PY
