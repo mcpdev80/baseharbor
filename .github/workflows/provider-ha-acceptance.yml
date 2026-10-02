@@ -11,6 +11,10 @@ on:
         default: release/v0.4.21
         type: string
 
+  push:
+    branches:
+      - 'runtime-validation/provider-ha/**'
+
 permissions:
   contents: read
 
