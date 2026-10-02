@@ -44,6 +44,74 @@ storage_config:
 `
 }
 
+func lokiHAConfig() string {
+	return `auth_enabled: false
+server:
+  http_listen_address: 0.0.0.0
+  http_listen_port: 3100
+common:
+  path_prefix: /loki
+  replication_factor: 3
+  compactor_grpc_address: loki-1:9095
+  ring:
+    kvstore:
+      store: memberlist
+memberlist:
+  join_members:
+    - loki-1:7946
+    - loki-2:7946
+    - loki-3:7946
+  cluster_label: baseharbor-loki
+  cluster_label_verification_disabled: false
+ingester:
+  lifecycler:
+    unregister_on_shutdown: true
+  wal:
+    enabled: true
+    dir: /loki/wal
+    flush_on_shutdown: true
+schema_config:
+  configs:
+    - from: 2024-04-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+storage_config:
+  aws:
+    endpoint: ${BASEHARBOR_LOKI_S3_ENDPOINT}
+    region: us-east-1
+    bucketnames: ${BASEHARBOR_LOKI_S3_BUCKET}
+    access_key_id: ${BASEHARBOR_LOKI_S3_ACCESS_KEY_ID}
+    secret_access_key: ${BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY}
+    insecure: false
+    s3forcepathstyle: true
+    http_config:
+      tls_config:
+        ca_file: /run/baseharbor/object-storage/ca.pem
+compactor:
+  working_directory: /loki/compactor
+usage_report:
+  reporting_enabled: false
+`
+}
+
+func lokiHAAlloyConfig(config string) string {
+	const old = `    url = "http://loki:3100/loki/api/v1/push"
+`
+	const replacement = `    url = "https://loki:8443/loki/api/v1/push"
+    tls_config {
+      ca_file     = "/run/baseharbor/loki-access/ca.pem"
+      cert_file   = "/run/baseharbor/loki-access/client-cert.pem"
+      key_file    = "/run/baseharbor/loki-access/client-key.pem"
+      server_name = "loki"
+    }
+`
+	return strings.Replace(config, old, replacement, 1)
+}
+
 func alloyConfig(registrations []Registration) string {
 	return alloyConfigForModeSources(registrations, nil, bhruntime.LogCollectionSyslog)
 }
@@ -264,10 +332,16 @@ func providerComposeYAML(placement Placement, registrations []Registration) stri
 	})
 }
 
-func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Registration, mode bhruntime.LogCollectionMode, access serviceaccess.HTTPGatewayFiles, platformSyslogPort ...int) string {
+func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Registration, mode bhruntime.LogCollectionMode, access serviceaccess.HTTPGatewayFiles, options ...any) string {
 	platformPort := 0
-	if len(platformSyslogPort) > 0 {
-		platformPort = platformSyslogPort[0]
+	storageNetwork := ""
+	for _, option := range options {
+		switch value := option.(type) {
+		case int:
+			platformPort = value
+		case string:
+			storageNetwork = strings.TrimSpace(value)
+		}
 	}
 	lokiService := "loki"
 	alloyService := "alloy"
@@ -279,21 +353,49 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	fmt.Fprintf(&b, "  %s:\n", lokiService)
-	fmt.Fprintf(&b, "    image: %s\n", LokiImage)
-	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
-	b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\"]\n")
-	b.WriteString("    read_only: true\n")
-	b.WriteString("    cap_drop: [\"ALL\"]\n")
-	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
-	b.WriteString("    volumes:\n")
-	b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
-	b.WriteString("      - loki-data:/loki\n")
-	if placement.Scope == capability.ScopeApplication {
-		b.WriteString("    networks:\n      logs-internal:\n        aliases:\n          - loki\n")
+	if storageNetwork == "" {
+		fmt.Fprintf(&b, "  %s:\n", lokiService)
+		fmt.Fprintf(&b, "    image: %s\n", LokiImage)
+		fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
+		b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\"]\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+		b.WriteString("    volumes:\n")
+		b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
+		b.WriteString("      - loki-data:/loki\n")
+		if placement.Scope == capability.ScopeApplication {
+			b.WriteString("    networks:\n      logs-internal:\n        aliases:\n          - loki\n")
+		} else {
+			b.WriteString("    networks: [logs-internal]\n")
+		}
 	} else {
-		b.WriteString("    networks: [logs-internal]\n")
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			name := fmt.Sprintf("loki-%d", ordinal)
+			fmt.Fprintf(&b, "  %s:\n", name)
+			fmt.Fprintf(&b, "    image: %s\n", LokiImage)
+			fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
+			mode := "worker"
+			if ordinal == 1 {
+				mode = "main"
+			}
+			fmt.Fprintf(&b, "    command: [\"-config.file=/etc/loki/loki.yaml\", \"-config.expand-env=true\", \"-target=all\", \"-compactor.horizontal-scaling-mode=%s\"]\n", mode)
+			b.WriteString("    read_only: true\n")
+			b.WriteString("    cap_drop: [\"ALL\"]\n")
+			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+			b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+			b.WriteString("    environment:\n")
+			b.WriteString("      BASEHARBOR_LOKI_S3_ENDPOINT: ${BASEHARBOR_LOKI_S3_ENDPOINT}\n")
+			b.WriteString("      BASEHARBOR_LOKI_S3_BUCKET: ${BASEHARBOR_LOKI_S3_BUCKET}\n")
+			b.WriteString("      BASEHARBOR_LOKI_S3_ACCESS_KEY_ID: ${BASEHARBOR_LOKI_S3_ACCESS_KEY_ID}\n")
+			b.WriteString("      BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY: ${BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY}\n")
+			b.WriteString("    volumes:\n")
+			b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
+			b.WriteString("      - ./object-storage-ca.pem:/run/baseharbor/object-storage/ca.pem:ro\n")
+			fmt.Fprintf(&b, "      - loki-data-%d:/loki\n", ordinal)
+			b.WriteString("    networks:\n      logs-internal: {}\n      object-storage: {}\n")
+		}
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	fmt.Fprintf(&b, "  %s:\n", alloyService)
@@ -311,6 +413,9 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
+	if storageNetwork != "" {
+		b.WriteString("      - ./service-access/pki:/run/baseharbor/loki-access:ro\n")
+	}
 	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
 		b.WriteString("      - /etc/machine-id:/etc/machine-id:ro\n")
@@ -329,16 +434,34 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", platformPort, platformPort)))
 		}
 	}
-	fmt.Fprintf(&b, "    depends_on: [%s]\n", lokiService)
+	if storageNetwork == "" {
+		fmt.Fprintf(&b, "    depends_on: [%s]\n", lokiService)
+	} else {
+		b.WriteString("    depends_on: [loki-access]\n")
+	}
 	b.WriteString("    networks: [logs-internal, logs-publish]\n")
 	b.WriteString("networks:\n")
 	b.WriteString("  logs-internal:\n")
 	b.WriteString("    internal: true\n")
 	fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(placement.Network))
+	if storageNetwork != "" {
+		b.WriteString("  object-storage:\n    external: true\n")
+		fmt.Fprintf(&b, "    name: %s\n", strconv.Quote(storageNetwork))
+	}
 	b.WriteString("  logs-publish:\n")
 	b.WriteString("    driver: bridge\n")
 	b.WriteString("volumes:\n")
-	fmt.Fprintf(&b, "  loki-data:\n    name: %s\n", strconv.Quote(placement.LokiVolume))
+	if storageNetwork == "" {
+		fmt.Fprintf(&b, "  loki-data:\n    name: %s\n", strconv.Quote(placement.LokiVolume))
+	} else {
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			name := placement.LokiVolume
+			if ordinal > 1 {
+				name = fmt.Sprintf("%s-replica-%d", placement.LokiVolume, ordinal)
+			}
+			fmt.Fprintf(&b, "  loki-data-%d:\n    name: %s\n", ordinal, strconv.Quote(name))
+		}
+	}
 	fmt.Fprintf(&b, "  alloy-data:\n    name: %s\n", strconv.Quote(placement.AlloyVolume))
 	return b.String()
 }
