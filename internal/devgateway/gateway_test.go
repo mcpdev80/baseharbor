@@ -163,7 +163,6 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 	}
 }
 
-
 func TestProjectReadableModeKeepsGatewayPrivateKeyOwnerOnly(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source-key.pem")
