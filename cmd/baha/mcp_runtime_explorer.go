@@ -39,4 +39,15 @@ func registerMCPRuntimeExplorerReadTools(server *mcp.Server) {
 		}
 		return nil, result, nil
 	})
+
+	mcp.AddTool(server, machineMCPTool("runtime.metrics", "Resolve the provider-neutral metrics handle for one stable runtime resource.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRuntimeInspectInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "runtime.metrics", input.Target, input.Environment, ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectRuntimeMetrics(ctx, input)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
 }
