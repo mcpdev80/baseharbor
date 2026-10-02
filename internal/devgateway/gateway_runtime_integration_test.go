@@ -27,10 +27,10 @@ func TestGatewayRuntimeContinuityAcceptanceInCI(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	const (
-		target         = "gateway-acceptance"
+		target          = "gateway-acceptance"
 		upstreamProject = "bh-gateway-acceptance-upstream"
-		networkName    = "bh-gateway-acceptance-net"
-		host           = "gateway-acceptance.baseharbor.localhost"
+		networkName     = "bh-gateway-acceptance-net"
+		host            = "gateway-acceptance.baseharbor.localhost"
 	)
 	upstreamDir := t.TempDir()
 	composePath := filepath.Join(upstreamDir, "compose.yaml")
