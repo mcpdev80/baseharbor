@@ -195,7 +195,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 			e.manifest.Services.IdentityManagementUI ||
 			e.manifest.Services.ObservabilityManagementUI ||
 			e.manifest.Services.Identity) {
-		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("prepare developer access: %w", err)
 		}
