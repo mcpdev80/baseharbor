@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -152,6 +153,7 @@ func seaweedAdminAccessSpec() serviceaccess.HTTPGatewaySpec {
 		ContainerPort:    9443,
 		Networks:         []string{"object-storage-internal"},
 		RequireClient:    false,
+		HealthStatus:     http.StatusTemporaryRedirect,
 	}
 }
 
