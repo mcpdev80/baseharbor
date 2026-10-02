@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -62,10 +63,10 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		}
 	}()
 
-	if err := ReconcileRabbitMQCredentials(ctx, runtime, m, files); err != nil {
+	if err := ReconcileRabbitMQCredentials(ctx, provideroperation.New(runtime, files.Project, files.Compose, files.Env), m, files); err != nil {
 		t.Fatal(err)
 	}
-	waitRabbitMQHAReady(t, ctx, runtime, m, files)
+	waitRabbitMQHAReady(t, ctx, provideroperation.New(runtime, files.Project, files.Compose, files.Env), m, files)
 
 	environment, err := RuntimeEnvironment(files)
 	if err != nil {
