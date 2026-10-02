@@ -174,3 +174,28 @@ func assertOwnerOnly(t *testing.T, path string) {
 		t.Fatalf("%s is accessible by group or others: %o", path, info.Mode().Perm())
 	}
 }
+
+
+func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T) {
+	executor := &fakeExecutor{initialized: true, sealed: true}
+	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	state, err := memberState(context.Background(), executor, files, "openbao-member-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Initialized || !state.Sealed {
+		t.Fatalf("unexpected member state: %#v", state)
+	}
+	found := false
+	for _, args := range executor.args {
+		if strings.Contains(args, "bao status -format=json") {
+			found = true
+			if strings.HasPrefix(args, "sh -ec ") || strings.Contains(args, " sh -ec ") {
+				t.Fatalf("member status probe uses shell errexit and cannot handle bao status exit 2: %q", args)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("member status probe was not executed")
+	}
+}
