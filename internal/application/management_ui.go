@@ -197,12 +197,13 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	}
 
 	checks := []struct {
-		enabled   bool
-		name      string
-		portKey   string
-		dir       string
-		path      string
-		basicAuth bool
+		enabled     bool
+		name        string
+		portKey     string
+		dir         string
+		path        string
+		usernameKey string
+		passwordKey string
 	}{
 		{
 			enabled: m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m),
@@ -222,18 +223,21 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.MessagingManagementUI {
 		for _, instance := range RabbitMQInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled   bool
-				name      string
-				portKey   string
-				dir       string
-				path      string
-				basicAuth bool
+				enabled     bool
+				name        string
+				portKey     string
+				dir         string
+				path        string
+				usernameKey string
+				passwordKey string
 			}{
-				enabled: true,
-				name:    rabbitmqUIRouteName(instance),
-				portKey: rabbitmqUIHostPortKey(instance),
-				dir:     filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki"),
-				path:    "/",
+				enabled:     true,
+				name:        rabbitmqUIRouteName(instance),
+				portKey:     rabbitmqUIHostPortKey(instance),
+				dir:         filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki"),
+				path:        "/api/overview",
+				usernameKey: rabbitmqRuntimeKey(instance, "ADMIN_USER"),
+				passwordKey: rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD"),
 			})
 		}
 	}
@@ -241,19 +245,21 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.DocumentDatabaseManagementUI {
 		for _, instance := range DocumentDatabaseInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled   bool
-				name      string
-				portKey   string
-				dir       string
-				path      string
-				basicAuth bool
+				enabled     bool
+				name        string
+				portKey     string
+				dir         string
+				path        string
+				usernameKey string
+				passwordKey string
 			}{
-				enabled:   true,
-				name:      mongodbUIRouteName(instance),
-				portKey:   mongodbUIHostPortKey(instance),
-				dir:       filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance, "pki"),
-				path:      "/servers",
-				basicAuth: true,
+				enabled:     true,
+				name:        mongodbUIRouteName(instance),
+				portKey:     mongodbUIHostPortKey(instance),
+				dir:         filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance, "pki"),
+				path:        "/servers",
+				usernameKey: MongoDBUIUserEnv,
+				passwordKey: MongoDBUIPasswordEnv,
 			})
 		}
 	}
@@ -283,8 +289,16 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 				return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
 			}
 			var client *http.Client
-			if check.basicAuth {
-				client, err = serviceaccess.NewHTTPClientWithBasicAuth(material, values[MongoDBUIUserEnv], values[MongoDBUIPasswordEnv])
+			if check.usernameKey != "" || check.passwordKey != "" {
+				username, userErr := requireRuntimeValue(values, check.usernameKey)
+				if userErr != nil {
+					return userErr
+				}
+				password, passwordErr := requireRuntimeValue(values, check.passwordKey)
+				if passwordErr != nil {
+					return passwordErr
+				}
+				client, err = serviceaccess.NewHTTPClientWithBasicAuth(material, username, password)
 			} else {
 				client, err = serviceaccess.NewHTTPClient(material, false)
 			}
