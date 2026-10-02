@@ -56,7 +56,7 @@ type NegotiationResult struct {
 	ExplicitException  bool         `json:"explicit_exception,omitempty"`
 	Satisfied          bool         `json:"satisfied"`
 	Reason             string       `json:"reason,omitempty"`
-	Guarantees          Guarantees   `json:"guarantees,omitempty"`
+	Guarantees         Guarantees   `json:"guarantees,omitempty"`
 }
 
 type UnsupportedGuaranteeError struct {
