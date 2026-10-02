@@ -409,18 +409,22 @@ func TestProviderComposeUsesNativeTLSMaterial(t *testing.T) {
 		false,
 	)
 	for _, want := range []string{
+		"prometheus-1:",
+		"prometheus-2:",
 		"--web.config.file=/etc/prometheus/web-config.yml",
 		"./web-config.yml:/etc/prometheus/web-config.yml:ro",
-		"./service-access/runtime:/run/baseharbor/tls:ro",
+		"./members/service-access/runtime:/run/baseharbor/tls:ro",
+		"prometheus-access:",
+		"reverse_proxy",
 		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("Prometheus native-TLS compose missing %q:\n%s", want, rendered)
+			t.Fatalf("Prometheus HA compose missing %q:\n%s", want, rendered)
 		}
 	}
-	for _, forbidden := range []string{"prometheus-access:", "/certs/server.pem", "/service-access/pki/"} {
+	for _, forbidden := range []string{"/service-access/pki/"} {
 		if strings.Contains(rendered, forbidden) {
-			t.Fatalf("Prometheus native-TLS compose contains obsolete gateway material %q:\n%s", forbidden, rendered)
+			t.Fatalf("Prometheus HA compose contains authority material %q:\n%s", forbidden, rendered)
 		}
 	}
 }
@@ -453,7 +457,7 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 		t.Fatal(err)
 	}
 
-	runtimeDir := filepath.Join(files.Dir, "service-access", "runtime")
+	runtimeDir := filepath.Join(files.Dir, "members", "service-access", "runtime")
 	if err := os.RemoveAll(runtimeDir); err != nil {
 		t.Fatal(err)
 	}
@@ -483,16 +487,19 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	}
 	text := string(compose)
 	for _, want := range []string{
-		"/service-access/runtime:/run/baseharbor/tls:ro",
+		"prometheus-1:",
+		"prometheus-2:",
+		"/members/service-access/runtime:/run/baseharbor/tls:ro",
 		"--web.config.file=/etc/prometheus/web-config.yml",
+		"prometheus-access:",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("reconciled shared Prometheus compose missing native-TLS material %q:\n%s", want, text)
+			t.Fatalf("reconciled shared Prometheus HA compose missing %q:\n%s", want, text)
 		}
 	}
-	for _, forbidden := range []string{"prometheus-access:", "/service-access/pki/"} {
+	for _, forbidden := range []string{"/service-access/pki/"} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("reconciled shared Prometheus compose contains obsolete access material %q:\n%s", forbidden, text)
+			t.Fatalf("reconciled shared Prometheus compose contains authority material %q:\n%s", forbidden, text)
 		}
 	}
 }
