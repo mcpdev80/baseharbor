@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -343,7 +344,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				if err := application.VerifyRabbitMQRuntime(ctx, m, c.files); err != nil {
 					return err
 				}
-				return application.VerifyRabbitMQHACluster(ctx, c.compose, m, c.files)
+				return application.VerifyRabbitMQHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 			}},
 		)
 	}
