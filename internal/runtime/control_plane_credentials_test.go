@@ -14,11 +14,13 @@ func TestControlPlaneCredentialRotationStateSurvivesRestartOwnerOnly(t *testing.
 		Phase:   ControlPlaneRotationPrepared,
 		Previous: ControlPlaneCredentials{
 			PostgresUser: "old-admin", PostgresPassword: "old-admin-pass",
+			PostgresInternalUser: "postgres", PostgresInternalPassword: "old-internal-pass",
 			PostgresReplicationUser: "old-repl", PostgresReplicationPass: "old-repl-pass",
 			OpenBaoDBUser: "old-openbao", OpenBaoDBPassword: "old-openbao-pass",
 		},
 		Next: ControlPlaneCredentials{
 			PostgresUser: "new-admin", PostgresPassword: "new-admin-pass",
+			PostgresInternalUser: "new-internal", PostgresInternalPassword: "new-internal-pass",
 			PostgresReplicationUser: "new-repl", PostgresReplicationPass: "new-repl-pass",
 			OpenBaoDBUser: "new-openbao", OpenBaoDBPassword: "new-openbao-pass",
 		},
