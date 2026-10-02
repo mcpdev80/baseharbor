@@ -54,6 +54,7 @@ func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, provider
 type HTTPGatewaySpec struct {
 	ServiceName        string
 	Upstream           string
+	Upstreams          []string
 	UpstreamTrustFile  string
 	UpstreamServerName string
 	PublishedPortEnv   string
@@ -70,9 +71,12 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if strings.TrimSpace(spec.ServiceName) == "" {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway name is required")
 	}
-	if strings.TrimSpace(spec.Upstream) == "" {
-		return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream is required")
+	upstreams, err := normalizedGatewayUpstreams(spec.Upstream, spec.Upstreams)
+	if err != nil {
+		return HTTPGatewayFiles{}, err
 	}
+	spec.Upstream = upstreams[0]
+	spec.Upstreams = upstreams
 	if spec.ContainerPort == 0 {
 		spec.ContainerPort = 8443
 	}
@@ -129,7 +133,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfileWithUpstreamTLS(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
+	config := caddyfileWithUpstreamsTLS(spec.Upstreams, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -333,6 +337,33 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	return b.String()
 }
 
+func normalizedGatewayUpstreams(single string, many []string) ([]string, error) {
+	values := append([]string(nil), many...)
+	if strings.TrimSpace(single) != "" {
+		values = append([]string{single}, values...)
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(value), "http://") && !strings.HasPrefix(strings.ToLower(value), "https://") {
+			return nil, fmt.Errorf("HTTP service gateway upstream %q must use http:// or https://", value)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("HTTP service gateway upstream is required")
+	}
+	return out, nil
+}
+
 func containsGatewayAlias(values []string, candidate string) bool {
 	for _, value := range values {
 		if value == candidate {
@@ -488,6 +519,10 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode, bas
 }
 
 func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLS([]string{upstream}, upstreamTrustFile, upstreamServerName, port, authentication, basicAuthUsername, basicAuthHash, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -516,10 +551,22 @@ func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName st
 	if basicAuthUsername != "" {
 		authBlock += fmt.Sprintf("  basic_auth {\n    %s %s\n  }\n", basicAuthUsername, basicAuthHash)
 	}
-	proxy := "  reverse_proxy " + upstream + "\n"
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") && strings.TrimSpace(upstreamTrustFile) != "" {
+	normalized, err := normalizedGatewayUpstreams("", upstreams)
+	if err != nil {
+		normalized = []string{"http://127.0.0.1:1"}
+	}
+	proxyTargets := strings.Join(normalized, " ")
+	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n  }\n"
+	allHTTPS := true
+	for _, upstream := range normalized {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") {
+			allHTTPS = false
+			break
+		}
+	}
+	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + upstream + " {\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
 		}
