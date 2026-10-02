@@ -27,6 +27,12 @@ func ReconcileMongoDBHA(ctx context.Context, runtime mongoDBHAProbeRuntime, m Ma
 		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 			members = append(members, fmt.Sprintf("{_id:%d,host:%q}", ordinal, mongodbMemberServiceName(instance, ordinal)+":27017"))
 		}
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			member := mongodbMemberServiceName(instance, ordinal)
+			if err := waitMongoDBBootstrapMember(ctx, runtime, member); err != nil {
+				return fmt.Errorf("wait for MongoDB replica-set member %s: %w", member, err)
+			}
+		}
 		service := mongodbMemberServiceName(instance, 0)
 		script := fmt.Sprintf("mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
 		if _, err := runtime.Run(ctx, service, "sh", "-ec", script); err != nil {
