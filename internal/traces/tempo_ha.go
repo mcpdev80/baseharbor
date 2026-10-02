@@ -137,7 +137,7 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
         attempts=0
         until rpk cluster health --brokers "$brokers" >/dev/null 2>&1; do
           attempts=$((attempts+1))
-          if [ "$attempts" -ge 180 ]; then
+          if [ "$attempts" -ge 45 ]; then
             echo "Tempo Redpanda cluster did not become healthy" >&2
             rpk cluster health --brokers "$brokers" || true
             exit 1
