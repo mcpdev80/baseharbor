@@ -143,7 +143,7 @@ func SaveControlPlaneCredentialRotation(files Files, state ControlPlaneCredentia
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
+	data = append(data, byte(10))
 	path := filepath.Join(filepath.Dir(files.Env), controlPlaneCredentialRotationStateName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
