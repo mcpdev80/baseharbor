@@ -189,7 +189,6 @@ func TestHTTPGatewayKeepsPrivateStateSeparateFromReadableRuntimeConfig(t *testin
 	}
 }
 
-
 func TestProjectGatewayMaterialProjectsClientIdentity(t *testing.T) {
 	dir := t.TempDir()
 	source := t.TempDir()
