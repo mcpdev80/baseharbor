@@ -187,6 +187,9 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.R
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
 		if err == nil {
+			if err := application.ReconcileRabbitMQCredentials(ctx, compose, m, files); err != nil {
+				return err
+			}
 			return nil
 		}
 		if !bhruntime.IsPortBindingConflict(err) || attempt == maxAttempts {
