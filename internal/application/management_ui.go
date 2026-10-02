@@ -114,6 +114,12 @@ func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer service
 		values[MongoDBUIUserEnv] = username
 		values[MongoDBUIPasswordEnv] = password
 	}
+	if m.Services.MessagingManagementUI {
+		for _, instance := range RabbitMQInstanceNames(m) {
+			values[rabbitmqRuntimeKey(instance, "ADMIN_USER")] = username
+			values[rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")] = password
+		}
+	}
 	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
 		return err
 	}
