@@ -54,7 +54,10 @@ func TestTCPGatewaySupportsProviderAwareHealthChecksWithoutEmbeddingSecret(t *te
 			"tcp-check expect string +OK",
 			"tcp-check send-lf \"INFO replication\\r\"",
 			"tcp-check expect string role:master",
+		"server valkey valkey:6379 check init-state fully-down inter 1s rise 1 fall 1",
+		"server valkey-2 valkey-2:6379 check init-state fully-down inter 1s rise 1 fall 1",
 		},
+		ServerDirectives: []string{"init-state fully-down", "inter 1s", "rise 1", "fall 1"},
 	}
 	cfg := tcpGatewayConfig(spec)
 	for _, want := range []string{
