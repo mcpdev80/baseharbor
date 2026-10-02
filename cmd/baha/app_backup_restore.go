@@ -525,7 +525,7 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	existing, deploymentFound, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
+	existing, deploymentFound, err := findRestoreDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -601,6 +601,39 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	resolved.SourceAvailable = true
 	resolved.FromRepository = true
 	return resolved, nil
+}
+
+func findRestoreDeployment(target, applicationID, environment string) (deployment.DeploymentRecord, bool, error) {
+	records, warnings, err := deployment.ListDeploymentsForDisplay(target)
+	if err != nil {
+		return deployment.DeploymentRecord{}, false, err
+	}
+	for _, warning := range warnings {
+		stateErr, ok := deployment.DeploymentRecordState(warning)
+		if !ok || stateErr.Kind != "incomplete" {
+			return deployment.DeploymentRecord{}, false, warning
+		}
+	}
+
+	var match *deployment.DeploymentRecord
+	for i := range records {
+		record := records[i]
+		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
+			continue
+		}
+		if match != nil {
+			return deployment.DeploymentRecord{}, false, fmt.Errorf(
+				"multiple deployments claim application_id %s environment %s on target %s",
+				applicationID, environment, target,
+			)
+		}
+		copy := record
+		match = &copy
+	}
+	if match == nil {
+		return deployment.DeploymentRecord{}, false, nil
+	}
+	return *match, true, nil
 }
 
 func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication) error {
