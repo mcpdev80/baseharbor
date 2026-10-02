@@ -136,7 +136,7 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 				Detail: "dependency metadata references a compatible client/provider",
 			})
 		}
-		if isSourceFile(base) && containsAny(lower, signals.imports) {
+		if isSourceFile(base) && !isTestHarnessSourcePath(path) && sourceImportsAny(data, base, signals.imports) {
 			suggested = append(suggested, Evidence{
 				Kind: EvidenceImport, Path: path,
 				Detail: "source imports/references a compatible client",
@@ -176,6 +176,69 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 		return []Finding{{Capability: capability, Confidence: ConfidencePossible, Evidence: uniqueEvidence(possible)}}, nil
 	}
 	return nil, nil
+}
+
+func isTestHarnessSourcePath(path string) bool {
+	path = strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	for _, prefix := range []string{
+		"test/", "tests/", "e2e/", "integration/", "fixtures/", "testdata/",
+	} {
+		if strings.HasPrefix(path, prefix) || strings.Contains(path, "/"+prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func sourceImportsAny(data []byte, base string, needles []string) bool {
+	ext := strings.ToLower(filepath.Ext(base))
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	inGoImportBlock := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		switch ext {
+		case ".go":
+			if inGoImportBlock {
+				if strings.HasPrefix(line, ")") {
+					inGoImportBlock = false
+					continue
+				}
+				if containsAnyToken(lower, needles) {
+					return true
+				}
+				continue
+			}
+			if strings.HasPrefix(lower, "import (") {
+				inGoImportBlock = true
+				continue
+			}
+			if strings.HasPrefix(lower, "import ") && containsAnyToken(lower, needles) {
+				return true
+			}
+		case ".py":
+			if (strings.HasPrefix(lower, "import ") || strings.HasPrefix(lower, "from ")) &&
+				containsAnyToken(lower, needles) {
+				return true
+			}
+		case ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
+			if (strings.HasPrefix(lower, "import ") ||
+				strings.Contains(lower, " from ") ||
+				strings.Contains(lower, "require(") ||
+				strings.Contains(lower, "import(")) &&
+				containsAnyToken(lower, needles) {
+				return true
+			}
+		case ".java":
+			if strings.HasPrefix(lower, "import ") && containsAnyToken(lower, needles) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func composeAmbiguousInfrastructureMarker(value string) bool {
