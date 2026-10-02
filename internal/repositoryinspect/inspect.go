@@ -389,7 +389,6 @@ func classifyFile(rel string) (string, bool) {
 	}
 }
 
-
 func reconcileSelectedComposeInspectionView(result *Result, data []byte) error {
 	services, err := detectComposeServices(data)
 	if err != nil {
