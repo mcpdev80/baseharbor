@@ -240,3 +240,27 @@ func TestProjectGatewayMaterialProjectsClientIdentity(t *testing.T) {
 		}
 	}
 }
+
+
+func TestHTTPGatewayRelativeUpstreamTLSBindIsExplicit(t *testing.T) {
+	compose := HTTPGatewayComposeService(
+		HTTPGatewayFiles{
+			Caddyfile: "./service-access/config/Caddyfile",
+			Material: TLSMaterial{
+				ServerCertificate: "./service-access/runtime/server.pem",
+				ServerKey:         "./service-access/runtime/server-key.pem",
+				ServerName:        "otel-collector",
+			},
+		},
+		HTTPGatewaySpec{
+			ServiceName:               "otel-collector-access",
+			UpstreamTrustFile:         "members/service-access/runtime/ca.pem",
+			UpstreamClientCertificate: "members/service-access/runtime/client-cert.pem",
+			UpstreamClientKey:         "members/service-access/runtime/client-key.pem",
+			ContainerPort:             4318,
+		},
+	)
+	if !strings.Contains(compose, "./members/service-access/runtime:/upstream:ro") {
+		t.Fatalf("relative upstream TLS directory is not rendered as an explicit bind mount:\n%s", compose)
+	}
+}
