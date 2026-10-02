@@ -16,43 +16,43 @@ import (
 const ProtocolV1 = capability.ProviderProtocolV1
 
 type (
-	Kind                  = capability.Kind
-	Requirement           = capability.Requirement
-	ProviderKind          = capability.ProviderKind
-	Provider              = capability.Provider
-	Resource              = capability.Resource
-	Binding               = capability.Binding
-	HTTPExposureBinding   = capability.HTTPExposureBinding
+	Kind                   = capability.Kind
+	Requirement            = capability.Requirement
+	ProviderKind           = capability.ProviderKind
+	Provider               = capability.Provider
+	Resource               = capability.Resource
+	Binding                = capability.Binding
+	HTTPExposureBinding    = capability.HTTPExposureBinding
 	ObjectStorageS3Binding = capability.ObjectStorageS3Binding
-	OTLPTelemetryBinding  = capability.OTLPTelemetryBinding
-	MetricsBinding        = capability.MetricsBinding
-	LogsBinding           = capability.LogsBinding
-	IdentityBinding       = capability.IdentityBinding
-	SecureBinding         = capability.SecureBinding
-	Driver                = capability.Driver
-	ReconciliationDriver  = capability.ReconciliationDriver
-	Request               = capability.Request
-	Plan                  = capability.Plan
-	Result                = capability.Result
-	Execution             = capability.Execution
+	OTLPTelemetryBinding   = capability.OTLPTelemetryBinding
+	MetricsBinding         = capability.MetricsBinding
+	LogsBinding            = capability.LogsBinding
+	IdentityBinding        = capability.IdentityBinding
+	SecureBinding          = capability.SecureBinding
+	Driver                 = capability.Driver
+	ReconciliationDriver   = capability.ReconciliationDriver
+	Request                = capability.Request
+	Plan                   = capability.Plan
+	Result                 = capability.Result
+	Execution              = capability.Execution
 
-	IntegrationDescriptor = capability.IntegrationDescriptor
-	OptionalLifecycleSupport = capability.OptionalLifecycleSupport
-	ProviderScope         = capability.ProviderScope
-	ProviderOwnership     = capability.ProviderOwnership
-	ProviderPlacement     = capability.ProviderPlacement
-	ServiceKind           = capability.ServiceKind
-	SpecificationID       = capability.SpecificationID
-	ProviderInterface     = capability.ProviderInterface
-	ProviderInterfaceClass = capability.ProviderInterfaceClass
-	ProviderObservability = capability.ProviderObservability
+	IntegrationDescriptor       = capability.IntegrationDescriptor
+	OptionalLifecycleSupport    = capability.OptionalLifecycleSupport
+	ProviderScope               = capability.ProviderScope
+	ProviderOwnership           = capability.ProviderOwnership
+	ProviderPlacement           = capability.ProviderPlacement
+	ServiceKind                 = capability.ServiceKind
+	SpecificationID             = capability.SpecificationID
+	ProviderInterface           = capability.ProviderInterface
+	ProviderInterfaceClass      = capability.ProviderInterfaceClass
+	ProviderObservability       = capability.ProviderObservability
 	ProviderObservabilitySignal = capability.ProviderObservabilitySignal
 
-	Desired              = reconciliation.Desired
-	Observed             = reconciliation.Observed
-	ReconciliationResult = reconciliation.Result
-	ReconciliationState  = reconciliation.State
-	ReconciliationAction = reconciliation.Action
+	Desired                 = reconciliation.Desired
+	Observed                = reconciliation.Observed
+	ReconciliationResult    = reconciliation.Result
+	ReconciliationState     = reconciliation.State
+	ReconciliationAction    = reconciliation.Action
 	ReconciliationOwnership = reconciliation.Ownership
 
 	ConformanceStatus = providerconformance.Status
@@ -61,16 +61,21 @@ type (
 )
 
 const (
-	SQL             = capability.SQL
-	KeyValue        = capability.KeyValue
-	Secrets         = capability.Secrets
-	ExposureHTTP    = capability.ExposureHTTP
-	ObjectStorageS3 = capability.ObjectStorageS3
-	TelemetryOTLP   = capability.TelemetryOTLP
-	Metrics         = capability.Metrics
-	Logs            = capability.Logs
-	Traces          = capability.Traces
-	Identity        = capability.Identity
+	SQL              = capability.SQL
+	KeyValue         = capability.KeyValue
+	DurableKeyValue  = capability.DurableKeyValue
+	DocumentDatabase = capability.DocumentDatabase
+	Secrets          = capability.Secrets
+	ExposureHTTP     = capability.ExposureHTTP
+	ObjectStorageS3  = capability.ObjectStorageS3
+	TelemetryOTLP    = capability.TelemetryOTLP
+	Metrics          = capability.Metrics
+	Logs             = capability.Logs
+	Traces           = capability.Traces
+	Identity         = capability.Identity
+	MessagingQueue   = capability.MessagingQueue
+	MessagingPubSub  = capability.MessagingPubSub
+	MessagingStream  = capability.MessagingStream
 
 	ScopeShared      = capability.ScopeShared
 	ScopeApplication = capability.ScopeApplication

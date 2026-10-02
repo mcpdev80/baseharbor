@@ -40,10 +40,14 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 	if err != nil {
 		return "", err
 	}
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: m.Name,
-		Environment: m.Environment,
+	if existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
+		return "", err
+	} else if found {
+		return "", fmt.Errorf("%w: %s/%s/%s [%s]", application.ErrExists, existing.Identity.Target, existing.Identity.Application, existing.Identity.Environment, existing.Identity.DeploymentID)
+	}
+	id, err := deployment.NewDeploymentIdentity(target.Name, m.ApplicationID, m.Name, m.Environment)
+	if err != nil {
+		return "", err
 	}
 	root, err := deployment.DeploymentRoot(id)
 	if err != nil {
@@ -98,7 +102,7 @@ func appInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create a repository-owned baseharbor.yaml",
-		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]... [--workload-compose FILE --workload-service NAME]...",
+		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-compose FILE --workload-service NAME]...",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive capability picker uses detected defaults and lets you confirm them with a terminal checkbox UI; flags provide the deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			prepared := append([]string(nil), args...)
@@ -112,7 +116,7 @@ func appInitCommand() *cli.Command {
 			if !hasExplicitInitContract(prepared) {
 				return usageError(
 					"deterministic app init requires an explicit capability or workload selection",
-					"Use 'baha app init --quick' for repository detection, or pass explicit flags such as --sql, --cache, --s3, --secrets or --workload-compose/--workload-service.",
+					"Use 'baha app init --quick' for repository detection, or pass explicit capability flags such as --sql, --cache, --key-value, --document-db, --messaging-queue, --s3, --secrets or --workload-compose/--workload-service.",
 				)
 			}
 			if !hasExplicitWorkloadSelection(prepared) {
@@ -165,12 +169,27 @@ func hasExplicitInitContract(args []string) bool {
 		switch {
 		case arg == "--sql",
 			arg == "--cache",
+			arg == "--key-value",
+			arg == "--document-db",
+			arg == "--messaging-queue",
+			arg == "--messaging-pubsub",
+			arg == "--messaging-stream",
 			arg == "--s3",
 			arg == "--secrets",
 			arg == "--sql-instance",
 			strings.HasPrefix(arg, "--sql-instance="),
 			arg == "--cache-instance",
 			strings.HasPrefix(arg, "--cache-instance="),
+			arg == "--key-value-instance",
+			strings.HasPrefix(arg, "--key-value-instance="),
+			arg == "--document-db-instance",
+			strings.HasPrefix(arg, "--document-db-instance="),
+			arg == "--messaging-queue-instance",
+			strings.HasPrefix(arg, "--messaging-queue-instance="),
+			arg == "--messaging-pubsub-instance",
+			strings.HasPrefix(arg, "--messaging-pubsub-instance="),
+			arg == "--messaging-stream-instance",
+			strings.HasPrefix(arg, "--messaging-stream-instance="),
 			arg == "--s3-bucket",
 			strings.HasPrefix(arg, "--s3-bucket="),
 			arg == "--require-secret",
@@ -205,7 +224,10 @@ func hasCreateName(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "--environment", "-e", "--sql-instance", "--cache-instance", "--s3-bucket", "--require-secret", "--workload-compose", "--workload-service":
+		case "--environment", "-e",
+			"--sql-instance", "--cache-instance", "--key-value-instance", "--document-db-instance",
+			"--messaging-queue-instance", "--messaging-pubsub-instance", "--messaging-stream-instance",
+			"--s3-bucket", "--require-secret", "--workload-compose", "--workload-service":
 			skipNext = true
 			continue
 		}
@@ -216,8 +238,31 @@ func hasCreateName(args []string) bool {
 	return false
 }
 
+type createManifestOptions struct {
+	name                      string
+	environment               string
+	sql                       bool
+	cache                     bool
+	keyValue                  bool
+	documentDatabase          bool
+	messagingQueue            bool
+	messagingPubSub           bool
+	messagingStream           bool
+	objectStorage             bool
+	secrets                   bool
+	sqlInstances              []string
+	cacheInstances            []string
+	keyValueInstances         []string
+	documentDatabaseInstances []string
+	messagingQueueInstances   []string
+	messagingPubSubInstances  []string
+	messagingStreamInstances  []string
+	objectStorageBuckets      []string
+	requiredSecrets           []string
+}
+
 func manifestFromCreateArgs(args []string) (application.Manifest, error) {
-	name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, err := parseCreateArgs(args)
+	options, err := parseCreateArgs(args)
 	if err != nil {
 		return application.Manifest{}, err
 	}
@@ -225,39 +270,83 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	if err != nil {
 		return application.Manifest{}, err
 	}
-	if !sql && len(sqlInstances) == 0 && !cache && len(cacheInstances) == 0 && !objectStorage && len(objectStorageBuckets) == 0 && !secrets {
-		sql = true
+	if !options.sql && len(options.sqlInstances) == 0 &&
+		!options.cache && len(options.cacheInstances) == 0 &&
+		!options.keyValue && len(options.keyValueInstances) == 0 &&
+		!options.documentDatabase && len(options.documentDatabaseInstances) == 0 &&
+		!options.messagingQueue && len(options.messagingQueueInstances) == 0 &&
+		!options.messagingPubSub && len(options.messagingPubSubInstances) == 0 &&
+		!options.messagingStream && len(options.messagingStreamInstances) == 0 &&
+		!options.objectStorage && len(options.objectStorageBuckets) == 0 &&
+		!options.secrets {
+		options.sql = true
 	}
 	m := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        name,
-		Environment: environment,
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          options.name,
+		Environment:   options.environment,
 		Services: application.Services{
-			SQL:           sql || len(sqlInstances) > 0,
-			Cache:         cache || len(cacheInstances) > 0,
-			ObjectStorage: objectStorage || len(objectStorageBuckets) > 0,
-			Secrets:       secrets,
+			SQL:              options.sql || len(options.sqlInstances) > 0,
+			Cache:            options.cache || len(options.cacheInstances) > 0,
+			KeyValue:         options.keyValue || len(options.keyValueInstances) > 0,
+			DocumentDatabase: options.documentDatabase || len(options.documentDatabaseInstances) > 0,
+			MessagingQueue:   options.messagingQueue || len(options.messagingQueueInstances) > 0,
+			MessagingPubSub:  options.messagingPubSub || len(options.messagingPubSubInstances) > 0,
+			MessagingStream:  options.messagingStream || len(options.messagingStreamInstances) > 0,
+			ObjectStorage:    options.objectStorage || len(options.objectStorageBuckets) > 0,
+			Secrets:          options.secrets,
 		},
 	}
-	if len(sqlInstances) > 0 {
-		if sql {
-			sqlInstances = append(sqlInstances, "default")
+	if len(options.sqlInstances) > 0 {
+		if options.sql {
+			options.sqlInstances = append(options.sqlInstances, "default")
 		}
-		m = application.WithSQLInstances(m, sqlInstances...)
+		m = application.WithSQLInstances(m, options.sqlInstances...)
 	}
-	if len(cacheInstances) > 0 {
-		if cache {
-			cacheInstances = append(cacheInstances, "default")
+	if len(options.cacheInstances) > 0 {
+		if options.cache {
+			options.cacheInstances = append(options.cacheInstances, "default")
 		}
-		m = application.WithCacheInstances(m, cacheInstances...)
+		m = application.WithCacheInstances(m, options.cacheInstances...)
 	}
-	if len(objectStorageBuckets) > 0 {
-		if objectStorage {
-			objectStorageBuckets = append(objectStorageBuckets, "default")
+	if len(options.keyValueInstances) > 0 {
+		if options.keyValue {
+			options.keyValueInstances = append(options.keyValueInstances, "default")
 		}
-		m = application.WithObjectStorageBuckets(m, objectStorageBuckets...)
+		m = application.WithKeyValueInstances(m, options.keyValueInstances...)
 	}
-	m = application.WithRequiredSecrets(m, required...)
+	if len(options.documentDatabaseInstances) > 0 {
+		if options.documentDatabase {
+			options.documentDatabaseInstances = append(options.documentDatabaseInstances, "default")
+		}
+		m = application.WithDocumentDatabaseInstances(m, options.documentDatabaseInstances...)
+	}
+	if len(options.messagingQueueInstances) > 0 {
+		if options.messagingQueue {
+			options.messagingQueueInstances = append(options.messagingQueueInstances, "default")
+		}
+		m = application.WithMessagingQueueInstances(m, options.messagingQueueInstances...)
+	}
+	if len(options.messagingPubSubInstances) > 0 {
+		if options.messagingPubSub {
+			options.messagingPubSubInstances = append(options.messagingPubSubInstances, "default")
+		}
+		m = application.WithMessagingPubSubInstances(m, options.messagingPubSubInstances...)
+	}
+	if len(options.messagingStreamInstances) > 0 {
+		if options.messagingStream {
+			options.messagingStreamInstances = append(options.messagingStreamInstances, "default")
+		}
+		m = application.WithMessagingStreamInstances(m, options.messagingStreamInstances...)
+	}
+	if len(options.objectStorageBuckets) > 0 {
+		if options.objectStorage {
+			options.objectStorageBuckets = append(options.objectStorageBuckets, "default")
+		}
+		m = application.WithObjectStorageBuckets(m, options.objectStorageBuckets...)
+	}
+	m = application.WithRequiredSecrets(m, options.requiredSecrets...)
 	if workloadCompose != "" {
 		m = application.WithWorkload(m, workloadCompose, workloadServices...)
 	}
@@ -267,81 +356,138 @@ func manifestFromCreateArgs(args []string) (application.Manifest, error) {
 	return m, nil
 }
 
-func parseCreateArgs(args []string) (name, environment string, sql, cache, objectStorage, secrets bool, sqlInstances, cacheInstances, objectStorageBuckets, required []string, err error) {
-	environment = "dev"
+func parseCreateArgs(args []string) (createManifestOptions, error) {
+	options := createManifestOptions{environment: "dev"}
+	nextValue := func(i *int, option, example string) (string, error) {
+		if *i+1 >= len(args) || strings.TrimSpace(args[*i+1]) == "" {
+			return "", usageError(option+" requires a name", "Example: "+example)
+		}
+		*i = *i + 1
+		return args[*i], nil
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--sql":
-			sql = true
-		case arg == "--sql-instance":
-			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--sql-instance requires a name", "Example: --sql-instance analytics")
-			}
-			i++
-			sqlInstances = append(sqlInstances, args[i])
-		case strings.HasPrefix(arg, "--sql-instance="):
-			sqlInstances = append(sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
+			options.sql = true
 		case arg == "--cache":
-			cache = true
-		case arg == "--cache-instance":
-			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--cache-instance requires a name", "Example: --cache-instance sessions")
-			}
-			i++
-			cacheInstances = append(cacheInstances, args[i])
-		case strings.HasPrefix(arg, "--cache-instance="):
-			cacheInstances = append(cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
+			options.cache = true
+		case arg == "--key-value":
+			options.keyValue = true
+		case arg == "--document-db":
+			options.documentDatabase = true
+		case arg == "--messaging-queue":
+			options.messagingQueue = true
+		case arg == "--messaging-pubsub":
+			options.messagingPubSub = true
+		case arg == "--messaging-stream":
+			options.messagingStream = true
 		case arg == "--s3":
-			objectStorage = true
-		case arg == "--s3-bucket":
-			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--s3-bucket requires a name", "Example: --s3-bucket assets")
-			}
-			i++
-			objectStorageBuckets = append(objectStorageBuckets, args[i])
-		case strings.HasPrefix(arg, "--s3-bucket="):
-			objectStorageBuckets = append(objectStorageBuckets, strings.TrimPrefix(arg, "--s3-bucket="))
+			options.objectStorage = true
 		case arg == "--secrets":
-			secrets = true
-		case arg == "--require-secret":
-			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--require-secret requires a name", "Example: --require-secret OPENAI_API_KEY")
+			options.secrets = true
+		case arg == "--sql-instance":
+			value, err := nextValue(&i, arg, "--sql-instance analytics")
+			if err != nil {
+				return createManifestOptions{}, err
 			}
-			i++
-			required = append(required, args[i])
-			secrets = true
+			options.sqlInstances = append(options.sqlInstances, value)
+		case strings.HasPrefix(arg, "--sql-instance="):
+			options.sqlInstances = append(options.sqlInstances, strings.TrimPrefix(arg, "--sql-instance="))
+		case arg == "--cache-instance":
+			value, err := nextValue(&i, arg, "--cache-instance sessions")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.cacheInstances = append(options.cacheInstances, value)
+		case strings.HasPrefix(arg, "--cache-instance="):
+			options.cacheInstances = append(options.cacheInstances, strings.TrimPrefix(arg, "--cache-instance="))
+		case arg == "--key-value-instance":
+			value, err := nextValue(&i, arg, "--key-value-instance durable")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.keyValueInstances = append(options.keyValueInstances, value)
+		case strings.HasPrefix(arg, "--key-value-instance="):
+			options.keyValueInstances = append(options.keyValueInstances, strings.TrimPrefix(arg, "--key-value-instance="))
+		case arg == "--document-db-instance":
+			value, err := nextValue(&i, arg, "--document-db-instance documents")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.documentDatabaseInstances = append(options.documentDatabaseInstances, value)
+		case strings.HasPrefix(arg, "--document-db-instance="):
+			options.documentDatabaseInstances = append(options.documentDatabaseInstances, strings.TrimPrefix(arg, "--document-db-instance="))
+		case arg == "--messaging-queue-instance":
+			value, err := nextValue(&i, arg, "--messaging-queue-instance jobs")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.messagingQueueInstances = append(options.messagingQueueInstances, value)
+		case strings.HasPrefix(arg, "--messaging-queue-instance="):
+			options.messagingQueueInstances = append(options.messagingQueueInstances, strings.TrimPrefix(arg, "--messaging-queue-instance="))
+		case arg == "--messaging-pubsub-instance":
+			value, err := nextValue(&i, arg, "--messaging-pubsub-instance events")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.messagingPubSubInstances = append(options.messagingPubSubInstances, value)
+		case strings.HasPrefix(arg, "--messaging-pubsub-instance="):
+			options.messagingPubSubInstances = append(options.messagingPubSubInstances, strings.TrimPrefix(arg, "--messaging-pubsub-instance="))
+		case arg == "--messaging-stream-instance":
+			value, err := nextValue(&i, arg, "--messaging-stream-instance audit")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.messagingStreamInstances = append(options.messagingStreamInstances, value)
+		case strings.HasPrefix(arg, "--messaging-stream-instance="):
+			options.messagingStreamInstances = append(options.messagingStreamInstances, strings.TrimPrefix(arg, "--messaging-stream-instance="))
+		case arg == "--s3-bucket":
+			value, err := nextValue(&i, arg, "--s3-bucket assets")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.objectStorageBuckets = append(options.objectStorageBuckets, value)
+		case strings.HasPrefix(arg, "--s3-bucket="):
+			options.objectStorageBuckets = append(options.objectStorageBuckets, strings.TrimPrefix(arg, "--s3-bucket="))
+		case arg == "--require-secret":
+			value, err := nextValue(&i, arg, "--require-secret OPENAI_API_KEY")
+			if err != nil {
+				return createManifestOptions{}, err
+			}
+			options.requiredSecrets = append(options.requiredSecrets, value)
+			options.secrets = true
 		case strings.HasPrefix(arg, "--require-secret="):
-			required = append(required, strings.TrimPrefix(arg, "--require-secret="))
-			secrets = true
+			options.requiredSecrets = append(options.requiredSecrets, strings.TrimPrefix(arg, "--require-secret="))
+			options.secrets = true
 		case arg == "--environment" || arg == "-e":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("--environment requires a value", "Example: --environment prod")
+				return createManifestOptions{}, usageError("--environment requires a value", "Example: --environment prod")
 			}
 			i++
-			environment = args[i]
+			options.environment = args[i]
 		case strings.HasPrefix(arg, "--environment="):
-			environment = strings.TrimPrefix(arg, "--environment=")
+			options.environment = strings.TrimPrefix(arg, "--environment=")
 		case arg == "--workload-compose" || arg == "--workload-service":
 			if i+1 >= len(args) {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError(arg+" requires a value", "Run 'baha app init --help' for available options.")
+				return createManifestOptions{}, usageError(arg+" requires a value", "Run 'baha app init --help' for available options.")
 			}
 			i++
 		case strings.HasPrefix(arg, "--workload-compose=") || strings.HasPrefix(arg, "--workload-service="):
 			// Parsed separately by parseCreateWorkloadArgs.
 		case strings.HasPrefix(arg, "-"):
-			return "", "", false, false, false, false, nil, nil, nil, nil, usageError("unknown option "+arg, "Run 'baha app create --help' for available options.")
+			return createManifestOptions{}, usageError("unknown option "+arg, "Run 'baha app init --help' for available options.")
 		default:
-			if name != "" {
-				return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --sql")
+			if options.name != "" {
+				return createManifestOptions{}, usageError("application manifest generation accepts exactly one NAME", "Example: baha app init demo --sql")
 			}
-			name = arg
+			options.name = arg
 		}
 	}
-	if name == "" {
-		return "", "", false, false, false, false, nil, nil, nil, nil, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
+	if options.name == "" {
+		return createManifestOptions{}, usageError("application name is required", "Pass NAME or run 'baha app init' from a directory whose name is a valid application slug.")
 	}
-	return name, environment, sql, cache, objectStorage, secrets, sqlInstances, cacheInstances, objectStorageBuckets, required, nil
+	return options, nil
 }
 
 func parseCreateWorkloadArgs(args []string) (string, []string, error) {
@@ -399,6 +545,41 @@ func serviceNames(m application.Manifest) string {
 			names = append(names, "cache")
 		} else {
 			names = append(names, fmt.Sprintf("cache(%d)", count))
+		}
+	}
+	if count := len(application.KeyValueInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "key-value")
+		} else {
+			names = append(names, fmt.Sprintf("key-value(%d)", count))
+		}
+	}
+	if count := len(application.DocumentDatabaseInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "document-database")
+		} else {
+			names = append(names, fmt.Sprintf("document-database(%d)", count))
+		}
+	}
+	if count := len(application.MessagingQueueInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-queue")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-queue(%d)", count))
+		}
+	}
+	if count := len(application.MessagingPubSubInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-pubsub")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-pubsub(%d)", count))
+		}
+	}
+	if count := len(application.MessagingStreamInstanceNames(m)); count > 0 {
+		if count == 1 {
+			names = append(names, "messaging-stream")
+		} else {
+			names = append(names, fmt.Sprintf("messaging-stream(%d)", count))
 		}
 	}
 	if count := len(application.ObjectStorageBucketNames(m)); count > 0 {

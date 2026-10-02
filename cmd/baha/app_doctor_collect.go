@@ -49,6 +49,8 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 	result := applicationDoctorResult{
 		ContractVersion: machine.ContractVersion,
 		Target:          resolved.Target.Name,
+		ApplicationID:   m.ApplicationID,
+		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 		Application:     m.Name,
 		Environment:     m.Environment,
 		State:           "ready",
@@ -299,7 +301,7 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
-	if m.Services.Cache {
+	if m.Services.Cache || m.Services.KeyValue {
 		if application.UsesSharedValkey(m) {
 			checks = append(checks, preflight.Check{Name: "valkey shared isolation", Run: func(ctx context.Context) error {
 				return application.VerifySharedValkey(ctx, c.compose, c.resolved.TargetStateRoot, c.resolved.Target.Name, m)
@@ -321,12 +323,32 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 			)
 		}
 	}
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		checks = append(checks,
+			preflight.Check{Name: "rabbitmq semantic verification", Run: func(ctx context.Context) error {
+				if c.runtimeErr != nil {
+					return c.runtimeErr
+				}
+				return application.VerifyRabbitMQRuntime(ctx, m, c.files)
+			}},
+		)
+	}
+	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
+		checks = append(checks,
+			preflight.Check{Name: "mongodb semantic verification", Run: func(ctx context.Context) error {
+				if c.runtimeErr != nil {
+					return c.runtimeErr
+				}
+				return application.VerifyMongoDBRuntime(ctx, m, c.files)
+			}},
+		)
+	}
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		checks = append(checks, preflight.Check{Name: "management UI readiness", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
-			if m.Services.SQLManagementUI || m.Services.CacheManagementUI {
+			if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI {
 				if err := application.VerifyApplicationManagementUIs(ctx, m, c.files); err != nil {
 					return err
 				}

@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 func registerMCPReadTools(server *mcp.Server, store application.Store) {
@@ -117,6 +118,50 @@ func registerMCPReadTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("provider.list", "List registered externally owned capability providers using the shared secret-safe provider state.", false), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		result, err := application.ListExternalProviders()
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("provider.inspect", "Inspect one external provider registration without revealing credential or private-key material.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		result, err := application.InspectExternalProvider(strings.TrimSpace(input.ID))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("provider.verify", "Verify external provider reachability and configured TLS trust without mutation.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
+		result, err := application.VerifyExternalProvider(ctx, strings.TrimSpace(input.ID))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("organization.inspect", "Inspect the active organization/platform source, immutable resolution and effective defaults with provenance.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineOrganizationInput) (*mcp.CallToolResult, any, error) {
+		state, err := orgconfig.LoadActive()
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		effective, err := orgconfig.ResolveEffective(state, input.Environment)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, organizationView{ContractVersion: orgconfig.ContractVersion, State: state, Effective: effective}, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("organization.check", "Resolve the configured organization source and report a newer immutable digest/revision without changing the active configuration.", true), func(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, any, error) {
+		status, available, err := orgconfig.Check(ctx)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, organizationCheckView{ContractVersion: orgconfig.ContractVersion, Status: status, Available: available}, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("policy.check", "Read-only typed policy evaluation for the selected application environment. Returns allow, warn or deny with secret-safe findings.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		result, err := collectApplicationPolicy(ctx, store, machineApplicationArgs(input.Name, ""), strings.TrimSpace(input.Environment))
@@ -177,15 +222,22 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 		}
 		var adapterID string
 		var profile *development.StackProfile
-		if strings.TrimSpace(input.StackProfile) != "" {
-			if strings.TrimSpace(input.Stack) != "" {
-				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
-			}
-			catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+		stackProfile := strings.TrimSpace(input.StackProfile)
+		if stackProfile == "" && strings.TrimSpace(input.Stack) == "" {
+			stackProfile, err = organizationDefaultStack(input.Environment)
 			if err != nil {
 				return machineMCPFailure(err)
 			}
-			resolved, err := development.ResolveStackProfile(input.StackProfile, development.ProfileMap(catalog))
+		}
+		if stackProfile != "" {
+			if strings.TrimSpace(input.Stack) != "" {
+				return machineMCPFailure(usageError("stack and stack_profile cannot be combined", "Select either one built-in stack or one reusable Stack Profile."))
+			}
+			catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			resolved, err := development.ResolveStackProfile(stackProfile, development.ProfileMap(catalog))
 			if err != nil {
 				return machineMCPFailure(err)
 			}
@@ -234,8 +286,11 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
 
-	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
+	registerMCPProviderOrganizationTools(server)
+
+	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)

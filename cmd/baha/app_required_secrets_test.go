@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
-	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
+	options, err := parseCreateArgs([]string{
 		"mailflow",
 		"--environment", "production",
 		"--sql",
@@ -20,19 +20,19 @@ func TestParseCreateArgsSupportsRequiredSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != "mailflow" || environment != "production" || !postgres || !redis || objectStorage || !secrets {
-		t.Fatalf("unexpected create parse result: %q %q %t %t %t", name, environment, postgres, redis, secrets)
+	if options.name != "mailflow" || options.environment != "production" || !options.sql || !options.cache || options.objectStorage || !options.secrets {
+		t.Fatalf("unexpected create parse result: %#v", options)
 	}
-	if len(postgresInstances) != 0 || len(redisInstances) != 0 || len(objectStorageBuckets) != 0 {
-		t.Fatalf("unexpected named service instances: postgres=%#v redis=%#v s3=%#v", postgresInstances, redisInstances, objectStorageBuckets)
+	if len(options.sqlInstances) != 0 || len(options.cacheInstances) != 0 || len(options.objectStorageBuckets) != 0 {
+		t.Fatalf("unexpected named service instances: %#v", options)
 	}
-	if !reflect.DeepEqual(required, []string{"OPENAI_API_KEY", "SMTP_PASSWORD"}) {
-		t.Fatalf("unexpected required secrets %#v", required)
+	if !reflect.DeepEqual(options.requiredSecrets, []string{"OPENAI_API_KEY", "SMTP_PASSWORD"}) {
+		t.Fatalf("unexpected required secrets %#v", options.requiredSecrets)
 	}
 }
 
 func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
-	_, _, postgres, redis, objectStorage, _, postgresInstances, redisInstances, objectStorageBuckets, _, err := parseCreateArgs([]string{
+	options, err := parseCreateArgs([]string{
 		"mailflow",
 		"--sql-instance", "primary",
 		"--sql-instance=analytics",
@@ -42,17 +42,17 @@ func TestParseCreateArgsSupportsNamedServiceInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if postgres || redis || objectStorage {
+	if options.sql || options.cache || options.objectStorage {
 		t.Fatal("named instances must not implicitly request an additional default instance")
 	}
-	if len(objectStorageBuckets) != 0 {
-		t.Fatalf("unexpected S3 buckets %#v", objectStorageBuckets)
+	if len(options.objectStorageBuckets) != 0 {
+		t.Fatalf("unexpected S3 buckets %#v", options.objectStorageBuckets)
 	}
-	if !reflect.DeepEqual(postgresInstances, []string{"primary", "analytics"}) {
-		t.Fatalf("unexpected PostgreSQL instances %#v", postgresInstances)
+	if !reflect.DeepEqual(options.sqlInstances, []string{"primary", "analytics"}) {
+		t.Fatalf("unexpected PostgreSQL instances %#v", options.sqlInstances)
 	}
-	if !reflect.DeepEqual(redisInstances, []string{"cache", "sessions"}) {
-		t.Fatalf("unexpected Redis instances %#v", redisInstances)
+	if !reflect.DeepEqual(options.cacheInstances, []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected Redis instances %#v", options.cacheInstances)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestRequiredSecretsAppearInPlan(t *testing.T) {
 }
 
 func TestParseCreateArgsSupportsObjectStorageBuckets(t *testing.T) {
-	name, environment, postgres, redis, objectStorage, secrets, postgresInstances, redisInstances, objectStorageBuckets, required, err := parseCreateArgs([]string{
+	options, err := parseCreateArgs([]string{
 		"assets-api",
 		"--environment", "production",
 		"--s3",
@@ -84,14 +84,14 @@ func TestParseCreateArgsSupportsObjectStorageBuckets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != "assets-api" || environment != "production" || postgres || redis || !objectStorage || secrets {
-		t.Fatalf("unexpected create parse result: %q %q %t %t %t %t", name, environment, postgres, redis, objectStorage, secrets)
+	if options.name != "assets-api" || options.environment != "production" || options.sql || options.cache || !options.objectStorage || options.secrets {
+		t.Fatalf("unexpected create parse result: %#v", options)
 	}
-	if len(postgresInstances) != 0 || len(redisInstances) != 0 || len(required) != 0 {
-		t.Fatalf("unexpected unrelated values: postgres=%#v redis=%#v required=%#v", postgresInstances, redisInstances, required)
+	if len(options.sqlInstances) != 0 || len(options.cacheInstances) != 0 || len(options.requiredSecrets) != 0 {
+		t.Fatalf("unexpected unrelated values: %#v", options)
 	}
-	if !reflect.DeepEqual(objectStorageBuckets, []string{"uploads", "exports"}) {
-		t.Fatalf("unexpected S3 buckets %#v", objectStorageBuckets)
+	if !reflect.DeepEqual(options.objectStorageBuckets, []string{"uploads", "exports"}) {
+		t.Fatalf("unexpected S3 buckets %#v", options.objectStorageBuckets)
 	}
 }
 
@@ -105,5 +105,37 @@ func TestManifestFromCreateArgsAllowsS3OnlyWithoutImplicitPostgres(t *testing.T)
 	}
 	if !reflect.DeepEqual(application.ObjectStorageBucketNames(m), []string{"uploads"}) {
 		t.Fatalf("unexpected S3 buckets %#v", application.ObjectStorageBucketNames(m))
+	}
+}
+
+func TestManifestFromCreateArgsSupportsAllV0419ServiceFamilies(t *testing.T) {
+	m, err := manifestFromCreateArgs([]string{
+		"platform",
+		"--key-value-instance", "durable",
+		"--document-db-instance", "documents",
+		"--messaging-queue-instance", "jobs",
+		"--messaging-pubsub-instance", "events",
+		"--messaging-stream-instance", "audit",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(application.KeyValueInstanceNames(m), []string{"durable"}) {
+		t.Fatalf("durable key-value instances = %#v", application.KeyValueInstanceNames(m))
+	}
+	if !reflect.DeepEqual(application.DocumentDatabaseInstanceNames(m), []string{"documents"}) {
+		t.Fatalf("document database instances = %#v", application.DocumentDatabaseInstanceNames(m))
+	}
+	if !reflect.DeepEqual(application.MessagingQueueInstanceNames(m), []string{"jobs"}) {
+		t.Fatalf("messaging queue instances = %#v", application.MessagingQueueInstanceNames(m))
+	}
+	if !reflect.DeepEqual(application.MessagingPubSubInstanceNames(m), []string{"events"}) {
+		t.Fatalf("messaging pubsub instances = %#v", application.MessagingPubSubInstanceNames(m))
+	}
+	if !reflect.DeepEqual(application.MessagingStreamInstanceNames(m), []string{"audit"}) {
+		t.Fatalf("messaging stream instances = %#v", application.MessagingStreamInstanceNames(m))
+	}
+	if len(application.SQLInstanceNames(m)) != 0 {
+		t.Fatalf("explicit v0.4.19 services unexpectedly added SQL: %#v", application.SQLInstanceNames(m))
 	}
 }

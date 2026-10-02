@@ -389,3 +389,9 @@ func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdi
 func (c Compose) outputProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, composeFiles []string, args ...string) (string, error) {
 	return c.outputProjectFilesInputEnv(ctx, project, workdir, environment, composeFiles, nil, args...)
 }
+
+func (c Compose) LogsProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) (string, error) {
+	args := []string{"logs", "--no-color", "--tail", "120"}
+	args = append(args, services...)
+	return c.outputProjectFilesEnv(ctx, project, workdir, environment, composeFiles, args...)
+}

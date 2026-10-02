@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
@@ -47,7 +48,42 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	if err != nil {
 		return deployment.ResolvedTarget{}, err
 	}
-	return cfg.ResolveTarget(targetOverrideFromContext(ctx), os.Getenv("BASEHARBOR_TARGET"))
+	explicit := targetOverrideFromContext(ctx)
+	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	if explicit != "" || activated != "" {
+		return cfg.ResolveTarget(explicit, activated)
+	}
+	organizationTarget, err := organizationDefaultTarget()
+	if err != nil {
+		return deployment.ResolvedTarget{}, err
+	}
+	if organizationTarget != "" {
+		return cfg.ResolveTarget(organizationTarget, "")
+	}
+	return cfg.ResolveTarget("", "")
+}
+
+func organizationDefaultTarget() (string, error) {
+	state, ok, err := orgconfig.LoadActiveOptional()
+	if err != nil || !ok {
+		return "", err
+	}
+	environment := "dev"
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
+			if value := strings.TrimSpace(selection.Manifest.Environment); value != "" {
+				environment = value
+			}
+		}
+	}
+	effective, err := orgconfig.ResolveEffective(state, environment)
+	if err != nil {
+		return "", fmt.Errorf("resolve organization target default: %w", err)
+	}
+	if effective.Target == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(effective.Target.Value), nil
 }
 
 func targetCommand() *cli.Command {

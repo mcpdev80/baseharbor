@@ -50,7 +50,7 @@ func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedDeployment(m.Name, m.Environment)
+	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseManagedDeployment(m.Name, m.Environment)
+		registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
 		if err := registerReferenceProviders(registry, m); err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional [
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedDeployment(m.Name, m.Environment)
+	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		return err
 	}
@@ -111,18 +111,33 @@ func registerAdditionalProviderResources(registry *capability.Registry, m Manife
 		if resource.Application != m.Name {
 			return fmt.Errorf("additional provider resource belongs to application %q, expected %q", resource.Application, m.Name)
 		}
-		instance, err := referenceProviderInstance(m, resource)
-		if err != nil {
-			return err
-		}
-		if err := registry.Register(instance); err != nil {
-			return err
-		}
-		if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
+		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func bindProviderResource(registry *capability.Registry, m Manifest, resource capability.Resource) error {
+	placement, err := ResolveProviderPlacement(m, resource.Provider)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		instance, err := registry.ResolvePlacement(resource.Provider, placement, m.ApplicationID)
+		if err != nil {
+			return fmt.Errorf("resolve registered external provider %q for %s: %w; register it first with 'baha provider add'", placement.ExternalReference, resource.Provider, err)
+		}
+		return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		return err
+	}
+	if err := registry.Register(instance); err != nil {
+		return err
+	}
+	return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
 }
 
 func CheckControlPlaneDestroySafe() error {
@@ -173,7 +188,7 @@ func RegisteredProviderPlacementAt(dataDir string, m Manifest, provider capabili
 
 	var matched *capability.ProviderInstance
 	for _, binding := range registry.Bindings {
-		if binding.Resource.Application != m.Name || binding.Resource.Provider != provider {
+		if binding.ApplicationID != m.ApplicationID || binding.Resource.Provider != provider {
 			continue
 		}
 		bindingEnvironment := strings.TrimSpace(binding.Environment)
@@ -226,7 +241,7 @@ func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseApplicationDeployment(m.Name, m.Environment)
+		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
 		return nil
 	})
 }
@@ -266,14 +281,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			}
 		}
 
-		instance, err := referenceProviderInstance(m, resource)
-		if err != nil {
-			return err
-		}
-		if err := registry.Register(instance); err != nil {
-			return err
-		}
-		if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
+		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}
 	}
@@ -290,14 +298,7 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 				Name:        runtimeMetricsRegistryResource,
 				Provider:    capability.ProviderPrometheus,
 			}
-			instance, err := referenceProviderInstance(m, resource)
-			if err != nil {
-				return err
-			}
-			if err := registry.Register(instance); err != nil {
-				return err
-			}
-			if err := registry.BindDeployment(resource, m.Environment, instance.ID); err != nil {
+			if err := bindProviderResource(registry, m, resource); err != nil {
 				return err
 			}
 		}
@@ -334,10 +335,11 @@ func referenceProviderInstance(m Manifest, resource capability.Resource) (capabi
 		instance.ID = sharedProviderInstanceID(resource.Provider, placement.SharingBoundary)
 	case capability.ScopeApplication:
 		instance.ID = applicationProviderInstanceID(resource.Provider, m, resource.Name)
+		instance.OwnerApplicationID = m.ApplicationID
 		instance.OwnerApplication = m.Name
 		instance.OwnerEnvironment = m.Environment
 	case capability.ScopeExternal:
-		instance.ID = externalProviderInstanceID(resource.Provider, m, resource.Name, placement.ExternalReference)
+		instance.ID = externalProviderInstanceID(resource.Provider, placement.ExternalReference)
 	default:
 		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
 	}
@@ -359,15 +361,15 @@ func sharedProviderInstanceID(provider capability.ProviderKind, boundary string)
 func applicationProviderInstanceID(provider capability.ProviderKind, m Manifest, resourceName string) string {
 	switch provider {
 	case capability.ProviderPostgreSQL, capability.ProviderValkey:
-		return fmt.Sprintf("%s/%s/%s/%s", provider, m.Name, m.Environment, resourceName)
+		return fmt.Sprintf("%s/application/%s/%s/%s", provider, m.ApplicationID, ProviderPlacementNameToken(m.Environment), ProviderPlacementNameToken(resourceName))
 	default:
-		return fmt.Sprintf("%s/%s/%s", provider, m.Name, m.Environment)
+		return fmt.Sprintf("%s/application/%s/%s", provider, m.ApplicationID, ProviderPlacementNameToken(m.Environment))
 	}
 }
 
-func externalProviderInstanceID(provider capability.ProviderKind, m Manifest, resourceName, reference string) string {
+func externalProviderInstanceID(provider capability.ProviderKind, reference string) string {
 	if provider == capability.ProviderExternalOTLP && reference == "default" {
 		return "external-otlp/default"
 	}
-	return fmt.Sprintf("%s/external/%s/%s/%s", provider, m.Name, m.Environment, ProviderPlacementNameToken(resourceName+"-"+reference))
+	return fmt.Sprintf("%s/external/%s", provider, ProviderPlacementNameToken(reference))
 }

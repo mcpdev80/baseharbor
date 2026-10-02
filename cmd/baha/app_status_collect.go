@@ -132,6 +132,8 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectServiceBindingCheck()
 	c.collectSQLCheck(ctx)
 	c.collectCacheCheck(ctx)
+	c.collectMessagingCheck(ctx)
+	c.collectDocumentDatabaseCheck(ctx)
 	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
 }
@@ -243,7 +245,7 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 }
 
 func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
-	if !c.manifest.Services.Cache {
+	if !(c.manifest.Services.Cache || c.manifest.Services.KeyValue) {
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, applicationValkeyStatusTimeout)
@@ -253,7 +255,7 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 			c.result.AddCheck("valkey", false, "shared provider readiness failed: "+err.Error())
 			return
 		}
-		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated cache resource(s) ready on shared Target provider", len(application.CacheInstanceNames(c.manifest))))
+		c.result.AddCheck("valkey", true, fmt.Sprintf("%d app-isolated Valkey resource(s) ready on shared Target provider", len(application.ValkeyInstanceNames(c.manifest))))
 		return
 	}
 	if !containsString(c.services, "valkey") {
@@ -261,15 +263,44 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		return
 	}
 	if err := application.VerifyValkeyRuntime(checkCtx, c.compose, c.manifest, c.files); err != nil {
-		c.result.AddCheck("valkey", false, "one or more instances failed authenticated PING")
+		c.result.AddCheck("valkey", false, "one or more Valkey instances failed semantic verification")
 		return
 	}
-	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and authenticated PING returned PONG", len(application.CacheInstanceNames(c.manifest))))
+	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and semantic Valkey verification passed", len(application.ValkeyInstanceNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context) {
+	if len(application.RabbitMQInstanceNames(c.manifest)) == 0 {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationRabbitMQStatusTimeout)
+	defer cancel()
+	if err := application.VerifyRabbitMQRuntime(checkCtx, c.manifest, c.files); err != nil {
+		c.result.AddCheck("rabbitmq", false, err.Error())
+		return
+	}
+	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d instance(s) passed AMQPS semantic verification", len(application.RabbitMQInstanceNames(c.manifest))))
+}
+
+func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.Context) {
+	if len(application.DocumentDatabaseInstanceNames(c.manifest)) == 0 {
+		return
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, applicationMongoDBStatusTimeout)
+	defer cancel()
+	if err := application.VerifyMongoDBRuntime(checkCtx, c.manifest, c.files); err != nil {
+		c.result.AddCheck("mongodb", false, err.Error())
+		return
+	}
+	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document write/read/delete verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {
 	if !c.manifest.Services.SQLManagementUI &&
 		!c.manifest.Services.CacheManagementUI &&
+		!c.manifest.Services.KeyValueManagementUI &&
+		!c.manifest.Services.MessagingManagementUI &&
+		!c.manifest.Services.DocumentDatabaseManagementUI &&
 		!c.manifest.Services.ObjectStorageManagementUI &&
 		!c.manifest.Services.SecretsManagementUI &&
 		!c.manifest.Services.IdentityManagementUI &&
@@ -525,6 +556,10 @@ func (c *applicationStatusCollection) collectCanonicalDevelopmentCheck(ctx conte
 	hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, c.manifest)
 	if err != nil {
 		c.result.AddCheck("canonical-development-urls", false, err.Error())
+		return
+	}
+	if len(hosts) == 0 {
+		c.result.AddCheck("canonical-development-urls", false, "development gateway is required but the application contract defines no canonical route; declare the required exposure.http or management surface")
 		return
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)

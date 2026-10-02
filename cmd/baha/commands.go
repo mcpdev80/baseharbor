@@ -18,7 +18,7 @@ func rootCommand() *cli.Command {
 		switch child.Name {
 		case "init":
 			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql] [--sql-instance NAME]... [--cache] [--cache-instance NAME]... [--s3] [--s3-bucket NAME]... [--secrets] [--require-secret NAME]..."
+			initCmd.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]"
 			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
 			appCmd.Children[i] = initCmd
 		case "show":
@@ -77,7 +77,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Start BaseHarbor and, inside an application repository, converge the application",
-			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--control-plane-only] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
 			Long:    "Starts or reuses the local BaseHarbor control plane. --trust-host-ca is the explicit non-interactive opt-in for installing the managed-local public CA into the host trust store; --yes alone never changes host trust. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup proposes a secure target-scoped recovery-file path outside normal BaseHarbor state. The selected path reference is persisted for later restarts; --recovery-file PATH remains an explicit override. The repository manifest remains unchanged when -e/--environment selects a deployment context; the override is applied only to resolved runtime state. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},

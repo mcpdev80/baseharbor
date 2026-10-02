@@ -80,9 +80,10 @@ exist?"* but *"does the application actually work?"*
   Compose files and ports deterministically (parsers, rules, repository
   evidence — no LLM or external AI service), and turns them into a portable
   contract with **Detected / Suggested / Possible** evidence.
-- **Declare needs, not products** — `sql`, `cache`, `secrets`, `object storage`,
-  `identity`, HTTPS exposure: logical capabilities; PostgreSQL, Valkey,
-  S3-compatible and Keycloak products are replaceable realizations underneath.
+- **Declare needs, not products** — SQL, cache, durable key-value, document database,
+  queue/pub-sub/stream messaging, secrets, object storage, identity and HTTPS exposure
+  are logical capabilities; PostgreSQL, Valkey, MongoDB, RabbitMQ, S3-compatible
+  storage and Keycloak are replaceable realizations underneath.
 - **Resource-aware local mutation** — Docker/Podman preflight checks host memory headroom before starting providers/workloads; future Kubernetes/OpenShift providers use cluster-native capacity/quota/scheduling evidence instead of CLI-host memory.
 - **Everything wired and verified** — provisioning, credentials, TLS, bindings,
   backups, updates, drift detection. READY means the real protocol/data flow
@@ -99,15 +100,16 @@ exist?"* but *"does the application actually work?"*
   `my-app.baha.localhost`, `pgadmin.baha.localhost`, `auth.baha.localhost`
   — instead of exposing random loopback ports as developer UX.
 - **Optional provider management surfaces** — pgAdmin, Redis Commander,
-  SeaweedFS Admin, OpenBao, Keycloak and Prometheus, selected per capability,
+  Mongo Express, RabbitMQ Management, SeaweedFS Admin, OpenBao, Keycloak and
+  Prometheus, selected per capability,
   never duplicated per application, environment-policy driven.
 - **Deployment Targets** — Target + Application + Environment, with
   target-scoped state; Docker / Podman today, Kubernetes / OpenShift planned.
 - **Environment-aware operator access** — trusted local operation in dev;
   authenticated OIDC operator access in test/prod, separate from
   application-user identity.
-- **Standard interfaces only** — PostgreSQL · Redis/Valkey · S3 · HTTP ·
-  OIDC/OAuth2 · OTLP · environment variables · files. No BaseHarbor SDK,
+- **Standard interfaces only** — PostgreSQL · Redis/Valkey · MongoDB · AMQP 0-9-1 ·
+  S3 · HTTP · OIDC/OAuth2 · OTLP · environment variables · files. No BaseHarbor SDK,
   no imports in your app.
 - **Zero-trust by default** — least privilege, scoped credentials,
   explicit trust boundaries, fail-closed behavior.
@@ -211,9 +213,9 @@ Docker serves these canonical development hosts on HTTPS port 443. Rootless
 Podman uses the fixed unprivileged HTTPS port 8443 and reports that port in
 canonical URLs; no host sysctl change is required.
 
-A Target-scoped development account defaults to username `developer` with
-a generated strong password, reused across selected development management
-surfaces. When managed Identity is present, the same developer identity is
+A Target- and environment-scoped development account defaults to username
+`developer`, but the username is configurable. Its generated strong password
+and identity are reused across selected development management surfaces. When managed Identity is present, the same developer identity is
 reconciled through OIDC. The password is never printed by normal `status`,
 `doctor`, plan or evidence output. Test and prod do not use this shared
 development credential; they keep the authenticated operator-OIDC boundary.
@@ -225,6 +227,7 @@ development access:
 baha dev domain
 baha dev domain dev.example.internal
 baha dev credentials
+baha dev credentials --username USER
 baha dev credentials --reset
 ```
 

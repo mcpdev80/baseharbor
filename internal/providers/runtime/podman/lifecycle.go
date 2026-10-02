@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -113,6 +112,14 @@ func (p PodmanProvider) StatusProject(ctx context.Context, project, composeFile,
 
 func (p PodmanProvider) LogsProject(ctx context.Context, project, composeFile, envFile string, services ...string) (string, error) {
 	q, err := quadletRenderProject(composeFile, envFile, project)
+	if err != nil {
+		return "", err
+	}
+	return quadletLogs(ctx, p.CommandPath(), q, services)
+}
+
+func (p PodmanProvider) LogsProjectFilesEnv(ctx context.Context, project, workdir string, environment map[string]string, services []string, composeFiles ...string) (string, error) {
+	q, err := quadletRenderProjectFiles(composeFiles, environment, project, nil)
 	if err != nil {
 		return "", err
 	}
@@ -562,6 +569,53 @@ func (p PodmanProvider) RunningServicesProject(ctx context.Context, project, com
 	return services, nil
 }
 
+func composeContainerServiceFromExpectedName(project, name string) (string, bool) {
+	project = strings.TrimSpace(project)
+	name = strings.TrimSpace(name)
+	prefix := project + "-"
+	if project == "" || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, "-1") {
+		return "", false
+	}
+	service := strings.TrimSuffix(strings.TrimPrefix(name, prefix), "-1")
+	if strings.TrimSpace(service) == "" {
+		return "", false
+	}
+	return service, true
+}
+
+func (p PodmanProvider) resolveOwnedContainerResourceName(ctx context.Context, project, requested string) (string, bool, error) {
+	requested = strings.TrimSpace(requested)
+	exists, err := quadletRuntimeResourceExists(ctx, "container", requested)
+	if err != nil {
+		return "", false, err
+	}
+	if exists {
+		return requested, true, nil
+	}
+	service, ok := composeContainerServiceFromExpectedName(project, requested)
+	if !ok {
+		return "", false, nil
+	}
+	containers, err := p.ListRuntimeContainers(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	var actual string
+	for _, container := range containers {
+		if container.Project != project || container.Service != service {
+			continue
+		}
+		if actual != "" && actual != container.Name {
+			return "", false, fmt.Errorf("multiple Podman containers match owned service %s/%s", project, service)
+		}
+		actual = container.Name
+	}
+	if actual == "" {
+		return "", false, nil
+	}
+	return actual, true, nil
+}
+
 func (p PodmanProvider) InspectProjectResource(ctx context.Context, project string, resource ProjectResource) (bool, error) {
 	existing, err := p.InspectProjectResources(ctx, project, []ProjectResource{resource})
 	if err != nil {
@@ -592,7 +646,14 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 		default:
 			return nil, fmt.Errorf("unsupported runtime resource kind %q", resource.Kind)
 		}
-		exists, err := quadletRuntimeResourceExists(ctx, resource.Kind, name)
+		actualName := name
+		var exists bool
+		var err error
+		if resource.Kind == "container" {
+			actualName, exists, err = p.resolveOwnedContainerResourceName(ctx, project, name)
+		} else {
+			exists, err = quadletRuntimeResourceExists(ctx, resource.Kind, name)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -606,7 +667,7 @@ func (p PodmanProvider) InspectProjectResources(ctx context.Context, project str
 		default:
 			template = `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`
 		}
-		out, err := p.DirectOutput(ctx, resource.Kind, "inspect", "--format", template, name)
+		out, err := p.DirectOutput(ctx, resource.Kind, "inspect", "--format", template, actualName)
 		if err != nil {
 			return nil, fmt.Errorf("inspect %s ownership: %w", resource.Kind, err)
 		}
@@ -646,6 +707,10 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 	if err != nil {
 		return err
 	}
+
+	var units []string
+	var direct []RuntimeContainer
+	seenUnits := map[string]struct{}{}
 	for _, container := range containers {
 		if container.Project != project || !container.Running {
 			continue
@@ -659,16 +724,29 @@ func (p PodmanProvider) StopOwnedProjectContainers(ctx context.Context, project 
 			return fmt.Errorf("inspect Quadlet unit for %s/%s (%s): %w", project, container.Service, container.Name, inspectErr)
 		}
 		unit := podmanSystemdUnitLabel(unitOut)
-		if unit != "" {
-			if _, stopErr := quadletSystemctlCombined(ctx, "stop", unit); stopErr != nil {
-				return fmt.Errorf("stop owned Quadlet service %s for %s/%s: %w", unit, project, container.Service, stopErr)
-			}
+		if unit == "" {
+			direct = append(direct, container)
 			continue
 		}
+		if _, seen := seenUnits[unit]; seen {
+			continue
+		}
+		seenUnits[unit] = struct{}{}
+		units = append(units, unit)
+	}
+	sort.Strings(units)
+
+	if len(units) > 0 {
+		if _, stopErr := quadletSystemctlCombined(ctx, append([]string{"stop"}, units...)...); stopErr != nil {
+			return fmt.Errorf("stop owned Quadlet services for project %s: %w", project, stopErr)
+		}
+	}
+	for _, container := range direct {
 		if _, stopErr := p.DirectOutput(ctx, "container", "stop", container.Name); stopErr != nil {
 			return fmt.Errorf("stop owned Podman container %s/%s (%s): %w", project, container.Service, container.Name, stopErr)
 		}
 	}
+
 	remaining, err := p.ListRuntimeContainers(ctx)
 	if err != nil {
 		return err
@@ -686,14 +764,64 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 	if err != nil {
 		return err
 	}
+
+	var containerUnits []string
+	seenUnits := map[string]struct{}{}
+	for _, resource := range existing {
+		if resource.Kind != "container" {
+			continue
+		}
+		actualName, exists, resolveErr := p.resolveOwnedContainerResourceName(ctx, project, resource.Name)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if !exists {
+			continue
+		}
+		unitOut, inspectErr := p.DirectOutput(ctx,
+			"container", "inspect", "--format",
+			`{{ index .Config.Labels "PODMAN_SYSTEMD_UNIT" }}`,
+			actualName,
+		)
+		if inspectErr != nil {
+			return fmt.Errorf("inspect Quadlet unit for owned container %s: %w", resource.Name, inspectErr)
+		}
+		unit := podmanSystemdUnitLabel(unitOut)
+		if unit == "" {
+			continue
+		}
+		if _, seen := seenUnits[unit]; seen {
+			continue
+		}
+		seenUnits[unit] = struct{}{}
+		containerUnits = append(containerUnits, unit)
+	}
+	sort.Strings(containerUnits)
+	if len(containerUnits) > 0 {
+		if _, stopErr := quadletSystemctlCombined(ctx, append([]string{"stop"}, containerUnits...)...); stopErr != nil {
+			return fmt.Errorf("stop owned Quadlet services before resource removal for project %s: %w", project, stopErr)
+		}
+	}
+
 	for _, kind := range []string{"container", "network", "volume"} {
 		for _, resource := range existing {
 			if resource.Kind != kind {
 				continue
 			}
-			args := []string{kind, "rm", resource.Name}
+			actualName := resource.Name
 			if kind == "container" {
-				args = []string{"container", "rm", "-f", resource.Name}
+				resolvedName, exists, resolveErr := p.resolveOwnedContainerResourceName(ctx, project, resource.Name)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				if !exists {
+					continue
+				}
+				actualName = resolvedName
+			}
+			args := []string{kind, "rm", actualName}
+			if kind == "container" {
+				args = []string{"container", "rm", "-f", actualName}
 			}
 			if _, err := p.DirectOutput(ctx, args...); err != nil {
 				if kind == "network" && podmanNetworkHasActiveConsumers(err) {
@@ -711,47 +839,4 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 		}
 	}
 	return nil
-}
-
-func podmanNetworkHasActiveConsumers(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "network is being used") ||
-		strings.Contains(message, "has associated containers") ||
-		strings.Contains(message, "active endpoints")
-}
-
-func (p PodmanProvider) ContainerLogConfigProjectService(context.Context, string, string) (string, string, error) {
-	return "", "", nil
-}
-
-func (p PodmanProvider) ProjectServiceLogDriver(ctx context.Context, project, service string) (string, error) {
-	project = strings.TrimSpace(project)
-	service = strings.TrimSpace(service)
-	if project == "" || service == "" {
-		return "", errors.New("project and service are required")
-	}
-	containers, err := p.ListRuntimeContainers(ctx)
-	if err != nil {
-		return "", err
-	}
-	for _, container := range containers {
-		if container.Project == project && container.Service == service && container.Running {
-			return "journald", nil
-		}
-	}
-	return "", fmt.Errorf("running service %s/%s was not found", project, service)
-}
-
-func (p PodmanProvider) providerSourceFiles(workdir string, composeFiles []string) ([]string, error) {
-	return quadletResolveComposeFiles(workdir, composeFiles)
-}
-
-func (p PodmanProvider) workdirFor(composeFile string) string {
-	if strings.TrimSpace(composeFile) == "" {
-		return ""
-	}
-	return filepath.Dir(composeFile)
 }

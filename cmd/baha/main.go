@@ -244,6 +244,16 @@ func classifyMachineCLIError(err error) error {
 	if errors.As(err, &usage) {
 		return machine.Wrap(machine.ErrorValidationFailed, err, usage.Hint, false)
 	}
+	if errors.Is(err, development.ErrWorkspaceModelMissing) {
+		return &machine.Error{
+			Code:        machine.ErrorSourceMissing,
+			CauseCode:   "workspace_not_initialized",
+			Message:     "No workspace source model is configured for this application.",
+			Remediation: "initialize the application workspace source model",
+			Next:        "Run 'baha app workspace init --source ID=REPOSITORY --component NAME=ID' and retry.",
+			Cause:       err,
+		}
+	}
 	if errors.Is(err, development.ErrWorkspaceSourceMissing) {
 		return &machine.Error{
 			Code:        machine.ErrorSourceMissing,

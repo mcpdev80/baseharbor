@@ -12,6 +12,7 @@ import (
 )
 
 type NewApplicationRequest struct {
+	ApplicationID          string            `json:"-"`
 	Name                   string            `json:"name"`
 	Environment            string            `json:"environment,omitempty"`
 	Adapter                string            `json:"adapter,omitempty"`
@@ -68,14 +69,25 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 		}
 	}
 
+	applicationID := strings.TrimSpace(request.ApplicationID)
+	if applicationID == "" {
+		applicationID = application.MustNewApplicationID()
+	} else if err := application.ValidateApplicationID(applicationID); err != nil {
+		return BootstrapResult{}, err
+	}
 	manifest := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        name,
-		Environment: environment,
+		Version:       application.CurrentVersion,
+		ApplicationID: applicationID,
+		Name:          name,
+		Environment:   environment,
 		Workload: application.WorkloadConfig{
 			Compose:  "compose.yaml",
 			Services: profileComponentIDs(profile),
 		},
+	}
+	requested := map[capability.Kind]bool{}
+	for _, kind := range request.Capabilities {
+		requested[kind] = true
 	}
 	seen := map[capability.Kind]struct{}{}
 	for _, kind := range request.Capabilities {
@@ -90,6 +102,22 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 			manifest.Services.SQL = true
 		case capability.KeyValue:
 			manifest.Services.Cache = true
+			if requested[capability.DurableKeyValue] {
+				manifest.Services.CacheInstances = map[string]application.ServiceInstance{"cache": {}}
+			}
+		case capability.DurableKeyValue:
+			manifest.Services.KeyValue = true
+			if requested[capability.KeyValue] {
+				manifest.Services.KeyValueInstances = map[string]application.ServiceInstance{"durable": {}}
+			}
+		case capability.DocumentDatabase:
+			manifest.Services.DocumentDatabase = true
+		case capability.MessagingQueue:
+			manifest.Services.MessagingQueue = true
+		case capability.MessagingPubSub:
+			manifest.Services.MessagingPubSub = true
+		case capability.MessagingStream:
+			manifest.Services.MessagingStream = true
 		case capability.ObjectStorageS3:
 			manifest.Services.ObjectStorage = true
 		case capability.Secrets:

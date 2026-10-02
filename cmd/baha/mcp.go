@@ -16,6 +16,47 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
+type machineProviderIDInput struct {
+	ID string `json:"id" jsonschema:"registered external provider id"`
+}
+
+type machineProviderAddInput struct {
+	ID                string   `json:"id" jsonschema:"external provider registration id"`
+	ProviderID        string   `json:"provider_id" jsonschema:"provider descriptor id such as company/postgresql"`
+	ProviderVersion   string   `json:"provider_version,omitempty" jsonschema:"optional provider descriptor version"`
+	ProviderProtocol  string   `json:"provider_protocol,omitempty" jsonschema:"optional provider protocol version"`
+	Kind              string   `json:"kind" jsonschema:"provider implementation kind"`
+	Capabilities      []string `json:"capabilities" jsonschema:"portable BaseHarbor capabilities implemented by this provider"`
+	Endpoint          string   `json:"endpoint" jsonschema:"absolute application-facing provider endpoint without embedded credentials"`
+	CredentialRef     string   `json:"credential_ref,omitempty" jsonschema:"secret-safe credential reference; plaintext credentials are not accepted"`
+	TrustMode         string   `json:"trust_mode,omitempty" jsonschema:"system, custom-ca or mtls; defaults to system"`
+	CAReference       string   `json:"ca_reference,omitempty" jsonschema:"custom CA/trust reference when required"`
+	ClientCertificate string   `json:"client_certificate_reference,omitempty" jsonschema:"mTLS client certificate reference"`
+	ClientKey         string   `json:"client_key_reference,omitempty" jsonschema:"mTLS client private-key reference; key material is never accepted directly"`
+	CertificateDir    string   `json:"certificate_directory,omitempty" jsonschema:"directory containing BYOC certificate/trust material for safe discovery"`
+}
+
+type machineProviderRemoveInput struct {
+	ID       string `json:"id" jsonschema:"registered external provider id"`
+	Approval bool   `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
+}
+
+type machineOrganizationInput struct {
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to resolve effective organization defaults; defaults to dev"`
+}
+
+type machineOrganizationSetInput struct {
+	Source      string `json:"source" jsonschema:"organization source kind: oci, git, local or system"`
+	Location    string `json:"location,omitempty" jsonschema:"OCI repository, Git repository, local path, or managed system path"`
+	Requested   string `json:"requested,omitempty" jsonschema:"requested OCI tag/channel or Git ref; the resolved immutable digest/revision is persisted"`
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to return effective defaults; defaults to dev"`
+}
+
+type machineOrganizationUpdateInput struct {
+	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit approval required after reviewing organization.check"`
+	Environment string `json:"environment,omitempty" jsonschema:"environment used to return effective defaults; defaults to dev"`
+}
+
 type machineTargetInput struct {
 	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 }
@@ -34,6 +75,13 @@ type machineApplicationInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
+type machineApplyInput struct {
+	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name                string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment         string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
+}
+
 type machineAppNewInput struct {
 	Path               string   `json:"path,omitempty" jsonschema:"deprecated compatibility field: exact empty project root; prefer directory for new clients"`
 	Directory          string   `json:"directory,omitempty" jsonschema:"parent directory in which BaseHarbor creates a child directory named after the application; required unless the current empty directory already matches the application name"`
@@ -41,7 +89,7 @@ type machineAppNewInput struct {
 	Environment        string   `json:"environment,omitempty" jsonschema:"application environment; defaults to dev"`
 	Stack              string   `json:"stack,omitempty" jsonschema:"built-in development stack; defaults to go when stack_profile is omitted"`
 	StackProfile       string   `json:"stack_profile,omitempty" jsonschema:"reusable Stack Profile name from the effective built-in/user/repository catalog; mutually exclusive with stack"`
-	Capabilities       []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, object-storage.s3, secrets, telemetry.otlp"`
+	Capabilities       []string `json:"capabilities,omitempty" jsonschema:"portable capability names such as exposure.http, database.sql, cache.key-value, database.key-value, database.document, messaging.queue, messaging.pubsub, messaging.stream, object-storage.s3, secrets, telemetry.otlp"`
 	Secrets            []string `json:"secrets,omitempty" jsonschema:"required application secret binding names; values are never accepted"`
 	EmitBackstage      bool     `json:"emit_backstage,omitempty" jsonschema:"emit a static Backstage catalog-info.yaml projection; default false"`
 	BackstageOwner     string   `json:"backstage_owner,omitempty" jsonschema:"explicit Backstage owner when catalog emission is enabled; BaseHarbor never infers ownership"`

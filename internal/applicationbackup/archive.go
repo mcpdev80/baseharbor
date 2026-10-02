@@ -19,13 +19,14 @@ type PayloadEntry struct {
 	Data []byte `json:"data"`
 }
 
-func Build(application, environment string, createdAt time.Time, entries []PayloadEntry, password []byte) ([]byte, error) {
+func Build(applicationID, application, environment string, createdAt time.Time, entries []PayloadEntry, password []byte) ([]byte, error) {
 	if len(entries) > MaxEntries {
 		return nil, fmt.Errorf("backup contains too many entries: %d > %d", len(entries), MaxEntries)
 	}
 
 	manifest := Manifest{
 		SchemaVersion: SchemaVersion,
+		ApplicationID: applicationID,
 		Application:   application,
 		Environment:   environment,
 		CreatedAt:     createdAt.UTC(),

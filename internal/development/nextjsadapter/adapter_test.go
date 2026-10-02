@@ -16,7 +16,8 @@ func TestNextJSRoundTrip(t *testing.T) {
 	result, err := development.CreateApplication(filepath.Join(t.TempDir(), "next"), development.NewApplicationRequest{
 		Name: "next-app", Adapter: AdapterID,
 		Capabilities: []capability.Kind{
-			capability.ExposureHTTP, capability.SQL, capability.KeyValue,
+			capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+			capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
 			capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP,
 		},
 	}, registry)

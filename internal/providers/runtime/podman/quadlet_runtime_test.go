@@ -3,6 +3,7 @@ package podman
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -197,5 +198,13 @@ func TestQuadletNetworkResourceInUseRecognizesPodmanErrors(t *testing.T) {
 	}
 	if quadletNetworkResourceInUse("network not found") {
 		t.Fatal("unrelated network error must not be ignored")
+	}
+}
+
+func TestQuadletRemoveRuntimeResourceArgsForcesContainers(t *testing.T) {
+	got := quadletRemoveRuntimeResourceArgs("container", "app")
+	want := []string{"container", "rm", "-f", "app"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %#v, want %#v", got, want)
 	}
 }

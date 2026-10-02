@@ -2,6 +2,7 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -42,5 +43,19 @@ func TestRunWithTimeoutRefreshesDeadlineForEveryCheck(t *testing.T) {
 	}
 	if !secondDeadline.After(firstDeadline) {
 		t.Fatalf("second check deadline %s must be refreshed after first deadline %s", secondDeadline, firstDeadline)
+	}
+}
+
+func TestRunPreservesTypedErrorIdentity(t *testing.T) {
+	want := errors.New("typed preflight cause")
+	results, ok := Run(context.Background(), []Check{{
+		Name: "typed",
+		Run:  func(context.Context) error { return want },
+	}})
+	if ok || len(results) != 1 {
+		t.Fatalf("unexpected result: ok=%v results=%#v", ok, results)
+	}
+	if !errors.Is(results[0].Err, want) {
+		t.Fatalf("preflight error identity was lost: %#v", results[0])
 	}
 }

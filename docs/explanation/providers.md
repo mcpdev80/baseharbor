@@ -1,38 +1,75 @@
 # Providers
 
-Providers realize BaseHarbor semantics without changing application intent.
+Providers realize BaseHarbor semantics without changing portable Application Intent.
 
 ## Runtime providers
 
-Run application workloads.
+Runtime Providers run application workloads.
 
-Current: Compose.
+Current reference runtimes:
 
-Later: Kubernetes and OpenShift.
+- Docker;
+- rootless Podman.
+
+Compose remains a workload-source/input model for the local runtime path. It is not the portable Runtime Provider identity.
+
+Future Runtime Providers include Kubernetes and OpenShift.
+
+The v0.4.19 Runtime boundary deliberately does not require those future providers to imitate Compose, Docker or Podman mechanics.
 
 ## Capability providers
 
-Realize logical capabilities such as SQL, cache, object storage, secrets, identity or observability.
+Capability Providers realize logical application dependencies.
+
+Examples include:
+
+- `database.sql`;
+- `cache.key-value`;
+- `database.key-value`;
+- `database.document`;
+- `messaging.queue`;
+- `messaging.pubsub`;
+- `messaging.stream`;
+- `object-storage.s3`;
+- secrets;
+- OIDC identity;
+- metrics, logs, traces and OTLP;
+- HTTP exposure.
+
+Reference products prove these contracts. Product names do not become portable capability names.
 
 ## Delivery providers
 
-Control how desired runtime state is delivered and reconciled. Direct mutation and delegated/GitOps delivery are separate mechanisms behind the same application contract.
+Delivery Providers control who owns reconciliation of desired runtime state.
+
+The portable distinction is:
+
+- `direct` — BaseHarbor owns reconciliation;
+- `delegated` — an external reconciler owns reconciliation.
+
+Runtime, capability and delivery remain separate axes:
+
+```text
+runtime != capability != delivery
+```
 
 ## Bundled and external providers
 
-BaseHarbor currently ships first-party providers in the main repository, but they have their own provider IDs and implementation versions. The BaseHarbor release version, provider implementation version, capability specification version and concrete product version are separate facts.
+Bundled providers ship with BaseHarbor but retain their own provider identity/version.
 
-Bundled providers are resolved through the same provider contract boundary that future external providers use. Moving a provider to its own repository later is therefore a packaging change, not a change to application intent.
+External/BYO providers let BaseHarbor consume infrastructure it does not own.
+
+Removing an external provider registration removes the BaseHarbor reference/binding and must not destroy the foreign service.
 
 ## Placement
 
-BaseHarbor uses one common placement model for capability providers:
+Capability providers use the common placement model:
 
-- `shared`: BaseHarbor owns a provider lifecycle that can serve multiple applications;
-- `application`: BaseHarbor owns a provider instance dedicated to one application/environment;
-- `external`: BaseHarbor binds to infrastructure it does not own.
+- `shared` — Target/provider-owned infrastructure serving isolated application resources;
+- `application` — dedicated provider lifecycle for one application/environment;
+- `external` — infrastructure lifecycle remains outside BaseHarbor.
 
-`shared` is the resource-efficient default where the provider can safely isolate applications. Shared provider infrastructure never means shared application data, credentials or ownership. Logical resources and bindings remain application-scoped.
+Shared infrastructure never means shared application credentials, ownership or unpartitioned data.
 
 For example:
 
@@ -43,33 +80,22 @@ one shared PostgreSQL provider
 └── app-c database + least-privilege role
 ```
 
-BaseHarbor therefore does not need to start ten PostgreSQL providers merely because ten applications request SQL. An application can still request/demand application-scoped placement when a dedicated provider is required.
+The same ownership rule applies to other provider families where the product can safely implement shared placement.
 
-Valkey follows the same lifecycle rule while preserving stronger data isolation: the Target owns the shared provider lifecycle, while applications receive isolated cache resources and credentials. A provider MUST NOT claim `shared` support if it cannot prevent cross-application access with the normal ecosystem client boundary.
+## Stable identity
 
-A provider declares its supported scopes. Unsupported placement fails before mutation; BaseHarbor never silently weakens isolation or changes requested ownership semantics.
+Provider ownership does not depend on container names, repository paths or future Kubernetes object names.
 
-### Shared lifecycle versus application resources
+```text
+provider_instance_id != application_id != deployment_id
+```
 
-A shared provider owns infrastructure at the Target/provider boundary. Applications own only their logical resources and bindings.
+Application-scoped provider ownership follows the stable `application_id`.
 
-Application destroy therefore:
+## Related documentation
 
-1. removes that application's logical resource, identity and binding;
-2. preserves sibling applications;
-3. preserves the shared provider while it is still in use.
-
-Target/provider destroy removes the provider itself.
-
-This ownership rule applies consistently to databases, caches, object storage, secrets, identity and observability providers where their underlying products support safe multi-application realization.
-
-For normative requirements, see [Provider contract v1](../spec/provider-contract-v1.md).
-
-### PostgreSQL administration versus application access
-
-The shared PostgreSQL reference provider has one internal administration identity, `baseharbor_admin`, owned by the BaseHarbor control plane. It administers provider lifecycle only.
-
-Each registered SQL resource owns a distinct database, least-privilege role and protected credential reference. Application bindings contain only that resource's host, port, database, application role, application credential and trust material. Provider-global administration credentials never cross the provider boundary.
-
-Backup, restore and destroy resolve their resource set from the protected registration rather than enumerating or guessing provider objects. Ambiguous ownership fails closed.
-
+- [Provider CLI](../cli/providers.md)
+- [External / BYO providers](../how-to/external-providers.md)
+- [Provider Contract v1](../spec/provider-contract-v1.md)
+- [Runtime Provider Contract v1](../spec/runtime-provider-contract-v1.md)
+- [Delivery Provider Contract v1](../spec/delivery-provider-contract-v1.md)

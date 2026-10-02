@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -216,6 +217,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("restore preflight workload security: %w", err)
 	}
+	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
+		return fmt.Errorf("restore deployment initialization: %w", err)
+	}
 	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
 	if err != nil {
 		return fmt.Errorf("restore preflight managed exposure: %w", err)
@@ -370,6 +374,26 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
+func ensureRestoreDeploymentInitialization(ctx context.Context, resolved resolvedApplication) error {
+	if len(resolved.Manifest.Exposures) == 0 {
+		return nil
+	}
+	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
+	if err != nil {
+		return err
+	}
+	if !restoreNeedsDeploymentInitialization(resolved.Manifest, state) {
+		return nil
+	}
+	return runRepositoryRuntimeInitResolved(ctx, resolved, resolved.repositoryRoot(), repositoryInitOptions{Yes: true}, io.Discard)
+}
+
+func restoreNeedsDeploymentInitialization(m application.Manifest, state repositoryInitState) bool {
+	return len(m.Exposures) > 0 &&
+		devaccess.Enabled(m.Environment) &&
+		strings.TrimSpace(state.Hostname) == ""
+}
+
 func verifyRestoredApplicationHealth(ctx context.Context, store application.Store, m application.Manifest) error {
 	status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(m.Name, m.Environment))
 	if err != nil {
@@ -501,10 +525,19 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	if err != nil {
 		return resolvedApplication{}, err
 	}
-	id := deployment.DeploymentIdentity{
-		Target:      target.Name,
-		Application: backupManifest.Name,
-		Environment: backupManifest.Environment,
+	existing, deploymentFound, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	var id deployment.DeploymentIdentity
+	if deploymentFound {
+		id = existing.Identity
+		id.Application = backupManifest.Name
+	} else {
+		id, err = deployment.NewDeploymentIdentity(target.Name, backupManifest.ApplicationID, backupManifest.Name, backupManifest.Environment)
+		if err != nil {
+			return resolvedApplication{}, err
+		}
 	}
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
@@ -528,7 +561,14 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 		return resolved, err
 	}
 	if !found {
-		record, recordErr := deployment.LoadDeploymentRecord(id)
+		var record deployment.DeploymentRecord
+		var recordErr error
+		if deploymentFound {
+			record = existing
+			record.Identity = id
+		} else {
+			recordErr = os.ErrNotExist
+		}
 		if recordErr == nil && deployment.SourceAvailable(record.Source) {
 			selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, backupManifest.Environment)
 			if sourceErr != nil {

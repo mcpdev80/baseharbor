@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
 func TestDetectAppProjectFindsComposeBackendsWorkloadAndSecretNames(t *testing.T) {
@@ -400,7 +401,10 @@ func TestPromptCapabilityListNonTTYKeepsDetectedDefaults(t *testing.T) {
 	input := strings.NewReader("\n")
 	appInitInput = input
 	reader := bufio.NewReader(input)
-	defaults := []bool{true, true, false, true, false, false, false, false}
+	defaults := make([]bool, guidedCapabilityCount)
+	defaults[guidedCapabilitySQL] = true
+	defaults[guidedCapabilityCache] = true
+	defaults[guidedCapabilitySecrets] = true
 
 	got, err := promptCapabilityList(reader, io.Discard, defaults, false)
 	if err != nil {
@@ -415,15 +419,26 @@ func TestPromptCapabilityListNonTTYAcceptsExplicitSelection(t *testing.T) {
 	oldInput := appInitInput
 	defer func() { appInitInput = oldInput }()
 
-	input := strings.NewReader("1,3,7\n")
+	input := strings.NewReader("1,3,4,5,6,7,12\n")
 	appInitInput = input
 	reader := bufio.NewReader(input)
 
-	got, err := promptCapabilityList(reader, io.Discard, make([]bool, 8), true)
+	got, err := promptCapabilityList(reader, io.Discard, make([]bool, guidedCapabilityCount), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []bool{true, false, true, false, false, false, true, false}
+	want := make([]bool, guidedCapabilityCount)
+	for _, index := range []int{
+		guidedCapabilitySQL,
+		guidedCapabilityDurableKeyValue,
+		guidedCapabilityDocumentDatabase,
+		guidedCapabilityMessagingQueue,
+		guidedCapabilityMessagingPubSub,
+		guidedCapabilityMessagingStream,
+		guidedCapabilityOTLP,
+	} {
+		want[index] = true
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("selection = %#v, want %#v", got, want)
 	}
@@ -544,9 +559,9 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 	text := out.String()
 	for _, want := range []string{
 		"Managed services",
-		"SQL Database  detected and confirmed",
-		"Cache         detected and confirmed",
-		"Object Storage detected and confirmed",
+		"SQL Database        detected and confirmed",
+		"Cache               detected and confirmed",
+		"Object Storage      detected and confirmed",
 		"Management UIs",
 		"PostgreSQL    pgAdmin",
 		"Cache         Redis Commander",
@@ -570,5 +585,90 @@ func TestAdoptionSummaryFullyPopulated(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestBuildGuidedInitManifestIncludesAllV0419ServiceFamilies(t *testing.T) {
+	selection := guidedInitSelection{
+		name:                         "demo",
+		environment:                  "dev",
+		selected:                     make([]bool, guidedCapabilityCount),
+		keyValueInstances:            []string{"durable"},
+		documentDatabaseInstances:    []string{"documents"},
+		messagingQueueInstances:      []string{"jobs"},
+		messagingPubSubInstances:     []string{"events"},
+		messagingStreamInstances:     []string{"audit"},
+		keyValueManagementUI:         true,
+		documentDatabaseManagementUI: true,
+		messagingManagementUI:        true,
+	}
+	for _, index := range []int{
+		guidedCapabilityDurableKeyValue,
+		guidedCapabilityDocumentDatabase,
+		guidedCapabilityMessagingQueue,
+		guidedCapabilityMessagingPubSub,
+		guidedCapabilityMessagingStream,
+	} {
+		selection.selected[index] = true
+	}
+
+	m, err := buildGuidedInitManifest(bufio.NewReader(strings.NewReader("")), io.Discard, appProjectDetection{}, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := application.KeyValueInstanceNames(m); !reflect.DeepEqual(got, []string{"durable"}) {
+		t.Fatalf("durable key-value instances = %#v", got)
+	}
+	if got := application.DocumentDatabaseInstanceNames(m); !reflect.DeepEqual(got, []string{"documents"}) {
+		t.Fatalf("document database instances = %#v", got)
+	}
+	if got := application.MessagingQueueInstanceNames(m); !reflect.DeepEqual(got, []string{"jobs"}) {
+		t.Fatalf("messaging queue instances = %#v", got)
+	}
+	if got := application.MessagingPubSubInstanceNames(m); !reflect.DeepEqual(got, []string{"events"}) {
+		t.Fatalf("messaging pubsub instances = %#v", got)
+	}
+	if got := application.MessagingStreamInstanceNames(m); !reflect.DeepEqual(got, []string{"audit"}) {
+		t.Fatalf("messaging stream instances = %#v", got)
+	}
+	if !m.Services.KeyValueManagementUI || !m.Services.DocumentDatabaseManagementUI || !m.Services.MessagingManagementUI {
+		t.Fatalf("management UI selection missing: %#v", m.Services)
+	}
+	yaml := m.YAML()
+	for _, want := range []string{
+		"key_value:",
+		"document_database:",
+		"messaging_queue:",
+		"messaging_pubsub:",
+		"messaging_stream:",
+		"management_ui: true",
+	} {
+		if !strings.Contains(yaml, want) {
+			t.Fatalf("guided manifest missing %q:\n%s", want, yaml)
+		}
+	}
+}
+
+func TestBuildGuidedInitManifestPreservesExplicitHTTPSExposureEvidence(t *testing.T) {
+	selection := guidedInitSelection{
+		name:              "demo",
+		environment:       "dev",
+		compose:           "compose.yaml",
+		workloadServices:  []string{"demo-app"},
+		workloadProtocols: map[string]string{"demo-app": "https"},
+		workloadPorts: []repositoryinspect.PortEvidence{
+			{Path: "compose.yaml", Service: "demo-app", Value: "${DEMO_HTTPS_PORT:-8080}:8080"},
+		},
+		selected: make([]bool, guidedCapabilityCount),
+	}
+	m, err := buildGuidedInitManifest(bufio.NewReader(strings.NewReader("")), io.Discard, appProjectDetection{}, selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []application.HTTPExposureRequirement{{
+		Name: "demo-app", Service: "demo-app", Port: 8080, Protocol: "https", Visibility: "public",
+	}}
+	if !reflect.DeepEqual(m.Exposures, want) {
+		t.Fatalf("exposures = %#v, want %#v", m.Exposures, want)
 	}
 }

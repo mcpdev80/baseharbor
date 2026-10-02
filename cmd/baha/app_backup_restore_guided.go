@@ -484,6 +484,10 @@ func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func
 	return term.Activity(ctx, label, fn)
 }
 func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte, error) {
+	return readHiddenTerminalLineBuffered(file, bufio.NewReader(file), out, prompt)
+}
+
+func readHiddenTerminalLineBuffered(file *os.File, reader *bufio.Reader, out io.Writer, prompt string) ([]byte, error) {
 	fd := int(file.Fd())
 	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
 	if err != nil {
@@ -501,7 +505,6 @@ func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte
 	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, &original) }()
 
 	fmt.Fprint(out, prompt)
-	reader := bufio.NewReader(file)
 	line := make([]byte, 0, 64)
 	for {
 		b, readErr := reader.ReadByte()

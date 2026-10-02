@@ -11,17 +11,41 @@ import (
 	"strings"
 )
 
+const (
+	guidedCapabilitySQL = iota
+	guidedCapabilityCache
+	guidedCapabilityDurableKeyValue
+	guidedCapabilityDocumentDatabase
+	guidedCapabilityMessagingQueue
+	guidedCapabilityMessagingPubSub
+	guidedCapabilityMessagingStream
+	guidedCapabilityObjectStorage
+	guidedCapabilitySecrets
+	guidedCapabilityIdentity
+	guidedCapabilityMetrics
+	guidedCapabilityOTLP
+	guidedCapabilityLogs
+	guidedCapabilityCount
+)
+
+var guidedCapabilityLabels = []string{
+	"SQL Database (PostgreSQL-compatible evidence)",
+	"Cache (Redis/Valkey-compatible evidence)",
+	"Durable Key-Value Database (Valkey-compatible evidence)",
+	"Document Database (MongoDB-compatible evidence)",
+	"Messaging Queue (AMQP/RabbitMQ-compatible evidence)",
+	"Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)",
+	"Messaging Stream (AMQP/RabbitMQ-compatible evidence)",
+	"Object Storage (S3-compatible)",
+	"Managed Secrets",
+	"Identity / OIDC",
+	"Metrics (/metrics)",
+	"OTLP telemetry",
+	"Application logs",
+}
+
 func promptCapabilityList(reader *bufio.Reader, out io.Writer, defaults []bool, allowNone bool) ([]bool, error) {
-	labels := []string{
-		"SQL Database (PostgreSQL-compatible evidence)",
-		"Cache (Redis/Valkey-compatible evidence)",
-		"Object Storage (S3-compatible)",
-		"Managed Secrets",
-		"Identity / OIDC",
-		"Metrics (/metrics)",
-		"OTLP telemetry",
-		"Application logs",
-	}
+	labels := guidedCapabilityLabels
 	if len(defaults) < len(labels) {
 		padded := make([]bool, len(labels))
 		copy(padded, defaults)

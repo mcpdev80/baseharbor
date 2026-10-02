@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -153,6 +154,13 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 
 func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) error {
 	m := resolved.Manifest
+	if issuer == nil && devaccess.Enabled(m.Environment) {
+		platformFiles, err := existingTargetRuntimeFiles(ctx)
+		if err != nil {
+			return fmt.Errorf("load managed trust plane for identity verification: %w", err)
+		}
+		issuer = openbao.NewServiceIssuer(compose, platformFiles)
+	}
 	if !application.HasIdentity(m) {
 		return nil
 	}

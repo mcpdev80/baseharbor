@@ -13,6 +13,11 @@ const (
 	StateApplicationMetadata RecoveryStateClass = "application.metadata"
 	StateSecrets             RecoveryStateClass = "secrets"
 	StateSQL                 RecoveryStateClass = "database.sql"
+	StateDurableKeyValue     RecoveryStateClass = "database.key-value"
+	StateDocumentDatabase    RecoveryStateClass = "database.document"
+	StateMessagingQueue      RecoveryStateClass = "messaging.queue"
+	StateMessagingPubSub     RecoveryStateClass = "messaging.pubsub"
+	StateMessagingStream     RecoveryStateClass = "messaging.stream"
 	StateObjectStorage       RecoveryStateClass = "object-storage.s3"
 	StateWorkloadStorage     RecoveryStateClass = "workload.storage"
 	StateLogs                RecoveryStateClass = "observability.logs"
@@ -72,7 +77,7 @@ func NewRecoverySelection(contributors []RecoveryContributor) (RecoverySelection
 
 func (c RecoveryContributor) Validate() error {
 	switch c.StateClass {
-	case StateApplicationMetadata, StateSecrets, StateSQL, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
+	case StateApplicationMetadata, StateSecrets, StateSQL, StateDurableKeyValue, StateDocumentDatabase, StateMessagingQueue, StateMessagingPubSub, StateMessagingStream, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
 	default:
 		return fmt.Errorf("unsupported recovery state class %q", c.StateClass)
 	}
@@ -181,7 +186,7 @@ func (s RecoverySelection) Selected() []RecoveryContributor {
 func ParseRecoveryStateClass(value string) (RecoveryStateClass, error) {
 	class := RecoveryStateClass(strings.TrimSpace(value))
 	switch class {
-	case StateApplicationMetadata, StateSecrets, StateSQL, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
+	case StateApplicationMetadata, StateSecrets, StateSQL, StateDurableKeyValue, StateDocumentDatabase, StateMessagingQueue, StateMessagingPubSub, StateMessagingStream, StateObjectStorage, StateWorkloadStorage, StateLogs, StateMetrics, StateTraces, StatePKI, StateIdentity:
 		return class, nil
 	default:
 		return "", fmt.Errorf("unknown recovery state class %q", value)

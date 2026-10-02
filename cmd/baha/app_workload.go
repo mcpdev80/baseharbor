@@ -46,6 +46,33 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 			strings.Join(analysis.DatabaseBootstrapServices, ", "),
 		)
 	}
+	selected := map[string]struct{}{}
+	for _, service := range resolved.Manifest.Workload.Services {
+		selected[service] = struct{}{}
+	}
+	for service, protocol := range analysis.WorkloadProtocols {
+		if len(selected) > 0 {
+			if _, ok := selected[service]; !ok {
+				continue
+			}
+		}
+		if !strings.EqualFold(strings.TrimSpace(protocol), "https") {
+			continue
+		}
+		hasExposure := false
+		for _, exposure := range resolved.Manifest.Exposures {
+			if exposure.Service == service {
+				hasExposure = true
+				break
+			}
+		}
+		if !hasExposure {
+			return usageError(
+				fmt.Sprintf("repository workload service %s requires HTTPS but the application contract does not declare exposure.http for that service", service),
+				"Add an exposure.http contract for the workload service, or rerun guided/quick app init and explicitly review the detected contract addition before retrying.",
+			)
+		}
+	}
 	return nil
 }
 
@@ -473,10 +500,16 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 		return false, err
 	}
 	if err := execution.start(ctx, out); err != nil {
+		if invalidateErr := execution.invalidateFailedBuildCandidate(); invalidateErr != nil {
+			err = fmt.Errorf("%w; invalidate failed workload candidate: %v", err, invalidateErr)
+		}
 		execution.cleanup(ctx)
 		return false, err
 	}
 	if err := execution.waitReady(ctx, out); err != nil {
+		if invalidateErr := execution.invalidateFailedBuildCandidate(); invalidateErr != nil {
+			err = fmt.Errorf("%w; invalidate failed workload candidate: %v", err, invalidateErr)
+		}
 		execution.cleanup(ctx)
 		return false, err
 	}

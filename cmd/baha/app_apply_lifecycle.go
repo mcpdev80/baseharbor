@@ -122,6 +122,11 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 		printWorkloadSecurityFindings(e.out, e.workloadSecurity)
 	}
 	if !ok {
+		for _, result := range results {
+			if result.Err != nil {
+				return fmt.Errorf("application preflight failed: %w", result.Err)
+			}
+		}
 		return errors.New("application preflight failed")
 	}
 	if err := prepareUndeclaredProviderCleanup(ctx, e.compose, e.resolved, e.providers, e.issuer); err != nil {
@@ -178,6 +183,9 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 	if devaccess.Enabled(e.manifest.Environment) &&
 		(e.manifest.Services.SQLManagementUI ||
 			e.manifest.Services.CacheManagementUI ||
+			e.manifest.Services.KeyValueManagementUI ||
+			e.manifest.Services.MessagingManagementUI ||
+			e.manifest.Services.DocumentDatabaseManagementUI ||
 			e.manifest.Services.ObjectStorageManagementUI ||
 			e.manifest.Services.SecretsManagementUI ||
 			e.manifest.Services.IdentityManagementUI ||

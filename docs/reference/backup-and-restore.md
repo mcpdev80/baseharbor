@@ -76,7 +76,7 @@ baha app backup \
 
 The guided backup flow uses the same typed state classes and presents supported application-owned recovery choices interactively. Application metadata remains mandatory. Runtime leaf identities and application trust edges are reconstructed from desired state during restore rather than copying private CA keys into an application archive.
 
-Supported application-owned state in v0.4.16 includes:
+Supported application-owned state in v0.4.19 includes:
 
 - `database.sql` managed SQL data;
 - `secrets` application-owned OpenBao secret scope;
@@ -84,6 +84,8 @@ Supported application-owned state in v0.4.16 includes:
 - `workload.storage` BaseHarbor-owned repository workload named volumes;
 - `observability.logs` application log history when selected and managed by BaseHarbor;
 - `security.pki` application/runtime identity reconstruction.
+
+Managed `database.key-value` and `database.document` resources are persistent and therefore appear as durable recovery contributors, but scoped export/restore is not implemented in v0.4.19. Managed `messaging.queue`, `messaging.pubsub` and `messaging.stream` are also represented explicitly because broker-held messages, durable topology/subscriptions or retained stream history may be application state. These classes are `unsupported` for scoped recovery in v0.4.19 and must be explicitly excluded before creating a partial recovery unit; they are never silently omitted.
 
 Managed `identity.oidc` adds a separate durable recovery contributor. Portable identity intent such as the OIDC client requirement and authentication policy is already carried by application metadata and is reconstructed during convergence. Provider-held users, passwords, TOTP state, WebAuthn/passkey credentials and provider-global identity state are not currently exported by BaseHarbor. Managed identity therefore blocks a complete recovery unit unless `identity.oidc` is explicitly excluded; external OIDC is recorded as external rather than copied.
 

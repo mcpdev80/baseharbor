@@ -27,6 +27,10 @@ func TestCurrentReferenceIntegrationsConform(t *testing.T) {
 		PrometheusIntegration,
 		LokiIntegration,
 		TempoIntegration,
+		KeycloakIntegration,
+		ExternalOIDCIntegration,
+		RabbitMQIntegration,
+		MongoDBIntegration,
 	} {
 		report := CheckIntegrationContract(descriptor)
 		if report.Status != ConformancePass {
@@ -113,7 +117,11 @@ func TestDriverAdapterRejectsDifferentProvider(t *testing.T) {
 }
 
 func TestSpecificationIDsAreCanonical(t *testing.T) {
-	for _, spec := range []CapabilitySpecification{SQLV1, KeyValueV1, SecretsV1, ExposureHTTPV1, ObjectStorageS3V1, TelemetryOTLPV1, MetricsV1, LogsV1, TracesV1} {
+	specs := Specifications()
+	if len(specs) != 15 {
+		t.Fatalf("shipped capability catalog has %d specifications, want 15: %#v", len(specs), specs)
+	}
+	for _, spec := range specs {
 		parsed, err := ParseSpecificationID(spec.ID)
 		if err != nil {
 			t.Fatal(err)

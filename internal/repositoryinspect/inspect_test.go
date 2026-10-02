@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestInspectCollectsDeterministicRepositoryEvidence(t *testing.T) {
@@ -195,6 +197,9 @@ func assertFindingConfidence(t *testing.T, result Result, capability string, wan
 
 func writeTestFile(t *testing.T, root, rel, content string) {
 	t.Helper()
+	if rel == application.RepositoryManifestName && !strings.Contains(content, "\n  id: ") {
+		content = strings.Replace(content, "app:\n", "app:\n  id: 11111111-1111-4111-8111-111111111111\n", 1)
+	}
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)

@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-10-01
+
+### Added
+
+- Provider-neutral durable key-value, document-database and messaging contracts with Valkey, MongoDB and RabbitMQ reference providers.
+- First-class External/BYO provider onboarding and verification with ownership-safe removal and provider-neutral TLS/trust/certificate references.
+- Organization/platform configuration distributed through local/system, Git or OCI sources with immutable resolution and provenance.
+- Optional management surfaces for RabbitMQ, durable Valkey and MongoDB using the existing secure developer-access model.
+- Versioned Runtime and Delivery provider contracts that keep future Kubernetes/OpenShift and GitOps realizations outside portable Application Intent.
+
+### Changed
+
+- Provider descriptors, SDK/scaffolding, service schemas, Development Adapters, repository inspection, CLI, JSON and MCP now cover the complete v0.4.19 capability set.
+- Durable `database.key-value` semantics are explicitly separated from reconstructable `cache.key-value` semantics.
+- Source/build resolution ends before the portable Runtime boundary; Runtime providers consume resolved OCI workload artifacts.
+- Pre-release validation now uses independently rerunnable, SHA-bound atomic gates with explicit resource profiles on GitHub-hosted runners; static checks avoid provider containers, Docker and Podman gates remain isolated, and the release run assembles one complete candidate-bound evidence manifest.
+
+### Fixed
+
+- First-run repository deployment initialization now records ownership evidence before persisting deployment-local inputs, preventing a valid first `baha up` from being misclassified as incomplete deployment state.
+- Atomic `shell-ux` acceptance now runs as a zero-container static gate instead of bootstrapping a runtime stack.
+
+- Guided and deterministic application initialization now expose the full v0.4.19 capability catalog, including durable key-value, document database and queue/pub-sub/stream messaging, with matching optional management-UI intent.
+- Recovery discovery now makes durable key-value, document-database and messaging state classes explicitly addressable; unsupported scoped recovery fails closed instead of silently omitting those durable contributors.
+- Capability/provider conformance tests now derive coverage from the shipped specification catalog and include Keycloak, external OIDC, RabbitMQ and MongoDB reference integrations.
+
+- Non-interactive lifecycle flags and host-memory approvals now propagate consistently across top-level CLI, application lifecycle and MCP; TIGHT memory remains an explicit approval decision while unsafe memory conditions still fail closed.
+- Required-secret prompting preserves buffered PTY input across confirmation and hidden entry, preventing remotely driven terminals from losing secret values between prompts.
+- Workload startup failures retain bounded, secret-redacted runtime diagnostics for verbose troubleshooting, and failed rebuilt candidates invalidate their verified source fingerprint so later retries cannot reuse a failed mutable image as `source unchanged`.
+- Repository adoption fails fast when an HTTPS workload is missing the required `exposure.http` contract, and nested `app init --quick` is rooted in the current directory instead of inheriting an ancestor application's manifest.
+- The generated Go greenfield scaffold materializes and verifies its pinned module graph during container build, so a fresh `app new --stack go` no longer requires a manual `go mod tidy`.
+- Application destroy removes deployment roots without empty residue and shared-backend consumer state cannot resurrect removed Valkey resources during a later surviving-app reconcile.
+- Workspace commands report an actionable not-initialized error instead of leaking a raw missing `sources.yaml` filesystem error.
+- Generated Python workloads provide a positive health signal, keeping `up`, `status` and `doctor` readiness semantics aligned.
+- Restore reconstructs missing development exposure initialization after destroy before verifying the restored application.
+- Development management access is discoverable as one Target/environment-scoped credential, with `developer` as a configurable default rather than a fixed username.
+
 ## [0.4.18] - 2026-09-30
 
 ### Added
@@ -862,7 +899,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...HEAD
+[0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
+[0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
 [0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
 [0.4.16]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15.1...v0.4.16
 [0.4.15.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15...v0.4.15.1

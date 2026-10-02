@@ -18,6 +18,11 @@ func providerCommand() *cli.Command {
 		Usage:   "baha provider <command> [options]",
 		Long:    "Provider authoring reuses the same baseharbor.provider/v1 descriptor and capability conformance model used by BaseHarbor Core.",
 		Children: []*cli.Command{
+			providerAddCommand(),
+			providerListCommand(),
+			providerInspectCommand(),
+			providerVerifyCommand(),
+			providerRemoveCommand(),
 			providerInitCommand(),
 			providerTestCommand(),
 		},
