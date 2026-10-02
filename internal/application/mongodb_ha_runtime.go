@@ -158,15 +158,19 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 }
 
 func MongoDBHAPrimary(ctx context.Context, runtime mongoDBHAProbeRuntime, m Manifest, instance string) (string, error) {
+	const marker = "__BASEHARBOR_PRIMARY__"
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({hello:1}).isWritablePrimary ? \"primary\" : \"other\"'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_PRIMARY__\" + (h.isWritablePrimary ? \"yes\" : \"no\"))'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			continue
 		}
-		if strings.TrimSpace(out) == "primary" {
-			return service, nil
+		for _, candidate := range strings.Split(out, "\n") {
+			candidate = strings.TrimSpace(candidate)
+			if strings.HasPrefix(candidate, marker) && strings.TrimPrefix(candidate, marker) == "yes" {
+				return service, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("MongoDB HA instance %s has no observable primary", instance)
