@@ -159,7 +159,6 @@ type HTTPExposureRequirement struct {
 // implementation detail and future intent such as availability can evolve here.
 type ServiceInstance struct{}
 
-
 func AvailabilityIntent(m Manifest) availability.Intent {
 	return availability.Intent{HA: m.HA, Overrides: m.Availability}
 }
