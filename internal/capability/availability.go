@@ -34,13 +34,39 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 	case ProviderCaddy:
 		return unsupported("current BaseHarbor exposure reference realization has no redundant runtime topology"), nil
 	case ProviderSeaweedFS:
-		return unsupported("current BaseHarbor SeaweedFS reference realization does not verify HA topology"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 3,
+			Limits:               "verified three-member SeaweedFS member/process failure tolerance and stable S3/Admin continuity on one runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				CredentialRotation:     true,
+				PKIRotation:            true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	case ProviderOTelCollector:
 		return unsupported("current BaseHarbor OTLP collector reference realization is single-instance"), nil
 	case ProviderExternalOTLP:
 		return unsupported("external OTLP availability must be explicitly declared and verified by the selected external provider"), nil
 	case ProviderPrometheus:
-		return unsupported("current BaseHarbor Prometheus reference realization is single-instance"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 2,
+			Limits:               "verified redundant Prometheus member/process failure tolerance and stable query/management continuity on one runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				CredentialRotation:     true,
+				PKIRotation:            true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	case ProviderLoki:
 		return unsupported("current BaseHarbor Loki reference realization is single-instance"), nil
 	case ProviderTempo:
