@@ -28,7 +28,6 @@ func ensurePostgresInternalCredential(envPath string) (string, error) {
 	return ensureRuntimeCredential(envPath, postgresInternalCredentialKey)
 }
 
-
 func ensurePostgresReplicationUser(envPath string) (string, error) {
 	return ensureRuntimeFixedValue(envPath, postgresReplicationUserKey, "baseharbor_replication")
 }
