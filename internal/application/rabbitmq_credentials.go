@@ -82,7 +82,7 @@ fi
 		if err := waitRabbitMQCredentialAuthority(ctx, runtime, m, instance, service); err != nil {
 			return fmt.Errorf("wait for RabbitMQ credential authority %s: %w", instance, err)
 		}
-		if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err != nil {
+		if err := reconcileRabbitMQCredentialSet(ctx, runtime, service, input, script); err != nil {
 			return fmt.Errorf("reconcile RabbitMQ credentials for %s: %w", instance, err)
 		}
 	}
@@ -128,6 +128,33 @@ func waitRabbitMQCredentialAuthority(ctx context.Context, runtime rabbitMQCreden
 			return errors.Join(ctx.Err(), lastErr)
 		case <-deadline.C:
 			return fmt.Errorf("RabbitMQ credential authority %s did not become stable: %w", service, lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
+
+func reconcileRabbitMQCredentialSet(ctx context.Context, runtime rabbitMQCredentialRuntime, service string, input []byte, script string) error {
+	deadline := time.NewTimer(90 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err == nil {
+			if _, err := runtime.RunSensitive(ctx, service, input, "sh", "-ceu", script); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(ctx.Err(), lastErr)
+		case <-deadline.C:
+			return fmt.Errorf("RabbitMQ credential mutation did not reach a stable running node: %w", lastErr)
 		case <-ticker.C:
 		}
 	}
