@@ -83,7 +83,6 @@ fi
 	return nil
 }
 
-
 func waitRabbitMQNodeReady(ctx context.Context, runtime rabbitMQCredentialRuntime, service string) error {
 	deadline := time.NewTimer(90 * time.Second)
 	defer deadline.Stop()
