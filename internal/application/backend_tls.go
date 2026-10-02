@@ -140,6 +140,7 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 			ServiceName:      rabbitmqAccessService(instance),
 			UpstreamHost:     runtimeServiceName("rabbitmq", instance),
 			UpstreamPort:     5672,
+			Upstreams:        rabbitmqGatewayUpstreams(m, instance),
 			PublishedPortEnv: rabbitmqRuntimeKey(instance, "HOST_PORT"),
 			ContainerPort:    5672,
 		})
@@ -270,13 +271,14 @@ func valkeyGatewayCompose(instance string) string {
 	)
 }
 
-func rabbitmqGatewayCompose(instance string) string {
+func rabbitmqGatewayCompose(m Manifest, instance string) string {
 	return serviceaccess.TCPGatewayComposeService(
 		backendGatewayComposeFiles("rabbitmq", instance),
 		serviceaccess.TCPGatewaySpec{
 			ServiceName:      rabbitmqAccessService(instance),
 			UpstreamHost:     runtimeServiceName("rabbitmq", instance),
 			UpstreamPort:     5672,
+			Upstreams:        rabbitmqGatewayUpstreams(m, instance),
 			PublishedPortEnv: rabbitmqRuntimeKey(instance, "HOST_PORT"),
 			ContainerPort:    5672,
 		},
