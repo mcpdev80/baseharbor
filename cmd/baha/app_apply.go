@@ -225,6 +225,11 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
 			return err
 		}
+		if !application.UsesSharedValkey(m) {
+			if err := application.VerifyValkeyHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+				return err
+			}
+		}
 	}
 	if len(application.RabbitMQInstanceNames(m)) > 0 {
 		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
