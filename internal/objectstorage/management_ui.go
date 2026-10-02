@@ -164,6 +164,8 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
     command:
       - admin
       - -ip=0.0.0.0
