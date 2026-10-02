@@ -25,6 +25,7 @@ func TestResolveAvailabilityFailsBeforeMutationForUnsupportedRuntimeHA(t *testin
 
 func TestResolveAvailabilityAllowsExplicitNonHAException(t *testing.T) {
 	m := New("demo", "prod", false, false, false)
+	m.Services.SQL = false
 	m.ApplicationID = "7a9dc6a7-9cab-4c62-a0dd-e55d5bf7ff75"
 	m.Workload.Components = []string{"api"}
 	m.HA = true
