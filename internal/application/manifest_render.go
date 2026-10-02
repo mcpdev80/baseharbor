@@ -29,6 +29,22 @@ func (m Manifest) YAML() string {
 			}
 		}
 	}
+	if len(m.Consumes) > 0 {
+		consumes := append([]ConsumptionRequirement(nil), m.Consumes...)
+		sort.Slice(consumes, func(i, j int) bool { return consumes[i].Name < consumes[j].Name })
+		b.WriteString("consumes:\n")
+		for _, consumption := range consumes {
+			fmt.Fprintf(&b, "  - name: %s\n", consumption.Name)
+			if consumption.ApplicationID != "" {
+				fmt.Fprintf(&b, "    application_id: %s\n", consumption.ApplicationID)
+			}
+			fmt.Fprintf(&b, "    component: %s\n", consumption.Component)
+			fmt.Fprintf(&b, "    interface: %s\n", consumption.Interface)
+			if consumption.Protocol != "" {
+				fmt.Fprintf(&b, "    protocol: %s\n", consumption.Protocol)
+			}
+		}
+	}
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
