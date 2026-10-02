@@ -26,7 +26,8 @@ func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine
 			ResourceID: strings.TrimSpace(request.ResourceID),
 		},
 		Since: request.Since,
-		Tail:  request.Tail,
+		Tail:   request.Tail,
+		Follow: request.Follow,
 	})
 }
 
