@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/capability"
+		"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
@@ -33,7 +33,7 @@ func TestLokiHARenderUsesProcessTrustStoreForSeaweedFS(t *testing.T) {
 	compose := providerComposeYAMLForModeAndAccess(
 		placement,
 		nil,
-		application.DefaultLogCollectionMode(),
+		bhruntime.LogCollectionSyslog,
 		access,
 		0,
 		"bh-test-object-storage",
