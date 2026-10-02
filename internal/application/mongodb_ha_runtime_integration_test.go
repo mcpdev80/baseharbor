@@ -39,7 +39,8 @@ func TestMongoDBHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	files, err := EnsureRuntime(ctx, serviceissuer.New(t), store, m)
+	issuer := serviceissuer.New(t)
+	files, err := EnsureRuntime(ctx, issuer, store, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +64,29 @@ func TestMongoDBHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	op := provideroperation.New(runtime, files.Project, files.Compose, files.Env)
 	if err := ReconcileMongoDBHA(ctx, op, m, files); err != nil {
 		t.Fatal(err)
+	}
+	waitMongoDBHAReady(t, ctx, op, m, files)
+
+	beforeRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldAppUser := beforeRotation[mongodbRuntimeKey(defaultServiceInstance, "USER")]
+	oldAppPassword := beforeRotation[mongodbRuntimeKey(defaultServiceInstance, "PASSWORD")]
+	oldAdminUser := beforeRotation[mongodbRuntimeKey(defaultServiceInstance, "ADMIN_USER")]
+	oldAdminPassword := beforeRotation[mongodbRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")]
+	if err := RotateMongoDBCredential(ctx, runtime, m, files, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate MongoDB HA credentials: %v", err)
+	}
+	afterRotation, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRotation[mongodbRuntimeKey(defaultServiceInstance, "USER")] == oldAppUser ||
+		afterRotation[mongodbRuntimeKey(defaultServiceInstance, "PASSWORD")] == oldAppPassword ||
+		afterRotation[mongodbRuntimeKey(defaultServiceInstance, "ADMIN_USER")] == oldAdminUser ||
+		afterRotation[mongodbRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")] == oldAdminPassword {
+		t.Fatal("MongoDB credential rotation did not replace application/admin credentials")
 	}
 	waitMongoDBHAReady(t, ctx, op, m, files)
 
