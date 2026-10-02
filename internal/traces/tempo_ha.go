@@ -246,5 +246,6 @@ func tempoHAQueryAccessSpec() serviceaccess.HTTPGatewaySpec {
 		NetworkAliases:   []string{"tempo-api"},
 		CertificateNames: []string{"tempo-api"},
 		RequireClient:    true,
+		HealthURI:        "/ready",
 	}
 }
