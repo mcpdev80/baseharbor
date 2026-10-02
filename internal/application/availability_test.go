@@ -17,7 +17,9 @@ func TestAvailabilityIntentRoundTrip(t *testing.T) {
 		t.Fatalf("availability intent missing from YAML:\n%s", data)
 	}
 	got, err := ParseYAML(data)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !got.HA || got.Availability["sql"].Instances != 5 || got.Availability["logs"].HA == nil || *got.Availability["logs"].HA {
 		t.Fatalf("round-trip availability = %#v", got.Availability)
 	}
