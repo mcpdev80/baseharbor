@@ -279,7 +279,11 @@ func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context)
 		c.result.AddCheck("rabbitmq", false, err.Error())
 		return
 	}
-	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d instance(s) passed AMQPS semantic verification", len(application.RabbitMQInstanceNames(c.manifest))))
+	if err := application.VerifyRabbitMQHACluster(checkCtx, c.compose, c.manifest, c.files); err != nil {
+		c.result.AddCheck("rabbitmq", false, err.Error())
+		return
+	}
+	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d logical instance(s) passed AMQPS and availability verification", len(application.RabbitMQInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.Context) {
