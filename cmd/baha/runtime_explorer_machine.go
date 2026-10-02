@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -129,4 +130,61 @@ func collectRuntimeResource(ctx context.Context, input machineRuntimeInspectInpu
 		)
 	}
 	return resource, nil
+}
+
+func executeHTTPRuntimeExplorerRead(
+	ctx context.Context,
+	operationID string,
+	operationContext machine.OperationContext,
+	raw json.RawMessage,
+) (any, error) {
+	switch operationID {
+	case "runtime.capabilities":
+		var input machineRuntimeTargetInput
+		if err := decodeHTTPInput(raw, &input); err != nil {
+			return nil, err
+		}
+		var err error
+		input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
+		if err != nil {
+			return nil, err
+		}
+		input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
+		if err != nil {
+			return nil, err
+		}
+		return collectRuntimeCapabilities(ctx, input)
+	case "runtime.list":
+		var input machineRuntimeListInput
+		if err := decodeHTTPInput(raw, &input); err != nil {
+			return nil, err
+		}
+		var err error
+		input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
+		if err != nil {
+			return nil, err
+		}
+		input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
+		if err != nil {
+			return nil, err
+		}
+		return collectRuntimeResources(ctx, input)
+	case "runtime.inspect":
+		var input machineRuntimeInspectInput
+		if err := decodeHTTPInput(raw, &input); err != nil {
+			return nil, err
+		}
+		var err error
+		input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
+		if err != nil {
+			return nil, err
+		}
+		input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
+		if err != nil {
+			return nil, err
+		}
+		return collectRuntimeResource(ctx, input)
+	default:
+		return nil, machine.NewError(machine.ErrorUnsupported, "Unsupported Runtime Explorer read operation.", "Use machine discovery.", false)
+	}
 }
