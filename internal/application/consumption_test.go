@@ -5,8 +5,8 @@ import "testing"
 func TestConsumptionIdentityIsLogicalAndStableAcrossRuntimeTopology(t *testing.T) {
 	producer := LogicalProducerReference{
 		ApplicationID: "7a9dc6a7-9cab-4c62-a0dd-e55d5bf7ff75",
-		Component: "api",
-		Interface: "http",
+		Component:     "api",
+		Interface:     "http",
 	}
 	first := ConsumptionBindingID(producer)
 	second := ConsumptionBindingID(producer)
@@ -31,17 +31,16 @@ func TestSameAndCrossApplicationConsumptionUseSameContract(t *testing.T) {
 
 func TestConsumptionIntentRejectsAddressLeakage(t *testing.T) {
 	req := ConsumptionRequirement{
-		Name: "api",
+		Name:          "api",
 		ApplicationID: "7a9dc6a7-9cab-4c62-a0dd-e55d5bf7ff75",
-		Component: "api",
-		Interface: "http",
-		Protocol: "https://pod.namespace.svc",
+		Component:     "api",
+		Interface:     "http",
+		Protocol:      "https://pod.namespace.svc",
 	}
 	if err := req.Validate("7a9dc6a7-9cab-4c62-a0dd-e55d5bf7ff75"); err == nil {
 		t.Fatal("runtime/provider address leaked into portable consumption protocol")
 	}
 }
-
 
 func TestConsumptionIntentRoundTrip(t *testing.T) {
 	m := New("consumer", "prod", false, false, false)
