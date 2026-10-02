@@ -3,6 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 func devCommand() *cli.Command {
@@ -94,7 +98,9 @@ func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Wr
 	}
 	const environment = "dev"
 
+	existing, existingErr := devaccess.Load(target.Name, environment)
 	var credentials devaccess.Credentials
+	explicitReplace := passwordFile != "" || reset || username != ""
 	switch {
 	case passwordFile != "":
 		password, err := readDevAccessPasswordFile(passwordFile)
@@ -114,6 +120,22 @@ func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Wr
 		credentials, err = devaccess.Ensure(target.Name, environment)
 		if err != nil {
 			return err
+		}
+	}
+
+	authoritative, err := reconcileDeveloperCredentialAuthority(ctx, target.Name, environment, credentials, explicitReplace)
+	if err != nil {
+		if existingErr == nil {
+			_, _ = devaccess.Configure(target.Name, environment, existing.Username, existing.Password)
+		} else if path, pathErr := devaccess.Path(target.Name, environment); pathErr == nil {
+			_ = os.Remove(path)
+		}
+		return err
+	}
+	if authoritative != credentials {
+		credentials, err = devaccess.Configure(target.Name, environment, authoritative.Username, authoritative.Password)
+		if err != nil {
+			return fmt.Errorf("project authoritative developer credential: %w", err)
 		}
 	}
 
@@ -160,4 +182,68 @@ func readDevAccessPasswordFile(path string) (string, error) {
 		return "", errors.New("developer access password file must contain exactly one line")
 	}
 	return password, scanner.Err()
+}
+
+
+func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environment string, candidate devaccess.Credentials, replace bool) (devaccess.Credentials, error) {
+	compose, files, err := openBaoRuntime(ctx)
+	if err != nil {
+		// Before the managed secret provider exists, the owner-only bootstrap
+		// projection is the temporary authority. Once OpenBao is initialized,
+		// this path is imported and OpenBao becomes authoritative.
+		return candidate, nil
+	}
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return devaccess.Credentials{}, fmt.Errorf("inspect managed credential authority: %w", err)
+	}
+	if !state.Initialized {
+		return candidate, nil
+	}
+	if state.Sealed {
+		return devaccess.Credentials{}, errors.New("managed credential authority is sealed; developer credentials were not changed")
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return devaccess.Credentials{}, errors.New("managed credential authority is unavailable; developer credentials were not changed")
+	}
+
+	sum := sha256.Sum256([]byte(strings.TrimSpace(target)))
+	ref := "targets/" + hex.EncodeToString(sum[:12]) + "/human/dev-management"
+	encode := func(credentials devaccess.Credentials) ([]byte, error) {
+		return json.Marshal(struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}{Username: credentials.Username, Password: credentials.Password})
+	}
+	decode := func(data []byte) (devaccess.Credentials, error) {
+		var payload struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(data, &payload); err != nil || strings.TrimSpace(payload.Username) == "" || payload.Password == "" {
+			return devaccess.Credentials{}, errors.New("managed developer credential is invalid")
+		}
+		return devaccess.Credentials{Username: payload.Username, Password: payload.Password}, nil
+	}
+
+	if !replace {
+		data, readErr := platformopenbao.GetManagedCredential(ctx, compose, files, ref)
+		switch {
+		case readErr == nil:
+			return decode(data)
+		case errors.Is(readErr, platformopenbao.ErrManagedCredentialNotFound):
+			// First reconciliation imports the existing protected bootstrap
+			// value, after which OpenBao is authoritative.
+		default:
+			return devaccess.Credentials{}, readErr
+		}
+	}
+	data, err := encode(candidate)
+	if err != nil {
+		return devaccess.Credentials{}, errors.New("encode developer credential for managed storage")
+	}
+	if err := platformopenbao.SetManagedCredential(ctx, compose, files, ref, data); err != nil {
+		return devaccess.Credentials{}, err
+	}
+	return candidate, nil
 }
