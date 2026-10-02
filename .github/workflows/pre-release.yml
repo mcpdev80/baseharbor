@@ -165,6 +165,31 @@ jobs:
           mkdocs build --strict --config-file mkdocs.de.yml
           bash scripts/documentation-audit.sh
 
+      - name: Validate v0.4.20 contract and release-note hygiene
+        id: v0420_hygiene
+        if: steps.release.outputs.tag == 'v0.4.20'
+        shell: bash
+        run: |
+          set -euo pipefail
+          legacy="$(
+            find cmd internal docs -type f \( -name '*.go' -o -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) -print0 |
+              xargs -0 grep -n -E -- '--workload-compose|--workload-service|workload\.compose|workload\.services|Manifest\.Workload\.(Compose|Services)' || true
+          )"
+          test -z "$legacy" || {
+            echo "Legacy portable workload contract references detected:" >&2
+            echo "$legacy" >&2
+            exit 1
+          }
+
+          release_internal="$(
+            grep -n -Ei 'corpus|unit test|conformance|schema_version|fingerprint|adapter v1|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.20.md || true
+          )"
+          test -z "$release_internal" || {
+            echo "Internal validation detail leaked into user-facing release notes:" >&2
+            echo "$release_internal" >&2
+            exit 1
+          }
+
       - name: Validate workflow syntax
         id: workflow_syntax
         shell: bash
@@ -405,6 +430,92 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
 
+  adoption_gates:
+    name: Adoption · ${{ matrix.gate }}
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        gate:
+          - conformance
+          - realworld-compose
+          - realworld-quadlet
+          - realworld-kubernetes
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run adoption gate
+        id: adoption
+        shell: bash
+        env:
+          GATE: ${{ matrix.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            realworld-compose|realworld-quadlet|realworld-kubernetes)
+              category="${GATE#realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Generate adoption gate evidence
+        if: always()
+        shell: bash
+        env:
+          GATE: ${{ matrix.gate }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/adoption-gate-evidence"
+          rows="$RUNNER_TEMP/adoption-gate-evidence.tsv"
+          cat >"$rows" <<EOF
+          Adoption gate	${{ steps.adoption.outcome }}	$GATE
+          EOF
+          bash scripts/ci-evidence.sh             "$out"             "BaseHarbor Adoption Gate Evidence"             "pre-release/gate/static/adoption-$GATE"             "${{ needs.source.outputs.candidate_sha }}"             "$CANDIDATE_SHA"             "$rows"
+
+          jq -n             --arg id "static/adoption-$GATE"             --arg gate "adoption-$GATE"             --arg candidate_sha "$CANDIDATE_SHA"             --arg demo_ref "$DEMO_REF"             --arg outcome "${{ steps.adoption.outcome }}"             '{
+              schema: "baseharbor.pre-release.gate-evidence/v1",
+              id: $id,
+              runtime: "static",
+              gate: $gate,
+              class: "static",
+              profile: "repository-adoption",
+              capabilities: ["repository-adoption"],
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload adoption gate evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-gate-static-adoption-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/adoption-gate-evidence
+          if-no-files-found: error
+          retention-days: 30
+
   runtime_light_gates:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs: [source, runtime_candidate, adoption]
@@ -523,31 +634,34 @@ jobs:
                 printf '%s/%s\n' "$runtime" "$gate"
               done
             done
+            for gate in conformance realworld-compose realworld-quadlet realworld-kubernetes; do
+              printf 'static/adoption-%s\n' "$gate"
+            done
           } | sort > "$expected_ids"
 
           mapfile -d '' manifest_files < <(find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 | sort -z)
-          test "${#manifest_files[@]}" -eq 41
+          test "${#manifest_files[@]}" -eq 45
           jq -s '.' "${manifest_files[@]}" > "$manifests"
 
           jq -e \
             --arg candidate "$CANDIDATE_SHA" \
             --arg demo "$DEMO_REF" \
             '
-              length == 41 and
+              length == 45 and
               all(.[];
                 .schema == "baseharbor.pre-release.gate-evidence/v1" and
                 .candidate_sha == $candidate and
                 .demo_ref == $demo and
                 .outcome == "success"
               ) and
-              ([.[].id] | unique | length) == 41
+              ([.[].id] | unique | length) == 45
             ' "$manifests" >/dev/null
 
           jq -r '.[].id' "$manifests" | sort > "$actual_ids"
           diff -u "$expected_ids" "$actual_ids"
 
           summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
-          test "$summary_count" -eq 41
+          test "$summary_count" -eq 45
 
           mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
           cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
@@ -564,6 +678,7 @@ jobs:
           needs.adoption.result == 'success' &&
           steps.adoption_manifest.outcome == 'success' &&
           needs.static_gates.result == 'success' &&
+          needs.adoption_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
           needs.runtime_heavy_gates.result == 'success'
         shell: bash
@@ -584,7 +699,7 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg result "success" \
-            --argjson gate_count 41 \
+            --argjson gate_count 45 \
             '{
               schema: $schema,
               tag: $tag,
@@ -618,7 +733,8 @@ jobs:
           cat >"$rows" <<EOF
           Source	${{ needs.source.result }}	exact candidate source/contracts/docs
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
-          Static gates	${{ needs.static_gates.result }}	5 independently rerunnable static gates
+          Static gates	${{ needs.static_gates.result }}	5 independently rerunnable demo/static gates
+          Adoption gates	${{ needs.adoption_gates.result }}	4 independently rerunnable repository-adoption gates
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
           Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
