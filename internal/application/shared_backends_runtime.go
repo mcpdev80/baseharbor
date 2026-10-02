@@ -75,7 +75,7 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 			shared.Env,
 			sharedPostgresService(environment),
 			"pg_isready",
-			"-h", "127.0.0.1",
+			"-h", sharedPostgresAlias(),
 			"-p", "5432",
 			"-U", "baseharbor_admin",
 			"-d", "postgres",
@@ -120,12 +120,12 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.R
 			quotePostgresIdent(resource.Database),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
 		)
-		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
+		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
 			return fmt.Errorf("reconcile shared PostgreSQL resource %s: %w", instance, err)
 		}
 		harden := fmt.Sprintf("REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE, CREATE ON SCHEMA public TO %s; REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TYPES FROM PUBLIC;",
 			quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username))
-		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
+		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
 			return fmt.Errorf("harden shared PostgreSQL resource %s: %w", instance, err)
 		}
 	}
