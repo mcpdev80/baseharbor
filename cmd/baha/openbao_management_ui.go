@@ -24,12 +24,12 @@ func openBaoManagementUISurface(files bhruntime.Files) (application.ManagementUI
 		return application.ManagementUISurface{}, err
 	}
 	return application.ManagementUISurface{
-		Service:        "secrets",
-		Purpose:        application.ProviderInterfaceAdministration,
-		URL:            endpoint + "/ui/",
-		Authentication: "openbao-native",
+		Service:             "secrets",
+		Purpose:             application.ProviderInterfaceAdministration,
+		URL:                 endpoint + "/ui/",
+		Authentication:      "openbao-native",
 		AuthenticationClass: application.ManagementAuthNativeCredential,
-		RoleMappings: application.NativeCredentialRoleMappings("root/admin", "default"),
+		RoleMappings:        application.NativeCredentialRoleMappings("root/admin", "default"),
 	}, nil
 }
 
