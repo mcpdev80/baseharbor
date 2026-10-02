@@ -6,6 +6,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/availability"
 )
 
 type ProviderKind string
@@ -58,6 +60,7 @@ type ProviderDescriptor struct {
 	WorkloadSources []string
 	Realization     string
 	Capabilities    ProviderCapabilities
+	Availability    availability.Support
 }
 
 type Provider interface {
