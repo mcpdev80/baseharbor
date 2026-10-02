@@ -67,7 +67,7 @@ func Negotiate(requirement Requirement, provider string, support Support) (Negot
 		Component: requirement.Component, Provider: provider,
 		RequiredHA: requirement.HA, RequestedInstances: requirement.Instances,
 		ExplicitException: requirement.ExplicitException,
-		Support: support.Level,
+		Support:           support.Level,
 	}
 	if !requirement.HA {
 		result.Satisfied = true
