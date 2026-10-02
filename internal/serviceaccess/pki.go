@@ -50,6 +50,7 @@ type managedPKIState struct {
 	ServerExpiresAt time.Time `json:"server_expires_at"`
 	ClientSerial    string    `json:"client_serial,omitempty"`
 	ClientExpiresAt time.Time `json:"client_expires_at,omitempty"`
+	TrustOverlap    bool      `json:"trust_overlap,omitempty"`
 }
 
 func EnsureTLSMaterial(ctx context.Context, issuer Issuer, policy Policy, dir string, dnsNames ...string) (TLSMaterial, error) {
@@ -214,11 +215,32 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 	if currentIssuerReference == "" {
 		return TLSMaterial{}, errors.New("issuer-backed PKI requires an issuer reference")
 	}
-	previousState, _ := readManagedPKIState(filepath.Join(dir, "state.json"))
+	statePath := filepath.Join(dir, "state.json")
+	previousState, _ := readManagedPKIState(statePath)
 	trustMatches := trustBundleMatchesFile(material.CA, trust.PEM)
 	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
 		return TLSMaterial{}, err
 	} else if valid && trustMatches && previousState.IssuerReference == currentIssuerReference {
+		// A CA switch is intentionally two-phase. The first reconcile keeps the
+		// previous CA in the active bundle while new server/client leaves are
+		// rolled out. A later successful reconcile retires the old CA.
+		if previousState.TrustOverlap {
+			if err := writeAtomic(material.CA, trust.PEM, 0o644); err != nil {
+				return TLSMaterial{}, fmt.Errorf("retire previous service CA: %w", err)
+			}
+			previousState.TrustOverlap = false
+			stateData, err := json.MarshalIndent(previousState, "", "  ")
+			if err != nil {
+				return TLSMaterial{}, err
+			}
+			stateData = append(stateData, '\n')
+			if err := writeAtomic(statePath, stateData, 0o600); err != nil {
+				return TLSMaterial{}, err
+			}
+			if err := validateMaterial(material, requireClient); err != nil {
+				return TLSMaterial{}, fmt.Errorf("validate service TLS after CA retirement: %w", err)
+			}
+		}
 		if !requireClient {
 			material.ClientCertificate = ""
 			material.ClientKey = ""
@@ -263,11 +285,23 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 		}
 	}
 
+	// Preserve the previous trust root during issuer/CA replacement. The new
+	// issuer is first so validation of the newly issued leaves is deterministic.
+	caData := append([]byte(nil), trust.PEM...)
+	trustOverlap := false
+	if !trustMatches {
+		if previousTrust, readErr := os.ReadFile(material.CA); readErr == nil && len(previousTrust) > 0 {
+			caData = appendPEMBundles(caData, previousTrust)
+			trustOverlap = true
+		} else if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return TLSMaterial{}, fmt.Errorf("read previous service CA for overlap: %w", readErr)
+		}
+	}
 	files := map[string]struct {
 		data []byte
 		mode os.FileMode
 	}{
-		material.CA:                {data: trust.PEM, mode: 0o644},
+		material.CA:                {data: caData, mode: 0o644},
 		material.ServerCertificate: {data: server.Certificate, mode: 0o644},
 		material.ServerKey:         {data: server.PrivateKey, mode: 0o600},
 	}
@@ -304,6 +338,7 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 		RenewalMode:     "automatic-reconcile",
 		ServerSerial:    server.Serial,
 		ServerExpiresAt: server.ExpiresAt,
+		TrustOverlap:    trustOverlap,
 	}
 	if requireClient {
 		state.ClientSerial = client.Serial
@@ -336,6 +371,18 @@ func readManagedPKIState(path string) (managedPKIState, error) {
 		return managedPKIState{}, fmt.Errorf("unsupported managed PKI state version %d", state.Version)
 	}
 	return state, nil
+}
+
+func appendPEMBundles(current, previous []byte) []byte {
+	out := append([]byte(nil), current...)
+	if len(out) > 0 && out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	out = append(out, previous...)
+	if len(out) > 0 && out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	return out
 }
 
 func trustBundleMatchesFile(path string, trustPEM []byte) bool {
