@@ -49,7 +49,6 @@ func TestDevelopmentWorkloadRouteDefaultsToHTTP(t *testing.T) {
 	}
 }
 
-
 func TestDevelopmentExposureUpstreamUsesProviderAlias(t *testing.T) {
 	got := developmentExposureUpstream("bh-demo-dev-exposure", "demo-app", "http", 8080)
 	want := "http://bh-dev-bh-demo-dev-exposure-demo-app:8080"

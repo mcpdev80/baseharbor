@@ -138,9 +138,9 @@ func (d *Driver) Preflight(ctx context.Context, resource capability.Resource, bi
 			if err != nil {
 				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
 			}
-				if !info.Mode().IsRegular() {
-					return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
-				}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
+			}
 			}
 		default:
 			return fmt.Errorf("managed HTTPS exposure %q requires local development TLS termination or existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.deployment.TLSMode)
