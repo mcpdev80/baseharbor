@@ -45,10 +45,10 @@ func TestKeycloakClientSecretOverlapRotation(t *testing.T) {
 
 func TestKeycloakClientSecretVerificationDistinguishesInvalidClient(t *testing.T) {
 	tests := []struct {
-		name       string
-		status     int
-		body       string
-		wantErr    bool
+		name    string
+		status  int
+		body    string
+		wantErr bool
 	}{
 		{name: "authenticated but grant unavailable", status: http.StatusBadRequest, body: `{"error":"unauthorized_client"}`, wantErr: false},
 		{name: "invalid secret", status: http.StatusUnauthorized, body: `{"error":"invalid_client"}`, wantErr: true},
