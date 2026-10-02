@@ -147,16 +147,17 @@ func ensureManagementUIValues(values map[string]string) error {
 func seaweedAdminAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "seaweedfs-admin-access",
-		Upstream:         "http://seaweedfs-admin:23646",
+		Upstreams:        []string{"http://seaweedfs-admin-1:23646", "http://seaweedfs-admin-2:23646"},
 		PublishedPortEnv: seaweedAdminPortEnv,
 		ContainerPort:    9443,
-		Networks:         []string{"object-storage"},
+		Networks:         []string{"object-storage-internal"},
 		RequireClient:    false,
 	}
 }
 
 func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatewayFiles) string {
-	service := fmt.Sprintf(`  seaweedfs-admin:
+	renderAdmin := func(name, master, volume string) string {
+		return fmt.Sprintf(`  %s:
     image: %s
     restart: unless-stopped
     user: "seaweed"
@@ -166,7 +167,7 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
     command:
       - admin
       - -ip=0.0.0.0
-      - -master=seaweedfs:9333
+      - -master=%s
       - -dataDir=/data
       - -iceberg.port=0
       - -lance.port=0
@@ -174,14 +175,17 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
       WEED_ADMIN_USER: ${%s}
       WEED_ADMIN_PASSWORD: ${%s}
     volumes:
-      - seaweedfs-admin-data:/data
+      - %s:/data
     networks:
-      - object-storage
+      - object-storage-internal
 
-`, ProviderImage, seaweedAdminUserEnv, seaweedAdminPasswordEnv)
+`, name, ProviderImage, master, seaweedAdminUserEnv, seaweedAdminPasswordEnv, volume)
+	}
+	service := renderAdmin("seaweedfs-admin-1", "seaweedfs-node-1:9333", "seaweedfs-admin-data-1") +
+		renderAdmin("seaweedfs-admin-2", "seaweedfs-node-2:9333", "seaweedfs-admin-data-2")
 	gateway := serviceaccess.HTTPGatewayComposeService(access, seaweedAdminAccessSpec())
-	marker := "volumes:\n  seaweedfs-data:\n"
-	replacement := service + gateway + "volumes:\n  seaweedfs-data:\n  seaweedfs-admin-data:\n"
+	marker := "volumes:\n  seaweedfs-data-1:\n"
+	replacement := service + gateway + "volumes:\n  seaweedfs-admin-data-1:\n  seaweedfs-admin-data-2:\n  seaweedfs-data-1:\n"
 	if !strings.Contains(base, marker) {
 		return base
 	}
