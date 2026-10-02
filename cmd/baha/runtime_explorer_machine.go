@@ -142,6 +142,41 @@ func collectRuntimeResource(ctx context.Context, input machineRuntimeInspectInpu
 	return resource, nil
 }
 
+func collectRuntimeMetrics(ctx context.Context, input machineRuntimeInspectInput) (runtimeexplorer.MetricsHandle, error) {
+	explorer, target, err := runtimeExplorerForTarget(ctx, input.Target)
+	if err != nil {
+		return runtimeexplorer.MetricsHandle{}, err
+	}
+	capabilities, err := explorer.Capabilities(ctx, target)
+	if err != nil {
+		return runtimeexplorer.MetricsHandle{}, err
+	}
+	provider := strings.TrimSpace(input.Provider)
+	if provider == "" {
+		provider = capabilities.Provider
+	}
+	ref := runtimeexplorer.ResourceRef{
+		Provider:   provider,
+		Target:     target,
+		Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(input.Kind)),
+		ResourceID: strings.TrimSpace(input.ResourceID),
+	}
+	resource, err := explorer.Inspect(ctx, ref)
+	if err != nil {
+		return runtimeexplorer.MetricsHandle{}, err
+	}
+	environment := strings.TrimSpace(input.Environment)
+	if environment != "" && resource.Relationship.Environment != "" && resource.Relationship.Environment != environment {
+		return runtimeexplorer.MetricsHandle{}, machine.NewError(
+			machine.ErrorPolicyDenied,
+			"Runtime resource is outside the authorized environment.",
+			"Retry with the resource environment after obtaining the required operator authorization.",
+			false,
+		)
+	}
+	return explorer.Metrics(ctx, ref)
+}
+
 func executeHTTPRuntimeExplorerRead(
 	ctx context.Context,
 	operationID string,
@@ -194,6 +229,21 @@ func executeHTTPRuntimeExplorerRead(
 			return nil, err
 		}
 		return collectRuntimeResource(ctx, input)
+	case "runtime.metrics":
+		var input machineRuntimeInspectInput
+		if err := decodeHTTPInput(raw, &input); err != nil {
+			return nil, err
+		}
+		var err error
+		input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
+		if err != nil {
+			return nil, err
+		}
+		input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
+		if err != nil {
+			return nil, err
+		}
+		return collectRuntimeMetrics(ctx, input)
 	default:
 		return nil, machine.NewError(machine.ErrorUnsupported, "Unsupported Runtime Explorer read operation.", "Use machine discovery.", false)
 	}
