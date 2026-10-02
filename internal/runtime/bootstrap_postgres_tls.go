@@ -181,7 +181,7 @@ func ensureBootstrapOpenBaoTLS(stateDir string) error {
 		Subject:      pkix.Name{CommonName: "openbao"},
 		NotBefore:    now.Add(-time.Minute),
 		NotAfter:     now.Add(24 * time.Hour),
-		DNSNames:     []string{"openbao"},
+		DNSNames:     []string{"openbao", "openbao-member-1", "openbao-member-2", "openbao-member-3"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
