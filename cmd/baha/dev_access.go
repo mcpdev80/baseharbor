@@ -247,3 +247,19 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 	}
 	return candidate, nil
 }
+
+
+func ensureAuthoritativeDeveloperCredentials(ctx context.Context, target, environment string) (devaccess.Credentials, error) {
+	candidate, err := devaccess.Ensure(target, environment)
+	if err != nil {
+		return devaccess.Credentials{}, err
+	}
+	authoritative, err := reconcileDeveloperCredentialAuthority(ctx, target, environment, candidate, false)
+	if err != nil {
+		return devaccess.Credentials{}, err
+	}
+	if authoritative != candidate {
+		return devaccess.Configure(target, environment, authoritative.Username, authoritative.Password)
+	}
+	return candidate, nil
+}
