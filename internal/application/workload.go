@@ -381,7 +381,7 @@ func writeWorkloadOverrideServices(b *strings.Builder, m Manifest, services []st
 		_, metricsSource := topology.metricsServices[service]
 		_, runtimeObjectStorage := topology.runtimeObjectStorageServices[service]
 		serviceObjectStorage := topology.objectStorage || runtimeObjectStorage
-		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m)
+		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m) || HasIdentity(m)
 		hasNetworks := topology.backendNetwork || serviceObjectStorage || topology.telemetryManaged || topology.identityManaged || metricsSource || exposed || topology.canonicalDevWorkload
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
