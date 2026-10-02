@@ -42,17 +42,16 @@ func TestRotationVerificationFailureKeepsRecoverablePath(t *testing.T) {
 	}
 }
 
-
 func TestRotationJournalResumesAtRetirementAfterVerifiedCutover(t *testing.T) {
 	journal := FileRotationJournal{Path: filepath.Join(t.TempDir(), "rotation.json")}
 	var steps []string
 	retireAttempts := 0
 	rotation := Rotation{
-		Key:     "provider/postgresql/app/default",
-		Journal: journal,
-		Prepare: func(context.Context) error { steps = append(steps, "prepare"); return nil },
+		Key:       "provider/postgresql/app/default",
+		Journal:   journal,
+		Prepare:   func(context.Context) error { steps = append(steps, "prepare"); return nil },
 		Reconcile: func(context.Context) error { steps = append(steps, "reconcile"); return nil },
-		Verify: func(context.Context) error { steps = append(steps, "verify"); return nil },
+		Verify:    func(context.Context) error { steps = append(steps, "verify"); return nil },
 		Retire: func(context.Context) error {
 			steps = append(steps, "retire")
 			retireAttempts++
@@ -83,13 +82,13 @@ func TestRotationJournalResumesAtRetirementAfterVerifiedCutover(t *testing.T) {
 func TestRotationJournalClearsAfterRollbackBeforeVerification(t *testing.T) {
 	journal := FileRotationJournal{Path: filepath.Join(t.TempDir(), "rotation.json")}
 	rotation := Rotation{
-		Key:     "provider/keycloak/admin",
-		Journal: journal,
-		Prepare: func(context.Context) error { return nil },
+		Key:       "provider/keycloak/admin",
+		Journal:   journal,
+		Prepare:   func(context.Context) error { return nil },
 		Reconcile: func(context.Context) error { return nil },
-		Verify: func(context.Context) error { return errors.New("new login rejected") },
-		Retire: func(context.Context) error { return nil },
-		Rollback: func(context.Context) error { return nil },
+		Verify:    func(context.Context) error { return errors.New("new login rejected") },
+		Retire:    func(context.Context) error { return nil },
+		Rollback:  func(context.Context) error { return nil },
 	}
 	if err := rotation.Run(context.Background()); err == nil {
 		t.Fatal("verification failure accepted")
