@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -64,10 +65,26 @@ func (r *runtimeLokiRealization) placement() (Placement, error) {
 }
 
 func (r *runtimeLokiRealization) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
-	if r.dataDir != "" && r.dataDir != "." {
-		return EnsureProviderFilesForModeAt(ctx, r.issuer, r.dataDir, r.namespace, r.app, r.mode)
+	dataDir := r.dataDir
+	if dataDir == "" || dataDir == "." {
+		var err error
+		dataDir, err = bhruntime.DataDir("")
+		if err != nil {
+			return ProviderFiles{}, err
+		}
 	}
-	return EnsureProviderFilesForMode(ctx, r.issuer, r.app, r.mode)
+	if !r.app.HA {
+		return EnsureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode)
+	}
+	storageRuntime, ok := r.runtime.(objectstorage.Runtime)
+	if !ok {
+		return ProviderFiles{}, errors.New("Loki HA requires runtime object-storage administration support")
+	}
+	bucket, err := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, r.issuer, dataDir, r.namespace, "loki")
+	if err != nil {
+		return ProviderFiles{}, fmt.Errorf("prepare Loki HA object storage: %w", err)
+	}
+	return ensureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode, &bucket)
 }
 
 func (r *runtimeLokiRealization) existingProviderFiles() (ProviderFiles, error) {
