@@ -19,22 +19,31 @@ type TCPGatewayFiles struct {
 	Material TLSMaterial
 }
 
+type TCPGatewayUpstream struct {
+	Name string
+	Host string
+	Port int
+}
+
 type TCPGatewaySpec struct {
 	ServiceName      string
 	UpstreamHost     string
 	UpstreamPort     int
+	Upstreams        []TCPGatewayUpstream
 	PublishedPortEnv string
 	ContainerPort    int
 	Network          string
 }
 
 func EnsureTCPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec TCPGatewaySpec) (TCPGatewayFiles, error) {
-	if strings.TrimSpace(spec.ServiceName) == "" || strings.TrimSpace(spec.UpstreamHost) == "" {
-		return TCPGatewayFiles{}, errors.New("TCP service gateway name and upstream are required")
+	if strings.TrimSpace(spec.ServiceName) == "" {
+		return TCPGatewayFiles{}, errors.New("TCP service gateway name is required")
 	}
-	if spec.UpstreamPort < 1 || spec.UpstreamPort > 65535 {
-		return TCPGatewayFiles{}, errors.New("TCP service gateway upstream port is invalid")
+	upstreams, err := normalizeTCPGatewayUpstreams(spec)
+	if err != nil {
+		return TCPGatewayFiles{}, err
 	}
+	spec.Upstreams = upstreams
 	if spec.ContainerPort == 0 {
 		spec.ContainerPort = spec.UpstreamPort
 	}
@@ -136,7 +145,12 @@ func tcpGatewayConfig(spec TCPGatewaySpec) string {
 	if spec.ContainerPort == 0 {
 		spec.ContainerPort = spec.UpstreamPort
 	}
-	return fmt.Sprintf(`global
+	upstreams, err := normalizeTCPGatewayUpstreams(spec)
+	if err != nil {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `global
   log stdout format raw local0
   ssl-default-bind-options ssl-min-ver TLSv1.2
 
@@ -152,6 +166,39 @@ frontend service
   default_backend upstream
 
 backend upstream
-  server provider %s:%d check
-`, spec.ContainerPort, spec.UpstreamHost, spec.UpstreamPort)
+  balance roundrobin
+`, spec.ContainerPort)
+	for _, upstream := range upstreams {
+		fmt.Fprintf(&b, "  server %s %s:%d check\n", upstream.Name, upstream.Host, upstream.Port)
+	}
+	return b.String()
+}
+
+func normalizeTCPGatewayUpstreams(spec TCPGatewaySpec) ([]TCPGatewayUpstream, error) {
+	upstreams := append([]TCPGatewayUpstream(nil), spec.Upstreams...)
+	if len(upstreams) == 0 {
+		if strings.TrimSpace(spec.UpstreamHost) == "" {
+			return nil, errors.New("TCP service gateway upstream is required")
+		}
+		upstreams = []TCPGatewayUpstream{{Name: "provider", Host: spec.UpstreamHost, Port: spec.UpstreamPort}}
+	}
+	seen := map[string]struct{}{}
+	for i := range upstreams {
+		upstreams[i].Name = strings.TrimSpace(upstreams[i].Name)
+		upstreams[i].Host = strings.TrimSpace(upstreams[i].Host)
+		if upstreams[i].Name == "" {
+			upstreams[i].Name = fmt.Sprintf("provider-%d", i+1)
+		}
+		if upstreams[i].Host == "" {
+			return nil, errors.New("TCP service gateway upstream host is required")
+		}
+		if upstreams[i].Port < 1 || upstreams[i].Port > 65535 {
+			return nil, errors.New("TCP service gateway upstream port is invalid")
+		}
+		if _, exists := seen[upstreams[i].Name]; exists {
+			return nil, fmt.Errorf("TCP service gateway upstream name %q is duplicated", upstreams[i].Name)
+		}
+		seen[upstreams[i].Name] = struct{}{}
+	}
+	return upstreams, nil
 }
