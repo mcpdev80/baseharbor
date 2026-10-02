@@ -432,7 +432,7 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	args := []string{
 		"container", "inspect", "--format",
-		`{{.Id}}|{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
+		`{{.Id}}|{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{with index .State "Health"}}{{index . "Status"}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
 	}
 	args = append(args, ids...)
 	inspected, err := c.directOutput(ctx, args...)
