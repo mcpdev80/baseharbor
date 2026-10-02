@@ -16,6 +16,12 @@ func prepareOpenBaoStorage(stateDir, envPath string) error {
 	if err != nil {
 		return fmt.Errorf("prepare OpenBao storage state: %w", err)
 	}
+	if _, err := ensurePostgresInternalUser(envPath); err != nil {
+		return fmt.Errorf("prepare PostgreSQL internal user: %w", err)
+	}
+	if _, err := ensurePostgresInternalCredential(envPath); err != nil {
+		return fmt.Errorf("prepare PostgreSQL internal credential: %w", err)
+	}
 	if _, err := ensurePostgresReplicationUser(envPath); err != nil {
 		return fmt.Errorf("prepare PostgreSQL replication user: %w", err)
 	}
@@ -44,15 +50,38 @@ func writeOpenBaoPostgresInit(stateDir string) error {
 	}
 	const script = `#!/bin/sh
 set -eu
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set=openbao_secret="$BASEHARBOR_OPENBAO_DB_PASSWORD" <<'EOSQL'
-SELECT format('CREATE ROLE openbao LOGIN PASSWORD %L', :'openbao_secret')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openbao')
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
+  --set=baseharbor_user="$BASEHARBOR_POSTGRES_USER" \
+  --set=baseharbor_secret="$BASEHARBOR_POSTGRES_PASSWORD" \
+  --set=baseharbor_db="$BASEHARBOR_POSTGRES_DB" \
+  --set=openbao_user="$BASEHARBOR_OPENBAO_DB_USER" \
+  --set=openbao_secret="$BASEHARBOR_OPENBAO_DB_PASSWORD" <<'EOSQL'
+SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', :'baseharbor_user', :'baseharbor_secret')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'baseharbor_user')
 \gexec
-SELECT 'CREATE DATABASE openbao OWNER openbao'
+SELECT format('ALTER ROLE %I WITH LOGIN SUPERUSER PASSWORD %L', :'baseharbor_user', :'baseharbor_secret')
+\gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'baseharbor_db', :'baseharbor_user')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'baseharbor_db')
+\gexec
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'baseharbor_db', :'baseharbor_user')
+\gexec
+SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'baseharbor_db')
+\gexec
+
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'openbao_user', :'openbao_secret')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'openbao_user')
+\gexec
+SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'openbao_user', :'openbao_secret')
+\gexec
+SELECT format('CREATE DATABASE openbao OWNER %I', :'openbao_user')
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'openbao')
 \gexec
+SELECT format('ALTER DATABASE openbao OWNER TO %I', :'openbao_user')
+\gexec
 REVOKE ALL ON DATABASE openbao FROM PUBLIC;
-GRANT CONNECT ON DATABASE openbao TO openbao;
+SELECT format('GRANT CONNECT ON DATABASE openbao TO %I', :'openbao_user')
+\gexec
 EOSQL
 `
 	return os.WriteFile(filepath.Join(dir, "openbao-init.sh"), []byte(script), 0o644)
