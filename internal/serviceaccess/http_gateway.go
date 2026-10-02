@@ -66,6 +66,7 @@ type HTTPGatewaySpec struct {
 	DenyPaths          []string
 	BasicAuthUsername  string
 	BasicAuthPassword  string
+	HealthURI          string
 	HealthStatus       int
 }
 
@@ -143,7 +144,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfileWithUpstreamsTLSStatus(spec.Upstreams, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.HealthStatus, spec.DenyPaths...)
+	config := caddyfileWithUpstreamsTLSHealth(spec.Upstreams, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.HealthURI, spec.HealthStatus, spec.DenyPaths...)
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -540,6 +541,10 @@ func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamSe
 }
 
 func caddyfileWithUpstreamsTLSStatus(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealth(upstreams, upstreamTrustFile, upstreamServerName, port, authentication, basicAuthUsername, basicAuthHash, "", healthStatus, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -573,11 +578,19 @@ func caddyfileWithUpstreamsTLSStatus(upstreams []string, upstreamTrustFile, upst
 		normalized = []string{"http://127.0.0.1:1"}
 	}
 	proxyTargets := strings.Join(normalized, " ")
+	healthURI = strings.TrimSpace(healthURI)
+	if healthURI == "" {
+		healthURI = "/"
+	}
+	if !strings.HasPrefix(healthURI, "/") || strings.ContainsAny(healthURI, "\r\n{}") {
+		healthURI = "/"
+	}
 	healthStatusLine := ""
 	if healthStatus >= 100 && healthStatus <= 599 {
 		healthStatusLine = fmt.Sprintf("    health_status %d\n", healthStatus)
 	}
-	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n" + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n  }\n"
+	healthLine := "    health_uri " + healthURI + "\n"
+	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + healthLine + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n  }\n"
 	allHTTPS := true
 	for _, upstream := range normalized {
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") {
@@ -587,7 +600,7 @@ func caddyfileWithUpstreamsTLSStatus(upstreams []string, upstreamTrustFile, upst
 	}
 	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n" + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + healthLine + healthStatusLine + "    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
 		}
