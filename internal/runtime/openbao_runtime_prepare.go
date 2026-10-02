@@ -8,9 +8,16 @@ import (
 )
 
 func prepareOpenBaoStorage(stateDir, envPath string) error {
+	user, err := ensureOpenBaoStorageUser(envPath)
+	if err != nil {
+		return fmt.Errorf("prepare OpenBao storage user: %w", err)
+	}
 	secret, err := ensureOpenBaoStorageCredential(envPath)
 	if err != nil {
 		return fmt.Errorf("prepare OpenBao storage state: %w", err)
+	}
+	if _, err := ensurePostgresReplicationUser(envPath); err != nil {
+		return fmt.Errorf("prepare PostgreSQL replication user: %w", err)
 	}
 	if _, err := ensurePostgresReplicationCredential(envPath); err != nil {
 		return fmt.Errorf("prepare PostgreSQL replication credential: %w", err)
@@ -24,7 +31,7 @@ func prepareOpenBaoStorage(stateDir, envPath string) error {
 	if err := writeOpenBaoPostgresInit(stateDir); err != nil {
 		return err
 	}
-	if err := writeOpenBaoRuntimeConfig(stateDir, secret); err != nil {
+	if err := writeOpenBaoRuntimeConfig(stateDir, user, secret); err != nil {
 		return err
 	}
 	return writeOpenBaoHAProxyConfig(stateDir)
@@ -81,17 +88,18 @@ backend members
 	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }
 
-func writeOpenBaoRuntimeConfig(stateDir, secret string) error {
+func writeOpenBaoRuntimeConfig(stateDir, user, secret string) error {
 	dir := filepath.Join(stateDir, "providers", "openbao", "runtime")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	escapedUser := url.QueryEscape(user)
 	escaped := url.QueryEscape(secret)
 	config := fmt.Sprintf(`ui = true
 disable_mlock = true
 
 storage "postgresql" {
-  connection_url      = "postgres://openbao:%s@postgres:5432/openbao?sslmode=verify-full&sslrootcert=/run/baseharbor/postgres-ca/ca.pem"
+  connection_url      = "postgres://%s:%s@postgres:5432/openbao?sslmode=verify-full&sslrootcert=/run/baseharbor/postgres-ca/ca.pem"
   ha_enabled          = "true"
   max_connect_retries = 0
   max_parallel        = "20"
@@ -110,6 +118,6 @@ listener "tcp" {
 }
 
 api_addr = "https://openbao:8200"
-`, escaped)
+`, escapedUser, escaped)
 	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
 }
