@@ -357,7 +357,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				if c.runtimeErr != nil {
 					return c.runtimeErr
 				}
-				return application.VerifyMongoDBRuntime(ctx, m, c.files)
+				if err := application.VerifyMongoDBRuntime(ctx, m, c.files); err != nil {
+					return err
+				}
+				return application.VerifyMongoDBHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 			}},
 		)
 	}
