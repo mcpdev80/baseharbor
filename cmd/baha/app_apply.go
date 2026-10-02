@@ -188,7 +188,11 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.R
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
 		if err == nil {
-			if err := application.ReconcileRabbitMQCredentials(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+			op := provideroperation.New(compose, files.Project, files.Compose, files.Env)
+			if err := application.ReconcileRabbitMQCredentials(ctx, op, m, files); err != nil {
+				return err
+			}
+			if err := application.ReconcileMongoDBHA(ctx, op, m, files); err != nil {
 				return err
 			}
 			return nil
@@ -241,6 +245,9 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 	}
 	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
 		if err := application.VerifyMongoDBRuntime(ctx, m, files); err != nil {
+			return err
+		}
+		if err := application.VerifyMongoDBHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
 			return err
 		}
 	}
