@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -41,8 +42,18 @@ func RotateManagedProviderPKI(ctx context.Context, runtime bhruntime.RuntimeProv
 	if err := reloadManagedProviderManagementUI(ctx, runtime, m, files, kind, instance); err != nil {
 		return fmt.Errorf("reconcile management UI PKI: %w", err)
 	}
-	if err := verifyManagedProviderPKIRotation(ctx, runtime, m, files, kind); err != nil {
-		return fmt.Errorf("verify provider PKI rotation: %w", err)
+	verifyDeadline := time.Now().Add(30 * time.Second)
+	for {
+		if err := verifyManagedProviderPKIRotation(ctx, runtime, m, files, kind); err == nil {
+			break
+		} else if time.Now().After(verifyDeadline) {
+			return fmt.Errorf("verify provider PKI rotation: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
 	if err := retireManagedProviderPKIOverlap(ctx, issuer, m, files, kind, instance); err != nil {
 		return err
