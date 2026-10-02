@@ -112,7 +112,7 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 	replicaSet := mongodbReplicaSetName(instance)
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'JSON.stringify(db.adminCommand({hello:1}))'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_HELLO__\" + JSON.stringify({setName:h.setName,isWritablePrimary:h.isWritablePrimary,secondary:h.secondary}))'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("inspect MongoDB HA member %s: %w", service, err)
@@ -122,9 +122,16 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 			IsPrimary bool   `json:"isWritablePrimary"`
 			Secondary bool   `json:"secondary"`
 		}
-		line := strings.TrimSpace(out)
-		if idx := strings.LastIndex(line, "{"); idx >= 0 {
-			line = line[idx:]
+		const marker = "__BASEHARBOR_HELLO__"
+		var line string
+		for _, candidate := range strings.Split(out, "\n") {
+			candidate = strings.TrimSpace(candidate)
+			if strings.HasPrefix(candidate, marker) {
+				line = strings.TrimPrefix(candidate, marker)
+			}
+		}
+		if line == "" {
+			return fmt.Errorf("decode MongoDB hello from %s: marked probe output is missing", service)
 		}
 		if err := json.Unmarshal([]byte(line), &hello); err != nil {
 			return fmt.Errorf("decode MongoDB hello from %s: %w", service, err)
