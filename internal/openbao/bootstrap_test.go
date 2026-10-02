@@ -80,12 +80,22 @@ func TestBootstrapKeepsRootAndUnsealSecretsOutOfCommandArguments(t *testing.T) {
 		t.Fatalf("bootstrap failed: %v", err)
 	}
 
+	foundPolicyStream := false
 	for _, args := range executor.args {
 		for _, secret := range []string{"root-secret", "unseal-secret", "manager-secret", "manager-token"} {
 			if strings.Contains(args, secret) {
 				t.Fatalf("secret %q leaked into command arguments %q", secret, args)
 			}
 		}
+		if strings.Contains(args, "policy write baseharbor-manager") {
+			foundPolicyStream = true
+			if strings.Contains(args, "mktemp") || !strings.Contains(args, "baseharbor-manager -") {
+				t.Fatalf("manager policy must stream through stdin on read-only runtime: %q", args)
+			}
+		}
+	}
+	if !foundPolicyStream {
+		t.Fatal("manager policy write was not executed")
 	}
 
 	recoveryData, err := os.ReadFile(recovery)
@@ -174,7 +184,6 @@ func assertOwnerOnly(t *testing.T, path string) {
 		t.Fatalf("%s is accessible by group or others: %o", path, info.Mode().Perm())
 	}
 }
-
 
 func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T) {
 	executor := &fakeExecutor{initialized: true, sealed: true}
