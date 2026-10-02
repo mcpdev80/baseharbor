@@ -84,6 +84,7 @@ type ProjectResource struct {
 }
 
 type RuntimeContainer struct {
+	ID       string
 	Name     string
 	Project  string
 	Service  string

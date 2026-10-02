@@ -30,6 +30,8 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 		return executeHTTPProviderMutation(ctx, operationID, raw, report)
 	case "organization.set", "organization.update":
 		return executeHTTPOrganizationMutation(ctx, operationID, operationContext, raw, report)
+	case "runtime.operate":
+		return executeHTTPRuntimeOperation(ctx, operationContext, raw, report)
 	default:
 		return nil, machine.NewError(machine.ErrorUnsupported, "Unsupported platform mutation.", "Use machine discovery.", false)
 	}

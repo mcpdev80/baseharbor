@@ -19,6 +19,7 @@ type StreamRequest struct {
 	ResourceID      string           `json:"resource_id"`
 	Since           *time.Time       `json:"since,omitempty"`
 	Tail            int              `json:"tail,omitempty"`
+	Follow          bool             `json:"follow,omitempty"`
 	Command         []string         `json:"command,omitempty"`
 	TTY             bool             `json:"tty,omitempty"`
 }

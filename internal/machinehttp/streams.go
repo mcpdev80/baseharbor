@@ -19,6 +19,10 @@ type LogStreamExecutor interface {
 	OpenLogStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
 }
 
+type ExecStreamExecutor interface {
+	OpenExecStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
+}
+
 func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	request, decision, streamCtx, err := h.authorizeStreamRequest(r, machine.StreamLogs)
 	if err != nil {
@@ -55,17 +59,48 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
-	_, _, _, err := h.authorizeStreamRequest(r, machine.StreamExec)
+	request, decision, streamCtx, err := h.authorizeStreamRequest(r, machine.StreamExec)
 	if err != nil {
 		writeMachineError(w, machineErrorStatus(err), err)
 		return
 	}
-	writeMachineError(w, http.StatusNotImplemented, machine.NewError(
-		machine.ErrorUnsupported,
-		"Runtime exec session transport is capability-gated until the active Runtime Explorer provider supplies an explicit exec implementation.",
-		"Negotiate runtime exec capability and use the provider-backed exec session transport; BaseHarbor does not fall back to a host shell.",
-		false,
-	))
+	if request.TTY {
+		writeMachineError(w, http.StatusNotImplemented, machine.NewError(
+			machine.ErrorUnsupported,
+			"Interactive TTY exec is not implemented by the active Runtime Explorer provider.",
+			"Use a non-interactive bounded exec command or a provider that advertises interactive terminal support.",
+			false,
+		))
+		return
+	}
+	executor, ok := h.executor.(ExecStreamExecutor)
+	if !ok {
+		writeMachineError(w, http.StatusNotImplemented, machine.NewError(
+			machine.ErrorUnsupported,
+			"Runtime exec streaming is not implemented by the active Runtime Explorer provider.",
+			"Negotiate runtime exec capability; BaseHarbor does not fall back to a host shell.",
+			false,
+		))
+		return
+	}
+	stream, err := executor.OpenExecStream(streamCtx, request)
+	if err != nil {
+		writeMachineError(w, machineErrorStatus(err), err)
+		return
+	}
+	defer stream.Close()
+
+	descriptor, err := newStreamDescriptor(request, decision.Actor)
+	if err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the stream request.", true))
+		return
+	}
+	writeStreamHeaders(w, descriptor)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, stream)
 }
 
 func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKind) (machine.StreamRequest, operatorauth.AuthorizationDecision, context.Context, error) {

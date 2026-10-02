@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -30,6 +31,10 @@ func (c Compose) CommandPath() string {
 
 func (c Compose) DirectOutput(ctx context.Context, args ...string) (string, error) {
 	return c.directOutput(ctx, args...)
+}
+
+func (c Compose) DirectStream(ctx context.Context, args ...string) (io.ReadCloser, error) {
+	return c.directStream(ctx, args...)
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {

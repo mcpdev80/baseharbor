@@ -17,6 +17,7 @@ import (
 
 func registerMCPReadTools(server *mcp.Server, store application.Store) {
 	registerMCPDiscoveryReadTools(server)
+	registerMCPRuntimeExplorerReadTools(server)
 	registerMCPApplicationReadTools(server, store)
 	registerMCPPlatformReadTools(server, store)
 }
@@ -454,6 +455,7 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
 	registerMCPProviderOrganizationTools(server)
+	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPApplicationMutationTools(server, store)
 	registerMCPRecoveryTools(server, store)
 }

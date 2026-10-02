@@ -42,12 +42,15 @@ func (e *bahaMachineExecutor) Execute(
 	)
 	switch operation.ID {
 	case "target", "inspect", "workspace.resolve", "workspace.status",
+		"runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics",
 		"plan", "status", "doctor", "observe", "evidence",
 		"provider.list", "provider.inspect", "provider.verify",
 		"organization.inspect", "organization.check", "policy.check", "policy.explain":
 		result, err = e.executeHTTPRead(ctx, operation.ID, operationContext, input)
+	case "runtime.start", "runtime.stop", "runtime.restart":
+		result, err = e.executeHTTPRuntimeMutation(ctx, operation.ID, operationContext, input)
 	case "workspace.update", "app.new", "provider.add", "provider.remove",
-		"organization.set", "organization.update":
+		"organization.set", "organization.update", "runtime.operate":
 		result, err = e.executeHTTPPlatformMutation(ctx, operation.ID, operationContext, input, report)
 	case "apply", "update", "repair", "backup", "restore", "destroy":
 		result, err = e.executeHTTPLifecycle(ctx, operation.ID, operationContext, input, report)
