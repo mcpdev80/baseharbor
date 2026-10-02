@@ -39,64 +39,27 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 		if next.PostgresPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
 			return fmt.Errorf("generate replacement control-plane credentials")
 		}
-
-		prepareSQL := fmt.Sprintf(
-			"CREATE ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
-				"CREATE ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
-				"CREATE ROLE %s WITH LOGIN PASSWORD %s IN ROLE %s;\n",
-			quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
-			quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
-			quoteControlPlaneIdent(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBPassword),
-			quoteControlPlaneIdent(current.OpenBaoDBUser),
-		)
-		if err := execControlPlanePostgresSQL(ctx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", prepareSQL); err != nil {
-			return fmt.Errorf("prepare replacement control-plane database credentials: %w", err)
-		}
-
-		cleanupPrepared := true
-		defer func() {
-			if !cleanupPrepared {
-				return
-			}
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			cleanupSQL := fmt.Sprintf(
-				"DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s;",
-				quoteControlPlaneIdent(next.OpenBaoDBUser),
-				quoteControlPlaneIdent(next.PostgresReplicationUser),
-				quoteControlPlaneIdent(next.PostgresUser),
-			)
-			_ = execControlPlanePostgresSQL(cleanupCtx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", cleanupSQL)
-		}()
-
-		for _, probe := range []struct {
-			user, password, database string
-		}{
-			{next.PostgresUser, next.PostgresPassword, "postgres"},
-			{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
-			{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
-		} {
-			if err := probeControlPlanePostgresCredential(ctx, runtime, files, probe.user, probe.password, probe.database); err != nil {
-				return fmt.Errorf("verify prepared control-plane database credential for %s: %w", probe.user, err)
-			}
-		}
-
 		state = bhruntime.ControlPlaneCredentialRotationState{
 			Version:  1,
 			Phase:    bhruntime.ControlPlaneRotationPrepared,
 			Previous: current,
 			Next:     next,
 		}
+		// Persist replacement identities before the first database mutation.
+		// A process crash during preparation can therefore resume with the
+		// exact same secrets instead of leaving unknown orphan credentials.
 		if err := bhruntime.SaveControlPlaneCredentialRotation(files, state); err != nil {
 			return fmt.Errorf("persist prepared control-plane credential rotation: %w", err)
 		}
-		cleanupPrepared = false
 	}
 
 	current := state.Previous
 	next := state.Next
 
 	if state.Phase == bhruntime.ControlPlaneRotationPrepared {
+		if err := prepareControlPlaneDatabaseCredentialOverlap(ctx, runtime, files, current, next); err != nil {
+			return err
+		}
 		if err := bhruntime.ReplaceControlPlaneCredentials(files, next); err != nil {
 			return err
 		}
@@ -204,6 +167,41 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 	if state.Phase == bhruntime.ControlPlaneRotationRetired {
 		if err := bhruntime.ClearControlPlaneCredentialRotation(files); err != nil {
 			return fmt.Errorf("clear completed control-plane credential rotation: %w", err)
+		}
+	}
+	return nil
+}
+
+
+func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, current, next bhruntime.ControlPlaneCredentials) error {
+	prepareSQL := fmt.Sprintf(
+		"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
+			"ALTER ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
+			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
+			"ALTER ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
+			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
+			"ALTER ROLE %s WITH LOGIN PASSWORD %s;\n"+
+			"GRANT %s TO %s;\n",
+		quoteControlPlaneLiteral(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresUser),
+		quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
+		quoteControlPlaneLiteral(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationUser),
+		quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
+		quoteControlPlaneLiteral(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBUser),
+		quoteControlPlaneIdent(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBPassword),
+		quoteControlPlaneIdent(current.OpenBaoDBUser), quoteControlPlaneIdent(next.OpenBaoDBUser),
+	)
+	if err := execControlPlanePostgresSQL(ctx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", prepareSQL); err != nil {
+		return fmt.Errorf("prepare replacement control-plane database credentials: %w", err)
+	}
+	for _, probe := range []struct {
+		user, password, database string
+	}{
+		{next.PostgresUser, next.PostgresPassword, "postgres"},
+		{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
+		{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
+	} {
+		if err := probeControlPlanePostgresCredential(ctx, runtime, files, probe.user, probe.password, probe.database); err != nil {
+			return fmt.Errorf("verify prepared control-plane database credential for %s: %w", probe.user, err)
 		}
 	}
 	return nil
