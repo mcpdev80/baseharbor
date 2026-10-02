@@ -646,6 +646,16 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			}
 			values[passwordKey] = password
 		}
+		if rabbitmqMemberCount(m) > 1 {
+			cookieKey := rabbitmqRuntimeKey(instance, "ERLANG_COOKIE")
+			if values[cookieKey] == "" {
+				cookie, err := randomApplicationSecret(32)
+				if err != nil {
+					return err
+				}
+				values[cookieKey] = cookie
+			}
+		}
 		if values[portKey] == "" {
 			port, err := allocateLoopbackPort(excluded)
 			if err != nil {
@@ -752,7 +762,11 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
-		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		suffixes := []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		if rabbitmqMemberCount(m) > 1 {
+			suffixes = append(suffixes, "ERLANG_COOKIE")
+		}
+		for _, suffix := range suffixes {
 			key := rabbitmqRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}
