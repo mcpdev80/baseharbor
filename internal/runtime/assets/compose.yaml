@@ -166,7 +166,7 @@ services:
         until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done
         exec /bin/sh /run/baseharbor/openbao-init.sh
 
-  openbao:
+  openbao-member-1:
     image: docker.io/openbao/openbao:2.7.0
     restart: unless-stopped
     user: "100"
@@ -181,11 +181,10 @@ services:
       SKIP_CHOWN: "1"
       BAO_ADDR: https://127.0.0.1:8200
       BAO_CACERT: /run/baseharbor/openbao/ca.pem
+      BAO_CLUSTER_ADDR: https://openbao-member-1:8201
     depends_on:
       postgres-init:
         condition: service_completed_successfully
-    ports:
-      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
       - ./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro
       - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
@@ -195,12 +194,102 @@ services:
     networks:
       - default
       - secrets
-    healthcheck:
-      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; code=$$?; [ $$code -eq 0 ] || [ $$code -eq 2 ]"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
+
+  openbao-member-2:
+    image: docker.io/openbao/openbao:2.7.0
+    restart: unless-stopped
+    user: "100"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
+    command: ["server", "-config=/run/baseharbor/openbao/openbao.hcl"]
+    environment:
+      SKIP_CHOWN: "1"
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+      BAO_CLUSTER_ADDR: https://openbao-member-2:8201
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro
+      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+      - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro
+      - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/openbao/server-key.pem:ro
+      - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+    networks:
+      - default
+      - secrets
+
+  openbao-member-3:
+    image: docker.io/openbao/openbao:2.7.0
+    restart: unless-stopped
+    user: "100"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
+    command: ["server", "-config=/run/baseharbor/openbao/openbao.hcl"]
+    environment:
+      SKIP_CHOWN: "1"
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+      BAO_CLUSTER_ADDR: https://openbao-member-3:8201
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro
+      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+      - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro
+      - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/openbao/server-key.pem:ro
+      - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+    networks:
+      - default
+      - secrets
+
+  openbao:
+    image: docker.io/library/haproxy:3.2.23-alpine
+    restart: unless-stopped
+    user: "99:99"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["haproxy", "-W", "-db", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+    ports:
+      - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
+    volumes:
+      - ./providers/openbao/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      default:
+        aliases:
+          - openbao
+      secrets:
+        aliases:
+          - openbao
+
+  openbao-admin:
+    image: docker.io/openbao/openbao:2.7.0
+    restart: unless-stopped
+    user: "100"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["trap : TERM INT; sleep infinity & wait"]
+    environment:
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+    volumes:
+      - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+    networks:
+      - default
+      - secrets
 
 volumes:
   postgres-data-1:
