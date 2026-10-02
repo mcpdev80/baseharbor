@@ -187,7 +187,6 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	return nil
 }
 
-
 func RetireControlPlaneServiceAccessOverlap(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
 	if issuer == nil {
 		return errors.New("control-plane service access requires an issuer")
