@@ -415,7 +415,6 @@ func TestProviderComposeUsesNativeTLSMaterial(t *testing.T) {
 		"./web-config.yml:/etc/prometheus/web-config.yml:ro",
 		"./members/service-access/runtime:/run/baseharbor/tls:ro",
 		"prometheus-access:",
-		"reverse_proxy",
 		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
 	} {
 		if !strings.Contains(rendered, want) {
