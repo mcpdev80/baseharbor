@@ -1,0 +1,56 @@
+name: "Provider HA Targeted Validation"
+
+on:
+  push:
+    branches:
+      - "runtime-validation/provider-ha/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-ha-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  rabbitmq:
+    if: startsWith(github.ref_name, 'runtime-validation/provider-ha/rabbitmq/')
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ github.sha }}
+      demo_ref: 8568f6a6555b1878540ba9375e52ec14b1366e8d
+      runtime: ${{ matrix.runtime }}
+      gate: rabbitmq-runtime
+      candidate_artifact: ""
+
+  mongodb:
+    if: startsWith(github.ref_name, 'runtime-validation/provider-ha/mongodb/')
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ github.sha }}
+      demo_ref: 8568f6a6555b1878540ba9375e52ec14b1366e8d
+      runtime: ${{ matrix.runtime }}
+      gate: mongodb-runtime
+      candidate_artifact: ""
+
+  valkey:
+    if: startsWith(github.ref_name, 'runtime-validation/provider-ha/valkey/')
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ github.sha }}
+      demo_ref: 8568f6a6555b1878540ba9375e52ec14b1366e8d
+      runtime: ${{ matrix.runtime }}
+      gate: durable-key-value
+      candidate_artifact: ""
