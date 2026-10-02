@@ -89,16 +89,6 @@ func TestWorkloadSourceCrossSourceSemanticParity(t *testing.T) {
 		})
 	}
 }
-
-func containsString(items []string, wanted string) bool {
-	for _, item := range items {
-		if item == wanted {
-			return true
-		}
-	}
-	return false
-}
-
 func containsFindingCapability(findings []Finding, wanted string) bool {
 	for _, finding := range findings {
 		if finding.Capability == wanted {
