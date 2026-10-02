@@ -49,6 +49,28 @@ fi`
 	return nil
 }
 
+func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	before, err := ServiceCA(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	token, err := managerToken(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	if _, err := execWithToken(ctx, executor, files, token, `exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`); err != nil {
+		return fmt.Errorf("rotate OpenBao service PKI root: %w", err)
+	}
+	after, err := ServiceCA(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	if string(before) == string(after) {
+		return errors.New("OpenBao service PKI root rotation did not change the active CA")
+	}
+	return nil
+}
+
 func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([]byte, error) {
 	token, err := managerToken(ctx, executor, files)
 	if err != nil {
