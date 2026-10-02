@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,13 +11,31 @@ import (
 )
 
 type ControlPlaneCredentials struct {
-	PostgresUser            string
-	PostgresPassword        string
-	PostgresReplicationUser string
-	PostgresReplicationPass string
-	OpenBaoDBUser           string
-	OpenBaoDBPassword       string
+	PostgresUser            string `json:"postgres_user"`
+	PostgresPassword        string `json:"postgres_password"`
+	PostgresReplicationUser string `json:"postgres_replication_user"`
+	PostgresReplicationPass string `json:"postgres_replication_password"`
+	OpenBaoDBUser           string `json:"openbao_db_user"`
+	OpenBaoDBPassword       string `json:"openbao_db_password"`
 }
+
+type ControlPlaneCredentialRotationPhase string
+
+const (
+	ControlPlaneRotationPrepared  ControlPlaneCredentialRotationPhase = "PREPARED"
+	ControlPlaneRotationProjected ControlPlaneCredentialRotationPhase = "PROJECTED"
+	ControlPlaneRotationVerified  ControlPlaneCredentialRotationPhase = "VERIFIED"
+	ControlPlaneRotationRetired   ControlPlaneCredentialRotationPhase = "RETIRED"
+)
+
+type ControlPlaneCredentialRotationState struct {
+	Version  int                                 `json:"version"`
+	Phase    ControlPlaneCredentialRotationPhase `json:"phase"`
+	Previous ControlPlaneCredentials             `json:"previous"`
+	Next     ControlPlaneCredentials             `json:"next"`
+}
+
+const controlPlaneCredentialRotationStateName = "control-plane-credential-rotation.json"
 
 func LoadControlPlaneCredentials(files Files) (ControlPlaneCredentials, error) {
 	values, err := loadRuntimeEnvironment(files.Env)
@@ -70,6 +89,93 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 
 func RuntimeEnvironment(files Files) (map[string]string, error) {
 	return loadRuntimeEnvironment(files.Env)
+}
+
+func LoadControlPlaneCredentialRotation(files Files) (ControlPlaneCredentialRotationState, bool, error) {
+	path := filepath.Join(filepath.Dir(files.Env), controlPlaneCredentialRotationStateName)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ControlPlaneCredentialRotationState{}, false, nil
+	}
+	if err != nil {
+		return ControlPlaneCredentialRotationState{}, false, err
+	}
+	var state ControlPlaneCredentialRotationState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return ControlPlaneCredentialRotationState{}, false, fmt.Errorf("decode control-plane credential rotation state: %w", err)
+	}
+	if state.Version != 1 {
+		return ControlPlaneCredentialRotationState{}, false, fmt.Errorf("unsupported control-plane credential rotation state version %d", state.Version)
+	}
+	switch state.Phase {
+	case ControlPlaneRotationPrepared, ControlPlaneRotationProjected, ControlPlaneRotationVerified, ControlPlaneRotationRetired:
+	default:
+		return ControlPlaneCredentialRotationState{}, false, fmt.Errorf("invalid control-plane credential rotation phase %q", state.Phase)
+	}
+	if err := validateControlPlaneCredentials(state.Previous); err != nil {
+		return ControlPlaneCredentialRotationState{}, false, fmt.Errorf("invalid previous control-plane credentials: %w", err)
+	}
+	if err := validateControlPlaneCredentials(state.Next); err != nil {
+		return ControlPlaneCredentialRotationState{}, false, fmt.Errorf("invalid replacement control-plane credentials: %w", err)
+	}
+	return state, true, nil
+}
+
+func SaveControlPlaneCredentialRotation(files Files, state ControlPlaneCredentialRotationState) error {
+	if state.Version == 0 {
+		state.Version = 1
+	}
+	if state.Version != 1 {
+		return fmt.Errorf("unsupported control-plane credential rotation state version %d", state.Version)
+	}
+	switch state.Phase {
+	case ControlPlaneRotationPrepared, ControlPlaneRotationProjected, ControlPlaneRotationVerified, ControlPlaneRotationRetired:
+	default:
+		return fmt.Errorf("invalid control-plane credential rotation phase %q", state.Phase)
+	}
+	if err := validateControlPlaneCredentials(state.Previous); err != nil {
+		return err
+	}
+	if err := validateControlPlaneCredentials(state.Next); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '
+')
+	path := filepath.Join(filepath.Dir(files.Env), controlPlaneCredentialRotationStateName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func ClearControlPlaneCredentialRotation(files Files) error {
+	path := filepath.Join(filepath.Dir(files.Env), controlPlaneCredentialRotationStateName)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func validateControlPlaneCredentials(credentials ControlPlaneCredentials) error {
+	if credentials.PostgresUser == "" || credentials.PostgresPassword == "" ||
+		credentials.PostgresReplicationUser == "" || credentials.PostgresReplicationPass == "" ||
+		credentials.OpenBaoDBUser == "" || credentials.OpenBaoDBPassword == "" {
+		return errors.New("control-plane credential state is incomplete")
+	}
+	return nil
 }
 
 func loadRuntimeEnvironment(path string) (map[string]string, error) {
