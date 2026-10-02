@@ -477,11 +477,12 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
 	b.WriteString(member("otel-collector-1"))
 	b.WriteString(member("otel-collector-2"))
 	spec := serviceaccess.HTTPGatewaySpec{
-		ServiceName:    "otel-collector-access",
-		ContainerPort:  4318,
-		Networks:       gatewayNetworks,
-		NetworkAliases: []string{"otel-collector"},
-		RequireClient:  true,
+		ServiceName:      "otel-collector-access",
+		PublishedPortEnv: "BASEHARBOR_OTLP_PORT",
+		ContainerPort:    4318,
+		Networks:         gatewayNetworks,
+		NetworkAliases:   []string{"otel-collector"},
+		RequireClient:    true,
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, spec))
 	b.WriteString("networks:\n")
