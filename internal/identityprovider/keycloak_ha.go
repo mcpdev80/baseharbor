@@ -1,0 +1,134 @@
+package identityprovider
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	keycloakPostgresImage = "ghcr.io/zalando/spilo-18:4.1-p2"
+	keycloakEtcdImage     = "gcr.io/etcd-development/etcd:v3.7.2"
+	keycloakHAProxyImage  = "docker.io/library/haproxy:3.2.23-alpine"
+)
+
+func ensureKeycloakPostgresHA(dir string) error {
+	root := filepath.Join(dir, "db-ha")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	const cfg = `global
+  log stdout format raw local0
+
+defaults
+  mode tcp
+  log global
+  timeout connect 5s
+  timeout client 30s
+  timeout server 30s
+
+frontend postgres
+  bind :5432
+  default_backend primary
+
+backend primary
+  option httpchk GET /primary
+  http-check expect status 200
+  default-server check port 8008 inter 2s fall 2 rise 2
+  server postgres-1 keycloak-db-member-1:5432 check
+  server postgres-2 keycloak-db-member-2:5432 check
+  server postgres-3 keycloak-db-member-3:5432 check
+`
+	return os.WriteFile(filepath.Join(root, "haproxy.cfg"), []byte(cfg), 0o644)
+}
+
+func keycloakHADataLayerCompose() string {
+	const etcdCluster = "keycloak-db-etcd-1=http://keycloak-db-etcd-1:2380,keycloak-db-etcd-2=http://keycloak-db-etcd-2:2380,keycloak-db-etcd-3=http://keycloak-db-etcd-3:2380"
+	const etcdHosts = "keycloak-db-etcd-1:2379,keycloak-db-etcd-2:2379,keycloak-db-etcd-3:2379"
+
+	var b strings.Builder
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := fmt.Sprintf("keycloak-db-etcd-%d", ordinal)
+		fmt.Fprintf(&b, "  %s:\n", name)
+		fmt.Fprintf(&b, "    image: %s\n", keycloakEtcdImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - /usr/local/bin/etcd\n")
+		fmt.Fprintf(&b, "      - --name=%s\n", name)
+		b.WriteString("      - --data-dir=/etcd-data\n")
+		b.WriteString("      - --listen-client-urls=http://0.0.0.0:2379\n")
+		fmt.Fprintf(&b, "      - --advertise-client-urls=http://%s:2379\n", name)
+		b.WriteString("      - --listen-peer-urls=http://0.0.0.0:2380\n")
+		fmt.Fprintf(&b, "      - --initial-advertise-peer-urls=http://%s:2380\n", name)
+		fmt.Fprintf(&b, "      - --initial-cluster=%s\n", etcdCluster)
+		b.WriteString("      - --initial-cluster-token=baseharbor-keycloak-db\n")
+		b.WriteString("      - --initial-cluster-state=new\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(&b, "      - keycloak-db-etcd-data-%d:/etcd-data\n", ordinal)
+		b.WriteString("    networks:\n      identity-internal: {}\n\n")
+	}
+
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+		fmt.Fprintf(&b, "  %s:\n", name)
+		fmt.Fprintf(&b, "    image: %s\n", keycloakPostgresImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    environment:\n")
+		b.WriteString("      SPILO_PROVIDER: local\n")
+		b.WriteString("      SCOPE: baseharbor-keycloak-db\n")
+		b.WriteString("      PGVERSION: \"18\"\n")
+		fmt.Fprintf(&b, "      ETCD3_HOSTS: %s\n", etcdHosts)
+		b.WriteString("      PGUSER_SUPERUSER: ${BASEHARBOR_KEYCLOAK_DB_USER}\n")
+		b.WriteString("      PGPASSWORD_SUPERUSER: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}\n")
+		b.WriteString("      PGUSER_STANDBY: keycloak_replication\n")
+		b.WriteString("      PGPASSWORD_STANDBY: ${BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD}\n")
+		b.WriteString("      USE_ADMIN: \"false\"\n")
+		fmt.Fprintf(&b, "      SPILO_CONFIGURATION: |\n        postgresql:\n          connect_address: %s:5432\n        restapi:\n          connect_address: %s:8008\n", name, name)
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(&b, "      - keycloak-db-data-%d:/home/postgres/pgroot\n", ordinal)
+		b.WriteString("    networks:\n      identity-internal: {}\n\n")
+	}
+
+	b.WriteString("  keycloak-db:\n")
+	fmt.Fprintf(&b, "    image: %s\n", keycloakHAProxyImage)
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"99:99\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./db-ha/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro\n")
+	b.WriteString("    networks:\n      identity-internal: {}\n\n")
+
+	b.WriteString("  keycloak-db-init:\n")
+	b.WriteString("    image: docker.io/library/postgres:18-alpine\n")
+	b.WriteString("    restart: \"no\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    environment:\n")
+	b.WriteString("      PGPASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}\n")
+	b.WriteString("    command:\n")
+	b.WriteString("      - /bin/sh\n")
+	b.WriteString("      - -ec\n")
+	b.WriteString("      - |\n")
+	b.WriteString("        until pg_isready -h keycloak-db -p 5432 -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" -d postgres; do sleep 1; done\n")
+	b.WriteString("        exists=$(psql -h keycloak-db -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='${BASEHARBOR_KEYCLOAK_DB_NAME}'\")\n")
+	b.WriteString("        if [ \"$exists\" != \"1\" ]; then createdb -h keycloak-db -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" \"$BASEHARBOR_KEYCLOAK_DB_NAME\"; fi\n")
+	b.WriteString("    networks:\n      identity-internal: {}\n\n")
+	return b.String()
+}
+
+func keycloakHAVolumesCompose() string {
+	var b strings.Builder
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		fmt.Fprintf(&b, "  keycloak-db-data-%d:\n", ordinal)
+		fmt.Fprintf(&b, "  keycloak-db-etcd-data-%d:\n", ordinal)
+	}
+	return b.String()
+}
