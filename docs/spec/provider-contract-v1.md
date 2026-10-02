@@ -176,3 +176,16 @@ Examples:
 - `observability` is the service family; OpenTelemetry/OTLP is the standard telemetry protocol/data path.
 
 Provider product names never become portable application service kinds.
+
+
+## Management-surface access
+
+Human-facing provider management surfaces follow [Management surface access v1](management-access-v1.md). Providers declare the effective authentication class and role mapping; BaseHarbor MUST NOT infer stronger authorization than the provider can enforce.
+
+The normative shipped-provider/surface classification is [Provider and management-surface acceptance v1](provider-management-acceptance-v1.md).
+
+## Availability
+
+Capability providers negotiate the same portable availability requirement independently from the Runtime Provider.
+
+Providers declare SUPPORTED, PARTIALLY_SUPPORTED or UNSUPPORTED with explicit limits. A required unsupported guarantee fails before provider mutation. Provider-native clustering, quorum, replica roles and managed-service product modes remain realization state and never enter portable Application Intent.
