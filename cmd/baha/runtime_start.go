@@ -15,7 +15,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const controlPlaneStartTimeout = 10 * time.Minute
+const (
+	controlPlaneStartTimeout        = 10 * time.Minute
+	controlPlaneComposeStartTimeout = 4 * time.Minute
+)
 
 func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
@@ -264,17 +267,20 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return nil, bhruntime.Files{}, err
 	}
-	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
+	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	startCancel()
+	if err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if diagnostics, ok := compose.(interface {
 			DiagnosticsProject(context.Context, string, string, string) string
 		}); ok {
 			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
-				return nil, bhruntime.Files{}, fmt.Errorf("%w\n%s", err, details)
+				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
 			}
 		}
-		return nil, bhruntime.Files{}, err
+		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, err)
 	}
 	return compose, files, nil
 }
