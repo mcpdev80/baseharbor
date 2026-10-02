@@ -445,7 +445,6 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	}
 }
 
-
 func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testing.T) {
 	text := string(composeYAML)
 	for ordinal := 1; ordinal <= 3; ordinal++ {
