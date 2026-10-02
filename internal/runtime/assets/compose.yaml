@@ -145,8 +145,13 @@ services:
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     environment:
-      BASEHARBOR_POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
       PGPASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/baseharbor/postgres-ca/ca.pem
       BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
@@ -158,10 +163,8 @@ services:
       - /bin/sh
       - -ec
       - |
-        export PGSSLMODE=verify-full
-        export PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem
-        until pg_isready -h postgres -p 5432 -U "$BASEHARBOR_POSTGRES_USER" -d postgres; do sleep 1; done
-        exec psql -h postgres -p 5432 -U "$BASEHARBOR_POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -f /run/baseharbor/openbao-init.sh
+        until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done
+        exec /bin/sh /run/baseharbor/openbao-init.sh
 
   openbao:
     image: docker.io/openbao/openbao:2.7.0
