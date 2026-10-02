@@ -281,11 +281,6 @@ func authorizeResolvedMCPOperation(ctx context.Context, operationID string, reso
 }
 
 func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, environment, workspace string) error {
-	ctx = withTargetOverride(ctx, targetName)
-	target, err := effectiveTarget(ctx)
-	if err != nil {
-		return err
-	}
 	environment = strings.ToLower(strings.TrimSpace(environment))
 	if environment == "" {
 		environment = "dev"
@@ -294,6 +289,17 @@ func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, en
 				environment = selection.Manifest.Environment
 			}
 		}
+	}
+
+	targetName = strings.TrimSpace(targetName)
+	if targetName == "" && !operatorauth.ManagedEnvironment(environment) {
+		return authorizeMCPOperation(ctx, operationID, "", environment, "", workspace)
+	}
+
+	ctx = withTargetOverride(ctx, targetName)
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
 	}
 	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
