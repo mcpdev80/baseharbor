@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -250,6 +251,16 @@ func readApplicationSecretFromTerminalBuffered(input io.Reader, reader *bufio.Re
 	if len(value) > 1<<20 {
 		zeroBytes(value)
 		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	confirmation, err := readHiddenTerminalLineBuffered(file, reader, out, key+" value again: ")
+	if err != nil {
+		zeroBytes(value)
+		return nil, err
+	}
+	defer zeroBytes(confirmation)
+	if !bytes.Equal(value, confirmation) {
+		zeroBytes(value)
+		return nil, errors.New("application secret confirmation does not match; no changes were made")
 	}
 	return value, nil
 }
