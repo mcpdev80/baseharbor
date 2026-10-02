@@ -3,6 +3,7 @@ package runtimeexplorer
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,6 +38,10 @@ func (f *inventoryDirectRuntime) DirectOutput(_ context.Context, args ...string)
 		return "", fmt.Errorf("unexpected runtime call %q", call)
 	}
 }
+func (f *inventoryDirectRuntime) DirectStream(_ context.Context, args ...string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
 
 func TestCLIInventoryExposesStableReadOnlyResourceIDs(t *testing.T) {
 	runtime := &inventoryDirectRuntime{kind: runtimecontract.ProviderDocker}
