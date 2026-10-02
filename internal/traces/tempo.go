@@ -318,6 +318,15 @@ func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issu
 		return Placement{}, err
 	}
 	if err := runtime.UpProject(ctx, p.Project, files.Compose, files.Env); err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if diagnostics, ok := runtime.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, p.Project, files.Compose, files.Env)); details != "" {
+				return Placement{}, fmt.Errorf("%w\n%s", err, details)
+			}
+		}
 		return Placement{}, err
 	}
 	endpoint, err := ProviderEndpoint(files)
