@@ -44,6 +44,7 @@ type Driver struct {
 	runtime     Runtime
 	realization LokiRealization
 	app         application.Manifest
+	issuer      serviceaccess.Issuer
 	dataDir     string
 	namespace   string
 }
@@ -53,6 +54,7 @@ func NewDriver(runtime Runtime, app application.Manifest, issuer serviceaccess.I
 		runtime:     runtime,
 		realization: newRuntimeLokiRealization(runtime, app, issuer, "", ""),
 		app:         app,
+		issuer:      issuer,
 	}
 }
 
@@ -63,6 +65,7 @@ func NewDriverAt(runtime Runtime, app application.Manifest, issuer serviceaccess
 		runtime:     runtime,
 		realization: newRuntimeLokiRealization(runtime, app, issuer, dataDir, namespace),
 		app:         app,
+		issuer:      issuer,
 		dataDir:     dataDir,
 		namespace:   namespace,
 	}
