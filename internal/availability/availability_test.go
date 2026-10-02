@@ -77,7 +77,6 @@ func TestNegotiationCarriesTruthfulGuarantees(t *testing.T) {
 	}
 }
 
-
 func TestRuntimeAndCapabilityNegotiationRemainIndependent(t *testing.T) {
 	runtimeResult, runtimeErr := Negotiate(
 		Requirement{Component: "api", HA: true},
