@@ -244,7 +244,14 @@ func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string)
 func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance string) {
 	uiService := mongodbUIServiceName(instance)
 	accessService := mongodbUIAccessServiceName(instance)
-	mongoAccess := mongodbAccessService(instance)
+	var mongoHosts []string
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		mongoHosts = append(mongoHosts, mongodbMemberServiceName(instance, ordinal)+":27017")
+	}
+	replicaQuery := ""
+	if mongodbMemberCount(m, instance) > 1 {
+		replicaQuery = "&replicaSet=${" + mongodbReplicaSetKey(instance) + "}"
+	}
 	dbKey := mongodbRuntimeKey(instance, "DB")
 	userKey := mongodbRuntimeKey(instance, "USER")
 	passwordKey := mongodbRuntimeKey(instance, "PASSWORD")
@@ -260,7 +267,7 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     environment:
-      MONGOKU_DEFAULT_HOST: "mongodb://${%s}:${%s}@%s:27017/${%s}?authSource=${%s}&tls=true&tlsCAFile=/run/baseharbor/mongodb-ca.pem"
+      MONGOKU_DEFAULT_HOST: "mongodb://${%s}:${%s}@%s/${%s}?authSource=${%s}&tls=true&tlsCAFile=/run/baseharbor/mongodb-ca.pem%s"
       MONGOKU_SERVER_PROTOCOL_HEADER: "x-forwarded-proto"
       MONGOKU_SERVER_HOST_HEADER: "x-forwarded-host"
       MONGOKU_DATABASE_FILE: "/tmp/mongoku.db"
@@ -293,7 +300,7 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
         aliases:
           - %q
 
-`, uiService, MongoDBUIImage, userKey, passwordKey, mongoAccess, dbKey, dbKey, instance,
+`, uiService, MongoDBUIImage, userKey, passwordKey, strings.Join(mongoHosts, ","), dbKey, dbKey, replicaQuery, instance,
 		accessService, UIProxyImage, uiPortKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
 }
 
