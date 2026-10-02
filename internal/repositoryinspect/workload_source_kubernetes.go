@@ -229,7 +229,6 @@ func kubernetesPodSpec(obj map[string]any, kind string) map[string]any {
 	return map[string]any{}
 }
 
-
 func looksLikeKubernetesYAML(path string, data []byte) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext != ".yaml" && ext != ".yml" {
@@ -256,4 +255,3 @@ func containsKubernetesDocumentMarkers(data []byte) bool {
 	text := "\n" + strings.ToLower(string(data)) + "\n"
 	return strings.Contains(text, "\napiversion:") && strings.Contains(text, "\nkind:")
 }
-
