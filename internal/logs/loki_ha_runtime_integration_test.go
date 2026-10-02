@@ -47,7 +47,7 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatalf("provision Loki HA: %v", err)
 	}
 	defer func() {
-		_ = logs.DestroyProviderAt(context.Background(), runtime, m, dataDir, namespace)
+		_ = logs.DestroyProviderAt(context.Background(), runtime, dataDir, namespace, m)
 	}()
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatal(err)
