@@ -372,8 +372,6 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("update", "Fast-forward the current Git-backed application safely, preserving the existing backup/recovery policy and full post-update verification.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineUpdateInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		environment := strings.TrimSpace(input.Environment)
 		resolved, err := resolveApplicationEnvironment(ctx, store, nil, "update", environment)
 		if err != nil {
@@ -382,6 +380,8 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := authorizeMCPOperation(ctx, "update", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		if applicationUpdateHasDurableState(resolved.Manifest) && strings.TrimSpace(input.BackupPasswordFile) == "" && !input.NoBackup {
 			return machineMCPFailure(&machine.Error{
 				Code:        machine.ErrorApprovalRequired,
@@ -446,8 +446,6 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("backup", "Create the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineBackupInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		passwordFile := strings.TrimSpace(input.PasswordFile)
 		if passwordFile == "" {
 			return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed, "password_file is required.", "Provide an owner-only local password file; plaintext backup passwords are never accepted through MCP.", false))
@@ -460,6 +458,8 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := authorizeMCPOperation(ctx, "backup", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args = append(args, "--password-file", passwordFile)
 		if output := strings.TrimSpace(input.OutputPath); output != "" {
 			args = append(args, "--output", output)
@@ -490,8 +490,6 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		backupPath := strings.TrimSpace(input.BackupPath)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
 		if backupPath == "" || passwordFile == "" {
@@ -500,6 +498,8 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := authorizeMCPOperation(ctx, "restore", input.Target, input.Environment, input.Name, ""); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args := []string{backupPath}
 		if name := strings.TrimSpace(input.Name); name != "" {
 			args = append(args, name)
@@ -533,8 +533,6 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
-		ctx, cancelLifecycle := machineLifecycleContext(ctx)
-		defer cancelLifecycle()
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "destroy")
 		if err != nil {
 			return machineMCPFailure(err)
@@ -542,6 +540,8 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		if err := authorizeMCPOperation(ctx, "destroy", resolved.Target.Name, resolved.Manifest.Environment, resolved.Manifest.Name, ""); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx, cancelLifecycle := machineLifecycleContext(ctx)
+		defer cancelLifecycle()
 		args := machineApplicationArgs(input.Name, input.Environment)
 		args = append(args, "--yes")
 		if input.FullReset {
