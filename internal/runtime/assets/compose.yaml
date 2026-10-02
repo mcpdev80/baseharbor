@@ -33,6 +33,11 @@ services:
     image: ghcr.io/zalando/spilo-18:4.1-p2
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
@@ -44,22 +49,29 @@ services:
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
       USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
-      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: |
         postgresql:
           connect_address: postgres-member-1:5432
         restapi:
           connect_address: postgres-member-1:8008
+    tmpfs:
+      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:
       - postgres-data-1:/home/postgres/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
 
   postgres-member-2:
     image: ghcr.io/zalando/spilo-18:4.1-p2
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
@@ -71,22 +83,29 @@ services:
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
       USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
-      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: |
         postgresql:
           connect_address: postgres-member-2:5432
         restapi:
           connect_address: postgres-member-2:8008
+    tmpfs:
+      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:
       - postgres-data-2:/home/postgres/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
 
   postgres-member-3:
     image: ghcr.io/zalando/spilo-18:4.1-p2
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
@@ -98,17 +117,19 @@ services:
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
       USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
-      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
       SPILO_CONFIGURATION: |
         postgresql:
           connect_address: postgres-member-3:5432
         restapi:
           connect_address: postgres-member-3:8008
+    tmpfs:
+      - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:
       - postgres-data-3:/home/postgres/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
 
   postgres:
     image: docker.io/library/haproxy:3.2.23-alpine
