@@ -139,6 +139,16 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatalf("manager auth after credential rotation: %v", err)
 	}
 
+	if err := rotateControlPlaneDatabaseCredentials(ctx, compose, files, recovery); err != nil {
+		t.Fatalf("rotate control-plane database credentials: %v", err)
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		t.Fatalf("manager auth after database credential rotation: %v", err)
+	}
+	if err := verifyOpenBaoManagementUI(ctx, files); err != nil {
+		t.Fatalf("OpenBao management UI after database credential rotation: %v", err)
+	}
+
 	environment := mustRuntimeEnvForHATest(t, files.Env)
 	workdir := filepath.Dir(files.Compose)
 
