@@ -12,6 +12,19 @@ import (
 )
 
 type memoryPreflightOverrideKey struct{}
+type assumeYesKey struct{}
+
+func withAssumeYes(ctx context.Context, enabled bool) context.Context {
+	if !enabled {
+		return ctx
+	}
+	return context.WithValue(ctx, assumeYesKey{}, true)
+}
+
+func assumeYes(ctx context.Context) bool {
+	value, _ := ctx.Value(assumeYesKey{}).(bool)
+	return value
+}
 
 func withMemoryPreflightOverride(ctx context.Context, enabled bool) context.Context {
 	if !enabled {
@@ -102,6 +115,10 @@ func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, pr
 			return nil
 		}
 		if !mutating {
+			return nil
+		}
+		if assumeYes(ctx) {
+			fmt.Fprintln(out, "[WARN] host memory approval accepted by --yes: continuing despite tight headroom")
 			return nil
 		}
 		if noInput(ctx) || !readerIsTerminal(in) {

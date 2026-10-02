@@ -39,7 +39,7 @@ func ReallocateRuntimePorts(m Manifest, files RuntimeFiles) error {
 		values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
 		excluded[port] = struct{}{}
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range ValkeyInstanceNames(m) {
 		port, err := allocateLoopbackPort(excluded)
 		if err != nil {
 			return err

@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+const testApplicationID = "11111111-1111-4111-8111-111111111111"
+
+func testDeploymentIdentity(t *testing.T, target, application, environment string) DeploymentIdentity {
+	t.Helper()
+	id, err := NewDeploymentIdentity(target, testApplicationID, application, environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 func TestResolveTargetPrecedence(t *testing.T) {
 	cfg := Config{
 		Version:       ConfigVersion,
@@ -92,7 +103,7 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 	defer os.Chdir(old)
 
 	record := DeploymentRecord{
-		Identity: DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: "dev"},
+		Identity: testDeploymentIdentity(t, "docker-dev", "demo", "dev"),
 		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
 	}
 	if err := SaveDeploymentRecord(record); err != nil {
@@ -109,7 +120,7 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 
 func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	id := DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: "dev"}
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
 	root, err := DeploymentRoot(id)
 	if err != nil {
 		t.Fatal(err)
@@ -126,8 +137,13 @@ func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected DeploymentRecordStateError, got %T: %v", err, err)
 	}
-	if stateErr.Kind != "incomplete" || stateErr.Identity != id {
+	if stateErr.Kind != "incomplete" ||
+		stateErr.Identity.Target != id.Target ||
+		stateErr.Identity.DeploymentID != id.DeploymentID {
 		t.Fatalf("unexpected state error: %#v", stateErr)
+	}
+	if stateErr.Identity.ApplicationID != "" || stateErr.Identity.Application != "" || stateErr.Identity.Environment != "" {
+		t.Fatalf("missing deployment record must not invent semantic identity: %#v", stateErr.Identity)
 	}
 }
 
@@ -135,7 +151,7 @@ func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	for _, target := range []string{"docker-dev", "podman-dev"} {
 		if err := SaveDeploymentRecord(DeploymentRecord{
-			Identity: DeploymentIdentity{Target: target, Application: "demo", Environment: "dev"},
+			Identity: testDeploymentIdentity(t, target, "demo", "dev"),
 			Applied:  AppliedDeployment{RuntimeProvider: target},
 		}); err != nil {
 			t.Fatal(err)
@@ -154,7 +170,7 @@ func TestMultipleEnvironmentsWithinOneTarget(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	for _, environment := range []string{"dev", "test"} {
 		if err := SaveDeploymentRecord(DeploymentRecord{
-			Identity: DeploymentIdentity{Target: "docker-dev", Application: "demo", Environment: environment},
+			Identity: testDeploymentIdentity(t, "docker-dev", "demo", environment),
 			Applied:  AppliedDeployment{RuntimeProvider: "docker"},
 		}); err != nil {
 			t.Fatal(err)
@@ -173,5 +189,134 @@ func TestMultipleEnvironmentsWithinOneTarget(t *testing.T) {
 	}
 	if !seen["dev"] || !seen["test"] {
 		t.Fatalf("environments missing from target registry: %#v", seen)
+	}
+}
+
+func TestDeploymentRootUsesStableDeploymentIDNotReadableNames(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	before, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := id
+	renamed.Application = "renamed-demo"
+	after, err := DeploymentRoot(renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("deployment root changed after readable rename: before=%q after=%q", before, after)
+	}
+	if filepath.Base(before) != id.DeploymentID {
+		t.Fatalf("deployment state root is not keyed by deployment ID: %q", before)
+	}
+}
+
+func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	record, found, err := FindDeployment("docker-dev", testApplicationID, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || record.Identity.DeploymentID != id.DeploymentID {
+		t.Fatalf("stable deployment lookup failed: found=%t record=%#v", found, record)
+	}
+
+	record.Identity.Application = "renamed-demo"
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	again, found, err := FindDeployment("docker-dev", testApplicationID, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || again.Identity.DeploymentID != id.DeploymentID || again.Identity.Application != "renamed-demo" {
+		t.Fatalf("rename did not preserve stable deployment identity: %#v", again.Identity)
+	}
+}
+
+func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	first := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
+	second := testDeploymentIdentity(t, "docker-dev", "renamed-alpha", "dev")
+	if first.DeploymentID == second.DeploymentID {
+		t.Fatal("expected unique deployment IDs")
+	}
+	for _, id := range []DeploymentIdentity{first, second} {
+		if err := SaveDeploymentRecord(DeploymentRecord{
+			Identity: id,
+			Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := FindDeployment("docker-dev", testApplicationID, "dev"); err == nil {
+		t.Fatal("ambiguous stable application ownership was accepted")
+	}
+}
+
+func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
+	record := DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+
+	requested := id
+	requested.Application = "renamed-alpha"
+	got, err := LoadDeploymentRecord(requested)
+	if err != nil {
+		t.Fatalf("stable identity lookup rejected readable rename: %v", err)
+	}
+	if got.Identity.DeploymentID != id.DeploymentID || got.Identity.ApplicationID != id.ApplicationID {
+		t.Fatalf("stable identity changed across readable rename: %#v", got.Identity)
+	}
+}
+
+func TestDeleteDeploymentRecordRemovesEntireDeploymentRoot(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	record := DeploymentRecord{
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "state", "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "state", "nested", "marker"), []byte("owned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteDeploymentRecord(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("deployment root remains after delete: err=%v", err)
+	}
+	records, err := ListDeployments("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("deployment registry still contains deleted record: %#v", records)
 	}
 }

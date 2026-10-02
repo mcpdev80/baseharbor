@@ -37,6 +37,7 @@ type Route struct {
 	Service          string `json:"service"`
 	TargetPort       int    `json:"target_port"`
 	Protocol         string `json:"protocol"`
+	ProviderProtocol string `json:"provider_protocol,omitempty"`
 	WorkloadProtocol string `json:"workload_protocol,omitempty"`
 	Visibility       string `json:"visibility"`
 	PublishedPort    int    `json:"published_port"`
@@ -125,18 +126,24 @@ func (d *Driver) Preflight(ctx context.Context, resource capability.Resource, bi
 		return fmt.Errorf("HTTP exposure %q binding targets %q, expected service/%s", resource.Name, binding.Workload, route.Service)
 	}
 	if route.Protocol == "https" {
-		if d.deployment.TLSMode != "existing" {
-			return fmt.Errorf("managed HTTPS exposure %q currently requires existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.deployment.TLSMode)
-		}
-		for _, name := range []string{"cert.pem", "key.pem"} {
-			path := filepath.Join(d.deployment.TLSDir, name)
-			info, err := os.Stat(path)
-			if err != nil {
-				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
+		switch d.deployment.TLSMode {
+		case "local":
+			// Development HTTPS terminates at the target-wide development gateway.
+			// The per-application Caddy provider remains an internal HTTP hop so it
+			// does not require or duplicate managed-local leaf certificate state.
+		case "existing":
+			for _, name := range []string{"cert.pem", "key.pem"} {
+				path := filepath.Join(d.deployment.TLSDir, name)
+				info, err := os.Stat(path)
+				if err != nil {
+					return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
+				}
+				if !info.Mode().IsRegular() {
+					return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
+				}
 			}
-			if !info.Mode().IsRegular() {
-				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
-			}
+		default:
+			return fmt.Errorf("managed HTTPS exposure %q requires local development TLS termination or existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.deployment.TLSMode)
 		}
 	}
 	if err := capability.RequireIntegrationContract(d.IntegrationDescriptor()); err != nil {
@@ -254,7 +261,7 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, bindi
 		probeCtx, probeCancel := context.WithTimeout(verifyCtx, 3*time.Second)
 		status = endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
 			Service: route.Service,
-			Scheme:  route.Protocol,
+			Scheme:  normalizedProviderProtocol(route),
 			Host:    d.state.Host,
 			Port:    route.PublishedPort,
 		}, "127.0.0.1", route.PublishedPort)
@@ -342,7 +349,7 @@ func Inspect(ctx context.Context, compose bhruntime.RuntimeProvider, runtime app
 	for _, route := range state.Routes {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		status := endpoint.ProbeHTTPDialTarget(probeCtx, endpoint.Endpoint{
-			Service: route.Service, Scheme: route.Protocol, Host: state.Host, Port: route.PublishedPort,
+			Service: route.Service, Scheme: normalizedProviderProtocol(route), Host: state.Host, Port: route.PublishedPort,
 		}, "127.0.0.1", route.PublishedPort)
 		cancel()
 		statuses = append(statuses, status)
@@ -422,11 +429,16 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 				workloadProtocol = "https"
 			}
 		}
+		providerProtocol := requirement.Protocol
+		if providerProtocol == "https" && d.deployment.TLSMode == "local" {
+			providerProtocol = "http"
+		}
 		route := Route{
 			Name: name, Service: requirement.Service, TargetPort: requirement.TargetPort,
-			Protocol: requirement.Protocol, WorkloadProtocol: workloadProtocol, Visibility: requirement.Visibility,
+			Protocol: requirement.Protocol, ProviderProtocol: providerProtocol,
+			WorkloadProtocol: workloadProtocol, Visibility: requirement.Visibility,
 		}
-		if route.Protocol == "https" {
+		if route.ProviderProtocol == "https" {
 			certData, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, "cert.pem"))
 			if err != nil {
 				return State{}, false, err
@@ -438,7 +450,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 			route.PublishedPort = prior.PublishedPort
 		} else {
 			preferred := 8080
-			if route.Protocol == "https" {
+			if route.ProviderProtocol == "https" {
 				preferred = 8443
 			}
 			port, err := choosePublishedPort(preferred, route.Visibility, used)
@@ -484,7 +496,7 @@ func (d *Driver) ensureFiles() (State, bool, error) {
 				return State{}, false, err
 			}
 		}
-		if route.Protocol == "https" {
+		if route.ProviderProtocol == "https" {
 			for _, name := range []string{"cert.pem", "key.pem"} {
 				data, err := os.ReadFile(filepath.Join(d.deployment.TLSDir, name))
 				if err != nil {
@@ -519,7 +531,7 @@ func composeYAML(state State, files Files) string {
 	for _, route := range state.Routes {
 		serviceName := "baseharbor-internal-exposure-" + route.Name
 		containerPort := 8080
-		if route.Protocol == "https" {
+		if normalizedProviderProtocol(route) == "https" {
 			containerPort = 8443
 		}
 		fmt.Fprintf(&b, "  %s:\n", serviceName)
@@ -545,7 +557,7 @@ func composeYAML(state State, files Files) string {
 		b.WriteString("    volumes:\n")
 		routeDir := filepath.Join(files.Dir, "routes", route.Name)
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "Caddyfile")+":/etc/caddy/Caddyfile:ro"))
-		if route.Protocol == "https" {
+		if normalizedProviderProtocol(route) == "https" {
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "cert.pem")+":/certs/cert.pem:ro"))
 			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(routeDir, "key.pem")+":/certs/key.pem:ro"))
 		}
@@ -563,7 +575,7 @@ func composeYAML(state State, files Files) string {
 func caddyfile(route Route) string {
 	listen := ":8080"
 	var tlsLine string
-	if route.Protocol == "https" {
+	if normalizedProviderProtocol(route) == "https" {
 		listen = ":8443"
 		tlsLine = "  tls /certs/cert.pem /certs/key.pem\n"
 	}
@@ -571,6 +583,17 @@ func caddyfile(route Route) string {
 		return fmt.Sprintf("%s {\n%s  reverse_proxy https://%s:%d {\n    transport http {\n      tls\n      tls_trust_pool file /trust/workload-ca.pem\n      tls_server_name %s\n    }\n  }\n}\n", listen, tlsLine, route.Service, route.TargetPort, route.Service)
 	}
 	return fmt.Sprintf("%s {\n%s  reverse_proxy %s:%d\n}\n", listen, tlsLine, route.Service, route.TargetPort)
+}
+
+func normalizedProviderProtocol(route Route) string {
+	value := strings.ToLower(strings.TrimSpace(route.ProviderProtocol))
+	if value == "" {
+		value = strings.ToLower(strings.TrimSpace(route.Protocol))
+	}
+	if value == "https" {
+		return "https"
+	}
+	return "http"
 }
 
 func normalizedWorkloadProtocol(value string) string {

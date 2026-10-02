@@ -120,6 +120,11 @@ func (e *applicationUpExecution) runPreflight(ctx context.Context) error {
 		printWorkloadSecurityFindings(e.out, e.workloadSecurity)
 	}
 	if !ok {
+		for _, result := range results {
+			if result.Err != nil {
+				return fmt.Errorf("application up preflight failed: %w", result.Err)
+			}
+		}
 		return errors.New("application up preflight failed")
 	}
 	if err := prepareUndeclaredProviderCleanup(ctx, e.compose, e.resolved, e.providers, e.issuer); err != nil {

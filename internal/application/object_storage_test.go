@@ -10,9 +10,10 @@ import (
 
 func TestObjectStorageManifestRoundTrip(t *testing.T) {
 	m := WithObjectStorageBuckets(Manifest{
-		Version:     CurrentVersion,
-		Name:        "demo",
-		Environment: "dev",
+		Version:       CurrentVersion,
+		ApplicationID: MustNewApplicationID(),
+		Name:          "demo",
+		Environment:   "dev",
 	}, "assets", "backups")
 
 	text := m.YAML()

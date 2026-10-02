@@ -3,6 +3,8 @@ package objectstorage
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -33,11 +35,21 @@ func (f *stdinCaptureRuntime) ExecProjectInput(_ context.Context, _, _, _ string
 
 func TestSeaweedShellKeepsSensitiveCommandOutOfArgumentsAndErrors(t *testing.T) {
 	runtime := &stdinCaptureRuntime{err: errors.New("runtime failed")}
-	driver := NewDriver(runtime, application.Manifest{}, application.RuntimeFiles{}, nil)
-	files := ProviderFiles{Compose: "/provider/compose.yaml", Env: "/provider/runtime.env"}
+	dataDir := t.TempDir()
+	providerDir := filepath.Join(dataDir, "providers", "seaweedfs")
+	if err := os.MkdirAll(providerDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"compose.yaml", "runtime.env"} {
+		if err := os.WriteFile(filepath.Join(providerDir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realization := newRuntimeSeaweedFSRealization(runtime, nil, dataDir, "", application.Manifest{})
+	driver := NewDriverWithRealization(realization, application.Manifest{}, application.RuntimeFiles{})
 	command := "s3.configure -access_key=TESTACCESS -secret_key=TESTSECRET -user=test -apply"
 
-	err := driver.runSeaweedShell(context.Background(), files, command)
+	err := driver.runSeaweedShell(context.Background(), command)
 	if err == nil {
 		t.Fatal("runSeaweedShell() error = nil")
 	}

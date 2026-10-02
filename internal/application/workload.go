@@ -218,7 +218,7 @@ func selectWorkloadServices(m Manifest, available, requested []string) ([]string
 	for _, instance := range SQLInstanceNames(m) {
 		shadowed[runtimeServiceName("postgres", instance)] = struct{}{}
 	}
-	for _, instance := range CacheInstanceNames(m) {
+	for _, instance := range ValkeyInstanceNames(m) {
 		shadowed[runtimeServiceName("valkey", instance)] = struct{}{}
 		if instance == defaultServiceInstance {
 			shadowed["redis"] = struct{}{}
@@ -381,7 +381,7 @@ func writeWorkloadOverrideServices(b *strings.Builder, m Manifest, services []st
 		_, metricsSource := topology.metricsServices[service]
 		_, runtimeObjectStorage := topology.runtimeObjectStorageServices[service]
 		serviceObjectStorage := topology.objectStorage || runtimeObjectStorage
-		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m)
+		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m) || HasIdentity(m)
 		hasNetworks := topology.backendNetwork || serviceObjectStorage || topology.telemetryManaged || topology.identityManaged || metricsSource || exposed || topology.canonicalDevWorkload
 		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
@@ -475,7 +475,7 @@ func writeWorkloadServiceVolumes(b *strings.Builder, m Manifest, values map[stri
 				fmt.Fprintf(b, "      - %s\n", strconv.Quote(ca+":"+postgresTLSCAContainerPath(instance)+":ro"))
 			}
 		}
-		for _, instance := range CacheInstanceNames(m) {
+		for _, instance := range ValkeyInstanceNames(m) {
 			if ca := strings.TrimSpace(values[valkeyTLSCAKey(instance)]); ca != "" {
 				fmt.Fprintf(b, "      - %s\n", strconv.Quote(ca+":"+valkeyTLSCAContainerPath(instance)+":ro"))
 			}
@@ -687,7 +687,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 	}
 
-	redis := CacheInstanceNames(m)
+	redis := ValkeyInstanceNames(m)
 	preferredRedis := preferredServiceInstance(redis)
 	for _, instance := range redis {
 		uri, err := valkeyContainerConnectionURL(values, instance)

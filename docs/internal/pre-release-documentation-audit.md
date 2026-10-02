@@ -137,44 +137,48 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 9. Mandatory pre-release gate
 
-Do not start the complete pre-release matrix until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and the versioned exact demo-ref file are complete for the candidate.
+Do not start the final complete pre-release orchestrator until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and the versioned exact demo-ref file are complete for the candidate.
 
-Run `.github/workflows/pre-release.yml` once for the exact target tag and exact candidate SHA as the release-wide baseline.
+BaseHarbor uses **atomic-first release validation**:
 
-If that baseline finds failures:
-- [ ] Do not repeatedly rerun the complete pre-release matrix.
-- [ ] Fix one failed area at a time.
-- [ ] Prefer local or isolated validation first where practical.
-- [ ] Rerun only the failed job, gate or smallest relevant acceptance workflow until that area is green.
-- [ ] Do not start another complete pre-release run while any known failing area is still unproven.
-- [ ] After every previously failing area is individually green, run the complete pre-release matrix once more.
-- [ ] Treat only that final complete green run as the immutable release approval/evidence.
+1. Select the exact candidate SHA and exact pinned demo SHA.
+2. Prove static and runtime gates individually or in small groups before the final release-boundary run.
+3. When a gate fails, fix and rerun only that gate (or the smallest directly affected gate set).
+4. Keep every gate result bound to the exact BaseHarbor candidate SHA, demo SHA, runtime, gate, resource profile and outcome.
+5. A code or demo change invalidates evidence for the changed SHA. Re-run affected atomic gates against the new immutable pair.
+6. Do not repeatedly run the complete pre-release orchestrator while known atomic failures remain.
+7. Only after the atomic gate set is individually green on the final unchanged candidate, run `.github/workflows/pre-release.yml` once as the release-boundary approval.
+
+The final complete run is not a debugging loop. It is the proof that the exact candidate can reproduce the **entire required evidence set in one release run**.
 
 The final gate must prove:
 
 - [ ] Release tag format.
 - [ ] Changelog release section exists.
 - [ ] Release notes exist.
+- [ ] Exact BaseHarbor candidate SHA and exact external `baseharbor-demo` SHA are pinned.
 - [ ] Go formatting.
 - [ ] Source/package tests.
 - [ ] `go vet`.
 - [ ] CLI build.
 - [ ] Control-plane restart and operator-held OpenBao recovery.
 - [ ] Real Loki/Alloy log ingestion.
-- [ ] Real OTLP -> Tempo trace ingestion.
+- [ ] Real OTLP -> Tempo trace ingestion, including a trace query from Tempo.
 - [ ] EN/DE strict documentation builds.
 - [ ] Documentation audit.
 - [ ] Workflow syntax/actionlint.
 - [ ] GoReleaser snapshot.
 - [ ] linux/amd64 and linux/arm64 release archives/checksums.
 - [ ] Runtime image builds without publishing.
-- [ ] Docker runtime acceptance.
-- [ ] Podman/Quadlet runtime acceptance.
-- [ ] Exact external `baseharbor-demo` SHA is pinned from the candidate's versioned `docs/releases/vX.Y.Z.demo-ref` file.
-- [ ] Full Docker demo acceptance passes.
-- [ ] Full Podman/Quadlet demo acceptance passes.
-- [ ] Combined release-gate evidence succeeds.
-- [ ] Immutable `release-approved.json` is produced with candidate SHA, demo SHA, workflow run and success result.
+- [ ] Docker runtime acceptance through the complete required atomic gate set.
+- [ ] Podman/Quadlet runtime acceptance through the complete required atomic gate set.
+- [ ] Podman validation blocks fallback to `podman compose`.
+- [ ] Every required atomic gate emits `baseharbor.pre-release.gate-evidence/v1`.
+- [ ] The final manifest contains exactly the expected unique gate IDs, all with the same candidate SHA and demo SHA and `outcome=success`.
+- [ ] No required gate/evidence item is missing, duplicated or stale.
+- [ ] Immutable `release-approved.json` is produced only after the complete manifest succeeds; it records candidate SHA, demo SHA, workflow run, gate count and success result.
+
+Atomic evidence is **not** permission to combine evidence from different candidate SHAs into one approval. Targeted runs are for diagnosis and pre-proof; the final approval is produced only by the complete orchestrator on the final unchanged candidate.
 
 Do not launch duplicate release validation while an equivalent run is queued or in progress.
 

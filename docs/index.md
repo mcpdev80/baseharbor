@@ -1,6 +1,6 @@
 # BaseHarbor documentation
 
-BaseHarbor keeps documentation separated by purpose so you can find the right level quickly.
+BaseHarbor documentation is organized around the CLI and the domain concepts it operates.
 
 > **AI-generated, human-specified, machine-verified.**  
 > BaseHarbor treats human intent and architecture as the specification, AI as an implementation accelerator, and deterministic machine verification as the evidence that the result is correct.
@@ -9,48 +9,51 @@ BaseHarbor keeps documentation separated by purpose so you can find the right le
 
 Start with [Getting started](tutorials/getting-started.md).
 
-## Trying to do something?
+## CLI
 
-Use a task guide:
+The `baha` CLI is the primary human interface.
 
-- [Choose an environment](how-to/environments.md)
-- [Use PostgreSQL](how-to/postgres.md)
-- [Use cache](how-to/cache.md)
-- [Use secrets](how-to/secrets.md)
-- [Use object storage](how-to/object-storage.md)
-- [Use observability](how-to/observability.md)
-- [Back up and restore](how-to/backup-restore.md)
+Start with the [CLI overview](cli/index.md), then use the categorized command documentation:
 
-## Trying to understand how it works?
+- [Core workflow](cli/core.md)
+- [Applications](cli/applications.md)
+- [Targets](cli/targets.md)
+- [Providers](cli/providers.md)
+- [Development](cli/development.md)
+- [Organization and policy](cli/organization-policy.md)
+- [Security and trust](cli/security-trust.md)
+- [Automation and agents](cli/automation-agents.md)
+- [Shell and UX](cli/shell-ux.md)
+- [Global options](cli/global-options.md)
 
-Read the short explanations:
+## Provider and service guides
 
-- [Architecture](explanation/architecture.md)
+- [PostgreSQL](how-to/postgres.md)
+- [Cache](how-to/cache.md)
+- [Durable key-value](how-to/durable-key-value.md)
+- [Document database](how-to/document-database.md)
+- [Messaging](how-to/messaging.md)
+- [Object storage](how-to/object-storage.md)
+- [Secrets](how-to/secrets.md)
+- [Observability](how-to/observability.md)
+- [External / BYO providers](how-to/external-providers.md)
+
+## Platform and security
+
 - [Targets and deployment destinations](explanation/targets.md)
-- [Application contract](explanation/application-contract.md)
+- [Organization / Platform Configuration](explanation/organization-configuration.md)
 - [Providers](explanation/providers.md)
 - [Security](explanation/security.md)
+- [Authentication](explanation/authentication.md)
 
-## Looking up exact behavior?
+## Reference and specifications
 
-Use reference documentation:
-
-- [CLI](reference/cli.md)
 - [Manifest](reference/manifest.md)
-- [MCP](reference/mcp.md)
+- [MCP / agent interface](reference/mcp.md)
 - [Errors](reference/errors.md)
-
-## Implementing or validating BaseHarbor?
-
-Use normative specifications:
-
 - [Specification index](spec/README.md)
-- [Application contract v1](spec/application-contract-v1.md)
-- [Provider contract v1](spec/provider-contract-v1.md)
-- [Reconciliation v1](spec/reconciliation-v1.md)
-- [Machine interface v1](spec/machine-interface-v1.md)
-- [Security invariants](spec/security-invariants.md)
+- [Architecture decisions](decisions/index.md)
 
-Architecture rationale lives in [ADRs](decisions/). Detailed future work lives in GitHub Issues. Release history lives in [releases](releases/).
+Future planning belongs in GitHub Issues. Delivered history belongs in [release notes](releases/index.md).
 
 English is canonical. German documentation may provide maintained human-facing guidance, but it does not redefine normative behavior.

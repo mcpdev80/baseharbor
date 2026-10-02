@@ -22,12 +22,15 @@
         "enum": [
           "sql",
           "cache",
+          "key-value",
+          "document-database",
           "object-storage",
           "secrets",
           "messaging",
           "vector",
           "observability",
-          "identity"
+          "identity",
+          "exposure"
         ]
       },
       "uniqueItems": true

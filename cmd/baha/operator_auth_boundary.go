@@ -62,7 +62,7 @@ func resolveOperatorAuthBoundaryConfig(ctx context.Context, target, environment 
 		return envCfg, nil
 	}
 
-	if noInput(ctx) {
+	if noInput(ctx) || assumeYes(ctx) {
 		return operatorauth.Config{}, operatorauth.ErrConfigurationRequired
 	}
 	interactive, ok := operatorauth.InteractiveFromContext(ctx)

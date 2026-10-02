@@ -39,8 +39,14 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
-		manifestPath, err := application.FindRepositoryManifest(cwd)
+		// app init is rooted in the current directory. An ancestor application
+		// manifest must not silently capture a nested project that the user is
+		// explicitly adopting as its own application.
+		manifestPath, hasLocalManifest, err := currentRepositoryManifest(cwd)
 		if err != nil {
+			return err
+		}
+		if !hasLocalManifest {
 			if len(injected) != 0 {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
@@ -89,6 +95,21 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func currentRepositoryManifest(cwd string) (string, bool, error) {
+	path := filepath.Join(filepath.Clean(cwd), application.RepositoryManifestName)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return path, false, nil
+	}
+	if err != nil {
+		return path, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return path, false, fmt.Errorf("%s is not a regular file", path)
+	}
+	return path, true, nil
 }
 
 func extractDeclaredInputArgs(args []string) ([]string, map[string]string, error) {
@@ -257,6 +278,13 @@ func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedAppl
 		}
 		return usageError("required application deployment inputs are unresolved: "+strings.Join(names, ", "), "Provide them with app init flags or --input NAME=VALUE in non-interactive automation.")
 	}
+	if resolved.DeploymentRecord == nil {
+		pending, err := recordPendingDeployment(ctx, resolved)
+		if err != nil {
+			return fmt.Errorf("record deployment before saving deployment inputs: %w", err)
+		}
+		resolved.DeploymentRecord = &pending
+	}
 	if development {
 		return runRepositoryRuntimeInit(ctx, resolved, repositoryInitOptions{Yes: true}, out)
 	}
@@ -341,6 +369,8 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	}
 	restoreEnvironment := pushApplicationEnvironmentOverride(opts.Environment)
 	defer restoreEnvironment()
+	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
+	ctx = withAssumeYes(ctx, opts.Yes)
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}

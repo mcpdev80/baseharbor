@@ -141,4 +141,4 @@ The final release reuses that immutable pre-release evidence instead of rerunnin
 - [PostgreSQL](../how-to/postgres.md)
 - [Secrets](../how-to/secrets.md)
 - [Backup and restore](../how-to/backup-restore.md)
-- [CLI reference](../reference/cli.md)
+- [CLI documentation](../cli/index.md)

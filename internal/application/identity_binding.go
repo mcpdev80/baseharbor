@@ -22,10 +22,26 @@ type IdentityDiscovery struct {
 }
 
 func MaterializeIdentityBinding(m Manifest, files RuntimeFiles, provider string, discovery IdentityDiscovery, clientID, clientSecret, trustBundlePath string) error {
-	return MaterializeIdentityBindingWithWorkloadDiscovery(m, files, provider, discovery, discovery, clientID, clientSecret, trustBundlePath)
+	trust, err := readIdentityTrustBundle(trustBundlePath)
+	if err != nil {
+		return err
+	}
+	return MaterializeIdentityBindingMaterial(m, files, provider, discovery, clientID, clientSecret, trust)
+}
+
+func MaterializeIdentityBindingMaterial(m Manifest, files RuntimeFiles, provider string, discovery IdentityDiscovery, clientID, clientSecret string, trustBundle []byte) error {
+	return MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m, files, provider, discovery, discovery, clientID, clientSecret, trustBundle)
 }
 
 func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFiles, provider string, discovery, workloadDiscovery IdentityDiscovery, clientID, clientSecret, trustBundlePath string) error {
+	trust, err := readIdentityTrustBundle(trustBundlePath)
+	if err != nil {
+		return err
+	}
+	return MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m, files, provider, discovery, workloadDiscovery, clientID, clientSecret, trust)
+}
+
+func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files RuntimeFiles, provider string, discovery, workloadDiscovery IdentityDiscovery, clientID, clientSecret string, trustBundle []byte) error {
 	if !m.Services.Identity {
 		return fmt.Errorf("identity binding requires services.identity enabled")
 	}
@@ -68,16 +84,12 @@ func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFi
 		entries["client-secret"] = clientSecret
 		workloadEntries["client-secret"] = clientSecret
 	}
-	if strings.TrimSpace(trustBundlePath) != "" {
-		trust, err := os.ReadFile(filepath.Clean(trustBundlePath))
-		if err != nil {
-			return fmt.Errorf("read identity trust bundle: %w", err)
-		}
-		if len(strings.TrimSpace(string(trust))) == 0 {
+	if len(trustBundle) > 0 {
+		if len(strings.TrimSpace(string(trustBundle))) == 0 {
 			return fmt.Errorf("identity trust bundle is empty")
 		}
-		entries["ca.crt"] = string(trust)
-		workloadEntries["ca.crt"] = string(trust)
+		entries["ca.crt"] = string(trustBundle)
+		workloadEntries["ca.crt"] = string(trustBundle)
 	}
 	for name, value := range entries {
 		if err := capabilityBindingEntryName(name); err != nil {
@@ -94,11 +106,8 @@ func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFi
 	}
 	for name, value := range workloadEntries {
 		path := filepath.Join(workload, name)
-		if err := os.WriteFile(path, []byte(value+"\n"), 0o444); err != nil {
+		if err := writeReadOnlyProjectionFile(path, []byte(value+"\n")); err != nil {
 			return fmt.Errorf("project workload identity binding %s: %w", name, err)
-		}
-		if err := os.Chmod(path, 0o444); err != nil {
-			return err
 		}
 	}
 
@@ -113,7 +122,7 @@ func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFi
 	} else {
 		delete(runtimeValues, "IDENTITY_CLIENT_SECRET")
 	}
-	if strings.TrimSpace(trustBundlePath) != "" {
+	if len(trustBundle) > 0 {
 		runtimeValues["IDENTITY_CA_FILE"] = filepath.Join(binding, "ca.crt")
 	} else {
 		delete(runtimeValues, "IDENTITY_CA_FILE")
@@ -134,13 +143,66 @@ func MaterializeIdentityBindingWithWorkloadDiscovery(m Manifest, files RuntimeFi
 	if clientSecret != "" {
 		values["OIDC_CLIENT_SECRET_FILE"] = filepath.Join(binding, "client-secret")
 	}
-	if strings.TrimSpace(trustBundlePath) != "" {
+	if len(trustBundle) > 0 {
 		values["OIDC_CA_FILE"] = filepath.Join(binding, "ca.crt")
 	}
 	if err := writeApplicationEnvValues(files.ApplicationEnv, values); err != nil {
 		return err
 	}
 	return nil
+}
+
+func writeReadOnlyProjectionFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		cleanup()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o444); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
+func readIdentityTrustBundle(path string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, nil
+	}
+	trust, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("read identity trust bundle: %w", err)
+	}
+	return trust, nil
 }
 
 func identityBindingEntries(provider string, discovery IdentityDiscovery, clientID string) map[string]string {

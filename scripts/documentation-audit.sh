@@ -7,6 +7,23 @@ required=(
   docs/tutorials/getting-started.md
   docs/explanation/architecture.md
   docs/reference/cli.md
+  docs/cli/index.md
+  docs/cli/command-index.md
+  docs/cli/core.md
+  docs/cli/applications.md
+  docs/cli/targets.md
+  docs/cli/providers.md
+  docs/cli/development.md
+  docs/cli/organization-policy.md
+  docs/cli/security-trust.md
+  docs/cli/automation-agents.md
+  docs/cli/shell-ux.md
+  docs/cli/global-options.md
+  docs/how-to/external-providers.md
+  docs/how-to/durable-key-value.md
+  docs/how-to/document-database.md
+  docs/how-to/messaging.md
+  docs/explanation/organization-configuration.md
   docs/reference/manifest.md
   docs/spec/README.md
   docs/spec/application-contract-v1.md
@@ -38,8 +55,36 @@ max_bytes() {
 }
 
 max_bytes docs/explanation/architecture.md 9000
+max_bytes docs/reference/cli.md 3000
 max_bytes docs/roadmap.md 6000
 max_bytes docs/DEVELOPMENT_GUIDELINES.md 12000
+
+
+# The CLI is a first-class, categorized public documentation axis.
+grep -Fq "  - CLI:" mkdocs.yml
+for cli_page in \
+  cli/index.md \
+  cli/command-index.md \
+  cli/core.md \
+  cli/applications.md \
+  cli/targets.md \
+  cli/providers.md \
+  cli/development.md \
+  cli/organization-policy.md \
+  cli/security-trust.md \
+  cli/automation-agents.md \
+  cli/shell-ux.md \
+  cli/global-options.md; do
+  grep -Fq "$cli_page" mkdocs.yml || {
+    echo "documentation audit: CLI page missing from public navigation: $cli_page" >&2
+    exit 1
+  }
+done
+
+if grep -Fq "CLI & Automation:" mkdocs.yml; then
+  echo "documentation audit: monolithic CLI & Automation navigation must not return" >&2
+  exit 1
+fi
 
 # Public documentation has one canonical structure. Legacy routing stubs must not return.
 legacy_root_pages=(
@@ -137,4 +182,5 @@ echo "Internal evidence  PASS"
 echo "ADR identifiers    PASS"
 echo "Governance         PASS"
 echo "Runtime docs       PASS"
+echo "CLI information architecture PASS"
 echo "Podman release CI  PASS"

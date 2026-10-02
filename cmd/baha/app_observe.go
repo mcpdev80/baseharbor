@@ -22,6 +22,8 @@ const (
 	applicationBrokerStatusTimeout   = 10 * time.Second
 	applicationPostgresStatusTimeout = 15 * time.Second
 	applicationValkeyStatusTimeout   = 10 * time.Second
+	applicationRabbitMQStatusTimeout = 30 * time.Second
+	applicationMongoDBStatusTimeout  = 30 * time.Second
 	applicationLogsStatusTimeout     = 10 * time.Second
 )
 

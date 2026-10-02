@@ -12,10 +12,11 @@ import (
 func TestAuthoringDetectorsSatisfyHTTPAndSecrets(t *testing.T) {
 	root := t.TempDir()
 	manifest := application.Manifest{
-		Version:     application.CurrentVersion,
-		Name:        "demo",
-		Environment: "dev",
-		Services:    application.Services{Secrets: true},
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          "demo",
+		Environment:   "dev",
+		Services:      application.Services{Secrets: true},
 		Secrets: application.SecretRequirements{
 			Required: []application.SecretRequirement{{Name: "APP_SECRET"}},
 		},

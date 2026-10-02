@@ -24,6 +24,56 @@ func DiscoverManifestRecovery(m application.Manifest) (RecoverySelection, error)
 			Durable:         true,
 		})
 	}
+	for _, instance := range application.KeyValueInstanceNames(m) {
+		contributors = append(contributors, RecoveryContributor{
+			StateClass:      StateDurableKeyValue,
+			LogicalResource: instance,
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "Valkey AOF persistence is managed and verified, but scoped database.key-value backup/restore export is not implemented yet",
+		})
+	}
+	for _, instance := range application.DocumentDatabaseInstanceNames(m) {
+		contributors = append(contributors, RecoveryContributor{
+			StateClass:      StateDocumentDatabase,
+			LogicalResource: instance,
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "MongoDB durable storage is managed, but scoped database.document backup/restore export is not implemented yet",
+		})
+	}
+	for _, instance := range application.MessagingQueueInstanceNames(m) {
+		contributors = append(contributors, RecoveryContributor{
+			StateClass:      StateMessagingQueue,
+			LogicalResource: instance,
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "managed queue state may contain broker-held messages and acknowledgements, but scoped messaging.queue backup/restore export is not implemented yet",
+		})
+	}
+	for _, instance := range application.MessagingPubSubInstanceNames(m) {
+		contributors = append(contributors, RecoveryContributor{
+			StateClass:      StateMessagingPubSub,
+			LogicalResource: instance,
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "managed pub/sub state may contain durable broker topology or subscriptions, but scoped messaging.pubsub backup/restore export is not implemented yet",
+		})
+	}
+	for _, instance := range application.MessagingStreamInstanceNames(m) {
+		contributors = append(contributors, RecoveryContributor{
+			StateClass:      StateMessagingStream,
+			LogicalResource: instance,
+			Ownership:       "application",
+			Support:         RecoveryUnsupported,
+			Durable:         true,
+			Reason:          "managed stream state may contain retained message history and consumer position, but scoped messaging.stream backup/restore export is not implemented yet",
+		})
+	}
 	if m.Services.Secrets {
 		contributors = append(contributors, RecoveryContributor{
 			StateClass:      StateSecrets,

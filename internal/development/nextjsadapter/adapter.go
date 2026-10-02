@@ -25,6 +25,8 @@ func (Adapter) Descriptor() extension.Metadata {
 		Version:       "0.1.0",
 		Compatibility: extension.Compatibility{Contracts: []string{
 			"exposure.http/v1", "database.sql/v1", "cache.key-value/v1",
+			"database.key-value/v1", "database.document/v1",
+			"messaging.queue/v1", "messaging.pubsub/v1", "messaging.stream/v1",
 			"object-storage.s3/v1", "secrets/v1", "telemetry.otlp/v1",
 		}},
 	}
@@ -51,7 +53,8 @@ func (Adapter) Detect(root string) (development.Detection, error) {
 
 func (Adapter) Supports(r capability.Requirement) bool {
 	switch r.Kind {
-	case capability.ExposureHTTP, capability.SQL, capability.KeyValue,
+	case capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+		capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
 		capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP:
 		return true
 	default:
@@ -82,6 +85,19 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 		case capability.KeyValue:
 			add(development.ActionDependency, r.Kind, "redis", "6.2.1")
 			add(development.ActionBinding, r.Kind, "REDIS_URL", "")
+			add(development.ActionBinding, r.Kind, "REDIS_CA_FILE", "")
+		case capability.DurableKeyValue:
+			add(development.ActionDependency, r.Kind, "redis", "6.2.1")
+			add(development.ActionBinding, r.Kind, "VALKEY_URL", "")
+			add(development.ActionBinding, r.Kind, "VALKEY_CA_FILE", "")
+		case capability.DocumentDatabase:
+			add(development.ActionDependency, r.Kind, "mongodb", "6.20.0")
+			add(development.ActionBinding, r.Kind, "MONGODB_URL", "")
+			add(development.ActionBinding, r.Kind, "MONGODB_CA_FILE", "")
+		case capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream:
+			add(development.ActionDependency, r.Kind, "amqplib", "0.10.9")
+			add(development.ActionBinding, r.Kind, "AMQP_URL", "")
+			add(development.ActionBinding, r.Kind, "RABBITMQ_CA_FILE", "")
 		case capability.ObjectStorageS3:
 			add(development.ActionDependency, r.Kind, "@aws-sdk/client-s3", "3.1142.0")
 			add(development.ActionBinding, r.Kind, "S3_ENDPOINT", "")
@@ -176,7 +192,7 @@ func capabilitySource(bindings map[string]struct{}) string {
 	for _, n := range names {
 		fmt.Fprintf(&b, "export const %s = required(%q);\n", strings.ReplaceAll(strings.ToLower(n), "_", ""), n)
 	}
-	b.WriteString("// database.sql: pg\n// cache.key-value: ioredis\n// object-storage.s3: @aws-sdk/client-s3\n// telemetry.otlp: @opentelemetry/sdk-node\n")
+	b.WriteString("// database.sql: pg\n// cache.key-value/database.key-value: redis\n// database.document: mongodb\n// messaging.*: amqplib\n// object-storage.s3: @aws-sdk/client-s3\n// telemetry.otlp: @opentelemetry/sdk-node\n")
 	return b.String()
 }
 

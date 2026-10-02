@@ -3,6 +3,7 @@ package pythonadapter
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -17,7 +18,11 @@ func TestPythonRoundTrip(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "python")
 	result, err := development.CreateApplication(root, development.NewApplicationRequest{
 		Name: "python-app", Adapter: AdapterID,
-		Capabilities: []capability.Kind{capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP},
+		Capabilities: []capability.Kind{
+			capability.ExposureHTTP, capability.SQL, capability.KeyValue, capability.DurableKeyValue,
+			capability.DocumentDatabase, capability.MessagingQueue, capability.MessagingPubSub, capability.MessagingStream,
+			capability.ObjectStorageS3, capability.Secrets, capability.TelemetryOTLP,
+		},
 	}, registry)
 	if err != nil {
 		t.Fatal(err)
@@ -27,5 +32,14 @@ func TestPythonRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "pyproject.toml")); err != nil {
 		t.Fatal(err)
+	}
+	compose, err := os.ReadFile(filepath.Join(root, "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"healthcheck:", "/healthz", "urllib.request"} {
+		if !strings.Contains(string(compose), want) {
+			t.Fatalf("generated Python compose is missing readiness contract %q:\n%s", want, compose)
+		}
 	}
 }

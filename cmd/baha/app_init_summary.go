@@ -85,15 +85,21 @@ func printProjectDetection(out io.Writer, d appProjectDetection) {
 
 func printManagedCredentialSummary(out io.Writer, selected []bool, runtimePermissions bool) {
 	var managed []string
-	if len(selected) > 0 && selected[0] {
-		managed = append(managed, "SQL service credentials")
+	appendIfSelected := func(index int, label string) {
+		if len(selected) > index && selected[index] {
+			managed = append(managed, label)
+		}
 	}
-	if len(selected) > 1 && selected[1] {
-		managed = append(managed, "Cache service credentials")
+	appendIfSelected(guidedCapabilitySQL, "SQL service credentials")
+	appendIfSelected(guidedCapabilityCache, "Cache service credentials")
+	appendIfSelected(guidedCapabilityDurableKeyValue, "Durable key-value service credentials")
+	appendIfSelected(guidedCapabilityDocumentDatabase, "Document-database service credentials")
+	if (len(selected) > guidedCapabilityMessagingQueue && selected[guidedCapabilityMessagingQueue]) ||
+		(len(selected) > guidedCapabilityMessagingPubSub && selected[guidedCapabilityMessagingPubSub]) ||
+		(len(selected) > guidedCapabilityMessagingStream && selected[guidedCapabilityMessagingStream]) {
+		managed = append(managed, "Messaging service credentials")
 	}
-	if len(selected) > 2 && selected[2] {
-		managed = append(managed, "Object-storage access credentials")
-	}
+	appendIfSelected(guidedCapabilityObjectStorage, "Object-storage access credentials")
 	if runtimePermissions {
 		managed = append(managed, "Runtime identity / mTLS credentials")
 	}
@@ -123,34 +129,59 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 		}
 	}
 
-	if m.Services.SQL || m.Services.Cache || m.Services.ObjectStorage {
+	if m.Services.SQL || m.Services.Cache || m.Services.KeyValue || m.Services.DocumentDatabase ||
+		m.Services.MessagingQueue || m.Services.MessagingPubSub || m.Services.MessagingStream || m.Services.ObjectStorage {
 		fmt.Fprintln(out, "\nManaged services")
 		if m.Services.SQL {
-			fmt.Fprintf(out, "  SQL Database  %s; default provider PostgreSQL\n", adoptionOrigin(detected.SQL))
+			fmt.Fprintf(out, "  SQL Database        %s; default provider PostgreSQL\n", adoptionOrigin(detected.SQL))
 		}
 		if m.Services.Cache {
-			fmt.Fprintf(out, "  Cache         %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Cache))
+			fmt.Fprintf(out, "  Cache               %s; default provider Valkey/Redis-compatible\n", adoptionOrigin(detected.Cache))
+		}
+		if m.Services.KeyValue {
+			fmt.Fprintln(out, "  Durable Key-Value   user confirmed; default provider Valkey-compatible")
+		}
+		if m.Services.DocumentDatabase {
+			fmt.Fprintln(out, "  Document Database   user confirmed; default provider MongoDB-compatible")
+		}
+		if m.Services.MessagingQueue {
+			fmt.Fprintln(out, "  Messaging Queue     user confirmed; default provider RabbitMQ-compatible")
+		}
+		if m.Services.MessagingPubSub {
+			fmt.Fprintln(out, "  Messaging Pub/Sub   user confirmed; default provider RabbitMQ-compatible")
+		}
+		if m.Services.MessagingStream {
+			fmt.Fprintln(out, "  Messaging Stream    user confirmed; default provider RabbitMQ-compatible")
 		}
 		if m.Services.ObjectStorage {
-			fmt.Fprintf(out, "  Object Storage %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
+			fmt.Fprintf(out, "  Object Storage      %s; S3-compatible\n", adoptionOrigin(detected.ObjectStorage))
 		}
 	}
 
-	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
+	if devaccess.Enabled(m.Environment) && (m.Services.Identity || m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI) {
 		fmt.Fprintln(out, "\nDeveloper management access")
 		fmt.Fprintln(out, "  Scope         target / dev")
-		fmt.Fprintln(out, "  Username      developer (default)")
-		fmt.Fprintln(out, "  Credentials   managed by BaseHarbor")
-		fmt.Fprintln(out, "  Reveal        baha dev credentials")
+		fmt.Fprintln(out, "  Username      target-scoped; configurable (default developer)")
+		fmt.Fprintln(out, "  Credentials   configured once and reused by compatible management surfaces")
+		fmt.Fprintln(out, "  Reveal/change baha dev credentials [--username USER] [--reset|--password-file FILE]")
 	}
 
-	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
+	if m.Services.SQLManagementUI || m.Services.CacheManagementUI || m.Services.KeyValueManagementUI || m.Services.MessagingManagementUI || m.Services.DocumentDatabaseManagementUI || m.Services.ObjectStorageManagementUI || m.Services.SecretsManagementUI || m.Services.IdentityManagementUI || m.Services.ObservabilityManagementUI {
 		fmt.Fprintln(out, "\nManagement UIs")
 		if m.Services.SQLManagementUI {
 			fmt.Fprintln(out, "  PostgreSQL    pgAdmin")
 		}
 		if m.Services.CacheManagementUI {
 			fmt.Fprintln(out, "  Cache         Redis Commander")
+		}
+		if m.Services.KeyValueManagementUI {
+			fmt.Fprintln(out, "  Durable KV    Redis Commander")
+		}
+		if m.Services.DocumentDatabaseManagementUI {
+			fmt.Fprintln(out, "  Document DB   Mongo Express")
+		}
+		if m.Services.MessagingManagementUI {
+			fmt.Fprintln(out, "  Messaging     RabbitMQ Management")
 		}
 		if m.Services.ObjectStorageManagementUI {
 			fmt.Fprintln(out, "  Object Storage provider administration UI")

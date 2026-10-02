@@ -33,7 +33,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	catalog, err := development.LoadProfileCatalog(".", builtinDevelopmentProfiles(registry))
+	catalog, err := effectiveDevelopmentProfileCatalog(".", registry)
 	if err != nil {
 		return err
 	}
@@ -201,6 +201,19 @@ func directoryIsEmpty(path string) (bool, error) {
 }
 
 func guidedStackProfile(reader *bufio.Reader, out io.Writer, catalog development.ProfileCatalogEntries, registry development.Registry) (guidedStackSelection, error) {
+	if name, err := organizationDefaultStack("dev"); err != nil {
+		return guidedStackSelection{}, err
+	} else if name != "" {
+		if _, exists := catalog[name]; !exists {
+			return guidedStackSelection{}, fmt.Errorf("organization default stack %q is not available in the effective stack catalog", name)
+		}
+		resolved, err := development.ResolveStackProfile(name, development.ProfileMap(catalog))
+		if err != nil {
+			return guidedStackSelection{}, err
+		}
+		fmt.Fprintf(out, "\nStack: %s (organization default)\n", name)
+		return guidedStackSelection{Effective: resolved.Profile}, nil
+	}
 	names := sortedProfileNames(catalog)
 	fmt.Fprintln(out, "\nChoose a stack")
 	for i, name := range names {
@@ -332,6 +345,11 @@ func guidedGreenfieldCapabilities(reader *bufio.Reader, out io.Writer, profile d
 		{capability.ExposureHTTP, "HTTP"},
 		{capability.SQL, "SQL"},
 		{capability.KeyValue, "Cache"},
+		{capability.DurableKeyValue, "Durable Key-Value"},
+		{capability.DocumentDatabase, "Document Database"},
+		{capability.MessagingQueue, "Messaging Queue"},
+		{capability.MessagingPubSub, "Messaging Pub/Sub"},
+		{capability.MessagingStream, "Messaging Stream"},
 		{capability.ObjectStorageS3, "Object Storage"},
 		{capability.Secrets, "Managed Secrets"},
 		{capability.TelemetryOTLP, "Traces / OTLP"},

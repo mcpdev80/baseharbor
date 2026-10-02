@@ -48,3 +48,11 @@ func TestDevelopmentWorkloadRouteDefaultsToHTTP(t *testing.T) {
 		t.Fatalf("HTTP route unexpectedly configured TLS trust: %#v", route)
 	}
 }
+
+func TestDevelopmentExposureUpstreamUsesProviderAlias(t *testing.T) {
+	got := developmentExposureUpstream("bh-demo-dev-exposure", "demo-app", "http", 8080)
+	want := "http://bh-dev-bh-demo-dev-exposure-demo-app:8080"
+	if got != want {
+		t.Fatalf("upstream = %q, want %q", got, want)
+	}
+}

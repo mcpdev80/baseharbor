@@ -22,11 +22,10 @@ func DefaultEngine() Engine {
 	return Engine{Detectors: []Detector{
 		sqlDetector{},
 		keyValueDetector{},
+		documentDatabaseDetector{},
 		secretsDetector{},
 		httpExposureDetector{},
 		objectStorageDetector{},
-		httpExposureDetector{},
-		secretsDetector{},
 		openMetricsDetector{},
 		otlpDetector{},
 		runtimeAPIDetector{},
@@ -69,6 +68,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	}
 
 	var manifest *application.Manifest
+	var declared []CapabilityIntent
 	if _, ok := snapshot.Files["baseharbor.yaml"]; ok {
 		result.ExistingManifest = "baseharbor.yaml"
 		loaded, err := application.LoadManifestFile(filepath.Join(absRoot, application.RepositoryManifestName))
@@ -78,31 +78,21 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		manifest = &loaded
 		result.Application = loaded.Name
 		result.RequiredSecrets = append([]string(nil), application.RequiredSecretNames(loaded)...)
+		declared, err = CapabilityIntentsFromManifest(loaded)
+		if err != nil {
+			return Result{}, fmt.Errorf("normalize existing BaseHarbor manifest intent: %w", err)
+		}
 		manifestEvidence := []Evidence{{Kind: EvidenceManifest, Path: application.RepositoryManifestName, Detail: "declared by BaseHarbor application contract"}}
-		if loaded.Services.SQL {
-			for _, name := range application.SQLInstanceNames(loaded) {
-				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "database.sql", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-			}
-		}
-		if loaded.Services.Cache {
-			for _, name := range application.CacheInstanceNames(loaded) {
-				result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "cache.key-value", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-			}
-		}
-		if loaded.Services.Secrets {
-			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "secrets", Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-		}
-		for _, name := range application.ObjectStorageBucketNames(loaded) {
-			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "object-storage.s3", Name: name, Direction: DirectionConsume, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-		}
-		for _, exposure := range loaded.Exposures {
-			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "exposure.http", Name: exposure.Name, Direction: DirectionProvide, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
-		}
-		if application.HasOTLPTelemetry(loaded) {
-			result.Findings = mergeFindings(result.Findings, []Finding{{Capability: "telemetry.otlp", Name: "default", Direction: DirectionExport, Confidence: ConfidenceDetected, Evidence: manifestEvidence}})
+		for _, intent := range declared {
+			result.Findings = mergeFindings(result.Findings, []Finding{{
+				Capability: intent.Capability,
+				Name:       intent.Name,
+				Direction:  intent.Direction,
+				Confidence: ConfidenceDetected,
+				Evidence:   manifestEvidence,
+			}})
 		}
 	}
-
 	result.ComposeCandidates = artifactPaths(artifacts, "compose")
 	if manifest != nil && strings.TrimSpace(manifest.Workload.Compose) != "" {
 		result.SelectedCompose = filepath.ToSlash(manifest.Workload.Compose)
@@ -119,7 +109,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		for _, service := range services {
 			if manifest == nil && rel == result.SelectedCompose {
-				if service.Postgres || service.Redis || service.ObjectStorage {
+				if service.Postgres || service.Redis || service.MongoDB || service.RabbitMQ || service.ObjectStorage {
 					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
 				} else if service.AmbiguousInfrastructure || service.Unresolved {
 					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
@@ -187,10 +177,11 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		}
 		result.Findings = mergeFindings(result.Findings, findings)
 	}
+	result.Findings = enrichDeclaredIntentEvidence(snapshot, declared, result.Findings)
 	for i := range result.Findings {
 		normalizeFindingService(&result.Findings[i])
 	}
-	result.Declared, result.Reconciliation = Reconcile(result.Findings, manifest)
+	result.Declared, result.Reconciliation = Reconcile(result.Findings, declared)
 	sortResult(&result)
 	return result, nil
 }

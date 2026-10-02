@@ -233,11 +233,24 @@ jobs:
               echo "Pre-Release approval artifact does not contain release-approved.json." >&2
               exit 1
             }
-            demo_sha="$(jq -r '.demo_sha // empty' "${approval_json}")"
-            test -n "${demo_sha}" || {
-              echo "Pre-Release approval does not attest an exact baseharbor-demo SHA." >&2
-              exit 1
-            }
+            jq -e \
+              --arg tested_sha "${tested_sha}" \
+              --argjson run_id "${run_id}" \
+              '
+                .schema == "baseharbor.pre-release.approval/v1" and
+                .candidate_sha == $tested_sha and
+                .tested_sha == $tested_sha and
+                .workflow == "pre-release.yml" and
+                .workflow_run_id == $run_id and
+                .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
+                .gate_count == 42 and
+                .result == "success" and
+                (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
+              ' "${approval_json}" >/dev/null || {
+                echo "Pre-Release approval artifact failed atomic evidence validation." >&2
+                exit 1
+              }
+            demo_sha="$(jq -r '.demo_sha' "${approval_json}")"
           else
             demo_sha="$(git show "${tested_sha}:docs/releases/${tag}.demo-ref" | tr -d '[:space:]')"
             [[ "${demo_sha}" =~ ^[0-9a-f]{40}$ ]] || {

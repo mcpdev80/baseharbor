@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,6 +30,50 @@ func TestPhysicalBucketNameIsStableAndBounded(t *testing.T) {
 	}
 	if !strings.HasPrefix(first, "bh-") {
 		t.Fatalf("bucket name = %q, want BaseHarbor prefix", first)
+	}
+}
+
+func TestSeaweedFSInstanceTrustBundleContainsPEM(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", state)
+
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := seaweedFSInstanceFromFiles(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(instance.TrustBundle), "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("runtime-neutral trust bundle does not contain PEM certificate")
+	}
+	if strings.Contains(string(instance.TrustBundle), filepath.Join("service-access", "pki", "ca.pem")) {
+		t.Fatalf("runtime-neutral trust bundle contains CA path instead of PEM contents: %q", string(instance.TrustBundle))
+	}
+}
+
+func TestServiceTrustBundleReturnsCAPath(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", state)
+
+	files, err := EnsureProviderFiles(context.Background(), serviceissuer.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := ServiceTrustBundle(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(bundle) {
+		t.Fatalf("trust bundle path = %q, want absolute path", bundle)
+	}
+	data, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("trust bundle file does not contain PEM certificate")
 	}
 }
 

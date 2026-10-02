@@ -22,6 +22,7 @@ func configCommand() *cli.Command {
 		Usage:   "baha config prompt [options]",
 		Children: []*cli.Command{
 			configPromptCommand(),
+			configOrganizationCommand(),
 		},
 	}
 }
