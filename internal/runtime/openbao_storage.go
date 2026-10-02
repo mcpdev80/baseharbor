@@ -98,7 +98,7 @@ func ensureRuntimeFixedValue(envPath, key, defaultValue string) (string, error) 
 		return "", err
 	}
 	defer out.Close()
-	if _, err := fmt.Fprintf(out, "%s=%s\\n", key, defaultValue); err != nil {
+	if _, err := fmt.Fprintf(out, "%s=%s\n", key, defaultValue); err != nil {
 		return "", err
 	}
 	return defaultValue, nil
