@@ -61,11 +61,15 @@ func writeOpenBaoRuntimeConfig(stateDir, secret string) error {
 disable_mlock = true
 
 storage "postgresql" {
-  connection_url = "postgres://openbao:%s@postgres:5432/openbao?sslmode=verify-full&sslrootcert=/run/baseharbor/postgres-ca/ca.pem"
+  connection_url      = "postgres://openbao:%s@postgres:5432/openbao?sslmode=verify-full&sslrootcert=/run/baseharbor/postgres-ca/ca.pem"
+  ha_enabled          = "true"
+  max_connect_retries = 0
+  max_parallel        = "20"
 }
 
 listener "tcp" {
   address                  = "0.0.0.0:8200"
+  cluster_address          = "0.0.0.0:8201"
   tls_disable              = false
   tls_cert_file            = "/run/baseharbor/openbao/server-cert.pem"
   tls_key_file             = "/run/baseharbor/openbao/server-key.pem"
