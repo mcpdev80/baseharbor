@@ -97,26 +97,45 @@ func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifes
 	if err != nil {
 		return "", err
 	}
-	sentinel := valkeySentinelServiceName(instance, 0)
-	out, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
-	if err != nil {
-		return "", fmt.Errorf("inspect Valkey Sentinel %s: %w", sentinel, err)
-	}
-	lines := nonEmptyLines(out)
-	if len(lines) < 2 || lines[1] != "6379" {
-		return "", fmt.Errorf("Valkey Sentinel %s returned incomplete master address", sentinel)
-	}
-	for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
-		member := valkeyMemberServiceName(instance, ordinal)
-		address, addrErr := valkeyMemberAddressFromSentinel(ctx, runtime, sentinel, member, password)
-		if addrErr != nil {
+
+	votes := map[string]int{}
+	var observations []string
+	for sentinelOrdinal := 0; sentinelOrdinal < 3; sentinelOrdinal++ {
+		sentinel := valkeySentinelServiceName(instance, sentinelOrdinal)
+		out, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
+		if err != nil {
+			observations = append(observations, fmt.Sprintf("%s:error", sentinel))
 			continue
 		}
-		if lines[0] == address {
-			return member, nil
+		lines := nonEmptyLines(out)
+		if len(lines) < 2 || lines[1] != "6379" {
+			observations = append(observations, fmt.Sprintf("%s:incomplete", sentinel))
+			continue
+		}
+		reportedAddress := lines[0]
+		mappedMember := ""
+		for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+			member := valkeyMemberServiceName(instance, ordinal)
+			address, addrErr := valkeyMemberAddressFromSentinel(ctx, runtime, sentinel, member, password)
+			if addrErr != nil {
+				continue
+			}
+			if reportedAddress == address {
+				mappedMember = member
+				break
+			}
+		}
+		if mappedMember == "" {
+			observations = append(observations, fmt.Sprintf("%s:%s(unmapped)", sentinel, reportedAddress))
+			continue
+		}
+		votes[mappedMember]++
+		observations = append(observations, fmt.Sprintf("%s:%s", sentinel, mappedMember))
+		if votes[mappedMember] >= 2 {
+			return mappedMember, nil
 		}
 	}
-	return "", fmt.Errorf("Valkey Sentinel %s reported unknown master %s", sentinel, lines[0])
+	return "", fmt.Errorf("Valkey Sentinel quorum has no mapped master majority: %s", strings.Join(observations, ", "))
 }
 
 func valkeyMemberAddressFromSentinel(ctx context.Context, runtime valkeyHAProbeRuntime, sentinel, member, password string) (string, error) {
