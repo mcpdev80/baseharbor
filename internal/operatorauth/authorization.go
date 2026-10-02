@@ -61,12 +61,14 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 	if strings.TrimSpace(operation.ID) == "" {
 		decision.ReasonCode = "unknown_operation"
 		decision.Reason = "Machine operation metadata is required for authorization."
+		setAuthorizationDecision(ctx, decision)
 		return decision, machine.NewError(machine.ErrorValidationFailed, decision.Reason, "Use a registered BaseHarbor machine operation.", false)
 	}
 
 	if !ManagedEnvironment(decision.Context.Environment) {
 		decision.Allowed = true
 		decision.Actor = MachineActorRef{Mode: "trusted-local", Subject: "trusted-local"}
+		setAuthorizationDecision(ctx, decision)
 		return decision, nil
 	}
 
@@ -74,6 +76,7 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 	if !ok {
 		decision.ReasonCode = "operator_authentication_required"
 		decision.Reason = "Managed-environment machine operations require an authenticated BaseHarbor operator."
+		setAuthorizationDecision(ctx, decision)
 		return decision, machine.NewError(
 			machine.ErrorAuthenticationFailed,
 			decision.Reason,
@@ -90,5 +93,6 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		Assurance: strings.TrimSpace(principal.Assurance),
 		Methods:   append([]string(nil), principal.Methods...),
 	}
+	setAuthorizationDecision(ctx, decision)
 	return decision, nil
 }
