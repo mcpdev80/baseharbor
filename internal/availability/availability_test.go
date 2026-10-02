@@ -171,7 +171,6 @@ func TestObservationDistinguishesHealthyDegradedUnavailableAndUnsatisfied(t *tes
 	}
 }
 
-
 func TestPortableAvailabilityIntentSurfaceStaysMinimal(t *testing.T) {
 	intentFields := map[string]bool{}
 	intentType := reflect.TypeOf(Intent{})
