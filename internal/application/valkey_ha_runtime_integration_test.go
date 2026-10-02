@@ -84,6 +84,25 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	waitValkeyHAReady(t, ctx, runtime, op, m, files)
 
+	oldProviderCA, err := os.ReadFile(afterRotation[valkeyTLSCAKey(defaultServiceInstance)])
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldUICA, err := os.ReadFile(filepath.Join(files.Dir, "providers", "management-ui", "cache", "pki", "ca.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RotateManagedProviderPKI(ctx, runtime, serviceissuer.New(t), m, files, ManagedProviderPKIValkey, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate Valkey HA PKI: %v", err)
+	}
+	rotatedValues, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOldCARootRejected(t, oldProviderCA, rotatedValues[valkeyRuntimeKey(defaultServiceInstance, "HOST_PORT")])
+	assertOldCARootRejected(t, oldUICA, rotatedValues[CacheUIHostPortEnv])
+	waitValkeyHAReady(t, ctx, runtime, op, m, files)
+
 	failedMember, err := ValkeyHAMaster(ctx, op, m, files, defaultServiceInstance)
 	if err != nil {
 		t.Fatal(err)
