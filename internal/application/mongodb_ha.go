@@ -117,8 +117,8 @@ func mongodbGatewayFiles(instance string, ordinal int) serviceaccess.TCPGatewayF
 		root += "/service-access"
 	}
 	return serviceaccess.TCPGatewayFiles{
-		Config: root + "/haproxy.cfg",
-		PEM: root + "/runtime/server.pem",
+		Config:   root + "/haproxy.cfg",
+		PEM:      root + "/runtime/server.pem",
 		Material: serviceaccess.TLSMaterial{},
 	}
 }
