@@ -7,9 +7,20 @@ import (
 	"strings"
 )
 
-const openBaoStorageCredentialKey = "BASEHARBOR_OPENBAO_DB_PASSWORD"
+const (
+	openBaoStorageCredentialKey       = "BASEHARBOR_OPENBAO_DB_PASSWORD"
+	postgresReplicationCredentialKey = "BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"
+)
 
 func ensureOpenBaoStorageCredential(envPath string) (string, error) {
+	return ensureRuntimeCredential(envPath, openBaoStorageCredentialKey)
+}
+
+func ensurePostgresReplicationCredential(envPath string) (string, error) {
+	return ensureRuntimeCredential(envPath, postgresReplicationCredentialKey)
+}
+
+func ensureRuntimeCredential(envPath, credentialKey string) (string, error) {
 	f, err := os.Open(envPath)
 	if err != nil {
 		return "", err
@@ -30,7 +41,7 @@ func ensureOpenBaoStorageCredential(envPath string) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", err
 	}
-	if value := values[openBaoStorageCredentialKey]; value != "" {
+	if value := values[credentialKey]; value != "" {
 		return value, nil
 	}
 	value, err := randomSecret(32)
@@ -42,7 +53,7 @@ func ensureOpenBaoStorageCredential(envPath string) (string, error) {
 		return "", err
 	}
 	defer out.Close()
-	if _, err := fmt.Fprintf(out, "%s=%s\n", openBaoStorageCredentialKey, value); err != nil {
+	if _, err := fmt.Fprintf(out, "%s=%s\n", credentialKey, value); err != nil {
 		return "", err
 	}
 	return value, nil
