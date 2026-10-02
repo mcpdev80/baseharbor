@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Standards-first management-surface authentication classes and provider-neutral infrastructure-role mapping with explicit limited/unsupported semantics.
 - Logical Application/Component consumption intent whose identity remains independent from runtime addressing, placement and instance topology.
 - Portable global HA intent with sparse per-component/capability overrides, fixed-cardinality input, provider/runtime negotiation and 0..N instance observation.
+- Provider-native HA realizations for Valkey/Sentinel, MongoDB replica sets, RabbitMQ clusters/quorum messaging and SeaweedFS, with stable application/management endpoints and truthful single-host failure-domain reporting.
 - Typed availability results shared by lifecycle preflight, status, doctor and evidence.
 
 ### Changed
