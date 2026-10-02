@@ -229,6 +229,9 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
 			return err
 		}
+		if err := application.VerifyRabbitMQHACluster(ctx, compose, m, files); err != nil {
+			return err
+		}
 	}
 	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
 		if err := application.VerifyMongoDBRuntime(ctx, m, files); err != nil {
