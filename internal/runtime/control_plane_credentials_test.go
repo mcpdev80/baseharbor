@@ -43,6 +43,7 @@ func TestControlPlaneCredentialRotationStateSurvivesRestartOwnerOnly(t *testing.
 	}
 	if !found || got.Phase != ControlPlaneRotationPrepared ||
 		got.Previous.PostgresPassword != state.Previous.PostgresPassword ||
+		got.Previous.PostgresInternalPassword != state.Previous.PostgresInternalPassword ||
 		got.Next.OpenBaoDBPassword != state.Next.OpenBaoDBPassword {
 		t.Fatalf("reloaded rotation state = %#v", got)
 	}
