@@ -129,6 +129,17 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		}
 	}
 	if len(matches) == 0 {
+		// Native Quadlet uses a deterministic ContainerName=<project>-<service>.
+		// Fall back to that provider-native identity when label discovery is not
+		// available through the Podman inspect representation.
+		name := project + "-" + service
+		raw, inspectErr := exec.CommandContext(ctx, runtime, "inspect", name).Output()
+		if inspectErr == nil {
+			var records []inspectRecord
+			if json.Unmarshal(raw, &records) == nil && len(records) == 1 && records[0].State.Running {
+				return name, nil
+			}
+		}
 		return "", fmt.Errorf("running container for %s/%s not found", project, service)
 	}
 	if len(matches) != 1 {
