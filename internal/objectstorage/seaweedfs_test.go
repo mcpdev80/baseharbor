@@ -122,7 +122,6 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 		"seaweedfs-node-1:",
 		"seaweedfs-node-2:",
 		"seaweedfs-node-3:",
-		"reverse_proxy http://seaweedfs-node-1:8333 http://seaweedfs-node-2:8333 http://seaweedfs-node-3:8333",
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Fatalf("SeaweedFS IAM compose missing %q:\n%s", want, composeText)
@@ -130,6 +129,13 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 	}
 	if strings.Contains(composeText, "AWS_ACCESS_KEY_ID") || strings.Contains(composeText, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("provider compose contains global S3 credentials:\n%s", composeText)
+	}
+	caddyfile, err := os.ReadFile(filepath.Join(files.Dir, "service-access", "Caddyfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(caddyfile), "reverse_proxy http://seaweedfs-node-1:8333 http://seaweedfs-node-2:8333 http://seaweedfs-node-3:8333") {
+		t.Fatalf("SeaweedFS stable frontend is not configured with all HA S3 members:\n%s", string(caddyfile))
 	}
 }
 
