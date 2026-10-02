@@ -157,12 +157,22 @@ func waitSeaweedFSHAReady(t *testing.T, ctx context.Context, driver *Driver, res
 	deadline := time.Now().Add(120 * time.Second)
 	for {
 		s3Err := driver.Verify(ctx, resource, binding)
-		uiErr := VerifyManagementUIAt(ctx, dataDir, namespace)
+		probeCtx, probeCancel := context.WithTimeout(ctx, 5*time.Second)
+		uiErr := VerifyManagementUIAt(probeCtx, dataDir, namespace)
+		probeCancel()
 		if s3Err == nil && uiErr == nil {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("SeaweedFS HA did not become ready: s3=%v ui=%v", s3Err, uiErr)
+			detail := ""
+			if diagnostics, ok := driver.runtime.(runtimeDiagnostics); ok {
+				diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if files, err := ExistingProviderFilesAt(dataDir, namespace); err == nil {
+					detail = diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)
+				}
+				diagnosticCancel()
+			}
+			t.Fatalf("SeaweedFS HA did not become ready: s3=%v ui=%v\n%s", s3Err, uiErr, detail)
 		}
 		time.Sleep(time.Second)
 	}
