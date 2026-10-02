@@ -79,6 +79,29 @@ func ensureMongoDBRuntimeValues(values map[string]string, m Manifest, excluded m
 			values[portKey] = strconv.Itoa(port)
 			excluded[port] = struct{}{}
 		}
+		if mongodbMemberCount(m, instance) > 1 {
+			if values[mongodbReplicaSetKey(instance)] == "" {
+				values[mongodbReplicaSetKey(instance)] = mongodbReplicaSetName(instance)
+			}
+			if values[mongodbReplicaKeyKey(instance)] == "" {
+				key, err := randomApplicationSecret(64)
+				if err != nil {
+					return err
+				}
+				values[mongodbReplicaKeyKey(instance)] = key
+			}
+			for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+				memberPortKey := mongodbMemberHostPortKey(instance, ordinal)
+				if values[memberPortKey] == "" {
+					port, err := allocateLoopbackPort(excluded)
+					if err != nil {
+						return err
+					}
+					values[memberPortKey] = strconv.Itoa(port)
+					excluded[port] = struct{}{}
+				}
+			}
+		}
 		if m.Services.DocumentDatabaseManagementUI {
 			uiPortKey := mongodbUIHostPortKey(instance)
 			if values[uiPortKey] == "" {
@@ -101,8 +124,16 @@ func appendMongoDBRuntimeEnv(b *strings.Builder, m Manifest, values map[string]s
 		}
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		suffixes := []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		if mongodbMemberCount(m, instance) > 1 {
+			suffixes = append(suffixes, "REPLICA_SET", "REPLICA_KEY")
+		}
+		for _, suffix := range suffixes {
 			key := mongodbRuntimeKey(instance, suffix)
+			fmt.Fprintf(b, "%s=%s\n", key, values[key])
+		}
+		for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			key := mongodbMemberHostPortKey(instance, ordinal)
 			fmt.Fprintf(b, "%s=%s\n", key, values[key])
 		}
 		if m.Services.DocumentDatabaseManagementUI {
@@ -130,6 +161,22 @@ func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
 		portKey := mongodbRuntimeKey(instance, "HOST_PORT")
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
+		}
+		if mongodbMemberCount(m, instance) > 1 {
+			for _, key := range []string{mongodbReplicaSetKey(instance), mongodbReplicaKeyKey(instance)} {
+				if values[key] == "" {
+					return fmt.Errorf("application runtime environment is missing %s", key)
+				}
+			}
+			for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+				key := mongodbMemberHostPortKey(instance, ordinal)
+				if values[key] == "" {
+					return fmt.Errorf("application runtime environment is missing %s", key)
+				}
+				if err := validatePortValue(values[key], key); err != nil {
+					return err
+				}
+			}
 		}
 		if m.Services.DocumentDatabaseManagementUI {
 			uiPortKey := mongodbUIHostPortKey(instance)
