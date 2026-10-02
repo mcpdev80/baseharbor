@@ -18,6 +18,8 @@ type Rotation struct {
 	Verify    func(context.Context) error
 	Retire    func(context.Context) error
 	Rollback  func(context.Context) error
+	Journal   RotationJournal
+	Key       string
 }
 
 func (r Rotation) Run(ctx context.Context) error {
@@ -28,19 +30,82 @@ func (r Rotation) Run(ctx context.Context) error {
 			return fmt.Errorf("credential rotation %s step is required", name)
 		}
 	}
-	if err := r.Prepare(ctx); err != nil {
-		return fmt.Errorf("prepare new credential material: %w", err)
+
+	phase := RotationPhase("")
+	if r.Journal != nil {
+		if _, err := validateRotationKey(r.Key); err != nil {
+			return err
+		}
+		loaded, err := r.Journal.Load(r.Key)
+		if err != nil {
+			return fmt.Errorf("load credential rotation journal: %w", err)
+		}
+		phase = loaded
 	}
-	if err := r.Reconcile(ctx); err != nil {
-		return errors.Join(fmt.Errorf("reconcile credential consumers: %w", err), r.rollback(ctx))
+
+	if !rotationPhaseAtLeast(phase, RotationPrepared) {
+		if err := r.Prepare(ctx); err != nil {
+			return fmt.Errorf("prepare new credential material: %w", err)
+		}
+		if err := r.savePhase(RotationPrepared); err != nil {
+			return err
+		}
+		phase = RotationPrepared
 	}
-	if err := r.Verify(ctx); err != nil {
-		return errors.Join(fmt.Errorf("verify rotated credential: %w", err), r.rollback(ctx))
+	if !rotationPhaseAtLeast(phase, RotationReconciled) {
+		if err := r.Reconcile(ctx); err != nil {
+			return errors.Join(fmt.Errorf("reconcile credential consumers: %w", err), r.rollbackAndReset(ctx))
+		}
+		if err := r.savePhase(RotationReconciled); err != nil {
+			return err
+		}
+		phase = RotationReconciled
 	}
-	if err := r.Retire(ctx); err != nil {
-		// Verification already succeeded; keep the new path valid and report that
-		// old material still needs retirement rather than rolling back to it.
-		return fmt.Errorf("retire old credential material: %w", err)
+	if !rotationPhaseAtLeast(phase, RotationVerified) {
+		if err := r.Verify(ctx); err != nil {
+			return errors.Join(fmt.Errorf("verify rotated credential: %w", err), r.rollbackAndReset(ctx))
+		}
+		if err := r.savePhase(RotationVerified); err != nil {
+			return err
+		}
+		phase = RotationVerified
+	}
+	if !rotationPhaseAtLeast(phase, RotationRetired) {
+		if err := r.Retire(ctx); err != nil {
+			// Verification already succeeded; keep the new path valid and preserve
+			// VERIFIED in the journal so a retry only attempts retirement.
+			return fmt.Errorf("retire old credential material: %w", err)
+		}
+		if err := r.savePhase(RotationRetired); err != nil {
+			return err
+		}
+	}
+	if r.Journal != nil {
+		if err := r.Journal.Clear(r.Key); err != nil {
+			return fmt.Errorf("clear completed credential rotation journal: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r Rotation) savePhase(phase RotationPhase) error {
+	if r.Journal == nil {
+		return nil
+	}
+	if err := r.Journal.Save(r.Key, phase); err != nil {
+		return fmt.Errorf("persist credential rotation phase %s: %w", phase, err)
+	}
+	return nil
+}
+
+func (r Rotation) rollbackAndReset(ctx context.Context) error {
+	if err := r.rollback(ctx); err != nil {
+		return err
+	}
+	if r.Journal != nil {
+		if err := r.Journal.Clear(r.Key); err != nil {
+			return fmt.Errorf("clear rolled-back credential rotation journal: %w", err)
+		}
 	}
 	return nil
 }
