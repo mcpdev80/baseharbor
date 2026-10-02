@@ -184,7 +184,6 @@ func readDevAccessPasswordFile(path string) (string, error) {
 	return password, scanner.Err()
 }
 
-
 func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environment string, candidate devaccess.Credentials, replace bool) (devaccess.Credentials, error) {
 	compose, files, err := openBaoRuntime(ctx)
 	if err != nil {
@@ -247,7 +246,6 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 	}
 	return candidate, nil
 }
-
 
 func ensureAuthoritativeDeveloperCredentials(ctx context.Context, target, environment string) (devaccess.Credentials, error) {
 	candidate, err := devaccess.Ensure(target, environment)
