@@ -136,8 +136,6 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("          printf 'port 26379\\n'\n")
 		b.WriteString("          printf 'protected-mode no\\n'\n")
 		b.WriteString("          printf 'sentinel resolve-hostnames yes\\n'\n")
-		b.WriteString("          printf 'sentinel announce-hostnames yes\\n'\n")
-		fmt.Fprintf(b, "          printf 'sentinel announce-ip %s\\n'\n", service)
 		b.WriteString("          printf 'sentinel announce-port 26379\\n'\n")
 		fmt.Fprintf(b, "          printf 'sentinel monitor %s %s 6379 2\\n'\n", valkeySentinelMasterName, primary)
 		fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
