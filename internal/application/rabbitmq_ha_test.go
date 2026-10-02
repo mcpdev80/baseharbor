@@ -55,9 +55,6 @@ func TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig(t *testing.T)
 		"rabbitmq-data:/var/lib/rabbitmq",
 		"rabbitmq-2-data:/var/lib/rabbitmq",
 		"rabbitmq-3-data:/var/lib/rabbitmq",
-		"server rabbitmq rabbitmq:5672 check",
-		"server rabbitmq-2 rabbitmq-2:5672 check",
-		"server rabbitmq-3 rabbitmq-3:5672 check",
 		"name: bh-events_rabbitmq-data",
 		"name: bh-events_rabbitmq-2-data",
 		"name: bh-events_rabbitmq-3-data",
@@ -130,7 +127,11 @@ func TestRabbitMQHAExplicitCardinalityIsRespected(t *testing.T) {
 	if got := rabbitmqMemberCount(m); got != 5 {
 		t.Fatalf("RabbitMQ HA member count = %d, want 5", got)
 	}
-	if got := len(rabbitmqGatewayUpstreams(m, defaultServiceInstance)); got != 5 {
+	upstreams := rabbitmqGatewayUpstreams(m, defaultServiceInstance)
+	if got := len(upstreams); got != 5 {
 		t.Fatalf("RabbitMQ HA gateway upstream count = %d, want 5", got)
+	}
+	if upstreams[0].Host != "rabbitmq" || upstreams[4].Host != "rabbitmq-5" {
+		t.Fatalf("RabbitMQ HA gateway upstreams = %#v", upstreams)
 	}
 }
