@@ -121,6 +121,9 @@ func Operations() []Operation {
 	return []Operation{
 		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "target.list", MCPTool: "baseharbor.target.list", Description: "List configured BaseHarbor deployment targets using secret-safe target metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "runtime.capabilities", MCPTool: "baseharbor.runtime.capabilities", Description: "Inspect Runtime Explorer capabilities for the effective Target runtime provider.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.list", MCPTool: "baseharbor.runtime.list", Description: "List provider-neutral runtime resources with authoritative ownership and BaseHarbor relationships.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.inspect", MCPTool: "baseharbor.runtime.inspect", Description: "Inspect one stable runtime resource reference without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.list", MCPTool: "baseharbor.app.list", Description: "List registered application deployments using stable identity and secret-safe observed state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.list", MCPTool: "baseharbor.workspace.list", Description: "List developer-local workspace mappings without mutating source or runtime state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},

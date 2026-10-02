@@ -432,7 +432,7 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	args := []string{
 		"container", "inspect", "--format",
-		`{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
+		`{{.Id}}|{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`,
 	}
 	args = append(args, ids...)
 	inspected, err := c.directOutput(ctx, args...)
@@ -442,26 +442,28 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	var result []RuntimeContainer
 	for _, line := range strings.Split(inspected, "\n") {
-		parts := strings.SplitN(strings.TrimSpace(line), "|", 10)
-		if len(parts) != 10 {
+		parts := strings.SplitN(strings.TrimSpace(line), "|", 11)
+		if len(parts) != 11 {
 			continue
 		}
-		name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
-		project := firstRuntimeLabel(parts[1], parts[2])
-		service := firstRuntimeLabel(parts[3], parts[4])
-		if name == "" || project == "" || service == "" {
+		id := strings.TrimSpace(parts[0])
+		name := strings.TrimPrefix(strings.TrimSpace(parts[1]), "/")
+		project := firstRuntimeLabel(parts[2], parts[3])
+		service := firstRuntimeLabel(parts[4], parts[5])
+		if id == "" || name == "" {
 			continue
 		}
-		exitCode, _ := strconv.Atoi(strings.TrimSpace(parts[8]))
+		exitCode, _ := strconv.Atoi(strings.TrimSpace(parts[9]))
 		result = append(result, RuntimeContainer{
+			ID:       id,
 			Name:     name,
 			Project:  project,
 			Service:  service,
-			Running:  strings.EqualFold(strings.TrimSpace(parts[5]), "true"),
-			Health:   strings.TrimSpace(parts[6]),
-			State:    strings.TrimSpace(parts[7]),
+			Running:  strings.EqualFold(strings.TrimSpace(parts[6]), "true"),
+			Health:   strings.TrimSpace(parts[7]),
+			State:    strings.TrimSpace(parts[8]),
 			ExitCode: exitCode,
-			Error:    strings.TrimSpace(parts[9]),
+			Error:    strings.TrimSpace(parts[10]),
 		})
 	}
 	return result, nil

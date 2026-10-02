@@ -25,6 +25,7 @@ Prefer machine-readable authority where practical:
 - [Reconciliation v1](reconciliation-v1.md)
 - [Machine Interface v1](machine-interface-v1.md)
 - [Protected Machine HTTP Interface v1](machine-http-v1.md)
+- [Runtime Explorer Contract v1](runtime-explorer-v1.md)
 - [Audit & Evidence v1](audit-evidence-v1.md)
 - [Security invariants](security-invariants.md)
 
