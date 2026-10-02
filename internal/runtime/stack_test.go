@@ -176,18 +176,18 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
-		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"postgres-member-1",
+		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
+		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro",
+		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("reconciled runtime is missing %q", wanted)
 		}
 	}
-	for _, forbidden := range []string{"postgres-access:", "openbao-access:"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("control-plane service must use native TLS instead of proxy %s", forbidden)
-		}
+	if strings.Contains(text, "postgres-access:") {
+		t.Fatal("control-plane PostgreSQL stable endpoint must remain named postgres")
 	}
 	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
 	if err != nil {
@@ -311,9 +311,11 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"gcr.io/etcd-development/etcd:v3.7.2",
+		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"BAO_ADDR: https://127.0.0.1:8200",
+		"openbao-member-1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 	} {
 		if !strings.Contains(text, want) {
@@ -331,7 +333,7 @@ func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 		"docker.io/openbao/openbao:2.7.0",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
-		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
 	} {
 		if !strings.Contains(text, wanted) {
@@ -413,7 +415,7 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"70:70\"",
+		"user: \"99:99\"",
 		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
