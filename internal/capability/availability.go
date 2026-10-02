@@ -52,7 +52,18 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 			},
 		}, nil
 	case ProviderMongoDB:
-		return unsupported("current BaseHarbor MongoDB reference realization does not implement a verified replica set"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 3,
+			Limits:               "verified replica-set member/process failure tolerance on the selected runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	default:
 		return availability.Support{}, fmt.Errorf("availability classification for provider %q is not defined", kind)
 	}
