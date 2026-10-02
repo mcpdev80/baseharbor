@@ -51,8 +51,11 @@ func TestMongoDBHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if t.Failed() && os.Getenv("BASEHARBOR_MONGODB_HA_KEEP_ON_FAILURE") == "1" {
-			return
+		if t.Failed() {
+			t.Logf("MongoDB HA diagnostics:\n%s", runtime.DiagnosticsProject(context.Background(), files.Project, files.Compose, files.Env))
+			if os.Getenv("BASEHARBOR_MONGODB_HA_KEEP_ON_FAILURE") == "1" {
+				return
+			}
 		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
