@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -206,5 +207,36 @@ func TestSeaweedFSProviderUsesQualifiedImageReference(t *testing.T) {
 	}
 	if strings.Contains(text, "image: chrislusf/seaweedfs:") {
 		t.Fatalf("SeaweedFS provider compose contains unqualified image reference:\n%s", text)
+	}
+}
+
+
+func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
+	base := providerComposeYAML()
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: "/tmp/admin-access/config/Caddyfile",
+		Material: serviceaccess.TLSMaterial{
+			CA:                "/tmp/admin-access/runtime/ca.pem",
+			ServerCertificate: "/tmp/admin-access/runtime/server.pem",
+			ServerKey:         "/tmp/admin-access/runtime/server-key.pem",
+		},
+	}
+	got := providerComposeWithManagementUI(base, access)
+	if count := strings.Count(got, "/tmp:rw,noexec,nosuid,nodev"); count < 5 {
+		t.Fatalf("SeaweedFS HA compose has %d hardened /tmp mounts, want at least 5:\n%s", count, got)
+	}
+	for _, service := range []string{"seaweedfs-admin-1:", "seaweedfs-admin-2:"} {
+		index := strings.Index(got, service)
+		if index < 0 {
+			t.Fatalf("management UI service %s missing", service)
+		}
+		end := strings.Index(got[index+len(service):], "\n  ")
+		block := got[index:]
+		if end >= 0 {
+			block = got[index : index+len(service)+end]
+		}
+		if !strings.Contains(block, "/tmp:rw,noexec,nosuid,nodev") {
+			t.Fatalf("%s missing hardened writable /tmp:\n%s", service, block)
+		}
 	}
 }
