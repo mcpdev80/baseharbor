@@ -8,6 +8,7 @@ import (
 
 type enforcementState struct {
 	principal *identity.Principal
+	decision  *AuthorizationDecision
 }
 
 type enforcementKey struct{}
@@ -33,4 +34,19 @@ func PrincipalFromContext(ctx context.Context) (*identity.Principal, bool) {
 		return nil, false
 	}
 	return state.principal, true
+}
+
+func setAuthorizationDecision(ctx context.Context, decision AuthorizationDecision) {
+	if state, ok := ctx.Value(enforcementKey{}).(*enforcementState); ok && state != nil {
+		copy := decision
+		state.decision = &copy
+	}
+}
+
+func AuthorizationDecisionFromContext(ctx context.Context) (AuthorizationDecision, bool) {
+	state, ok := ctx.Value(enforcementKey{}).(*enforcementState)
+	if !ok || state == nil || state.decision == nil {
+		return AuthorizationDecision{}, false
+	}
+	return *state.decision, true
 }
