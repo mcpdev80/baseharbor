@@ -151,7 +151,7 @@ func seaweedAdminAccessSpec() serviceaccess.HTTPGatewaySpec {
 		Upstreams:        []string{"http://seaweedfs-admin-1:23646", "http://seaweedfs-admin-2:23646"},
 		PublishedPortEnv: seaweedAdminPortEnv,
 		ContainerPort:    9443,
-		Networks:         []string{"object-storage-internal"},
+		Networks:         []string{"object-storage", "object-storage-internal"},
 		RequireClient:    false,
 		HealthStatus:     http.StatusTemporaryRedirect,
 	}
