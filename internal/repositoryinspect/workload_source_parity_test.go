@@ -60,6 +60,40 @@ func TestWorkloadSourceCrossSourceSemanticParity(t *testing.T) {
 			if evidence.Fingerprint == "" {
 				t.Fatal("fingerprint missing")
 			}
+
+			result, err := Inspect(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Ports) == 0 {
+				t.Fatalf("shared port summary missing: %#v", result)
+			}
+			if len(result.HealthChecks) == 0 {
+				t.Fatalf("shared health summary missing: %#v", result)
+			}
+			for _, id := range []string{"api", "worker"} {
+				if !containsString(result.WorkloadServices, id) {
+					t.Fatalf("workload service %q missing from shared summary: %#v", id, result.WorkloadServices)
+				}
+			}
+			for _, id := range []string{"db", "cache"} {
+				if !containsString(result.InfrastructureServices, id) {
+					t.Fatalf("infrastructure service %q missing from shared summary: %#v", id, result.InfrastructureServices)
+				}
+			}
+			for _, capability := range []string{"database.sql", "cache.key-value", "logs"} {
+				if !containsFindingCapability(result.Findings, capability) {
+					t.Fatalf("capability %q missing from shared findings: %#v", capability, result.Findings)
+				}
+			}
 		})
 	}
+}
+func containsFindingCapability(findings []Finding, wanted string) bool {
+	for _, finding := range findings {
+		if finding.Capability == wanted {
+			return true
+		}
+	}
+	return false
 }
