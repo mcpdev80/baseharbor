@@ -264,10 +264,10 @@ func rabbitMQVerificationName(kind string) (string, error) {
 	return "baseharbor.verify." + strings.TrimSpace(kind) + "." + hex.EncodeToString(random[:]), nil
 }
 
-
 type rabbitMQHAProbeRuntime interface {
 	ExecProject(context.Context, string, string, string, string, ...string) (string, error)
 }
+
 func VerifyRabbitMQHACluster(ctx context.Context, runtime rabbitMQHAProbeRuntime, m Manifest, files RuntimeFiles) error {
 	if rabbitmqMemberCount(m) <= 1 || len(RabbitMQInstanceNames(m)) == 0 {
 		return nil
