@@ -89,7 +89,6 @@ func TestLokiHACompactorTopologyHasOneMainAndTwoWorkers(t *testing.T) {
 	}
 }
 
-
 func TestLokiHAConfigEnablesHorizontalCompactorWorkerBackend(t *testing.T) {
 	cfg := lokiHAConfig()
 	for _, want := range []string{
