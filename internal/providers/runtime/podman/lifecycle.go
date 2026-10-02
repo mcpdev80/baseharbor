@@ -14,7 +14,6 @@ import (
 // PodmanProvider is the first-party Podman Runtime Provider. Repository Compose
 // remains an input/source format, while realization is owned by Quadlet and the
 // user systemd manager. No portable Core code needs to know that distinction.
-
 func (p PodmanProvider) LogCollectionMode() LogCollectionMode { return LogCollectionJournald }
 func (p PodmanProvider) VerifyProjectServiceLogCollection(ctx context.Context, project, service, expectedTag string) error {
 	driver, err := p.ProjectServiceLogDriver(ctx, project, service)
@@ -26,23 +25,18 @@ func (p PodmanProvider) VerifyProjectServiceLogCollection(ctx context.Context, p
 	}
 	return nil
 }
-
 func (p PodmanProvider) Up(ctx context.Context, composeFile, envFile string) error {
 	return p.UpProject(ctx, "baseharbor", composeFile, envFile)
 }
-
 func (p PodmanProvider) Down(ctx context.Context, composeFile, envFile string) error {
 	return p.DownProject(ctx, "baseharbor", composeFile, envFile)
 }
-
 func (p PodmanProvider) Status(ctx context.Context, composeFile, envFile string) (string, error) {
 	return p.StatusProject(ctx, "baseharbor", composeFile, envFile)
 }
-
 func (p PodmanProvider) Config(ctx context.Context, composeFile, envFile string) error {
 	return p.ConfigProject(ctx, "baseharbor", composeFile, envFile)
 }
-
 func (p PodmanProvider) UpProject(ctx context.Context, project, composeFile, envFile string) error {
 	return p.UpProjectProgress(ctx, project, composeFile, envFile, nil)
 }
@@ -63,7 +57,6 @@ func (p PodmanProvider) UpProjectProgress(ctx context.Context, project, composeF
 	}
 	return nil
 }
-
 func (p PodmanProvider) DownProject(ctx context.Context, project, composeFile, envFile string) error {
 	q, err := quadletRenderProject(composeFile, envFile, project)
 	if err != nil {
@@ -71,7 +64,6 @@ func (p PodmanProvider) DownProject(ctx context.Context, project, composeFile, e
 	}
 	return quadletRemoveProject(ctx, q, false)
 }
-
 func (p PodmanProvider) StopProject(ctx context.Context, project, composeFile, envFile string) error {
 	q, err := quadletRenderProject(composeFile, envFile, project)
 	if err != nil {
