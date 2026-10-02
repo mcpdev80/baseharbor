@@ -172,7 +172,10 @@ func (s *Service) Logs(ctx context.Context, request LogRequest) (io.ReadCloser, 
 	return s.backend.ContainerLogs(ctx, request.Resource.ResourceID, request.Since, request.Tail, request.Follow)
 }
 
-func (s *Service) Metrics(context.Context, ResourceRef) (MetricsHandle, error) {
+func (s *Service) Metrics(_ context.Context, ref ResourceRef) (MetricsHandle, error) {
+	if err := s.validateRef(ref); err != nil {
+		return MetricsHandle{}, err
+	}
 	return MetricsHandle{Available: false}, nil
 }
 
