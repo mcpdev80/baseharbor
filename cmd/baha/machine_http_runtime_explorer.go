@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strings"
 
@@ -11,32 +10,18 @@ import (
 )
 
 func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
-	targetName := strings.TrimSpace(request.Context.Target)
-	ctx = withTargetOverride(ctx, targetName)
-	target, err := effectiveTarget(ctx)
+	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
 	if err != nil {
 		return nil, err
 	}
-	provider, err := detectRuntimeForTarget(ctx, target)
-	if err != nil {
-		return nil, err
-	}
-	direct, ok := provider.(runtimeexplorer.DirectContainerRuntime)
-	if !ok {
-		return nil, fmt.Errorf("runtime provider %q does not expose bounded Runtime Explorer container primitives", provider.Kind())
-	}
-	backend, err := runtimeexplorer.NewCLIContainerBackend(direct)
-	if err != nil {
-		return nil, err
-	}
-	explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{})
+	capabilities, err := explorer.Capabilities(ctx, target)
 	if err != nil {
 		return nil, err
 	}
 	return explorer.Logs(ctx, runtimeexplorer.LogRequest{
 		Resource: runtimeexplorer.ResourceRef{
-			Provider:   string(provider.Kind()),
-			Target:     target.Name,
+			Provider:   capabilities.Provider,
+			Target:     target,
 			Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(request.ResourceKind)),
 			ResourceID: strings.TrimSpace(request.ResourceID),
 		},
@@ -45,6 +30,36 @@ func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine
 	})
 }
 
+func (e *bahaMachineExecutor) OpenExecStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
+	if request.TTY {
+		return nil, machine.NewError(
+			machine.ErrorUnsupported,
+			"Interactive TTY exec is not supported by the active Runtime Explorer provider.",
+			"Use a non-interactive bounded command.",
+			false,
+		)
+	}
+	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
+	if err != nil {
+		return nil, err
+	}
+	capabilities, err := explorer.Capabilities(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	return explorer.Exec(ctx, runtimeexplorer.OperationRequest{
+		Resource: runtimeexplorer.ResourceRef{
+			Provider:   capabilities.Provider,
+			Target:     target,
+			Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(request.ResourceKind)),
+			ResourceID: strings.TrimSpace(request.ResourceID),
+		},
+		Operation: runtimeexplorer.OperationExec,
+		Command:   append([]string(nil), request.Command...),
+	})
+}
+
 var _ interface {
 	OpenLogStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
+	OpenExecStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
 } = (*bahaMachineExecutor)(nil)
