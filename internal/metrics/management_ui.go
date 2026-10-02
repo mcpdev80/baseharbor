@@ -43,12 +43,12 @@ func ManagementUISurfaceAt(dataDir, namespace string, m application.Manifest) (a
 		roleMappings = application.NativeCredentialRoleMappings("operator", "reader")
 	}
 	return application.ManagementUISurface{
-		Service:        "observability",
-		Purpose:        application.ProviderInterfaceObservability,
-		URL:            strings.TrimRight(endpoint, "/") + "/",
-		Authentication: authentication,
+		Service:             "observability",
+		Purpose:             application.ProviderInterfaceObservability,
+		URL:                 strings.TrimRight(endpoint, "/") + "/",
+		Authentication:      authentication,
 		AuthenticationClass: authClass,
-		RoleMappings: roleMappings,
+		RoleMappings:        roleMappings,
 	}, nil
 }
 
