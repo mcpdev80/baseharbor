@@ -35,7 +35,6 @@ func TestTCPGatewayConfigSupportsMultipleHealthyMembers(t *testing.T) {
 	}
 }
 
-
 func TestTCPGatewaySupportsProviderAwareHealthChecksWithoutEmbeddingSecret(t *testing.T) {
 	spec := TCPGatewaySpec{
 		ServiceName:      "valkey-access",
