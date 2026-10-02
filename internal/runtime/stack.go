@@ -272,9 +272,16 @@ func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMateri
 
 func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 	for _, required := range []string{
-		"  openbao:\n",
+		"  openbao-member-1:\n",
+		"  openbao-member-2:\n",
+		"  openbao-member-3:\n",
 		"docker.io/openbao/openbao:2.7.0",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
+		"BAO_CLUSTER_ADDR: https://openbao-member-1:8201",
+		"  openbao:\n",
+		"docker.io/library/haproxy:3.2.23-alpine",
+		"./providers/openbao/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"  openbao-admin:\n",
 		"./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
 	} {
