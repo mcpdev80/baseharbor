@@ -41,4 +41,10 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 	if got := strings.Count(compose, "sentinel auth-pass baseharbor"); got != 3 {
 		t.Fatalf("Valkey HA compose has %d Sentinel auth-pass entries, want 3:\n%s", got, compose)
 	}
+	if got := strings.Count(compose, "valkey-cli ping 2>&1 | grep -Eq '^PONG$|^NOAUTH '"); got != 3 {
+		t.Fatalf("Valkey HA compose has %d credential-independent member liveness checks, want 3:\n%s", got, compose)
+	}
+	if strings.Contains(compose, "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping") {
+		t.Fatalf("Valkey HA member healthcheck must not depend on rotating credential projection:\n%s", compose)
+	}
 }
