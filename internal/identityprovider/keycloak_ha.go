@@ -125,7 +125,7 @@ func keycloakHADataLayerCompose() string {
 	b.WriteString("      - /bin/sh\n")
 	b.WriteString("      - -ec\n")
 	b.WriteString("      - |\n")
-	b.WriteString("        until pg_isready -h keycloak-db -p 5432 -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" -d postgres; do sleep 1; done\n")
+	b.WriteString("        attempts=0; until pg_isready -h keycloak-db -p 5432 -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" -d postgres; do attempts=$((attempts+1)); if [ \"$attempts\" -ge 180 ]; then echo 'Keycloak PostgreSQL HA endpoint did not become ready' >&2; exit 1; fi; sleep 1; done\n")
 	b.WriteString("        exists=$(psql -h keycloak-db -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='${BASEHARBOR_KEYCLOAK_DB_NAME}'\")\n")
 	b.WriteString("        if [ \"$exists\" != \"1\" ]; then createdb -h keycloak-db -U \"$BASEHARBOR_KEYCLOAK_DB_USER\" \"$BASEHARBOR_KEYCLOAK_DB_NAME\"; fi\n")
 	b.WriteString("    networks:\n      identity-internal: {}\n\n")
