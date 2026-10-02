@@ -100,6 +100,25 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	waitRabbitMQHAReady(t, ctx, op, m, files)
 
+	oldProviderCA, err := os.ReadFile(afterRotation[rabbitmqTLSCAKey(defaultServiceInstance)])
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldUICA, err := os.ReadFile(filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", defaultServiceInstance, "pki", "ca.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RotateManagedProviderPKI(ctx, runtime, serviceissuer.New(t), m, files, ManagedProviderPKIRabbitMQ, defaultServiceInstance); err != nil {
+		t.Fatalf("rotate RabbitMQ HA PKI: %v", err)
+	}
+	rotatedValues, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOldCARootRejected(t, oldProviderCA, rotatedValues[rabbitmqRuntimeKey(defaultServiceInstance, "HOST_PORT")])
+	assertOldCARootRejected(t, oldUICA, rotatedValues[rabbitmqUIHostPortKey(defaultServiceInstance)])
+	waitRabbitMQHAReady(t, ctx, op, m, files)
+
 	environment, err := RuntimeEnvironment(files)
 	if err != nil {
 		t.Fatal(err)
