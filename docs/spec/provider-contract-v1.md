@@ -102,6 +102,16 @@ Sharing provider infrastructure is explicitly a resource-efficiency mechanism. I
 
 A named sharing boundary MAY subdivide `shared` placement without introducing a fourth scope.
 
+## Credential ownership taxonomy
+
+Provider implementations MUST use the normative [Credential and access ownership v1](credential-access-v1.md) taxonomy.
+
+Providers MUST preserve the distinction between Human/management identity, Application-service credentials and BaseHarbor-internal machine identity.
+
+A provider MUST NOT replace internal machine credentials with shared human/developer credentials, and shared provider infrastructure MUST NOT imply shared application-service credentials.
+
+Application business users, groups, roles and permissions remain application/IdP-owned and outside the provider credential model.
+
 ## Verification
 
 A provider reporting process health is not sufficient when the capability requires protocol/data-flow verification.
