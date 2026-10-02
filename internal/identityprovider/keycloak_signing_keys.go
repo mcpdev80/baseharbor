@@ -18,8 +18,8 @@ import (
 
 const (
 	keycloakKeyProviderType = "org.keycloak.keys.KeyProvider"
-	keycloakRSAProviderID    = "rsa-generated"
-	managedSigningPrefix     = "baseharbor-signing-"
+	keycloakRSAProviderID   = "rsa-generated"
+	managedSigningPrefix    = "baseharbor-signing-"
 )
 
 type keycloakComponent struct {
