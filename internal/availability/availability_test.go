@@ -9,7 +9,7 @@ func boolp(v bool) *bool { return &v }
 
 func TestIntentInheritanceAndExplicitException(t *testing.T) {
 	intent := Intent{HA: true, Overrides: map[string]Override{
-		"sql": {Instances: 5},
+		"sql":  {Instances: 5},
 		"logs": {HA: boolp(false)},
 	}}
 	if got := intent.Resolve("sql"); !got.HA || got.Instances != 5 || got.ExplicitException {
@@ -33,8 +33,12 @@ func TestNegotiationFailsClosedWithoutDowngrade(t *testing.T) {
 
 func TestProviderRecommendedTopologyWinsOverGenericFallback(t *testing.T) {
 	got, err := Negotiate(Requirement{Component: "identity", HA: true}, "provider", Support{Level: Supported, RecommendedInstances: 5})
-	if err != nil { t.Fatal(err) }
-	if got.EffectiveInstances != 5 { t.Fatalf("instances = %d, want 5", got.EffectiveInstances) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EffectiveInstances != 5 {
+		t.Fatalf("instances = %d, want 5", got.EffectiveInstances)
+	}
 }
 
 func TestObservationRetainsAllInstancesAndDetectsDegradedState(t *testing.T) {
