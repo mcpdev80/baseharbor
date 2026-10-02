@@ -14,10 +14,21 @@ const (
 	Unsupported        SupportLevel = "UNSUPPORTED"
 )
 
+type Guarantees struct {
+	MemberFailureTolerance bool   `json:"member_failure_tolerance,omitempty"`
+	HostFailureTolerance   bool   `json:"host_failure_tolerance,omitempty"`
+	RollingMaintenance     bool   `json:"rolling_maintenance,omitempty"`
+	CredentialRotation     bool   `json:"credential_rotation,omitempty"`
+	PKIRotation            bool   `json:"pki_rotation,omitempty"`
+	ManagementContinuity   bool   `json:"management_continuity,omitempty"`
+	FailureDomain          string `json:"failure_domain,omitempty"`
+}
+
 type Support struct {
 	Level                SupportLevel `json:"level"`
 	RecommendedInstances int          `json:"recommended_instances,omitempty"`
 	Limits               string       `json:"limits,omitempty"`
+	Guarantees           Guarantees   `json:"guarantees,omitempty"`
 }
 
 func (s Support) Validate() error {
@@ -45,6 +56,7 @@ type NegotiationResult struct {
 	ExplicitException  bool         `json:"explicit_exception,omitempty"`
 	Satisfied          bool         `json:"satisfied"`
 	Reason             string       `json:"reason,omitempty"`
+	Guarantees          Guarantees   `json:"guarantees,omitempty"`
 }
 
 type UnsupportedGuaranteeError struct {
@@ -68,6 +80,7 @@ func Negotiate(requirement Requirement, provider string, support Support) (Negot
 		RequiredHA: requirement.HA, RequestedInstances: requirement.Instances,
 		ExplicitException: requirement.ExplicitException,
 		Support:           support.Level,
+		Guarantees:        support.Guarantees,
 	}
 	if !requirement.HA {
 		result.Satisfied = true
