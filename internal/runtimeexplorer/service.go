@@ -25,7 +25,7 @@ type OwnershipResolver interface {
 type ContainerBackend interface {
 	Kind() runtimecontract.ProviderKind
 	ListRuntimeContainers(context.Context) ([]runtimecontract.RuntimeContainer, error)
-	ContainerLogs(context.Context, string, *time.Time, int) (io.ReadCloser, error)
+	ContainerLogs(context.Context, string, *time.Time, int, bool) (io.ReadCloser, error)
 	OperateContainer(context.Context, string, Operation, []string) (string, error)
 }
 
@@ -118,7 +118,7 @@ func (s *Service) Logs(ctx context.Context, request LogRequest) (io.ReadCloser, 
 	if request.Resource.Kind != KindContainer {
 		return nil, fmt.Errorf("logs are not supported for runtime resource kind %q", request.Resource.Kind)
 	}
-	return s.backend.ContainerLogs(ctx, request.Resource.ResourceID, request.Since, request.Tail)
+	return s.backend.ContainerLogs(ctx, request.Resource.ResourceID, request.Since, request.Tail, request.Follow)
 }
 
 func (s *Service) Metrics(context.Context, ResourceRef) (MetricsHandle, error) {
