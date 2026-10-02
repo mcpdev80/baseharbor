@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func TestValkeyHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 			break
 		}
 		if time.Now().After(failoverDeadline) {
-			t.Fatalf("Valkey stable binding/UI did not survive primary failure: master=%q masterErr=%v semantic=%v ui=%v", master, masterErr, semanticErr, uiErr)
+			t.Fatalf("Valkey stable binding/UI did not survive primary failure: master=%q masterErr=%v semantic=%v ui=%v gateway=%s", master, masterErr, semanticErr, uiErr, valkeyGatewayHealthDiagnostics(ctx, op, defaultServiceInstance))
 		}
 		time.Sleep(time.Second)
 	}
@@ -108,8 +109,22 @@ func waitValkeyHAReady(t *testing.T, ctx context.Context, runtime bhruntime.Runt
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("Valkey HA did not become ready: semantic=%v ha=%v ui=%v", semanticErr, haErr, uiErr)
+			t.Fatalf("Valkey HA did not become ready: semantic=%v ha=%v ui=%v gateway=%s", semanticErr, haErr, uiErr, valkeyGatewayHealthDiagnostics(ctx, op, defaultServiceInstance))
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+
+func valkeyGatewayHealthDiagnostics(ctx context.Context, op valkeyHAProbeRuntime, instance string) string {
+	service := valkeyAccessService(instance)
+	envState, envErr := op.Run(ctx, service, "sh", "-ec", `if [ -n "$VALKEY_HEALTH_PASSWORD" ]; then printf configured; else printf missing; fi`)
+	stats, statsErr := op.Run(ctx, service, "sh", "-ec", `wget -qO- 'http://127.0.0.1:8404/stats;csv' 2>/dev/null | grep '^upstream,' || true`)
+	if envErr != nil {
+		envState = "probe-error"
+	}
+	if statsErr != nil {
+		stats = "stats-error"
+	}
+	return "credential=" + strings.TrimSpace(envState) + " backends=" + strings.TrimSpace(stats)
 }
