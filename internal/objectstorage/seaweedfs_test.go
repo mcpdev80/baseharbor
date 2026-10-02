@@ -111,7 +111,19 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	composeText := string(compose)
-	for _, want := range []string{"- server", "- -s3", "- -iam=true"} {
+	for _, want := range []string{
+		"- server",
+		"- -s3=true",
+		"- -s3.iam=true",
+		"- -s3.iam.readOnly=false",
+		"- -master.peers=seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333",
+		"- -master.defaultReplication=100",
+		"- -filer.defaultReplicaPlacement=100",
+		"seaweedfs-node-1:",
+		"seaweedfs-node-2:",
+		"seaweedfs-node-3:",
+		"reverse_proxy http://seaweedfs-node-1:8333 http://seaweedfs-node-2:8333 http://seaweedfs-node-3:8333",
+	} {
 		if !strings.Contains(composeText, want) {
 			t.Fatalf("SeaweedFS IAM compose missing %q:\n%s", want, composeText)
 		}
