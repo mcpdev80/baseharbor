@@ -92,6 +92,9 @@ compactor:
   working_directory: /loki/compactor
   retention_enabled: true
   delete_request_store: s3
+  horizontal_scaling_mode: ${BASEHARBOR_LOKI_COMPACTOR_MODE}
+  worker_config:
+    num_sub_workers: ${BASEHARBOR_LOKI_COMPACTOR_WORKERS}
 `
 }
 
@@ -376,12 +379,10 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			fmt.Fprintf(&b, "    image: %s\n", LokiImage)
 			fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 			mode := "worker"
-			workerArg := ", \"-compactor.worker.num-sub-workers=4\""
 			if ordinal == 1 {
 				mode = "main"
-				workerArg = ""
 			}
-			fmt.Fprintf(&b, "    command: [\"-config.file=/etc/loki/loki.yaml\", \"-config.expand-env=true\", \"-target=all\", \"-compactor.horizontal-scaling-mode=%s\"%s]\n", mode, workerArg)
+			b.WriteString("    command: [\"-config.file=/etc/loki/loki.yaml\", \"-config.expand-env=true\", \"-target=all\"]\n")
 			b.WriteString("    read_only: true\n")
 			b.WriteString("    cap_drop: [\"ALL\"]\n")
 			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -391,6 +392,8 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			b.WriteString("      BASEHARBOR_LOKI_S3_BUCKET: ${BASEHARBOR_LOKI_S3_BUCKET}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_ACCESS_KEY_ID: ${BASEHARBOR_LOKI_S3_ACCESS_KEY_ID}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY: ${BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY}\n")
+			fmt.Fprintf(&b, "      BASEHARBOR_LOKI_COMPACTOR_MODE: %s\n", mode)
+			b.WriteString("      BASEHARBOR_LOKI_COMPACTOR_WORKERS: \"4\"\n")
 			b.WriteString("      SSL_CERT_FILE: /run/baseharbor/object-storage/ca.pem\n")
 			b.WriteString("    volumes:\n")
 			b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
