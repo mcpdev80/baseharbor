@@ -41,9 +41,9 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 		Version:       application.CurrentVersion,
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          "mcp-lifecycle",
-		Environment: "dev",
-		Services:    application.Services{SQL: true},
-		Workload:    application.WorkloadConfig{Components: []string{"api"}},
+		Environment:   "dev",
+		Services:      application.Services{SQL: true},
+		Workload:      application.WorkloadConfig{Components: []string{"api"}},
 	}
 	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)
