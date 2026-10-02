@@ -294,7 +294,57 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	if devaccess.Enabled(app.Environment) {
 		hostnameCommand = "      - --hostname-strict=false\n"
 	}
-	return fmt.Sprintf(`services:
+
+	member := func(name string) string {
+		return fmt.Sprintf(`  %s:
+    image: %s
+    restart: unless-stopped
+    user: "1000:0"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    command:
+      - start
+      - --cache=ispn
+      - --cache-stack=jdbc-ping
+      - --http-enabled=false
+      - --https-port=%d
+      - --https-certificate-file=/run/baseharbor/tls/server.pem
+      - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
+      - --https-certificates-reload-period=30s
+      - --proxy-headers=xforwarded
+%s      - --health-enabled=true
+      - --metrics-enabled=true
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
+      KC_CACHE: ispn
+      KC_CACHE_STACK: jdbc-ping
+      KC_CACHE_EMBEDDED_NODE_NAME: %s
+%s    volumes:
+      - ./native-tls/runtime:/run/baseharbor/tls:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+      start_period: 10s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
+    networks:
+      identity-internal: {}
+`, name, KeycloakImage, keycloakHTTPSPort, hostnameCommand, name, hostnameEnvironment)
+	}
+
+	var b strings.Builder
+	b.WriteString(`services:
   keycloak-db:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
@@ -314,64 +364,30 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
     networks:
       - identity-internal
 
-  keycloak:
-    image: %s
-    restart: unless-stopped
-    user: "1000:0"
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    depends_on:
-      keycloak-db:
-        condition: service_healthy
-    command:
-      - start
-      - --http-enabled=false
-      - --https-port=%d
-      - --https-certificate-file=/run/baseharbor/tls/server.pem
-      - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
-      - --https-certificates-reload-period=30s
-%s      - --health-enabled=true
-      - --metrics-enabled=true
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
-      KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
-      KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-%s    ports:
-      - "127.0.0.1:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}:%d"
-    volumes:
-      - ./native-tls/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
-      - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
-      - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
-      interval: 2s
-      timeout: 3s
-      retries: 90
-      start_period: 10s
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
-    networks:
-      identity-consumer:
-        aliases:
-          - %q
-      identity-internal:
-        aliases:
-          - keycloak
-          - %q
-
-volumes:
-  keycloak-db-data:
-
-networks:
-  identity-consumer:
-    name: %s
-  identity-internal:
-    name: %s
-`, KeycloakImage, keycloakHTTPSPort, hostnameCommand, hostnameEnvironment, keycloakHTTPSPort, devaccess.ProviderAlias(files.Project, "identity"), devaccess.ProviderAlias(files.Project, "identity-admin"), files.ConsumerNetwork, files.InternalNetwork)
+`)
+	b.WriteString(member("keycloak-1"))
+	b.WriteString("\n")
+	b.WriteString(member("keycloak-2"))
+	b.WriteString("\n")
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443"},
+		UpstreamTrustFile:  filepath.Join(files.Dir, "native-tls", "runtime", "ca.pem"),
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases: []string{
+			devaccess.ProviderAlias(files.Project, "identity"),
+			devaccess.ProviderAlias(files.Project, "identity-admin"),
+			"keycloak",
+		},
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
+	b.WriteString("\nvolumes:\n  keycloak-db-data:\n\nnetworks:\n")
+	fmt.Fprintf(&b, "  identity-consumer:\n    name: %s\n", files.ConsumerNetwork)
+	fmt.Fprintf(&b, "  identity-internal:\n    name: %s\n", files.InternalNetwork)
+	return b.String()
 }
 
 func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
