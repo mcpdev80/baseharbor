@@ -129,3 +129,32 @@ func TestMongoDBReplicaKeyUsesStandardBase64Alphabet(t *testing.T) {
 		}
 	}
 }
+
+func TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary(t *testing.T) {
+	m := Manifest{
+		Version:       CurrentVersion,
+		ApplicationID: MustNewApplicationID(),
+		Name:          "documents-ha",
+		Environment:   "dev",
+		HA:            true,
+		Services: Services{
+			DocumentDatabase: true,
+		},
+	}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	compose, err := RuntimeComposeYAMLForProject(m, "bh-documents-ha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`printf '- \"%s\"\\n' "$BASEHARBOR_MONGODB_REPLICA_KEY"`,
+		"--keyFile /tmp/mongodb-keyfile",
+		"--setParameter tlsWithholdClientCertificate=true",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Fatalf("MongoDB HA compose missing %q:\n%s", want, compose)
+		}
+	}
+}
