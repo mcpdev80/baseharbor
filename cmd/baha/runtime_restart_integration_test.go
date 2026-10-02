@@ -22,7 +22,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Skip("real control-plane restart acceptance requires BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
 
 	runtimeCommand := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
