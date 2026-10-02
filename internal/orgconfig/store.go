@@ -50,7 +50,7 @@ func LoadActive() (ActiveState, error) {
 		return ActiveState{}, err
 	}
 	if !ok {
-		return ActiveState{}, fmt.Errorf("%w; run 'baha config organization set'", ErrNotConfigured)
+		return ActiveState{}, fmt.Errorf("organization configuration is not configured; run 'baha config organization set'")
 	}
 	return state, nil
 }
