@@ -531,7 +531,6 @@ func workloadSourceCandidateScore(candidate WorkloadSourceCandidate) int {
 	return score
 }
 
-
 func appendOrMergeCandidate(candidates []WorkloadSourceCandidate, next WorkloadSourceCandidate) []WorkloadSourceCandidate {
 	for i := range candidates {
 		if candidates[i].Kind == next.Kind && candidates[i].Path == next.Path {
