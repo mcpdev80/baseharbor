@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-func ReconcileRabbitMQCredentials(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+type rabbitMQCredentialRuntime interface {
+	ExecProjectInput(context.Context, string, string, string, []byte, string, ...string) (string, error)
+}
+
+func ReconcileRabbitMQCredentials(ctx context.Context, runtime rabbitMQCredentialRuntime, m Manifest, files RuntimeFiles) error {
 	if len(RabbitMQInstanceNames(m)) == 0 {
 		return nil
 	}
