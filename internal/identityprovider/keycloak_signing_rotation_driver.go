@@ -13,15 +13,15 @@ import (
 )
 
 type preparedKeycloakSigningRotation struct {
-	OldComponent keycloakComponent `json:"old_component"`
-	NewComponent keycloakComponent `json:"new_component"`
-	OldKid       string            `json:"old_kid"`
-	NewKid       string            `json:"new_kid"`
-	OldToken     string            `json:"old_token"`
-	NewToken     string            `json:"new_token,omitempty"`
-	ProbeClientID   string         `json:"probe_client_id"`
-	ProbeClientUUID string         `json:"probe_client_uuid"`
-	ProbeSecret     string         `json:"probe_secret"`
+	OldComponent    keycloakComponent `json:"old_component"`
+	NewComponent    keycloakComponent `json:"new_component"`
+	OldKid          string            `json:"old_kid"`
+	NewKid          string            `json:"new_kid"`
+	OldToken        string            `json:"old_token"`
+	NewToken        string            `json:"new_token,omitempty"`
+	ProbeClientID   string            `json:"probe_client_id"`
+	ProbeClientUUID string            `json:"probe_client_uuid"`
+	ProbeSecret     string            `json:"probe_secret"`
 }
 
 // RotateSigningKey performs overlap-safe realm signing-key rotation. The new
