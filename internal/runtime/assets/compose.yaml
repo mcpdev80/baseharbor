@@ -41,6 +41,7 @@ services:
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
         exec /bin/sh /launch.sh
     environment:
+      PATRONI_NAME: postgres-member-1
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PATRONI_NAME: postgres-member-1
@@ -78,6 +79,7 @@ services:
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
         exec /bin/sh /launch.sh
     environment:
+      PATRONI_NAME: postgres-member-2
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PATRONI_NAME: postgres-member-2
@@ -115,6 +117,7 @@ services:
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
         exec /bin/sh /launch.sh
     environment:
+      PATRONI_NAME: postgres-member-3
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PATRONI_NAME: postgres-member-3
