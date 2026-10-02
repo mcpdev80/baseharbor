@@ -213,6 +213,36 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		}
 	})
 
+	t.Run("managed mutation fails closed before filesystem mutation", func(t *testing.T) {
+		parent := t.TempDir()
+		name := "managed-denied"
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name: "baseharbor.app.new",
+			Arguments: map[string]any{
+				"directory":   parent,
+				"name":        name,
+				"environment": "prod",
+				"stack":       "go",
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("managed mutation without authenticated operator unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"authentication_failed"`)) {
+			t.Fatalf("managed authorization error is not typed: %s", encoded)
+		}
+		if _, err := os.Stat(filepath.Join(parent, name)); !os.IsNotExist(err) {
+			t.Fatalf("managed mutation touched filesystem before authorization: %v", err)
+		}
+	})
+
 	t.Run("destroy requires explicit approval", func(t *testing.T) {
 		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.destroy",
