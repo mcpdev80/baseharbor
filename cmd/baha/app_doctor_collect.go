@@ -340,7 +340,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				if c.runtimeErr != nil {
 					return c.runtimeErr
 				}
-				return application.VerifyRabbitMQRuntime(ctx, m, c.files)
+				if err := application.VerifyRabbitMQRuntime(ctx, m, c.files); err != nil {
+					return err
+				}
+				return application.VerifyRabbitMQHACluster(ctx, c.compose, m, c.files)
 			}},
 		)
 	}
