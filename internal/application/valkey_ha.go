@@ -68,11 +68,11 @@ func valkeyGatewaySpec(m Manifest, instance string) serviceaccess.TCPGatewaySpec
 		spec.BackendDirectives = []string{
 			"option tcp-check",
 			"tcp-check connect",
-			"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\"",
+			"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\"",
 			"tcp-check expect string +OK",
-			"tcp-check send-lf \"INFO replication\"",
+			"tcp-check send-lf \"INFO replication\\r\"",
 			"tcp-check expect string role:master",
-			"tcp-check send-lf \"QUIT\"",
+			"tcp-check send-lf \"QUIT\\r\"",
 			"tcp-check expect string +OK",
 		}
 	}
@@ -199,11 +199,11 @@ func sharedValkeyGatewaySpec(app sharedBackendAppState, instance string) service
 	spec.BackendDirectives = []string{
 		"option tcp-check",
 		"tcp-check connect",
-		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\"",
+		"tcp-check send-lf \"AUTH %[env(VALKEY_HEALTH_PASSWORD)]\\r\"",
 		"tcp-check expect string +OK",
-		"tcp-check send-lf \"INFO replication\"",
+		"tcp-check send-lf \"INFO replication\\r\"",
 		"tcp-check expect string role:master",
-		"tcp-check send-lf \"QUIT\"",
+		"tcp-check send-lf \"QUIT\\r\"",
 		"tcp-check expect string +OK",
 	}
 	return spec
