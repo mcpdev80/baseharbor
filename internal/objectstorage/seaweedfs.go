@@ -277,8 +277,12 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		d.createdBuckets[resource.Name] = struct{}{}
 	}
 
+	iamUser, err := currentBucketIAMUser(d.files, resource.Name, physical)
+	if err != nil {
+		return fmt.Errorf("resolve SeaweedFS IAM identity for %s: %w", resource.Name, err)
+	}
 	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
-		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
+		credentials.AccessKeyID, credentials.SecretAccessKey, physical, iamUser)
 	if err := d.runSeaweedShell(ctx, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
@@ -400,10 +404,15 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 	if err := d.runSeaweedShell(ctx, command); err != nil {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
 	}
-	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", physical)
+	iamUser, err := currentBucketIAMUser(d.files, logicalBucket, physical)
+	if err != nil {
+		return fmt.Errorf("resolve S3 identity for %s: %w", logicalBucket, err)
+	}
+	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", iamUser)
 	if err := d.runSeaweedShell(ctx, revoke); err != nil {
 		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
 	}
+	_ = os.Remove(bucketCredentialIdentityStatePath(d.files, logicalBucket))
 	return nil
 }
 
