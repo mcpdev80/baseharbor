@@ -145,7 +145,6 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 	}
 }
 
-
 func sharedValkeyMemberCount(resource sharedValkeyResource) int {
 	if resource.Instances > 1 {
 		return resource.Instances
