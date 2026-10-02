@@ -50,7 +50,7 @@ func (e *bahaMachineExecutor) Execute(
 	case "runtime.start", "runtime.stop", "runtime.restart":
 		result, err = e.executeHTTPRuntimeMutation(ctx, operation.ID, operationContext, input)
 	case "workspace.update", "app.new", "provider.add", "provider.remove",
-		"organization.set", "organization.update":
+		"organization.set", "organization.update", "runtime.operate":
 		result, err = e.executeHTTPPlatformMutation(ctx, operation.ID, operationContext, input, report)
 	case "apply", "update", "repair", "backup", "restore", "destroy":
 		result, err = e.executeHTTPLifecycle(ctx, operation.ID, operationContext, input, report)
