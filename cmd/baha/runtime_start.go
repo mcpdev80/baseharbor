@@ -100,6 +100,14 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
 		return err
 	}
+	if _, found, err := bhruntime.LoadControlPlaneCredentialRotation(files); err != nil {
+		return fmt.Errorf("inspect pending control-plane credential rotation: %w", err)
+	} else if found {
+		fmt.Fprintln(out, "Resuming pending control-plane credential rotation...")
+		if err := rotateControlPlaneDatabaseCredentials(ctx, compose, files, resolvedRecoveryFile); err != nil {
+			return fmt.Errorf("resume control-plane credential rotation: %w", err)
+		}
+	}
 	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, resolvedRecoveryFile); err != nil {
 		return fmt.Errorf("reconcile control-plane service access: %w", err)
 	}
