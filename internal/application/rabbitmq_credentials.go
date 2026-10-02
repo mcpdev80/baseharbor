@@ -133,7 +133,6 @@ func waitRabbitMQCredentialAuthority(ctx context.Context, runtime rabbitMQCreden
 	}
 }
 
-
 func reconcileRabbitMQCredentialSet(ctx context.Context, runtime rabbitMQCredentialRuntime, service string, input []byte, script string) error {
 	deadline := time.NewTimer(90 * time.Second)
 	defer deadline.Stop()
