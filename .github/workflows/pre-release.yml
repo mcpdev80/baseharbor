@@ -240,67 +240,6 @@ jobs:
           retention-days: 30
 
 
-  adoption_conformance:
-    name: Source · Adoption Conformance
-    needs: source
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.source.outputs.candidate_sha }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run source-neutral adoption conformance
-        shell: bash
-        run: |
-          set -euo pipefail
-          go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
-          legacy="$(
-            find cmd internal docs -type f \( -name '*.go' -o -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) -print0 |
-              xargs -0 grep -n -E -- '--workload-compose|--workload-service|workload\\.compose|workload\\.services|Manifest\\.Workload\\.(Compose|Services)' || true
-          )"
-          if [ -n "$legacy" ]; then
-            echo "$legacy" >&2
-            exit 1
-          fi
-
-  adoption_realworld:
-    name: Source · Real World · ${{ matrix.category }}
-    needs: source
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        category: [compose, quadlet, kubernetes]
-    steps:
-      - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.source.outputs.candidate_sha }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build exact inspection candidate
-        run: go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
-
-      - name: Run pinned real-world corpus
-        env:
-          BAHA: ${{ runner.temp }}/baha
-          CORPUS_CATEGORY: ${{ matrix.category }}
-        run: bash scripts/realworld-workload-source-corpus.sh
-
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
@@ -394,6 +333,14 @@ jobs:
           case "$GATE" in
             conformance)
               go test ./internal/repositoryinspect -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution' -count=1
+              legacy="$(
+                find cmd internal docs -type f \( -name '*.go' -o -name '*.md' -o -name '*.yaml' -o -name '*.yml' \) -print0 |
+                  xargs -0 grep -n -E -- '--workload-compose|--workload-service|workload\\.compose|workload\\.services|Manifest\\.Workload\\.(Compose|Services)' || true
+              )"
+              if [ -n "$legacy" ]; then
+                echo "$legacy" >&2
+                exit 1
+              fi
               ;;
             realworld-compose)
               go build -trimpath -o /tmp/baha ./cmd/baha
@@ -613,8 +560,6 @@ jobs:
         if: >-
           steps.manifest.outcome == 'success' &&
           needs.source.result == 'success' &&
-          needs.adoption_conformance.result == 'success' &&
-          needs.adoption_realworld.result == 'success' &&
           needs.runtime_candidate.result == 'success' &&
           needs.adoption.result == 'success' &&
           steps.adoption_manifest.outcome == 'success' &&
@@ -672,8 +617,6 @@ jobs:
           rows="$RUNNER_TEMP/pre-release-final.tsv"
           cat >"$rows" <<EOF
           Source	${{ needs.source.result }}	exact candidate source/contracts/docs
-          Adoption conformance	${{ needs.adoption_conformance.result }}	source-neutral contract, ambiguity, security and cross-source parity
-          Real-world corpus	${{ needs.adoption_realworld.result }}	10 Compose + 10 Quadlet + 10 Kubernetes repositories
           Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
           Static gates	${{ needs.static_gates.result }}	5 independently rerunnable static gates
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
