@@ -553,7 +553,11 @@ func ensureRabbitMQManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 		if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
 			return err
 		}
-		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s:15672\n}\n", runtimeServiceName("rabbitmq", instance))
+		var upstreams []string
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			upstreams = append(upstreams, rabbitmqMemberServiceName(instance, ordinal)+":15672")
+		}
+		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s\n}\n", strings.Join(upstreams, " "))
 		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
 			return err
 		}
