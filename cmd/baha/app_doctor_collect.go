@@ -330,7 +330,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 					if !containsString(c.running, "valkey") {
 						return errors.New("no valkey instance is running")
 					}
-					return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
+					if err := application.VerifyValkeyRuntime(ctx, c.compose, m, c.files); err != nil {
+						return err
+					}
+					return application.VerifyValkeyHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 				}},
 			)
 		}
