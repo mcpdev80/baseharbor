@@ -187,5 +187,6 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 		ContainerPort:    8443,
 		Networks:         []string{"logs-internal", "logs-publish"},
 		RequireClient:    true,
+		HealthURI:        "/ready",
 	}
 }
