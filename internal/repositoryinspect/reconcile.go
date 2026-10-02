@@ -12,6 +12,7 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 	matchedFinding := make([]bool, len(findings))
 
 	for _, intent := range declared {
+		aliasName, aliasAmbiguous := defaultInstanceAlias(findings, intent)
 		item := ReconciliationItem{
 			Capability: intent.Capability,
 			Name:       intent.Name,
@@ -20,7 +21,14 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 		}
 		best := -1
 		for i, finding := range findings {
-			if !findingMatchesIntent(finding, intent) {
+			matches := findingMatchesIntent(finding, intent)
+			if aliasAmbiguous && finding.Name == "" && defaultInstanceIntent(intent) {
+				matches = false
+			}
+			if aliasName != "" && finding.Name == aliasName && findingIdentityCompatible(finding, intent) {
+				matches = true
+			}
+			if !matches {
 				continue
 			}
 			evidence := nonManifestEvidence(finding.Evidence)
@@ -80,6 +88,57 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 		return items[i].Name < items[j].Name
 	})
 	return declared, items
+}
+
+func defaultInstanceAlias(findings []Finding, intent CapabilityIntent) (string, bool) {
+	if !defaultInstanceIntent(intent) {
+		return "", false
+	}
+
+	names := map[string]struct{}{}
+	for _, finding := range findings {
+		if !findingIdentityCompatible(finding, intent) {
+			continue
+		}
+		if len(nonManifestEvidence(finding.Evidence)) == 0 {
+			continue
+		}
+		if finding.Name == "default" {
+			// Exact identity is authoritative; any additional named findings remain
+			// separate reconciliation evidence rather than changing its meaning.
+			return "", false
+		}
+		if finding.Name == "" {
+			continue
+		}
+		names[finding.Name] = struct{}{}
+	}
+	if len(names) == 1 {
+		for name := range names {
+			return name, false
+		}
+	}
+	return "", len(names) > 1
+}
+
+func defaultInstanceIntent(intent CapabilityIntent) bool {
+	if intent.Name != "default" {
+		return false
+	}
+	switch intent.Capability {
+	case "database.sql", "cache.key-value", "database.document":
+		return true
+	default:
+		return false
+	}
+}
+
+func findingIdentityCompatible(finding Finding, intent CapabilityIntent) bool {
+	if finding.Capability != intent.Capability {
+		return false
+	}
+	direction := normalizedDirection(finding)
+	return intent.Direction == "" || direction == "" || direction == intent.Direction
 }
 
 func findingMatchesIntent(finding Finding, intent CapabilityIntent) bool {
