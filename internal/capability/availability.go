@@ -39,7 +39,18 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 	case ProviderExternalOIDC:
 		return unsupported("external OIDC availability must be explicitly declared and verified by the selected external provider"), nil
 	case ProviderRabbitMQ:
-		return unsupported("current BaseHarbor RabbitMQ reference realization does not implement a verified cluster"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 3,
+			Limits:               "verified member/process failure tolerance on the selected runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	case ProviderMongoDB:
 		return unsupported("current BaseHarbor MongoDB reference realization does not implement a verified replica set"), nil
 	default:
