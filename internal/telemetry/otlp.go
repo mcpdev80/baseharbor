@@ -349,8 +349,8 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	// each member with the provider CA.
 	accessPolicy.ServerName = "otel-collector"
 	memberPolicy := accessPolicy
-	memberPolicy.AuthenticationRequired = false
-	memberPolicy.Authentication = serviceaccess.AuthenticationNative
+	memberPolicy.AuthenticationRequired = true
+	memberPolicy.Authentication = serviceaccess.AuthenticationMTLS
 	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "otel-collector", "otel-collector-1", "otel-collector-2")
 	if err != nil {
 		return ProviderFiles{}, err
@@ -358,8 +358,10 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	accessSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "otel-collector-access",
 		Upstreams:          []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
-		UpstreamTrustFile:  memberTLS.Material.CA,
-		UpstreamServerName: "otel-collector",
+		UpstreamTrustFile:         memberTLS.Material.CA,
+		UpstreamServerName:        "otel-collector",
+		UpstreamClientCertificate: memberTLS.Material.ClientCertificate,
+		UpstreamClientKey:         memberTLS.Material.ClientKey,
 		PublishedPortEnv:   "BASEHARBOR_OTLP_PORT",
 		ContainerPort:      4318,
 		Networks:           []string{"telemetry"},
