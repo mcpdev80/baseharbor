@@ -1,6 +1,7 @@
 package application
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,5 +108,24 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 	}
 	if strings.Contains(initText, appPassword) || strings.Contains(initText, adminPassword) {
 		t.Fatal("MongoDB credential material leaked into application-user init script")
+	}
+}
+
+func TestMongoDBReplicaKeyUsesStandardBase64Alphabet(t *testing.T) {
+	for i := 0; i < 64; i++ {
+		key, err := randomMongoDBReplicaKey(64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(key)
+		if err != nil {
+			t.Fatalf("MongoDB replica key is not standard base64: %v", err)
+		}
+		if len(decoded) != 64 {
+			t.Fatalf("MongoDB replica key decoded length = %d, want 64", len(decoded))
+		}
+		if strings.ContainsAny(key, "-_") {
+			t.Fatalf("MongoDB replica key contains URL-safe-only characters: %q", key)
+		}
 	}
 }
