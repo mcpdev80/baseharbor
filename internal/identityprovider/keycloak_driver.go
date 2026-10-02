@@ -171,6 +171,9 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	if err := admin.reconcileRealm(ctx, realm); err != nil {
 		return err
 	}
+	if _, _, err := admin.ensureManagedSigningProvider(ctx, d.realm); err != nil {
+		return fmt.Errorf("ensure BaseHarbor-managed Keycloak signing provider: %w", err)
+	}
 
 	secret, err := d.ensureClientSecret()
 	if err != nil {
