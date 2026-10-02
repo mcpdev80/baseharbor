@@ -1,8 +1,8 @@
 package serviceaccess
 
 import (
-	"os"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,7 +146,6 @@ func TestNormalizeGatewayUpstreamsRejectsInvalidScheme(t *testing.T) {
 		t.Fatal("invalid upstream scheme accepted")
 	}
 }
-
 
 func TestHTTPGatewayKeepsPrivateStateSeparateFromReadableRuntimeConfig(t *testing.T) {
 	dir := t.TempDir()
