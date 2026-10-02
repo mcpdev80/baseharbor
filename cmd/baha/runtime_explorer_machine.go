@@ -9,11 +9,13 @@ import (
 )
 
 type machineRuntimeTargetInput struct {
-	Target string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Environment string `json:"environment,omitempty" jsonschema:"explicit environment used for authorization; defaults to dev"`
 }
 
 type machineRuntimeListInput struct {
 	Target        string   `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Environment   string   `json:"environment,omitempty" jsonschema:"environment used for authorization and resource filtering; defaults to dev"`
 	Kinds         []string `json:"kinds,omitempty" jsonschema:"optional provider-neutral runtime resource kinds such as container"`
 	Ownership     []string `json:"ownership,omitempty" jsonschema:"optional ownership filters: managed, external, unmanaged or platform"`
 	ApplicationID string   `json:"application_id,omitempty" jsonschema:"optional stable BaseHarbor application id"`
@@ -22,10 +24,11 @@ type machineRuntimeListInput struct {
 }
 
 type machineRuntimeInspectInput struct {
-	Target     string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
-	Provider   string `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
-	Kind       string `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
-	ResourceID string `json:"resource_id" jsonschema:"stable runtime resource id"`
+	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Environment string `json:"environment,omitempty" jsonschema:"environment used for authorization and ownership verification; defaults to dev"`
+	Provider    string `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
+	Kind        string `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
+	ResourceID  string `json:"resource_id" jsonschema:"stable runtime resource id"`
 }
 
 func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimeexplorer.Service, string, error) {
@@ -89,6 +92,7 @@ func collectRuntimeResources(ctx context.Context, input machineRuntimeListInput)
 		Ownership:     ownership,
 		ApplicationID: strings.TrimSpace(input.ApplicationID),
 		DeploymentID:  strings.TrimSpace(input.DeploymentID),
+		Environment:   strings.TrimSpace(input.Environment),
 		Component:     strings.TrimSpace(input.Component),
 	})
 }
@@ -106,10 +110,23 @@ func collectRuntimeResource(ctx context.Context, input machineRuntimeInspectInpu
 	if provider == "" {
 		provider = capabilities.Provider
 	}
-	return explorer.Inspect(ctx, runtimeexplorer.ResourceRef{
+	resource, err := explorer.Inspect(ctx, runtimeexplorer.ResourceRef{
 		Provider:   provider,
 		Target:     target,
 		Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(input.Kind)),
 		ResourceID: strings.TrimSpace(input.ResourceID),
 	})
+	if err != nil {
+		return runtimeexplorer.Resource{}, err
+	}
+	environment := strings.TrimSpace(input.Environment)
+	if environment != "" && resource.Relationship.Environment != "" && resource.Relationship.Environment != environment {
+		return runtimeexplorer.Resource{}, machine.NewError(
+			machine.ErrorPolicyDenied,
+			"Runtime resource is outside the authorized environment.",
+			"Retry with the resource environment after obtaining the required operator authorization.",
+			false,
+		)
+	}
+	return resource, nil
 }
