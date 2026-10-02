@@ -203,10 +203,11 @@ jobs:
                   page += 1
 
           # Workflow runs: retain the complete Pre-Release + Release evidence chain.
-          deleted_runs = 0
-          max_run_deletes = 2000
+          # Collect first, delete second so pagination cannot skip entries while
+          # the underlying collection is shrinking.
+          run_candidates = []
           page = 1
-          while deleted_runs < max_run_deletes:
+          while True:
               payload = request(
                   f"https://api.github.com/repos/{repo}/actions/runs"
                   f"?per_page=100&page={page}"
@@ -214,31 +215,30 @@ jobs:
               runs = payload.get("workflow_runs", [])
               if not runs:
                   break
-
               for run in runs:
-                  if deleted_runs >= max_run_deletes:
-                      break
                   if run["id"] == current_run_id:
                       continue
                   if run.get("status") != "completed":
                       continue
                   if run.get("path") in preserved_workflows:
                       continue
+                  run_candidates.append(run)
+              if len(runs) < 100:
+                  break
+              page += 1
 
-                  request(
-                      f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}",
-                      method="DELETE",
-                  )
-                  deleted_runs += 1
-                  print(
-                      f"deleted run {run['id']} "
-                      f"path={run.get('path')} conclusion={run.get('conclusion')}"
-                  )
-
-              # Deletions shrink the collection, so keep reading page 1 until it
-              # contains no more deletable runs; then advance.
-              if deleted_runs < max_run_deletes:
-                  page += 1
+          deleted_runs = 0
+          max_run_deletes = 2000
+          for run in run_candidates[:max_run_deletes]:
+              request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}",
+                  method="DELETE",
+              )
+              deleted_runs += 1
+              print(
+                  f"deleted run {run['id']} "
+                  f"path={run.get('path')} conclusion={run.get('conclusion')}"
+              )
 
           # Open PR branches are always protected from cleanup.
           open_pr_heads = set()
