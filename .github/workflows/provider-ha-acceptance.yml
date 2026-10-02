@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: ${{ fromJSON(inputs.provider == 'all' && '["rabbitmq","valkey","mongodb","seaweedfs"]' || format('["{0}"]', inputs.provider)) }}
+        provider: ${{ fromJSON(github.event_name == 'push' && '["rabbitmq","valkey","mongodb"]' || (inputs.provider == 'all' && '["rabbitmq","valkey","mongodb","seaweedfs"]' || format('["{0}"]', inputs.provider))) }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
