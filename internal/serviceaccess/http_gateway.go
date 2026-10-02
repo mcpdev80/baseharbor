@@ -358,10 +358,10 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	// unprivileged gateway UID; private service-access state remains owner-only.
 	// Managed files are replaced atomically, so directory mounts make replacement
 	// inodes visible to the running Caddy process and --watch can reload in place.
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Caddyfile)+":/etc/caddy:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Material.ServerCertificate)+":/certs:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(filepath.Dir(files.Caddyfile))+":/etc/caddy:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(filepath.Dir(files.Material.ServerCertificate))+":/certs:ro"))
 	if files.AuthToken != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(files.AuthToken)+":/run/secrets/baseharbor-access-token:ro"))
 	}
 	upstreamMaterialDir := ""
 	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
@@ -371,7 +371,7 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		}
 	}
 	if upstreamMaterialDir != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(upstreamMaterialDir+":/upstream:ro"))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(upstreamMaterialDir)+":/upstream:ro"))
 	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
@@ -406,6 +406,17 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		}
 	}
 	return b.String()
+}
+
+func composeBindSource(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" {
+		return path
+	}
+	if filepath.IsAbs(path) || strings.HasPrefix(path, "."+string(filepath.Separator)) || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return "." + string(filepath.Separator) + path
 }
 
 func normalizedGatewayUpstreams(single string, many []string) ([]string, error) {
