@@ -131,7 +131,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	// control paths on one loopback listener. Keep the legacy environment key
 	// synchronized for state compatibility without allocating a second port.
 	values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(publicPort)
-	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD"} {
+	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD"} {
 		if strings.TrimSpace(values[key]) == "" {
 			secret, err := randomIdentitySecret(32)
 			if err != nil {
