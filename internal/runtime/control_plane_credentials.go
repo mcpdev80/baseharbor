@@ -43,12 +43,17 @@ func LoadControlPlaneCredentials(files Files) (ControlPlaneCredentials, error) {
 		return ControlPlaneCredentials{}, err
 	}
 	credentials := ControlPlaneCredentials{
-		PostgresUser:            values["BASEHARBOR_POSTGRES_USER"],
-		PostgresPassword:        values["BASEHARBOR_POSTGRES_PASSWORD"],
-		PostgresReplicationUser: values["BASEHARBOR_POSTGRES_REPLICATION_USER"],
+		PostgresUser:             values["BASEHARBOR_POSTGRES_USER"],
+		PostgresPassword:         values["BASEHARBOR_POSTGRES_PASSWORD"],
+		PostgresInternalUser:     values["BASEHARBOR_POSTGRES_INTERNAL_USER"],
+		PostgresInternalPassword: values["BASEHARBOR_POSTGRES_INTERNAL_PASSWORD"],
+		PostgresReplicationUser:  values["BASEHARBOR_POSTGRES_REPLICATION_USER"],
 		PostgresReplicationPass: values["BASEHARBOR_POSTGRES_REPLICATION_PASSWORD"],
 		OpenBaoDBUser:           values["BASEHARBOR_OPENBAO_DB_USER"],
 		OpenBaoDBPassword:       values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
+	}
+	if credentials.PostgresInternalUser == "" {
+		credentials.PostgresInternalUser = "postgres"
 	}
 	if credentials.PostgresReplicationUser == "" {
 		credentials.PostgresReplicationUser = "baseharbor_replication"
@@ -57,6 +62,7 @@ func LoadControlPlaneCredentials(files Files) (ControlPlaneCredentials, error) {
 		credentials.OpenBaoDBUser = "openbao"
 	}
 	if credentials.PostgresUser == "" || credentials.PostgresPassword == "" ||
+		credentials.PostgresInternalUser == "" || credentials.PostgresInternalPassword == "" ||
 		credentials.PostgresReplicationUser == "" || credentials.PostgresReplicationPass == "" ||
 		credentials.OpenBaoDBUser == "" || credentials.OpenBaoDBPassword == "" {
 		return ControlPlaneCredentials{}, errors.New("control-plane credential state is incomplete")
@@ -66,14 +72,17 @@ func LoadControlPlaneCredentials(files Files) (ControlPlaneCredentials, error) {
 
 func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) error {
 	if next.PostgresUser == "" || next.PostgresPassword == "" ||
+		next.PostgresInternalUser == "" || next.PostgresInternalPassword == "" ||
 		next.PostgresReplicationUser == "" || next.PostgresReplicationPass == "" ||
 		next.OpenBaoDBUser == "" || next.OpenBaoDBPassword == "" {
 		return errors.New("replacement control-plane credentials are incomplete")
 	}
 	updates := map[string]string{
-		"BASEHARBOR_POSTGRES_USER":                 next.PostgresUser,
-		"BASEHARBOR_POSTGRES_PASSWORD":             next.PostgresPassword,
-		"BASEHARBOR_POSTGRES_REPLICATION_USER":     next.PostgresReplicationUser,
+		"BASEHARBOR_POSTGRES_USER":                  next.PostgresUser,
+		"BASEHARBOR_POSTGRES_PASSWORD":              next.PostgresPassword,
+		"BASEHARBOR_POSTGRES_INTERNAL_USER":          next.PostgresInternalUser,
+		"BASEHARBOR_POSTGRES_INTERNAL_PASSWORD":      next.PostgresInternalPassword,
+		"BASEHARBOR_POSTGRES_REPLICATION_USER":       next.PostgresReplicationUser,
 		"BASEHARBOR_POSTGRES_REPLICATION_PASSWORD": next.PostgresReplicationPass,
 		"BASEHARBOR_OPENBAO_DB_USER":               next.OpenBaoDBUser,
 		"BASEHARBOR_OPENBAO_DB_PASSWORD":           next.OpenBaoDBPassword,
