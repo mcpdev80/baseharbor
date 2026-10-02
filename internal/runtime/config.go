@@ -79,16 +79,16 @@ func LoadConfig(envPath string) (Config, error) {
 		openBaoDBUser = "openbao"
 	}
 	cfg := Config{
-		PostgresDB:              values["BASEHARBOR_POSTGRES_DB"],
+		PostgresDB:               values["BASEHARBOR_POSTGRES_DB"],
 		PostgresUser:             values["BASEHARBOR_POSTGRES_USER"],
 		PostgresPassword:         values["BASEHARBOR_POSTGRES_PASSWORD"],
 		PostgresInternalUser:     internalUser,
 		PostgresInternalPassword: values["BASEHARBOR_POSTGRES_INTERNAL_PASSWORD"],
 		PostgresReplicationUser:  replicationUser,
-		OpenBaoDBUser:           openBaoDBUser,
-		OpenBaoDBPassword:       values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
-		PostgresPort:            postgresPort,
-		OpenBaoPort:             openBaoPort,
+		OpenBaoDBUser:            openBaoDBUser,
+		OpenBaoDBPassword:        values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
+		PostgresPort:             postgresPort,
+		OpenBaoPort:              openBaoPort,
 	}
 	if cfg.PostgresDB == "" || cfg.PostgresUser == "" || cfg.PostgresPassword == "" || cfg.PostgresInternalUser == "" || cfg.PostgresInternalPassword == "" || cfg.PostgresReplicationUser == "" || cfg.OpenBaoDBUser == "" || cfg.OpenBaoDBPassword == "" {
 		return Config{}, fmt.Errorf("runtime PostgreSQL configuration is incomplete")
