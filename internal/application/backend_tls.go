@@ -109,13 +109,7 @@ func EnsureBackendServiceAccess(ctx context.Context, issuer serviceaccess.Issuer
 				return err
 			}
 			root := backendAccessRoot(files, "valkey", instance)
-			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-				ServiceName:      valkeyAccessService(instance),
-				UpstreamHost:     runtimeServiceName("valkey", instance),
-				UpstreamPort:     6379,
-				PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-				ContainerPort:    6379,
-			})
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, valkeyGatewaySpec(m, instance))
 			if err != nil {
 				return fmt.Errorf("prepare Valkey TLS access for %s: %w", instance, err)
 			}
@@ -258,16 +252,10 @@ func backendGatewayComposeFiles(kind, instance string) serviceaccess.TCPGatewayF
 	}
 }
 
-func valkeyGatewayCompose(instance string) string {
+func valkeyGatewayCompose(m Manifest, instance string) string {
 	return serviceaccess.TCPGatewayComposeService(
 		backendGatewayComposeFiles("valkey", instance),
-		serviceaccess.TCPGatewaySpec{
-			ServiceName:      valkeyAccessService(instance),
-			UpstreamHost:     runtimeServiceName("valkey", instance),
-			UpstreamPort:     6379,
-			PublishedPortEnv: valkeyRuntimeKey(instance, "HOST_PORT"),
-			ContainerPort:    6379,
-		},
+		valkeyGatewaySpec(m, instance),
 	)
 }
 
