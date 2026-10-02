@@ -221,26 +221,9 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 	if valid, err := managedMaterialValid(material, dnsNames, requireClient); err != nil {
 		return TLSMaterial{}, err
 	} else if valid && trustMatches && previousState.IssuerReference == currentIssuerReference {
-		// A CA switch is intentionally two-phase. The first reconcile keeps the
-		// previous CA in the active bundle while new server/client leaves are
-		// rolled out. A later successful reconcile retires the old CA.
-		if previousState.TrustOverlap {
-			if err := writeAtomic(material.CA, trust.PEM, 0o644); err != nil {
-				return TLSMaterial{}, fmt.Errorf("retire previous service CA: %w", err)
-			}
-			previousState.TrustOverlap = false
-			stateData, err := json.MarshalIndent(previousState, "", "  ")
-			if err != nil {
-				return TLSMaterial{}, err
-			}
-			stateData = append(stateData, '\n')
-			if err := writeAtomic(statePath, stateData, 0o600); err != nil {
-				return TLSMaterial{}, err
-			}
-			if err := validateMaterial(material, requireClient); err != nil {
-				return TLSMaterial{}, fmt.Errorf("validate service TLS after CA retirement: %w", err)
-			}
-		}
+		// Trust retirement is explicit and happens only after the caller has
+		// verified the newly reconciled service path. EnsureTLSMaterial never
+		// removes the old CA merely because a later reconcile was attempted.
 		if !requireClient {
 			material.ClientCertificate = ""
 			material.ClientKey = ""
@@ -356,6 +339,60 @@ func ensureIssuerMaterial(ctx context.Context, issuer Issuer, policy Policy, dir
 		return TLSMaterial{}, fmt.Errorf("validate issued managed service TLS material: %w", err)
 	}
 	return material, nil
+}
+
+// RetireTLSOverlap removes a previous CA only after the provider has verified
+// the newly issued server/client leaves through its stable service endpoint.
+// It is idempotent so a verified retirement can be retried safely.
+func RetireTLSOverlap(ctx context.Context, issuer Issuer, policy Policy, dir string) error {
+	if issuer == nil {
+		return errors.New("issuer-backed PKI requires an issuer")
+	}
+	if policy.PKISource != PKIManagedLocal && policy.PKISource != PKIExternal {
+		return nil
+	}
+	statePath := filepath.Join(dir, "state.json")
+	state, err := readManagedPKIState(statePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !state.TrustOverlap {
+		return nil
+	}
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve service issuer trust bundle for retirement: %w", err)
+	}
+	currentIssuerReference := firstNonEmpty(trust.IssuerReference, policy.IssuerReference)
+	if currentIssuerReference == "" || currentIssuerReference != state.IssuerReference {
+		return fmt.Errorf("refuse service CA retirement: active issuer %q does not match verified issuer %q", currentIssuerReference, state.IssuerReference)
+	}
+	material := issuerTLSMaterial(policy, dir, policy.PKISource)
+	requireClient := policy.AuthenticationRequired && policy.Authentication == AuthenticationMTLS
+	// Validate leaves against only the new CA before dropping overlap.
+	tempCA := material.CA + ".retire"
+	if err := writeAtomic(tempCA, trust.PEM, 0o644); err != nil {
+		return err
+	}
+	defer os.Remove(tempCA)
+	verifyMaterial := material
+	verifyMaterial.CA = tempCA
+	if err := validateMaterial(verifyMaterial, requireClient); err != nil {
+		return fmt.Errorf("refuse service CA retirement before new-only validation: %w", err)
+	}
+	if err := writeAtomic(material.CA, trust.PEM, 0o644); err != nil {
+		return fmt.Errorf("retire previous service CA: %w", err)
+	}
+	state.TrustOverlap = false
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return writeAtomic(statePath, data, 0o600)
 }
 
 func readManagedPKIState(path string) (managedPKIState, error) {
