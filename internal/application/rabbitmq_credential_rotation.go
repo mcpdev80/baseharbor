@@ -13,13 +13,13 @@ import (
 )
 
 type rabbitMQCredentialRotationMaterial struct {
-	OldAppUser      string `json:"old_app_user"`
-	OldAppPassword  string `json:"old_app_password"`
-	NewAppUser      string `json:"new_app_user"`
-	NewAppPassword  string `json:"new_app_password"`
-	AdminUser       string `json:"admin_user,omitempty"`
-	OldAdminPass    string `json:"old_admin_password,omitempty"`
-	NewAdminPass    string `json:"new_admin_password,omitempty"`
+	OldAppUser     string `json:"old_app_user"`
+	OldAppPassword string `json:"old_app_password"`
+	NewAppUser     string `json:"new_app_user"`
+	NewAppPassword string `json:"new_app_password"`
+	AdminUser      string `json:"admin_user,omitempty"`
+	OldAdminPass   string `json:"old_admin_password,omitempty"`
+	NewAdminPass   string `json:"new_admin_password,omitempty"`
 }
 
 func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles, instance string) error {
@@ -91,9 +91,9 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 					return err
 				}
 				material = rabbitMQCredentialRotationMaterial{
-					OldAppUser: oldUser,
+					OldAppUser:     oldUser,
 					OldAppPassword: oldPassword,
-					NewAppUser: oldUser + "_r_" + strings.ReplaceAll(token, "-", "_"),
+					NewAppUser:     oldUser + "_r_" + strings.ReplaceAll(token, "-", "_"),
 					NewAppPassword: newPassword,
 				}
 				if m.Services.MessagingManagementUI {
