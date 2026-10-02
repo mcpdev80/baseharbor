@@ -297,8 +297,20 @@ func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return nil, err
 	}
-	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return nil, err
+	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
+	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	startCancel()
+	if err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if diagnostics, ok := compose.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
+				return nil, fmt.Errorf("restart control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
+			}
+		}
+		return nil, fmt.Errorf("restart control plane within %s: %w", controlPlaneComposeStartTimeout, err)
 	}
 	return compose, nil
 }
