@@ -316,44 +316,6 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	return b.String(), nil
 }
 
-func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string) {
-	bootstrapUserKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_USER")
-	bootstrapPasswordKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_PASSWORD")
-	cookieKey := rabbitmqRuntimeKey(instance, "ERLANG_COOKIE")
-	image := "docker.io/library/rabbitmq:4.3.6-alpine"
-	if m.Services.MessagingManagementUI {
-		image = "docker.io/library/rabbitmq:4.3.6-management-alpine"
-	}
-	for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
-		service := rabbitmqMemberServiceName(instance, ordinal)
-		fmt.Fprintf(b, "  %s:\n", service)
-		fmt.Fprintf(b, "    image: %s\n", image)
-		b.WriteString("    restart: unless-stopped\n")
-		fmt.Fprintf(b, "    hostname: %s\n", service)
-		b.WriteString("    user: \"rabbitmq\"\n")
-		b.WriteString("    read_only: true\n")
-		b.WriteString("    cap_drop: [\"ALL\"]\n")
-		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
-		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
-		b.WriteString("    environment:\n")
-		fmt.Fprintf(b, "      RABBITMQ_DEFAULT_USER: ${%s}\n", userKey)
-		fmt.Fprintf(b, "      RABBITMQ_DEFAULT_PASS: ${%s}\n", passwordKey)
-		if rabbitmqMemberCount(m) > 1 {
-			fmt.Fprintf(b, "      RABBITMQ_ERLANG_COOKIE: ${%s}\n", cookieKey)
-			fmt.Fprintf(b, "      RABBITMQ_NODENAME: rabbit@%s\n", service)
-		}
-		b.WriteString("    volumes:\n")
-		fmt.Fprintf(b, "      - %s:/var/lib/rabbitmq\n", rabbitmqMemberVolumeName(instance, ordinal))
-		if rabbitmqMemberCount(m) > 1 {
-			fmt.Fprintf(b, "      - %s\n", rabbitmqHAConfigMount(instance))
-		}
-		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"rabbitmq-diagnostics -q ping\"]\n")
-		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 10s\n\n")
-	}
-}
-
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
@@ -517,39 +479,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 
 `)
 	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
-}
-
-func writeRabbitMQUIComposeService(b *strings.Builder, m Manifest, instance string) {
-	service := rabbitmqUIServiceName(instance)
-	portKey := rabbitmqUIHostPortKey(instance)
-	routeName := rabbitmqUIRouteName(instance)
-	fmt.Fprintf(b, `  %s:
-    image: %s
-    restart: unless-stopped
-    user: "65532:65532"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
-      - /data:rw,noexec,nosuid,nodev,mode=1777
-      - /config:rw,noexec,nosuid,nodev,mode=1777
-    ports:
-      - "127.0.0.1:${%s}:8443"
-    volumes:
-      - ./providers/management-ui/rabbitmq/%s/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./providers/management-ui/rabbitmq/%s/server.pem:/certs/server.pem:ro
-      - ./providers/management-ui/rabbitmq/%s/server-key.pem:/certs/server-key.pem:ro
-    networks:
-      default:
-        aliases:
-          - %q
-
-`, service, UIProxyImage, portKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
