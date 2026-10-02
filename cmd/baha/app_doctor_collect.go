@@ -168,6 +168,14 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			c.compose, err = detectRuntimeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
 		}},
+		{Name: "availability guarantees", Run: func(context.Context) error {
+			if c.compose == nil {
+				return errors.New("runtime provider is unavailable for availability negotiation")
+			}
+			resolution, err := application.ResolveAvailability(m, string(c.compose.Kind()), c.compose.Descriptor().Availability)
+			c.result.Availability = resolution.Results
+			return err
+		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
 			var err error
 			c.workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, c.compose, c.resolved)
