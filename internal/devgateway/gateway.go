@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -331,7 +332,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := projectReadable(material.ServerCertificate, files.Cert); err != nil {
 		return err
 	}
-	if err := projectReadable(material.ServerKey, files.Key); err != nil {
+	if err := projectReadableMode(material.ServerKey, files.Key, 0o600); err != nil {
 		return err
 	}
 	trustTargets := map[string]string{}
@@ -353,7 +354,9 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort)), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
+	uid, gid := gatewayRuntimeIdentity()
+	gatewayEnv := fmt.Sprintf("BASEHARBOR_GATEWAY_UID=%s\nBASEHARBOR_GATEWAY_GID=%s\n", uid, gid)
+	if err := os.WriteFile(files.Env, []byte(gatewayEnv), 0o600); err != nil {
 		return err
 	}
 	if err := saveState(files.State, current); err != nil {
@@ -709,6 +712,10 @@ func normalizedRoutes(routes []Route) []Route {
 }
 
 func projectReadable(source, target string) error {
+	return projectReadableMode(source, target, 0o644)
+}
+
+func projectReadableMode(source, target string, mode os.FileMode) error {
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
@@ -720,7 +727,11 @@ func projectReadable(source, target string) error {
 		return err
 	}
 	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, target); err != nil {
@@ -728,4 +739,24 @@ func projectReadable(source, target string) error {
 		return err
 	}
 	return nil
+}
+
+func gatewayRuntimeIdentity() (string, string) {
+	current, err := user.Current()
+	if err == nil && numericIdentity(current.Uid) && numericIdentity(current.Gid) {
+		return current.Uid, current.Gid
+	}
+	return "65532", "65532"
+}
+
+func numericIdentity(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
