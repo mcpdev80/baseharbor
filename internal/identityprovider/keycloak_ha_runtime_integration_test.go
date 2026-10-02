@@ -116,7 +116,10 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := driver.RotateSigningKey(ctx); err != nil {
 		t.Fatalf("rotate Keycloak signing key: %v", err)
 	}
-	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak credential/signing rotation")
+	if err := driver.RotateAdminCredential(ctx); err != nil {
+		t.Fatalf("rotate Keycloak admin credential: %v", err)
+	}
+	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak credential/signing/admin rotation")
 }
 
 func mustKeycloakRuntimeEnv(t *testing.T, path string) map[string]string {
