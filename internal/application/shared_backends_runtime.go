@@ -141,6 +141,13 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 		}
 		fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", password)
 	}
+	if state.PostgresReplicationCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.PostgresReplicationCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "SHARED_POSTGRES_REPLICATION_PASSWORD=%s\n", password)
+	}
 	if state.PostgresHostPort > 0 {
 		fmt.Fprintf(&env, "SHARED_POSTGRES_HOST_PORT=%d\n", state.PostgresHostPort)
 	}
@@ -210,7 +217,10 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("volumes:\n")
 	if hasPostgres {
-		fmt.Fprintf(&b, "  shared-postgres-data:\n    name: %s-%s-postgres-data\n", files.ResourceProject, sharedBackendToken(state.Environment))
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			fmt.Fprintf(&b, "  shared-postgres-data-%d:\n    name: %s-%s-postgres-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+			fmt.Fprintf(&b, "  shared-postgres-etcd-data-%d:\n    name: %s-%s-postgres-etcd-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+		}
 	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
@@ -319,46 +329,91 @@ func writeSharedCacheUICompose(b *strings.Builder) {
 
 func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 	service := sharedPostgresService(state.Environment)
-	root := "./postgresql/runtime"
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    user: "70:70"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
-        chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /var/run/postgresql:rw,noexec,nosuid,nodev
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: baseharbor_admin
-      POSTGRES_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}
-    ports:
-      - "127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432"
-    volumes:
-      - shared-postgres-data:/var/lib/postgresql
-      - %s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - %s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-      - %s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
-    networks:
-      shared-backend:
-        aliases:
-          - %s
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "baseharbor_admin", "-d", "postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
+	cluster := "baseharbor-" + sharedBackendToken(state.Environment) + "-postgres"
+	etcdCluster := make([]string, 0, 3)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresEtcdService(state.Environment, ordinal)
+		etcdCluster = append(etcdCluster, fmt.Sprintf("%s=http://%s:2380", name, name))
+	}
+	etcdInitialCluster := strings.Join(etcdCluster, ",")
+	etcdHosts := make([]string, 0, 3)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		etcdHosts = append(etcdHosts, sharedPostgresEtcdService(state.Environment, ordinal)+":2379")
+	}
 
-`, service, root, root, root, sharedPostgresAlias())
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresEtcdService(state.Environment, ordinal)
+		fmt.Fprintf(b, "  %s:\n", name)
+		b.WriteString("    image: gcr.io/etcd-development/etcd:v3.7.2\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    command:\n")
+		fmt.Fprintf(b, "      - /usr/local/bin/etcd\n      - --name=%s\n", name)
+		b.WriteString("      - --data-dir=/etcd-data\n")
+		b.WriteString("      - --listen-client-urls=http://0.0.0.0:2379\n")
+		fmt.Fprintf(b, "      - --advertise-client-urls=http://%s:2379\n", name)
+		b.WriteString("      - --listen-peer-urls=http://0.0.0.0:2380\n")
+		fmt.Fprintf(b, "      - --initial-advertise-peer-urls=http://%s:2380\n", name)
+		fmt.Fprintf(b, "      - --initial-cluster=%s\n", etcdInitialCluster)
+		fmt.Fprintf(b, "      - --initial-cluster-token=%s\n", cluster)
+		b.WriteString("      - --initial-cluster-state=new\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - shared-postgres-etcd-data-%d:/etcd-data\n", ordinal)
+		b.WriteString("    networks:\n      shared-backend: {}\n\n")
+	}
+
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresMemberService(state.Environment, ordinal)
+		fmt.Fprintf(b, "  %s:\n", name)
+		b.WriteString("    image: ghcr.io/zalando/spilo-18:4.1-p2\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: false\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    environment:\n")
+		b.WriteString("      SPILO_PROVIDER: local\n")
+		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
+		b.WriteString("      PGVERSION: \"18\"\n")
+		fmt.Fprintf(b, "      ETCD3_HOSTS: %s\n", strconv.Quote(strings.Join(etcdHosts, ",")))
+		b.WriteString("      PGUSER_SUPERUSER: baseharbor_admin\n")
+		b.WriteString("      PGPASSWORD_SUPERUSER: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
+		b.WriteString("      PGUSER_STANDBY: baseharbor_replication\n")
+		b.WriteString("      PGPASSWORD_STANDBY: ${SHARED_POSTGRES_REPLICATION_PASSWORD}\n")
+		b.WriteString("      USE_ADMIN: \"false\"\n")
+		b.WriteString("      ALLOW_NOSSL: \"true\"\n")
+		fmt.Fprintf(b, "      SPILO_CONFIGURATION: |\n        postgresql:\n          connect_address: %s:5432\n        restapi:\n          connect_address: %s:8008\n", name, name)
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - shared-postgres-data-%d:/home/postgres/pgroot\n", ordinal)
+		b.WriteString("    networks:\n      shared-backend: {}\n")
+		b.WriteString("    healthcheck:\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U baseharbor_admin -d postgres\"]\n")
+		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 24\n      start_period: 10s\n\n")
+	}
+
+	gatewayFiles := serviceaccess.TCPGatewayFiles{
+		Config: "./postgresql/service-access/haproxy.cfg",
+		PEM:    "./postgresql/service-access/runtime/server.pem",
+		Material: serviceaccess.TLSMaterial{
+			ServerName: sharedPostgresAlias(),
+		},
+	}
+	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, sharedPostgresGatewaySpec(state.Environment)))
+	b.WriteString("\n")
+
+	// Stable admin toolbox: all BaseHarbor reconciliation commands execute here
+	// and connect through the same primary-aware endpoint used by applications.
+	fmt.Fprintf(b, "  %s:\n", service)
+	b.WriteString("    image: docker.io/library/postgres:18-alpine\n")
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    command: [\"sh\", \"-ec\", \"trap : TERM INT; sleep infinity & wait\"]\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /var/run/postgresql:rw,noexec,nosuid,nodev\n")
+	b.WriteString("    environment:\n      PGPASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
+	b.WriteString("    networks:\n      shared-backend: {}\n")
 }
 
 func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, instance string) {
