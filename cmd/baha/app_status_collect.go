@@ -14,6 +14,7 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
@@ -279,7 +280,7 @@ func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context)
 		c.result.AddCheck("rabbitmq", false, err.Error())
 		return
 	}
-	if err := application.VerifyRabbitMQHACluster(checkCtx, c.compose, c.manifest, c.files); err != nil {
+	if err := application.VerifyRabbitMQHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
 		c.result.AddCheck("rabbitmq", false, err.Error())
 		return
 	}
