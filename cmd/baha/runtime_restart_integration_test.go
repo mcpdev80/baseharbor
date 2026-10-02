@@ -121,6 +121,24 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatalf("manager auth after verified restart: %v", err)
 	}
 
+	oldManager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := platformopenbao.RotateManagerCredentials(ctx, compose, files); err != nil {
+		t.Fatalf("rotate OpenBao manager credential: %v", err)
+	}
+	newManager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newManager.RoleID != oldManager.RoleID || newManager.SecretID == oldManager.SecretID {
+		t.Fatalf("OpenBao manager credential rotation did not preserve role/change SecretID")
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		t.Fatalf("manager auth after credential rotation: %v", err)
+	}
+
 	environment := mustRuntimeEnvForHATest(t, files.Env)
 	workdir := filepath.Dir(files.Compose)
 
