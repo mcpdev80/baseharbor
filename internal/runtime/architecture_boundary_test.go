@@ -48,6 +48,7 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 	}
 	runtimeAdapterFiles := map[string]struct{}{
 		"internal/application/postgres_backup.go":         {},
+		"internal/application/provider_pki_rotation_runtime.go": {},
 		"internal/application/runtime_lifecycle.go":       {},
 		"internal/application/runtime_postgres.go":        {},
 		"internal/application/shared_backends.go":         {},
