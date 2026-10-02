@@ -15,7 +15,7 @@ type rabbitCredentialRuntimeFake struct {
 	args    []string
 }
 
-func (f *rabbitCredentialRuntimeFake) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, service string, args ...string) (string, error) {
+func (f *rabbitCredentialRuntimeFake) RunSensitive(_ context.Context, service string, input []byte, args ...string) (string, error) {
 	f.input = append([]byte(nil), input...)
 	f.service = service
 	f.args = append([]string(nil), args...)
