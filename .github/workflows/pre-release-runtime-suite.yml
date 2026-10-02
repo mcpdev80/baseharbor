@@ -241,7 +241,8 @@ jobs:
               ;;
             durable-key-value)
               BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)$' -v
+              BASEHARBOR_VALKEY_HA_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI|TestValkeyHARuntimeFailoverAcceptanceInCI)' -v
               ;;
             control-plane-recovery)
               BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
