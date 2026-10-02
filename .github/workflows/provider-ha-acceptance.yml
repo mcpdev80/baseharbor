@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [rabbitmq, valkey, mongodb]
+        provider: [rabbitmq, valkey, mongodb, seaweedfs]
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
@@ -54,21 +54,29 @@ jobs:
           case "${{ matrix.provider }}" in
             rabbitmq)
               export BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1
+              test_package=./internal/application
               test_name=TestRabbitMQHARuntimeFailoverAcceptanceInCI
               ;;
             valkey)
               export BASEHARBOR_VALKEY_HA_ACCEPTANCE=1
+              test_package=./internal/application
               test_name=TestValkeyHARuntimeFailoverAcceptanceInCI
               ;;
             mongodb)
               export BASEHARBOR_MONGODB_HA_ACCEPTANCE=1
+              test_package=./internal/application
               test_name=TestMongoDBHARuntimeFailoverAcceptanceInCI
+              ;;
+            seaweedfs)
+              export BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE=1
+              test_package=./internal/objectstorage
+              test_name=TestSeaweedFSHARuntimeFailoverAcceptanceInCI
               ;;
             *)
               exit 2
               ;;
           esac
-          go test ./internal/application -run "^$test_name$" -count=1 -v
+          go test "$test_package" -run "^$test_name$" -count=1 -v
 
       - name: Cleanup Docker runtime
         if: always()
