@@ -420,10 +420,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(values[PostgresUIPasswordEnv]+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "password"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(values[PostgresUIPasswordEnv]+"\n")); err != nil {
 		return err
 	}
 
@@ -466,10 +463,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 			},
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pgpass"), []byte(pgpass.String()), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "pgpass"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgpass"), []byte(pgpass.String())); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(servers, "", "  ")
@@ -502,10 +496,7 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(values[CacheUIPasswordEnv]+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "http-password"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "http-password"), []byte(values[CacheUIPasswordEnv]+"\n")); err != nil {
 		return err
 	}
 
@@ -536,10 +527,7 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local.json"), append(data, '\n'), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "local.json"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
@@ -625,13 +613,22 @@ func ensureMongoDBManagementUI(ctx context.Context, issuer serviceaccess.Issuer,
 	return nil
 }
 
+// writeUIRuntimeProjection writes a derived, read-only-at-runtime projection for
+// third-party management containers whose fixed runtime UID cannot read the
+// owner-only authoritative BaseHarbor state directly. These files are never a
+// second source of truth: they are regenerated from protected state on
+// reconciliation and are mounted read-only into the consumer container.
+func writeUIRuntimeProjection(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o644)
+}
+
 func projectUIReadableFile(source, target string) error {
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(target, data, 0o600); err != nil {
-		return err
-	}
-	return os.Chmod(target, 0o644)
+	return writeUIRuntimeProjection(target, data)
 }
