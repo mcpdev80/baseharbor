@@ -45,7 +45,7 @@ services:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PGVERSION: "18"
-      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PATRONI_ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
@@ -82,7 +82,7 @@ services:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PGVERSION: "18"
-      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PATRONI_ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
@@ -119,7 +119,7 @@ services:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
       PGVERSION: "18"
-      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PATRONI_ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
