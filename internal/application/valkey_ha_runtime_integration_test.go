@@ -115,7 +115,6 @@ func waitValkeyHAReady(t *testing.T, ctx context.Context, runtime bhruntime.Runt
 	}
 }
 
-
 func valkeyGatewayHealthDiagnostics(ctx context.Context, op valkeyHAProbeRuntime, instance string) string {
 	service := valkeyAccessService(instance)
 	envState, envErr := op.Run(ctx, service, "sh", "-ec", `if [ -n "$VALKEY_HEALTH_PASSWORD" ]; then printf configured; else printf missing; fi`)
