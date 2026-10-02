@@ -37,7 +37,7 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 		"path /swagger /swagger/*",
 		"uri strip_prefix /swagger",
 		"reverse_proxy https://baseharbor-runtime:8081",
-		"tls_trust_pool file /trust/route-000.pem",
+		"tls_trust_pool file /gateway/trust/route-000.pem",
 		"tls_server_name baseharbor-runtime",
 		"reverse_proxy https://bh-dev-demo-api:8443",
 	} {
