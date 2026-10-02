@@ -83,7 +83,7 @@ func FilesFor(target string) (Files, error) {
 		State:     filepath.Join(dir, "routes.json"),
 		Compose:   filepath.Join(dir, "compose.yaml"),
 		Env:       filepath.Join(dir, "runtime.env"),
-		Caddyfile: filepath.Join(dir, "Caddyfile"),
+		Caddyfile: filepath.Join(dir, "runtime", "Caddyfile"),
 		Project:   bhruntime.ApplicationProjectName(target, "dev-gateway", "dev"),
 		Cert:      filepath.Join(dir, "runtime", "server.pem"),
 		Key:       filepath.Join(dir, "runtime", "server-key.pem"),
