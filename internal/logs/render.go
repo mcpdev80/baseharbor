@@ -89,12 +89,9 @@ storage_config:
     insecure: false
     s3forcepathstyle: true
     http_config:
-      tls_config:
-        ca_file: /run/baseharbor/object-storage/ca.pem
+      tls_ca_path: /run/baseharbor/object-storage/ca.pem
 compactor:
   working_directory: /loki/compactor
-usage_report:
-  reporting_enabled: false
 `
 }
 
@@ -414,7 +411,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	b.WriteString("    volumes:\n")
 	b.WriteString("      - ./config.alloy:/etc/alloy/config.alloy:ro\n")
 	if storageNetwork != "" {
-		b.WriteString("      - ./service-access/pki:/run/baseharbor/loki-access:ro\n")
+		b.WriteString("      - ./service-access/runtime:/run/baseharbor/loki-access:ro\n")
 	}
 	if mode == bhruntime.LogCollectionJournald {
 		b.WriteString("      - /var/log/journal:/var/log/journal:ro\n")
