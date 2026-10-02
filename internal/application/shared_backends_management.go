@@ -38,20 +38,14 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 	}
 
 	if UsesSharedValkey(m) {
+		app := state.Applications[sharedBackendApplicationKey(m)]
 		for _, instance := range ValkeyInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
 			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
 			}
-			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-				ServiceName:      sharedValkeyAccessService(m, instance),
-				UpstreamHost:     sharedValkeyService(m, instance),
-				UpstreamPort:     6379,
-				PublishedPortEnv: sharedValkeyPortEnv(m, instance),
-				ContainerPort:    6379,
-				Network:          "shared-backend",
-			})
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedValkeyGatewaySpec(app, instance))
 			if err != nil {
 				return fmt.Errorf("prepare shared Valkey TLS for %s: %w", instance, err)
 			}
