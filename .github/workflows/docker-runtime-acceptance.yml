@@ -165,7 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: ${{ fromJSON(contains(github.ref_name, '/control-plane/') && '["control-plane"]' || contains(github.ref_name, '/keycloak/') && '["keycloak"]' || contains(github.ref_name, '/mongodb/') && '["mongodb"]' || contains(github.ref_name, '/valkey/') && '["valkey"]' || contains(github.ref_name, '/rabbitmq/') && '["rabbitmq"]' || contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || contains(github.ref_name, '/otel/') && '["otel"]' || contains(github.ref_name, '/prometheus/') && '["prometheus"]' || contains(github.ref_name, '/loki/') && '["loki"]' || contains(github.ref_name, '/tempo/') && '["tempo"]' || '["rabbitmq","valkey","mongodb","seaweedfs"]') }}
+        provider: ${{ fromJSON(contains(github.ref_name, '/control-plane/') && '["control-plane"]' || contains(github.ref_name, '/keycloak/') && '["keycloak"]' || contains(github.ref_name, '/mongodb/') && '["mongodb"]' || contains(github.ref_name, '/valkey/') && '["valkey"]' || contains(github.ref_name, '/rabbitmq/') && '["rabbitmq"]' || contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || contains(github.ref_name, '/otel/') && '["otel"]' || contains(github.ref_name, '/prometheus/') && '["prometheus"]' || contains(github.ref_name, '/loki/') && '["loki"]' || contains(github.ref_name, '/tempo/') && '["tempo"]' || contains(github.ref_name, '/gateway/') && '["gateway"]' || '["rabbitmq","valkey","mongodb","seaweedfs","gateway"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -241,6 +241,11 @@ jobs:
               export BASEHARBOR_TEMPO_HA_ACCEPTANCE=1
               test_package=./internal/traces
               test_name=TestTempoHARuntimeFailoverAcceptanceInCI
+              ;;
+            gateway)
+              export BASEHARBOR_GATEWAY_ACCEPTANCE=1
+              test_package=./internal/devgateway
+              test_name=TestGatewayRuntimeContinuityAcceptanceInCI
               ;;
             *)
               exit 2
