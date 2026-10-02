@@ -156,6 +156,7 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	if manifest != nil {
 		result.WorkloadServices = append([]string(nil), application.WorkloadComponentNames(*manifest)...)
 	}
+	projectWorkloadEvidenceSummary(&result, manifest == nil)
 	if result.SelectedWorkloadSource != nil && result.SelectedWorkloadSource.Kind == WorkloadSourceCompose {
 		result.SelectedCompose = result.SelectedWorkloadSource.Path
 	}
@@ -166,25 +167,8 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 			return Result{}, fmt.Errorf("inspect selected Compose file %s: %w", rel, detectErr)
 		}
 		for _, service := range services {
-			if manifest == nil && rel == result.SelectedCompose {
-				if service.Postgres || service.Redis || service.MongoDB || service.RabbitMQ || service.ObjectStorage {
-					result.InfrastructureServices = append(result.InfrastructureServices, service.Name)
-				} else if service.AmbiguousInfrastructure || service.Unresolved {
-					result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
-				} else if service.HasBuild || service.HasImage || service.HasPorts {
-					result.WorkloadServices = append(result.WorkloadServices, service.Name)
-				}
-			}
-			for _, port := range service.Ports {
-				result.Ports = append(result.Ports, PortEvidence{
-					Path: rel, Service: service.Name, Value: port,
-				})
-			}
-			if service.HealthCheck {
-				result.HealthChecks = append(result.HealthChecks, Evidence{
-					Kind: EvidenceHealth, Path: rel,
-					Detail: "compose service " + service.Name + " declares healthcheck",
-				})
+			if manifest == nil && (service.AmbiguousInfrastructure || service.Unresolved) {
+				result.AmbiguousServices = append(result.AmbiguousServices, service.Name)
 			}
 			if service.DatabaseBootstrap {
 				result.DatabaseBootstrapServices = append(result.DatabaseBootstrapServices, service.Name)
@@ -212,19 +196,6 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
 	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
-	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
-		result.Findings = mergeFindings(result.Findings, []Finding{{
-			Capability: "logs",
-			Direction:  DirectionExport,
-			Confidence: ConfidenceSuggested,
-			Evidence: []Evidence{{
-				Kind:   EvidenceCompose,
-				Path:   result.SelectedCompose,
-				Detail: "application workload can opt into managed stdout/stderr log collection",
-			}},
-		}})
-	}
-
 	detectorSnapshot := snapshotForSelectedWorkloadSource(snapshot, result.SelectedWorkloadSource)
 	for _, detector := range e.Detectors {
 		if detector == nil {
@@ -243,6 +214,87 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.Declared, result.Reconciliation = Reconcile(result.Findings, declared)
 	sortResult(&result)
 	return result, nil
+}
+
+func projectWorkloadEvidenceSummary(result *Result, classifyComponents bool) {
+	if result.WorkloadEvidence == nil {
+		return
+	}
+	evidence := result.WorkloadEvidence
+	hasWorkload := false
+	for _, component := range evidence.Components {
+		path := workloadComponentEvidencePath(component, evidence.Source.Path)
+		for _, port := range component.Ports {
+			result.Ports = append(result.Ports, PortEvidence{
+				Path: path, Service: component.ID, Value: port,
+			})
+		}
+		if component.Health {
+			result.HealthChecks = append(result.HealthChecks, Evidence{
+				Kind:   EvidenceHealth,
+				Path:   path,
+				Detail: "workload component " + component.ID + " declares health/readiness",
+			})
+		}
+		if !classifyComponents {
+			continue
+		}
+		if component.InfrastructureClass != "" {
+			result.InfrastructureServices = append(result.InfrastructureServices, component.ID)
+			if capability := workloadInfrastructureCapability(component.InfrastructureClass); capability != "" {
+				result.Findings = mergeFindings(result.Findings, []Finding{{
+					Capability: capability,
+					Name:       component.ID,
+					Confidence: ConfidenceDetected,
+					Evidence: []Evidence{{
+						Kind:   workloadSourceEvidenceKind(evidence.Source.Kind),
+						Path:   path,
+						Detail: "normalized workload evidence classifies component " + component.ID + " as " + component.InfrastructureClass,
+					}},
+				}})
+			}
+			continue
+		}
+		result.WorkloadServices = append(result.WorkloadServices, component.ID)
+		hasWorkload = true
+	}
+	if classifyComponents && hasWorkload {
+		result.Findings = mergeFindings(result.Findings, []Finding{{
+			Capability: "logs",
+			Direction:  DirectionExport,
+			Confidence: ConfidenceSuggested,
+			Evidence: []Evidence{{
+				Kind:   workloadSourceEvidenceKind(evidence.Source.Kind),
+				Path:   evidence.Source.Path,
+				Detail: "application workload can opt into managed stdout/stderr log collection",
+			}},
+		}})
+	}
+}
+
+func workloadComponentEvidencePath(component WorkloadComponent, fallback string) string {
+	for _, source := range component.Source {
+		if strings.TrimSpace(source.Path) != "" {
+			return source.Path
+		}
+	}
+	return fallback
+}
+
+func workloadSourceEvidenceKind(kind WorkloadSourceKind) EvidenceKind {
+	if kind == WorkloadSourceCompose {
+		return EvidenceCompose
+	}
+	return EvidenceConfig
+}
+
+func workloadInfrastructureCapability(class string) string {
+	switch class {
+	case "database.sql", "cache.key-value", "database.document":
+		return class
+	default:
+		return ""
+	}
 }
 
 func snapshotForSelectedWorkloadSource(snapshot Snapshot, selected *WorkloadSourceCandidate) Snapshot {
