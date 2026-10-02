@@ -76,12 +76,9 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
 				return fmt.Errorf("suspend cross-application connectivity: %w", err)
 			}
-			if err := removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m); err != nil {
-				term.Warn(
-					"development-routes",
-					"canonical development-route reconciliation deferred; application shutdown will continue: "+err.Error(),
-				)
-			}
+			runBestEffortDevelopmentRouteSuspension(term, func() error {
+				return removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m)
+			})
 			if len(m.Exposures) > 0 {
 				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
 					return err
@@ -136,6 +133,18 @@ func appDownCommand(store application.Store) *cli.Command {
 			term.Result("STOPPED", "application", "persistent data preserved")
 			return nil
 		},
+	}
+}
+
+func runBestEffortDevelopmentRouteSuspension(term *cli.Terminal, suspend func() error) {
+	if suspend == nil {
+		return
+	}
+	if err := suspend(); err != nil {
+		term.Warn(
+			"development-routes",
+			"canonical development-route reconciliation deferred; application shutdown will continue: "+err.Error(),
+		)
 	}
 }
 
