@@ -86,7 +86,7 @@ func resolveLocal(source Source) (Resolution, Config, error) {
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("read organization configuration: %w", err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: read organization configuration: %v", ErrSourceUnavailable, err)
 	}
 	config, err := parseConfig(content)
 	if err != nil {
