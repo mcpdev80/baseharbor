@@ -3,6 +3,8 @@ package application
 import (
 	"sort"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/availability"
 )
 
 const CurrentVersion = 1
@@ -24,6 +26,8 @@ type Manifest struct {
 	Logs          LogsRequirements
 	Runtime       RuntimeRequirements
 	Identity      IdentityRequirements
+	HA            bool
+	Availability  map[string]availability.Override
 }
 
 type RuntimeRequirements struct {
@@ -153,6 +157,24 @@ type HTTPExposureRequirement struct {
 // service. The empty v1 shape is intentional: topology remains a BaseHarbor
 // implementation detail and future intent such as availability can evolve here.
 type ServiceInstance struct{}
+
+
+func AvailabilityIntent(m Manifest) availability.Intent {
+	return availability.Intent{HA: m.HA, Overrides: m.Availability}
+}
+
+func WithHA(m Manifest, enabled bool) Manifest {
+	m.HA = enabled
+	return m
+}
+
+func WithAvailabilityOverride(m Manifest, component string, ha *bool, instances int) Manifest {
+	if m.Availability == nil {
+		m.Availability = map[string]availability.Override{}
+	}
+	m.Availability[strings.TrimSpace(component)] = availability.Override{HA: ha, Instances: instances}
+	return m
+}
 
 // SecretRequirements declares application-owned secret requirements. Values
 // never belong in the manifest. Generate only expresses explicit intent for
