@@ -58,9 +58,19 @@ PARTIALLY_SUPPORTED
 UNSUPPORTED
 ```
 
+The result also records the concrete guarantees BaseHarbor actually verifies:
+
+- member/process failure tolerance;
+- host failure tolerance;
+- rolling maintenance continuity;
+- credential rotation continuity;
+- PKI rotation continuity;
+- management-surface continuity;
+- the realized failure domain.
+
 A required HA guarantee that is unsupported MUST fail before mutation with a typed actionable result. There is no silent downgrade.
 
-A provider may remain unsupported in v0.4.21. BaseHarbor does not invent clustering merely to make every shipped provider claim HA.
+For a BaseHarbor-managed/placed provider, `UNSUPPORTED` is not an acceptable completion state merely because the current adapter is still single-instance. If the upstream product provides an established production-appropriate HA/replication/failover mode, BaseHarbor MUST implement and verify that mode for `ha: true`. `UNSUPPORTED` is reserved for a genuine product/runtime/guarantee boundary.
 
 ## Observation
 
@@ -87,11 +97,13 @@ Where the selected realization cannot preserve continuity, BaseHarbor fails befo
 
 ## Current v0.4.21 reference boundary
 
-The shipped Docker Compose and Podman Quadlet runtimes do not advertise verified HA workload orchestration.
+Runtime HA and capability-provider HA are independent.
 
-The bundled capability-provider realizations are explicitly classified. Where the current reference topology is single-instance or lacks a verified native HA implementation, the classification is UNSUPPORTED for effective HA.
+Docker Compose and rootless Podman on one host cannot honestly claim host-failure tolerance merely because several provider members are running. They may, however, satisfy member/process failure tolerance, stable-endpoint continuity and rolling maintenance for provider-native HA topologies. The reported guarantee MUST therefore identify the realized failure domain.
 
-This is deliberate and freeze-safe: future Kubernetes, OpenShift and managed/cloud providers can implement stronger realization behind the same contract without changing portable intent.
+Bundled BaseHarbor-managed providers that have an established upstream HA mechanism are required to implement and verify that mechanism before v0.4.21 is accepted. External/BYO providers may declare stronger guarantees independently through the provider contract.
+
+Future Kubernetes, OpenShift and managed/cloud runtimes may strengthen failure-domain guarantees behind the same portable intent without changing application identity or the HA vocabulary.
 
 ## Portability review
 
