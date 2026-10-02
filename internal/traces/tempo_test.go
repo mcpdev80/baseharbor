@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func TestTempoConfigUsesExplicitOTLPAndLocalStorage(t *testing.T) {
@@ -36,5 +38,34 @@ func TestTempoComposeIsHardenedAndLoopbackPublished(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("Tempo Compose missing %q:\n%s", want, rendered)
 		}
+	}
+}
+
+
+func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
+	rendered := tempoHACompose(
+		Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"},
+		serviceaccess.HTTPGatewayFiles{
+			Caddyfile: "./service-access/Caddyfile",
+			Material: serviceaccess.TLSMaterial{
+				CA: "./service-access/runtime/ca.pem",
+				ServerCertificate: "./service-access/runtime/server.pem",
+				ServerKey: "./service-access/runtime/server-key.pem",
+			},
+		},
+		objectstorage.PlatformBucket{Network: "baseharbor-object-storage"},
+	)
+	for _, want := range []string{
+		`until rpk cluster health --brokers "$$brokers"`,
+		`attempts=$$((attempts+1))`,
+		`if [ "$$attempts" -ge 45 ]`,
+		`rpk topic create tempo-traces --brokers "$$brokers"`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("Tempo HA Compose missing escaped init expression %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, `--brokers "$brokers"`) {
+		t.Fatalf("Tempo HA Compose contains unescaped Compose variable interpolation:\n%s", rendered)
 	}
 }
