@@ -34,9 +34,9 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			PostgresInternalUser:     "baseharbor_internal_" + suffix,
 			PostgresInternalPassword: mustControlPlaneSecret(),
 			PostgresReplicationUser:  "baseharbor_rep_" + suffix,
-			PostgresReplicationPass: mustControlPlaneSecret(),
-			OpenBaoDBUser:           "openbao_runtime_" + suffix,
-			OpenBaoDBPassword:       mustControlPlaneSecret(),
+			PostgresReplicationPass:  mustControlPlaneSecret(),
+			OpenBaoDBUser:            "openbao_runtime_" + suffix,
+			OpenBaoDBPassword:        mustControlPlaneSecret(),
 		}
 		if next.PostgresPassword == "" || next.PostgresInternalPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
 			return fmt.Errorf("generate replacement control-plane credentials")
