@@ -29,6 +29,10 @@ type LogSource struct {
 	Service     string
 }
 
+type lokiProjectDiagnostics interface {
+	DiagnosticsProject(context.Context, string, string, string) string
+}
+
 type LokiRealization interface {
 	Apply(context.Context) (LokiInstance, error)
 	Existing(context.Context) (LokiInstance, error)
@@ -121,7 +125,13 @@ func (r *runtimeLokiRealization) Apply(ctx context.Context) (LokiInstance, error
 		return LokiInstance{}, err
 	}
 	if err := waitLokiReady(ctx, instance.HTTPClient, instance.Endpoint); err != nil {
-		return LokiInstance{}, err
+		if diagnostics, ok := r.runtime.(lokiProjectDiagnostics); ok {
+			detail := strings.TrimSpace(diagnostics.DiagnosticsProject(ctx, placement.Project, files.Compose, files.Env))
+			if detail != "" {
+				return LokiInstance{}, fmt.Errorf("Loki readiness: %w\n%s", err, detail)
+			}
+		}
+		return LokiInstance{}, fmt.Errorf("Loki readiness: %w", err)
 	}
 	if err := r.registerProviderSignals(placement); err != nil {
 		return LokiInstance{}, err
