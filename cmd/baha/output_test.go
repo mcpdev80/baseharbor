@@ -61,7 +61,6 @@ func TestRequestsJSONOutput(t *testing.T) {
 	}
 }
 
-
 func TestParseReadOutputArgsAcceptsAllJSONSpellings(t *testing.T) {
 	for _, args := range [][]string{
 		{"--json"},
