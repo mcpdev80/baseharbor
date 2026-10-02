@@ -21,15 +21,13 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 			return err
 		}
 		root := filepath.Join(shared.Dir, "postgresql")
-		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), sharedPostgresService(m.Environment), sharedPostgresAlias(), "127.0.0.1")
+		policy.ServerName = sharedPostgresAlias()
+		gateway, err := serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedPostgresGatewaySpec(m.Environment))
 		if err != nil {
-			return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
-		}
-		if err := projectPostgresServerMaterial(root, material); err != nil {
-			return err
+			return fmt.Errorf("prepare shared PostgreSQL HA access: %w", err)
 		}
 		for _, instance := range SQLInstanceNames(m) {
-			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+			ca, err := projectBackendCA(files, "postgres", instance, gateway.Material.CA)
 			if err != nil {
 				return err
 			}
@@ -61,6 +59,29 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		}
 	}
 	return nil
+}
+
+func sharedPostgresGatewaySpec(environment string) serviceaccess.TCPGatewaySpec {
+	upstreams := make([]serviceaccess.TCPGatewayUpstream, 0, 3)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		upstreams = append(upstreams, serviceaccess.TCPGatewayUpstream{
+			Name: fmt.Sprintf("postgres-%d", ordinal),
+			Host: sharedPostgresMemberService(environment, ordinal),
+			Port: 5432,
+		})
+	}
+	return serviceaccess.TCPGatewaySpec{
+		ServiceName:      sharedPostgresAlias(),
+		Upstreams:        upstreams,
+		PublishedPortEnv: "SHARED_POSTGRES_HOST_PORT",
+		ContainerPort:    5432,
+		Network:          "shared-backend",
+		BackendDirectives: []string{
+			"option httpchk GET /primary",
+			"http-check expect status 200",
+			"default-server check port 8008 inter 2s fall 2 rise 2",
+		},
+	}
 }
 
 func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values map[string]string) error {
