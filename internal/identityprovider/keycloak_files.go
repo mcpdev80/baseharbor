@@ -172,7 +172,25 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	publicAccess := serviceaccess.HTTPGatewayFiles{Dir: filepath.Join(dir, "native-tls"), Material: nativeMaterial}
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443"},
+		UpstreamTrustFile:  nativeMaterial.CA,
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases:     []string{providerAlias, providerAdminAlias, "keycloak"},
+		CertificateNames:   []string{keycloakPublicHost, providerAlias, providerAdminAlias, "keycloak"},
+		RequireClient:      false,
+	}
+	frontendPolicy := publicPolicy
+	frontendPolicy.AuthenticationRequired = false
+	frontendPolicy.Authentication = serviceaccess.AuthenticationNative
+	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, frontendPolicy, dir, frontendSpec)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
 	adminAccess := publicAccess
 
 	files.PublicPort = publicPort
