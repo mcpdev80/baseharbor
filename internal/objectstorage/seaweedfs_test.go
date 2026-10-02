@@ -130,7 +130,7 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 	if strings.Contains(composeText, "AWS_ACCESS_KEY_ID") || strings.Contains(composeText, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("provider compose contains global S3 credentials:\n%s", composeText)
 	}
-	caddyfile, err := os.ReadFile(filepath.Join(files.Dir, "service-access", "Caddyfile"))
+	caddyfile, err := os.ReadFile(filepath.Join(files.Dir, "service-access", "config", "Caddyfile"))
 	if err != nil {
 		t.Fatal(err)
 	}
