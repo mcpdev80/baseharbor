@@ -278,8 +278,11 @@ func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, erro
 			return "", err
 		}
 		target := filepath.Join(runtimeDir, name)
-		// The enclosing directory is owner-only. Files mounted into the
-		// unprivileged gateway must be readable by its runtime UID.
+		// This is an explicit derived runtime projection, not authoritative
+		// service-access state. The source PKI remains protected under pki/
+		// (private keys 0600); this copy is readable because the third-party
+		// gateway runs as a fixed unprivileged UID and the directory is mounted
+		// read-only. Reconciliation regenerates it from the protected source.
 		if err := writeAtomic(target, data, 0o644); err != nil {
 			return "", err
 		}
