@@ -131,7 +131,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	// control paths on one loopback listener. Keep the legacy environment key
 	// synchronized for state compatibility without allocating a second port.
 	values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(publicPort)
-	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD"} {
+	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD"} {
 		if strings.TrimSpace(values[key]) == "" {
 			secret, err := randomIdentitySecret(32)
 			if err != nil {
@@ -174,7 +174,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
-		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443"},
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
 		UpstreamTrustFile:  nativeMaterial.CA,
 		UpstreamServerName: keycloakPublicHost,
 		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
@@ -212,6 +212,9 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
+	if err := ensureKeycloakPostgresHA(files.Dir); err != nil {
+		return KeycloakFiles{}, fmt.Errorf("prepare Keycloak HA database routing: %w", err)
+	}
 
 	compose := keycloakCompose(app, files)
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
@@ -303,8 +306,8 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
-      keycloak-db:
-        condition: service_healthy
+      keycloak-db-init:
+        condition: service_completed_successfully
     command:
       - start
       - --cache=ispn
@@ -344,30 +347,13 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(`services:
-  keycloak-db:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    security_opt: ["no-new-privileges:true"]
-    environment:
-      POSTGRES_DB: ${BASEHARBOR_KEYCLOAK_DB_NAME}
-      POSTGRES_USER: ${BASEHARBOR_KEYCLOAK_DB_USER}
-      POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-    volumes:
-      - keycloak-db-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_KEYCLOAK_DB_USER} -d ${BASEHARBOR_KEYCLOAK_DB_NAME}"]
-      interval: 2s
-      timeout: 2s
-      retries: 60
-      start_period: 2s
-    networks:
-      - identity-internal
-
-`)
+	b.WriteString("services:\n")
+	b.WriteString(keycloakHADataLayerCompose())
 	b.WriteString(member("keycloak-1"))
 	b.WriteString("\n")
 	b.WriteString(member("keycloak-2"))
+	b.WriteString("\n")
+	b.WriteString(member("keycloak-3"))
 	b.WriteString("\n")
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
@@ -384,7 +370,9 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 		},
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
-	b.WriteString("\nvolumes:\n  keycloak-db-data:\n\nnetworks:\n")
+	b.WriteString("\nvolumes:\n")
+	b.WriteString(keycloakHAVolumesCompose())
+	b.WriteString("\nnetworks:\n")
 	fmt.Fprintf(&b, "  identity-consumer:\n    name: %s\n", files.ConsumerNetwork)
 	fmt.Fprintf(&b, "  identity-internal:\n    name: %s\n", files.InternalNetwork)
 	return b.String()
