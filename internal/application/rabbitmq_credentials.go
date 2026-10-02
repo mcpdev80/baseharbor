@@ -29,13 +29,19 @@ IFS= read -r app_password
 IFS= read -r admin_user
 IFS= read -r admin_password
 
-rabbitmqctl add_user "$app_user" "$app_password" >/dev/null 2>&1 ||
+if rabbitmqctl list_users -q | awk '{print $1}' | grep -Fxq "$app_user"; then
   rabbitmqctl change_password "$app_user" "$app_password" >/dev/null
+else
+  rabbitmqctl add_user "$app_user" "$app_password" >/dev/null
+fi
 rabbitmqctl set_permissions -p / "$app_user" '.*' '.*' '.*' >/dev/null
 
 if [ -n "$admin_user" ]; then
-  rabbitmqctl add_user "$admin_user" "$admin_password" >/dev/null 2>&1 ||
+  if rabbitmqctl list_users -q | awk '{print $1}' | grep -Fxq "$admin_user"; then
     rabbitmqctl change_password "$admin_user" "$admin_password" >/dev/null
+  else
+    rabbitmqctl add_user "$admin_user" "$admin_password" >/dev/null
+  fi
   rabbitmqctl set_user_tags "$admin_user" administrator >/dev/null
   rabbitmqctl set_permissions -p / "$admin_user" '.*' '.*' '.*' >/dev/null
 fi
@@ -90,7 +96,7 @@ func waitRabbitMQNodeReady(ctx context.Context, runtime rabbitMQCredentialRuntim
 	defer ticker.Stop()
 	var lastErr error
 	for {
-		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err == nil {
+		if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "is_running"); err == nil {
 			return nil
 		} else {
 			lastErr = err
