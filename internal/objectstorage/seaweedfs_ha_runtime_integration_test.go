@@ -1,10 +1,10 @@
 package objectstorage
 
 import (
-	"crypto/x509"
-	"crypto/tls"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"net/http"
 	"os"
 	"path/filepath"
