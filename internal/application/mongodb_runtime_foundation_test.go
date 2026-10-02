@@ -149,7 +149,7 @@ func TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary(t *testing
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`printf '- "%s"\\n' "$BASEHARBOR_MONGODB_REPLICA_KEY"`,
+		`printf '- "%s"\n' "$BASEHARBOR_MONGODB_REPLICA_KEY"`,
 		"--keyFile /tmp/mongodb-keyfile",
 		"--setParameter tlsWithholdClientCertificate=true",
 	} {
