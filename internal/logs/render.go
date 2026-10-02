@@ -95,18 +95,20 @@ compactor:
 `
 }
 
-func lokiHAAlloyConfig(config string) string {
+func lokiHAAlloyConfig(config string, requireClient bool) string {
 	const old = `    url = "http://loki:3100/loki/api/v1/push"
 `
-	const replacement = `    url = "https://loki:8443/loki/api/v1/push"
-    tls_config {
-      ca_file     = "/run/baseharbor/loki-access/ca.pem"
-      cert_file   = "/run/baseharbor/loki-access/client-cert.pem"
-      key_file    = "/run/baseharbor/loki-access/client-key.pem"
-      server_name = "loki"
-    }
-`
-	return strings.Replace(config, old, replacement, 1)
+	var replacement strings.Builder
+	replacement.WriteString("    url = \"https://loki:8443/loki/api/v1/push\"\n")
+	replacement.WriteString("    tls_config {\n")
+	replacement.WriteString("      ca_file     = \"/run/baseharbor/loki-access/ca.pem\"\n")
+	if requireClient {
+		replacement.WriteString("      cert_file   = \"/run/baseharbor/loki-access/client-cert.pem\"\n")
+		replacement.WriteString("      key_file    = \"/run/baseharbor/loki-access/client-key.pem\"\n")
+	}
+	replacement.WriteString("      server_name = \"loki\"\n")
+	replacement.WriteString("    }\n")
+	return strings.Replace(config, old, replacement.String(), 1)
 }
 
 func alloyConfig(registrations []Registration) string {
