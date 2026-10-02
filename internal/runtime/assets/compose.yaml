@@ -1,41 +1,167 @@
 services:
-  postgres:
-    image: docker.io/library/postgres:18-alpine
+  postgres-etcd-1:
+    image: gcr.io/etcd-development/etcd:v3.7.2
     restart: unless-stopped
-    user: "70:70"
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    entrypoint:
-      - /bin/sh
-      - -ec
-    command:
-      - |
-        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
-        chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-1", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-1:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-1:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    volumes:
+      - postgres-etcd-data-1:/etcd-data
+
+  postgres-etcd-2:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-2", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-2:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-2:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    volumes:
+      - postgres-etcd-data-2:/etcd-data
+
+  postgres-etcd-3:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-3", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-3:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-3:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    volumes:
+      - postgres-etcd-data-3:/etcd-data
+
+  postgres-member-1:
+    image: ghcr.io/zalando/spilo-18:4.1-p2
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
-      POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
-      POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
-      BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
+      SPILO_PROVIDER: local
+      SCOPE: baseharbor-control-postgres
+      PGVERSION: "18"
+      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_USER}
+      PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_PASSWORD}
+      PGUSER_STANDBY: baseharbor_replication
+      PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
+      USE_ADMIN: "false"
+      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_TEST_RELOAD: "true"
+      SPILO_CONFIGURATION: |
+        postgresql:
+          connect_address: postgres-member-1:5432
+        restapi:
+          connect_address: postgres-member-1:8008
+    volumes:
+      - postgres-data-1:/home/postgres/pgroot
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+
+  postgres-member-2:
+    image: ghcr.io/zalando/spilo-18:4.1-p2
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      SPILO_PROVIDER: local
+      SCOPE: baseharbor-control-postgres
+      PGVERSION: "18"
+      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_USER}
+      PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_PASSWORD}
+      PGUSER_STANDBY: baseharbor_replication
+      PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
+      USE_ADMIN: "false"
+      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_TEST_RELOAD: "true"
+      SPILO_CONFIGURATION: |
+        postgresql:
+          connect_address: postgres-member-2:5432
+        restapi:
+          connect_address: postgres-member-2:8008
+    volumes:
+      - postgres-data-2:/home/postgres/pgroot
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+
+  postgres-member-3:
+    image: ghcr.io/zalando/spilo-18:4.1-p2
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      SPILO_PROVIDER: local
+      SCOPE: baseharbor-control-postgres
+      PGVERSION: "18"
+      ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
+      PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_USER}
+      PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_PASSWORD}
+      PGUSER_STANDBY: baseharbor_replication
+      PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
+      USE_ADMIN: "false"
+      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
+      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem
+      SSL_TEST_RELOAD: "true"
+      SPILO_CONFIGURATION: |
+        postgresql:
+          connect_address: postgres-member-3:5432
+        restapi:
+          connect_address: postgres-member-3:8008
+    volumes:
+      - postgres-data-3:/home/postgres/pgroot
+      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
+      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
+
+  postgres:
+    image: docker.io/library/haproxy:3.2.23-alpine
+    restart: unless-stopped
+    user: "99:99"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["haproxy", "-W", "-db", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
     ports:
       - "127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-      - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
-      - ./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_POSTGRES_USER} -d ${BASEHARBOR_POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
+      - ./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+  postgres-admin:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["sh", "-ec", "trap : TERM INT; sleep infinity & wait"]
+    environment:
+      PGPASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    volumes:
+      - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+
+  postgres-init:
+    image: docker.io/library/postgres:18-alpine
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      BASEHARBOR_POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      PGPASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+      BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    volumes:
+      - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+      - ./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        export PGSSLMODE=verify-full
+        export PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem
+        until pg_isready -h postgres -p 5432 -U "$BASEHARBOR_POSTGRES_USER" -d postgres; do sleep 1; done
+        exec psql -h postgres -p 5432 -U "$BASEHARBOR_POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -f /run/baseharbor/openbao-init.sh
 
   openbao:
     image: docker.io/openbao/openbao:2.7.0
@@ -53,8 +179,8 @@ services:
       BAO_ADDR: https://127.0.0.1:8200
       BAO_CACERT: /run/baseharbor/openbao/ca.pem
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200"
     volumes:
@@ -74,7 +200,12 @@ services:
       start_period: 5s
 
 volumes:
-  postgres-data:
+  postgres-data-1:
+  postgres-data-2:
+  postgres-data-3:
+  postgres-etcd-data-1:
+  postgres-etcd-data-2:
+  postgres-etcd-data-3:
 
 networks:
   default: {}
