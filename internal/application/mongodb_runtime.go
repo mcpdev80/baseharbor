@@ -191,43 +191,49 @@ func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
 	return nil
 }
 
-func writeMongoDBComposeService(b *strings.Builder, instance string) {
-	service := runtimeServiceName("mongodb", instance)
+func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string) {
 	dbKey := mongodbRuntimeKey(instance, "DB")
 	userKey := mongodbRuntimeKey(instance, "USER")
 	passwordKey := mongodbRuntimeKey(instance, "PASSWORD")
 	adminUserKey := mongodbRuntimeKey(instance, "ADMIN_USER")
 	adminPasswordKey := mongodbRuntimeKey(instance, "ADMIN_PASSWORD")
+	replicaSetKey := mongodbReplicaSetKey(instance)
+	replicaKeyKey := mongodbReplicaKeyKey(instance)
 	initScript := "./" + filepath.ToSlash(filepath.Join("providers", "mongodb", instance, "init.js"))
-	fmt.Fprintf(b, `  %s:
-    image: %s
-    restart: unless-stopped
-    read_only: true
-    cap_drop: ["ALL"]
-    cap_add: ["CHOWN", "SETGID", "SETUID"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /data/configdb:rw,noexec,nosuid,nodev
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${%s}
-      MONGO_INITDB_ROOT_PASSWORD: ${%s}
-      MONGO_INITDB_DATABASE: ${%s}
-      BASEHARBOR_MONGODB_USER: ${%s}
-      BASEHARBOR_MONGODB_PASSWORD: ${%s}
-    volumes:
-      - %s-data:/data/db
-      - %s:/docker-entrypoint-initdb.d/10-baseharbor-app-user.js:ro
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'"]
-      interval: 5s
-      timeout: 10s
-      retries: 18
-      start_period: 15s
-
-`, service, MongoDBImage, adminUserKey, adminPasswordKey, dbKey, userKey, passwordKey, service, initScript)
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		service := mongodbMemberServiceName(instance, ordinal)
+		fmt.Fprintf(b, "  %s:\n", service)
+		fmt.Fprintf(b, "    image: %s\n", MongoDBImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    cap_add: [\"CHOWN\", \"SETGID\", \"SETUID\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /data/configdb:rw,noexec,nosuid,nodev\n")
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      MONGO_INITDB_ROOT_USERNAME: ${%s}\n", adminUserKey)
+		fmt.Fprintf(b, "      MONGO_INITDB_ROOT_PASSWORD: ${%s}\n", adminPasswordKey)
+		fmt.Fprintf(b, "      MONGO_INITDB_DATABASE: ${%s}\n", dbKey)
+		fmt.Fprintf(b, "      BASEHARBOR_MONGODB_USER: ${%s}\n", userKey)
+		fmt.Fprintf(b, "      BASEHARBOR_MONGODB_PASSWORD: ${%s}\n", passwordKey)
+		if mongodbMemberCount(m, instance) > 1 {
+			fmt.Fprintf(b, "      BASEHARBOR_MONGODB_REPLICA_SET: ${%s}\n", replicaSetKey)
+			fmt.Fprintf(b, "      BASEHARBOR_MONGODB_REPLICA_KEY: ${%s}\n", replicaKeyKey)
+			b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+			b.WriteString("    command:\n      - |\n")
+			b.WriteString("        printf '%s\\n' \"$BASEHARBOR_MONGODB_REPLICA_KEY\" > /tmp/mongodb-keyfile\n")
+			b.WriteString("        chmod 0400 /tmp/mongodb-keyfile\n")
+			b.WriteString("        chown mongodb:mongodb /tmp/mongodb-keyfile\n")
+			b.WriteString("        exec /usr/local/bin/docker-entrypoint.sh mongod --bind_ip_all --replSet \"$BASEHARBOR_MONGODB_REPLICA_SET\" --keyFile /tmp/mongodb-keyfile\n")
+		}
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - %s:/data/db\n", mongodbMemberVolumeName(instance, ordinal))
+		fmt.Fprintf(b, "      - %s:/docker-entrypoint-initdb.d/10-baseharbor-app-user.js:ro\n", initScript)
+		b.WriteString("    healthcheck:\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"mongosh --quiet --username \\\"$${MONGO_INITDB_ROOT_USERNAME}\\\" --password \\\"$${MONGO_INITDB_ROOT_PASSWORD}\\\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'\"]\n")
+		b.WriteString("      interval: 5s\n      timeout: 10s\n      retries: 18\n      start_period: 15s\n\n")
+	}
 }
-
 func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance string) {
 	uiService := mongodbUIServiceName(instance)
 	accessService := mongodbUIAccessServiceName(instance)
