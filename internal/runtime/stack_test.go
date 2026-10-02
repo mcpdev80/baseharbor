@@ -322,7 +322,7 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",
 		"install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem",
 		`until /bin/sh /run/baseharbor/openbao-init.sh; do`,
-		`attempts=$$((attempts+1))`,
+		`attempts=$((attempts+1))`,
 		`if [ "${attempts}" -ge 90 ]; then`,
 		"BAO_ADDR: https://127.0.0.1:8200",
 		"openbao-member-1",
