@@ -210,7 +210,6 @@ func TestSeaweedFSProviderUsesQualifiedImageReference(t *testing.T) {
 	}
 }
 
-
 func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 	base := providerComposeYAML()
 	access := serviceaccess.HTTPGatewayFiles{
