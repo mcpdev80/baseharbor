@@ -204,6 +204,57 @@ func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files)
 	return err
 }
 
+func RotateManagerCredentials(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	oldCredentials, err := LoadAdminCredentials(files)
+	if err != nil {
+		return err
+	}
+	oldToken, err := loginManager(ctx, executor, files, oldCredentials)
+	if err != nil {
+		return fmt.Errorf("authenticate current OpenBao manager before rotation: %w", err)
+	}
+
+	newCredentials, err := issueManagerCredentials(ctx, executor, files, oldToken)
+	if err != nil {
+		return fmt.Errorf("prepare replacement OpenBao manager credential: %w", err)
+	}
+	newToken, err := loginManager(ctx, executor, files, newCredentials)
+	if err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return fmt.Errorf("verify replacement OpenBao manager credential: %w", err)
+	}
+	if err := verifyManagerKV(ctx, executor, files, newToken); err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return fmt.Errorf("verify replacement OpenBao manager authorization: %w", err)
+	}
+
+	adminPath := AdminCredentialsPath(files)
+	if err := replaceAdminCredentials(adminPath, newCredentials); err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return err
+	}
+
+	if err := destroyManagerSecretID(ctx, executor, files, newToken, oldCredentials.SecretID); err != nil {
+		return fmt.Errorf("retire previous OpenBao manager credential: %w", err)
+	}
+	if _, err := loginManager(ctx, executor, files, oldCredentials); err == nil {
+		return errors.New("previous OpenBao manager credential still authenticates after retirement")
+	}
+	if err := CheckManager(ctx, executor, files); err != nil {
+		return fmt.Errorf("verify persisted OpenBao manager credential after rotation: %w", err)
+	}
+	return nil
+}
+
+func destroyManagerSecretID(ctx context.Context, executor Executor, files bhruntime.Files, token, secretID string) error {
+	payload, err := json.Marshal(map[string]string{"secret_id": secretID})
+	if err != nil {
+		return errors.New("encode OpenBao manager SecretID retirement request")
+	}
+	_, err = execWithTokenPayload(ctx, executor, files, token, "exec bao write auth/approle/role/baseharbor-manager/secret-id/destroy -", string(payload))
+	return err
+}
+
 func LoadAdminCredentials(files bhruntime.Files) (AdminCredentials, error) {
 	path := AdminCredentialsPath(files)
 	info, err := os.Stat(path)
@@ -451,6 +502,23 @@ func issueManagerCredentials(ctx context.Context, executor Executor, files bhrun
 	return AdminCredentials{RoleID: roleReply.Data.RoleID, SecretID: secretReply.Data.SecretID}, nil
 }
 
+func replaceAdminCredentials(path string, credentials AdminCredentials) error {
+	content := fmt.Sprintf("OPENBAO_ROLE_ID=%s\nOPENBAO_SECRET_ID=%s\n", credentials.RoleID, credentials.SecretID)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write replacement OpenBao manager credentials: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("protect replacement OpenBao manager credentials: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("activate replacement OpenBao manager credentials: %w", err)
+	}
+	return nil
+}
+
 func writeAdminCredentials(path string, credentials AdminCredentials) (err error) {
 	content := fmt.Sprintf("OPENBAO_ROLE_ID=%s\nOPENBAO_SECRET_ID=%s\n", credentials.RoleID, credentials.SecretID)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -577,6 +645,14 @@ path "auth/baseharbor-dev/users/*" {
 
 path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
+}
+
+path "auth/approle/role/baseharbor-manager/secret-id" {
+  capabilities = ["create", "update"]
+}
+
+path "auth/approle/role/baseharbor-manager/secret-id/destroy" {
+  capabilities = ["create", "update"]
 }
 
 path "baseharbor-pki/issue/baseharbor-services" {
