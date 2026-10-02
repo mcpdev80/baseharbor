@@ -246,7 +246,15 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 	}
 	if operatorauth.ManagedEnvironment(environment) {
 		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
-			return err
+			return &machine.Error{
+				Code:        machine.ErrorAuthenticationFailed,
+				CauseCode:   "operator_authentication_required",
+				Message:     "Managed-environment machine operations require an authenticated BaseHarbor operator.",
+				Resource:    strings.TrimSpace(target) + "/" + environment,
+				Remediation: "authenticate the BaseHarbor operator",
+				Next:        "Configure operator OIDC if required, run 'baha login' for the selected Target/environment, then retry.",
+				Cause:       err,
+			}
 		}
 	}
 	_, err := operatorauth.AuthorizeMachineOperation(ctx, operatorauth.AuthorizationRequest{
