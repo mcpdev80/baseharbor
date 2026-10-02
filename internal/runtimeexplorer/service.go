@@ -47,17 +47,30 @@ func NewService(backend ContainerBackend, target string, resolver OwnershipResol
 }
 
 func (s *Service) Capabilities(context.Context, string) (CapabilitySet, error) {
+	capabilities := []Capability{
+		CapabilityResourceInspect,
+		CapabilityLogs,
+		CapabilityContainerLifecycle,
+		CapabilityContainerExec,
+	}
+	resourceKinds := []ResourceKind{KindContainer}
+	if inventory, ok := s.backend.(InventoryBackend); ok {
+		for _, kind := range inventory.InventoryResourceKinds() {
+			if kind == KindContainer || containsResourceKind(resourceKinds, kind) {
+				continue
+			}
+			resourceKinds = append(resourceKinds, kind)
+			if kind == KindPod {
+				capabilities = append(capabilities, CapabilityPodInspect)
+			}
+		}
+	}
 	return CapabilitySet{
 		ContractVersion: ContractVersion,
 		Provider:        string(s.backend.Kind()),
 		Target:          s.target,
-		Capabilities: []Capability{
-			CapabilityResourceInspect,
-			CapabilityLogs,
-			CapabilityContainerLifecycle,
-			CapabilityContainerExec,
-		},
-		ResourceKinds: []ResourceKind{KindContainer},
+		Capabilities:    capabilities,
+		ResourceKinds:   resourceKinds,
 	}, nil
 }
 
@@ -65,25 +78,49 @@ func (s *Service) List(ctx context.Context, request ListRequest) ([]Resource, er
 	if strings.TrimSpace(request.Target) != "" && strings.TrimSpace(request.Target) != s.target {
 		return nil, fmt.Errorf("runtime explorer target %q does not match active target %q", request.Target, s.target)
 	}
-	if len(request.Kinds) > 0 && !containsResourceKind(request.Kinds, KindContainer) {
-		return []Resource{}, nil
-	}
-	containers, err := s.backend.ListRuntimeContainers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	resources := make([]Resource, 0, len(containers))
-	for _, container := range containers {
-		resource, err := s.containerResource(ctx, container)
+
+	var resources []Resource
+	if len(request.Kinds) == 0 || containsResourceKind(request.Kinds, KindContainer) {
+		containers, err := s.backend.ListRuntimeContainers(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if !matchesListRequest(resource, request) {
-			continue
+		for _, container := range containers {
+			resource, err := s.containerResource(ctx, container)
+			if err != nil {
+				return nil, err
+			}
+			if matchesListRequest(resource, request) {
+				resources = append(resources, resource)
+			}
 		}
-		resources = append(resources, resource)
 	}
+
+	if inventory, ok := s.backend.(InventoryBackend); ok {
+		for _, kind := range inventory.InventoryResourceKinds() {
+			if kind == KindContainer || (len(request.Kinds) > 0 && !containsResourceKind(request.Kinds, kind)) {
+				continue
+			}
+			items, err := inventory.ListInventoryResources(ctx, kind)
+			if err != nil {
+				return nil, err
+			}
+			for _, item := range items {
+				resource, err := inventoryResource(s.target, string(s.backend.Kind()), item)
+				if err != nil {
+					return nil, err
+				}
+				if matchesListRequest(resource, request) {
+					resources = append(resources, resource)
+				}
+			}
+		}
+	}
+
 	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Ref.Kind != resources[j].Ref.Kind {
+			return resources[i].Ref.Kind < resources[j].Ref.Kind
+		}
 		if resources[i].Ownership != resources[j].Ownership {
 			return resources[i].Ownership < resources[j].Ownership
 		}
@@ -96,16 +133,30 @@ func (s *Service) Inspect(ctx context.Context, ref ResourceRef) (Resource, error
 	if err := s.validateRef(ref); err != nil {
 		return Resource{}, err
 	}
-	if ref.Kind != KindContainer {
+	if ref.Kind == KindContainer {
+		containers, err := s.backend.ListRuntimeContainers(ctx)
+		if err != nil {
+			return Resource{}, err
+		}
+		for _, container := range containers {
+			if container.ID == ref.ResourceID {
+				return s.containerResource(ctx, container)
+			}
+		}
+		return Resource{}, fmt.Errorf("runtime resource %q was not found", ref.ResourceID)
+	}
+
+	inventory, ok := s.backend.(InventoryBackend)
+	if !ok || !containsResourceKind(inventory.InventoryResourceKinds(), ref.Kind) {
 		return Resource{}, fmt.Errorf("runtime resource kind %q is not supported by this explorer backend", ref.Kind)
 	}
-	containers, err := s.backend.ListRuntimeContainers(ctx)
+	items, err := inventory.ListInventoryResources(ctx, ref.Kind)
 	if err != nil {
 		return Resource{}, err
 	}
-	for _, container := range containers {
-		if container.ID == ref.ResourceID {
-			return s.containerResource(ctx, container)
+	for _, item := range items {
+		if strings.TrimSpace(item.ResourceID) == ref.ResourceID {
+			return inventoryResource(s.target, string(s.backend.Kind()), item)
 		}
 	}
 	return Resource{}, fmt.Errorf("runtime resource %q was not found", ref.ResourceID)
@@ -135,6 +186,9 @@ func (s *Service) Exec(ctx context.Context, request OperationRequest) (io.ReadCl
 	if err := s.validateRef(request.Resource); err != nil {
 		return nil, err
 	}
+	if request.Resource.Kind != KindContainer {
+		return nil, fmt.Errorf("runtime exec is not supported for resource kind %q", request.Resource.Kind)
+	}
 	resource, err := s.Inspect(ctx, request.Resource)
 	if err != nil {
 		return nil, err
@@ -155,6 +209,9 @@ func (s *Service) Operate(ctx context.Context, request OperationRequest) (Operat
 	}
 	if err := s.validateRef(request.Resource); err != nil {
 		return OperationResult{}, err
+	}
+	if request.Resource.Kind != KindContainer {
+		return OperationResult{}, fmt.Errorf("runtime lifecycle mutation is not supported for resource kind %q", request.Resource.Kind)
 	}
 	resource, err := s.Inspect(ctx, request.Resource)
 	if err != nil {
@@ -269,7 +326,7 @@ func matchesListRequest(resource Resource, request ListRequest) bool {
 	if request.DeploymentID != "" && request.DeploymentID != resource.Relationship.DeploymentID {
 		return false
 	}
-	if request.Environment != "" && request.Environment != resource.Relationship.Environment {
+	if request.Environment != "" && resource.Relationship.Environment != "" && request.Environment != resource.Relationship.Environment {
 		return false
 	}
 	if request.Component != "" && request.Component != resource.Relationship.Component {
