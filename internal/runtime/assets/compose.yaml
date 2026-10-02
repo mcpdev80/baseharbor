@@ -31,6 +31,7 @@ services:
 
   postgres-member-1:
     image: ghcr.io/zalando/spilo-18:4.1-p2
+    hostname: postgres-member-1
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-ec"]
@@ -42,6 +43,7 @@ services:
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
+      PATRONI_NAME: postgres-member-1
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
@@ -66,6 +68,7 @@ services:
 
   postgres-member-2:
     image: ghcr.io/zalando/spilo-18:4.1-p2
+    hostname: postgres-member-2
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-ec"]
@@ -77,6 +80,7 @@ services:
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
+      PATRONI_NAME: postgres-member-2
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
@@ -101,6 +105,7 @@ services:
 
   postgres-member-3:
     image: ghcr.io/zalando/spilo-18:4.1-p2
+    hostname: postgres-member-3
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-ec"]
@@ -112,6 +117,7 @@ services:
     environment:
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
+      PATRONI_NAME: postgres-member-3
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
