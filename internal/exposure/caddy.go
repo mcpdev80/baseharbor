@@ -133,15 +133,15 @@ func (d *Driver) Preflight(ctx context.Context, resource capability.Resource, bi
 			// does not require or duplicate managed-local leaf certificate state.
 		case "existing":
 			for _, name := range []string{"cert.pem", "key.pem"} {
-			path := filepath.Join(d.deployment.TLSDir, name)
-			info, err := os.Stat(path)
-			if err != nil {
-				return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
+				path := filepath.Join(d.deployment.TLSDir, name)
+				info, err := os.Stat(path)
+				if err != nil {
+					return fmt.Errorf("managed HTTPS exposure %q requires %s: %w", resource.Name, path, err)
+				}
+				if !info.Mode().IsRegular() {
+					return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
+				}
 			}
-			if !info.Mode().IsRegular() {
-				return fmt.Errorf("managed HTTPS exposure %q TLS path %s is not a regular file", resource.Name, path)
-			}
-		}
 		default:
 			return fmt.Errorf("managed HTTPS exposure %q requires local development TLS termination or existing/BYOC TLS; deployment TLS mode is %q", resource.Name, d.deployment.TLSMode)
 		}
