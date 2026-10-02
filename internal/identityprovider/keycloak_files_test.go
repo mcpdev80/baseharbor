@@ -41,4 +41,31 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 	if !strings.Contains(got, "/dev/tcp/127.0.0.1/8443") {
 		t.Fatalf("Keycloak compose missing native HTTPS listener health probe:\n%s", got)
 	}
+	for _, want := range []string{
+		"keycloak-db-tls-init:",
+		"keycloak-db-tls:/run/baseharbor/db-tls:ro",
+		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
+		"chown \"$$uid:$$gid\"",
+		"chmod 0600 /target/server-key.pem",
+		"-U \"$$BASEHARBOR_KEYCLOAK_DB_USER\"",
+		"attempts=$$((attempts+1))",
+		"if [ \"$$attempts\" -ge 90 ]",
+		"exists=$$(psql",
+		"if [ \"$$exists\" != \"1\" ]",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Keycloak HA compose missing protected TLS/bootstrap expression %q:\n%s", want, got)
+		}
+	}
+	for _, forbidden := range []string{
+		"-U \"$BASEHARBOR_KEYCLOAK_DB_USER\"",
+		"attempts=$((attempts+1))",
+		"if [ \"$attempts\" -ge 90 ]",
+		"exists=$(psql",
+		"if [ \"$exists\" != \"1\" ]",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("Keycloak HA compose contains unescaped shell interpolation %q:\n%s", forbidden, got)
+		}
+	}
 }
