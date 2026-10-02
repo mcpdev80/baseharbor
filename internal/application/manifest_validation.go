@@ -23,6 +23,9 @@ func (m Manifest) Validate() error {
 	if err := validateSlug("environment", m.Environment); err != nil {
 		return err
 	}
+	if err := AvailabilityIntent(m).Validate(); err != nil {
+		return err
+	}
 	sql := SQLInstanceNames(m)
 	cache := CacheInstanceNames(m)
 	keyValue := KeyValueInstanceNames(m)
