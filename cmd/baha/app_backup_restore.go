@@ -217,6 +217,11 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("restore preflight workload security: %w", err)
 	}
+	pending, err := recordPendingDeployment(ctx, resolved)
+	if err != nil {
+		return fmt.Errorf("record pending restore deployment: %w", err)
+	}
+	resolved.DeploymentRecord = &pending
 	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
 		return fmt.Errorf("restore deployment initialization: %w", err)
 	}
