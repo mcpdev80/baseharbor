@@ -71,6 +71,32 @@ func VerifyValkeyHACluster(ctx context.Context, runtime valkeyHAProbeRuntime, m 
 	return nil
 }
 
+
+func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifest, files RuntimeFiles, instance string) (string, error) {
+	if runtime == nil {
+		return "", fmt.Errorf("Valkey HA master lookup requires a runtime provider")
+	}
+	if valkeyMemberCount(m, instance) <= 1 {
+		return valkeyMemberServiceName(instance, 0), nil
+	}
+	sentinel := valkeySentinelServiceName(instance, 0)
+	out, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
+	if err != nil {
+		return "", fmt.Errorf("inspect Valkey Sentinel %s: %w", sentinel, err)
+	}
+	lines := nonEmptyLines(out)
+	if len(lines) < 2 || lines[1] != "6379" {
+		return "", fmt.Errorf("Valkey Sentinel %s returned incomplete master address", sentinel)
+	}
+	for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+		member := valkeyMemberServiceName(instance, ordinal)
+		if lines[0] == member {
+			return member, nil
+		}
+	}
+	return "", fmt.Errorf("Valkey Sentinel %s reported unknown master %s", sentinel, lines[0])
+}
+
 func parseValkeyReplicationRole(out string) string {
 	for _, line := range strings.Split(strings.ReplaceAll(out, "\r", ""), "\n") {
 		line = strings.TrimSpace(line)
