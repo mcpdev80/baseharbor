@@ -317,8 +317,8 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 }
 
 func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string) {
-	userKey := rabbitmqRuntimeKey(instance, "USER")
-	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
+	bootstrapUserKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_USER")
+	bootstrapPasswordKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_PASSWORD")
 	cookieKey := rabbitmqRuntimeKey(instance, "ERLANG_COOKIE")
 	image := "docker.io/library/rabbitmq:4.3.6-alpine"
 	if m.Services.MessagingManagementUI {
@@ -654,6 +654,32 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			}
 			values[passwordKey] = password
 		}
+		bootstrapUserKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_USER")
+		bootstrapPasswordKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_PASSWORD")
+		if values[bootstrapUserKey] == "" {
+			values[bootstrapUserKey] = "baseharbor_internal"
+		}
+		if values[bootstrapPasswordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[bootstrapPasswordKey] = password
+		}
+		if m.Services.MessagingManagementUI {
+			adminUserKey := rabbitmqRuntimeKey(instance, "ADMIN_USER")
+			adminPasswordKey := rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")
+			if values[adminUserKey] == "" {
+				values[adminUserKey] = "developer"
+			}
+			if values[adminPasswordKey] == "" {
+				password, err := randomApplicationSecret(32)
+				if err != nil {
+					return err
+				}
+				values[adminPasswordKey] = password
+			}
+		}
 		if rabbitmqMemberCount(m) > 1 {
 			cookieKey := rabbitmqRuntimeKey(instance, "ERLANG_COOKIE")
 			if values[cookieKey] == "" {
@@ -770,7 +796,10 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
-		suffixes := []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		suffixes := []string{"USER", "PASSWORD", "BOOTSTRAP_USER", "BOOTSTRAP_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		if m.Services.MessagingManagementUI {
+			suffixes = append(suffixes, "ADMIN_USER", "ADMIN_PASSWORD")
+		}
 		if rabbitmqMemberCount(m) > 1 {
 			suffixes = append(suffixes, "ERLANG_COOKIE")
 		}
