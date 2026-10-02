@@ -330,9 +330,12 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 
 func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 	registerMCPDevelopmentTools(server)
-
 	registerMCPProviderOrganizationTools(server)
+	registerMCPApplicationMutationTools(server, store)
+	registerMCPRecoveryTools(server, store)
+}
 
+func registerMCPApplicationMutationTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
@@ -444,6 +447,9 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 		return nil, result, nil
 	})
 
+}
+
+func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("backup", "Create the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineBackupInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
