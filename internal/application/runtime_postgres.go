@@ -315,7 +315,6 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	for _, instance := range mongoInstances {
 		writeMongoDBComposeService(&b, m, instance)
-		b.WriteString(mongodbGatewayCompose(instance))
 		if m.Services.DocumentDatabaseManagementUI {
 			writeMongoDBUIComposeServices(&b, m, instance)
 		}
