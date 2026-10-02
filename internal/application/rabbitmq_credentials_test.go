@@ -40,13 +40,13 @@ func TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses(t *testing.T) {
 		Project: "bh-events",
 	}
 	values := map[string]string{
-		rabbitmqRuntimeKey(defaultServiceInstance, "USER"):              "app-user",
-		rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD"):          "app-secret",
-		rabbitmqRuntimeKey(defaultServiceInstance, "BOOTSTRAP_USER"):    "internal-user",
+		rabbitmqRuntimeKey(defaultServiceInstance, "USER"):               "app-user",
+		rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD"):           "app-secret",
+		rabbitmqRuntimeKey(defaultServiceInstance, "BOOTSTRAP_USER"):     "internal-user",
 		rabbitmqRuntimeKey(defaultServiceInstance, "BOOTSTRAP_PASSWORD"): "internal-secret",
-		rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_USER"):        "admin-user",
-		rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD"):    "admin-secret",
-		rabbitmqRuntimeKey(defaultServiceInstance, "HOST_PORT"):         "35672",
+		rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_USER"):         "admin-user",
+		rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD"):     "admin-secret",
+		rabbitmqRuntimeKey(defaultServiceInstance, "HOST_PORT"):          "35672",
 	}
 	if err := os.WriteFile(files.Env, []byte(runtimeEnvContent(m, values)), 0o600); err != nil {
 		t.Fatal(err)
