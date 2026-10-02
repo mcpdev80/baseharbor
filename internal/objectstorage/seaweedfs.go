@@ -685,6 +685,7 @@ func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
 		NetworkAliases:   []string{"seaweedfs"},
 		CertificateNames: []string{"seaweedfs"},
 		RequireClient:    false,
+		HealthStatus:     http.StatusForbidden,
 	}
 }
 
