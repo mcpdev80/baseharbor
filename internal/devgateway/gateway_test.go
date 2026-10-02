@@ -253,7 +253,7 @@ func (r *recordingGatewayRuntime) DestroyProject(context.Context, string, string
 	return nil
 }
 
-func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
+func TestSaveRouteStatePreservesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
 	dir := t.TempDir()
 	files := Files{
 		Dir:     dir,
@@ -276,8 +276,8 @@ func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *test
 	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.destroyCalls != 1 {
-		t.Fatalf("gateway destroy calls = %d, want 1 after route network removal", runtime.destroyCalls)
+	if runtime.destroyCalls != 0 {
+		t.Fatalf("gateway destroy calls = %d, want 0 before validated reconcile", runtime.destroyCalls)
 	}
 	saved, err := loadState(files.State)
 	if err != nil {
