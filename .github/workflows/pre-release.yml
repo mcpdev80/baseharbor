@@ -323,6 +323,7 @@ jobs:
           cache: true
 
       - name: Run adoption gate
+        id: adoption_gate
         shell: bash
         env:
           GATE: ${{ matrix.gate }}
@@ -345,6 +346,34 @@ jobs:
               BAHA=/tmp/baha CORPUS_CATEGORY=kubernetes bash scripts/realworld-workload-source-corpus.sh
               ;;
           esac
+
+      - name: Generate adoption evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/adoption-evidence"
+          mkdir -p "$out"
+          jq -n \
+            --arg schema "baseharbor.pre-release.adoption-evidence/v1" \
+            --arg gate "${{ matrix.gate }}" \
+            --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
+            --arg outcome "${{ steps.adoption_gate.outcome }}" \
+            '{
+              schema: $schema,
+              gate: $gate,
+              candidate_sha: $candidate_sha,
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload adoption evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-adoption-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/adoption-evidence
+          if-no-files-found: error
+          retention-days: 30
 
   static_gates:
     name: Static · ${{ matrix.gate }}
@@ -436,6 +465,34 @@ jobs:
           pattern: pre-release-gate-*-evidence-*
           path: ${{ runner.temp }}/gate-evidence
 
+      - name: Download adoption evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-adoption-*-evidence-*
+          path: ${{ runner.temp }}/adoption-evidence
+
+      - name: Verify adoption evidence
+        id: adoption_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find "$RUNNER_TEMP/adoption-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 4
+          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/adoption-manifests.json"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            '
+              length == 4 and
+              all(.[];
+                .schema == "baseharbor.pre-release.adoption-evidence/v1" and
+                .candidate_sha == $candidate and
+                .outcome == "success"
+              ) and
+              ([.[].gate] | sort) == ["conformance","realworld-compose","realworld-kubernetes","realworld-quadlet"]
+            ' "$RUNNER_TEMP/adoption-manifests.json" >/dev/null
+
       - name: Verify complete atomic evidence set
         id: manifest
         shell: bash
@@ -487,6 +544,7 @@ jobs:
           cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
           cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
+          cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
 
       - name: Generate immutable release approval
         id: approval
@@ -495,6 +553,7 @@ jobs:
           needs.source.result == 'success' &&
           needs.runtime_candidate.result == 'success' &&
           needs.adoption.result == 'success' &&
+          steps.adoption_manifest.outcome == 'success' &&
           needs.static_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
           needs.runtime_heavy_gates.result == 'success'
@@ -554,7 +613,8 @@ jobs:
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
           Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
-          Evidence manifest	${{ steps.manifest.outcome }}	41 gate evidence bundles bound to the candidate SHA
+          Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
+          Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
 
