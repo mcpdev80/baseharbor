@@ -41,6 +41,7 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 		"MONGO_INITDB_ROOT_USERNAME",
 		"mongodb-primary-data:/data/db",
 		"MONGODB_PRIMARY_HOST_PORT",
+		"cap_add: [\"CHOWN\", \"DAC_OVERRIDE\", \"SETGID\", \"SETUID\"]",
 		"name: bh-documents_mongodb-primary-data",
 	} {
 		if !strings.Contains(compose, want) {
