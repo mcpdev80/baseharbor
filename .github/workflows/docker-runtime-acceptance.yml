@@ -216,6 +216,7 @@ jobs:
               export BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1
               test_package=./internal/identityprovider
               test_name=TestKeycloakHARuntimeFailoverAcceptanceInCI
+              test_timeout=16m
               ;;
             seaweedfs)
               export BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE=1
@@ -241,6 +242,7 @@ jobs:
               export BASEHARBOR_TEMPO_HA_ACCEPTANCE=1
               test_package=./internal/traces
               test_name=TestTempoHARuntimeFailoverAcceptanceInCI
+              test_timeout=16m
               ;;
             gateway)
               export BASEHARBOR_GATEWAY_ACCEPTANCE=1
@@ -251,7 +253,8 @@ jobs:
               exit 2
               ;;
           esac
-          go test "$test_package" -run "^${test_name}$" -count=1 -v
+          test_timeout="${test_timeout:-10m}"
+          go test "$test_package" -run "^${test_name}$" -count=1 -timeout "$test_timeout" -v
 
       - name: Cleanup Docker runtime
         if: always()
