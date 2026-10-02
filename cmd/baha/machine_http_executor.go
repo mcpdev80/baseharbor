@@ -47,6 +47,8 @@ func (e *bahaMachineExecutor) Execute(
 		"provider.list", "provider.inspect", "provider.verify",
 		"organization.inspect", "organization.check", "policy.check", "policy.explain":
 		result, err = e.executeHTTPRead(ctx, operation.ID, operationContext, input)
+	case "runtime.start", "runtime.stop", "runtime.restart":
+		result, err = e.executeHTTPRuntimeMutation(ctx, operation.ID, operationContext, input)
 	case "workspace.update", "app.new", "provider.add", "provider.remove",
 		"organization.set", "organization.update":
 		result, err = e.executeHTTPPlatformMutation(ctx, operation.ID, operationContext, input, report)
