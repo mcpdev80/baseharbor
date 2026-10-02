@@ -98,11 +98,20 @@ func projectTCPMaterial(dir string, material TLSMaterial) (TLSMaterial, error) {
 	pemPath := filepath.Join(runtimeDir, "server.pem")
 	combined := append(append([]byte(nil), cert...), '\n')
 	combined = append(combined, key...)
-	if err := writeAtomic(pemPath, combined, 0o644); err != nil {
+	// These files are bind-mounted into a long-running gateway. Preserve the
+	// inode across certificate replacement so a graceful HAProxy reload sees
+	// the new material instead of a stale pre-rename bind mount.
+	if err := os.WriteFile(pemPath, combined, 0o644); err != nil {
+		return TLSMaterial{}, err
+	}
+	if err := os.Chmod(pemPath, 0o644); err != nil {
 		return TLSMaterial{}, err
 	}
 	caPath := filepath.Join(runtimeDir, "ca.pem")
-	if err := writeAtomic(caPath, ca, 0o644); err != nil {
+	if err := os.WriteFile(caPath, ca, 0o644); err != nil {
+		return TLSMaterial{}, err
+	}
+	if err := os.Chmod(caPath, 0o644); err != nil {
 		return TLSMaterial{}, err
 	}
 	material.ServerCertificate = pemPath
