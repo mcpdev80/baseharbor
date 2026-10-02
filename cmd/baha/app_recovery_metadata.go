@@ -57,10 +57,6 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 		if name != "" && name != m.Name {
 			return errors.New("restore target NAME does not match backup application identity")
 		}
-		resolved, err := resolveRestoreTarget(ctx, store, m)
-		if err != nil {
-			return err
-		}
 		absolutePath, err := filepath.Abs(backupPath)
 		if err != nil {
 			return fmt.Errorf("prepare recovery metadata: resolve archive path: %w", err)
@@ -68,6 +64,11 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 
 		if err := restoreRun(ctx, args, out, errOut); err != nil {
 			return err
+		}
+
+		resolved, err := resolveRestoreTarget(ctx, store, m)
+		if err != nil {
+			return fmt.Errorf("resolve restored deployment for recovery metadata: %w", err)
 		}
 
 		metadata := application.RecoveryMetadata{
