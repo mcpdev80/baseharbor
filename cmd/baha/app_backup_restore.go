@@ -217,7 +217,8 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("restore preflight workload security: %w", err)
 	}
-	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
+	resolved, err = ensureRestoreDeploymentInitialization(ctx, resolved)
+	if err != nil {
 		return fmt.Errorf("restore deployment initialization: %w", err)
 	}
 	preparedExposure, err := prepareManagedExposure(ctx, compose, resolved)
@@ -374,18 +375,28 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 
 }
 
-func ensureRestoreDeploymentInitialization(ctx context.Context, resolved resolvedApplication) error {
+func ensureRestoreDeploymentInitialization(ctx context.Context, resolved resolvedApplication) (resolvedApplication, error) {
 	if len(resolved.Manifest.Exposures) == 0 {
-		return nil
+		return resolved, nil
 	}
 	state, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
-		return err
+		return resolved, err
 	}
 	if !restoreNeedsDeploymentInitialization(resolved.Manifest, state) {
-		return nil
+		return resolved, nil
 	}
-	return runRepositoryRuntimeInitResolved(ctx, resolved, resolved.repositoryRoot(), repositoryInitOptions{Yes: true}, io.Discard)
+	if resolved.DeploymentRecord == nil {
+		pending, err := recordPendingDeployment(ctx, resolved)
+		if err != nil {
+			return resolved, fmt.Errorf("record pending deployment before restore initialization: %w", err)
+		}
+		resolved.DeploymentRecord = &pending
+	}
+	if err := runRepositoryRuntimeInitResolved(ctx, resolved, resolved.repositoryRoot(), repositoryInitOptions{Yes: true}, io.Discard); err != nil {
+		return resolved, err
+	}
+	return resolved, nil
 }
 
 func restoreNeedsDeploymentInitialization(m application.Manifest, state repositoryInitState) bool {
