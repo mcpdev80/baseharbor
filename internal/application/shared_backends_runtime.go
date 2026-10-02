@@ -214,9 +214,11 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
-		for instance := range app.Cache {
-			service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
-			fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-%s-data\n", service, files.ResourceProject, sharedBackendToken(state.Environment), service)
+		for instance, resource := range app.Cache {
+			for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
+				volume := sharedValkeyMemberVolumeName(app, instance, ordinal)
+				fmt.Fprintf(&b, "  %s:\n    name: %s-%s-%s\n", volume, files.ResourceProject, sharedBackendToken(state.Environment), volume)
+			}
 		}
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
@@ -360,45 +362,70 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 }
 
 func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, instance string) {
-	service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
-	access := sharedValkeyAccessServiceFor(app.Application, app.Environment, instance)
+	resource := app.Cache[instance]
 	passwordEnv := sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance)
-	portEnv := sharedValkeyPortEnvFor(app.Application, app.Environment, instance)
 	root := "./" + filepath.ToSlash(filepath.Join("valkey", sharedBackendToken(app.Application), sharedBackendToken(instance)))
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/valkey/valkey:9.1.2-alpine
-    restart: unless-stopped
-    user: "999:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      VALKEY_PASSWORD: ${%s}
-    command:
-      - sh
-      - -ec
-      - |
-        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
-        exec valkey-server /tmp/valkey.conf
-    volumes:
-      - %s-data:/data
-    networks:
-      shared-backend: {}
-
-`, service, passwordEnv, service)
+	count := sharedValkeyMemberCount(resource)
+	primary := sharedValkeyMemberServiceName(app, instance, 0)
+	for ordinal := 0; ordinal < count; ordinal++ {
+		service := sharedValkeyMemberServiceName(app, instance, ordinal)
+		fmt.Fprintf(b, "  %s:\n", service)
+		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"999:1000\"\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
+		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		b.WriteString("        {\n")
+		b.WriteString("          printf 'requirepass %s\\n' \"$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'masterauth %s\\n' \"$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'appendonly yes\\n'\n")
+		b.WriteString("          printf 'dir /data\\n'\n")
+		if ordinal > 0 {
+			fmt.Fprintf(b, "          printf 'replicaof %s 6379\\n'\n", primary)
+		}
+		b.WriteString("        } > /tmp/valkey.conf\n")
+		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - %s:/data\n", sharedValkeyMemberVolumeName(app, instance, ordinal))
+		b.WriteString("    networks:\n      shared-backend: {}\n\n")
+	}
+	if count > 1 {
+		for ordinal := 0; ordinal < 3; ordinal++ {
+			service := sharedValkeySentinelServiceName(app, instance, ordinal)
+			fmt.Fprintf(b, "  %s:\n", service)
+			b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+			b.WriteString("    restart: unless-stopped\n")
+			b.WriteString("    user: \"999:1000\"\n")
+			b.WriteString("    read_only: true\n")
+			b.WriteString("    cap_drop: [\"ALL\"]\n")
+			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+			b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
+			b.WriteString("    environment:\n")
+			fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
+			b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+			b.WriteString("        {\n")
+			b.WriteString("          printf 'port 26379\\n'\n")
+			b.WriteString("          printf 'sentinel resolve-hostnames yes\\n'\n")
+			b.WriteString("          printf 'sentinel announce-hostnames yes\\n'\n")
+			fmt.Fprintf(b, "          printf 'sentinel monitor %s %s 6379 2\\n'\n", valkeySentinelMasterName, primary)
+			fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel down-after-milliseconds %s 5000\\n'\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel failover-timeout %s 15000\\n'\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel parallel-syncs %s 1\\n'\n", valkeySentinelMasterName)
+			b.WriteString("        } > /tmp/sentinel.conf\n")
+			b.WriteString("        exec valkey-sentinel /tmp/sentinel.conf\n")
+			b.WriteString("    networks:\n      shared-backend: {}\n\n")
+		}
+	}
 	gatewayFiles := serviceaccess.TCPGatewayFiles{
-		Config:   root + "/service-access/haproxy.cfg",
-		PEM:      root + "/service-access/runtime/server.pem",
+		Config: root + "/service-access/haproxy.cfg",
+		PEM: root + "/service-access/runtime/server.pem",
 		Material: serviceaccess.TLSMaterial{},
 	}
-	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, serviceaccess.TCPGatewaySpec{
-		ServiceName:      access,
-		UpstreamHost:     service,
-		UpstreamPort:     6379,
-		PublishedPortEnv: portEnv,
-		ContainerPort:    6379,
-		Network:          "shared-backend",
-	}))
+	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, sharedValkeyGatewaySpec(app, instance)))
 }
