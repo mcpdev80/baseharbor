@@ -101,7 +101,7 @@ func TestGatewayComposeRunsCaddyWithLeastPrivilege(t *testing.T) {
 		"/run/baseharbor:rw,exec,nosuid,nodev,mode=1777",
 		"cat /usr/bin/caddy > /run/baseharbor/caddy",
 		"chmod 0755 /run/baseharbor/caddy",
-		"exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+		"exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("gateway compose missing %q:\n%s", want, got)
