@@ -172,6 +172,27 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
+	dbPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-db", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	dbPolicy.ServerName = "keycloak-db"
+	dbMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		dbPolicy,
+		filepath.Join(dir, "db-ha", "pki"),
+		"keycloak-db",
+		"keycloak-db-member-1",
+		"keycloak-db-member-2",
+		"keycloak-db-member-3",
+	)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if _, err := projectKeycloakTLSMaterial(filepath.Join(dir, "db-ha", "runtime"), dbMaterial); err != nil {
+		return KeycloakFiles{}, err
+	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
 		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
@@ -324,7 +345,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}?sslmode=verify-full&sslrootcert=/run/baseharbor/db-ca/ca.pem
       KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
       KC_CACHE: ispn
@@ -332,6 +353,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       KC_CACHE_EMBEDDED_NODE_NAME: %s
 %s    volumes:
       - ./native-tls/runtime:/run/baseharbor/tls:ro
+      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-ca/ca.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
       interval: 2s
@@ -357,7 +379,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	b.WriteString("\n")
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
-		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443"},
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
 		UpstreamTrustFile:  filepath.Join(files.Dir, "native-tls", "runtime", "ca.pem"),
 		UpstreamServerName: keycloakPublicHost,
 		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
