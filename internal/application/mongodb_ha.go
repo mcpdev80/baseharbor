@@ -5,8 +5,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func mongodbMemberCount(m Manifest, instance string) int {
@@ -56,21 +54,6 @@ func mongodbReplicaSetName(instance string) string {
 	return "baseharbor_" + token
 }
 
-func mongodbGatewaySpec(instance string, ordinal int) serviceaccess.TCPGatewaySpec {
-	dirName := "service-access"
-	if ordinal > 0 {
-		dirName = fmt.Sprintf("service-access-%d", ordinal+1)
-	}
-	return serviceaccess.TCPGatewaySpec{
-		ServiceName:      mongodbMemberAccessService(instance, ordinal),
-		DirectoryName:    dirName,
-		UpstreamHost:     mongodbMemberServiceName(instance, ordinal),
-		UpstreamPort:     27017,
-		PublishedPortEnv: mongodbMemberHostPortKey(instance, ordinal),
-		ContainerPort:    27017,
-	}
-}
-
 func mongodbSeedURI(hosts []string, database, username, password, replicaSet string) string {
 	q := url.Values{}
 	q.Set("authSource", database)
@@ -96,7 +79,7 @@ func mongodbContainerSeedHosts(m Manifest, instance string) []string {
 	count := mongodbMemberCount(m, instance)
 	hosts := make([]string, 0, count)
 	for ordinal := 0; ordinal < count; ordinal++ {
-		hosts = append(hosts, net.JoinHostPort(mongodbMemberAccessService(instance, ordinal), "27017"))
+		hosts = append(hosts, net.JoinHostPort(mongodbMemberServiceName(instance, ordinal), "27017"))
 	}
 	return hosts
 }
@@ -114,16 +97,3 @@ func mongodbHostSeedHosts(m Manifest, values map[string]string, instance string)
 	return hosts, nil
 }
 
-func mongodbGatewayFiles(instance string, ordinal int) serviceaccess.TCPGatewayFiles {
-	root := "./" + strings.TrimPrefix(backendAccessRoot(RuntimeFiles{Dir: "."}, "mongodb", instance), "./")
-	if ordinal > 0 {
-		root += fmt.Sprintf("/service-access-%d", ordinal+1)
-	} else {
-		root += "/service-access"
-	}
-	return serviceaccess.TCPGatewayFiles{
-		Config:   root + "/haproxy.cfg",
-		PEM:      root + "/runtime/server.pem",
-		Material: serviceaccess.TLSMaterial{},
-	}
-}
