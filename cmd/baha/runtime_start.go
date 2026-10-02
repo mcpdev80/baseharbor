@@ -227,6 +227,15 @@ func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntim
 		return nil, bhruntime.Files{}, err
 	}
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if diagnostics, ok := compose.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
+				return nil, bhruntime.Files{}, fmt.Errorf("%w\n%s", err, details)
+			}
+		}
 		return nil, bhruntime.Files{}, err
 	}
 	return compose, files, nil
