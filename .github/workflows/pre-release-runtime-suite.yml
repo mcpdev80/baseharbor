@@ -31,7 +31,7 @@ permissions:
 jobs:
   gate:
     name: ${{ inputs.runtime }} · ${{ inputs.gate }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
