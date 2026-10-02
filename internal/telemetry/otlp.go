@@ -343,11 +343,34 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
+	// Keep the public/workload service identity stable at "otel-collector".
+	// HA members use the same server identity behind the authenticated frontend;
+	// the frontend terminates the client-authenticated mTLS contract and verifies
+	// each member with the provider CA.
 	accessPolicy.ServerName = "otel-collector"
-	if _, err := serviceaccess.EnsureNativeTLS(ctx, issuer, accessPolicy, files.Dir, "otel-collector", "127.0.0.1"); err != nil {
+	memberPolicy := accessPolicy
+	memberPolicy.AuthenticationRequired = false
+	memberPolicy.Authentication = serviceaccess.AuthenticationNative
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "otel-collector", "otel-collector-1", "otel-collector-2")
+	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, serviceaccess.HTTPGatewayFiles{}, files.Network)), 0o600); err != nil {
+	accessSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "otel-collector-access",
+		Upstreams:          []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
+		UpstreamTrustFile:  memberTLS.Material.CA,
+		UpstreamServerName: "otel-collector",
+		PublishedPortEnv:   "BASEHARBOR_OTLP_PORT",
+		ContainerPort:      4318,
+		Networks:           []string{"telemetry"},
+		NetworkAliases:     []string{"otel-collector"},
+		RequireClient:      requireClientCertificate,
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -423,17 +446,18 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, _ serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
-	var networks = "      - telemetry\n"
-	var networkDecl = ""
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
+	var memberNetworks = "      - telemetry\n"
+	var gatewayNetworks = []string{"telemetry"}
+	var networkDecl string
 	if strings.TrimSpace(traceNetwork) != "" {
-		networks += "      - traces\n"
+		memberNetworks += "      - traces\n"
+		gatewayNetworks = append(gatewayNetworks, "traces")
 		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
 	}
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`services:
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
+	member := func(name string) string {
+		return fmt.Sprintf(`  %s:
+    image: %s
     restart: unless-stopped
     user: "10001:10001"
     read_only: true
@@ -444,16 +468,26 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
-      - ./service-access/runtime:/run/baseharbor/tls:ro
-    ports:
-      - "127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318"
+      - ./members/service-access/runtime:/run/baseharbor/tls:ro
     networks:
-%s`, networks))
-	b.WriteString(fmt.Sprintf(`networks:
-  telemetry:
-    name: ${BASEHARBOR_TELEMETRY_NETWORK}
-%s`, networkDecl))
-	return strings.ReplaceAll(b.String(), "${BASEHARBOR_TELEMETRY_NETWORK}", telemetryNetwork)
+%s`, name, ProviderImage, memberNetworks)
+	}
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString(member("otel-collector-1"))
+	b.WriteString(member("otel-collector-2"))
+	spec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:    "otel-collector-access",
+		ContainerPort:  4318,
+		Networks:       gatewayNetworks,
+		NetworkAliases: []string{"otel-collector"},
+		RequireClient:  true,
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, spec))
+	b.WriteString("networks:\n")
+	fmt.Fprintf(&b, "  telemetry:\n    name: %q\n", telemetryNetwork)
+	b.WriteString(networkDecl)
+	return b.String()
 }
 
 func collectorConfig() string {
