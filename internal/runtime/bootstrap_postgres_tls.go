@@ -79,7 +79,7 @@ func ensureBootstrapPostgresTLS(stateDir string) error {
 	if err := writePEM(certPath, "CERTIFICATE", serverDER, 0o644); err != nil {
 		return err
 	}
-	if err := writePEM(keyPath, "PRIVATE KEY", keyDER, 0o644); err != nil {
+	if err := writePEM(keyPath, "PRIVATE KEY", keyDER, 0o600); err != nil {
 		return err
 	}
 	const hba = `local all all trust
