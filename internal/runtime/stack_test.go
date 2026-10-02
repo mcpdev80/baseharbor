@@ -441,3 +441,20 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 		}
 	}
 }
+
+
+func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testing.T) {
+	text := string(composeYAML)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		member := fmt.Sprintf("postgres-member-%d", ordinal)
+		for _, want := range []string{
+			"  " + member + ":\n",
+			"    hostname: " + member + "\n",
+			"      PATRONI_NAME: " + member + "\n",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("embedded runtime missing stable Patroni identity %q", want)
+			}
+		}
+	}
+}
