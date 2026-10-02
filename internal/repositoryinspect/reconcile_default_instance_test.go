@@ -22,7 +22,7 @@ func TestReconcileDefaultInstanceAliasesSingleDetectedProvider(t *testing.T) {
 					Capability: tc.capability,
 					Name:       tc.detected,
 					Confidence: ConfidenceDetected,
-					Evidence:   []Evidence{{
+					Evidence: []Evidence{{
 						Kind: EvidenceCompose,
 						Path: "compose.yaml",
 						Detail: "provider detected",
@@ -52,7 +52,7 @@ func TestReconcileDefaultInstanceConsumesNamedAndNamelessEvidence(t *testing.T) 
 				Capability: "database.sql",
 				Name:       "postgres",
 				Confidence: ConfidenceDetected,
-				Evidence:   []Evidence{{
+				Evidence: []Evidence{{
 					Kind: EvidenceCompose,
 					Path: "compose.yaml",
 					Detail: "postgres service",
@@ -61,7 +61,7 @@ func TestReconcileDefaultInstanceConsumesNamedAndNamelessEvidence(t *testing.T) 
 			{
 				Capability: "database.sql",
 				Confidence: ConfidenceDetected,
-				Evidence:   []Evidence{{
+				Evidence: []Evidence{{
 					Kind: EvidenceEnv,
 					Path: ".env.example",
 					Detail: "variable DATABASE_URL",
