@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/credential"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -114,8 +115,18 @@ func RotateValkeyCredential(ctx context.Context, runtime bhruntime.RuntimeProvid
 					return fmt.Errorf("verify rotated Valkey credential on %s: %w", service, err)
 				}
 			}
-			if err := VerifyValkeyRuntime(ctx, runtime, m, files); err != nil {
-				return err
+			deadline := time.Now().Add(30 * time.Second)
+			for {
+				if err := VerifyValkeyRuntime(ctx, runtime, m, files); err == nil {
+					break
+				} else if time.Now().After(deadline) {
+					return err
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(time.Second):
+				}
 			}
 			op := runtimeCredentialExecutor{runtime: runtime, files: files}
 			if err := VerifyValkeyHACluster(ctx, op, m, files); err != nil {
