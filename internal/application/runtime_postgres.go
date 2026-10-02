@@ -274,7 +274,7 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	for _, instance := range rabbitInstances {
 		writeRabbitMQComposeService(&b, m, instance)
-		b.WriteString(rabbitmqGatewayCompose(instance))
+		b.WriteString(rabbitmqGatewayCompose(m, instance))
 		if m.Services.MessagingManagementUI {
 			writeRabbitMQUIComposeService(&b, m, instance)
 		}
@@ -302,8 +302,10 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	for _, instance := range rabbitInstances {
-		service := runtimeServiceName("rabbitmq", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			volume := rabbitmqMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	for _, instance := range mongoInstances {
 		service := runtimeServiceName("mongodb", instance)
