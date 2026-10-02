@@ -165,7 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [rabbitmq, valkey, mongodb, seaweedfs]
+        provider: ${{ fromJSON(contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || '["rabbitmq","valkey","mongodb","seaweedfs"]') }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     env:
