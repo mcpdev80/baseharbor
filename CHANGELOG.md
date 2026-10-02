@@ -4,6 +4,28 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.21] - 2026-10-02
+
+### Added
+
+- Versioned credential/access ownership semantics separating human management identity, application-service credentials and BaseHarbor-internal machine identity.
+- Standards-first management-surface authentication classes and provider-neutral infrastructure-role mapping with explicit limited/unsupported semantics.
+- Logical Application/Component consumption intent whose identity remains independent from runtime addressing, placement and instance topology.
+- Portable global HA intent with sparse per-component/capability overrides, fixed-cardinality input, provider/runtime negotiation and 0..N instance observation.
+- Typed availability results shared by lifecycle preflight, status, doctor and evidence.
+
+### Changed
+
+- Managed secret semantics now distinguish one authoritative durable secret source from runtime projections; canonical secret-bearing files remain protected while separate read-only runtime projections are used where necessary.
+- Interactive application-secret replacement requires two matching hidden entries before mutation; deterministic stdin/file automation remains single-input.
+- Docker, Podman and every bundled capability-provider realization carry an explicit HA classification; unsupported requested guarantees fail before mutation instead of silently downgrading.
+- Availability, credential and management-surface semantics are documented as additive-friendly pre-freeze contracts for the v0.5 compatibility review.
+
+### Fixed
+
+- Bootstrap PostgreSQL private-key material is owner-only instead of inheriting generic public certificate permissions.
+- Application file-secret projection no longer weakens the authoritative host-side secret file to world-readable mode.
+
 ## [0.4.20] - 2026-10-02
 
 ### Added
