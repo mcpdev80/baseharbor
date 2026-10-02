@@ -42,6 +42,7 @@ type NegotiationResult struct {
 	RequestedInstances int          `json:"requested_instances,omitempty"`
 	EffectiveInstances int          `json:"effective_instances,omitempty"`
 	Support            SupportLevel `json:"support"`
+	ExplicitException  bool         `json:"explicit_exception,omitempty"`
 	Satisfied          bool         `json:"satisfied"`
 	Reason             string       `json:"reason,omitempty"`
 }
@@ -65,6 +66,7 @@ func Negotiate(requirement Requirement, provider string, support Support) (Negot
 	result := NegotiationResult{
 		Component: requirement.Component, Provider: provider,
 		RequiredHA: requirement.HA, RequestedInstances: requirement.Instances,
+		ExplicitException: requirement.ExplicitException,
 		Support: support.Level,
 	}
 	if !requirement.HA {
