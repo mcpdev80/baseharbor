@@ -117,7 +117,6 @@ func TestGatewayComposeRunsCaddyWithLeastPrivilege(t *testing.T) {
 	}
 }
 
-
 func TestHTTPGatewayMultipleUpstreams(t *testing.T) {
 	got := caddyfileWithUpstreamsTLS(
 		[]string{"http://member-a:8080", "http://member-b:8080"},
