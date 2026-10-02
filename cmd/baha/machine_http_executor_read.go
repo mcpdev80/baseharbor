@@ -30,6 +30,8 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 		return executeHTTPInspect(ctx, operationContext, raw)
 	case "workspace.resolve", "workspace.status":
 		return executeHTTPWorkspaceRead(ctx, operationID, operationContext, raw)
+	case "runtime.capabilities", "runtime.list", "runtime.inspect":
+		return executeHTTPRuntimeExplorerRead(ctx, operationID, operationContext, raw)
 	case "plan", "status", "doctor", "observe", "evidence":
 		return e.executeHTTPApplicationRead(ctx, operationID, operationContext, raw)
 	case "provider.list", "provider.inspect", "provider.verify":
