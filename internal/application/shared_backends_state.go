@@ -52,6 +52,14 @@ func sharedPostgresService(environment string) string {
 
 func sharedPostgresAlias() string { return "postgres-access" }
 
+func sharedPostgresMemberService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-member-%d", sharedPostgresService(environment), ordinal)
+}
+
+func sharedPostgresEtcdService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-etcd-%d", sharedPostgresService(environment), ordinal)
+}
+
 func sharedValkeyService(m Manifest, instance string) string {
 	return sharedValkeyServiceFor(m.Name, m.Environment, instance)
 }
