@@ -14,6 +14,12 @@ type rabbitCredentialRuntimeFake struct {
 	args    []string
 }
 
+func (f *rabbitCredentialRuntimeFake) Run(_ context.Context, service string, args ...string) (string, error) {
+	f.service = service
+	f.args = append([]string(nil), args...)
+	return "", nil
+}
+
 func (f *rabbitCredentialRuntimeFake) RunSensitive(_ context.Context, service string, input []byte, args ...string) (string, error) {
 	f.input = append([]byte(nil), input...)
 	f.service = service
