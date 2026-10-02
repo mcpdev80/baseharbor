@@ -196,7 +196,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
 	postgresPolicy, err := serviceaccess.Resolve(state.Environment, "postgresql", serviceaccess.AuthenticationNative)
@@ -244,7 +244,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 			index++
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pgpass"), []byte(pgpass.String()), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgpass"), []byte(pgpass.String())); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(servers, "", "  ")
@@ -281,7 +281,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
 	var connections []map[string]any
@@ -330,7 +330,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local.json"), append(data, '\n'), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
