@@ -14,135 +14,209 @@ import (
 )
 
 func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string) error {
-	current, err := bhruntime.LoadControlPlaneCredentials(files)
+	state, found, err := bhruntime.LoadControlPlaneCredentialRotation(files)
 	if err != nil {
 		return err
 	}
-	suffix, err := controlPlaneCredentialSuffix()
-	if err != nil {
-		return err
-	}
-	next := bhruntime.ControlPlaneCredentials{
-		PostgresUser:            "baseharbor_admin_" + suffix,
-		PostgresPassword:        mustControlPlaneSecret(),
-		PostgresReplicationUser: "baseharbor_rep_" + suffix,
-		PostgresReplicationPass: mustControlPlaneSecret(),
-		OpenBaoDBUser:           "openbao_runtime_" + suffix,
-		OpenBaoDBPassword:       mustControlPlaneSecret(),
-	}
-	if next.PostgresPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
-		return fmt.Errorf("generate replacement control-plane credentials")
-	}
 
-	prepareSQL := fmt.Sprintf(
-		"CREATE ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
-			"CREATE ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
-			"CREATE ROLE %s WITH LOGIN PASSWORD %s IN ROLE openbao;\n",
-		quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
-		quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
-		quoteControlPlaneIdent(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBPassword),
-	)
-	if err := execControlPlanePostgresSQL(ctx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", prepareSQL); err != nil {
-		return fmt.Errorf("prepare replacement control-plane database credentials: %w", err)
-	}
-
-	cleanupPrepared := true
-	defer func() {
-		if !cleanupPrepared {
-			return
+	if !found {
+		current, err := bhruntime.LoadControlPlaneCredentials(files)
+		if err != nil {
+			return err
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cleanupSQL := fmt.Sprintf(
-			"DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s;",
-			quoteControlPlaneIdent(next.OpenBaoDBUser),
-			quoteControlPlaneIdent(next.PostgresReplicationUser),
-			quoteControlPlaneIdent(next.PostgresUser),
+		suffix, err := controlPlaneCredentialSuffix()
+		if err != nil {
+			return err
+		}
+		next := bhruntime.ControlPlaneCredentials{
+			PostgresUser:            "baseharbor_admin_" + suffix,
+			PostgresPassword:        mustControlPlaneSecret(),
+			PostgresReplicationUser: "baseharbor_rep_" + suffix,
+			PostgresReplicationPass: mustControlPlaneSecret(),
+			OpenBaoDBUser:           "openbao_runtime_" + suffix,
+			OpenBaoDBPassword:       mustControlPlaneSecret(),
+		}
+		if next.PostgresPassword == "" || next.PostgresReplicationPass == "" || next.OpenBaoDBPassword == "" {
+			return fmt.Errorf("generate replacement control-plane credentials")
+		}
+
+		prepareSQL := fmt.Sprintf(
+			"CREATE ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
+				"CREATE ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
+				"CREATE ROLE %s WITH LOGIN PASSWORD %s IN ROLE %s;\n",
+			quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
+			quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
+			quoteControlPlaneIdent(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBPassword),
+			quoteControlPlaneIdent(current.OpenBaoDBUser),
 		)
-		_ = execControlPlanePostgresSQL(cleanupCtx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", cleanupSQL)
-	}()
+		if err := execControlPlanePostgresSQL(ctx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", prepareSQL); err != nil {
+			return fmt.Errorf("prepare replacement control-plane database credentials: %w", err)
+		}
 
-	for _, probe := range []struct {
-		user, password, database string
-	}{
-		{next.PostgresUser, next.PostgresPassword, "postgres"},
-		{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
-		{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
-	} {
-		if err := probeControlPlanePostgresCredential(ctx, runtime, files, probe.user, probe.password, probe.database); err != nil {
-			return fmt.Errorf("verify prepared control-plane database credential for %s: %w", probe.user, err)
+		cleanupPrepared := true
+		defer func() {
+			if !cleanupPrepared {
+				return
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cleanupSQL := fmt.Sprintf(
+				"DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s; DROP ROLE IF EXISTS %s;",
+				quoteControlPlaneIdent(next.OpenBaoDBUser),
+				quoteControlPlaneIdent(next.PostgresReplicationUser),
+				quoteControlPlaneIdent(next.PostgresUser),
+			)
+			_ = execControlPlanePostgresSQL(cleanupCtx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", cleanupSQL)
+		}()
+
+		for _, probe := range []struct {
+			user, password, database string
+		}{
+			{next.PostgresUser, next.PostgresPassword, "postgres"},
+			{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
+			{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
+		} {
+			if err := probeControlPlanePostgresCredential(ctx, runtime, files, probe.user, probe.password, probe.database); err != nil {
+				return fmt.Errorf("verify prepared control-plane database credential for %s: %w", probe.user, err)
+			}
+		}
+
+		state = bhruntime.ControlPlaneCredentialRotationState{
+			Version:  1,
+			Phase:    bhruntime.ControlPlaneRotationPrepared,
+			Previous: current,
+			Next:     next,
+		}
+		if err := bhruntime.SaveControlPlaneCredentialRotation(files, state); err != nil {
+			return fmt.Errorf("persist prepared control-plane credential rotation: %w", err)
+		}
+		cleanupPrepared = false
+	}
+
+	current := state.Previous
+	next := state.Next
+
+	if state.Phase == bhruntime.ControlPlaneRotationPrepared {
+		if err := bhruntime.ReplaceControlPlaneCredentials(files, next); err != nil {
+			return err
+		}
+		if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			_ = bhruntime.ReplaceControlPlaneCredentials(files, current)
+			return fmt.Errorf("validate replacement control-plane credential projection: %w", err)
+		}
+		state.Phase = bhruntime.ControlPlaneRotationProjected
+		if err := bhruntime.SaveControlPlaneCredentialRotation(files, state); err != nil {
+			return fmt.Errorf("persist projected control-plane credential rotation: %w", err)
 		}
 	}
 
-	if err := bhruntime.ReplaceControlPlaneCredentials(files, next); err != nil {
-		return err
-	}
-	environment, err := bhruntime.RuntimeEnvironment(files)
-	if err != nil {
-		return err
-	}
-	workdir := filepath.Dir(files.Compose)
-	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return fmt.Errorf("validate replacement control-plane credential projection: %w", err)
-	}
+	if state.Phase == bhruntime.ControlPlaneRotationProjected {
+		environment, err := bhruntime.RuntimeEnvironment(files)
+		if err != nil {
+			return err
+		}
+		workdir := filepath.Dir(files.Compose)
 
-	if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{"postgres-admin"}, files.Compose); err != nil {
-		return fmt.Errorf("reconcile PostgreSQL administration client credential: %w", err)
-	}
-	if err := waitForControlPlanePostgresCredential(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres"); err != nil {
-		return err
-	}
-
-	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
-		if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
-			return fmt.Errorf("roll PostgreSQL member %s: %w", member, err)
+		if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{"postgres-admin"}, files.Compose); err != nil {
+			return fmt.Errorf("reconcile PostgreSQL administration client credential: %w", err)
 		}
 		if err := waitForControlPlanePostgresCredential(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres"); err != nil {
-			return fmt.Errorf("verify PostgreSQL after rolling %s: %w", member, err)
+			return err
+		}
+
+		primary, err := controlPlanePostgresPrimary(ctx, runtime, files)
+		if err != nil {
+			return err
+		}
+		members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+		order := make([]string, 0, len(members))
+		for _, member := range members {
+			if member != primary {
+				order = append(order, member)
+			}
+		}
+		order = append(order, primary)
+		for _, member := range order {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
+				return fmt.Errorf("roll PostgreSQL member %s: %w", member, err)
+			}
+			if err := waitForControlPlanePostgresCredential(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres"); err != nil {
+				return fmt.Errorf("verify PostgreSQL after rolling %s: %w", member, err)
+			}
+		}
+
+		for _, member := range []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"} {
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
+				return fmt.Errorf("roll OpenBao member %s: %w", member, err)
+			}
+			if err := waitForOpenBaoUnsealAfterCredentialRotation(ctx, runtime, files, recoveryFile); err != nil {
+				return fmt.Errorf("restore OpenBao HA member after rolling %s: %w", member, err)
+			}
+			if err := platformopenbao.CheckManager(ctx, runtime, files); err != nil {
+				return fmt.Errorf("verify OpenBao manager after rolling %s: %w", member, err)
+			}
+			if err := verifyOpenBaoManagementUI(ctx, files); err != nil {
+				return fmt.Errorf("verify OpenBao management UI after rolling %s: %w", member, err)
+			}
+		}
+
+		state.Phase = bhruntime.ControlPlaneRotationVerified
+		if err := bhruntime.SaveControlPlaneCredentialRotation(files, state); err != nil {
+			return fmt.Errorf("persist verified control-plane credential rotation: %w", err)
 		}
 	}
 
-	for _, member := range []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"} {
-		if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
-			return fmt.Errorf("roll OpenBao member %s: %w", member, err)
+	if state.Phase == bhruntime.ControlPlaneRotationVerified {
+		retireSQL := fmt.Sprintf(
+			"ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN;",
+			quoteControlPlaneIdent(current.PostgresUser),
+			quoteControlPlaneIdent(current.PostgresReplicationUser),
+			quoteControlPlaneIdent(current.OpenBaoDBUser),
+		)
+		if err := execControlPlanePostgresSQL(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres", retireSQL); err != nil {
+			return fmt.Errorf("retire previous control-plane database credentials: %w", err)
 		}
-		if err := waitForOpenBaoUnsealAfterCredentialRotation(ctx, runtime, files, recoveryFile); err != nil {
-			return fmt.Errorf("restore OpenBao HA member after rolling %s: %w", member, err)
+
+		for _, old := range []struct {
+			user, password, database string
+		}{
+			{current.PostgresUser, current.PostgresPassword, "postgres"},
+			{current.PostgresReplicationUser, current.PostgresReplicationPass, "postgres"},
+			{current.OpenBaoDBUser, current.OpenBaoDBPassword, "openbao"},
+		} {
+			if err := probeControlPlanePostgresCredential(ctx, runtime, files, old.user, old.password, old.database); err == nil {
+				return fmt.Errorf("previous control-plane credential for %s still authenticates after retirement", old.user)
+			}
 		}
 		if err := platformopenbao.CheckManager(ctx, runtime, files); err != nil {
-			return fmt.Errorf("verify OpenBao manager after rolling %s: %w", member, err)
+			return fmt.Errorf("verify OpenBao after control-plane credential retirement: %w", err)
 		}
 		if err := verifyOpenBaoManagementUI(ctx, files); err != nil {
-			return fmt.Errorf("verify OpenBao management UI after rolling %s: %w", member, err)
+			return err
+		}
+
+		state.Phase = bhruntime.ControlPlaneRotationRetired
+		if err := bhruntime.SaveControlPlaneCredentialRotation(files, state); err != nil {
+			return fmt.Errorf("persist retired control-plane credential rotation: %w", err)
 		}
 	}
 
-	retireSQL := fmt.Sprintf(
-		"ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN;",
-		quoteControlPlaneIdent(current.PostgresUser),
-		quoteControlPlaneIdent(current.PostgresReplicationUser),
-		quoteControlPlaneIdent(current.OpenBaoDBUser),
-	)
-	if err := execControlPlanePostgresSQL(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres", retireSQL); err != nil {
-		return fmt.Errorf("retire previous control-plane database credentials: %w", err)
-	}
-	cleanupPrepared = false
-
-	for _, old := range []struct {
-		user, password, database string
-	}{
-		{current.PostgresUser, current.PostgresPassword, "postgres"},
-		{current.PostgresReplicationUser, current.PostgresReplicationPass, "postgres"},
-		{current.OpenBaoDBUser, current.OpenBaoDBPassword, "openbao"},
-	} {
-		if err := probeControlPlanePostgresCredential(ctx, runtime, files, old.user, old.password, old.database); err == nil {
-			return fmt.Errorf("previous control-plane credential for %s still authenticates after retirement", old.user)
+	if state.Phase == bhruntime.ControlPlaneRotationRetired {
+		if err := bhruntime.ClearControlPlaneCredentialRotation(files); err != nil {
+			return fmt.Errorf("clear completed control-plane credential rotation: %w", err)
 		}
 	}
-	if err := platformopenbao.CheckManager(ctx, runtime, files); err != nil {
-		return fmt.Errorf("verify OpenBao after control-plane credential retirement: %w", err)
+	return nil
+}
+
+func controlPlanePostgresPrimary(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) (string, error) {
+	const probe = "import urllib.request,sys;\ntry:\n r=urllib.request.urlopen('http://127.0.0.1:8008/primary', timeout=2); sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n sys.exit(1)"
+	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe); err == nil {
+			return member, nil
+		}
 	}
-	return verifyOpenBaoManagementUI(ctx, files)
+	return "", fmt.Errorf("no Patroni PostgreSQL primary found")
 }
 
 func execControlPlanePostgresSQL(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, user, password, database, sql string) error {
