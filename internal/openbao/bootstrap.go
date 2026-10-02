@@ -456,11 +456,14 @@ func configureManager(ctx context.Context, executor Executor, files bhruntime.Fi
 		}
 	}
 
-	const policyScript = `tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-cat >"$tmp"
-bao policy write baseharbor-manager "$tmp" >/dev/null`
-	if _, err := execWithTokenPayload(ctx, executor, files, rootToken, policyScript, managerPolicy); err != nil {
+	if _, err := execWithTokenPayload(
+		ctx,
+		executor,
+		files,
+		rootToken,
+		`exec bao policy write baseharbor-manager -`,
+		managerPolicy,
+	); err != nil {
 		return fmt.Errorf("configure OpenBao manager policy: %w", err)
 	}
 
