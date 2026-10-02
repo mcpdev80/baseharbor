@@ -57,6 +57,7 @@ type SharedPostgresResourceObservation struct {
 type sharedValkeyResource struct {
 	CredentialReference string `json:"credential_reference"`
 	HostPort            int    `json:"host_port"`
+	Instances           int    `json:"instances,omitempty"`
 }
 
 type SharedBackendFiles struct {
@@ -210,7 +211,11 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			if err != nil {
 				return false, err
 			}
-			app.Cache[instance] = sharedValkeyResource{CredentialReference: ref, HostPort: port}
+			app.Cache[instance] = sharedValkeyResource{
+				CredentialReference: ref,
+				HostPort:            port,
+				Instances:           valkeyMemberCount(m, instance),
+			}
 			values[valkeyRuntimeKey(instance, "PASSWORD")] = password
 			values[valkeyRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
 			values[valkeyContainerHostKey(instance)] = sharedValkeyAccessAlias(m, instance)
