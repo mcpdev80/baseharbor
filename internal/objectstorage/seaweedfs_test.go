@@ -229,10 +229,9 @@ func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 		if index < 0 {
 			t.Fatalf("management UI service %s missing", service)
 		}
-		end := strings.Index(got[index+len(service):], "\n  ")
 		block := got[index:]
-		if end >= 0 {
-			block = got[index : index+len(service)+end]
+		if end := strings.Index(block, "\n\n"); end >= 0 {
+			block = block[:end]
 		}
 		if !strings.Contains(block, "/tmp:rw,noexec,nosuid,nodev") {
 			t.Fatalf("%s missing hardened writable /tmp:\n%s", service, block)
