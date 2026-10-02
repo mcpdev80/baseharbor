@@ -119,13 +119,17 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	if err != nil {
 		t.Fatal(err)
 	}
+	placement, err := PlacementForAt(dataDir, namespace, app)
+	if err != nil {
+		t.Fatal(err)
+	}
 	environment := readPrometheusEnvForHATest(t, files.Env)
-	if err := runtime.StopProjectFilesSelected(ctx, files.Project, files.Dir, environment, []string{"prometheus-1"}, files.Compose); err != nil {
+	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, environment, []string{"prometheus-1"}, files.Compose); err != nil {
 		t.Fatalf("stop Prometheus member: %v", err)
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
 
-	if err := runtime.UpProjectFilesSelected(ctx, files.Project, files.Dir, environment, []string{"prometheus-1"}, files.Compose); err != nil {
+	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, environment, []string{"prometheus-1"}, files.Compose); err != nil {
 		t.Fatalf("restart Prometheus member: %v", err)
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
