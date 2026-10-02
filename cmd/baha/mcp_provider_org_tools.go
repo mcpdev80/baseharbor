@@ -13,7 +13,7 @@ import (
 
 func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("provider.add", "Register an externally owned provider from endpoint plus secret-safe credential/trust references.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderAddInput) (*mcp.CallToolResult, any, error) {
-		if err := authorizeMCPOperation(ctx, "provider.add", "", "dev", "", ""); err != nil {
+		if err := authorizeCurrentMCPContext(ctx, "provider.add", "", "", ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		reg, err := providerExternalRegistration(providerExternalArgs{
@@ -41,7 +41,7 @@ func registerMCPProviderOrganizationTools(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.remove", "Remove BaseHarbor registration for an externally owned provider. Foreign infrastructure is never mutated.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderRemoveInput) (*mcp.CallToolResult, any, error) {
-		if err := authorizeMCPOperation(ctx, "provider.remove", "", "dev", "", ""); err != nil {
+		if err := authorizeCurrentMCPContext(ctx, "provider.remove", "", "", ""); err != nil {
 			return machineMCPFailure(err)
 		}
 		if err := applicationlifecycle.RequireApproval("provider.remove", input.Approval); err != nil {
