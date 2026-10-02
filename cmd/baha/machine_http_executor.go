@@ -42,7 +42,7 @@ func (e *bahaMachineExecutor) Execute(
 	)
 	switch operation.ID {
 	case "target", "inspect", "workspace.resolve", "workspace.status",
-		"runtime.capabilities", "runtime.list", "runtime.inspect",
+		"runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics",
 		"plan", "status", "doctor", "observe", "evidence",
 		"provider.list", "provider.inspect", "provider.verify",
 		"organization.inspect", "organization.check", "policy.check", "policy.explain":
