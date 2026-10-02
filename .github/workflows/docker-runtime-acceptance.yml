@@ -222,6 +222,16 @@ jobs:
               test_package=./internal/objectstorage
               test_name=TestSeaweedFSHARuntimeFailoverAcceptanceInCI
               ;;
+            otel)
+              export BASEHARBOR_OTEL_HA_ACCEPTANCE=1
+              test_package=./internal/telemetry
+              test_name=TestOTelHARuntimeFailoverAcceptanceInCI
+              ;;
+            prometheus)
+              export BASEHARBOR_PROMETHEUS_HA_ACCEPTANCE=1
+              test_package=./internal/metrics
+              test_name=TestPrometheusHARuntimeFailoverAcceptanceInCI
+              ;;
             *)
               exit 2
               ;;
