@@ -17,7 +17,18 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 	case ProviderPostgreSQL:
 		return unsupported("current BaseHarbor PostgreSQL reference realization is single-instance"), nil
 	case ProviderValkey:
-		return unsupported("current BaseHarbor Valkey reference realization is single-instance"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 3,
+			Limits:               "verified Sentinel-backed member/process failure tolerance on the selected runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	case ProviderOpenBao:
 		return unsupported("current BaseHarbor OpenBao reference realization uses one managed server"), nil
 	case ProviderCaddy:
