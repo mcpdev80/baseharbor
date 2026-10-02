@@ -211,6 +211,7 @@ jobs:
               export BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true
               test_package=./cmd/baha
               test_name=TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+              test_timeout=18m
               ;;
             keycloak)
               export BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1
