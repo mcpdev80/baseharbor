@@ -41,16 +41,15 @@ func TestTempoComposeIsHardenedAndLoopbackPublished(t *testing.T) {
 	}
 }
 
-
 func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 	rendered := tempoHACompose(
 		Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"},
 		serviceaccess.HTTPGatewayFiles{
 			Caddyfile: "./service-access/Caddyfile",
 			Material: serviceaccess.TLSMaterial{
-				CA: "./service-access/runtime/ca.pem",
+				CA:                "./service-access/runtime/ca.pem",
 				ServerCertificate: "./service-access/runtime/server.pem",
-				ServerKey: "./service-access/runtime/server-key.pem",
+				ServerKey:         "./service-access/runtime/server-key.pem",
 			},
 		},
 		objectstorage.PlatformBucket{Network: "baseharbor-object-storage"},
