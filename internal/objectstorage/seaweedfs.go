@@ -27,8 +27,8 @@ const (
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
-	sharedProviderReconcileTimeout = 60 * time.Second
-	providerReadinessTimeout       = 45 * time.Second
+	sharedProviderReconcileTimeout = 120 * time.Second
+	providerReadinessTimeout       = 90 * time.Second
 	existingProviderProbeTimeout   = 3 * time.Second
 )
 
