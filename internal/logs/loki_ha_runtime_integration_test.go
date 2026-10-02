@@ -38,14 +38,20 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	binding := capability.Binding{
 		Resource: resource,
 		Workload: "service/api",
-		Logs: &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
+		Logs:     &capability.LogsBinding{Direction: "collect", Format: "syslog-rfc5424", Service: "api"},
 	}
-	if err := driver.Preflight(ctx, resource, binding); err != nil { t.Fatal(err) }
-	if err := driver.Provision(ctx, resource, binding); err != nil { t.Fatalf("provision Loki HA: %v", err) }
+	if err := driver.Preflight(ctx, resource, binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.Provision(ctx, resource, binding); err != nil {
+		t.Fatalf("provision Loki HA: %v", err)
+	}
 	defer func() {
 		_ = logs.DestroyProviderAt(context.Background(), runtime, m, dataDir, namespace)
 	}()
-	if err := driver.Bind(ctx, resource, binding); err != nil { t.Fatal(err) }
+	if err := driver.Bind(ctx, resource, binding); err != nil {
+		t.Fatal(err)
+	}
 
 	registration, err := logs.ApplicationRegistrationAt(dataDir, namespace, m)
 	if err != nil {
@@ -66,9 +72,15 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
         syslog-format: rfc5424
         tag: "api"
 `, "PORT", fmt.Sprint(registration.SyslogPort))
-	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil { t.Fatal(err) }
-	if err := os.WriteFile(envFile, nil, 0o600); err != nil { t.Fatal(err) }
-	if err := runtime.UpProject(ctx, project, composeFile, envFile); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UpProject(ctx, project, composeFile, envFile); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		_ = runtime.DestroyProject(context.Background(), project, composeFile, envFile)
 	}()
