@@ -22,8 +22,9 @@ const sharedBackendStateVersion = 2
 type sharedBackendState struct {
 	Version                 int                              `json:"version"`
 	Environment             string                           `json:"environment"`
-	PostgresAdminCredential string                           `json:"postgres_admin_credential,omitempty"`
-	PostgresHostPort        int                              `json:"postgres_host_port,omitempty"`
+	PostgresAdminCredential       string                           `json:"postgres_admin_credential,omitempty"`
+	PostgresReplicationCredential string                           `json:"postgres_replication_credential,omitempty"`
+	PostgresHostPort              int                              `json:"postgres_host_port,omitempty"`
 	PostgresUIHostPort      int                              `json:"postgres_ui_host_port,omitempty"`
 	CacheUIHostPort         int                              `json:"cache_ui_host_port,omitempty"`
 	ManagementUsername      string                           `json:"management_username,omitempty"`
@@ -163,6 +164,13 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 				return false, err
 			}
 			state.PostgresAdminCredential = ref
+		}
+		if state.PostgresReplicationCredential == "" {
+			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
+			if err != nil {
+				return false, err
+			}
+			state.PostgresReplicationCredential = ref
 		}
 		if state.PostgresHostPort == 0 {
 			state.PostgresHostPort, err = allocateLoopbackPort(nil)
