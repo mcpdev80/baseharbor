@@ -267,7 +267,11 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		c.result.AddCheck("valkey", false, "one or more Valkey instances failed semantic verification")
 		return
 	}
-	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and semantic Valkey verification passed", len(application.ValkeyInstanceNames(c.manifest))))
+	if err := application.VerifyValkeyHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
+		c.result.AddCheck("valkey", false, err.Error())
+		return
+	}
+	c.result.AddCheck("valkey", true, fmt.Sprintf("%d logical instance(s) passed semantic and availability verification", len(application.ValkeyInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context) {
