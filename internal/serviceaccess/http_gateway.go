@@ -292,15 +292,16 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
 	}
 	b.WriteString("    volumes:\n")
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Caddyfile+":/etc/caddy/Caddyfile:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.ServerCertificate+":/certs/server.pem:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.ServerKey+":/certs/server-key.pem:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.CA+":/certs/ca.pem:ro"))
+	// Config and active certificates are directory-mounted. Managed files are
+	// replaced atomically; directory mounts make replacement inodes visible to
+	// the running Caddy process so --watch can reload without container churn.
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Caddyfile)+":/etc/caddy:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(files.Material.ServerCertificate)+":/certs:ro"))
 	if files.AuthToken != "" {
 		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
 	}
 	if strings.TrimSpace(spec.UpstreamTrustFile) != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(spec.UpstreamTrustFile+":/upstream/ca.pem:ro"))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Dir(spec.UpstreamTrustFile)+":/upstream:ro"))
 	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
@@ -566,7 +567,7 @@ func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamSe
 	}
 	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n    health_uri /\n    health_interval 5s\n    health_timeout 2s\n    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
 		}
