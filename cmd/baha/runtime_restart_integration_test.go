@@ -240,7 +240,9 @@ func waitForOpenBaoHAAfterFailure(t *testing.T, ctx context.Context, runtime bhr
 		state, err := platformopenbao.Inspect(ctx, runtime, files)
 		if err == nil && state.Initialized && !state.Sealed {
 			if err = platformopenbao.CheckManager(ctx, runtime, files); err == nil {
-				return
+				if err = verifyOpenBaoManagementUI(ctx, files); err == nil {
+					return
+				}
 			}
 		}
 		last = err
