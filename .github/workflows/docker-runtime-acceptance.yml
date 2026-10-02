@@ -165,7 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: ${{ fromJSON(contains(github.ref_name, '/control-plane/') && '["control-plane"]' || contains(github.ref_name, '/mongodb/') && '["mongodb"]' || contains(github.ref_name, '/valkey/') && '["valkey"]' || contains(github.ref_name, '/rabbitmq/') && '["rabbitmq"]' || contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || '["rabbitmq","valkey","mongodb","seaweedfs"]') }}
+        provider: ${{ fromJSON(contains(github.ref_name, '/control-plane/') && '["control-plane"]' || contains(github.ref_name, '/keycloak/') && '["keycloak"]' || contains(github.ref_name, '/mongodb/') && '["mongodb"]' || contains(github.ref_name, '/valkey/') && '["valkey"]' || contains(github.ref_name, '/rabbitmq/') && '["rabbitmq"]' || contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || '["rabbitmq","valkey","mongodb","seaweedfs"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -211,6 +211,11 @@ jobs:
               export BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true
               test_package=./cmd/baha
               test_name=TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+              ;;
+            keycloak)
+              export BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1
+              test_package=./internal/identityprovider
+              test_name=TestKeycloakHARuntimeFailoverAcceptanceInCI
               ;;
             seaweedfs)
               export BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE=1
