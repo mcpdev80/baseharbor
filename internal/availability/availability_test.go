@@ -50,20 +50,19 @@ func TestObservationRetainsAllInstancesAndDetectsDegradedState(t *testing.T) {
 	}
 }
 
-
 func TestNegotiationCarriesTruthfulGuarantees(t *testing.T) {
 	got, err := Negotiate(
 		Requirement{Component: "sql", HA: true},
 		"baseharbor/postgresql",
 		Support{
-			Level: Supported,
+			Level:                Supported,
 			RecommendedInstances: 3,
 			Guarantees: Guarantees{
 				MemberFailureTolerance: true,
-				RollingMaintenance: true,
-				CredentialRotation: true,
-				PKIRotation: true,
-				FailureDomain: "runtime-host",
+				RollingMaintenance:     true,
+				CredentialRotation:     true,
+				PKIRotation:            true,
+				FailureDomain:          "runtime-host",
 			},
 		},
 	)
