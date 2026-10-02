@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -142,9 +143,19 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	if err != nil {
 		return err
 	}
+	postgresRuntimeCert := filepath.Join(filepath.Dir(files.Compose), "providers", "postgresql", "runtime", "server-cert.pem")
+	previousPostgresCert, previousPostgresCertErr := os.ReadFile(postgresRuntimeCert)
+	if previousPostgresCertErr != nil && !errors.Is(previousPostgresCertErr, os.ErrNotExist) {
+		return fmt.Errorf("read current PostgreSQL server certificate before reconcile: %w", previousPostgresCertErr)
+	}
 	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
 		return err
 	}
+	nextPostgresCert, err := os.ReadFile(postgresRuntimeCert)
+	if err != nil {
+		return fmt.Errorf("read reconciled PostgreSQL server certificate: %w", err)
+	}
+	postgresTLSChanged := string(previousPostgresCert) != string(nextPostgresCert)
 	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
@@ -156,18 +167,9 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return err
 	}
-	if !bootstrapRestart {
-		for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
-			script := `python3 - <<'PY'
-import urllib.request
-req = urllib.request.Request("http://127.0.0.1:8008/reload", data=b"", method="POST")
-with urllib.request.urlopen(req, timeout=5) as response:
-    if response.status < 200 or response.status >= 300:
-        raise SystemExit("unexpected Patroni reload status %s" % response.status)
-PY`
-			if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "sh", "-ec", script); err != nil {
-				return fmt.Errorf("reload PostgreSQL native TLS material on %s: %w", member, err)
-			}
+	if !bootstrapRestart && postgresTLSChanged {
+		if err := rollControlPlanePostgresTLS(ctx, compose, files); err != nil {
+			return err
 		}
 	}
 
@@ -259,6 +261,54 @@ PY`
 		"sh", "-ec",
 		"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\""); err != nil {
 		return fmt.Errorf("verify control-plane PostgreSQL after CA retirement: %w", err)
+	}
+	return nil
+}
+
+func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
+	credentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		return err
+	}
+	environment, err := bhruntime.RuntimeEnvironment(files)
+	if err != nil {
+		return err
+	}
+	primary, err := controlPlanePostgresPrimary(ctx, compose, files)
+	if err != nil {
+		return fmt.Errorf("resolve PostgreSQL primary before TLS rotation: %w", err)
+	}
+	members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+	order := make([]string, 0, len(members))
+	for _, member := range members {
+		if member != primary {
+			order = append(order, member)
+		}
+	}
+	order = append(order, primary)
+
+	workdir := filepath.Dir(files.Compose)
+	for _, member := range order {
+		if err := compose.UpProjectFilesSelectedForceRecreateNoBuild(
+			ctx,
+			files.Project,
+			workdir,
+			environment,
+			[]string{member},
+			files.Compose,
+		); err != nil {
+			return fmt.Errorf("roll PostgreSQL TLS on %s: %w", member, err)
+		}
+		if err := waitForControlPlanePostgresCredential(
+			ctx,
+			compose,
+			files,
+			credentials.PostgresUser,
+			credentials.PostgresPassword,
+			"postgres",
+		); err != nil {
+			return fmt.Errorf("verify PostgreSQL stable endpoint after TLS rotation on %s: %w", member, err)
+		}
 	}
 	return nil
 }
