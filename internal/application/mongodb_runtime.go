@@ -1,6 +1,8 @@
 package application
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +16,17 @@ const MongoDBImage = "docker.io/library/mongo:7.0.43"
 
 func mongodbRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("MONGODB", instance, suffix)
+}
+
+func randomMongoDBReplicaKey(size int) (string, error) {
+	if size < 6 {
+		return "", fmt.Errorf("MongoDB replica key size must be at least 6 bytes")
+	}
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate MongoDB replica key: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
 }
 
 func mongodbContainerHostKey(instance string) string {
@@ -84,7 +97,7 @@ func ensureMongoDBRuntimeValues(values map[string]string, m Manifest, excluded m
 				values[mongodbReplicaSetKey(instance)] = mongodbReplicaSetName(instance)
 			}
 			if values[mongodbReplicaKeyKey(instance)] == "" {
-				key, err := randomApplicationSecret(64)
+				key, err := randomMongoDBReplicaKey(64)
 				if err != nil {
 					return err
 				}
