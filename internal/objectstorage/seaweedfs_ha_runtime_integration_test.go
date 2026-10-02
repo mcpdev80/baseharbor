@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +56,7 @@ func TestSeaweedFSHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertSeaweedFSManagementUIPublished(t, ctx, runtime, files, "after initial provider ensure")
 	defer func() {
 		if t.Failed() && os.Getenv("BASEHARBOR_SEAWEEDFS_HA_KEEP_ON_FAILURE") == "1" {
 			return
@@ -86,6 +88,7 @@ func TestSeaweedFSHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := driver.Provision(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
+	assertSeaweedFSManagementUIPublished(t, ctx, runtime, files, "after bucket provision reconcile")
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
@@ -175,5 +178,39 @@ func waitSeaweedFSHAReady(t *testing.T, ctx context.Context, driver *Driver, res
 			t.Fatalf("SeaweedFS HA did not become ready: s3=%v ui=%v\n%s", s3Err, uiErr, detail)
 		}
 		time.Sleep(time.Second)
+	}
+}
+
+
+func assertSeaweedFSManagementUIPublished(t *testing.T, ctx context.Context, runtime interface {
+	StatusProject(context.Context, string, string, string) (string, error)
+}, files ProviderFiles, stage string) {
+	t.Helper()
+	envData, err := os.ReadFile(files.Env)
+	if err != nil {
+		t.Fatalf("%s: read provider environment: %v", stage, err)
+	}
+	values, err := parseEnv(envData)
+	if err != nil {
+		t.Fatalf("%s: parse provider environment: %v", stage, err)
+	}
+	port := strings.TrimSpace(values[seaweedAdminPortEnv])
+	if port == "" {
+		t.Fatalf("%s: %s is not materialized", stage, seaweedAdminPortEnv)
+	}
+	composeData, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatalf("%s: read provider compose: %v", stage, err)
+	}
+	if !strings.Contains(string(composeData), "127.0.0.1:${"+seaweedAdminPortEnv+"}:9443") {
+		t.Fatalf("%s: provider compose does not declare management UI host publication", stage)
+	}
+	status, err := runtime.StatusProject(ctx, files.Project, files.Compose, files.Env)
+	if err != nil {
+		t.Fatalf("%s: inspect provider runtime: %v", stage, err)
+	}
+	want := "127.0.0.1:" + port + "->9443/tcp"
+	if !strings.Contains(status, want) {
+		t.Fatalf("%s: management UI container is not published as %s:\n%s", stage, want, status)
 	}
 }
