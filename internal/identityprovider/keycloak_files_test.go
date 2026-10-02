@@ -47,7 +47,7 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
 		"chown \"$$uid:$$gid\"",
 		"chmod 0600 /target/server-key.pem",
-		"-U \"$$BASEHARBOR_KEYCLOAK_DB_USER\"",
+		"-v app_user=\"$BASEHARBOR_KEYCLOAK_DB_USER\"",
 		"attempts=$$((attempts+1))",
 		"if [ \"$$attempts\" -ge 90 ]",
 		"exists=$$(psql",
@@ -58,7 +58,7 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 		}
 	}
 	for _, forbidden := range []string{
-		"-U \"$BASEHARBOR_KEYCLOAK_DB_USER\"",
+		"-v app_user=\"$BASEHARBOR_KEYCLOAK_DB_USER\"",
 		"attempts=$((attempts+1))",
 		"if [ \"$attempts\" -ge 90 ]",
 		"exists=$(psql",
