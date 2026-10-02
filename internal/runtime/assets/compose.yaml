@@ -44,7 +44,6 @@ services:
       PATRONI_NAME: postgres-member-1
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
-      PATRONI_NAME: postgres-member-1
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
@@ -82,7 +81,6 @@ services:
       PATRONI_NAME: postgres-member-2
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
-      PATRONI_NAME: postgres-member-2
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
@@ -120,7 +118,6 @@ services:
       PATRONI_NAME: postgres-member-3
       SPILO_PROVIDER: local
       SCOPE: baseharbor-control-postgres
-      PATRONI_NAME: postgres-member-3
       PGVERSION: "18"
       ETCD3_HOSTS: postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
