@@ -152,6 +152,7 @@ services:
       PGPORT: "5432"
       PGSSLMODE: verify-full
       PGSSLROOTCERT: /run/baseharbor/postgres-ca/ca.pem
+      PGCONNECT_TIMEOUT: "1"
       BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
@@ -163,7 +164,15 @@ services:
       - /bin/sh
       - -ec
       - |
-        until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done
+        attempts=0
+        until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+          attempts=$((attempts+1))
+          if [ "$attempts" -ge 90 ]; then
+            echo "BaseHarbor PostgreSQL HA endpoint did not become ready" >&2
+            exit 1
+          fi
+          sleep 1
+        done
         exec /bin/sh /run/baseharbor/openbao-init.sh
 
   openbao-member-1:
