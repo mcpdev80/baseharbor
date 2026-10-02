@@ -16,6 +16,7 @@ type DirectContainerRuntime interface {
 	Kind() runtimecontract.ProviderKind
 	ListRuntimeContainers(context.Context) ([]runtimecontract.RuntimeContainer, error)
 	DirectOutput(context.Context, ...string) (string, error)
+	DirectStream(context.Context, ...string) (io.ReadCloser, error)
 }
 
 type CLIContainerBackend struct {
@@ -37,7 +38,7 @@ func (b *CLIContainerBackend) ListRuntimeContainers(ctx context.Context) ([]runt
 	return b.runtime.ListRuntimeContainers(ctx)
 }
 
-func (b *CLIContainerBackend) ContainerLogs(ctx context.Context, id string, since *time.Time, tail int) (io.ReadCloser, error) {
+func (b *CLIContainerBackend) ContainerLogs(ctx context.Context, id string, since *time.Time, tail int, follow bool) (io.ReadCloser, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil, errors.New("runtime container id is required")
@@ -49,12 +50,11 @@ func (b *CLIContainerBackend) ContainerLogs(ctx context.Context, id string, sinc
 	if tail > 0 {
 		args = append(args, "--tail", strconv.Itoa(tail))
 	}
-	args = append(args, id)
-	output, err := b.runtime.DirectOutput(ctx, args...)
-	if err != nil {
-		return nil, err
+	if follow {
+		args = append(args, "--follow")
 	}
-	return io.NopCloser(strings.NewReader(output)), nil
+	args = append(args, id)
+	return b.runtime.DirectStream(ctx, args...)
 }
 
 func (b *CLIContainerBackend) OperateContainer(ctx context.Context, id string, operation Operation, command []string) (string, error) {
