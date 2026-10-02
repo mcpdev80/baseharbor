@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
@@ -127,6 +128,10 @@ func EnsureProviderFilesForMode(ctx context.Context, issuer serviceaccess.Issuer
 }
 
 func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode) (ProviderFiles, error) {
+	return ensureProviderFilesForModeAt(ctx, issuer, dataDir, namespace, m, mode, nil)
+}
+
+func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode, storage *objectstorage.PlatformBucket) (ProviderFiles, error) {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -165,10 +170,27 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	if platformSyslogPort > 0 {
 		fmt.Fprintf(&env, "BASEHARBOR_PLATFORM_PROVIDER_SYSLOG_PORT=%d\n", platformSyslogPort)
 	}
+	config := lokiConfig()
+	storageNetwork := ""
+	if storage != nil {
+		fmt.Fprintf(&env, "BASEHARBOR_LOKI_S3_ENDPOINT=%s\n", strings.TrimPrefix(storage.Endpoint, "https://"))
+		fmt.Fprintf(&env, "BASEHARBOR_LOKI_S3_BUCKET=%s\n", storage.Name)
+		fmt.Fprintf(&env, "BASEHARBOR_LOKI_S3_ACCESS_KEY_ID=%s\n", storage.AccessKeyID)
+		fmt.Fprintf(&env, "BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY=%s\n", storage.SecretAccessKey)
+		trust, err := os.ReadFile(storage.TrustBundle)
+		if err != nil {
+			return ProviderFiles{}, fmt.Errorf("read Loki object-storage trust bundle: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(files.Dir, "object-storage-ca.pem"), trust, 0o644); err != nil {
+			return ProviderFiles{}, fmt.Errorf("project Loki object-storage trust bundle: %w", err)
+		}
+		config = lokiHAConfig()
+		storageNetwork = storage.Network
+	}
 	if err := os.WriteFile(files.Env, []byte(env.String()), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.LokiConfig, []byte(lokiConfig()), 0o644); err != nil {
+	if err := os.WriteFile(files.LokiConfig, []byte(config), 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := os.Chmod(files.LokiConfig, 0o644); err != nil {
@@ -185,6 +207,12 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		return ProviderFiles{}, err
 	}
 	accessSpec := lokiAccessSpec()
+	if storage != nil {
+		accessSpec.Upstream = ""
+		accessSpec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
+		accessSpec.NetworkAliases = []string{"loki"}
+		accessSpec.CertificateNames = []string{"loki"}
+	}
 	if p.Scope == capability.ScopeApplication {
 		accessSpec.ServiceName = "baseharbor-internal-loki-access"
 	}
@@ -192,7 +220,7 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLForModeAndAccess(p, registrations, mode, accessFiles, platformSyslogPort, storageNetwork)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
