@@ -22,7 +22,7 @@ func TestReconcileDefaultInstanceAliasesSingleDetectedProvider(t *testing.T) {
 					Capability: tc.capability,
 					Name:       tc.detected,
 					Confidence: ConfidenceDetected,
-					Evidence: []Evidence{{
+					Evidence:   []Evidence{{
 						Kind: EvidenceCompose,
 						Path: "compose.yaml",
 						Detail: "provider detected",
@@ -52,7 +52,7 @@ func TestReconcileDefaultInstanceConsumesNamedAndNamelessEvidence(t *testing.T) 
 				Capability: "database.sql",
 				Name:       "postgres",
 				Confidence: ConfidenceDetected,
-				Evidence: []Evidence{{
+				Evidence:   []Evidence{{
 					Kind: EvidenceCompose,
 					Path: "compose.yaml",
 					Detail: "postgres service",
@@ -61,7 +61,7 @@ func TestReconcileDefaultInstanceConsumesNamedAndNamelessEvidence(t *testing.T) 
 			{
 				Capability: "database.sql",
 				Confidence: ConfidenceDetected,
-				Evidence: []Evidence{{
+				Evidence:   []Evidence{{
 					Kind: EvidenceEnv,
 					Path: ".env.example",
 					Detail: "variable DATABASE_URL",
@@ -90,18 +90,18 @@ func TestReconcileDefaultInstanceDoesNotGuessAcrossMultipleNamedProviders(t *tes
 				Capability: "database.sql",
 				Name:       "primary",
 				Confidence: ConfidenceDetected,
-				Evidence: []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "primary"}},
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "primary"}},
 			},
 			{
 				Capability: "database.sql",
 				Name:       "analytics",
 				Confidence: ConfidenceDetected,
-				Evidence: []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "analytics"}},
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "analytics"}},
 			},
 			{
 				Capability: "database.sql",
 				Confidence: ConfidenceDetected,
-				Evidence: []Evidence{{Kind: EvidenceEnv, Path: ".env.example", Detail: "DATABASE_URL"}},
+				Evidence:   []Evidence{{Kind: EvidenceEnv, Path: ".env.example", Detail: "DATABASE_URL"}},
 			},
 		},
 		[]CapabilityIntent{{
@@ -134,7 +134,7 @@ func TestReconcileExplicitInstanceStillRequiresExactName(t *testing.T) {
 			Capability: "database.sql",
 			Name:       "postgres",
 			Confidence: ConfidenceDetected,
-			Evidence: []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "postgres"}},
+			Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "postgres"}},
 		}},
 		[]CapabilityIntent{{
 			Capability: "database.sql",
