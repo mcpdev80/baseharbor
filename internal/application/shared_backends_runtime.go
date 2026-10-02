@@ -385,23 +385,31 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("      USE_ADMIN: \"false\"\n")
 		b.WriteString("      ALLOW_NOSSL: \"true\"\n")
 		fmt.Fprintf(b, "      SPILO_CONFIGURATION: |\n        postgresql:\n          connect_address: %s:5432\n        restapi:\n          connect_address: %s:8008\n", name, name)
+		b.WriteString("      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem\n")
+		b.WriteString("      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("      SSL_TEST_RELOAD: \"true\"\n")
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(b, "      - shared-postgres-data-%d:/home/postgres/pgroot\n", ordinal)
+		b.WriteString("      - ./postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro\n")
+		b.WriteString("      - ./postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro\n")
 		b.WriteString("    networks:\n      shared-backend: {}\n")
 		b.WriteString("    healthcheck:\n")
 		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U baseharbor_admin -d postgres\"]\n")
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 24\n      start_period: 10s\n\n")
 	}
 
-	gatewayFiles := serviceaccess.TCPGatewayFiles{
-		Config: "./postgresql/service-access/haproxy.cfg",
-		PEM:    "./postgresql/service-access/runtime/server.pem",
-		Material: serviceaccess.TLSMaterial{
-			ServerName: sharedPostgresAlias(),
-		},
-	}
-	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, sharedPostgresGatewaySpec(state.Environment)))
-	b.WriteString("\n")
+	fmt.Fprintf(b, "  %s:\n", sharedPostgresAlias())
+	fmt.Fprintf(b, "    image: %s\n", serviceaccess.TCPGatewayImage)
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"99:99\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+	b.WriteString("    command: [\"haproxy\", \"-W\", \"-db\", \"-f\", \"/usr/local/etc/haproxy/haproxy.cfg\"]\n")
+	b.WriteString("    ports:\n      - \"127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432\"\n")
+	b.WriteString("    volumes:\n      - ./postgresql/service-access/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro\n")
+	b.WriteString("    networks:\n      shared-backend:\n        aliases:\n          - postgres-access\n\n")
 
 	// Stable admin toolbox: all BaseHarbor reconciliation commands execute here
 	// and connect through the same primary-aware endpoint used by applications.
