@@ -28,6 +28,9 @@ Prefer machine-readable authority where practical:
 - [Security invariants](security-invariants.md)
 - [Credential and access ownership v1](credential-access-v1.md)
 - [Management surface access v1](management-access-v1.md)
+- [Availability and high availability v1](availability-v1.md)
+- [Application consumption v1](application-consumption-v1.md)
+- [Provider and management-surface acceptance v1](provider-management-acceptance-v1.md)
 
 ## Runtime and access contracts
 
