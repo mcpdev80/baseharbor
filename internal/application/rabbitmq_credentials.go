@@ -101,11 +101,13 @@ func waitRabbitMQCredentialAuthority(ctx context.Context, runtime rabbitMQCreden
 		status, err := runtime.Run(ctx, service, "rabbitmqctl", "cluster_status")
 		if err == nil {
 			missing := ""
-			for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
-				node := "rabbit@" + rabbitmqMemberServiceName(instance, ordinal)
-				if !strings.Contains(status, node) {
-					missing = node
-					break
+			if rabbitmqMemberCount(m) > 1 {
+				for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+					node := "rabbit@" + rabbitmqMemberServiceName(instance, ordinal)
+					if !strings.Contains(status, node) {
+						missing = node
+						break
+					}
 				}
 			}
 			if missing == "" {
