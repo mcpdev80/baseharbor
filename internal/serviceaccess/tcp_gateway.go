@@ -179,8 +179,16 @@ frontend service
   bind :%d ssl crt /run/baseharbor/tls/server.pem
   default_backend upstream
 
+listen baseharbor_stats
+  bind 127.0.0.1:8404
+  mode http
+  stats enable
+  stats uri /stats
+  stats show-legends
+
 backend upstream
   balance roundrobin
+  option log-health-checks
 `, spec.ContainerPort)
 	for _, directive := range spec.BackendDirectives {
 		directive = strings.TrimSpace(directive)
