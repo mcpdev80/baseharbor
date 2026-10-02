@@ -12,7 +12,7 @@ on:
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: release/v0.4.20
+        default: release/v0.4.21
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
@@ -179,6 +179,12 @@ jobs:
             echo "$release_internal" >&2
             exit 1
           }
+
+      - name: Validate v0.4.21 release readiness
+        id: v0421_readiness
+        if: steps.release.outputs.tag == 'v0.4.21'
+        shell: bash
+        run: bash scripts/v0.4.21-readiness.sh
 
       - name: Validate workflow syntax
         id: workflow_syntax
