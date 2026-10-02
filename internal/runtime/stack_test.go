@@ -327,6 +327,21 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
+func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
+	text := string(composeYAML)
+	const hosts = `      ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"`
+	if got := strings.Count(text, hosts); got != 3 {
+		t.Fatalf("Spilo ETCD3_HOSTS appears %d times, want exactly 3", got)
+	}
+	const scope = "      PATRONI_SCOPE: baseharbor-control-postgres\n"
+	if got := strings.Count(text, scope); got != 3 {
+		t.Fatalf("PATRONI_SCOPE appears %d times, want exactly 3", got)
+	}
+	if strings.Contains(text, "PATRONI_ETCD3_HOSTS:") {
+		t.Fatal("Spilo runtime must use ETCD3_HOSTS so /launch.sh configures one shared DCS")
+	}
+}
+
 func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
