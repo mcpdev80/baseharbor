@@ -28,7 +28,6 @@ type TCPGatewayUpstream struct {
 
 type TCPGatewaySpec struct {
 	ServiceName       string
-	DirectoryName     string
 	UpstreamHost      string
 	UpstreamPort      int
 	Upstreams         []TCPGatewayUpstream
@@ -54,14 +53,7 @@ func EnsureTCPGateway(ctx context.Context, issuer Issuer, policy Policy, provide
 	if spec.ContainerPort < 1 || spec.ContainerPort > 65535 {
 		return TCPGatewayFiles{}, errors.New("TCP service gateway container port is invalid")
 	}
-	dirName := strings.TrimSpace(spec.DirectoryName)
-	if dirName == "" {
-		dirName = "service-access"
-	}
-	if filepath.Base(dirName) != dirName || dirName == "." || dirName == ".." {
-		return TCPGatewayFiles{}, errors.New("TCP service gateway directory name is invalid")
-	}
-	dir := filepath.Join(providerDir, dirName)
+	dir := filepath.Join(providerDir, "service-access")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return TCPGatewayFiles{}, err
 	}
