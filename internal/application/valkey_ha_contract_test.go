@@ -26,8 +26,8 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 	if got := strings.Count(compose, "printf 'protected-mode no\\n'"); got != 3 {
 		t.Fatalf("Valkey HA compose has %d Sentinel protected-mode overrides, want 3:\n%s", got, compose)
 	}
-	if got := strings.Count(compose, "primary_ip=\"$(getent hosts valkey | awk 'NR==1 { print $1 }')\""); got != 3 {
-		t.Fatalf("Valkey HA compose resolves the original primary IP %d times, want 3:\n%s", got, compose)
+	if got := strings.Count(compose, "VALKEYCLI_AUTH=\"$VALKEY_PASSWORD\" valkey-cli -h valkey -p 6379 --raw CLIENT INFO"); got != 3 {
+		t.Fatalf("Valkey HA compose resolves the original primary IP through authenticated client metadata %d times, want 3:\n%s", got, compose)
 	}
 	if got := strings.Count(compose, "sentinel monitor baseharbor %s 6379 2"); got != 3 {
 		t.Fatalf("Valkey HA compose has %d numeric Sentinel quorum monitors, want 3:\n%s", got, compose)
