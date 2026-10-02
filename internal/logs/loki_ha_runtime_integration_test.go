@@ -85,7 +85,6 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		_ = runtime.DestroyProject(context.Background(), project, composeFile, envFile)
 	}()
 
-	waitLokiHA(t, ctx, driver, resource, binding)
 	files, err := logs.ExistingProviderFilesAt(dataDir, namespace, m)
 	if err != nil {
 		t.Fatal(err)
@@ -95,20 +94,26 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := readLokiHAEnv(t, files.Env)
+	diagnose := func() string {
+		diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer diagnosticCancel()
+		return runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
+	}
 
+	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("stop Loki member: %v", err)
 	}
-	waitLokiHA(t, ctx, driver, resource, binding)
+	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("restart Loki member: %v", err)
 	}
-	waitLokiHA(t, ctx, driver, resource, binding)
+	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 }
 
 func waitLokiHA(t *testing.T, ctx context.Context, driver interface {
 	Verify(context.Context, capability.Resource, capability.Binding) error
-}, resource capability.Resource, binding capability.Binding) {
+}, resource capability.Resource, binding capability.Binding, diagnose func() string) {
 	t.Helper()
 	deadline := time.Now().Add(75 * time.Second)
 	var last error
@@ -117,6 +122,13 @@ func waitLokiHA(t *testing.T, ctx context.Context, driver interface {
 			return
 		}
 		time.Sleep(time.Second)
+	}
+	detail := ""
+	if diagnose != nil {
+		detail = strings.TrimSpace(diagnose())
+	}
+	if detail != "" {
+		t.Fatalf("stable Loki endpoint lost ingestion/query continuity: %v\n%s", last, detail)
 	}
 	t.Fatalf("stable Loki endpoint lost ingestion/query continuity: %v", last)
 }
