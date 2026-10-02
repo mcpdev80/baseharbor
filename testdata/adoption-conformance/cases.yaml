@@ -1,0 +1,314 @@
+cases:
+  - id: compose-basic
+    description: single Compose source with workload and SQL infrastructure
+    files:
+      compose.yaml: |
+        services:
+          api:
+            image: example/api:1
+            ports: ["8080:8080"]
+            healthcheck:
+              test: ["CMD", "true"]
+          db:
+            image: postgres:17
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: compose
+      source_path: compose.yaml
+      components: [api, db]
+      infrastructure:
+        db: database.sql
+
+  - id: compose-noisy-dominant
+    description: production Compose must beat an e2e copy
+    files:
+      docker/docker-compose.yml: |
+        services:
+          api:
+            image: example/api:1
+      e2e/docker-compose.yml: |
+        services:
+          fake:
+            image: example/fake:1
+    expected:
+      state: selected
+      reason: production_candidate_dominates
+      source_kind: compose
+      source_path: docker/docker-compose.yml
+      components: [api]
+
+  - id: compose-low-confidence-ambiguous
+    description: weak script/package Compose candidates must not be guessed
+    files:
+      scripts/compose.yml: |
+        services:
+          one:
+            image: example/one:1
+      packages/client/compose.yml: |
+        services:
+          two:
+            image: example/two:1
+    expected:
+      state: ambiguous
+      reason: only_low_confidence_candidates
+
+  - id: mixed-compose-kubernetes
+    description: cross-family ambiguity is fail-closed
+    files:
+      compose.yaml: |
+        services:
+          api:
+            image: example/api:1
+      deploy/k8s/app.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+        spec:
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: example/api:1
+    expected:
+      state: ambiguous
+      reason: cross_family_ambiguity
+
+  - id: quadlet-basic
+    description: Quadlet workload and SQL infrastructure normalize source-neutrally
+    files:
+      deploy/quadlet/api.container: |
+        [Container]
+        Image=example/api:1
+        PublishPort=8080:8080
+        HealthCmd=true
+      deploy/quadlet/db.container: |
+        [Container]
+        Image=postgres:17
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: quadlet
+      source_path: deploy/quadlet
+      components: [api, db]
+      infrastructure:
+        db: database.sql
+
+  - id: quadlet-kube-wrapper
+    description: a .kube unit owns its referenced Kubernetes YAML source
+    files:
+      quadlet/app.kube: |
+        [Kube]
+        Yaml=app.yaml
+      quadlet/app.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+        spec:
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: example/api:1
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: quadlet
+      source_path: quadlet
+      components: [api]
+
+  - id: kubernetes-multidoc
+    description: Deployment, Service and CRD remain deterministic
+    files:
+      deploy/app.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+        spec:
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: example/api:1
+                  ports:
+                    - containerPort: 8080
+                  readinessProbe:
+                    httpGet:
+                      path: /ready
+                      port: 8080
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: api
+        spec:
+          selector:
+            app: api
+          ports:
+            - port: 80
+        ---
+        apiVersion: example.io/v1
+        kind: Widget
+        metadata:
+          name: unknown
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: kubernetes
+      source_path: deploy
+      components: [api]
+      opaque_resources: [Service/api, Widget/unknown]
+
+  - id: kubernetes-secret-ref
+    description: Secret references are visible but values are never normalized
+    files:
+      k8s/app.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+        spec:
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: example/api:1
+                  env:
+                    - name: PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                          name: api-secret
+                          key: password
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: api-secret
+        stringData:
+          password: super-secret-value
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: kubernetes
+      components: [api]
+      config_refs: [Secret/api-secret]
+      forbidden_strings: [super-secret-value]
+
+  - id: kubernetes-job-cronjob
+    description: Job and CronJob become logical workload components
+    files:
+      jobs/jobs.yaml: |
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: migrate
+        spec:
+          template:
+            spec:
+              restartPolicy: Never
+              containers:
+                - name: migrate
+                  image: example/migrate:1
+        ---
+        apiVersion: batch/v1
+        kind: CronJob
+        metadata:
+          name: cleanup
+        spec:
+          schedule: "0 1 * * *"
+          jobTemplate:
+            spec:
+              template:
+                spec:
+                  restartPolicy: Never
+                  containers:
+                    - name: cleanup
+                      image: example/cleanup:1
+    expected:
+      state: selected
+      reason: single_candidate
+      source_kind: kubernetes
+      components: [cleanup, migrate]
+
+  - id: non-kubernetes-yaml
+    description: arbitrary YAML must not become a Kubernetes source
+    files:
+      config/app.yaml: |
+        server:
+          port: 8080
+      .github/workflows/ci.yml: |
+        name: ci
+        on: push
+    expected:
+      state: not_detected
+      reason: no_supported_source
+
+  - id: invalid-source-metadata
+    description: repository metadata selecting a missing source must fail closed
+    files:
+      compose.yaml: |
+        services:
+          api:
+            image: example/api:1
+      baseharbor.repository.yaml: |
+        version: 1
+        workload-source:
+          kind: kubernetes
+          path: deploy/k8s
+    expected:
+      state: invalid
+      reason: invalid_repository_metadata
+
+  - id: compose-include-unsupported
+    description: unresolved Compose include must fail instead of partially inspecting
+    files:
+      compose.yaml: |
+        include:
+          - path: other.yaml
+        services:
+          api:
+            image: example/api:1
+    expected:
+      inspect_error_contains: "Compose include is not yet supported"
+
+  - id: compose-external-extends-unsupported
+    description: external Compose extends file must fail explicitly
+    files:
+      compose.yaml: |
+        services:
+          api:
+            extends:
+              file: common.yaml
+              service: base
+            image: example/api:1
+    expected:
+      inspect_error_contains: "external extends file"
+
+  - id: quadlet-missing-kube-yaml
+    description: local Quadlet kube reference must fail when its YAML is missing
+    files:
+      quadlet/app.kube: |
+        [Kube]
+        Yaml=missing.yaml
+    expected:
+      inspect_error_contains: "unresolved inputs"
+
+  - id: malformed-kubernetes-yaml
+    description: malformed Kubernetes-looking YAML must fail instead of disappearing
+    files:
+      deploy/app.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: api
+        spec:
+          template:
+            spec:
+              containers:
+                - name: api
+                  image: [broken
+    expected:
+      inspect_error_contains: "decode Kubernetes YAML"

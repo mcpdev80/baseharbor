@@ -55,10 +55,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          "mcp-demo",
 		Environment:   "dev",
-		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"api"},
-		},
+		Workload:      application.WorkloadConfig{Components: []string{"api"}},
 	}
 	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)

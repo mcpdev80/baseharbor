@@ -150,6 +150,9 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			if err != nil {
 				return err
 			}
+			if len(hosts) == 0 && !requiresDeclaredDevelopmentGatewaySurface(m) {
+				return nil
+			}
 			verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
 			return devgateway.VerifyHosts(verifyCtx, c.resolved.Target.Name, hosts)

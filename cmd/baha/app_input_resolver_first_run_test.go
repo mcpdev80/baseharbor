@@ -19,10 +19,7 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          "demo",
 		Environment:   "test",
-		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"app"},
-		},
+		Workload:      application.WorkloadConfig{Components: []string{"app"}},
 	}
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)

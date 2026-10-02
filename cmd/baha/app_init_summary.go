@@ -10,12 +10,13 @@ import (
 
 func printProjectDetection(out io.Writer, d appProjectDetection) {
 	fmt.Fprintf(out, "✓ Application name: %s\n", d.Name)
-	if d.Compose != "" {
-		fmt.Fprintf(out, "✓ Compose file: %s (read-only)\n", d.Compose)
-	} else if len(d.ComposeCandidates) > 1 {
-		fmt.Fprintf(out, "? Compose file: %d candidates need confirmation\n", len(d.ComposeCandidates))
-	} else {
-		fmt.Fprintln(out, "- Compose file: not detected")
+	switch {
+	case d.SelectedWorkloadSource != nil:
+		fmt.Fprintf(out, "✓ Workload source: %s (%s; repository-owned, read-only)\n", d.SelectedWorkloadSource.Kind, d.SelectedWorkloadSource.Path)
+	case len(d.WorkloadSourceCandidates) > 1:
+		fmt.Fprintf(out, "? Workload source: %d candidates need confirmation\n", len(d.WorkloadSourceCandidates))
+	case len(d.WorkloadSourceCandidates) == 0:
+		fmt.Fprintln(out, "- Workload source: not detected")
 	}
 	if len(d.WorkloadServices) > 0 {
 		fmt.Fprintf(out, "✓ Application workload: %s\n", strings.Join(d.WorkloadServices, ", "))
@@ -119,13 +120,14 @@ func printAdoptionSummary(out io.Writer, m application.Manifest, detected appPro
 	fmt.Fprintf(out, "  Name          %s\n", m.Name)
 	fmt.Fprintf(out, "  Environment   %s\n", m.Environment)
 
-	if m.Workload.Compose != "" || len(m.Workload.Services) > 0 {
+	if application.HasExplicitWorkload(m) {
 		fmt.Fprintln(out, "\nWorkload")
-		if m.Workload.Compose != "" {
-			fmt.Fprintf(out, "  Compose       %s (repository-owned, read-only)\n", m.Workload.Compose)
+		if detected.SelectedWorkloadSource != nil {
+			fmt.Fprintf(out, "  Source        %s (repository-owned, read-only)\n", detected.SelectedWorkloadSource.Path)
+			fmt.Fprintf(out, "  Source kind   %s\n", detected.SelectedWorkloadSource.Kind)
 		}
-		if len(m.Workload.Services) > 0 {
-			fmt.Fprintf(out, "  Services      %s\n", strings.Join(m.Workload.Services, ", "))
+		if components := application.WorkloadComponentNames(m); len(components) > 0 {
+			fmt.Fprintf(out, "  Components    %s\n", strings.Join(components, ", "))
 		}
 	}
 

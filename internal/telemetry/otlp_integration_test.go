@@ -46,7 +46,7 @@ func TestManagedCollectorRealOTLPExport(t *testing.T) {
 		Version:     1,
 		Name:        "otlp-acceptance",
 		Environment: "test",
-		Workload:    application.WorkloadConfig{Services: []string{"api"}},
+		Workload:    application.WorkloadConfig{Components: []string{"api"}},
 	}, "traces", "metrics", "logs")
 	store := application.Store{Root: filepath.Join(state, "apps")}
 	files, err := application.EnsureRuntime(ctx, serviceissuer.New(t), store, m)

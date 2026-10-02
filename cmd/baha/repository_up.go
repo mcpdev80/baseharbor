@@ -88,11 +88,11 @@ func reconcileDevelopmentWorkloadChanges(
 	opts runtimeUpOptions,
 	resolved resolvedApplication,
 ) (bool, error) {
-	_, found, err := application.ResolveWorkloadCompose(resolved.repositoryRoot(), resolved.Manifest)
+	composeSource, err := selectedRepositoryComposeSource(resolved.repositoryRoot(), resolved.Manifest)
 	if err != nil {
 		return false, err
 	}
-	if !found {
+	if composeSource == "" {
 		return false, nil
 	}
 

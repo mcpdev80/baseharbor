@@ -45,6 +45,24 @@ The v1 service family includes, among others:
 
 Reference products MAY implement multiple logical contracts, but product reuse MUST NOT merge distinct application semantics. In particular, durable `database.key-value` remains distinct from `cache.key-value`.
 
+## Workload component identity
+
+Portable workload identity is expressed as stable logical components, for example `api`, `worker` or `web`.
+
+Logical component identity MUST remain independent from repository-source-native identity:
+
+```text
+logical component: api
+
+Compose:      services.api
+Quadlet:      api.container
+Kubernetes:   Deployment/api
+```
+
+Repository workload-source kind, source path, Kubernetes kind/name, Quadlet filename and Compose service syntax are source provenance and MUST NOT be required as portable Application Intent.
+
+Repository adoption MAY use a separate safe-to-commit `baseharbor.repository.yaml` only when an authoritative source selection must be persisted. That metadata is repository authoring information, not Application Intent.
+
 ## Provider/runtime separation
 
 Portable Application Intent MUST NOT encode:

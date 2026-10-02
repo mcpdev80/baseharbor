@@ -13,9 +13,8 @@ func HasObjectStorage(m Manifest) bool {
 	return len(ObjectStorageBucketNames(m)) > 0
 }
 
-// HasExplicitWorkload reports whether the repository manifest explicitly
-// declares a Compose workload. Workload-only applications must be explicit so
-// validation never guesses based on files outside the manifest.
+// HasExplicitWorkload reports whether portable application intent declares
+// logical workload components. Source-format metadata is not required here.
 func HasExplicitWorkload(m Manifest) bool {
-	return m.Workload.Compose != "" || len(m.Workload.Services) > 0
+	return len(m.Workload.Components) > 0
 }

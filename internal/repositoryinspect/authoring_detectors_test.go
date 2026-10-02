@@ -20,7 +20,7 @@ func TestAuthoringDetectorsSatisfyHTTPAndSecrets(t *testing.T) {
 		Secrets: application.SecretRequirements{
 			Required: []application.SecretRequirement{{Name: "APP_SECRET"}},
 		},
-		Workload: application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
+		Workload: application.WorkloadConfig{Components: []string{"app"}},
 		Exposures: []application.HTTPExposureRequirement{{
 			Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public",
 		}},

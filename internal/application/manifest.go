@@ -131,12 +131,11 @@ func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwo
 	return m
 }
 
-// WorkloadConfig optionally disambiguates an existing application Compose
-// workload. Empty values keep the common case convention-based: BaseHarbor may
-// detect one unambiguous Compose file and attach all of its services.
+// WorkloadConfig carries only portable logical workload-component identity.
+// Source-format metadata such as Compose/Kubernetes/Quadlet paths belongs to
+// repository authoring metadata and never to portable application intent.
 type WorkloadConfig struct {
-	Compose  string
-	Services []string
+	Components []string
 }
 
 // HTTPExposureRequirement is provider-neutral public HTTP exposure intent.
@@ -300,10 +299,13 @@ func ObjectStorageBucketNames(m Manifest) []string {
 	return serviceInstanceNames(m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
 }
 
-func WithWorkload(m Manifest, compose string, services ...string) Manifest {
-	m.Workload.Compose = compose
-	m.Workload.Services = append([]string(nil), services...)
+func WithWorkloadComponents(m Manifest, components ...string) Manifest {
+	m.Workload.Components = append([]string(nil), components...)
 	return m
+}
+
+func WorkloadComponentNames(m Manifest) []string {
+	return append([]string(nil), m.Workload.Components...)
 }
 
 func WithHTTPExposure(m Manifest, name, service string, port int, protocol string) Manifest {

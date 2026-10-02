@@ -98,25 +98,29 @@ type PortEvidence struct {
 }
 
 type Result struct {
-	ContractVersion           string               `json:"contract_version"`
-	Root                      string               `json:"root"`
-	Application               string               `json:"application"`
-	ExistingManifest          string               `json:"existing_manifest,omitempty"`
-	Artifacts                 []Artifact           `json:"artifacts,omitempty"`
-	ComposeCandidates         []string             `json:"compose_candidates,omitempty"`
-	SelectedCompose           string               `json:"selected_compose,omitempty"`
-	WorkloadServices          []string             `json:"workload_services,omitempty"`
-	InfrastructureServices    []string             `json:"infrastructure_services,omitempty"`
-	AmbiguousServices         []string             `json:"ambiguous_services,omitempty"`
-	Findings                  []Finding            `json:"findings,omitempty"`
-	RequiredSecrets           []string             `json:"required_secrets,omitempty"`
-	SecretCandidates          []string             `json:"secret_candidates,omitempty"`
-	SecretSources             map[string]string    `json:"secret_sources,omitempty"`
-	Ports                     []PortEvidence       `json:"ports,omitempty"`
-	HealthChecks              []Evidence           `json:"health_checks,omitempty"`
-	DatabaseBootstrapServices []string             `json:"database_bootstrap_services,omitempty"`
-	Declared                  []CapabilityIntent   `json:"declared_capabilities,omitempty"`
-	Reconciliation            []ReconciliationItem `json:"reconciliation,omitempty"`
+	ContractVersion           string                    `json:"contract_version"`
+	Root                      string                    `json:"root"`
+	Application               string                    `json:"application"`
+	ExistingManifest          string                    `json:"existing_manifest,omitempty"`
+	Artifacts                 []Artifact                `json:"artifacts,omitempty"`
+	WorkloadSourceCandidates  []WorkloadSourceCandidate `json:"workload_source_candidates,omitempty"`
+	WorkloadSourceResolution  WorkloadSourceResolution  `json:"workload_source_resolution"`
+	SelectedWorkloadSource    *WorkloadSourceCandidate  `json:"selected_workload_source,omitempty"`
+	WorkloadEvidence          *WorkloadEvidence         `json:"workload_evidence,omitempty"`
+	ComposeCandidates         []string                  `json:"-"`
+	SelectedCompose           string                    `json:"-"`
+	WorkloadServices          []string                  `json:"workload_services,omitempty"`
+	InfrastructureServices    []string                  `json:"infrastructure_services,omitempty"`
+	AmbiguousServices         []string                  `json:"ambiguous_services,omitempty"`
+	Findings                  []Finding                 `json:"findings,omitempty"`
+	RequiredSecrets           []string                  `json:"required_secrets,omitempty"`
+	SecretCandidates          []string                  `json:"secret_candidates,omitempty"`
+	SecretSources             map[string]string         `json:"secret_sources,omitempty"`
+	Ports                     []PortEvidence            `json:"ports,omitempty"`
+	HealthChecks              []Evidence                `json:"health_checks,omitempty"`
+	DatabaseBootstrapServices []string                  `json:"database_bootstrap_services,omitempty"`
+	Declared                  []CapabilityIntent        `json:"declared_capabilities,omitempty"`
+	Reconciliation            []ReconciliationItem      `json:"reconciliation,omitempty"`
 }
 
 type Snapshot struct {

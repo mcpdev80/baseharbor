@@ -34,7 +34,7 @@ func TestCapabilityIntentsFromManifestCoversPortableApplicationContract(t *testi
 		Telemetry: application.TelemetryRequirements{OTLP: &application.OTLPRequirement{Signals: []string{"traces", "metrics", "logs"}}},
 		Metrics:   application.MetricsRequirements{Sources: []application.MetricsSourceRequirement{{Name: "app", Service: "app", Port: 8080, Path: "/metrics"}}},
 		Logs:      application.LogsRequirements{Collect: []string{"application"}},
-		Workload:  application.WorkloadConfig{Compose: "compose.yaml", Services: []string{"app"}},
+		Workload:  application.WorkloadConfig{Components: []string{"app"}},
 	}
 	intents, err := CapabilityIntentsFromManifest(m)
 	if err != nil {

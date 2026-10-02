@@ -10,7 +10,7 @@ import (
 func TestProviderCapabilityIntentIsAbsentForPlainWorkload(t *testing.T) {
 	m := application.New("demo", "dev", false, false, false)
 	m.Services.SQL = false
-	m = application.WithWorkload(m, "compose.yaml", "api")
+	m = application.WithWorkloadComponents(m, "api")
 
 	for _, kind := range []capability.Kind{
 		capability.ObjectStorageS3,
@@ -29,7 +29,7 @@ func TestProviderCapabilityIntentIsAbsentForPlainWorkload(t *testing.T) {
 func TestProviderCapabilityIntentMatchesManifest(t *testing.T) {
 	base := application.New("demo", "dev", false, false, false)
 	base.Services.SQL = false
-	base = application.WithWorkload(base, "compose.yaml", "api")
+	base = application.WithWorkloadComponents(base, "api")
 
 	logs := application.WithLogsCollection(base, "application")
 	if !hasProviderCapabilityIntent(logs, capability.Logs) {
