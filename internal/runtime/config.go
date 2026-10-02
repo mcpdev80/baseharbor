@@ -9,14 +9,16 @@ import (
 )
 
 type Config struct {
-	PostgresDB              string
-	PostgresUser            string
-	PostgresPassword        string
-	PostgresReplicationUser string
-	OpenBaoDBUser           string
-	OpenBaoDBPassword       string
-	PostgresPort            int
-	OpenBaoPort             int
+	PostgresDB               string
+	PostgresUser             string
+	PostgresPassword         string
+	PostgresInternalUser     string
+	PostgresInternalPassword string
+	PostgresReplicationUser  string
+	OpenBaoDBUser            string
+	OpenBaoDBPassword        string
+	PostgresPort             int
+	OpenBaoPort              int
 }
 
 func LoadConfig(envPath string) (Config, error) {
@@ -68,21 +70,27 @@ func LoadConfig(envPath string) (Config, error) {
 	if replicationUser == "" {
 		replicationUser = "baseharbor_replication"
 	}
+	internalUser := values["BASEHARBOR_POSTGRES_INTERNAL_USER"]
+	if internalUser == "" {
+		internalUser = "postgres"
+	}
 	openBaoDBUser := values["BASEHARBOR_OPENBAO_DB_USER"]
 	if openBaoDBUser == "" {
 		openBaoDBUser = "openbao"
 	}
 	cfg := Config{
 		PostgresDB:              values["BASEHARBOR_POSTGRES_DB"],
-		PostgresUser:            values["BASEHARBOR_POSTGRES_USER"],
-		PostgresPassword:        values["BASEHARBOR_POSTGRES_PASSWORD"],
-		PostgresReplicationUser: replicationUser,
+		PostgresUser:             values["BASEHARBOR_POSTGRES_USER"],
+		PostgresPassword:         values["BASEHARBOR_POSTGRES_PASSWORD"],
+		PostgresInternalUser:     internalUser,
+		PostgresInternalPassword: values["BASEHARBOR_POSTGRES_INTERNAL_PASSWORD"],
+		PostgresReplicationUser:  replicationUser,
 		OpenBaoDBUser:           openBaoDBUser,
 		OpenBaoDBPassword:       values["BASEHARBOR_OPENBAO_DB_PASSWORD"],
 		PostgresPort:            postgresPort,
 		OpenBaoPort:             openBaoPort,
 	}
-	if cfg.PostgresDB == "" || cfg.PostgresUser == "" || cfg.PostgresPassword == "" || cfg.PostgresReplicationUser == "" || cfg.OpenBaoDBUser == "" || cfg.OpenBaoDBPassword == "" {
+	if cfg.PostgresDB == "" || cfg.PostgresUser == "" || cfg.PostgresPassword == "" || cfg.PostgresInternalUser == "" || cfg.PostgresInternalPassword == "" || cfg.PostgresReplicationUser == "" || cfg.OpenBaoDBUser == "" || cfg.OpenBaoDBPassword == "" {
 		return Config{}, fmt.Errorf("runtime PostgreSQL configuration is incomplete")
 	}
 	return cfg, nil
