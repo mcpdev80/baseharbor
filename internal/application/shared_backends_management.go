@@ -22,12 +22,22 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		}
 		root := filepath.Join(shared.Dir, "postgresql")
 		policy.ServerName = sharedPostgresAlias()
-		gateway, err := serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedPostgresGatewaySpec(m.Environment))
+		memberNames := []string{sharedPostgresAlias(), "127.0.0.1"}
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
+		}
+		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
 		if err != nil {
-			return fmt.Errorf("prepare shared PostgreSQL HA access: %w", err)
+			return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
+		}
+		if err := projectPostgresServerMaterial(root, material); err != nil {
+			return err
+		}
+		if err := writeSharedPostgresHAProxyConfig(root, m.Environment); err != nil {
+			return err
 		}
 		for _, instance := range SQLInstanceNames(m) {
-			ca, err := projectBackendCA(files, "postgres", instance, gateway.Material.CA)
+			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
 			if err != nil {
 				return err
 			}
@@ -61,27 +71,35 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 	return nil
 }
 
-func sharedPostgresGatewaySpec(environment string) serviceaccess.TCPGatewaySpec {
-	upstreams := make([]serviceaccess.TCPGatewayUpstream, 0, 3)
+func writeSharedPostgresHAProxyConfig(root, environment string) error {
+	var b strings.Builder
+	b.WriteString(`global
+  log stdout format raw local0
+
+defaults
+  mode tcp
+  log global
+  timeout connect 5s
+  timeout client 30s
+  timeout server 30s
+
+frontend postgres
+  bind :5432
+  default_backend primary
+
+backend primary
+  option httpchk GET /primary
+  http-check expect status 200
+  default-server check port 8008 inter 2s fall 2 rise 2
+`)
 	for ordinal := 1; ordinal <= 3; ordinal++ {
-		upstreams = append(upstreams, serviceaccess.TCPGatewayUpstream{
-			Name: fmt.Sprintf("postgres-%d", ordinal),
-			Host: sharedPostgresMemberService(environment, ordinal),
-			Port: 5432,
-		})
+		fmt.Fprintf(&b, "  server postgres-%d %s:5432 check\n", ordinal, sharedPostgresMemberService(environment, ordinal))
 	}
-	return serviceaccess.TCPGatewaySpec{
-		ServiceName:      sharedPostgresAlias(),
-		Upstreams:        upstreams,
-		PublishedPortEnv: "SHARED_POSTGRES_HOST_PORT",
-		ContainerPort:    5432,
-		Network:          "shared-backend",
-		BackendDirectives: []string{
-			"option httpchk GET /primary",
-			"http-check expect status 200",
-			"default-server check port 8008 inter 2s fall 2 rise 2",
-		},
+	path := filepath.Join(root, "service-access", "haproxy.cfg")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
 	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values map[string]string) error {
