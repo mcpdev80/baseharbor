@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -26,13 +27,15 @@ type TCPGatewayUpstream struct {
 }
 
 type TCPGatewaySpec struct {
-	ServiceName      string
-	UpstreamHost     string
-	UpstreamPort     int
-	Upstreams        []TCPGatewayUpstream
-	PublishedPortEnv string
-	ContainerPort    int
-	Network          string
+	ServiceName       string
+	UpstreamHost      string
+	UpstreamPort      int
+	Upstreams         []TCPGatewayUpstream
+	PublishedPortEnv  string
+	ContainerPort     int
+	Network           string
+	Environment       map[string]string
+	BackendDirectives []string
 }
 
 func EnsureTCPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec TCPGatewaySpec) (TCPGatewayFiles, error) {
@@ -122,6 +125,17 @@ func TCPGatewayComposeService(files TCPGatewayFiles, spec TCPGatewaySpec) string
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
 	b.WriteString("    command: [\"haproxy\", \"-W\", \"-db\", \"-f\", \"/usr/local/etc/haproxy/haproxy.cfg\"]\n")
+	if len(spec.Environment) > 0 {
+		keys := make([]string, 0, len(spec.Environment))
+		for key := range spec.Environment {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		b.WriteString("    environment:\n")
+		for _, key := range keys {
+			fmt.Fprintf(&b, "      %s: %s\n", key, strconv.Quote(spec.Environment[key]))
+		}
+	}
 	if strings.TrimSpace(spec.PublishedPortEnv) != "" {
 		b.WriteString("    ports:\n")
 		fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
@@ -168,6 +182,13 @@ frontend service
 backend upstream
   balance roundrobin
 `, spec.ContainerPort)
+	for _, directive := range spec.BackendDirectives {
+		directive = strings.TrimSpace(directive)
+		if directive == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s\n", directive)
+	}
 	for _, upstream := range upstreams {
 		fmt.Fprintf(&b, "  server %s %s:%d check\n", upstream.Name, upstream.Host, upstream.Port)
 	}
