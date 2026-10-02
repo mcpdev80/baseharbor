@@ -55,7 +55,7 @@ func renderCompose(files Files, routes []Route, _ map[string]string, hostPort in
 	var b strings.Builder
 	b.WriteString("services:\n  dev-gateway:\n")
 	b.WriteString("    image: docker.io/library/caddy:2.11.4-alpine\n")
-	b.WriteString("    restart: unless-stopped\n    user: \"65532:65532\"\n    read_only: true\n")
+	b.WriteString("    restart: unless-stopped\n    user: \"${BASEHARBOR_GATEWAY_UID}:${BASEHARBOR_GATEWAY_GID}\"\n    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n    cap_add: [\"NET_BIND_SERVICE\"]\n    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777\n      - /config:rw,noexec,nosuid,nodev,mode=1777\n      - /data:rw,noexec,nosuid,nodev,mode=1777\n")
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
