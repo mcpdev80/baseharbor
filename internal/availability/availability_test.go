@@ -2,6 +2,7 @@ package availability
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -167,5 +168,26 @@ func TestObservationDistinguishesHealthyDegradedUnavailableAndUnsatisfied(t *tes
 				t.Fatalf("instances collapsed: got %d, want %d", len(got.Instances), len(tt.instances))
 			}
 		})
+	}
+}
+
+
+func TestPortableAvailabilityIntentSurfaceStaysMinimal(t *testing.T) {
+	intentFields := map[string]bool{}
+	intentType := reflect.TypeOf(Intent{})
+	for i := 0; i < intentType.NumField(); i++ {
+		intentFields[intentType.Field(i).Name] = true
+	}
+	if !reflect.DeepEqual(intentFields, map[string]bool{"HA": true, "Overrides": true}) {
+		t.Fatalf("portable availability intent fields changed: %#v", intentFields)
+	}
+
+	overrideFields := map[string]bool{}
+	overrideType := reflect.TypeOf(Override{})
+	for i := 0; i < overrideType.NumField(); i++ {
+		overrideFields[overrideType.Field(i).Name] = true
+	}
+	if !reflect.DeepEqual(overrideFields, map[string]bool{"HA": true, "Instances": true}) {
+		t.Fatalf("portable availability override fields changed: %#v", overrideFields)
 	}
 }
