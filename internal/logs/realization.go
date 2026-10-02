@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -126,7 +127,9 @@ func (r *runtimeLokiRealization) Apply(ctx context.Context) (LokiInstance, error
 	}
 	if err := waitLokiReady(ctx, instance.HTTPClient, instance.Endpoint); err != nil {
 		if diagnostics, ok := r.runtime.(lokiProjectDiagnostics); ok {
-			detail := strings.TrimSpace(diagnostics.DiagnosticsProject(ctx, placement.Project, files.Compose, files.Env))
+			diagnosticCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env))
+			cancel()
 			if detail != "" {
 				return LokiInstance{}, fmt.Errorf("Loki readiness: %w\n%s", err, detail)
 			}
