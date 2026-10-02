@@ -88,8 +88,6 @@ storage_config:
     secret_access_key: ${BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY}
     insecure: false
     s3forcepathstyle: true
-    http_config:
-      tls_ca_path: /run/baseharbor/object-storage/ca.pem
 compactor:
   working_directory: /loki/compactor
 `
@@ -389,6 +387,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			b.WriteString("      BASEHARBOR_LOKI_S3_BUCKET: ${BASEHARBOR_LOKI_S3_BUCKET}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_ACCESS_KEY_ID: ${BASEHARBOR_LOKI_S3_ACCESS_KEY_ID}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY: ${BASEHARBOR_LOKI_S3_SECRET_ACCESS_KEY}\n")
+			b.WriteString("      SSL_CERT_FILE: /run/baseharbor/object-storage/ca.pem\n")
 			b.WriteString("    volumes:\n")
 			b.WriteString("      - ./loki.yaml:/etc/loki/loki.yaml:ro\n")
 			b.WriteString("      - ./object-storage-ca.pem:/run/baseharbor/object-storage/ca.pem:ro\n")
