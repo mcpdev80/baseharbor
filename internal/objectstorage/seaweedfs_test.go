@@ -238,3 +238,36 @@ func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 		}
 	}
 }
+
+type eventuallyVisibleSeaweedFS struct {
+	lists int
+}
+
+func (f *eventuallyVisibleSeaweedFS) Apply(context.Context) (SeaweedFSInstance, error) {
+	return SeaweedFSInstance{}, nil
+}
+func (f *eventuallyVisibleSeaweedFS) Existing(context.Context) (SeaweedFSInstance, error) {
+	return SeaweedFSInstance{}, nil
+}
+func (f *eventuallyVisibleSeaweedFS) Admin(_ context.Context, command string) (string, error) {
+	if command == "s3.bucket.list" {
+		f.lists++
+		if f.lists < 3 {
+			return "", nil
+		}
+		return "bh-demo-dev-uploads\n", nil
+	}
+	return "", nil
+}
+func (f *eventuallyVisibleSeaweedFS) Destroy(context.Context) error { return nil }
+
+func TestWaitBucketExistsToleratesSeaweedFSReadAfterWriteLag(t *testing.T) {
+	realization := &eventuallyVisibleSeaweedFS{}
+	driver := NewDriverWithRealization(realization, application.Manifest{}, application.RuntimeFiles{})
+	if err := driver.waitBucketExists(context.Background(), "bh-demo-dev-uploads"); err != nil {
+		t.Fatal(err)
+	}
+	if realization.lists < 3 {
+		t.Fatalf("bucket visibility checks = %d, want retries before success", realization.lists)
+	}
+}
