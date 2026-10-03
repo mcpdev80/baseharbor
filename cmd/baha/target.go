@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
@@ -26,7 +27,8 @@ type targetInspectionResult struct {
 	Environment     string                             `json:"environment,omitempty"`
 	Repository      string                             `json:"repository,omitempty"`
 	Effective       string                             `json:"effective"`
-	OperatorAuth    map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
+	OperatorAuth       map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
+	AccessCapabilities *targetaccess.Descriptor            `json:"access_capabilities,omitempty"`
 }
 
 type targetOverrideContextKey struct{}
@@ -290,6 +292,11 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+	}
+	if kind, parseErr := targetaccess.ParseProviderKind(target.AccessProvider); parseErr == nil {
+		if descriptor, builtIn := targetaccess.BuiltInDescriptor(kind); builtIn {
+			result.AccessCapabilities = &descriptor
+		}
 	}
 	cfg, cfgErr := deployment.LoadConfig()
 	if cfgErr == nil {
