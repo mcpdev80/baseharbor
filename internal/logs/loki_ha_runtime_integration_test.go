@@ -36,7 +36,8 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 
 	m := application.WithLogsCollection(application.New("loki-ha-ci", "test", false, false, false), "application")
 	m.HA = true
-	driver := logs.NewDriverAt(runtime, m, serviceissuer.New(t), dataDir, namespace)
+	issuer := serviceissuer.New(t)
+	driver := logs.NewDriverAt(runtime, m, issuer, dataDir, namespace)
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
 	binding := capability.Binding{
 		Resource: resource,
