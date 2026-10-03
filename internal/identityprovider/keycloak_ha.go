@@ -110,7 +110,7 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      PGPASSWORD_SUPERUSER: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}\n")
 		b.WriteString("      PGUSER_STANDBY: keycloak_replication\n")
 		b.WriteString("      PGPASSWORD_STANDBY: ${BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD}\n")
-		b.WriteString("      USE_ADMIN: \"false\"\n")
+		
 		b.WriteString("      SSL_CERTIFICATE_FILE: /run/baseharbor/db-tls/server.pem\n")
 		b.WriteString("      SSL_PRIVATE_KEY_FILE: /run/baseharbor/db-tls/server-key.pem\n")
 		b.WriteString("      SSL_TEST_RELOAD: \"true\"\n")
