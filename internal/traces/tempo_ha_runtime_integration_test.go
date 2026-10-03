@@ -2,6 +2,7 @@ package traces_test
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -31,7 +33,7 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	namespace := "tempo-ha-acceptance"
 	t.Setenv(application.TracesEnabledEnv, "true")
 
-	m := application.WithOTLPTelemetry(application.New("tempo-ha-ci", "dev", false, false, false), "traces")
+	m := application.WithOTLPTelemetry(application.New("tempo-ha-ci", "test", false, false, false), "traces")
 	m.HA = true
 	issuer := serviceissuer.New(t)
 
@@ -127,6 +129,87 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 			t.Fatalf("restart %s: %v", member.name, err)
 		}
 		verifyTempoHAIngestionAndQuery(t, ctx, otelDriver, otelResource, otelBinding, m, dataDir, namespace)
+	}
+
+	if err := traceDriver.RotateStorageCredentials(ctx); err != nil {
+		t.Fatalf("rotate Tempo platform-storage credentials: %v", err)
+	}
+	verifyTempoHAIngestionAndQuery(t, ctx, otelDriver, otelResource, otelBinding, m, dataDir, namespace)
+
+	accessPolicy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessDir := filepath.Join(files.Dir, "service-access", "pki")
+	oldMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCA := mustReadTempoPKIFile(t, oldMaterial.CA)
+	oldClientCert := mustReadTempoPKIFile(t, oldMaterial.ClientCertificate)
+	oldClientKey := mustReadTempoPKIFile(t, oldMaterial.ClientKey)
+
+	issuer.Rotate(t)
+	if err := traceDriver.RotateAccessPKI(ctx); err != nil {
+		t.Fatalf("rotate Tempo access PKI: %v", err)
+	}
+	verifyTempoHAIngestionAndQuery(t, ctx, otelDriver, otelResource, otelBinding, m, dataDir, namespace)
+
+	newMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := traces.ProviderEndpoint(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTempoRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, oldCA, nil, nil, "retired CA")
+	assertTempoRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, nil, oldClientCert, oldClientKey, "retired client certificate")
+}
+
+func mustReadTempoPKIFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func assertTempoRetiredMaterialRejected(t *testing.T, ctx context.Context, policy serviceaccess.Policy, endpoint string, current serviceaccess.TLSMaterial, oldCA, oldClientCert, oldClientKey []byte, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	material := current
+	if oldCA != nil {
+		material.CA = filepath.Join(dir, "old-ca.pem")
+		if err := os.WriteFile(material.CA, oldCA, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oldClientCert != nil {
+		material.ClientCertificate = filepath.Join(dir, "old-client.pem")
+		material.ClientKey = filepath.Join(dir, "old-client-key.pem")
+		if err := os.WriteFile(material.ClientCertificate, oldClientCert, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(material.ClientKey, oldClientKey, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/ready", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("%s still authenticates/validates the rotated Tempo endpoint", label)
 	}
 }
 
