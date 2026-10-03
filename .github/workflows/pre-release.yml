@@ -433,10 +433,10 @@ jobs:
 
   runtime_light_gates:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, adoption]
+    needs: [source, runtime_candidate]
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
         runtime: [docker, podman]
         gate:
@@ -457,10 +457,10 @@ jobs:
 
   runtime_heavy_gates:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, adoption]
+    needs: [source, runtime_candidate]
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [docker, podman]
         gate:
@@ -485,12 +485,12 @@ jobs:
 
   v0421_ha_groups:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, adoption]
+    needs: source
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [docker, podman]
         group:
