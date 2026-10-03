@@ -193,7 +193,7 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 		// transiently after a member loss even while this process can serve
 		// queries. The frontend health check must only evict dead processes;
 		// query/ingestion continuity is verified separately by the HA gate.
-		HealthURI:        "/loki/api/v1/status/buildinfo",
-		HealthStatus:     http.StatusOK,
+		HealthURI:    "/loki/api/v1/status/buildinfo",
+		HealthStatus: http.StatusOK,
 	}
 }
