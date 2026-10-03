@@ -212,3 +212,26 @@ echo "Governance         PASS"
 echo "Runtime docs       PASS"
 echo "Task/domain information architecture PASS"
 echo "Podman release CI  PASS"
+
+
+# Public Pages must consume the canonical BaseHarbor brand package.
+for config in mkdocs.yml mkdocs.de.yml; do
+  grep -Fq "baseharbor-master-lockup.png" "$config" || {
+    echo "documentation audit: canonical BaseHarbor master lockup missing from $config" >&2
+    exit 1
+  }
+  grep -Fq "brand-tokens.css" "$config" || {
+    echo "documentation audit: canonical BaseHarbor brand tokens missing from $config" >&2
+    exit 1
+  }
+  grep -Fq "baseharbor-docs.css" "$config" || {
+    echo "documentation audit: BaseHarbor documentation shell missing from $config" >&2
+    exit 1
+  }
+done
+
+grep -Fq -- "--bh-font-ui" docs/brand/brand-tokens.css
+grep -Fq -- "--bh-font-code" docs/brand/brand-tokens.css
+grep -Fq "baseharbor-master-lockup.png" docs/brand/README.md
+
+echo "Brand identity      PASS"
