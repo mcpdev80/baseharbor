@@ -269,18 +269,29 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID string) error {
 	query := url.Values{}
 	query.Set("clientId", "realm-management")
-	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
-	if err != nil {
-		return err
+	lookupCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var clientID string
+	var lastBody string
+	for {
+		status, body, err := a.do(lookupCtx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
+		if err == nil && status == http.StatusOK {
+			var clients []keycloakClient
+			if json.Unmarshal([]byte(body), &clients) == nil && len(clients) == 1 && strings.TrimSpace(clients[0].ID) != "" {
+				clientID = clients[0].ID
+				break
+			}
+		}
+		lastBody = body
+		select {
+		case <-lookupCtx.Done():
+			return fmt.Errorf("resolve Keycloak realm-management client after HA convergence: %s", strings.TrimSpace(lastBody))
+		case <-ticker.C:
+		}
 	}
-	if status != http.StatusOK {
-		return fmt.Errorf("resolve Keycloak realm-management client: HTTP %d: %s", status, body)
-	}
-	var clients []keycloakClient
-	if err := json.Unmarshal([]byte(body), &clients); err != nil || len(clients) != 1 {
-		return fmt.Errorf("resolve Keycloak realm-management client")
-	}
-	clientID := clients[0].ID
 	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
 	if err != nil {
 		return err
