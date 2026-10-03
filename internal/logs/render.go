@@ -52,7 +52,6 @@ server:
 common:
   path_prefix: /loki
   replication_factor: 2
-  compactor_grpc_address: loki-1:9095
   ring:
     kvstore:
       store: memberlist
@@ -90,11 +89,7 @@ storage_config:
     s3forcepathstyle: true
 compactor:
   working_directory: /loki/compactor
-  retention_enabled: true
-  delete_request_store: s3
-  horizontal_scaling_mode: ${BASEHARBOR_LOKI_COMPACTOR_MODE}
-  worker_config:
-    num_sub_workers: ${BASEHARBOR_LOKI_COMPACTOR_WORKERS}
+  retention_enabled: false
 `
 }
 
