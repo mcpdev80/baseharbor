@@ -47,7 +47,7 @@ func (d *KeycloakDriver) RotateAdminCredential(ctx context.Context) error {
 		if oldUser == "" || oldPassword == "" {
 			return errors.New("Keycloak admin credential is incomplete")
 		}
-		suffix, err := randomIdentitySecret(8)
+		suffix, err := randomIdentitySecret(16)
 		if err != nil {
 			return err
 		}
