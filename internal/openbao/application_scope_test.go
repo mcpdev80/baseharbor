@@ -98,3 +98,14 @@ func TestApplicationIdentityRejectsUnsafeNames(t *testing.T) {
 		}
 	}
 }
+
+func TestApplicationPolicyProvisioningUsesCanonicalACLPath(t *testing.T) {
+	policyName := applicationPolicyName(ApplicationIdentity{Name: "demo", Environment: "dev"})
+	command := fmt.Sprintf(`exec bao write sys/policies/acl/%s policy=- >/dev/null`, policyName)
+	if !strings.Contains(command, "sys/policies/acl/baseharbor-app-demo-dev") {
+		t.Fatalf("policy command does not use canonical ACL path: %s", command)
+	}
+	if strings.Contains(command, "bao policy write") {
+		t.Fatalf("policy command must not use redirect-prone policy wrapper: %s", command)
+	}
+}
