@@ -20,6 +20,15 @@ type keycloakAdmin struct {
 	token    string
 }
 
+type keycloakAdminLoginError struct {
+	Status int
+	Body   string
+}
+
+func (e *keycloakAdminLoginError) Error() string {
+	return fmt.Sprintf("authenticate Keycloak admin: HTTP %d: %s", e.Status, e.Body)
+}
+
 type keycloakRealm struct {
 	ID                                            string            `json:"id,omitempty"`
 	Realm                                         string            `json:"realm"`
@@ -119,7 +128,10 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("authenticate Keycloak admin: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return &keycloakAdminLoginError{
+			Status: resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
 	}
 	var payload struct {
 		AccessToken string `json:"access_token"`
