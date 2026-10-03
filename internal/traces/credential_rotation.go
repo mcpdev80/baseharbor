@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -78,4 +80,72 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 			Rollback:  reconcile,
 		},
 	)
+}
+
+
+// RotateAccessPKI rotates Tempo's stable HTTPS/mTLS query identity with
+// overlap-safe trust replacement and explicit old-CA retirement.
+func (d *Driver) RotateAccessPKI(ctx context.Context) error {
+	if d.runtime == nil || d.issuer == nil {
+		return errors.New("Tempo access PKI rotation requires managed runtime and issuer")
+	}
+	dataDir := strings.TrimSpace(d.dataDir)
+	if dataDir == "" || dataDir == "." {
+		var err error
+		dataDir, err = bhruntime.DataDir("")
+		if err != nil {
+			return err
+		}
+	}
+	placement, err := PlacementForAt(dataDir, d.namespace, d.app)
+	if err != nil {
+		return err
+	}
+	files, _, err := ExistingProviderFilesAt(dataDir, d.namespace, d.app)
+	if err != nil {
+		return err
+	}
+	policy, err := serviceaccess.Resolve(d.app.Environment, "tempo", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	spec := tempoAccessSpec()
+	if d.app.HA {
+		spec = tempoHAQueryAccessSpec()
+	}
+	reconcile := func() error {
+		if _, err := serviceaccess.EnsureHTTPGateway(ctx, d.issuer, policy, files.Dir, spec); err != nil {
+			return err
+		}
+		if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+			return err
+		}
+		if err := d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+			return err
+		}
+		client, err := tempoHTTPClient(d.app, files)
+		if err != nil {
+			return err
+		}
+		endpoint, err := ProviderEndpoint(files)
+		if err != nil {
+			return err
+		}
+		verifyCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+		if err := waitReady(verifyCtx, client, endpoint); err != nil {
+			return fmt.Errorf("verify Tempo after PKI reconcile: %w", err)
+		}
+		return nil
+	}
+	if err := reconcile(); err != nil {
+		return fmt.Errorf("reconcile replacement Tempo PKI with overlap: %w", err)
+	}
+	if err := serviceaccess.RetireTLSOverlap(ctx, d.issuer, policy, filepath.Join(files.Dir, "service-access", "pki")); err != nil {
+		return fmt.Errorf("retire previous Tempo CA: %w", err)
+	}
+	if err := reconcile(); err != nil {
+		return fmt.Errorf("reconcile Tempo after CA retirement: %w", err)
+	}
+	return nil
 }
