@@ -35,7 +35,7 @@ func TestCreateTargetDoesNotBecomeDefaultWithoutFlag(t *testing.T) {
 	var out bytes.Buffer
 	if err := createTarget(
 		context.Background(),
-		[]string{"kudo", "--provider", "docker", "--access", "local-docker", "--reference", "local", "--scope", "default"},
+		[]string{"kudo", "--runtime-provider", "docker", "--access", "local-docker", "--access-provider", "local", "--reference", "local", "--scope", "default"},
 		&out,
 		&out,
 	); err != nil {
@@ -55,5 +55,39 @@ func TestCreateTargetDoesNotBecomeDefaultWithoutFlag(t *testing.T) {
 	}
 	if resolved.Name != "local" {
 		t.Fatalf("effective target = %q, want implicit local", resolved.Name)
+	}
+}
+
+func TestCreateTargetSupportsRemoteNodeConnectorAccess(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	var out bytes.Buffer
+	if err := createTarget(
+		context.Background(),
+		[]string{
+			"edge-a",
+			"--runtime-provider", "docker",
+			"--access", "node-a",
+			"--access-provider", "baseharbor-node-connector",
+			"--reference", "node-a",
+		},
+		&out,
+		&out,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := cfg.Targets["edge-a"]
+	if target.Runtime.Provider != "docker" {
+		t.Fatalf("runtime provider = %q", target.Runtime.Provider)
+	}
+	access := cfg.Access[target.Access.Reference]
+	if access.Provider != "baseharbor-node-connector" || access.Reference != "node-a" {
+		t.Fatalf("unexpected access definition: %#v", access)
 	}
 }
