@@ -155,9 +155,8 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	if err != nil {
 		return err
 	}
-	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
 	for _, source := range sources {
+		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		query := fmt.Sprintf(
 			`up{job="baseharbor-providers",baseharbor_provider=%q,baseharbor_source=%q}`,
 			string(source.Provider), source.ID,
@@ -165,9 +164,10 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 		ticker := time.NewTicker(time.Second)
 		var last error
 		for {
-			ok, err := queryUp(deadline, client, endpoint, query)
+			ok, err := queryUp(sourceCtx, client, endpoint, query)
 			if err == nil && ok {
 				ticker.Stop()
+				cancel()
 				break
 			}
 			if err != nil {
@@ -176,8 +176,9 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 				last = errors.New("provider target has not produced an up=1 sample yet")
 			}
 			select {
-			case <-deadline.Done():
+			case <-sourceCtx.Done():
 				ticker.Stop()
+				cancel()
 				return fmt.Errorf("verify provider metrics %s: %w", source.ID, last)
 			case <-ticker.C:
 			}
