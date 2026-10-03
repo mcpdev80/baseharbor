@@ -156,31 +156,10 @@ func (d *KeycloakDriver) RotateSigningKey(ctx context.Context) error {
 	}
 
 	if phase == credential.RotationReconciled {
-		newToken, err := admin.mintSigningProbeToken(ctx, d.realm, material.ProbeClientID, material.ProbeSecret)
+		material, err = d.verifySigningRotationOverlap(ctx, admin, material)
 		if err != nil {
 			return err
 		}
-		newKid, err := jwtKid(newToken)
-		if err != nil {
-			return err
-		}
-		if newKid != material.NewKid {
-			return fmt.Errorf("Keycloak replacement token kid = %q, want %q", newKid, material.NewKid)
-		}
-		jwks, err := fetchKeycloakJWKS(ctx, d.instance.PublicHTTPClient, d.instance.EndpointBaseURL, d.realm)
-		if err != nil {
-			return err
-		}
-		if !jwksContainsKid(jwks, material.OldKid) || !jwksContainsKid(jwks, material.NewKid) {
-			return errors.New("Keycloak signing-key overlap disappeared before verification")
-		}
-		if err := verifyRS256JWTWithJWKS(material.OldToken, jwks); err != nil {
-			return fmt.Errorf("old Keycloak token is not verifiable during signing-key overlap: %w", err)
-		}
-		if err := verifyRS256JWTWithJWKS(newToken, jwks); err != nil {
-			return fmt.Errorf("new Keycloak token is not verifiable before retirement: %w", err)
-		}
-		material.NewToken = newToken
 		if err := savePreparedKeycloakSigningRotation(prepared, key, material); err != nil {
 			return err
 		}
@@ -231,6 +210,36 @@ func (d *KeycloakDriver) RotateSigningKey(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+
+func (d *KeycloakDriver) verifySigningRotationOverlap(ctx context.Context, admin *keycloakAdmin, material preparedKeycloakSigningRotation) (preparedKeycloakSigningRotation, error) {
+	newToken, err := admin.mintSigningProbeToken(ctx, d.realm, material.ProbeClientID, material.ProbeSecret)
+	if err != nil {
+		return material, err
+	}
+	newKid, err := jwtKid(newToken)
+	if err != nil {
+		return material, err
+	}
+	if newKid != material.NewKid {
+		return material, fmt.Errorf("Keycloak replacement token kid = %q, want %q", newKid, material.NewKid)
+	}
+	jwks, err := fetchKeycloakJWKS(ctx, d.instance.PublicHTTPClient, d.instance.EndpointBaseURL, d.realm)
+	if err != nil {
+		return material, err
+	}
+	if !jwksContainsKid(jwks, material.OldKid) || !jwksContainsKid(jwks, material.NewKid) {
+		return material, errors.New("Keycloak signing-key overlap disappeared before verification")
+	}
+	if err := verifyRS256JWTWithJWKS(material.OldToken, jwks); err != nil {
+		return material, fmt.Errorf("old Keycloak token is not verifiable during signing-key overlap: %w", err)
+	}
+	if err := verifyRS256JWTWithJWKS(newToken, jwks); err != nil {
+		return material, fmt.Errorf("new Keycloak token is not verifiable before retirement: %w", err)
+	}
+	material.NewToken = newToken
+	return material, nil
 }
 
 func loadPreparedKeycloakSigningRotation(store credential.PreparedMaterialStore, key string) (preparedKeycloakSigningRotation, error) {
