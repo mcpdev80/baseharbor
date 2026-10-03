@@ -113,7 +113,6 @@ func TestFileRotationJournalIsOwnerOnly(t *testing.T) {
 	}
 }
 
-
 func TestFilePreparedMaterialStoreSurvivesRestartAndProtectsSecret(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "prepared")
 	key := "provider/rabbitmq/app/default"
