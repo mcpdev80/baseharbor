@@ -268,11 +268,13 @@ func waitForKeycloakClientSecretAuthentication(ctx context.Context, admin *keycl
 
 	var last error
 	for {
-		if err := admin.verifyClientSecretAuthentication(waitCtx, realm, clientID, secret); err == nil {
+		attemptCtx, attemptCancel := context.WithTimeout(waitCtx, 5*time.Second)
+		err := admin.verifyClientSecretAuthentication(attemptCtx, realm, clientID, secret)
+		attemptCancel()
+		if err == nil {
 			return nil
-		} else {
-			last = err
 		}
+		last = err
 		select {
 		case <-waitCtx.Done():
 			if last == nil {
@@ -294,7 +296,9 @@ func waitForKeycloakClientSecretRejection(ctx context.Context, admin *keycloakAd
 	consecutive := 0
 	var last error = errors.New("retired Keycloak client secret is still accepted")
 	for {
-		err := admin.verifyClientSecretAuthentication(waitCtx, realm, clientID, secret)
+		attemptCtx, attemptCancel := context.WithTimeout(waitCtx, 5*time.Second)
+		err := admin.verifyClientSecretAuthentication(attemptCtx, realm, clientID, secret)
+		attemptCancel()
 		switch {
 		case errors.Is(err, errKeycloakClientSecretRejected):
 			consecutive++
