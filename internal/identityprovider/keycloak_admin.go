@@ -292,7 +292,10 @@ func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID 
 		case <-ticker.C:
 		}
 	}
-	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
+	var status int
+	var body string
+	var err error
+	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
 	if err != nil {
 		return err
 	}
