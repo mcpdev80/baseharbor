@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
-	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 // RotateStorageCredentials rotates Tempo's provider-owned S3 identity using the
@@ -81,7 +81,6 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 		},
 	)
 }
-
 
 // RotateAccessPKI rotates Tempo's stable HTTPS/mTLS query identity with
 // overlap-safe trust replacement and explicit old-CA retirement.
