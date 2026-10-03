@@ -61,7 +61,7 @@ func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvide
 }
 
 func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
-	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 
 	ticker := time.NewTicker(500 * time.Millisecond)
