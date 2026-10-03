@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -103,12 +104,12 @@ func (d *KeycloakDriver) RotateClientSecret(ctx context.Context) error {
 	}
 
 	if phase == credential.RotationReconciled {
-		if err := admin.verifyClientSecretAuthentication(ctx, d.realm, d.clientID, material.Current); err != nil {
+		if err := waitForKeycloakClientSecretAuthentication(ctx, admin, d.realm, d.clientID, material.Current); err != nil {
 			_ = d.applyClientSecretBinding(ctx, material.Rotated)
 			_ = journal.Save(key, credential.RotationPrepared)
 			return fmt.Errorf("verify new Keycloak client secret: %w", err)
 		}
-		if err := admin.verifyClientSecretAuthentication(ctx, d.realm, d.clientID, material.Rotated); err != nil {
+		if err := waitForKeycloakClientSecretAuthentication(ctx, admin, d.realm, d.clientID, material.Rotated); err != nil {
 			return fmt.Errorf("verify Keycloak client-secret overlap before retirement: %w", err)
 		}
 		if err := journal.Save(key, credential.RotationVerified); err != nil {
@@ -121,10 +122,10 @@ func (d *KeycloakDriver) RotateClientSecret(ctx context.Context) error {
 		if err := admin.retireRotatedClientSecret(ctx, d.realm, clientUUID); err != nil {
 			return err
 		}
-		if err := admin.verifyClientSecretAuthentication(ctx, d.realm, d.clientID, material.Rotated); err == nil {
-			return errors.New("retired Keycloak client secret is still accepted")
+		if err := waitForKeycloakClientSecretRejection(ctx, admin, d.realm, d.clientID, material.Rotated); err != nil {
+			return err
 		}
-		if err := admin.verifyClientSecretAuthentication(ctx, d.realm, d.clientID, material.Current); err != nil {
+		if err := waitForKeycloakClientSecretAuthentication(ctx, admin, d.realm, d.clientID, material.Current); err != nil {
 			return fmt.Errorf("new Keycloak client secret failed after retirement: %w", err)
 		}
 		if err := journal.Save(key, credential.RotationRetired); err != nil {
@@ -254,4 +255,64 @@ func writeKeycloakClientSecretFile(path, secret string) error {
 		return err
 	}
 	return nil
+}
+
+
+const keycloakClientSecretPropagationTimeout = 30 * time.Second
+
+func waitForKeycloakClientSecretAuthentication(ctx context.Context, admin *keycloakAdmin, realm, clientID, secret string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, keycloakClientSecretPropagationTimeout)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		if err := admin.verifyClientSecretAuthentication(waitCtx, realm, clientID, secret); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+		select {
+		case <-waitCtx.Done():
+			if last == nil {
+				last = waitCtx.Err()
+			}
+			return last
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForKeycloakClientSecretRejection(ctx context.Context, admin *keycloakAdmin, realm, clientID, secret string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, keycloakClientSecretPropagationTimeout)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	const requiredConsecutiveRejections = 6
+	consecutive := 0
+	var last error = errors.New("retired Keycloak client secret is still accepted")
+	for {
+		err := admin.verifyClientSecretAuthentication(waitCtx, realm, clientID, secret)
+		switch {
+		case errors.Is(err, errKeycloakClientSecretRejected):
+			consecutive++
+			if consecutive >= requiredConsecutiveRejections {
+				return nil
+			}
+			last = err
+		case err == nil:
+			consecutive = 0
+			last = errors.New("retired Keycloak client secret is still accepted")
+		default:
+			consecutive = 0
+			last = err
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("retired Keycloak client secret did not converge to rejection: %w", last)
+		case <-ticker.C:
+		}
+	}
 }
