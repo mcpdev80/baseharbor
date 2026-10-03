@@ -45,7 +45,21 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := traceDriver.Preflight(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := traceDriver.Provision(ctx, traceResource, capability.Binding{}); err != nil {
+	provisionCtx, provisionCancel := context.WithTimeout(ctx, 3*time.Minute)
+	err = traceDriver.Provision(provisionCtx, traceResource, capability.Binding{})
+	provisionCancel()
+	if err != nil {
+		detail := ""
+		if placement, placementErr := traces.PlacementForAt(dataDir, namespace, m); placementErr == nil {
+			if files, _, filesErr := traces.ExistingProviderFilesAt(dataDir, namespace, m); filesErr == nil {
+				diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 15*time.Second)
+				detail = strings.TrimSpace(runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env))
+				diagnosticCancel()
+			}
+		}
+		if detail != "" {
+			t.Fatalf("provision Tempo HA: %v\n%s", err, detail)
+		}
 		t.Fatalf("provision Tempo HA: %v", err)
 	}
 	defer func() {
