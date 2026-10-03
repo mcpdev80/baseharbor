@@ -137,8 +137,8 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
         admin_hosts=redpanda-0:9644,redpanda-1:9644,redpanda-2:9644
         attempts=0
         until rpk cluster health -X admin.hosts="$$admin_hosts" --exit-when-healthy >/dev/null 2>&1; do
-          attempts=$((attempts+1))
-          if [ "$attempts" -ge 45 ]; then
+          attempts=$$((attempts+1))
+          if [ "$$attempts" -ge 45 ]; then
             echo "Tempo Redpanda cluster did not become healthy" >&2
             rpk cluster health -X admin.hosts="$$admin_hosts" || true
             exit 1
