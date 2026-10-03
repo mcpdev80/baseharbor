@@ -50,7 +50,7 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 		"-v app_user=\"$BASEHARBOR_KEYCLOAK_DB_USER\"",
 		"attempts=$$((attempts+1))",
 		"if [ \"$$attempts\" -ge 90 ]",
-		"exists=$$(psql",
+		"exists=$(printf",
 		"if [ \"$$exists\" != \"1\" ]",
 	} {
 		if !strings.Contains(got, want) {
