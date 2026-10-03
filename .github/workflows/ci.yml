@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - 'runtime-validation/ci/**'
+      - 'runtime-validation/source-preflight/**'
   pull_request:
     branches:
       - develop
@@ -46,8 +47,100 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           "$RUNNER_TEMP/bin/actionlint" -shellcheck=
 
+  release_source_preflight:
+    name: Release Source Preflight
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/source-preflight/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Enforce workflow policy
+        run: bash scripts/ci-workflow-policy.sh
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install validation tooling
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l cmd internal spec)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
+            exit 1
+          }
+
+      - name: Validate source readability
+        run: bash scripts/source-readability-audit.sh
+
+      - name: Run release-source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/... ./spec/...
+          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
+          go vet ./...
+
+      - name: Validate documentation
+        shell: bash
+        run: |
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
+
+      - name: Validate v0.4.21 release readiness
+        shell: bash
+        run: bash scripts/v0.4.21-readiness.sh
+
+      - name: Validate workflow syntax
+        shell: bash
+        run: "$RUNNER_TEMP/bin/actionlint -shellcheck="
+
+      - name: Build release snapshot
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --snapshot --clean
+
+      - name: Verify release snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/checksums.txt
+          test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+          grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+          grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
+
+      - name: Build exact candidate binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=v0.4.21 -X main.commit=$candidate_sha -X main.date=unknown"             -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "$candidate_sha"
+
   validate:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/')
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     services:
