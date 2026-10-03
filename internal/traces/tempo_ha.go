@@ -42,6 +42,8 @@ live_store:
   ring:
     kvstore:
       store: memberlist
+    instance_id: ${BASEHARBOR_TEMPO_LIVE_STORE_INSTANCE_ID:-tempo-live-store}
+    instance_zone: ${BASEHARBOR_TEMPO_LIVE_STORE_ZONE:-}
   partition_ring:
     kvstore:
       store: memberlist
@@ -182,6 +184,17 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 			fmt.Fprintf(&b, "      - %s\n", arg)
 		}
 		b.WriteString(commonEnv)
+		if target == "live-store" {
+			zone := "unknown"
+			switch {
+			case strings.Contains(name, "-a-"):
+				zone = "zone-a"
+			case strings.Contains(name, "-b-"):
+				zone = "zone-b"
+			}
+			fmt.Fprintf(&b, "      BASEHARBOR_TEMPO_LIVE_STORE_INSTANCE_ID: %s\n", name)
+			fmt.Fprintf(&b, "      BASEHARBOR_TEMPO_LIVE_STORE_ZONE: %s\n", zone)
+		}
 		b.WriteString("    volumes:\n")
 		b.WriteString(commonVolumes(wal))
 		b.WriteString("    depends_on:\n      tempo-kafka-init:\n        condition: service_completed_successfully\n")
@@ -203,11 +216,7 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 	for _, zone := range []string{"a", "b"} {
 		for partition := 0; partition < 3; partition++ {
 			name := fmt.Sprintf("tempo-live-%s-%d", zone, partition)
-			args := []string{
-				"-live-store.ring.instance-id=" + name,
-				"-live-store.ring.instance-zone=zone-" + zone,
-			}
-			renderTempo(name, "live-store", args, fmt.Sprintf("tempo-live-%s-%d", zone, partition), nil)
+			renderTempo(name, "live-store", nil, fmt.Sprintf("tempo-live-%s-%d", zone, partition), nil)
 		}
 	}
 	for partition := 0; partition < 3; partition++ {
