@@ -231,7 +231,7 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --provider PROVIDER --access ACCESS --reference REFERENCE [--scope SCOPE] [--default]",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default]",
 				Run:     createTarget,
 			},
 			{
@@ -314,19 +314,21 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return err
 	}
-	var provider, accessName, reference, scope string
+	var runtimeProvider, accessProvider, accessName, reference, scope string
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--access", "--reference", "--scope":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
 			key, value := args[i], strings.TrimSpace(args[i+1])
 			i++
 			switch key {
-			case "--provider":
-				provider = value
+			case "--provider", "--runtime-provider":
+				runtimeProvider = value
+			case "--access-provider":
+				accessProvider = value
 			case "--access":
 				accessName = value
 			case "--reference":
@@ -337,11 +339,18 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--access", "--reference", "--scope", "--default")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default")
 		}
 	}
-	if provider == "" || accessName == "" || reference == "" {
-		return usageError("target create requires --provider, --access and --reference", "Example: baha target create docker-dev --provider docker --access local-docker --reference local")
+	if runtimeProvider == "" || accessName == "" || reference == "" {
+		return usageError("target create requires --runtime-provider (or legacy --provider), --access and --reference", "Example: baha target create docker-dev --runtime-provider docker --access local-docker --access-provider local --reference local")
+	}
+	if accessProvider == "" {
+		if reference == "local" {
+			accessProvider = "local"
+		} else {
+			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
+		}
 	}
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
@@ -351,14 +360,14 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return fmt.Errorf("target %q already exists", name)
 	}
 	if existing, exists := cfg.Access[accessName]; exists {
-		if existing.Provider != provider || existing.Reference != reference {
+		if existing.Provider != accessProvider || existing.Reference != reference {
 			return fmt.Errorf("access %q already exists with different provider/reference", accessName)
 		}
 	} else {
-		cfg.Access[accessName] = deployment.AccessDefinition{Provider: provider, Reference: reference}
+		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
-		Runtime: deployment.RuntimeDefinition{Provider: provider},
+		Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
 		Access:  deployment.TargetAccess{Reference: accessName},
 		Scope:   scope,
 	}
@@ -368,7 +377,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Target %s created (%s, access %s", name, provider, accessName)
+	fmt.Fprintf(out, "Target %s created (runtime %s, access %s via %s", name, runtimeProvider, accessName, accessProvider)
 	if scope != "" {
 		fmt.Fprintf(out, ", scope %s", scope)
 	}
