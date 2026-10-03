@@ -225,12 +225,8 @@ func (c Config) Validate() error {
 		if ref == "" {
 			return fmt.Errorf("target %q requires access.reference", name)
 		}
-		access, ok := c.Access[ref]
-		if !ok {
+		if _, ok := c.Access[ref]; !ok {
 			return fmt.Errorf("target %q references unknown access %q", name, ref)
-		}
-		if strings.TrimSpace(access.Provider) != strings.TrimSpace(target.Runtime.Provider) {
-			return fmt.Errorf("target %q runtime provider %q does not match access provider %q", name, target.Runtime.Provider, access.Provider)
 		}
 	}
 	if c.DefaultTarget != "" {
