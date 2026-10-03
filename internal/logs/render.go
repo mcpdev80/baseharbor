@@ -343,6 +343,12 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	lokiService := "loki"
 	alloyService := "alloy"
 	accessSpec := lokiAccessSpec()
+	if storageNetwork != "" {
+		accessSpec.Upstream = ""
+		accessSpec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
+		accessSpec.NetworkAliases = []string{"loki"}
+		accessSpec.CertificateNames = []string{"loki"}
+	}
 	if placement.Scope == capability.ScopeApplication {
 		lokiService = "baseharbor-internal-loki"
 		alloyService = "baseharbor-internal-alloy"
