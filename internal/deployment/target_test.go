@@ -320,3 +320,40 @@ func TestDeleteDeploymentRecordRemovesEntireDeploymentRoot(t *testing.T) {
 		t.Fatalf("deployment registry still contains deleted record: %#v", records)
 	}
 }
+
+func TestConfigAllowsRuntimeAndAccessProviderToDiffer(t *testing.T) {
+	cases := []Config{
+		{
+			Version: ConfigVersion,
+			Access: map[string]AccessDefinition{
+				"local-docker": {Provider: "local", Reference: "local"},
+			},
+			Targets: map[string]TargetDefinition{
+				"docker-local": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "local-docker"}},
+			},
+		},
+		{
+			Version: ConfigVersion,
+			Access: map[string]AccessDefinition{
+				"node-a": {Provider: "baseharbor-node-connector", Reference: "node-a"},
+			},
+			Targets: map[string]TargetDefinition{
+				"docker-remote": {Runtime: RuntimeDefinition{Provider: "docker"}, Access: TargetAccess{Reference: "node-a"}},
+			},
+		},
+		{
+			Version: ConfigVersion,
+			Access: map[string]AccessDefinition{
+				"cluster-a": {Provider: "native-api", Reference: "cluster-a", NativeContext: "prod"},
+			},
+			Targets: map[string]TargetDefinition{
+				"k8s-prod": {Runtime: RuntimeDefinition{Provider: "kubernetes"}, Access: TargetAccess{Reference: "cluster-a"}},
+			},
+		},
+	}
+	for i, cfg := range cases {
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("case %d rejected decoupled runtime/access providers: %v", i, err)
+		}
+	}
+}
