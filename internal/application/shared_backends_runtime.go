@@ -78,7 +78,7 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 			"pg_isready",
 			"-h", sharedPostgresAlias(),
 			"-p", "5432",
-			"-U", "baseharbor_admin",
+			"-U", "postgres",
 			"-d", "postgres",
 		)
 		if err == nil && strings.Contains(strings.ToLower(strings.TrimSpace(out)), "accepting connections") {
@@ -106,6 +106,19 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 		case <-ticker.C:
 		}
 	}
+}
+
+func ensureSharedPostgresAdminIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
+	script := `set -eu
+export PGPASSWORD="$SHARED_POSTGRES_SUPERUSER_PASSWORD"
+sql="SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', 'baseharbor_admin', '$SHARED_POSTGRES_ADMIN_PASSWORD') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'baseharbor_admin')\\gexec
+ALTER ROLE baseharbor_admin WITH LOGIN SUPERUSER PASSWORD '$SHARED_POSTGRES_ADMIN_PASSWORD';"
+printf '%s\n' "$sql" | psql -h postgres-access -U postgres -d postgres -v ON_ERROR_STOP=1
+`
+	if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "sh", "-ec", script); err != nil {
+		return fmt.Errorf("ensure shared PostgreSQL provider administrator: %w", err)
+	}
+	return nil
 }
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, app sharedBackendAppState) error {
@@ -148,6 +161,13 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 			return err
 		}
 		fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", password)
+	}
+	if state.PostgresSuperuserCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.PostgresSuperuserCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "SHARED_POSTGRES_SUPERUSER_PASSWORD=%s\n", password)
 	}
 	if state.PostgresReplicationCredential != "" {
 		password, err := readSharedBackendCredential(files.Dir, state.PostgresReplicationCredential)
@@ -401,8 +421,8 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
 		b.WriteString("      PGVERSION: \"18\"\n")
 		fmt.Fprintf(b, "      ETCD3_HOSTS: %s\n", strconv.Quote(strings.Join(etcdHosts, ",")))
-		b.WriteString("      PGUSER_SUPERUSER: baseharbor_admin\n")
-		b.WriteString("      PGPASSWORD_SUPERUSER: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
+		b.WriteString("      PGUSER_SUPERUSER: postgres\n")
+		b.WriteString("      PGPASSWORD_SUPERUSER: ${SHARED_POSTGRES_SUPERUSER_PASSWORD}\n")
 		b.WriteString("      PGUSER_STANDBY: baseharbor_replication\n")
 		b.WriteString("      PGPASSWORD_STANDBY: ${SHARED_POSTGRES_REPLICATION_PASSWORD}\n")
 		b.WriteString("      USE_ADMIN: \"false\"\n")
@@ -416,7 +436,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("      - ./postgresql/runtime:/run/baseharbor/tls-source:ro\n")
 		b.WriteString("    networks:\n      shared-backend: {}\n")
 		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U baseharbor_admin -d postgres\"]\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U postgres -d postgres\"]\n")
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 24\n      start_period: 10s\n\n")
 	}
 
@@ -443,7 +463,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /var/run/postgresql:rw,noexec,nosuid,nodev\n")
-	b.WriteString("    environment:\n      PGPASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
+	b.WriteString("    environment:\n      SHARED_POSTGRES_ADMIN_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n      SHARED_POSTGRES_SUPERUSER_PASSWORD: ${SHARED_POSTGRES_SUPERUSER_PASSWORD}\n      PGPASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
 	b.WriteString("    networks:\n      shared-backend: {}\n")
 }
 
