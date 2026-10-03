@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 type keycloakAdmin struct {
@@ -664,34 +665,69 @@ func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) boo
 }
 
 func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any) (int, string, error) {
-	var body io.Reader
+	var payloadData []byte
 	if payload != nil {
 		data, err := json.Marshal(payload)
 		if err != nil {
 			return 0, "", err
 		}
-		body = bytes.NewReader(data)
+		payloadData = data
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.endpoint, "/")+path, body)
-	if err != nil {
-		return 0, "", err
+
+	attempt := func() (int, string, error) {
+		var body io.Reader
+		if payloadData != nil {
+			body = bytes.NewReader(payloadData)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.endpoint, "/")+path, body)
+		if err != nil {
+			return 0, "", err
+		}
+		if payloadData != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if a.token != "" {
+			req.Header.Set("Authorization", "Bearer "+a.token)
+		}
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return 0, "", err
+		}
+		defer resp.Body.Close()
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return 0, "", err
+		}
+		return resp.StatusCode, strings.TrimSpace(string(data)), nil
 	}
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+
+	if method != http.MethodGet {
+		return attempt()
 	}
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+
+	retryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastStatus int
+	var lastBody string
+	var lastErr error
+	for {
+		status, body, err := attempt()
+		if err == nil && status != http.StatusServiceUnavailable {
+			return status, body, nil
+		}
+		lastStatus, lastBody, lastErr = status, body, err
+		select {
+		case <-retryCtx.Done():
+			if lastErr != nil {
+				return 0, "", lastErr
+			}
+			return lastStatus, lastBody, nil
+		case <-ticker.C:
+		}
 	}
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return 0, "", err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return 0, "", err
-	}
-	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
 func sortedUnique(values []string) []string {
