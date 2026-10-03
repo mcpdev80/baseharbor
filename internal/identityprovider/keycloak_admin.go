@@ -267,12 +267,30 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 }
 
 func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID string) error {
-	query := url.Values{}
-	managementClientID := "realm-management"
 	if strings.EqualFold(strings.TrimSpace(realm), "master") {
-		managementClientID = "master-realm"
+		status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/master/roles/admin", nil)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK {
+			return fmt.Errorf("resolve Keycloak master admin role: HTTP %d: %s", status, body)
+		}
+		var role keycloakRole
+		if err := json.Unmarshal([]byte(body), &role); err != nil {
+			return err
+		}
+		status, body, err = a.do(ctx, http.MethodPost, "/admin/realms/master/users/"+url.PathEscape(userID)+"/role-mappings/realm", []keycloakRole{role})
+		if err != nil {
+			return err
+		}
+		if status != http.StatusNoContent && status != http.StatusConflict {
+			return fmt.Errorf("grant Keycloak master admin role: HTTP %d: %s", status, body)
+		}
+		return nil
 	}
-	query.Set("clientId", managementClientID)
+
+	query := url.Values{}
+	query.Set("clientId", "realm-management")
 	lookupCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -296,10 +314,7 @@ func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID 
 		case <-ticker.C:
 		}
 	}
-	var status int
-	var body string
-	var err error
-	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
+	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
 	if err != nil {
 		return err
 	}
