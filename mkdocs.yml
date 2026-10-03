@@ -12,7 +12,7 @@ exclude_docs: |
 theme:
   name: material
   language: en
-  logo: brand/baseharbor-icon-64.png
+  logo: brand/baseharbor-master-lockup.png
   favicon: brand/baseharbor.ico
   features:
     - navigation.instant
