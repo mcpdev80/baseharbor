@@ -151,7 +151,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	fmt.Fprintln(out, "Target")
 	fmt.Fprintf(out, "  EFFECTIVE  %s\n", target.Name)
 	fmt.Fprintf(out, "  Runtime    %s\n", target.RuntimeProvider)
-	fmt.Fprintf(out, "  Access     %s\n", target.AccessReference)
+	fmt.Fprintf(out, "  Access     %s (%s)\n", target.AccessReference, target.AccessProvider)
 	if target.Scope != "" {
 		fmt.Fprintf(out, "  Scope      %s\n", target.Scope)
 	}
