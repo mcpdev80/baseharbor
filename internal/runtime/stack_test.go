@@ -377,6 +377,20 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	}
 }
 
+func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
+	text := string(composeYAML)
+	for _, want := range []string{
+		"  openbao:\n",
+		"      openbao-member-1:\n        condition: service_started",
+		"      openbao-member-2:\n        condition: service_started",
+		"      openbao-member-3:\n        condition: service_started",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("embedded OpenBao gateway dependency missing %q", want)
+		}
+	}
+}
+
 func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
 	for _, wanted := range []string{
