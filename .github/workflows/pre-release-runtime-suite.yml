@@ -218,6 +218,32 @@ jobs:
           cd "$workdir"
           env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
 
+      - name: Preserve demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static'
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/demo-runtime-diagnostics"
+          rm -rf "$out"
+          mkdir -p "$out"
+          cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
+          echo "::group::Demo runtime diagnostics"
+          find "$out" -maxdepth 1 -type f -printf '%f\n' | sort || true
+          for file in "$out"/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+
+      - name: Upload demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static'
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-runtime-diagnostics
+          if-no-files-found: warn
+          retention-days: 1
+
       - name: Run provider integration gate
         id: integration_gate
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration'
