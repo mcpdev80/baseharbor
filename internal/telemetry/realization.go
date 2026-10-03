@@ -250,4 +250,3 @@ func (d *Driver) RotatePKI(ctx context.Context) error {
 	}
 	return nil
 }
-
