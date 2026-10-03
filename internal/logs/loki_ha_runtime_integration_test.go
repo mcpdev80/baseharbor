@@ -101,18 +101,26 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		return runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
 	}
 
-	emitLokiHAProbe(t, registration.SyslogPort)
+	emitLokiHAProbes(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("stop Loki member: %v", err)
 	}
-	emitLokiHAProbe(t, registration.SyslogPort)
+	emitLokiHAProbes(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("restart Loki member: %v", err)
 	}
-	emitLokiHAProbe(t, registration.SyslogPort)
+	emitLokiHAProbes(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
+}
+
+func emitLokiHAProbes(t *testing.T, port int) {
+	t.Helper()
+	for i := 0; i < 5; i++ {
+		emitLokiHAProbe(t, port)
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 func emitLokiHAProbe(t *testing.T, port int) {
