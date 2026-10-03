@@ -116,7 +116,7 @@ frontend openbao
 
 backend members
   option httpchk
-  http-check send meth GET uri /v1/sys/health?standbyok=true&perfstandbyok=true ver HTTP/1.1 hdr Host openbao
+  http-check send meth GET uri /v1/sys/health ver HTTP/1.1 hdr Host openbao
   http-check expect status 200
   default-server check check-ssl verify none inter 2s fall 2 rise 2 init-addr last,libc,none
   server openbao-1 openbao-member-1:8200
