@@ -218,6 +218,7 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("volumes:\n")
 	if hasPostgres {
+		fmt.Fprintf(&b, "  shared-postgres-tls:\n    name: %s-%s-postgres-tls\n", files.ResourceProject, sharedBackendToken(state.Environment))
 		for ordinal := 1; ordinal <= 3; ordinal++ {
 			fmt.Fprintf(&b, "  shared-postgres-data-%d:\n    name: %s-%s-postgres-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
 			fmt.Fprintf(&b, "  shared-postgres-etcd-data-%d:\n    name: %s-%s-postgres-etcd-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
@@ -365,14 +366,34 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("    networks:\n      shared-backend: {}\n\n")
 	}
 
+	b.WriteString("  shared-postgres-tls-init:\n")
+	b.WriteString("    image: ghcr.io/zalando/spilo-18:4.1-p2\n")
+	b.WriteString("    restart: \"no\"\n")
+	b.WriteString("    user: \"0:0\"\n")
+	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+	b.WriteString("    command:\n")
+	b.WriteString("      - |\n")
+	b.WriteString("        uid=$(id -u postgres); gid=$(id -g postgres)\n")
+	b.WriteString("        cp /source/server-cert.pem /target/server-cert.pem\n")
+	b.WriteString("        cp /source/server-key.pem /target/server-key.pem\n")
+	b.WriteString("        chown \"$uid:$gid\" /target/server-cert.pem /target/server-key.pem\n")
+	b.WriteString("        chmod 0644 /target/server-cert.pem\n")
+	b.WriteString("        chmod 0600 /target/server-key.pem\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./postgresql/runtime:/source:ro\n")
+	b.WriteString("      - shared-postgres-tls:/target\n")
+	b.WriteString("    networks:\n      shared-backend: {}\n\n")
+
 	for ordinal := 1; ordinal <= 3; ordinal++ {
 		name := sharedPostgresMemberService(state.Environment, ordinal)
 		fmt.Fprintf(b, "  %s:\n", name)
 		b.WriteString("    image: ghcr.io/zalando/spilo-18:4.1-p2\n")
 		b.WriteString("    restart: unless-stopped\n")
 		b.WriteString("    read_only: false\n")
-		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    depends_on:\n")
+		b.WriteString("      shared-postgres-tls-init:\n")
+		b.WriteString("        condition: service_completed_successfully\n")
 		b.WriteString("    environment:\n")
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
@@ -390,8 +411,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("      SSL_TEST_RELOAD: \"true\"\n")
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(b, "      - shared-postgres-data-%d:/home/postgres/pgroot\n", ordinal)
-		b.WriteString("      - ./postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro\n")
-		b.WriteString("      - ./postgresql/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro\n")
+		b.WriteString("      - shared-postgres-tls:/run/baseharbor/tls:ro\n")
 		b.WriteString("    networks:\n      shared-backend: {}\n")
 		b.WriteString("    healthcheck:\n")
 		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U baseharbor_admin -d postgres\"]\n")
