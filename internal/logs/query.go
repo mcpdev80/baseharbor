@@ -225,7 +225,7 @@ func querySeries(ctx context.Context, client *http.Client, endpoint, match strin
 	values := url.Values{
 		"match[]": {match},
 		"start":   {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
-		"end":     {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+		"end":     {strconv.FormatInt(now.UnixNano(), 10)},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/series?"+values.Encode(), nil)
 	if err != nil {
@@ -281,7 +281,7 @@ func queryStream(ctx context.Context, client *http.Client, endpoint, query strin
 	values := url.Values{
 		"query": {query},
 		"start": {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
-		"end":   {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+		"end":   {strconv.FormatInt(now.UnixNano(), 10)},
 		"limit": {"1"},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)
