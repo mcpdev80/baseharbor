@@ -268,7 +268,11 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 
 func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID string) error {
 	query := url.Values{}
-	query.Set("clientId", "realm-management")
+	managementClientID := "realm-management"
+	if strings.EqualFold(strings.TrimSpace(realm), "master") {
+		managementClientID = "master-realm"
+	}
+	query.Set("clientId", managementClientID)
 	lookupCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
