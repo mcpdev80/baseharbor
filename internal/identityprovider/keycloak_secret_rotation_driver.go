@@ -257,7 +257,6 @@ func writeKeycloakClientSecretFile(path, secret string) error {
 	return nil
 }
 
-
 const keycloakClientSecretPropagationTimeout = 30 * time.Second
 
 func waitForKeycloakClientSecretAuthentication(ctx context.Context, admin *keycloakAdmin, realm, clientID, secret string) error {
