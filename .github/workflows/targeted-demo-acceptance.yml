@@ -77,7 +77,7 @@ jobs:
             rest="${payload#*/}"
             gate="${rest%%/*}"
             ref="$GITHUB_SHA"
-            demo_ref="8568f6a6555b1878540ba9375e52ec14b1366e8d"
+            demo_ref="5af8ec866faf9494b0b10b11284fe5ff71eee93f"
           fi
 
           case "$runtime" in
