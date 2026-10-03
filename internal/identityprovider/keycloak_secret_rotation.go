@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 var errKeycloakClientSecretRejected = errors.New("Keycloak rejected client secret")
@@ -79,14 +80,36 @@ func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUI
 }
 
 func (a *keycloakAdmin) retireRotatedClientSecret(ctx context.Context, realm, clientUUID string) error {
-	status, body, err := a.do(ctx, http.MethodDelete, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
-	if err != nil {
-		return err
+	path := keycloakAdminClientSecretPath(realm, clientUUID) + "/rotated"
+	retireCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		status, body, err := a.do(retireCtx, http.MethodDelete, path, nil)
+		if err == nil && (status == http.StatusOK || status == http.StatusNoContent || status == http.StatusNotFound) {
+			checkStatus, checkBody, checkErr := a.do(retireCtx, http.MethodGet, path, nil)
+			if checkErr == nil && checkStatus == http.StatusNotFound {
+				return nil
+			}
+			if checkErr != nil {
+				last = checkErr
+			} else {
+				last = fmt.Errorf("rotated Keycloak client secret still present: HTTP %d: %s", checkStatus, checkBody)
+			}
+		} else if err != nil {
+			last = err
+		} else {
+			last = fmt.Errorf("retire Keycloak rotated client secret: HTTP %d: %s", status, body)
+		}
+		select {
+		case <-retireCtx.Done():
+			return fmt.Errorf("retire Keycloak rotated client secret did not converge: %w", last)
+		case <-ticker.C:
+		}
 	}
-	if status != http.StatusOK && status != http.StatusNoContent {
-		return fmt.Errorf("retire Keycloak rotated client secret: HTTP %d: %s", status, body)
-	}
-	return nil
 }
 
 func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, realm, clientID, secret string) error {
