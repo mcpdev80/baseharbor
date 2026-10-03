@@ -249,7 +249,7 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 func tempoHAQueryAccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "tempo-access",
-		Upstreams:        []string{"http://tempo-query-frontend-1:3200", "http://tempo-query-frontend-2:3200"},
+		Upstreams:        []string{"http://tempo-query-frontend:3200"},
 		PublishedPortEnv: "BASEHARBOR_TEMPO_PORT",
 		ContainerPort:    8443,
 		Networks:         []string{"traces"},
