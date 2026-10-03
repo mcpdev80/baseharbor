@@ -55,7 +55,6 @@ fi`
 		}
 	}
 	return fmt.Errorf("configure OpenBao service PKI role: %w", roleErr)
-	return nil
 }
 
 func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) error {
