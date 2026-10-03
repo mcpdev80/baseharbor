@@ -91,13 +91,13 @@ func (a *keycloakAdmin) retireRotatedClientSecret(ctx context.Context, realm, cl
 
 func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, realm, clientID, secret string) error {
 	form := url.Values{}
-	form.Set("grant_type", "client_credentials")
+	form.Set("token", "baseharbor-client-secret-probe")
 	form.Set("client_id", clientID)
 	form.Set("client_secret", secret)
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		strings.TrimRight(a.endpoint, "/")+"/realms/"+url.PathEscape(realm)+"/protocol/openid-connect/token",
+		strings.TrimRight(a.endpoint, "/")+"/realms/"+url.PathEscape(realm)+"/protocol/openid-connect/token/introspect",
 		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
@@ -114,15 +114,12 @@ func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, re
 		Error string `json:"error"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&payload)
-	if strings.EqualFold(strings.TrimSpace(payload.Error), "invalid_client") {
+	if strings.EqualFold(strings.TrimSpace(payload.Error), "invalid_client") || resp.StatusCode == http.StatusUnauthorized {
 		return errKeycloakClientSecretRejected
 	}
-	if resp.StatusCode >= 500 {
-		return fmt.Errorf("Keycloak client-secret verification failed: HTTP %d", resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Keycloak client-secret introspection failed: HTTP %d", resp.StatusCode)
 	}
-	// The managed application client intentionally has service accounts disabled.
-	// A valid client secret can therefore return unauthorized_client/unsupported_grant
-	// for client_credentials while still proving that client authentication passed.
 	return nil
 }
 
