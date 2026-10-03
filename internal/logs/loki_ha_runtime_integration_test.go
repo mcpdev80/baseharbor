@@ -124,7 +124,7 @@ func emitLokiHAProbe(t *testing.T, port int) {
 	defer conn.Close()
 	message := fmt.Sprintf(
 		"<14>1 %s localhost api - - - baseharbor-loki-ha-probe\n",
-		time.Now().UTC().Format(time.RFC3339Nano),
+		time.Now().UTC().Format("2006-01-02T15:04:05.000000Z"),
 	)
 	if _, err := conn.Write([]byte(message)); err != nil {
 		t.Fatalf("write Alloy syslog ingress probe: %v", err)
