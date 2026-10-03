@@ -42,24 +42,6 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 	journal := credential.FileRotationJournal{Path: filepath.Join(files.Dir, "credential-rotation.json")}
 	prepared := credential.FilePreparedMaterialStore{Dir: filepath.Join(files.Dir, "credential-rotation-prepared")}
 
-	load := func() (rabbitMQCredentialRotationMaterial, error) {
-		data, err := prepared.Load(key)
-		if err != nil {
-			return rabbitMQCredentialRotationMaterial{}, err
-		}
-		if len(data) == 0 {
-			return rabbitMQCredentialRotationMaterial{}, errors.New("prepared RabbitMQ credential material is missing")
-		}
-		var material rabbitMQCredentialRotationMaterial
-		if err := json.Unmarshal(data, &material); err != nil {
-			return rabbitMQCredentialRotationMaterial{}, err
-		}
-		if material.OldAppUser == "" || material.OldAppPassword == "" || material.NewAppUser == "" || material.NewAppPassword == "" {
-			return rabbitMQCredentialRotationMaterial{}, errors.New("prepared RabbitMQ credential material is invalid")
-		}
-		return material, nil
-	}
-
 	return (credential.Rotation{
 		Key:      key,
 		Journal:  journal,
@@ -134,7 +116,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			return nil
 		},
 		Reconcile: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedRabbitMQCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -155,7 +137,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			return err
 		},
 		Verify: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedRabbitMQCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -180,7 +162,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			return nil
 		},
 		Retire: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedRabbitMQCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -202,7 +184,7 @@ func RotateRabbitMQCredential(ctx context.Context, runtime bhruntime.RuntimeProv
 			return nil
 		},
 		Rollback: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedRabbitMQCredential(prepared, key)
 			if err != nil {
 				return err
 			}
