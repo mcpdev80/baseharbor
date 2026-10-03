@@ -151,7 +151,7 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
         until rpk topic create tempo-traces -X brokers="$$brokers" --partitions 3 --replicas 3 --topic-config min.insync.replicas=2 >/tmp/topic-create.out 2>&1 \
           || rpk topic describe tempo-traces -X brokers="$$brokers" >/dev/null 2>&1; do
           attempts=$$((attempts+1))
-          if [ "$attempts" -ge 45 ]; then
+          if [ "$$attempts" -ge 45 ]; then
             echo "Tempo topic did not become available with RF=3" >&2
             cat /tmp/topic-create.out >&2 || true
             rpk cluster health -X admin.hosts="$$admin_hosts" || true
