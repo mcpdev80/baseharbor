@@ -55,7 +55,7 @@ func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 		objectstorage.PlatformBucket{Network: "baseharbor-object-storage"},
 	)
 	for _, want := range []string{
-		`until rpk cluster health -X admin.hosts="$admin_hosts" --exit-when-healthy`,
+		`until rpk cluster health -X admin.hosts="$$admin_hosts" --exit-when-healthy`,
 		`attempts=$$((attempts+1))`,
 		`if [ "$$attempts" -ge 45 ]`,
 		`rpk topic create tempo-traces -X brokers="$$brokers"`,
@@ -64,7 +64,7 @@ func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 			t.Fatalf("Tempo HA Compose missing escaped init expression %q:\n%s", want, rendered)
 		}
 	}
-	if got := strings.Count(rendered, `if [ "$attempts" -ge 45 ]`); got != 2 {
+	if got := strings.Count(rendered, `if [ "$$attempts" -ge 45 ]`); got != 2 {
 		t.Fatalf("Tempo HA Compose must preserve both retry counters, got %d:\n%s", got, rendered)
 	}
 	for _, forbidden := range []string{
