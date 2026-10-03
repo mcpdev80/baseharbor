@@ -15,6 +15,9 @@ func TestKeycloakClientSecretOverlapRotation(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/client-secret"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"value":"new-secret"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/client-secret"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"value":"new-secret"}`))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/client-secret/rotated"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"value":"old-secret"}`))
@@ -50,14 +53,14 @@ func TestKeycloakClientSecretVerificationDistinguishesInvalidClient(t *testing.T
 		body    string
 		wantErr bool
 	}{
-		{name: "authenticated but grant unavailable", status: http.StatusBadRequest, body: `{"error":"unauthorized_client"}`, wantErr: false},
+		{name: "authenticated inactive token", status: http.StatusOK, body: `{"active":false}`, wantErr: false},
 		{name: "invalid secret", status: http.StatusUnauthorized, body: `{"error":"invalid_client"}`, wantErr: true},
 		{name: "invalid secret explicit", status: http.StatusBadRequest, body: `{"error":"invalid_client"}`, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if !strings.HasSuffix(r.URL.Path, "/protocol/openid-connect/token") {
+				if !strings.HasSuffix(r.URL.Path, "/protocol/openid-connect/token/introspect") {
 					http.NotFound(w, r)
 					return
 				}
