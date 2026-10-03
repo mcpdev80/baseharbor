@@ -109,3 +109,14 @@ func TestLokiHAConfigEnablesHorizontalCompactorWorkerBackend(t *testing.T) {
 		t.Fatalf("Loki HA config must not invent a data-retention period:\n%s", cfg)
 	}
 }
+
+
+func TestLokiHAReplicationFactorToleratesOneMemberLoss(t *testing.T) {
+	cfg := lokiHAConfig()
+	if !strings.Contains(cfg, "replication_factor: 2") {
+		t.Fatalf("Loki HA must use replication factor 2 across 3 members so one unhealthy member remains tolerable:\n%s", cfg)
+	}
+	if strings.Contains(cfg, "replication_factor: 3") {
+		t.Fatalf("Loki HA must not require all three members for every replicated operation:\n%s", cfg)
+	}
+}
