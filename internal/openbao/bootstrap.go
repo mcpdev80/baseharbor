@@ -610,14 +610,35 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 }
 
 func verifyManagerKV(ctx context.Context, executor Executor, files bhruntime.Files, token string) error {
-	if _, err := execWithToken(ctx, executor, files, token, `exec bao kv put -mount=baseharbor apps/_baseharbor/bootstrap-probe value=ok`); err != nil {
+	retry := func(command string, validate func(string) bool) error {
+		var lastErr error
+		for attempt := 0; attempt < 20; attempt++ {
+			out, err := execWithToken(ctx, executor, files, token, command)
+			if err == nil && (validate == nil || validate(out)) {
+				return nil
+			}
+			lastErr = err
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+		if lastErr != nil {
+			return lastErr
+		}
+		return errors.New("OpenBao manager verification did not converge")
+	}
+
+	if err := retry(`exec bao kv put -mount=baseharbor apps/_baseharbor/bootstrap-probe value=ok`, nil); err != nil {
 		return errors.New("OpenBao manager cannot write application secrets")
 	}
-	out, err := execWithToken(ctx, executor, files, token, `exec bao kv get -field=value -mount=baseharbor apps/_baseharbor/bootstrap-probe`)
-	if err != nil || strings.TrimSpace(out) != "ok" {
+	if err := retry(`exec bao kv get -field=value -mount=baseharbor apps/_baseharbor/bootstrap-probe`, func(out string) bool {
+		return strings.TrimSpace(out) == "ok"
+	}); err != nil {
 		return errors.New("OpenBao manager cannot read application secrets")
 	}
-	if _, err := execWithToken(ctx, executor, files, token, `exec bao kv metadata delete -mount=baseharbor apps/_baseharbor/bootstrap-probe`); err != nil {
+	if err := retry(`exec bao kv metadata delete -mount=baseharbor apps/_baseharbor/bootstrap-probe`, nil); err != nil {
 		return errors.New("OpenBao manager cannot delete application secret metadata")
 	}
 	return nil
