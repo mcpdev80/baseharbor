@@ -226,3 +226,14 @@ func TestRetryManagerProvisioningConvergesAfterTransientFailures(t *testing.T) {
 		t.Fatalf("attempts = %d, want 3", attempts)
 	}
 }
+
+func TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints(t *testing.T) {
+	for _, path := range []string{
+		`path "sys/policies/acl/baseharbor-app-*"`,
+		`path "sys/policy/baseharbor-app-*"`,
+	} {
+		if !strings.Contains(managerPolicy, path) {
+			t.Fatalf("manager policy missing %s", path)
+		}
+	}
+}
