@@ -111,9 +111,7 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 func ensureSharedPostgresAdminIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
 	script := `set -eu
 export PGPASSWORD="$SHARED_POSTGRES_SUPERUSER_PASSWORD"
-sql="SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', 'baseharbor_admin', '$SHARED_POSTGRES_ADMIN_PASSWORD') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'baseharbor_admin')\\gexec
-ALTER ROLE baseharbor_admin WITH LOGIN SUPERUSER PASSWORD '$SHARED_POSTGRES_ADMIN_PASSWORD';"
-printf '%s\n' "$sql" | psql -h postgres-access -U postgres -d postgres -v ON_ERROR_STOP=1
+printf '%s\n' "SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', 'baseharbor_admin', :'admin_password') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'baseharbor_admin')\\gexec" "ALTER ROLE baseharbor_admin WITH LOGIN SUPERUSER PASSWORD :'admin_password';" | psql -h postgres-access -U postgres -d postgres -v ON_ERROR_STOP=1 -v admin_password="$SHARED_POSTGRES_ADMIN_PASSWORD"
 `
 	if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "sh", "-ec", script); err != nil {
 		return fmt.Errorf("ensure shared PostgreSQL provider administrator: %w", err)
