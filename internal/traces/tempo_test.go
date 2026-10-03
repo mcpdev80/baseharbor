@@ -75,7 +75,6 @@ func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 	}
 }
 
-
 func TestTempoHAQueryGatewayUsesStableAlias(t *testing.T) {
 	rendered := tempoHACompose(
 		Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"},
