@@ -52,7 +52,7 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 }
 
 func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	var lastErr error
 	for {
 		if _, err := platformopenbao.Inspect(ctx, compose, files); err == nil {
