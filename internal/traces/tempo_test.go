@@ -64,6 +64,9 @@ func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 			t.Fatalf("Tempo HA Compose missing escaped init expression %q:\n%s", want, rendered)
 		}
 	}
+	if got := strings.Count(rendered, `if [ "$attempts" -ge 45 ]`); got != 2 {
+		t.Fatalf("Tempo HA Compose must preserve both retry counters, got %d:\n%s", got, rendered)
+	}
 	for _, forbidden := range []string{
 		`-X brokers="$brokers"`,
 		`-X admin.hosts="$admin_hosts"`,
