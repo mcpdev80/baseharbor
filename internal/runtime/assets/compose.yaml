@@ -51,7 +51,6 @@ services:
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
-      USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
@@ -89,7 +88,6 @@ services:
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
-      USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
@@ -127,7 +125,6 @@ services:
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
       PGPASSWORD_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_PASSWORD}
-      USE_ADMIN: "false"
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
