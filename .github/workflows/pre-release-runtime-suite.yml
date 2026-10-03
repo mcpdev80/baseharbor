@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout BaseHarbor candidate
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
@@ -62,7 +62,7 @@ jobs:
 
       - name: Set up Go
         if: inputs.candidate_artifact == '' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -105,7 +105,7 @@ jobs:
       - name: Download prebuilt candidate
         id: candidate_artifact
         if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: ${{ inputs.candidate_artifact }}
           path: ${{ runner.temp }}/pre-release-candidate
@@ -332,7 +332,7 @@ jobs:
 
       - name: Upload atomic gate evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-gate-${{ inputs.runtime }}-${{ inputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/atomic-gate-evidence
