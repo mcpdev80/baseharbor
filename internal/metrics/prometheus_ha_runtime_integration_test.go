@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -31,7 +33,7 @@ func TestPrometheusHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	namespace := "prometheus-ha-acceptance"
 	t.Setenv(application.MetricsEnabledEnv, "true")
 
-	app := application.New("prometheus-ha-ci", "dev", false, false, false)
+	app := application.New("prometheus-ha-ci", "test", false, false, false)
 	app.HA = true
 	app.Services.SQL = false
 	app = application.WithWorkloadComponents(app, "api")
@@ -134,6 +136,83 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		t.Fatalf("restart Prometheus member: %v", err)
 	}
 	waitPrometheusHAReady(t, ctx, driver, resource, binding)
+
+	accessPolicy, err := serviceaccess.Resolve(app.Environment, "prometheus", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessPolicy.ServerName = "prometheus"
+	accessDir := filepath.Join(files.Dir, "service-access", "pki")
+	oldMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCA := mustReadPrometheusPKIFile(t, oldMaterial.CA)
+	oldClientCert := mustReadPrometheusPKIFile(t, oldMaterial.ClientCertificate)
+	oldClientKey := mustReadPrometheusPKIFile(t, oldMaterial.ClientKey)
+
+	issuer.Rotate(t)
+	if err := driver.RotatePKI(ctx); err != nil {
+		t.Fatalf("rotate Prometheus PKI: %v", err)
+	}
+	waitPrometheusHAReady(t, ctx, driver, resource, binding)
+
+	newMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := ProviderEndpoint(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrometheusRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, oldCA, nil, nil, "retired CA")
+	assertPrometheusRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, nil, oldClientCert, oldClientKey, "retired client certificate")
+}
+
+func mustReadPrometheusPKIFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func assertPrometheusRetiredMaterialRejected(t *testing.T, ctx context.Context, policy serviceaccess.Policy, endpoint string, current serviceaccess.TLSMaterial, oldCA, oldClientCert, oldClientKey []byte, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	material := current
+	if oldCA != nil {
+		material.CA = filepath.Join(dir, "old-ca.pem")
+		if err := os.WriteFile(material.CA, oldCA, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oldClientCert != nil {
+		material.ClientCertificate = filepath.Join(dir, "old-client.pem")
+		material.ClientKey = filepath.Join(dir, "old-client-key.pem")
+		if err := os.WriteFile(material.ClientCertificate, oldClientCert, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(material.ClientKey, oldClientKey, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/-/ready", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("%s still authenticates/validates the rotated Prometheus endpoint", label)
+	}
 }
 
 func waitPrometheusHAReady(t *testing.T, ctx context.Context, driver *Driver, resource capability.Resource, binding capability.Binding) {
