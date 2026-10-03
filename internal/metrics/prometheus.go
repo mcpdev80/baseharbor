@@ -223,7 +223,7 @@ func (d *Driver) RotatePKI(ctx context.Context) error {
 	}
 	registrations := []sourceRegistration{registrationForAt(d.app, d.namespace)}
 	if placement, placementErr := d.placement(); placementErr == nil && placement.Scope == capability.ScopeShared {
-		if current, readErr := readSharedRegistrations(files.Registrations); readErr == nil {
+		if current, readErr := readRegistrations(files.Registrations); readErr == nil {
 			registrations = current
 		}
 	}
