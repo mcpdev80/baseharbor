@@ -103,7 +103,6 @@ func TestServiceCAReadsPublicCAOnly(t *testing.T) {
 	}
 }
 
-
 type servicePKIRotationFake struct {
 	activeCA        string
 	defaultIssuer   string
