@@ -98,7 +98,30 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	diagnose := func() string {
 		diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer diagnosticCancel()
-		return runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
+		detail := runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
+		metrics, metricsErr := runtime.ExecProject(
+			diagnosticCtx,
+			placement.Project,
+			files.Compose,
+			files.Env,
+			"alloy",
+			"/bin/bash",
+			"-lc",
+			"exec 3<>/dev/tcp/127.0.0.1/12345; printf 'GET /metrics HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; cat <&3",
+		)
+		if metricsErr != nil {
+			return detail + "\nalloy metrics: " + metricsErr.Error()
+		}
+		var relevant []string
+		for _, line := range strings.Split(metrics, "\n") {
+			if strings.Contains(line, "loki_source_syslog_") || strings.Contains(line, "loki_write_") {
+				relevant = append(relevant, line)
+			}
+		}
+		if len(relevant) > 0 {
+			detail += "\nalloy metrics:\n" + strings.Join(relevant, "\n")
+		}
+		return detail
 	}
 
 	emitLokiHAProbes(t, registration.SyslogPort)
