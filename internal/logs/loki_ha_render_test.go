@@ -110,7 +110,6 @@ func TestLokiHAConfigEnablesHorizontalCompactorWorkerBackend(t *testing.T) {
 	}
 }
 
-
 func TestLokiHAReplicationFactorToleratesOneMemberLoss(t *testing.T) {
 	cfg := lokiHAConfig()
 	if !strings.Contains(cfg, "replication_factor: 2") {
