@@ -105,7 +105,7 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		b.WriteString("      SCOPE: baseharbor-keycloak-db\n")
 		b.WriteString("      PGVERSION: \"18\"\n")
-		fmt.Fprintf(&b, "      PATRONI_ETCD3_HOSTS: %s\n", strconv.Quote("'"+strings.ReplaceAll(etcdHosts, ",", "','")+"'"))
+		fmt.Fprintf(&b, "      ETCD3_HOSTS: %s\n", strconv.Quote("'"+strings.ReplaceAll(etcdHosts, ",", "','")+"'"))
 		b.WriteString("      PGUSER_SUPERUSER: postgres\n")
 		b.WriteString("      PGPASSWORD_SUPERUSER: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}\n")
 		b.WriteString("      PGUSER_STANDBY: keycloak_replication\n")
