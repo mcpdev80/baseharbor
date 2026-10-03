@@ -199,6 +199,20 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 	}
 }
 
+
+func TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers(t *testing.T) {
+	var b strings.Builder
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	got := b.String()
+
+	if strings.Contains(got, "USE_ADMIN:") {
+		t.Fatalf("shared PostgreSQL Compose must not enable Spilo legacy bootstrap.users path:\n%s", got)
+	}
+	if !strings.Contains(got, "PGUSER_SUPERUSER: postgres") {
+		t.Fatalf("shared PostgreSQL Compose must retain postgres as Spilo bootstrap superuser:\n%s", got)
+	}
+}
+
 func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	var b strings.Builder
 	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
