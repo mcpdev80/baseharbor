@@ -206,11 +206,10 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	got := b.String()
 
 	for _, want := range []string{
-		"shared-postgres-tls-init:",
-		"user: \"0:0\"",
-		"chmod 0600 /target/server-key.pem",
-		"shared-postgres-tls:/run/baseharbor/tls:ro",
-		"condition: service_completed_successfully",
+		"install -d -o postgres -g postgres -m 0750 /run/baseharbor/tls",
+		"chmod 0600 /run/baseharbor/tls/server-key.pem",
+		"./postgresql/runtime:/run/baseharbor/tls-source:ro",
+		"exec /launch.sh",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("shared PostgreSQL Compose missing %q:\n%s", want, got)
@@ -232,6 +231,24 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 		}
 		if strings.Contains(block, `cap_drop: ["ALL"]`) {
 			t.Fatalf("Spilo member %s must retain bootstrap capabilities:\n%s", member, block)
+		}
+		if !strings.Contains(block, "/run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750") {
+			t.Fatalf("Spilo member %s must use private TLS tmpfs:\n%s", member, block)
+		}
+	}
+}
+
+
+func TestSharedValkeyComposePreservesPasswordForContainerShell(t *testing.T) {
+	var b strings.Builder
+	writeSharedValkeyCompose(&b, sharedBackendAppState{Application: "demo", Environment: "dev"}, "default")
+	got := b.String()
+	for _, want := range []string{
+		`printf 'requirepass %s\n' "$$VALKEY_PASSWORD"`,
+		`printf 'masterauth %s\n' "$$VALKEY_PASSWORD"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("shared Valkey Compose missing escaped runtime variable %q:\n%s", want, got)
 		}
 	}
 }
