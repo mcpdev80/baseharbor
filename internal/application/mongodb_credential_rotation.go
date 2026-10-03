@@ -44,27 +44,6 @@ func RotateMongoDBCredential(ctx context.Context, runtime bhruntime.RuntimeProvi
 	journal := credential.FileRotationJournal{Path: filepath.Join(files.Dir, "credential-rotation.json")}
 	prepared := credential.FilePreparedMaterialStore{Dir: filepath.Join(files.Dir, "credential-rotation-prepared")}
 
-	load := func() (mongoDBCredentialRotationMaterial, error) {
-		data, err := prepared.Load(key)
-		if err != nil {
-			return mongoDBCredentialRotationMaterial{}, err
-		}
-		if len(data) == 0 {
-			return mongoDBCredentialRotationMaterial{}, errors.New("prepared MongoDB credential material is missing")
-		}
-		var material mongoDBCredentialRotationMaterial
-		if err := json.Unmarshal(data, &material); err != nil {
-			return mongoDBCredentialRotationMaterial{}, err
-		}
-		if material.Database == "" || material.OldAppUser == "" || material.NewAppUser == "" ||
-			material.OldAdminUser == "" || material.NewAdminUser == "" ||
-			material.OldAppPassword == "" || material.NewAppPassword == "" ||
-			material.OldAdminPassword == "" || material.NewAdminPassword == "" {
-			return mongoDBCredentialRotationMaterial{}, errors.New("prepared MongoDB credential material is invalid")
-		}
-		return material, nil
-	}
-
 	return (credential.Rotation{
 		Key:      key,
 		Journal:  journal,
@@ -139,7 +118,7 @@ func RotateMongoDBCredential(ctx context.Context, runtime bhruntime.RuntimeProvi
 			return nil
 		},
 		Reconcile: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedMongoDBCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -160,7 +139,7 @@ func RotateMongoDBCredential(ctx context.Context, runtime bhruntime.RuntimeProvi
 			return rollMongoDBCredentialConsumers(ctx, runtime, m, files, instance)
 		},
 		Verify: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedMongoDBCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -186,7 +165,7 @@ func RotateMongoDBCredential(ctx context.Context, runtime bhruntime.RuntimeProvi
 			return nil
 		},
 		Retire: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedMongoDBCredential(prepared, key)
 			if err != nil {
 				return err
 			}
@@ -206,7 +185,7 @@ func RotateMongoDBCredential(ctx context.Context, runtime bhruntime.RuntimeProvi
 			return mongoDBVerifyCredential(ctx, runtime, files, authority, material.OldAdminUser, material.OldAdminPassword, "admin", false)
 		},
 		Rollback: func(ctx context.Context) error {
-			material, err := load()
+			material, err := loadPreparedMongoDBCredential(prepared, key)
 			if err != nil {
 				return err
 			}
