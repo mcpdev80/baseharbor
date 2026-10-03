@@ -583,7 +583,35 @@ func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Clien
 	if err != nil {
 		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withOTelHostHeader(client, policy.ServerName), nil
+}
+
+type otelHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t otelHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withOTelHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = otelHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
