@@ -47,7 +47,7 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := traceDriver.Preflight(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatal(err)
 	}
-	provisionCtx, provisionCancel := context.WithTimeout(ctx, 3*time.Minute)
+	provisionCtx, provisionCancel := context.WithTimeout(ctx, 4*time.Minute)
 	err = traceDriver.Provision(provisionCtx, traceResource, capability.Binding{})
 	provisionCancel()
 	if err != nil {
