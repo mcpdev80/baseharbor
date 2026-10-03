@@ -337,10 +337,30 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 		user:     d.instance.AdminUsername,
 		password: d.instance.AdminPassword,
 	}
-	if err := admin.login(ctx); err != nil {
-		return nil, err
+	loginCtx, cancel := context.WithTimeout(ctx, identityEndpointReadyTimeout)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var last error
+	for {
+		if err := admin.login(loginCtx); err == nil {
+			return admin, nil
+		} else {
+			last = err
+			var loginErr *keycloakAdminLoginError
+			if !errors.As(err, &loginErr) || loginErr.Status != http.StatusServiceUnavailable {
+				return nil, err
+			}
+		}
+		select {
+		case <-loginCtx.Done():
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, fmt.Errorf("Keycloak admin bootstrap timeout after %s: %w", identityEndpointReadyTimeout, last)
+		case <-ticker.C:
+		}
 	}
-	return admin, nil
 }
 
 func (d *KeycloakDriver) ensureClientSecret() (string, error) {
