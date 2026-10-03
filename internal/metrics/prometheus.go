@@ -205,6 +205,55 @@ func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
 	return ExistingProviderFiles(d.app)
 }
 
+func (d *Driver) RotatePKI(ctx context.Context) error {
+	if d.runtime == nil || d.issuer == nil {
+		return errors.New("managed Prometheus PKI rotation requires runtime and issuer")
+	}
+	apply := func() (ProviderFiles, error) {
+		instance, err := d.realization.Apply(ctx)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		d.client = instance.HTTPClient
+		return d.existingProviderFiles()
+	}
+	files, err := apply()
+	if err != nil {
+		return fmt.Errorf("reconcile replacement Prometheus PKI with overlap: %w", err)
+	}
+	registrations := []sourceRegistration{registrationForAt(d.app, d.namespace)}
+	if placement, placementErr := d.placement(); placementErr == nil && placement.Scope == capability.ScopeShared {
+		if current, readErr := readSharedRegistrations(files.Registrations); readErr == nil {
+			registrations = current
+		}
+	}
+	accessEnvironment := prometheusAccessEnvironment(d.app, registrations)
+	accessPolicy, err := serviceaccess.Resolve(accessEnvironment, "prometheus", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	accessPolicy.ServerName = "prometheus"
+	memberPolicy := accessPolicy
+	memberPolicy.AuthenticationRequired = false
+	memberPolicy.Authentication = serviceaccess.AuthenticationNative
+	for _, item := range []struct {
+		name   string
+		policy serviceaccess.Policy
+		dir    string
+	}{
+		{name: "frontend", policy: accessPolicy, dir: filepath.Join(files.Dir, "service-access", "pki")},
+		{name: "members", policy: memberPolicy, dir: filepath.Join(files.Dir, "members", "service-access", "pki")},
+	} {
+		if err := serviceaccess.RetireTLSOverlap(ctx, d.issuer, item.policy, item.dir); err != nil {
+			return fmt.Errorf("retire previous Prometheus %s CA: %w", item.name, err)
+		}
+	}
+	if _, err := apply(); err != nil {
+		return fmt.Errorf("reconcile Prometheus after CA retirement: %w", err)
+	}
+	return nil
+}
+
 func (d *Driver) Descriptor() capability.Provider { return capability.Prometheus }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
