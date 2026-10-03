@@ -1,0 +1,54 @@
+/*
+ * BaseHarbor public documentation shell.
+ *
+ * Keep the site aligned with docs/brand while relying on MkDocs Material for
+ * responsive navigation behavior. The primary domain navigation lives in the
+ * left sidebar; horizontal navigation tabs are intentionally disabled.
+ */
+
+:root {
+  --md-primary-fg-color: var(--bh-harbor-navy);
+  --md-primary-fg-color--light: var(--bh-steel);
+  --md-primary-fg-color--dark: var(--bh-deep-navy);
+  --md-accent-fg-color: var(--bh-signal-blue);
+}
+
+body,
+input {
+  font-family: var(--bh-font-ui);
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--bh-font-code);
+}
+
+.md-header {
+  background-color: var(--bh-harbor-navy);
+}
+
+/*
+ * Defensive guard: the v0.4.24 information architecture is sidebar-first.
+ * Even if navigation.tabs is accidentally re-enabled later, never render the
+ * domain list as an overflowing horizontal menu.
+ */
+.md-tabs {
+  display: none;
+}
+
+.md-nav__link--active {
+  font-weight: 700;
+}
+
+/* Keep long domain labels readable instead of forcing horizontal overflow. */
+.md-nav__link,
+.md-nav__title {
+  overflow-wrap: anywhere;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    border-right: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  }
+}
