@@ -70,19 +70,18 @@ jobs:
             exit 1
           fi
 
-          git fetch origin main develop --tags
+          git fetch origin main develop
+          release_ref="refs/remotes/origin/release/$tag"
+          git fetch origin "refs/heads/release/$tag:$release_ref" || true
           if git merge-base --is-ancestor origin/develop HEAD; then
             echo "Candidate follows the current develop release line."
           elif git merge-base --is-ancestor origin/main HEAD; then
             echo "Candidate follows the current released main line."
+          elif git show-ref --verify --quiet "$release_ref" && [ "$(git rev-parse "$release_ref")" = "$(git rev-parse HEAD)" ]; then
+            echo "Candidate exactly matches the current release/$tag branch tip."
           else
-            released_tag="$(git describe --tags --abbrev=0 origin/main)"
-            if [ -n "$released_tag" ] && git merge-base --is-ancestor "$released_tag" HEAD; then
-              echo "Candidate descends from released lineage $released_tag; current develop/main advanced after the release branch diverged."
-            else
-              echo "Pre-release candidate must descend from current develop/main or released lineage." >&2
-              exit 1
-            fi
+            echo "Pre-release candidate must follow current develop/main or exactly match release/$tag." >&2
+            exit 1
           fi
 
           version="${tag#v}"
