@@ -96,4 +96,3 @@ func mongodbHostSeedHosts(m Manifest, values map[string]string, instance string)
 	}
 	return hosts, nil
 }
-
