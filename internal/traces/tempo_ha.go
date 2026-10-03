@@ -187,7 +187,11 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
-		b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+		if wal == "" {
+			b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\", \"/var/tempo:rw,nosuid,nodev\"]\n")
+		} else {
+			b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+		}
 		b.WriteString("    command:\n")
 		b.WriteString("      - -config.file=/etc/tempo/tempo.yaml\n")
 		b.WriteString("      - -config.expand-env=true\n")
