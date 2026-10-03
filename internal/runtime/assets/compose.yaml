@@ -194,8 +194,8 @@ services:
       - |
         attempts=0
         until /bin/sh /run/baseharbor/openbao-init.sh; do
-          attempts=$((attempts+1))
-          if [ "${attempts}" -ge 90 ]; then
+          attempts=$$((attempts+1))
+          if [ "$${attempts}" -ge 90 ]; then
             echo "BaseHarbor PostgreSQL HA endpoint did not become SQL-ready for initialization" >&2
             exit 1
           fi
