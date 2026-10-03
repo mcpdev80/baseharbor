@@ -56,7 +56,7 @@ func TestWriteOpenBaoHAProxyConfigRoutesOnlyToActiveLeader(t *testing.T) {
 	for _, required := range []string{
 		"option httpchk",
 		"/v1/sys/health?standbyok=false&perfstandbyok=false",
-		"http-check expect status 200,501,503",
+		"http-check expect status 200",
 		"default-server check check-ssl verify none",
 	} {
 		if !strings.Contains(config, required) {
