@@ -638,7 +638,7 @@ func verifyManagerKV(ctx context.Context, executor Executor, files bhruntime.Fil
 	}); err != nil {
 		return errors.New("OpenBao manager cannot read application secrets")
 	}
-	if err := retry(`exec bao kv metadata delete -mount=baseharbor apps/_baseharbor/bootstrap-probe`, nil); err != nil {
+	if err := retry(`exec bao delete baseharbor/metadata/apps/_baseharbor/bootstrap-probe`, nil); err != nil {
 		return errors.New("OpenBao manager cannot delete application secret metadata")
 	}
 	return nil
