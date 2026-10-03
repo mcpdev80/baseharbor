@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"net/http"
 	"context"
 	"errors"
 	"fmt"
@@ -187,6 +188,11 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 		ContainerPort:    8443,
 		Networks:         []string{"logs-internal", "logs-publish"},
 		RequireClient:    true,
-		HealthURI:        "/ready",
+		// /ready reflects cluster-wide module readiness and can become 503
+		// transiently after a member loss even while this process can serve
+		// queries. The frontend health check must only evict dead processes;
+		// query/ingestion continuity is verified separately by the HA gate.
+		HealthURI:        "/loki/api/v1/status/buildinfo",
+		HealthStatus:     http.StatusOK,
 	}
 }
