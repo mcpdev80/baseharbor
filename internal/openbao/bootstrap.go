@@ -683,4 +683,8 @@ path "baseharbor-pki/revoke" {
 path "baseharbor-pki/root/rotate/internal" {
   capabilities = ["create", "update"]
 }
+
+path "baseharbor-pki/config/issuers" {
+  capabilities = ["read", "update"]
+}
 `
