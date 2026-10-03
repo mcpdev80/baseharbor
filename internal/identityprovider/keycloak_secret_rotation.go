@@ -114,7 +114,7 @@ func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, re
 		Error string `json:"error"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&payload)
-	if strings.EqualFold(strings.TrimSpace(payload.Error), "invalid_client") || resp.StatusCode == http.StatusUnauthorized {
+	if strings.EqualFold(strings.TrimSpace(payload.Error), "invalid_client") {
 		return errKeycloakClientSecretRejected
 	}
 	if resp.StatusCode >= 500 {
