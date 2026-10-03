@@ -187,6 +187,7 @@ func tempoHACompose(p Placement, access serviceaccess.HTTPGatewayFiles, storage 
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		// Stateless Tempo roles still initialize storage paths; keep them writable without persistence.
 		if wal == "" {
 			b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\", \"/var/tempo:rw,nosuid,nodev\"]\n")
 		} else {
