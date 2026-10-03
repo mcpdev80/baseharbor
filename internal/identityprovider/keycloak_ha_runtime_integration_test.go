@@ -2,10 +2,14 @@ package identityprovider
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +124,49 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatalf("rotate Keycloak admin credential: %v", err)
 	}
 	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak credential/signing/admin rotation")
+
+	oldCA, err := os.ReadFile(files.PublicAccess.Material.CA)
+	if err != nil {
+		t.Fatalf("read Keycloak pre-rotation CA: %v", err)
+	}
+	issuer.Rotate(t)
+	if err := driver.RotatePKI(ctx); err != nil {
+		t.Fatalf("rotate Keycloak PKI: %v", err)
+	}
+	waitForKeycloakContinuity(t, ctx, driver, resource, binding, "Keycloak PKI rotation")
+	assertKeycloakOldCARejected(t, ctx, oldCA, files.PublicPort)
+}
+
+func assertKeycloakOldCARejected(t *testing.T, ctx context.Context, oldCA []byte, port int) {
+	t.Helper()
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(oldCA) {
+		t.Fatal("pre-rotation Keycloak CA is invalid")
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    roots,
+				ServerName: keycloakPublicHost,
+			},
+			TLSHandshakeTimeout: 5 * time.Second,
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+			},
+		},
+		Timeout: 5 * time.Second,
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+keycloakPublicHost+":"+strconv.Itoa(port)+"/realms/master/.well-known/openid-configuration", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("retired Keycloak CA still validates the stable identity endpoint")
+	}
 }
 
 func mustKeycloakRuntimeEnv(t *testing.T, path string) map[string]string {
