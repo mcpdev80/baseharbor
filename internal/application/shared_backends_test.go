@@ -199,7 +199,6 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 	}
 }
 
-
 func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	var b strings.Builder
 	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
@@ -239,7 +238,6 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 		}
 	}
 }
-
 
 func TestSharedValkeyComposePreservesPasswordForContainerShell(t *testing.T) {
 	var b strings.Builder
