@@ -238,11 +238,14 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 		if start < 0 {
 			t.Fatalf("missing shared PostgreSQL member %s:\n%s", member, got)
 		}
-		end := strings.Index(got[start+2:], "\n  ")
-		block := got[start:]
-		if end >= 0 {
-			block = got[start : start+2+end]
+		var blockLines []string
+		for i, line := range strings.Split(got[start:], "\n") {
+			if i > 0 && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") {
+				break
+			}
+			blockLines = append(blockLines, line)
 		}
+		block := strings.Join(blockLines, "\n")
 		if strings.Contains(block, `cap_drop: ["ALL"]`) {
 			t.Fatalf("Spilo member %s must retain bootstrap capabilities:\n%s", member, block)
 		}
