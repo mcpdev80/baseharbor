@@ -249,3 +249,21 @@ func quotePostgresLiteral(value string) string {
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
+
+func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.SQLManagementUI {
+			return true
+		}
+	}
+	return false
+}
+
+func sharedBackendCacheUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.CacheManagementUI {
+			return true
+		}
+	}
+	return false
+}
