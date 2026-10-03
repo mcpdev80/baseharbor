@@ -212,7 +212,6 @@ func (d *KeycloakDriver) RotateSigningKey(ctx context.Context) error {
 	return nil
 }
 
-
 func (d *KeycloakDriver) verifySigningRotationOverlap(ctx context.Context, admin *keycloakAdmin, material preparedKeycloakSigningRotation) (preparedKeycloakSigningRotation, error) {
 	newToken, err := admin.mintSigningProbeToken(ctx, d.realm, material.ProbeClientID, material.ProbeSecret)
 	if err != nil {
