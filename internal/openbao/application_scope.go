@@ -110,7 +110,6 @@ bao policy write %s "$tmp" >/dev/null`, policyName)
 	return nil
 }
 
-
 func retryManagerProvisioning(ctx context.Context, operation func() error) error {
 	retryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
