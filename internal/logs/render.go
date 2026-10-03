@@ -51,7 +51,7 @@ server:
   http_listen_port: 3100
 common:
   path_prefix: /loki
-  replication_factor: 3
+  replication_factor: 2
   compactor_grpc_address: loki-1:9095
   ring:
     kvstore:
