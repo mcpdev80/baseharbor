@@ -155,7 +155,12 @@ func validateProviderLogSource(m application.Manifest, source observability.Sign
 
 func waitForStream(ctx context.Context, client *http.Client, endpoint string, m application.Manifest, service string) error {
 	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_service=%q}`, m.Name, m.Environment, service)
-	return waitForQuery(ctx, client, endpoint, query, m.Name+"/"+service)
+	// Stream verification is about durable ingestion and label/query continuity.
+	// Loki 3.7 can report matching entries in query stats while query_range
+	// returns an empty line result during HA ring transitions. The /series API
+	// is the stable contract for proving that the matching stream is present
+	// and queryable across members.
+	return waitForSeries(ctx, client, endpoint, query, m.Name+"/"+service)
 }
 
 func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, description string) error {
