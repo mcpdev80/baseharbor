@@ -162,14 +162,14 @@ func waitForStream(ctx context.Context, client *http.Client, endpoint string, m 
 
 	var last error
 	for {
-		probeCtx, probeCancel := context.WithTimeout(deadline, 12*time.Second)
+		probeCtx, probeCancel := context.WithTimeout(deadline, 20*time.Second)
 		ok, queryErr := queryStream(probeCtx, client, endpoint, query)
 		probeCancel()
 		if queryErr == nil && ok {
 			return nil
 		}
 
-		probeCtx, probeCancel = context.WithTimeout(deadline, 12*time.Second)
+		probeCtx, probeCancel = context.WithTimeout(deadline, 20*time.Second)
 		ok, seriesErr := querySeries(probeCtx, client, endpoint, query)
 		probeCancel()
 		if seriesErr == nil && ok {
