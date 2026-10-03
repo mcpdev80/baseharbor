@@ -35,7 +35,7 @@ type keycloakKeyMetadata struct {
 	ProviderID       string   `json:"providerId"`
 	ProviderPriority int      `json:"providerPriority"`
 	Kid              string   `json:"kid"`
-	Status           []string `json:"status,omitempty"`
+	Status           string   `json:"status,omitempty"`
 	Type             string   `json:"type,omitempty"`
 	Algorithm        string   `json:"algorithm,omitempty"`
 	PublicKey        string   `json:"publicKey,omitempty"`
