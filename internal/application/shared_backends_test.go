@@ -218,9 +218,9 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	got := b.String()
 
 	for _, want := range []string{
-		"uid=$(id -u postgres); gid=$(id -g postgres)",
+		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
 		"chmod 0755 /run/baseharbor",
-		"chown \"0:$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
+		"chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
 		"chmod 0640 /run/baseharbor/tls/server-key.pem",
 		"./postgresql/runtime:/run/baseharbor/tls-source:ro",
 		"exec /bin/sh /launch.sh init",
