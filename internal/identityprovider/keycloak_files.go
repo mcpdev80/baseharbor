@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	KeycloakImage      = "quay.io/keycloak/keycloak:26.7.4"
+	KeycloakImage      = "quay.io/keycloak/keycloak:26.8.0"
 	KeycloakService    = "keycloak"
 	keycloakPublicHost = "identity.localhost"
 	keycloakHTTPSPort  = 8443
@@ -331,7 +331,6 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
         condition: service_completed_successfully
     command:
       - start
-      - --features=client-secret-rotation
       - --cache=ispn
       - --cache-stack=jdbc-ping
       - --http-enabled=false
