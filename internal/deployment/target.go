@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -188,6 +189,9 @@ func (c Config) Validate() error {
 		}
 		if strings.TrimSpace(access.Provider) == "" || strings.TrimSpace(access.Reference) == "" {
 			return fmt.Errorf("access %q requires provider and reference", name)
+		}
+		if _, err := targetaccess.ParseProviderKind(access.Provider); err != nil {
+			return fmt.Errorf("access %q: %w", name, err)
 		}
 	}
 	for name, target := range c.Targets {
