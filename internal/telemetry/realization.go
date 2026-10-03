@@ -2,11 +2,13 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -186,3 +188,66 @@ func registerOTLPObservation(app application.Manifest, instance OTLPInstance) er
 		Signals:    signals,
 	})
 }
+
+func (d *Driver) RotatePKI(ctx context.Context) error {
+	if d.runtime == nil || d.issuer == nil {
+		return errors.New("managed OTLP PKI rotation requires runtime and issuer")
+	}
+	reconcile := func() (ProviderFiles, error) {
+		files, err := d.ensureProviderFiles(ctx)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		if err := d.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return ProviderFiles{}, err
+		}
+		if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return ProviderFiles{}, err
+		}
+		endpoint, err := providerEndpoint(files)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		client, err := managedOTLPHTTPClient(d.app.Environment, files)
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		verifyCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+		if err := waitOTLP(verifyCtx, client, endpoint); err != nil {
+			return ProviderFiles{}, fmt.Errorf("verify OTLP after PKI reconcile: %w", err)
+		}
+		d.client = client
+		return files, nil
+	}
+
+	files, err := reconcile()
+	if err != nil {
+		return fmt.Errorf("reconcile replacement OTLP PKI with overlap: %w", err)
+	}
+	accessPolicy, err := serviceaccess.Resolve(d.app.Environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return err
+	}
+	accessPolicy.ServerName = "otel-collector"
+	memberPolicy := accessPolicy
+	memberPolicy.AuthenticationRequired = true
+	memberPolicy.Authentication = serviceaccess.AuthenticationMTLS
+	for _, item := range []struct {
+		name   string
+		policy serviceaccess.Policy
+		dir    string
+	}{
+		{name: "frontend", policy: accessPolicy, dir: filepath.Join(files.Dir, "service-access", "pki")},
+		{name: "members", policy: memberPolicy, dir: filepath.Join(files.Dir, "members", "service-access", "pki")},
+	} {
+		if err := serviceaccess.RetireTLSOverlap(ctx, d.issuer, item.policy, item.dir); err != nil {
+			return fmt.Errorf("retire previous OTLP %s CA: %w", item.name, err)
+		}
+	}
+	if _, err := reconcile(); err != nil {
+		return fmt.Errorf("reconcile OTLP after CA retirement: %w", err)
+	}
+	return nil
+}
+
