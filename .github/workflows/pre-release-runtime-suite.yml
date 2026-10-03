@@ -269,7 +269,28 @@ jobs:
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$ARTIFACT_DIR/runtime-diagnostics"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          diag="$RUNNER_TEMP/atomic-runtime-diagnostics"
+          rm -rf "$diag"
+          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$diag"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          echo "::group::Atomic runtime failure diagnostics"
+          cat "$diag/summary.md" 2>/dev/null || true
+          for file in "$diag"/containers/*.inspect.txt "$diag"/containers/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+          mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
+          cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
+
+      - name: Upload atomic failure diagnostics
+        if: failure() && inputs.runtime != 'static'
+        uses: actions/upload-artifact@v6
+        with:
+          name: atomic-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/atomic-runtime-diagnostics
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Cleanup runtime state
         id: cleanup
