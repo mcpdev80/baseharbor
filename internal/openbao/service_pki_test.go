@@ -104,9 +104,9 @@ func TestServiceCAReadsPublicCAOnly(t *testing.T) {
 }
 
 type servicePKIRotationFake struct {
-	activeCA        string
-	defaultIssuer   string
-	configPayloads  []string
+	activeCA       string
+	defaultIssuer  string
+	configPayloads []string
 }
 
 func (f *servicePKIRotationFake) ExecProject(_ context.Context, _, _, _, _ string, args ...string) (string, error) {
