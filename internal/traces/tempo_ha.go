@@ -27,7 +27,7 @@ distributor:
 
 ingest:
   kafka:
-    address: redpanda-0:9092,redpanda-1:9092,redpanda-2:9092
+    address: redpanda-0:9092
     topic: tempo-traces
     client_id: baseharbor-tempo
     auto_create_topic_enabled: false
