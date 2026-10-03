@@ -76,6 +76,11 @@ func TestTempoHAComposePreservesKafkaInitShellVariables(t *testing.T) {
 }
 
 func TestTempoHAQueryGatewayUsesStableAlias(t *testing.T) {
+	spec := tempoHAQueryAccessSpec()
+	if len(spec.Upstreams) != 1 || spec.Upstreams[0] != "http://tempo-query-frontend:3200" {
+		t.Fatalf("Tempo HA gateway upstreams = %#v, want stable shared query-frontend alias", spec.Upstreams)
+	}
+
 	rendered := tempoHACompose(
 		Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"},
 		serviceaccess.HTTPGatewayFiles{
@@ -90,11 +95,5 @@ func TestTempoHAQueryGatewayUsesStableAlias(t *testing.T) {
 	)
 	if got := strings.Count(rendered, "- tempo-query-frontend"); got < 2 {
 		t.Fatalf("both Tempo query frontends must publish the shared alias, got %d:\n%s", got, rendered)
-	}
-	if !strings.Contains(rendered, "reverse_proxy tempo-query-frontend:3200") {
-		t.Fatalf("Tempo HA gateway must route through the stable query-frontend alias:\n%s", rendered)
-	}
-	if strings.Contains(rendered, "reverse_proxy tempo-query-frontend-1:3200 tempo-query-frontend-2:3200") {
-		t.Fatalf("Tempo HA gateway must not depend on stopped-container DNS names:\n%s", rendered)
 	}
 }
