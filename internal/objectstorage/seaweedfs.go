@@ -23,12 +23,12 @@ import (
 
 const (
 	ProviderProject = "baseharbor-object-storage"
-	ProviderService = "seaweedfs"
+	ProviderService = "seaweedfs-node-1"
 	ProviderNetwork = "baseharbor-object-storage"
 	ProviderImage   = "docker.io/chrislusf/seaweedfs:4.47"
 
-	sharedProviderReconcileTimeout = 60 * time.Second
-	providerReadinessTimeout       = 15 * time.Second
+	sharedProviderReconcileTimeout = 120 * time.Second
+	providerReadinessTimeout       = 90 * time.Second
 	existingProviderProbeTimeout   = 3 * time.Second
 )
 
@@ -98,6 +98,19 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 	if err := runtime.UpProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
+	credentials, credentialPath, err := EnsureAdminCredentials(files)
+	if err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+	command := fmt.Sprintf(
+		"s3.configure -access_key=%s -secret_key=%s -user=baseharbor-runtime-admin -actions=Admin,Read,Write,List,Tagging -apply",
+		credentials.AccessKeyID,
+		credentials.SecretAccessKey,
+	)
+	if err := reconcileRuntimeAdminIdentity(reconcileCtx, runtime, files, command); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
+
 	endpoint, err := providerEndpoint(files)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
@@ -119,20 +132,29 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 		}
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("wait for SeaweedFS S3 readiness: %w", err)
 	}
-	credentials, credentialPath, err := EnsureAdminCredentials(files)
-	if err != nil {
-		return ProviderFiles{}, AdminCredentials{}, "", err
-	}
-	command := fmt.Sprintf(
-		"s3.configure -access_key=%s -secret_key=%s -user=baseharbor-runtime-admin -actions=Admin,Read,Write,List,Tagging -apply",
-		credentials.AccessKeyID,
-		credentials.SecretAccessKey,
-	)
-	input := []byte(command + "\n")
-	if _, err := runtime.ExecProjectInput(reconcileCtx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err != nil {
-		return ProviderFiles{}, AdminCredentials{}, "", errors.New("configure SeaweedFS runtime admin identity failed")
-	}
 	return files, credentials, credentialPath, nil
+}
+
+func reconcileRuntimeAdminIdentity(ctx context.Context, runtime Runtime, files ProviderFiles, command string) error {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var last error
+	for {
+		input := []byte(command + "\n")
+		if _, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, ProviderService, "weed", "shell"); err == nil {
+			return nil
+		} else {
+			last = err
+		}
+		select {
+		case <-ctx.Done():
+			if last == nil {
+				last = ctx.Err()
+			}
+			return fmt.Errorf("configure SeaweedFS runtime admin identity: %w", last)
+		case <-ticker.C:
+		}
+	}
 }
 
 func ExistingReadySharedProvider(ctx context.Context) (ProviderFiles, AdminCredentials, string, error) {
@@ -267,18 +289,18 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		if err := d.runSeaweedShell(ctx, create); err != nil {
 			return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
 		}
-		created, err := d.bucketExists(ctx, physical)
-		if err != nil {
+		if err := d.waitBucketExists(ctx, physical); err != nil {
 			return fmt.Errorf("verify S3 bucket %s creation: %w", resource.Name, err)
-		}
-		if !created {
-			return fmt.Errorf("verify S3 bucket %s creation: bucket was not listed after create", resource.Name)
 		}
 		d.createdBuckets[resource.Name] = struct{}{}
 	}
 
+	iamUser, err := currentBucketIAMUser(d.files, resource.Name, physical)
+	if err != nil {
+		return fmt.Errorf("resolve SeaweedFS IAM identity for %s: %w", resource.Name, err)
+	}
 	configure := fmt.Sprintf("s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply",
-		credentials.AccessKeyID, credentials.SecretAccessKey, physical, physical)
+		credentials.AccessKeyID, credentials.SecretAccessKey, physical, iamUser)
 	if err := d.runSeaweedShell(ctx, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
@@ -400,10 +422,15 @@ func (d *Driver) DestroyBucket(ctx context.Context, logicalBucket string) error 
 	if err := d.runSeaweedShell(ctx, command); err != nil {
 		return fmt.Errorf("destroy S3 bucket %s: %w", logicalBucket, err)
 	}
-	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", physical)
+	iamUser, err := currentBucketIAMUser(d.files, logicalBucket, physical)
+	if err != nil {
+		return fmt.Errorf("resolve S3 identity for %s: %w", logicalBucket, err)
+	}
+	revoke := fmt.Sprintf("s3.configure -user=%s -delete -apply", iamUser)
 	if err := d.runSeaweedShell(ctx, revoke); err != nil {
 		return fmt.Errorf("revoke S3 identity for %s: %w", logicalBucket, err)
 	}
+	_ = os.Remove(bucketCredentialIdentityStatePath(d.files, logicalBucket))
 	return nil
 }
 
@@ -417,6 +444,35 @@ func (d *Driver) runSeaweedShellOutput(ctx context.Context, command string) (str
 		return "", errors.New("SeaweedFS realization is required")
 	}
 	return d.realization.Admin(ctx, command)
+}
+
+func (d *Driver) waitBucketExists(ctx context.Context, bucket string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		exists, err := d.bucketExists(waitCtx, bucket)
+		if err == nil && exists {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = errors.New("bucket was not listed after create")
+		}
+		select {
+		case <-waitCtx.Done():
+			if lastErr == nil {
+				lastErr = waitCtx.Err()
+			}
+			return lastErr
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Driver) bucketExists(ctx context.Context, bucket string) (bool, error) {
@@ -492,14 +548,13 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		return ProviderFiles{}, err
 	}
 	accessPolicy.ServerName = "seaweedfs"
-	accessMaterial, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, accessPolicy, filepath.Join(files.Dir, "service-access", "pki"), "seaweedfs", "127.0.0.1")
+	accessSpec := s3AccessSpec()
+	accessSpec.Networks = []string{"object-storage", "object-storage-internal"}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := projectSeaweedNativeTLS(filepath.Join(files.Dir, "service-access", "runtime"), accessMaterial); err != nil {
-		return ProviderFiles{}, err
-	}
-	rendered := providerComposeYAMLWithAccessAndNetwork(serviceaccess.HTTPGatewayFiles{Material: accessMaterial}, files.Network)
+	rendered := providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)
 	if managementUI {
 		adminPolicy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
 		if err != nil {
@@ -578,44 +633,53 @@ func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string
 	return providerComposeYAMLWithAccessAndNetwork(access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithAccessAndNetwork(_ serviceaccess.HTTPGatewayFiles, network string) string {
-	return fmt.Sprintf(`services:
-  seaweedfs:
-    image: %s
-    restart: unless-stopped
-    user: "1000:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    command:
-      - server
-      - -s3
-      - -iam=true
-      - -s3.iam.readOnly=false
-      - -s3.port.https=8443
-      - -s3.cert.file=/run/baseharbor/tls/server.pem
-      - -s3.key.file=/run/baseharbor/tls/server-key.pem
-    ports:
-      - "127.0.0.1:${BASEHARBOR_SEAWEEDFS_PORT}:8443"
-    volumes:
-      - seaweedfs-data:/data
-      - ./service-access/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
-      - ./service-access/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
-      - ./service-access/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
-    networks:
-      object-storage:
-        aliases:
-          - seaweedfs
-
-volumes:
-  seaweedfs-data:
-
-networks:
-  object-storage:
-    name: %s
-`, ProviderImage, network)
+func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string) string {
+	const peers = "seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333"
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for i := 1; i <= 3; i++ {
+		name := fmt.Sprintf("seaweedfs-node-%d", i)
+		volume := fmt.Sprintf("seaweedfs-data-%d", i)
+		dc := fmt.Sprintf("dc%d", i)
+		fmt.Fprintf(&b, "  %s:\n", name)
+		fmt.Fprintf(&b, "    image: %s\n", ProviderImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"1000:1000\"\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - server\n")
+		b.WriteString("      - -master=true\n")
+		b.WriteString("      - -volume=true\n")
+		b.WriteString("      - -filer=true\n")
+		b.WriteString("      - -s3=true\n")
+		fmt.Fprintf(&b, "      - -ip=%s\n", name)
+		b.WriteString("      - -ip.bind=0.0.0.0\n")
+		fmt.Fprintf(&b, "      - -dataCenter=%s\n", dc)
+		fmt.Fprintf(&b, "      - -master.peers=%s\n", peers)
+		b.WriteString("      - -master.defaultReplication=100\n")
+		b.WriteString("      - -master.telemetry=false\n")
+		b.WriteString("      - -filer.defaultReplicaPlacement=100\n")
+		b.WriteString("      - -s3.port=8333\n")
+		b.WriteString("      - -s3.iam=true\n")
+		b.WriteString("      - -s3.iam.readOnly=false\n")
+		b.WriteString("      - -s3.port.iceberg=0\n")
+		b.WriteString("      - -s3.port.lance=0\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(&b, "      - %s:/data\n", volume)
+		b.WriteString("    networks:\n      object-storage-internal: {}\n")
+	}
+	accessSpec := s3AccessSpec()
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
+	b.WriteString("\nvolumes:\n")
+	for i := 1; i <= 3; i++ {
+		fmt.Fprintf(&b, "  seaweedfs-data-%d:\n\n", i)
+	}
+	b.WriteString("networks:\n")
+	fmt.Fprintf(&b, "  object-storage:\n    name: %s\n", strconv.Quote(network))
+	fmt.Fprintf(&b, "  object-storage-internal:\n    name: %s\n    internal: true\n", strconv.Quote(network+"-internal"))
+	return b.String()
 }
 
 func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) error {
@@ -661,11 +725,14 @@ func providerEndpoint(files ProviderFiles) (string, error) {
 func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "seaweedfs-access",
-		Upstream:         "http://seaweedfs:8333",
+		Upstreams:        []string{"http://seaweedfs-node-1:8333", "http://seaweedfs-node-2:8333", "http://seaweedfs-node-3:8333"},
 		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
 		ContainerPort:    8443,
-		Networks:         []string{"object-storage"},
+		Networks:         []string{"object-storage", "object-storage-internal"},
+		NetworkAliases:   []string{"seaweedfs"},
+		CertificateNames: []string{"seaweedfs"},
 		RequireClient:    false,
+		HealthStatus:     http.StatusForbidden,
 	}
 }
 

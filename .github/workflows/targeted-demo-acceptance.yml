@@ -1,6 +1,6 @@
 name: "Targeted Atomic Gate"
 
-run-name: "${{ inputs.runtime }} · ${{ inputs.gate }} · ${{ inputs.ref }}"
+run-name: "targeted · ${{ github.ref_name }}"
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
       ref:
         description: BaseHarbor ref or commit SHA to test
         required: true
-        default: release/v0.4.20
+        default: release/v0.4.21
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to test
@@ -28,20 +28,81 @@ on:
         required: true
         default: lifecycle
         type: string
+  push:
+    branches:
+      - "runtime-validation/targeted/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: targeted-atomic-${{ inputs.runtime }}-${{ inputs.gate }}-${{ inputs.ref }}
+  group: targeted-atomic-${{ github.ref_name }}-${{ inputs.runtime }}-${{ inputs.gate }}
   cancel-in-progress: true
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      demo_ref: ${{ steps.resolve.outputs.demo_ref }}
+      runtime: ${{ steps.resolve.outputs.runtime }}
+      gate: ${{ steps.resolve.outputs.gate }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_REF: ${{ inputs.ref }}
+          DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
+          DISPATCH_RUNTIME: ${{ inputs.runtime }}
+          DISPATCH_GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            ref="$DISPATCH_REF"
+            demo_ref="$DISPATCH_DEMO_REF"
+            runtime="$DISPATCH_RUNTIME"
+            gate="$DISPATCH_GATE"
+          else
+            prefix="runtime-validation/targeted/"
+            case "$GITHUB_REF_NAME" in
+              "$prefix"*) ;;
+              *)
+                echo "Unsupported targeted validation branch: $GITHUB_REF_NAME" >&2
+                exit 2
+                ;;
+            esac
+            payload="${GITHUB_REF_NAME#"$prefix"}"
+            runtime="${payload%%/*}"
+            rest="${payload#*/}"
+            gate="${rest%%/*}"
+            ref="$GITHUB_SHA"
+            demo_ref="5af8ec866faf9494b0b10b11284fe5ff71eee93f"
+          fi
+
+          case "$runtime" in
+            static|docker|podman) ;;
+            *)
+              echo "Unsupported targeted runtime: $runtime" >&2
+              exit 2
+              ;;
+          esac
+          test -n "$ref"
+          test -n "$demo_ref"
+          test -n "$gate"
+          {
+            echo "ref=$ref"
+            echo "demo_ref=$demo_ref"
+            echo "runtime=$runtime"
+            echo "gate=$gate"
+          } >> "$GITHUB_OUTPUT"
+
   selected_gate:
+    needs: resolve
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
-      ref: ${{ inputs.ref }}
-      demo_ref: ${{ inputs.demo_ref }}
-      runtime: ${{ inputs.runtime }}
-      gate: ${{ inputs.gate }}
+      ref: ${{ needs.resolve.outputs.ref }}
+      demo_ref: ${{ needs.resolve.outputs.demo_ref }}
+      runtime: ${{ needs.resolve.outputs.runtime }}
+      gate: ${{ needs.resolve.outputs.gate }}
       candidate_artifact: ""

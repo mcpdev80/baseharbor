@@ -12,6 +12,17 @@ baha trust install --yes
 
 BaseHarbor exports/installs only the public managed-local CA. External PKI/BYOC trust roots remain operator-owned.
 
+## OpenBao control-plane operations
+
+```text
+baha openbao status
+baha openbao bootstrap --recovery-file PATH
+baha openbao unseal --recovery-file PATH
+baha openbao rotate --recovery-file PATH
+```
+
+The rotate command replaces the manager AppRole credential, control-plane database credentials and managed service PKI. Replacement paths are verified before prior material is retired.
+
 ## Operator authentication
 
 ```text

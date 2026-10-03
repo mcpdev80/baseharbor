@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/availability"
 )
 
 type manifestYAMLParser struct {
@@ -26,6 +28,8 @@ type manifestYAMLParser struct {
 	runtimePermissionIndex int
 	runtimePermissionList  string
 	identityField          string
+	availabilityComponent  string
+	consumptionIndex       int
 	serviceSeen            map[string]string
 }
 
@@ -36,6 +40,7 @@ func newManifestYAMLParser() *manifestYAMLParser {
 		metricsIndex:           -1,
 		runtimePermissionIndex: -1,
 		serviceSeen:            map[string]string{},
+		consumptionIndex:       -1,
 	}
 }
 
@@ -106,6 +111,8 @@ func (p *manifestYAMLParser) resetNestedState() {
 	p.runtimePermissionIndex = -1
 	p.runtimePermissionList = ""
 	p.identityField = ""
+	p.availabilityComponent = ""
+	p.consumptionIndex = -1
 }
 
 func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
@@ -119,6 +126,17 @@ func (p *manifestYAMLParser) parseTopLevel(lineNo int, trim string) error {
 		}
 		p.manifest.Version = v
 		p.section = ""
+	case strings.HasPrefix(trim, "ha:"):
+		enabled, err := strconv.ParseBool(strings.TrimSpace(strings.TrimPrefix(trim, "ha:")))
+		if err != nil {
+			return fmt.Errorf("line %d: invalid ha value", lineNo)
+		}
+		p.manifest.HA = enabled
+		p.section = ""
+	case trim == "availability:":
+		p.section = "availability"
+	case trim == "consumes:":
+		p.section = "consumes"
 	case trim == "app:":
 		p.section = "app"
 	case trim == "services:":
@@ -151,6 +169,29 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 	p.secretGenerate = false
 
 	switch {
+	case p.section == "consumes" && strings.HasPrefix(trim, "- "):
+		item := strings.TrimSpace(strings.TrimPrefix(trim, "- "))
+		key, value, ok := strings.Cut(item, ":")
+		if !ok || key != "name" || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("line %d: consumption must start with - name: NAME", lineNo)
+		}
+		p.manifest.Consumes = append(p.manifest.Consumes, ConsumptionRequirement{Name: strings.TrimSpace(value)})
+		p.consumptionIndex = len(p.manifest.Consumes) - 1
+		return nil
+	case p.section == "availability" && strings.HasSuffix(trim, ":"):
+		component := strings.TrimSpace(strings.TrimSuffix(trim, ":"))
+		if component == "" {
+			return fmt.Errorf("line %d: availability component is empty", lineNo)
+		}
+		if p.manifest.Availability == nil {
+			p.manifest.Availability = map[string]availability.Override{}
+		}
+		if _, exists := p.manifest.Availability[component]; exists {
+			return fmt.Errorf("line %d: duplicate availability component %q", lineNo, component)
+		}
+		p.manifest.Availability[component] = availability.Override{}
+		p.availabilityComponent = component
+		return nil
 	case p.section == "app":
 		return p.parseAppField(lineNo, trim)
 	case p.section == "services" && strings.HasSuffix(trim, ":"):
@@ -234,6 +275,51 @@ func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {
 	p.secretGenerate = false
 
 	switch {
+	case p.section == "consumes" && p.consumptionIndex >= 0:
+		key, value, ok := strings.Cut(trim, ":")
+		if !ok {
+			return fmt.Errorf("line %d: expected consumption key: value", lineNo)
+		}
+		value = strings.TrimSpace(value)
+		item := &p.manifest.Consumes[p.consumptionIndex]
+		switch key {
+		case "application_id":
+			item.ApplicationID = value
+		case "component":
+			item.Component = value
+		case "interface":
+			item.Interface = value
+		case "protocol":
+			item.Protocol = value
+		default:
+			return fmt.Errorf("line %d: unsupported consumption field %q", lineNo, key)
+		}
+		return nil
+	case p.section == "availability" && p.availabilityComponent != "":
+		key, value, ok := strings.Cut(trim, ":")
+		if !ok {
+			return fmt.Errorf("line %d: expected availability key: value", lineNo)
+		}
+		value = strings.TrimSpace(value)
+		override := p.manifest.Availability[p.availabilityComponent]
+		switch key {
+		case "ha":
+			enabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("line %d: invalid availability ha value", lineNo)
+			}
+			override.HA = &enabled
+		case "instances":
+			instances, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("line %d: invalid availability instances value", lineNo)
+			}
+			override.Instances = instances
+		default:
+			return fmt.Errorf("line %d: unsupported availability field %q", lineNo, key)
+		}
+		p.manifest.Availability[p.availabilityComponent] = override
+		return nil
 	case p.section == "services" && p.service != "":
 		return p.parseServiceField(lineNo, trim)
 	case p.section == "secrets" && (p.secretField == "required" || p.secretField == "optional") && strings.HasPrefix(trim, "- "):

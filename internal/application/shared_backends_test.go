@@ -198,3 +198,71 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 		t.Fatalf("shared Valkey compose must not use symbolic runtime identity:\n%s", got)
 	}
 }
+
+
+func TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers(t *testing.T) {
+	var b strings.Builder
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	got := b.String()
+
+	if strings.Contains(got, "USE_ADMIN:") {
+		t.Fatalf("shared PostgreSQL Compose must not enable Spilo legacy bootstrap.users path:\n%s", got)
+	}
+	if !strings.Contains(got, "PGUSER_SUPERUSER: postgres") {
+		t.Fatalf("shared PostgreSQL Compose must retain postgres as Spilo bootstrap superuser:\n%s", got)
+	}
+}
+
+func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
+	var b strings.Builder
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	got := b.String()
+
+	for _, want := range []string{
+		"uid=$(id -u postgres); gid=$(id -g postgres)",
+		"chmod 0755 /run/baseharbor",
+		"chown \"0:$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
+		"chmod 0640 /run/baseharbor/tls/server-key.pem",
+		"./postgresql/runtime:/run/baseharbor/tls-source:ro",
+		"exec /bin/sh /launch.sh init",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("shared PostgreSQL Compose missing %q:\n%s", want, got)
+		}
+	}
+	for _, member := range []string{
+		sharedPostgresMemberService("dev", 1),
+		sharedPostgresMemberService("dev", 2),
+		sharedPostgresMemberService("dev", 3),
+	} {
+		start := strings.Index(got, "  "+member+":\n")
+		if start < 0 {
+			t.Fatalf("missing shared PostgreSQL member %s:\n%s", member, got)
+		}
+		end := strings.Index(got[start+2:], "\n  ")
+		block := got[start:]
+		if end >= 0 {
+			block = got[start : start+2+end]
+		}
+		if strings.Contains(block, `cap_drop: ["ALL"]`) {
+			t.Fatalf("Spilo member %s must retain bootstrap capabilities:\n%s", member, block)
+		}
+		if !strings.Contains(block, "/run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750") {
+			t.Fatalf("Spilo member %s must use private TLS tmpfs:\n%s", member, block)
+		}
+	}
+}
+
+func TestSharedValkeyComposePreservesPasswordForContainerShell(t *testing.T) {
+	var b strings.Builder
+	writeSharedValkeyCompose(&b, sharedBackendAppState{Application: "demo", Environment: "dev"}, "default")
+	got := b.String()
+	for _, want := range []string{
+		`printf 'requirepass %s\n' "$$VALKEY_PASSWORD"`,
+		`printf 'masterauth %s\n' "$$VALKEY_PASSWORD"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("shared Valkey Compose missing escaped runtime variable %q:\n%s", want, got)
+		}
+	}
+}

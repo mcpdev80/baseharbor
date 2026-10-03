@@ -85,10 +85,12 @@ const (
 )
 
 type ManagementUISurface struct {
-	Service        string                   `json:"service"`
-	Purpose        ProviderInterfacePurpose `json:"purpose"`
-	URL            string                   `json:"url"`
-	Authentication string                   `json:"authentication"`
+	Service             string                        `json:"service"`
+	Purpose             ProviderInterfacePurpose      `json:"purpose"`
+	URL                 string                        `json:"url"`
+	Authentication      string                        `json:"authentication"`
+	AuthenticationClass ManagementAuthenticationClass `json:"authentication_class"`
+	RoleMappings        []ManagementRoleMapping       `json:"role_mappings,omitempty"`
 }
 
 func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer serviceaccess.Issuer, files RuntimeFiles, m Manifest, username, password string) error {
@@ -111,6 +113,12 @@ func ApplyDevelopmentManagementUICredentials(ctx context.Context, issuer service
 	if m.Services.DocumentDatabaseManagementUI {
 		values[MongoDBUIUserEnv] = username
 		values[MongoDBUIPasswordEnv] = password
+	}
+	if m.Services.MessagingManagementUI {
+		for _, instance := range RabbitMQInstanceNames(m) {
+			values[rabbitmqRuntimeKey(instance, "ADMIN_USER")] = username
+			values[rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")] = password
+		}
 	}
 	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
 		return err
@@ -189,12 +197,13 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	}
 
 	checks := []struct {
-		enabled   bool
-		name      string
-		portKey   string
-		dir       string
-		path      string
-		basicAuth bool
+		enabled     bool
+		name        string
+		portKey     string
+		dir         string
+		path        string
+		usernameKey string
+		passwordKey string
 	}{
 		{
 			enabled: m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m),
@@ -214,18 +223,21 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.MessagingManagementUI {
 		for _, instance := range RabbitMQInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled   bool
-				name      string
-				portKey   string
-				dir       string
-				path      string
-				basicAuth bool
+				enabled     bool
+				name        string
+				portKey     string
+				dir         string
+				path        string
+				usernameKey string
+				passwordKey string
 			}{
-				enabled: true,
-				name:    rabbitmqUIRouteName(instance),
-				portKey: rabbitmqUIHostPortKey(instance),
-				dir:     filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki"),
-				path:    "/",
+				enabled:     true,
+				name:        rabbitmqUIRouteName(instance),
+				portKey:     rabbitmqUIHostPortKey(instance),
+				dir:         filepath.Join(files.Dir, "providers", "management-ui", "rabbitmq", instance, "pki"),
+				path:        "/api/overview",
+				usernameKey: rabbitmqRuntimeKey(instance, "ADMIN_USER"),
+				passwordKey: rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD"),
 			})
 		}
 	}
@@ -233,19 +245,21 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 	if m.Services.DocumentDatabaseManagementUI {
 		for _, instance := range DocumentDatabaseInstanceNames(m) {
 			checks = append(checks, struct {
-				enabled   bool
-				name      string
-				portKey   string
-				dir       string
-				path      string
-				basicAuth bool
+				enabled     bool
+				name        string
+				portKey     string
+				dir         string
+				path        string
+				usernameKey string
+				passwordKey string
 			}{
-				enabled:   true,
-				name:      mongodbUIRouteName(instance),
-				portKey:   mongodbUIHostPortKey(instance),
-				dir:       filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance, "pki"),
-				path:      "/servers",
-				basicAuth: true,
+				enabled:     true,
+				name:        mongodbUIRouteName(instance),
+				portKey:     mongodbUIHostPortKey(instance),
+				dir:         filepath.Join(files.Dir, "providers", "management-ui", "mongodb", instance, "pki"),
+				path:        "/servers",
+				usernameKey: MongoDBUIUserEnv,
+				passwordKey: MongoDBUIPasswordEnv,
 			})
 		}
 	}
@@ -275,8 +289,16 @@ func VerifyApplicationManagementUIChecks(ctx context.Context, m Manifest, files 
 				return fmt.Errorf("inspect %s management UI TLS: %w", check.name, err)
 			}
 			var client *http.Client
-			if check.basicAuth {
-				client, err = serviceaccess.NewHTTPClientWithBasicAuth(material, values[MongoDBUIUserEnv], values[MongoDBUIPasswordEnv])
+			if check.usernameKey != "" || check.passwordKey != "" {
+				username, userErr := requireRuntimeValue(values, check.usernameKey)
+				if userErr != nil {
+					return userErr
+				}
+				password, passwordErr := requireRuntimeValue(values, check.passwordKey)
+				if passwordErr != nil {
+					return passwordErr
+				}
+				client, err = serviceaccess.NewHTTPClientWithBasicAuth(material, username, password)
 			} else {
 				client, err = serviceaccess.NewHTTPClient(material, false)
 			}
@@ -322,8 +344,10 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 		}
 		result = append(result, ManagementUISurface{
 			Service: "sql", Purpose: ProviderInterfaceManagement,
-			URL:            "https://127.0.0.1:" + port + "/",
-			Authentication: "pgadmin-native",
+			URL:                 "https://127.0.0.1:" + port + "/",
+			Authentication:      "pgadmin-native",
+			AuthenticationClass: ManagementAuthNativeCredential,
+			RoleMappings:        NativeCredentialRoleMappings("administrator", "user"),
 		})
 	}
 	if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
@@ -337,8 +361,10 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 		}
 		result = append(result, ManagementUISurface{
 			Service: service, Purpose: ProviderInterfaceManagement,
-			URL:            "https://127.0.0.1:" + port + "/",
-			Authentication: "http-basic",
+			URL:                 "https://127.0.0.1:" + port + "/",
+			Authentication:      "http-basic",
+			AuthenticationClass: ManagementAuthStandardsAdapter,
+			RoleMappings:        NativeCredentialRoleMappings("developer", "developer"),
 		})
 	}
 	if m.Services.MessagingManagementUI {
@@ -349,8 +375,10 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			}
 			result = append(result, ManagementUISurface{
 				Service: rabbitmqUIRouteName(instance), Purpose: ProviderInterfaceManagement,
-				URL:            "https://127.0.0.1:" + port + "/",
-				Authentication: "rabbitmq-native",
+				URL:                 "https://127.0.0.1:" + port + "/",
+				Authentication:      "rabbitmq-native",
+				AuthenticationClass: ManagementAuthNativeCredential,
+				RoleMappings:        NativeCredentialRoleMappings("administrator", "management"),
 			})
 		}
 	}
@@ -362,8 +390,10 @@ func ApplicationManagementUISurfaces(m Manifest, files RuntimeFiles) ([]Manageme
 			}
 			result = append(result, ManagementUISurface{
 				Service: mongodbUIRouteName(instance), Purpose: ProviderInterfaceManagement,
-				URL:            "https://127.0.0.1:" + port + "/",
-				Authentication: "http-basic",
+				URL:                 "https://127.0.0.1:" + port + "/",
+				Authentication:      "http-basic",
+				AuthenticationClass: ManagementAuthStandardsAdapter,
+				RoleMappings:        NativeCredentialRoleMappings("developer", "developer"),
 			})
 		}
 	}
@@ -390,10 +420,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(values[PostgresUIPasswordEnv]+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "password"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(values[PostgresUIPasswordEnv]+"\n")); err != nil {
 		return err
 	}
 
@@ -436,10 +463,7 @@ func ensurePostgresManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 			},
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pgpass"), []byte(pgpass.String()), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "pgpass"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgpass"), []byte(pgpass.String())); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(servers, "", "  ")
@@ -472,10 +496,7 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(values[CacheUIPasswordEnv]+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "http-password"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "http-password"), []byte(values[CacheUIPasswordEnv]+"\n")); err != nil {
 		return err
 	}
 
@@ -506,10 +527,7 @@ func ensureCacheManagementUI(ctx context.Context, issuer serviceaccess.Issuer, f
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local.json"), append(data, '\n'), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Join(dir, "local.json"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {
@@ -543,7 +561,11 @@ func ensureRabbitMQManagementUI(ctx context.Context, issuer serviceaccess.Issuer
 		if err := projectUIReadableFile(material.ServerKey, filepath.Join(dir, "server-key.pem")); err != nil {
 			return err
 		}
-		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s:15672\n}\n", runtimeServiceName("rabbitmq", instance))
+		var upstreams []string
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			upstreams = append(upstreams, rabbitmqMemberServiceName(instance, ordinal)+":15672")
+		}
+		caddy := fmt.Sprintf("{\n  auto_https disable_redirects\n}\n\n:8443 {\n  tls /certs/server.pem /certs/server-key.pem\n  reverse_proxy %s\n}\n", strings.Join(upstreams, " "))
 		if err := os.WriteFile(filepath.Join(dir, "Caddyfile"), []byte(caddy), 0o644); err != nil {
 			return err
 		}
@@ -591,13 +613,22 @@ func ensureMongoDBManagementUI(ctx context.Context, issuer serviceaccess.Issuer,
 	return nil
 }
 
+// writeUIRuntimeProjection writes a derived, read-only-at-runtime projection for
+// third-party management containers whose fixed runtime UID cannot read the
+// owner-only authoritative BaseHarbor state directly. These files are never a
+// second source of truth: they are regenerated from protected state on
+// reconciliation and are mounted read-only into the consumer container.
+func writeUIRuntimeProjection(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o644)
+}
+
 func projectUIReadableFile(source, target string) error {
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(target, data, 0o600); err != nil {
-		return err
-	}
-	return os.Chmod(target, 0o644)
+	return writeUIRuntimeProjection(target, data)
 }

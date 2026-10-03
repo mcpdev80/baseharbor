@@ -1,6 +1,7 @@
 package application
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,8 +40,8 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 		MongoDBImage,
 		"MONGO_INITDB_ROOT_USERNAME",
 		"mongodb-primary-data:/data/db",
-		"mongodb-primary-access:",
 		"MONGODB_PRIMARY_HOST_PORT",
+		"cap_add: [\"CHOWN\", \"DAC_OVERRIDE\", \"SETGID\", \"SETUID\"]",
 		"name: bh-documents_mongodb-primary-data",
 	} {
 		if !strings.Contains(compose, want) {
@@ -48,18 +49,16 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 		}
 	}
 	resources := ExpectedRuntimeResourcesForIdentity(m, "bh-compose", "bh-documents")
-	var broker, gateway, volume bool
+	var broker, volume bool
 	for _, resource := range resources {
 		switch {
 		case resource.Kind == "container" && resource.Name == "bh-compose-mongodb-primary-1":
 			broker = true
-		case resource.Kind == "container" && resource.Name == "bh-compose-mongodb-primary-access-1":
-			gateway = true
 		case resource.Kind == "volume" && resource.Name == "bh-documents_mongodb-primary-data":
 			volume = true
 		}
 	}
-	if !broker || !gateway || !volume {
+	if !broker || !volume {
 		t.Fatalf("MongoDB owned resources = %#v", resources)
 	}
 
@@ -110,5 +109,53 @@ func TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated(t *tes
 	}
 	if strings.Contains(initText, appPassword) || strings.Contains(initText, adminPassword) {
 		t.Fatal("MongoDB credential material leaked into application-user init script")
+	}
+}
+
+func TestMongoDBReplicaKeyUsesStandardBase64Alphabet(t *testing.T) {
+	for i := 0; i < 64; i++ {
+		key, err := randomMongoDBReplicaKey(64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(key)
+		if err != nil {
+			t.Fatalf("MongoDB replica key is not standard base64: %v", err)
+		}
+		if len(decoded) != 64 {
+			t.Fatalf("MongoDB replica key decoded length = %d, want 64", len(decoded))
+		}
+		if strings.ContainsAny(key, "-_") {
+			t.Fatalf("MongoDB replica key contains URL-safe-only characters: %q", key)
+		}
+	}
+}
+
+func TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary(t *testing.T) {
+	m := Manifest{
+		Version:       CurrentVersion,
+		ApplicationID: MustNewApplicationID(),
+		Name:          "documents-ha",
+		Environment:   "dev",
+		HA:            true,
+		Services: Services{
+			DocumentDatabase: true,
+		},
+	}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	compose, err := RuntimeComposeYAMLForProject(m, "bh-documents-ha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`printf '%s\n' "- \"$$BASEHARBOR_MONGODB_REPLICA_KEY\""`,
+		"--keyFile /tmp/mongodb-keyfile",
+		"--setParameter tlsWithholdClientCertificate=true",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Fatalf("MongoDB HA compose missing %q:\n%s", want, compose)
+		}
 	}
 }

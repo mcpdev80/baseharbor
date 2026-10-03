@@ -23,6 +23,19 @@ func (m Manifest) Validate() error {
 	if err := validateSlug("environment", m.Environment); err != nil {
 		return err
 	}
+	if err := AvailabilityIntent(m).Validate(); err != nil {
+		return err
+	}
+	seenConsumptions := map[string]struct{}{}
+	for _, consumption := range m.Consumes {
+		if err := consumption.Validate(m.ApplicationID); err != nil {
+			return err
+		}
+		if _, exists := seenConsumptions[consumption.Name]; exists {
+			return fmt.Errorf("duplicate consumption %q", consumption.Name)
+		}
+		seenConsumptions[consumption.Name] = struct{}{}
+	}
 	sql := SQLInstanceNames(m)
 	cache := CacheInstanceNames(m)
 	keyValue := KeyValueInstanceNames(m)

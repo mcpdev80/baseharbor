@@ -237,6 +237,11 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 		result.Findings = mergeFindings(result.Findings, findings)
 	}
 	result.Findings = enrichDeclaredIntentEvidence(snapshot, declared, result.Findings)
+	if manifest == nil && result.SelectedCompose != "" {
+		if err := reconcileSelectedComposeInspectionView(&result, snapshot.Files[result.SelectedCompose]); err != nil {
+			return Result{}, fmt.Errorf("reconcile selected Compose inspection view: %w", err)
+		}
+	}
 	for i := range result.Findings {
 		normalizeFindingService(&result.Findings[i])
 	}
@@ -382,4 +387,65 @@ func classifyFile(rel string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func reconcileSelectedComposeInspectionView(result *Result, data []byte) error {
+	services, err := detectComposeServices(data)
+	if err != nil {
+		return err
+	}
+
+	var workload, infrastructure, ambiguous, bootstrap []string
+	var ports []PortEvidence
+	var health []Evidence
+	ambiguousSet := map[string]struct{}{}
+
+	for _, service := range services {
+		switch {
+		case service.Postgres || service.Redis || service.MongoDB || service.RabbitMQ || service.ObjectStorage:
+			infrastructure = append(infrastructure, service.Name)
+		case service.AmbiguousInfrastructure || service.Unresolved:
+			ambiguous = append(ambiguous, service.Name)
+			ambiguousSet[service.Name] = struct{}{}
+		case service.HasBuild || service.HasImage || service.HasPorts:
+			workload = append(workload, service.Name)
+		}
+		for _, port := range service.Ports {
+			ports = append(ports, PortEvidence{
+				Path: result.SelectedCompose, Service: service.Name, Value: port,
+			})
+		}
+		if service.HealthCheck {
+			health = append(health, Evidence{
+				Kind: EvidenceHealth, Path: result.SelectedCompose,
+				Detail: "compose service " + service.Name + " declares healthcheck",
+			})
+		}
+		if service.DatabaseBootstrap {
+			bootstrap = append(bootstrap, service.Name)
+		}
+	}
+
+	filtered := result.Findings[:0]
+	for _, finding := range result.Findings {
+		if _, blocked := ambiguousSet[finding.Name]; blocked &&
+			finding.Confidence == ConfidenceDetected &&
+			(finding.Capability == "database.sql" ||
+				finding.Capability == "cache.key-value" ||
+				finding.Capability == "database.document" ||
+				finding.Capability == "messaging" ||
+				finding.Capability == "object-storage.s3") {
+			continue
+		}
+		filtered = append(filtered, finding)
+	}
+	result.Findings = filtered
+
+	result.WorkloadServices = uniqueSorted(workload)
+	result.InfrastructureServices = uniqueSorted(infrastructure)
+	result.AmbiguousServices = uniqueSorted(ambiguous)
+	result.Ports = ports
+	result.HealthChecks = uniqueEvidence(health)
+	result.DatabaseBootstrapServices = uniqueSorted(bootstrap)
+	return nil
 }

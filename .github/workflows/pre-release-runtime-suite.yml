@@ -218,6 +218,32 @@ jobs:
           cd "$workdir"
           env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
 
+      - name: Preserve demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static'
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/demo-runtime-diagnostics"
+          rm -rf "$out"
+          mkdir -p "$out"
+          cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
+          echo "::group::Demo runtime diagnostics"
+          find "$out" -maxdepth 1 -type f -printf '%f\n' | sort || true
+          for file in "$out"/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+
+      - name: Upload demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static'
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-runtime-diagnostics
+          if-no-files-found: warn
+          retention-days: 1
+
       - name: Run provider integration gate
         id: integration_gate
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration'
@@ -231,7 +257,8 @@ jobs:
             rabbitmq-runtime)
               BASEHARBOR_RABBITMQ_ACCEPTANCE=1 \
               BASEHARBOR_RABBITMQ_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 -run '^(TestRabbitMQRuntimeSemanticAcceptanceInCI|TestRabbitMQManagementUIRuntimeAcceptanceInCI)$' -v
+              BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestRabbitMQRuntimeSemanticAcceptanceInCI|TestRabbitMQManagementUIRuntimeAcceptanceInCI|TestRabbitMQHARuntimeFailoverAcceptanceInCI)' -v
               ;;
             mongodb-runtime)
               BASEHARBOR_MONGODB_ACCEPTANCE=1 \
@@ -240,7 +267,8 @@ jobs:
               ;;
             durable-key-value)
               BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
-                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI)$' -v
+              BASEHARBOR_VALKEY_HA_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI|TestValkeyHARuntimeFailoverAcceptanceInCI)' -v
               ;;
             control-plane-recovery)
               BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
@@ -267,7 +295,28 @@ jobs:
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
-          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$ARTIFACT_DIR/runtime-diagnostics"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          diag="$RUNNER_TEMP/atomic-runtime-diagnostics"
+          rm -rf "$diag"
+          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$diag"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          echo "::group::Atomic runtime failure diagnostics"
+          cat "$diag/summary.md" 2>/dev/null || true
+          for file in "$diag"/containers/*.inspect.txt "$diag"/containers/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+          mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
+          cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
+
+      - name: Upload atomic failure diagnostics
+        if: failure() && inputs.runtime != 'static'
+        uses: actions/upload-artifact@v6
+        with:
+          name: atomic-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/atomic-runtime-diagnostics
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Cleanup runtime state
         id: cleanup

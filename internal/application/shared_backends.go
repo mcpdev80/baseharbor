@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -19,15 +20,17 @@ import (
 const sharedBackendStateVersion = 2
 
 type sharedBackendState struct {
-	Version                 int                              `json:"version"`
-	Environment             string                           `json:"environment"`
-	PostgresAdminCredential string                           `json:"postgres_admin_credential,omitempty"`
-	PostgresHostPort        int                              `json:"postgres_host_port,omitempty"`
-	PostgresUIHostPort      int                              `json:"postgres_ui_host_port,omitempty"`
-	CacheUIHostPort         int                              `json:"cache_ui_host_port,omitempty"`
-	ManagementUsername      string                           `json:"management_username,omitempty"`
-	ManagementPassword      string                           `json:"management_password,omitempty"`
-	Applications            map[string]sharedBackendAppState `json:"applications"`
+	Version                       int                              `json:"version"`
+	Environment                   string                           `json:"environment"`
+	PostgresAdminCredential       string                           `json:"postgres_admin_credential,omitempty"`
+	PostgresSuperuserCredential   string                           `json:"postgres_superuser_credential,omitempty"`
+	PostgresReplicationCredential string                           `json:"postgres_replication_credential,omitempty"`
+	PostgresHostPort              int                              `json:"postgres_host_port,omitempty"`
+	PostgresUIHostPort            int                              `json:"postgres_ui_host_port,omitempty"`
+	CacheUIHostPort               int                              `json:"cache_ui_host_port,omitempty"`
+	ManagementUsername            string                           `json:"management_username,omitempty"`
+	ManagementPassword            string                           `json:"management_password,omitempty"`
+	Applications                  map[string]sharedBackendAppState `json:"applications"`
 }
 
 type sharedBackendAppState struct {
@@ -57,6 +60,7 @@ type SharedPostgresResourceObservation struct {
 type sharedValkeyResource struct {
 	CredentialReference string `json:"credential_reference"`
 	HostPort            int    `json:"host_port"`
+	Instances           int    `json:"instances,omitempty"`
 }
 
 type SharedBackendFiles struct {
@@ -162,6 +166,20 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			}
 			state.PostgresAdminCredential = ref
 		}
+		if state.PostgresSuperuserCredential == "" {
+			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-superuser", "")
+			if err != nil {
+				return false, err
+			}
+			state.PostgresSuperuserCredential = ref
+		}
+		if state.PostgresReplicationCredential == "" {
+			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
+			if err != nil {
+				return false, err
+			}
+			state.PostgresReplicationCredential = ref
+		}
 		if state.PostgresHostPort == 0 {
 			state.PostgresHostPort, err = allocateLoopbackPort(nil)
 			if err != nil {
@@ -210,7 +228,11 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			if err != nil {
 				return false, err
 			}
-			app.Cache[instance] = sharedValkeyResource{CredentialReference: ref, HostPort: port}
+			app.Cache[instance] = sharedValkeyResource{
+				CredentialReference: ref,
+				HostPort:            port,
+				Instances:           valkeyMemberCount(m, instance),
+			}
 			values[valkeyRuntimeKey(instance, "PASSWORD")] = password
 			values[valkeyRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
 			values[valkeyContainerHostKey(instance)] = sharedValkeyAccessAlias(m, instance)
@@ -244,6 +266,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 	if UsesSharedPostgreSQL(m) {
 		if err := waitSharedPostgresReady(ctx, compose, shared, m.Environment); err != nil {
+			return false, err
+		}
+		if err := ensureSharedPostgresAdminIdentity(ctx, compose, shared, m.Environment); err != nil {
 			return false, err
 		}
 		if err := reconcileSharedPostgresApplication(ctx, compose, shared, app); err != nil {
@@ -320,7 +345,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 		if err != nil {
 			return fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
 		}
-		script := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(resource.Database))
+		script := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(resource.Database))
 		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("verify shared PostgreSQL %s with application credential: %w", instance, err)
@@ -331,7 +356,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 		if err := verifySharedPostgresDatabaseOwnership(ctx, compose, shared, app.Environment, resource); err != nil {
 			return fmt.Errorf("verify shared PostgreSQL %s ownership: %w", instance, err)
 		}
-		adminDBDeny := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d postgres -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username))
+		adminDBDeny := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d postgres -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username))
 		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", adminDBDeny); err == nil {
 			return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to provider administration database postgres", app.Application, instance)
 		}
@@ -340,7 +365,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 				continue
 			}
 			for otherInstance, other := range otherApp.SQL {
-				deny := fmt.Sprintf("PGPASSWORD=%s psql -h 127.0.0.1 -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(other.Database))
+				deny := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(other.Database))
 				if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", deny); err == nil {
 					return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to %s/%s database %s", app.Application, instance, otherApp.Application, otherInstance, other.Database)
 				}
@@ -407,7 +432,7 @@ type sharedPostgresExecRuntime interface {
 
 func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPostgresExecRuntime, shared SharedBackendFiles, environment string, resource sharedPostgresResource) error {
 	query := fmt.Sprintf("SELECT r.rolname FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba WHERE d.datname=%s", quotePostgresLiteral(resource.Database))
-	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
+	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
 	if err != nil {
 		return err
 	}
@@ -415,7 +440,7 @@ func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPo
 		return fmt.Errorf("database %q owner is %q, expected %q", resource.Database, strings.TrimSpace(out), resource.Username)
 	}
 	roleQuery := fmt.Sprintf("SELECT r.rolname FROM pg_roles r WHERE r.rolname=%s AND r.rolsuper=false AND r.rolcreatedb=false AND r.rolcreaterole=false AND r.rolreplication=false AND r.rolbypassrls=false AND r.rolinherit=false AND NOT EXISTS (SELECT 1 FROM pg_auth_members am WHERE am.member=r.oid OR am.roleid=r.oid)", quotePostgresLiteral(resource.Username))
-	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
+	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
 	if err != nil {
 		return err
 	}
@@ -438,15 +463,48 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 	if !ok {
 		return fmt.Errorf("shared Valkey application registration is missing")
 	}
+	op := provideroperation.New(compose, shared.Project, shared.Compose, shared.Env)
 	appKey := sharedBackendApplicationKey(m)
 	for instance, resource := range app.Cache {
 		password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
 		if err != nil {
 			return fmt.Errorf("load shared Valkey credential %s: %w", instance, err)
 		}
-		service := sharedValkeyService(m, instance)
-		script := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 ping", shellQuote(password))
-		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", script)
+		primary := sharedValkeyMemberServiceName(app, instance, 0)
+		if sharedValkeyMemberCount(resource) > 1 {
+			masterCount := 0
+			for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
+				service := sharedValkeyMemberServiceName(app, instance, ordinal)
+				script := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h 127.0.0.1 -p 6379 info replication"
+				out, probeErr := op.RunSensitive(ctx, service, []byte(password+"\n"), "sh", "-ec", script)
+				if probeErr != nil {
+					return fmt.Errorf("inspect shared Valkey HA member %s: %w", service, probeErr)
+				}
+				role := parseValkeyReplicationRole(out)
+				if role == "master" {
+					masterCount++
+					primary = service
+				} else if role != "slave" && role != "replica" {
+					return fmt.Errorf("shared Valkey member %s reported unsupported role %q", service, role)
+				}
+			}
+			if masterCount != 1 {
+				return fmt.Errorf("shared Valkey %s has %d masters, require exactly one", instance, masterCount)
+			}
+			for ordinal := 0; ordinal < 3; ordinal++ {
+				sentinel := sharedValkeySentinelServiceName(app, instance, ordinal)
+				out, sentinelErr := op.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
+				if sentinelErr != nil {
+					return fmt.Errorf("inspect shared Valkey Sentinel %s: %w", sentinel, sentinelErr)
+				}
+				lines := nonEmptyLines(out)
+				if len(lines) < 2 || lines[0] != primary || lines[1] != "6379" {
+					return fmt.Errorf("shared Valkey Sentinel %s does not agree on primary %s", sentinel, primary)
+				}
+			}
+		}
+		pingScript := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h 127.0.0.1 -p 6379 ping"
+		out, err := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", pingScript)
 		if err != nil {
 			return fmt.Errorf("verify shared Valkey %s: %w", instance, err)
 		}
@@ -457,8 +515,8 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 			if durableInstance != instance {
 				continue
 			}
-			writeRead := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH=%s valkey-cli -h 127.0.0.1 -p 6379 del __baseharbor_verify__ >/dev/null", shellQuote(password), shellQuote(password), shellQuote(password))
-			value, verifyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", writeRead)
+			writeRead := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; valkey-cli -h 127.0.0.1 -p 6379 set __baseharbor_verify__ durable >/dev/null && valkey-cli -h 127.0.0.1 -p 6379 get __baseharbor_verify__ && valkey-cli -h 127.0.0.1 -p 6379 del __baseharbor_verify__ >/dev/null"
+			value, verifyErr := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", writeRead)
 			if verifyErr != nil {
 				return fmt.Errorf("verify durable shared Valkey %s: %w", instance, verifyErr)
 			}
@@ -471,9 +529,9 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 				continue
 			}
 			for otherInstance := range otherApp.Cache {
-				otherService := sharedValkeyServiceFor(otherApp.Application, otherApp.Environment, otherInstance)
-				deny := fmt.Sprintf("VALKEYCLI_AUTH=%s valkey-cli -h %s -p 6379 ping", shellQuote(password), shellQuote(otherService))
-				if denyOut, denyErr := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, service, "sh", "-ec", deny); denyErr == nil && strings.TrimSpace(denyOut) == "PONG" {
+				otherService := sharedValkeyMemberServiceName(otherApp, otherInstance, 0)
+				denyScript := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h " + shellQuote(otherService) + " -p 6379 ping"
+				if denyOut, denyErr := op.RunSensitive(ctx, primary, []byte(password+"\n"), "sh", "-ec", denyScript); denyErr == nil && strings.TrimSpace(denyOut) == "PONG" {
 					return fmt.Errorf("shared Valkey isolation failed: %s/%s can authenticate to %s/%s", app.Application, instance, otherApp.Application, otherInstance)
 				}
 			}
@@ -648,15 +706,15 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 		for _, instance := range instances {
 			resource := app.SQL[instance]
 			terminate := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid()", quotePostgresLiteral(resource.Database))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
 				return fmt.Errorf("terminate shared PostgreSQL connections for %s: %w", instance, err)
 			}
 			dropDB := fmt.Sprintf("DROP DATABASE %s", quotePostgresIdent(resource.Database))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropDB); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropDB); err != nil {
 				return fmt.Errorf("drop shared PostgreSQL database for %s: %w", instance, err)
 			}
 			dropRole := fmt.Sprintf("DROP ROLE %s", quotePostgresIdent(resource.Username))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropRole); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropRole); err != nil {
 				return fmt.Errorf("drop shared PostgreSQL role for %s: %w", instance, err)
 			}
 			if err := removeSharedBackendCredential(shared.Dir, resource.CredentialReference); err != nil {
@@ -727,20 +785,3 @@ func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntim
 	return nil
 }
 
-func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
-	for _, app := range state.Applications {
-		if app.SQLManagementUI {
-			return true
-		}
-	}
-	return false
-}
-
-func sharedBackendCacheUIRequested(state sharedBackendState) bool {
-	for _, app := range state.Applications {
-		if app.CacheManagementUI {
-			return true
-		}
-	}
-	return false
-}

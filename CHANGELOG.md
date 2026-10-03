@@ -4,6 +4,40 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.21] - 2026-10-03
+
+### Added
+
+- Versioned credential/access ownership semantics separating human management identity, application-service credentials and BaseHarbor-internal machine identity.
+- Standards-first management-surface authentication classes and provider-neutral infrastructure-role mapping with explicit limited/unsupported semantics.
+- Logical Application/Component consumption intent whose identity remains independent from runtime addressing, placement, replica count and instance topology.
+- Portable global HA intent with sparse per-component/capability overrides, fixed-cardinality input, provider/runtime negotiation and 0..N instance observation.
+- Typed availability results shared by lifecycle preflight, status, doctor and evidence.
+- Provider-native HA realizations and stable logical endpoints for Valkey/Sentinel, MongoDB replica sets, RabbitMQ clusters/quorum messaging, SeaweedFS, managed Keycloak and the shipped observability stack.
+- Managed Keycloak HA with stable issuer/discovery/JWKS/Admin surfaces, HA PostgreSQL backing and client-secret, signing-key and administrative-credential rotation continuity.
+- HA observability realization and runtime continuity for OpenTelemetry Collector, Prometheus, Loki and Tempo.
+- Stable local exposure/management routing through backend replacement and supported configuration/TLS hot reload without claiming redundant single-host ingress.
+
+### Changed
+
+- Managed secret semantics now distinguish one authoritative durable secret source from runtime projections; canonical secret-bearing files remain protected while separate read-only runtime projections are used where necessary.
+- Interactive application-secret replacement requires two matching hidden entries before mutation; deterministic stdin/file automation remains single-input.
+- Docker, Podman and every bundled capability-provider realization carry an explicit HA classification; unsupported requested guarantees fail before mutation instead of silently downgrading.
+- Availability is part of the existing Application, Runtime Provider and Capability Provider contracts rather than a second HA lifecycle.
+- Logical consumption relationships remain stable across scaling, failover, rescheduling and rolling replacement; runtime-native member identities never become portable application identity.
+- Single-host Docker/Podman availability evidence now reports member/process continuity separately from runtime-host failure tolerance.
+- Credential, certificate, trust and configuration changes use explicit prepare/reconcile/verify/retire semantics where continuity-preserving rotation is supported.
+- Availability, credential and management-surface semantics are documented as additive-friendly pre-freeze contracts for the v0.5 compatibility review.
+
+### Fixed
+
+- Bootstrap PostgreSQL private-key material is owner-only instead of inheriting generic public certificate permissions.
+- Application file-secret projection no longer weakens the authoritative host-side secret file to world-readable mode.
+- Keycloak HA client-secret verification and retirement now converge across active members, and master-admin credential rotation uses the correct master-realm administration model.
+- Loki HA ingestion now preserves the internal gateway alias and sends acceptance probes over the configured syslog transport.
+- Tempo HA startup now waits for the replicated ingestion topic, preserves Compose shell variables and supplies writable runtime state for Tempo roles.
+- SeaweedFS platform bucket administration tolerates transient HA convergence instead of failing on an early member race.
+
 ## [0.4.20] - 2026-10-02
 
 ### Added

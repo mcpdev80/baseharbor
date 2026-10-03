@@ -18,12 +18,13 @@ func openBaoCommand() *cli.Command {
 		Name:    "openbao",
 		Summary: "Bootstrap and operate the BaseHarbor OpenBao trust plane",
 		Usage:   "baha openbao <command> [options]",
-		Long:    "Manages the bundled single-node OpenBao lifecycle. Bootstrap and unseal are explicit security-sensitive operations; secret material is never printed by these commands.",
+		Long:    "Manages the bundled OpenBao HA trust plane. Bootstrap, unseal and rotation are explicit security-sensitive operations; secret material is never printed by these commands.",
 	}
 	command.Children = []*cli.Command{
 		openBaoStatusCommand(),
 		openBaoBootstrapCommand(),
 		openBaoUnsealCommand(),
+		openBaoRotateCommand(),
 	}
 	return command
 }
@@ -138,6 +139,63 @@ func openBaoUnsealCommand() *cli.Command {
 			}
 			fmt.Fprintln(out, "[OK] OpenBao is unsealed")
 			fmt.Fprintln(out, "[OK] manager AppRole authentication succeeded")
+			return nil
+		},
+	}
+}
+
+func openBaoRotateCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "rotate",
+		Summary: "Rotate OpenBao/control-plane credentials and managed service PKI",
+		Usage:   "baha openbao rotate --recovery-file PATH",
+		Long:    "Rotates the restricted OpenBao manager AppRole credential, PostgreSQL control-plane administration/replication/OpenBao-storage credentials, and the managed service CA. Replacement credentials and trust are verified before previous material is retired. Secret values are never printed.\n\nOptions:\n  --recovery-file PATH  Required owner-only OpenBao recovery file used if a rolling member restart requires unseal",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			recoveryPath, err := parseRecoveryFileArg("rotate", args)
+			if err != nil {
+				return err
+			}
+			rotateCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+
+			compose, files, err := openBaoRuntime(rotateCtx)
+			if err != nil {
+				return err
+			}
+			state, err := platformopenbao.Inspect(rotateCtx, compose, files)
+			if err != nil {
+				return err
+			}
+			if !state.Initialized {
+				return platformopenbao.ErrNotInitialized
+			}
+			if state.Sealed {
+				return platformopenbao.ErrSealed
+			}
+			if err := platformopenbao.CheckManager(rotateCtx, compose, files); err != nil {
+				return fmt.Errorf("verify OpenBao manager before rotation: %w", err)
+			}
+
+			if err := rotateControlPlaneDatabaseCredentials(rotateCtx, compose, files, recoveryPath); err != nil {
+				return fmt.Errorf("rotate control-plane database credentials: %w", err)
+			}
+			if err := platformopenbao.RotateManagerCredentials(rotateCtx, compose, files); err != nil {
+				return fmt.Errorf("rotate OpenBao manager credential: %w", err)
+			}
+			if err := rotateControlPlaneServiceCA(rotateCtx, compose, files, recoveryPath); err != nil {
+				return fmt.Errorf("rotate control-plane managed service CA: %w", err)
+			}
+			if err := platformopenbao.CheckManager(rotateCtx, compose, files); err != nil {
+				return fmt.Errorf("verify OpenBao manager after rotation: %w", err)
+			}
+			if err := verifyOpenBaoManagementUI(rotateCtx, files); err != nil {
+				return fmt.Errorf("verify OpenBao management UI after rotation: %w", err)
+			}
+
+			fmt.Fprintln(out, "[OK] control-plane database credentials rotated and previous logins retired")
+			fmt.Fprintln(out, "[OK] OpenBao manager AppRole credential rotated and previous SecretID retired")
+			fmt.Fprintln(out, "[OK] managed service certificates/CA rotated and previous CA retired")
+			fmt.Fprintln(out, "[OK] OpenBao API/UI and PostgreSQL stable endpoints verified")
 			return nil
 		},
 	}

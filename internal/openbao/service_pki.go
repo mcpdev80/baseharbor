@@ -42,9 +42,55 @@ fi`
 	if _, err := execWithToken(ctx, executor, files, rootToken, ensureRoot); err != nil {
 		return fmt.Errorf("configure OpenBao service PKI root: %w", err)
 	}
-	if _, err := execWithToken(ctx, executor, files, rootToken,
-		`exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`); err != nil {
-		return fmt.Errorf("configure OpenBao service PKI role: %w", err)
+	const roleCommand = `exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`
+	var roleErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		if _, roleErr = execWithToken(ctx, executor, files, rootToken, roleCommand); roleErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("configure OpenBao service PKI role: %w", roleErr)
+}
+
+func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	before, err := ServiceCA(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	token, err := managerToken(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	out, err := execWithToken(ctx, executor, files, token, `exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`)
+	if err != nil {
+		return fmt.Errorf("rotate OpenBao service PKI root: %w", err)
+	}
+	var rotation struct {
+		Data struct {
+			IssuerID string `json:"issuer_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &rotation); err != nil || strings.TrimSpace(rotation.Data.IssuerID) == "" {
+		return errors.New("rotate OpenBao service PKI root returned an invalid issuer")
+	}
+	payload, err := json.Marshal(map[string]string{"default": strings.TrimSpace(rotation.Data.IssuerID)})
+	if err != nil {
+		return errors.New("encode OpenBao service PKI default issuer")
+	}
+	if _, err := execWithTokenPayload(ctx, executor, files, token, `exec bao write -format=json baseharbor-pki/config/issuers -`, string(payload)); err != nil {
+		return fmt.Errorf("activate rotated OpenBao service PKI root: %w", err)
+	}
+	after, err := ServiceCA(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	if string(before) == string(after) {
+		return errors.New("OpenBao service PKI root rotation did not change the active CA")
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +61,7 @@ func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvide
 }
 
 func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
-	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -75,9 +76,9 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 			shared.Env,
 			sharedPostgresService(environment),
 			"pg_isready",
-			"-h", "127.0.0.1",
+			"-h", sharedPostgresAlias(),
 			"-p", "5432",
-			"-U", "baseharbor_admin",
+			"-U", "postgres",
 			"-d", "postgres",
 		)
 		if err == nil && strings.Contains(strings.ToLower(strings.TrimSpace(out)), "accepting connections") {
@@ -91,13 +92,31 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 
 		select {
 		case <-waitCtx.Done():
-			if lastErr != nil {
-				return fmt.Errorf("wait for shared PostgreSQL readiness: %w", lastErr)
+			cause := lastErr
+			if cause == nil {
+				cause = waitCtx.Err()
 			}
-			return fmt.Errorf("wait for shared PostgreSQL readiness: %w", waitCtx.Err())
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			details := strings.TrimSpace(compose.DiagnosticsProject(diagnosticCtx, shared.Project, shared.Compose, shared.Env))
+			diagnosticCancel()
+			if details != "" {
+				return fmt.Errorf("wait for shared PostgreSQL readiness: %w; runtime diagnostics:\n%s", cause, details)
+			}
+			return fmt.Errorf("wait for shared PostgreSQL readiness: %w", cause)
 		case <-ticker.C:
 		}
 	}
+}
+
+func ensureSharedPostgresAdminIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, environment string) error {
+	script := `set -eu
+export PGPASSWORD="$SHARED_POSTGRES_SUPERUSER_PASSWORD"
+printf '%s\n' "SELECT format('CREATE ROLE %I LOGIN SUPERUSER PASSWORD %L', 'baseharbor_admin', :'admin_password') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'baseharbor_admin')\\gexec" "ALTER ROLE baseharbor_admin WITH LOGIN SUPERUSER PASSWORD :'admin_password';" | psql -h postgres-access -U postgres -d postgres -v ON_ERROR_STOP=1 -v admin_password="$SHARED_POSTGRES_ADMIN_PASSWORD"
+`
+	if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "sh", "-ec", script); err != nil {
+		return fmt.Errorf("ensure shared PostgreSQL provider administrator: %w", err)
+	}
+	return nil
 }
 
 func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, app sharedBackendAppState) error {
@@ -120,12 +139,12 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.R
 			quotePostgresIdent(resource.Database),
 			quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username),
 		)
-		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
+		if _, err := compose.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, []byte(sql), sharedPostgresService(app.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1"); err != nil {
 			return fmt.Errorf("reconcile shared PostgreSQL resource %s: %w", instance, err)
 		}
 		harden := fmt.Sprintf("REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE, CREATE ON SCHEMA public TO %s; REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC; REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM PUBLIC; ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public REVOKE ALL ON TYPES FROM PUBLIC;",
 			quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username), quotePostgresIdent(resource.Username))
-		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
+		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(app.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", resource.Database, "-v", "ON_ERROR_STOP=1", "-c", harden); err != nil {
 			return fmt.Errorf("harden shared PostgreSQL resource %s: %w", instance, err)
 		}
 	}
@@ -140,6 +159,20 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 			return err
 		}
 		fmt.Fprintf(&env, "SHARED_POSTGRES_ADMIN_PASSWORD=%s\n", password)
+	}
+	if state.PostgresSuperuserCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.PostgresSuperuserCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "SHARED_POSTGRES_SUPERUSER_PASSWORD=%s\n", password)
+	}
+	if state.PostgresReplicationCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.PostgresReplicationCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "SHARED_POSTGRES_REPLICATION_PASSWORD=%s\n", password)
 	}
 	if state.PostgresHostPort > 0 {
 		fmt.Fprintf(&env, "SHARED_POSTGRES_HOST_PORT=%d\n", state.PostgresHostPort)
@@ -210,13 +243,18 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("volumes:\n")
 	if hasPostgres {
-		fmt.Fprintf(&b, "  shared-postgres-data:\n    name: %s-%s-postgres-data\n", files.ResourceProject, sharedBackendToken(state.Environment))
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			fmt.Fprintf(&b, "  shared-postgres-data-%d:\n    name: %s-%s-postgres-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+			fmt.Fprintf(&b, "  shared-postgres-etcd-data-%d:\n    name: %s-%s-postgres-etcd-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+		}
 	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
-		for instance := range app.Cache {
-			service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
-			fmt.Fprintf(&b, "  %s-data:\n    name: %s-%s-%s-data\n", service, files.ResourceProject, sharedBackendToken(state.Environment), service)
+		for instance, resource := range app.Cache {
+			for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
+				volume := sharedValkeyMemberVolumeName(app, instance, ordinal)
+				fmt.Fprintf(&b, "  %s:\n    name: %s-%s-%s\n", volume, files.ResourceProject, sharedBackendToken(state.Environment), volume)
+			}
 		}
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
@@ -317,88 +355,186 @@ func writeSharedCacheUICompose(b *strings.Builder) {
 
 func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 	service := sharedPostgresService(state.Environment)
-	root := "./postgresql/runtime"
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    user: "70:70"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
-        chmod 0600 /tmp/server-key.pem
-        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /var/run/postgresql:rw,noexec,nosuid,nodev
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: baseharbor_admin
-      POSTGRES_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}
-    ports:
-      - "127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432"
-    volumes:
-      - shared-postgres-data:/var/lib/postgresql
-      - %s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
-      - %s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
-      - %s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
-    networks:
-      shared-backend:
-        aliases:
-          - %s
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "baseharbor_admin", "-d", "postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
+	cluster := "baseharbor-" + sharedBackendToken(state.Environment) + "-postgres"
+	etcdCluster := make([]string, 0, 3)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresEtcdService(state.Environment, ordinal)
+		etcdCluster = append(etcdCluster, fmt.Sprintf("%s=http://%s:2380", name, name))
+	}
+	etcdInitialCluster := strings.Join(etcdCluster, ",")
+	etcdHosts := make([]string, 0, 3)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		etcdHosts = append(etcdHosts, sharedPostgresEtcdService(state.Environment, ordinal)+":2379")
+	}
 
-`, service, root, root, root, sharedPostgresAlias())
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresEtcdService(state.Environment, ordinal)
+		fmt.Fprintf(b, "  %s:\n", name)
+		b.WriteString("    image: gcr.io/etcd-development/etcd:v3.7.2\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    command:\n")
+		fmt.Fprintf(b, "      - /usr/local/bin/etcd\n      - --name=%s\n", name)
+		b.WriteString("      - --data-dir=/etcd-data\n")
+		b.WriteString("      - --listen-client-urls=http://0.0.0.0:2379\n")
+		fmt.Fprintf(b, "      - --advertise-client-urls=http://%s:2379\n", name)
+		b.WriteString("      - --listen-peer-urls=http://0.0.0.0:2380\n")
+		fmt.Fprintf(b, "      - --initial-advertise-peer-urls=http://%s:2380\n", name)
+		fmt.Fprintf(b, "      - --initial-cluster=%s\n", etcdInitialCluster)
+		fmt.Fprintf(b, "      - --initial-cluster-token=%s\n", cluster)
+		b.WriteString("      - --initial-cluster-state=new\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - shared-postgres-etcd-data-%d:/etcd-data\n", ordinal)
+		b.WriteString("    networks:\n      shared-backend: {}\n\n")
+	}
+
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := sharedPostgresMemberService(state.Environment, ordinal)
+		fmt.Fprintf(b, "  %s:\n", name)
+		b.WriteString("    image: ghcr.io/zalando/spilo-18:4.1-p2\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: false\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - |\n")
+		b.WriteString("        uid=$$(id -u postgres); gid=$$(id -g postgres)\n")
+		b.WriteString("        chmod 0755 /run/baseharbor\n")
+		b.WriteString("        install -d -o \"$$uid\" -g \"$$gid\" -m 0750 /run/baseharbor/tls\n")
+		b.WriteString("        cp /run/baseharbor/tls-source/server-cert.pem /run/baseharbor/tls/server-cert.pem\n")
+		b.WriteString("        cp /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        chmod 0644 /run/baseharbor/tls/server-cert.pem\n")
+		b.WriteString("        chmod 0640 /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        stat -c 'baseharbor=%U:%G %a' /run/baseharbor\n")
+		b.WriteString("        stat -c 'tls=%U:%G %a' /run/baseharbor/tls\n")
+		b.WriteString("        stat -c 'key=%U:%G %a' /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("        exec /bin/sh /launch.sh init\n")
+		b.WriteString("    tmpfs:\n")
+		b.WriteString("      - /run/baseharbor/tls:rw,noexec,nosuid,nodev,mode=0750\n")
+		b.WriteString("    environment:\n")
+		b.WriteString("      SPILO_PROVIDER: local\n")
+		fmt.Fprintf(b, "      SCOPE: %s\n", strconv.Quote(cluster))
+		b.WriteString("      PGVERSION: \"18\"\n")
+		fmt.Fprintf(b, "      ETCD3_HOSTS: %s\n", strconv.Quote(strings.Join(etcdHosts, ",")))
+		b.WriteString("      PGUSER_SUPERUSER: postgres\n")
+		b.WriteString("      PGPASSWORD_SUPERUSER: ${SHARED_POSTGRES_SUPERUSER_PASSWORD}\n")
+		b.WriteString("      PGUSER_STANDBY: baseharbor_replication\n")
+		b.WriteString("      PGPASSWORD_STANDBY: ${SHARED_POSTGRES_REPLICATION_PASSWORD}\n")
+		b.WriteString("      ALLOW_NOSSL: \"true\"\n")
+		fmt.Fprintf(b, "      SPILO_CONFIGURATION: %s\n", strconv.Quote(fmt.Sprintf(`{"postgresql":{"connect_address":"%s:5432"},"restapi":{"connect_address":"%s:8008"}}`, name, name)))
+		b.WriteString("      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem\n")
+		b.WriteString("      SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls/server-key.pem\n")
+		b.WriteString("      SSL_TEST_RELOAD: \"true\"\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - shared-postgres-data-%d:/home/postgres/pgroot\n", ordinal)
+		b.WriteString("      - ./postgresql/runtime:/run/baseharbor/tls-source:ro\n")
+		b.WriteString("    networks:\n      shared-backend: {}\n")
+		b.WriteString("    healthcheck:\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"pg_isready -h 127.0.0.1 -p 5432 -U postgres -d postgres\"]\n")
+		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 24\n      start_period: 10s\n\n")
+	}
+
+	fmt.Fprintf(b, "  %s:\n", sharedPostgresAlias())
+	fmt.Fprintf(b, "    image: %s\n", serviceaccess.TCPGatewayImage)
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    user: \"99:99\"\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
+	b.WriteString("    command: [\"haproxy\", \"-W\", \"-db\", \"-f\", \"/usr/local/etc/haproxy/haproxy.cfg\"]\n")
+	b.WriteString("    ports:\n      - \"127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432\"\n")
+	b.WriteString("    volumes:\n      - ./postgresql/service-access/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro\n")
+	b.WriteString("    networks:\n      shared-backend:\n        aliases:\n          - postgres-access\n\n")
+
+	// Stable admin toolbox: all BaseHarbor reconciliation commands execute here
+	// and connect through the same primary-aware endpoint used by applications.
+	fmt.Fprintf(b, "  %s:\n", service)
+	b.WriteString("    image: docker.io/library/postgres:18-alpine\n")
+	b.WriteString("    restart: unless-stopped\n")
+	b.WriteString("    command: [\"sh\", \"-ec\", \"trap : TERM INT; sleep infinity & wait\"]\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /var/run/postgresql:rw,noexec,nosuid,nodev\n")
+	b.WriteString("    environment:\n      SHARED_POSTGRES_ADMIN_PASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n      SHARED_POSTGRES_SUPERUSER_PASSWORD: ${SHARED_POSTGRES_SUPERUSER_PASSWORD}\n      PGPASSWORD: ${SHARED_POSTGRES_ADMIN_PASSWORD}\n")
+	b.WriteString("    networks:\n      shared-backend: {}\n")
 }
 
 func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, instance string) {
-	service := sharedValkeyServiceFor(app.Application, app.Environment, instance)
-	access := sharedValkeyAccessServiceFor(app.Application, app.Environment, instance)
+	resource := app.Cache[instance]
 	passwordEnv := sharedValkeyPasswordEnvFor(app.Application, app.Environment, instance)
-	portEnv := sharedValkeyPortEnvFor(app.Application, app.Environment, instance)
 	root := "./" + filepath.ToSlash(filepath.Join("valkey", sharedBackendToken(app.Application), sharedBackendToken(instance)))
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/valkey/valkey:9.1.2-alpine
-    restart: unless-stopped
-    user: "999:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      VALKEY_PASSWORD: ${%s}
-    command:
-      - sh
-      - -ec
-      - |
-        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
-        exec valkey-server /tmp/valkey.conf
-    volumes:
-      - %s-data:/data
-    networks:
-      shared-backend: {}
-
-`, service, passwordEnv, service)
+	count := sharedValkeyMemberCount(resource)
+	primary := sharedValkeyMemberServiceName(app, instance, 0)
+	for ordinal := 0; ordinal < count; ordinal++ {
+		service := sharedValkeyMemberServiceName(app, instance, ordinal)
+		fmt.Fprintf(b, "  %s:\n", service)
+		b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    user: \"999:1000\"\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
+		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		b.WriteString("        {\n")
+		b.WriteString("          printf 'requirepass %s\\n' \"$$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'masterauth %s\\n' \"$$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'appendonly yes\\n'\n")
+		b.WriteString("          printf 'dir /data\\n'\n")
+		if ordinal > 0 {
+			fmt.Fprintf(b, "          printf 'replicaof %s 6379\\n'\n", primary)
+		}
+		b.WriteString("        } > /tmp/valkey.conf\n")
+		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - %s:/data\n", sharedValkeyMemberVolumeName(app, instance, ordinal))
+		b.WriteString("    networks:\n      shared-backend: {}\n\n")
+	}
+	if count > 1 {
+		for ordinal := 0; ordinal < 3; ordinal++ {
+			service := sharedValkeySentinelServiceName(app, instance, ordinal)
+			fmt.Fprintf(b, "  %s:\n", service)
+			b.WriteString("    image: docker.io/valkey/valkey:9.1.2-alpine\n")
+			b.WriteString("    restart: unless-stopped\n")
+			b.WriteString("    user: \"999:1000\"\n")
+			b.WriteString("    read_only: true\n")
+			b.WriteString("    cap_drop: [\"ALL\"]\n")
+			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+			b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n")
+			b.WriteString("    environment:\n")
+			fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
+			b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+			b.WriteString("        primary_ip=\"\"\n")
+			b.WriteString("        attempt=0\n")
+			b.WriteString("        until [ -n \"$$primary_ip\" ]; do\n")
+			fmt.Fprintf(b, "          primary_addr=\"$(VALKEYCLI_AUTH=\"$$VALKEY_PASSWORD\" valkey-cli -h %s -p 6379 --raw CLIENT INFO 2>/dev/null || true)\"\n", primary)
+			b.WriteString("          primary_ip=\"$(printf '%s\\n' \"$$primary_addr\" | tr ' ' '\\n' | sed -n 's/^laddr=\\([^:]*\\):.*/\\1/p' | head -n1)\"\n")
+			b.WriteString("          if [ -z \"$$primary_ip\" ]; then attempt=$$((attempt+1)); [ \"$$attempt\" -lt 60 ] || exit 1; sleep 1; fi\n")
+			b.WriteString("        done\n")
+			b.WriteString("        {\n")
+			b.WriteString("          printf 'port 26379\\n'\n")
+			b.WriteString("          printf 'protected-mode no\\n'\n")
+			fmt.Fprintf(b, "          printf 'sentinel monitor %s %%s 6379 2\\n' \"$$primary_ip\"\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel down-after-milliseconds %s 5000\\n'\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel failover-timeout %s 15000\\n'\n", valkeySentinelMasterName)
+			fmt.Fprintf(b, "          printf 'sentinel parallel-syncs %s 1\\n'\n", valkeySentinelMasterName)
+			b.WriteString("        } > /tmp/sentinel.conf\n")
+			b.WriteString("        exec valkey-sentinel /tmp/sentinel.conf\n")
+			b.WriteString("    networks:\n      shared-backend: {}\n\n")
+		}
+	}
 	gatewayFiles := serviceaccess.TCPGatewayFiles{
 		Config:   root + "/service-access/haproxy.cfg",
 		PEM:      root + "/service-access/runtime/server.pem",
 		Material: serviceaccess.TLSMaterial{},
 	}
-	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, serviceaccess.TCPGatewaySpec{
-		ServiceName:      access,
-		UpstreamHost:     service,
-		UpstreamPort:     6379,
-		PublishedPortEnv: portEnv,
-		ContainerPort:    6379,
-		Network:          "shared-backend",
-	}))
+	b.WriteString(serviceaccess.TCPGatewayComposeService(gatewayFiles, sharedValkeyGatewaySpec(app, instance)))
 }

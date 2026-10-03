@@ -48,6 +48,13 @@ func New(t testing.TB) *Issuer {
 	return &Issuer{ca: ca, caKey: key}
 }
 
+func (i *Issuer) Rotate(t testing.TB) {
+	t.Helper()
+	replacement := New(t)
+	i.ca = replacement.ca
+	i.caKey = replacement.caKey
+}
+
 func (i *Issuer) TrustBundle(context.Context) (serviceaccess.TrustBundle, error) {
 	return serviceaccess.TrustBundle{
 		IssuerReference: "test://baseharbor",

@@ -45,7 +45,7 @@ func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime,
 		if err != nil {
 			return nil, fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
 		}
-		command := fmt.Sprintf("IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --clean --if-exists --no-owner --no-privileges --format=plain -h 127.0.0.1 -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
+		command := fmt.Sprintf("IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --clean --if-exists --no-owner --no-privileges --format=plain -h postgres-access -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
 		out, err := runtime.ExecProjectInput(
 			ctx,
 			shared.Project,
@@ -132,7 +132,7 @@ func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRunti
 			return fmt.Errorf("load shared PostgreSQL credential %s for restore: %w", instance, err)
 		}
 		restoreInput := append([]byte(password+"\n"), byInstance[instance]...)
-		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
+		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h postgres-access -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
 		if _, err := runtime.ExecProjectInput(
 			ctx,
 			shared.Project,

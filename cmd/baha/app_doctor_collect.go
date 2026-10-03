@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
@@ -166,6 +167,14 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
 			c.compose, err = detectRuntimeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			return err
+		}},
+		{Name: "availability guarantees", Run: func(context.Context) error {
+			if c.compose == nil {
+				return errors.New("runtime provider is unavailable for availability negotiation")
+			}
+			resolution, err := application.ResolveAvailability(m, string(c.compose.Kind()), c.compose.Descriptor().Availability)
+			c.result.Availability = resolution.Results
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
@@ -321,7 +330,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 					if !containsString(c.running, "valkey") {
 						return errors.New("no valkey instance is running")
 					}
-					return application.VerifyValkeyRuntime(ctx, c.compose, m, c.files)
+					if err := application.VerifyValkeyRuntime(ctx, c.compose, m, c.files); err != nil {
+						return err
+					}
+					return application.VerifyValkeyHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 				}},
 			)
 		}
@@ -332,7 +344,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				if c.runtimeErr != nil {
 					return c.runtimeErr
 				}
-				return application.VerifyRabbitMQRuntime(ctx, m, c.files)
+				if err := application.VerifyRabbitMQRuntime(ctx, m, c.files); err != nil {
+					return err
+				}
+				return application.VerifyRabbitMQHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 			}},
 		)
 	}
@@ -342,7 +357,10 @@ func (c *applicationDoctorCollector) appendBackendChecks(checks []preflight.Chec
 				if c.runtimeErr != nil {
 					return c.runtimeErr
 				}
-				return application.VerifyMongoDBRuntime(ctx, m, c.files)
+				if err := application.VerifyMongoDBRuntime(ctx, m, c.files); err != nil {
+					return err
+				}
+				return application.VerifyMongoDBHACluster(ctx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), m, c.files)
 			}},
 		)
 	}

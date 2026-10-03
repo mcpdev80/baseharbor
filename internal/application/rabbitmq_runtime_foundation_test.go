@@ -38,8 +38,8 @@ func TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent(t *testing.T)
 		"rabbitmq-jobs:",
 		"user: \"rabbitmq\"",
 		"docker.io/library/rabbitmq:4.3.6-alpine",
-		"RABBITMQ_DEFAULT_USER: ${RABBITMQ_JOBS_USER}",
-		"RABBITMQ_DEFAULT_PASS: ${RABBITMQ_JOBS_PASSWORD}",
+		"RABBITMQ_DEFAULT_USER: ${RABBITMQ_JOBS_BOOTSTRAP_USER}",
+		"RABBITMQ_DEFAULT_PASS: ${RABBITMQ_JOBS_BOOTSTRAP_PASSWORD}",
 		"127.0.0.1:${RABBITMQ_JOBS_HOST_PORT}:5672",
 		"rabbitmq-jobs-data:/var/lib/rabbitmq",
 		"name: bh-events_rabbitmq-jobs-data",
@@ -56,6 +56,8 @@ func TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent(t *testing.T)
 	for _, want := range []string{
 		"RABBITMQ_JOBS_USER=baseharbor",
 		"RABBITMQ_JOBS_PASSWORD=",
+		"RABBITMQ_JOBS_BOOTSTRAP_USER=baseharbor_internal",
+		"RABBITMQ_JOBS_BOOTSTRAP_PASSWORD=",
 		"RABBITMQ_JOBS_HOST_PORT=",
 	} {
 		if !strings.Contains(env, want) {

@@ -102,6 +102,16 @@ Sharing provider infrastructure is explicitly a resource-efficiency mechanism. I
 
 A named sharing boundary MAY subdivide `shared` placement without introducing a fourth scope.
 
+## Credential ownership taxonomy
+
+Provider implementations MUST use the normative [Credential and access ownership v1](credential-access-v1.md) taxonomy.
+
+Providers MUST preserve the distinction between Human/management identity, Application-service credentials and BaseHarbor-internal machine identity.
+
+A provider MUST NOT replace internal machine credentials with shared human/developer credentials, and shared provider infrastructure MUST NOT imply shared application-service credentials.
+
+Application business users, groups, roles and permissions remain application/IdP-owned and outside the provider credential model.
+
 ## Verification
 
 A provider reporting process health is not sufficient when the capability requires protocol/data-flow verification.
@@ -166,3 +176,16 @@ Examples:
 - `observability` is the service family; OpenTelemetry/OTLP is the standard telemetry protocol/data path.
 
 Provider product names never become portable application service kinds.
+
+
+## Management-surface access
+
+Human-facing provider management surfaces follow [Management surface access v1](management-access-v1.md). Providers declare the effective authentication class and role mapping; BaseHarbor MUST NOT infer stronger authorization than the provider can enforce.
+
+The normative shipped-provider/surface classification is [Provider and management-surface acceptance v1](provider-management-acceptance-v1.md).
+
+## Availability
+
+Capability providers negotiate the same portable availability requirement independently from the Runtime Provider.
+
+Providers declare SUPPORTED, PARTIALLY_SUPPORTED or UNSUPPORTED with explicit limits. A required unsupported guarantee fails before provider mutation. Provider-native clustering, quorum, replica roles and managed-service product modes remain realization state and never enter portable Application Intent.

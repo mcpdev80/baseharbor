@@ -237,3 +237,16 @@ func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
 		t.Fatal("provider interaction trace payload is empty")
 	}
 }
+
+func TestManagedCollectorHAGatewayMountsUpstreamMTLSProjection(t *testing.T) {
+	text := providerComposeYAML()
+	for _, want := range []string{
+		"./members/service-access/runtime:/upstream:ro",
+		"otel-collector-access:",
+		"127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("managed OTLP HA compose missing %q:\n%s", want, text)
+		}
+	}
+}

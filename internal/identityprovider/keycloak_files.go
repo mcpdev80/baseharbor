@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	KeycloakImage      = "quay.io/keycloak/keycloak:26.7.4"
+	KeycloakImage      = "quay.io/keycloak/keycloak:26.8.0"
 	KeycloakService    = "keycloak"
 	keycloakPublicHost = "identity.localhost"
 	keycloakHTTPSPort  = 8443
@@ -131,7 +131,7 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	// control paths on one loopback listener. Keep the legacy environment key
 	// synchronized for state compatibility without allocating a second port.
 	values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(publicPort)
-	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD"} {
+	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD"} {
 		if strings.TrimSpace(values[key]) == "" {
 			secret, err := randomIdentitySecret(32)
 			if err != nil {
@@ -172,7 +172,46 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	publicAccess := serviceaccess.HTTPGatewayFiles{Dir: filepath.Join(dir, "native-tls"), Material: nativeMaterial}
+	dbPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-db", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	dbPolicy.ServerName = "keycloak-db"
+	dbMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		dbPolicy,
+		filepath.Join(dir, "db-ha", "pki"),
+		"keycloak-db",
+		"keycloak-db-member-1",
+		"keycloak-db-member-2",
+		"keycloak-db-member-3",
+	)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if _, err := projectKeycloakTLSMaterial(filepath.Join(dir, "db-ha", "runtime"), dbMaterial); err != nil {
+		return KeycloakFiles{}, err
+	}
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
+		UpstreamTrustFile:  nativeMaterial.CA,
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases:     []string{providerAlias, providerAdminAlias, "keycloak"},
+		CertificateNames:   []string{keycloakPublicHost, providerAlias, providerAdminAlias, "keycloak"},
+		RequireClient:      false,
+	}
+	frontendPolicy := publicPolicy
+	frontendPolicy.AuthenticationRequired = false
+	frontendPolicy.Authentication = serviceaccess.AuthenticationNative
+	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, frontendPolicy, dir, frontendSpec)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
 	adminAccess := publicAccess
 
 	files.PublicPort = publicPort
@@ -194,6 +233,9 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
+	if err := ensureKeycloakPostgresHA(files.Dir); err != nil {
+		return KeycloakFiles{}, fmt.Errorf("prepare Keycloak HA database routing: %w", err)
+	}
 
 	compose := keycloakCompose(app, files)
 	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
@@ -276,57 +318,42 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	if devaccess.Enabled(app.Environment) {
 		hostnameCommand = "      - --hostname-strict=false\n"
 	}
-	return fmt.Sprintf(`services:
-  keycloak-db:
-    image: docker.io/library/postgres:18-alpine
-    restart: unless-stopped
-    security_opt: ["no-new-privileges:true"]
-    environment:
-      POSTGRES_DB: ${BASEHARBOR_KEYCLOAK_DB_NAME}
-      POSTGRES_USER: ${BASEHARBOR_KEYCLOAK_DB_USER}
-      POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-    volumes:
-      - keycloak-db-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BASEHARBOR_KEYCLOAK_DB_USER} -d ${BASEHARBOR_KEYCLOAK_DB_NAME}"]
-      interval: 2s
-      timeout: 2s
-      retries: 60
-      start_period: 2s
-    networks:
-      - identity-internal
 
-  keycloak:
+	member := func(name string) string {
+		return fmt.Sprintf(`  %s:
     image: %s
     restart: unless-stopped
     user: "1000:0"
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
-      keycloak-db:
-        condition: service_healthy
+      keycloak-db-init:
+        condition: service_completed_successfully
     command:
       - start
+      - --cache=ispn
+      - --cache-stack=jdbc-ping
       - --http-enabled=false
       - --https-port=%d
       - --https-certificate-file=/run/baseharbor/tls/server.pem
       - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
       - --https-certificates-reload-period=30s
+      - --proxy-headers=xforwarded
 %s      - --health-enabled=true
       - --metrics-enabled=true
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}?sslmode=verify-full&sslrootcert=/run/baseharbor/db-ca/ca.pem
       KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
       KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
-%s    ports:
-      - "127.0.0.1:${BASEHARBOR_KEYCLOAK_PUBLIC_PORT}:%d"
-    volumes:
-      - ./native-tls/runtime/server.pem:/run/baseharbor/tls/server.pem:ro
-      - ./native-tls/runtime/server-key.pem:/run/baseharbor/tls/server-key.pem:ro
-      - ./native-tls/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro
+      KC_CACHE: ispn
+      KC_CACHE_STACK: jdbc-ping
+      KC_CACHE_EMBEDDED_NODE_NAME: %s
+%s    volumes:
+      - ./native-tls/runtime:/run/baseharbor/tls:ro
+      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-ca/ca.pem:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
       interval: 2s
@@ -337,27 +364,47 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - /tmp:rw,noexec,nosuid,nodev
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
     networks:
-      identity-consumer:
-        aliases:
-          - %q
-      identity-internal:
-        aliases:
-          - keycloak
-          - %q
+      identity-internal: {}
+`, name, KeycloakImage, keycloakHTTPSPort, hostnameCommand, name, hostnameEnvironment)
+	}
 
-volumes:
-  keycloak-db-data:
-
-networks:
-  identity-consumer:
-    name: %s
-  identity-internal:
-    name: %s
-`, KeycloakImage, keycloakHTTPSPort, hostnameCommand, hostnameEnvironment, keycloakHTTPSPort, devaccess.ProviderAlias(files.Project, "identity"), devaccess.ProviderAlias(files.Project, "identity-admin"), files.ConsumerNetwork, files.InternalNetwork)
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString(keycloakHADataLayerCompose())
+	b.WriteString(member("keycloak-1"))
+	b.WriteString("\n")
+	b.WriteString(member("keycloak-2"))
+	b.WriteString("\n")
+	b.WriteString(member("keycloak-3"))
+	b.WriteString("\n")
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
+		UpstreamTrustFile:  filepath.Join(files.Dir, "native-tls", "runtime", "ca.pem"),
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases: []string{
+			devaccess.ProviderAlias(files.Project, "identity"),
+			devaccess.ProviderAlias(files.Project, "identity-admin"),
+			"keycloak",
+		},
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
+	b.WriteString("\nvolumes:\n")
+	b.WriteString(keycloakHAVolumesCompose())
+	b.WriteString("\nnetworks:\n")
+	fmt.Fprintf(&b, "  identity-consumer:\n    name: %s\n", files.ConsumerNetwork)
+	fmt.Fprintf(&b, "  identity-internal:\n    name: %s\n", files.InternalNetwork)
+	return b.String()
 }
 
 func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
 		return serviceaccess.TLSMaterial{}, err
 	}
 	project := func(source, name string) (string, error) {

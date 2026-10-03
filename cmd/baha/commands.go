@@ -162,10 +162,21 @@ func rootCommand() *cli.Command {
 			Name:    "version",
 			Aliases: nil,
 			Summary: "Print build version",
-			Usage:   "baha version",
+			Usage:   "baha version [-o json|--output json|--json]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				if len(args) != 0 {
-					return usageError("baha version does not accept arguments", "Run '"+"baha version --help' for usage.")
+				filtered, format, err := parseReadOutputArgs(args, "version")
+				if err != nil {
+					return err
+				}
+				if len(filtered) != 0 {
+					return usageError("baha version does not accept positional arguments", "Use --json or -o json for structured output.")
+				}
+				if format == outputJSON {
+					return writeJSON(out, map[string]string{
+						"version": version,
+						"commit":  commit,
+						"built":   date,
+					})
 				}
 				fmt.Fprintf(out, "baha %s (commit %s, built %s)\n", version, commit, date)
 				return nil

@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -26,6 +28,10 @@ type LogSource struct {
 	Class       application.LogsSourceClass
 	Provider    capability.ProviderKind
 	Service     string
+}
+
+type lokiProjectDiagnostics interface {
+	DiagnosticsProject(context.Context, string, string, string) string
 }
 
 type LokiRealization interface {
@@ -64,10 +70,26 @@ func (r *runtimeLokiRealization) placement() (Placement, error) {
 }
 
 func (r *runtimeLokiRealization) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
-	if r.dataDir != "" && r.dataDir != "." {
-		return EnsureProviderFilesForModeAt(ctx, r.issuer, r.dataDir, r.namespace, r.app, r.mode)
+	dataDir := r.dataDir
+	if dataDir == "" || dataDir == "." {
+		var err error
+		dataDir, err = bhruntime.DataDir("")
+		if err != nil {
+			return ProviderFiles{}, err
+		}
 	}
-	return EnsureProviderFilesForMode(ctx, r.issuer, r.app, r.mode)
+	if !r.app.HA {
+		return EnsureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode)
+	}
+	storageRuntime, ok := r.runtime.(objectstorage.Runtime)
+	if !ok {
+		return ProviderFiles{}, errors.New("Loki HA requires runtime object-storage administration support")
+	}
+	bucket, err := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, r.issuer, dataDir, r.namespace, "loki")
+	if err != nil {
+		return ProviderFiles{}, fmt.Errorf("prepare Loki HA object storage: %w", err)
+	}
+	return ensureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode, &bucket)
 }
 
 func (r *runtimeLokiRealization) existingProviderFiles() (ProviderFiles, error) {
@@ -104,7 +126,15 @@ func (r *runtimeLokiRealization) Apply(ctx context.Context) (LokiInstance, error
 		return LokiInstance{}, err
 	}
 	if err := waitLokiReady(ctx, instance.HTTPClient, instance.Endpoint); err != nil {
-		return LokiInstance{}, err
+		if diagnostics, ok := r.runtime.(lokiProjectDiagnostics); ok {
+			diagnosticCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env))
+			cancel()
+			if detail != "" {
+				return LokiInstance{}, fmt.Errorf("Loki readiness: %w\n%s", err, detail)
+			}
+		}
+		return LokiInstance{}, fmt.Errorf("Loki readiness: %w", err)
 	}
 	if err := r.registerProviderSignals(placement); err != nil {
 		return LokiInstance{}, err
@@ -208,5 +238,37 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 	if err != nil {
 		return nil, fmt.Errorf("load Loki service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	client = withLokiHostHeader(client, policy.ServerName)
+	if m.HA {
+		client.Timeout = 30 * time.Second
+	}
+	return client, nil
+}
+
+type lokiHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t lokiHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withLokiHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = lokiHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }

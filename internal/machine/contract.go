@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+
+	"github.com/mcpdev80/baseharbor/internal/apierror"
 )
 
 const ContractVersion = "v1"
@@ -30,6 +33,7 @@ type ErrorCode string
 
 const (
 	ErrorValidationFailed         ErrorCode = "validation_failed"
+	ErrorNotFound                 ErrorCode = "not_found"
 	ErrorPortConflict             ErrorCode = "port_conflict"
 	ErrorRequiredSecretMissing    ErrorCode = "required_secret_missing"
 	ErrorSourceMissing            ErrorCode = "source_missing"
@@ -98,11 +102,28 @@ func Classify(err error) *Error {
 	if errors.As(err, &typed) {
 		return typed
 	}
+	var apiErr *apierror.Error
+	if errors.As(err, &apiErr) {
+		switch apiErr.Code {
+		case apierror.CodeBadRequest:
+			return Wrap(ErrorValidationFailed, err, "Correct the request and retry.", false)
+		case apierror.CodeNotFound:
+			return Wrap(ErrorNotFound, err, "Verify the referenced resource exists and retry.", false)
+		case apierror.CodeConflict:
+			return Wrap(ErrorConflict, err, "Resolve the conflicting state and retry.", false)
+		case apierror.CodeUnauthorized:
+			return Wrap(ErrorAuthenticationFailed, err, "Authenticate and retry.", false)
+		case apierror.CodeForbidden:
+			return Wrap(ErrorPolicyDenied, err, "Review permissions or policy and retry.", false)
+		}
+	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return Wrap(ErrorTimeout, err, "Retry after confirming the local runtime and providers are responsive.", true)
 	case errors.Is(err, context.Canceled):
 		return Wrap(ErrorInternal, err, "Retry the operation if it was cancelled unintentionally.", true)
+	case errors.Is(err, os.ErrNotExist):
+		return Wrap(ErrorNotFound, err, "Verify the referenced file or resource exists and retry.", false)
 	default:
 		return Wrap(ErrorInternal, fmt.Errorf("%w", err), "Inspect the error and run baha doctor for additional diagnostics.", false)
 	}

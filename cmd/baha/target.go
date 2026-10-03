@@ -19,6 +19,20 @@ import (
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
+type targetListItem struct {
+	Name      string   `json:"name"`
+	Runtime   string   `json:"runtime"`
+	Access    string   `json:"access"`
+	Scope     string   `json:"scope"`
+	Selectors []string `json:"selectors,omitempty"`
+}
+
+type targetShowResult struct {
+	ContractVersion string                    `json:"contract_version"`
+	Target          deployment.ResolvedTarget `json:"target"`
+	StateRoot       string                    `json:"state_root"`
+}
+
 type targetInspectionResult struct {
 	ContractVersion string                             `json:"contract_version"`
 	Target          deployment.ResolvedTarget          `json:"target"`
@@ -90,29 +104,20 @@ func targetCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
-		Usage:   "baha target [list|show|create|delete|activate|deactivate]",
+		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			jsonOutput := false
-			for i := 0; i < len(args); i++ {
-				switch args[i] {
-				case "-o", "--output":
-					if i+1 >= len(args) {
-						return usageError(args[i]+" requires a value", "Use -o json or --output json.")
-					}
-					i++
-					if args[i] != "json" {
-						return usageError("unsupported target output "+args[i], "Only json is supported for structured target output.")
-					}
-					jsonOutput = true
-				default:
-					return unknownOptionUsage("baha target", args[i], "-o", "--output")
-				}
+			filtered, format, err := parseReadOutputArgs(args, "target")
+			if err != nil {
+				return err
+			}
+			if len(filtered) != 0 {
+				return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
 			}
 			result, err := collectTargetInspection(ctx)
 			if err != nil {
 				return err
 			}
-			if jsonOutput {
+			if format == outputJSON {
 				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
@@ -145,10 +150,14 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "list",
 				Summary: "List configured targets",
-				Usage:   "baha target list",
+				Usage:   "baha target list [-o json|--output json|--json]",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) != 0 {
-						return usageError("baha target list does not accept arguments", "Run 'baha target list --help' for usage.")
+					filtered, format, err := parseReadOutputArgs(args, "target list")
+					if err != nil {
+						return err
+					}
+					if len(filtered) != 0 {
+						return usageError("baha target list does not accept positional arguments", "Use --json or -o json for structured output.")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
@@ -164,7 +173,7 @@ func targetCommand() *cli.Command {
 						names = append(names, "local")
 						sort.Strings(names)
 					}
-					fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "SCOPE", "SELECTOR")
+					items := make([]targetListItem, 0, len(names))
 					for _, name := range names {
 						var (
 							provider string
@@ -191,7 +200,14 @@ func targetCommand() *cli.Command {
 						if name == effective.Name {
 							marks = append(marks, "effective")
 						}
-						fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", name, provider, access, scope, strings.Join(marks, ","))
+						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, Scope: scope, Selectors: marks})
+					}
+					if format == outputJSON {
+						return writeJSON(out, map[string]any{"contract_version": machine.ContractVersion, "targets": items})
+					}
+					fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "SCOPE", "SELECTOR")
+					for _, item := range items {
+						fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", item.Name, item.Runtime, item.Access, item.Scope, strings.Join(item.Selectors, ","))
 					}
 					return nil
 				},
@@ -199,30 +215,37 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "show",
 				Summary: "Show one target",
-				Usage:   "baha target show [NAME]",
+				Usage:   "baha target show [NAME] [-o json|--output json|--json]",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) > 1 {
-						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME'.")
+					filtered, format, err := parseReadOutputArgs(args, "target show")
+					if err != nil {
+						return err
+					}
+					if len(filtered) > 1 {
+						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
 						return err
 					}
 					name := ""
-					if len(args) == 1 {
-						name = args[0]
+					if len(filtered) == 1 {
+						name = filtered[0]
 					}
 					target, err := cfg.ResolveTarget(name, os.Getenv("BASEHARBOR_TARGET"))
 					if err != nil {
 						return err
 					}
-					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s\n", target.Name, target.RuntimeProvider, target.AccessReference)
-					if target.Scope != "" {
-						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
-					}
 					root, err := deployment.TargetStateRoot(target.Name)
 					if err != nil {
 						return err
+					}
+					if format == outputJSON {
+						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root})
+					}
+					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s\n", target.Name, target.RuntimeProvider, target.AccessReference)
+					if target.Scope != "" {
+						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
 					}
 					fmt.Fprintf(out, "State    %s\n", root)
 					return nil

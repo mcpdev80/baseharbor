@@ -4,14 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
-	"os"
-	"strconv"
-	"strings"
 )
 
 func UnregisterApplication(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest) error {
@@ -187,5 +189,11 @@ func lokiAccessSpec() serviceaccess.HTTPGatewaySpec {
 		ContainerPort:    8443,
 		Networks:         []string{"logs-internal", "logs-publish"},
 		RequireClient:    true,
+		// /ready reflects cluster-wide module readiness and can become 503
+		// transiently after a member loss even while this process can serve
+		// queries. The frontend health check must only evict dead processes;
+		// query/ingestion continuity is verified separately by the HA gate.
+		HealthURI:    "/loki/api/v1/status/buildinfo",
+		HealthStatus: http.StatusOK,
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -163,10 +164,44 @@ func appWorkspaceMapCommand() *cli.Command {
 				return err
 			}
 			model, _, err := development.LoadSourceModel(manifestPath)
-			if err != nil {
-				return err
-			}
 			sourceID := strings.TrimSpace(positional[0])
+			bootstrap := false
+			if err != nil {
+				if !errors.Is(err, development.ErrWorkspaceModelMissing) {
+					return err
+				}
+				checkout, absErr := filepath.Abs(strings.TrimSpace(positional[1]))
+				if absErr != nil {
+					return absErr
+				}
+				info, statErr := os.Stat(checkout)
+				if statErr != nil || !info.IsDir() {
+					return usageError("workspace source path is not an existing directory", "Map an existing Git checkout/worktree.")
+				}
+				repository := strings.TrimSpace(workspaceGitValue(ctx, checkout, "config", "--get", "remote.origin.url"))
+				if repository == "" {
+					return usageError("cannot bootstrap workspace source without a stable Git origin", "Configure remote.origin.url, or run 'baha app workspace init --source ID=REPOSITORY --component COMPONENT=ID' explicitly.")
+				}
+				components := application.WorkloadComponentNames(manifest)
+				if len(components) != 1 {
+					return usageError("cannot infer the first workspace component", "Run 'baha app workspace init --source ID=REPOSITORY --component COMPONENT=ID' explicitly for zero- or multi-component applications.")
+				}
+				model = development.SourceModel{
+					SchemaVersion: development.SourceModelVersion,
+					Application:   manifest.Name,
+					Sources: []development.SourceDefinition{{
+						ID:         sourceID,
+						Type:       development.SourceRepository,
+						Repository: repository,
+						Ref:        strings.TrimSpace(workspaceGitValue(ctx, checkout, "branch", "--show-current")),
+					}},
+					Components: []development.ComponentSource{{
+						Component: components[0],
+						Source:    sourceID,
+					}},
+				}
+				bootstrap = true
+			}
 			found := false
 			for _, source := range model.Sources {
 				if source.ID == sourceID {
@@ -195,9 +230,22 @@ func appWorkspaceMapCommand() *cli.Command {
 				mapping.Sources = map[string]string{}
 			}
 			mapping.Sources[sourceID] = positional[1]
+			var sourceModelPath string
+			if bootstrap {
+				sourceModelPath, err = development.WriteSourceModel(manifestPath, model)
+				if err != nil {
+					return err
+				}
+			}
 			path, err := development.SaveWorkspaceMapping(manifestPath, mapping)
 			if err != nil {
+				if sourceModelPath != "" {
+					_ = os.Remove(sourceModelPath)
+				}
 				return err
+			}
+			if sourceModelPath != "" {
+				fmt.Fprintf(out, "source model: %s\n", sourceModelPath)
 			}
 			fmt.Fprintf(out, "mapped %s -> %s\n", sourceID, displayUserPath(positional[1]))
 			fmt.Fprintf(out, "workspace state: %s\n", path)

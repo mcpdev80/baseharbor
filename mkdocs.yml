@@ -12,9 +12,10 @@ exclude_docs: |
 theme:
   name: material
   language: en
+  logo: brand/baseharbor-master-lockup.png
+  favicon: brand/baseharbor.ico
   features:
     - navigation.instant
-    - navigation.tabs
     - navigation.sections
     - navigation.path
     - navigation.top
@@ -44,6 +45,10 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
 
+extra_css:
+  - brand/brand-tokens.css
+  - stylesheets/baseharbor-docs.css
+
 extra:
   alternate:
     - name: English
@@ -58,33 +63,24 @@ nav:
 
   - Getting Started:
       - First application: tutorials/getting-started.md
-
-  - CLI:
-      - Overview: cli/index.md
-      - Complete command index: cli/command-index.md
-      - Core workflow: cli/core.md
-      - Applications: cli/applications.md
-      - Targets: cli/targets.md
-      - Providers: cli/providers.md
-      - Development: cli/development.md
-      - Organization & Policy: cli/organization-policy.md
-      - Security & Trust: cli/security-trust.md
-      - Automation & Agents: cli/automation-agents.md
-      - Shell & UX: cli/shell-ux.md
-      - Global options: cli/global-options.md
+      - CLI orientation: cli/index.md
 
   - Applications:
       - Application contract: explanation/application-contract.md
+      - Application commands: cli/applications.md
+      - Core workflow: cli/core.md
       - Environments: how-to/environments.md
       - Backup & restore: how-to/backup-restore.md
       - Dynamic application secrets: how-to/dynamic-application-secrets.md
 
   - Targets:
       - Target concepts: explanation/targets.md
+      - Target commands: cli/targets.md
       - Developer access: how-to/developer-access.md
 
   - Providers:
       - Provider model: explanation/providers.md
+      - Provider commands: cli/providers.md
       - External / BYO providers: how-to/external-providers.md
       - PostgreSQL: how-to/postgres.md
       - Cache: how-to/cache.md
@@ -96,33 +92,34 @@ nav:
       - Observability: how-to/observability.md
 
   - Workspaces:
-      - CLI workspace commands: cli/development.md
+      - Workspace & development commands: cli/development.md
 
   - Development Stacks:
-      - Stack Profile CLI: cli/development.md
       - Backstage integration: how-to/backstage.md
 
   - Organization / Platform Configuration:
       - Concepts & distribution: explanation/organization-configuration.md
-      - CLI & policy: cli/organization-policy.md
+      - Organization & policy commands: cli/organization-policy.md
 
   - Security / Trust:
       - Security model: explanation/security.md
       - Authentication: explanation/authentication.md
-      - Trust CLI: cli/security-trust.md
+      - Security & trust commands: cli/security-trust.md
 
   - Operations:
-      - Core lifecycle CLI: cli/core.md
-      - Backup & restore: how-to/backup-restore.md
       - Troubleshooting: troubleshooting/index.md
       - Errors: reference/errors.md
 
   - Automation / Agents:
-      - CLI automation: cli/automation-agents.md
+      - Automation commands: cli/automation-agents.md
       - MCP / agent interface: reference/mcp.md
       - Machine Interface v1: spec/machine-interface-v1.md
 
   - Reference:
+      - Complete command index: cli/command-index.md
+      - CLI reference: reference/cli.md
+      - Global options: cli/global-options.md
+      - Shell & UX: cli/shell-ux.md
       - Manifest: reference/manifest.md
       - Application secret API: reference/application-secret-api.md
       - Authentication & API errors: reference/authentication-and-api-errors.md
@@ -136,8 +133,8 @@ nav:
       - Runtime Provider Conformance v1: spec/runtime-provider-conformance-v1.md
       - Delivery Provider Contract v1: spec/delivery-provider-contract-v1.md
 
-  - Concepts:
-      - Architecture: explanation/architecture.md
+  - Architecture:
+      - System architecture: explanation/architecture.md
 
   - Developer:
       - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md

@@ -102,3 +102,62 @@ func TestServiceCAReadsPublicCAOnly(t *testing.T) {
 		t.Fatalf("unexpected CA material: %s", ca)
 	}
 }
+
+type servicePKIRotationFake struct {
+	activeCA       string
+	defaultIssuer  string
+	configPayloads []string
+}
+
+func (f *servicePKIRotationFake) ExecProject(_ context.Context, _, _, _, _ string, args ...string) (string, error) {
+	return "", nil
+}
+
+func (f *servicePKIRotationFake) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, _ string, args ...string) (string, error) {
+	joined := strings.Join(args, " ")
+	switch {
+	case strings.Contains(joined, "auth/approle/login"):
+		return `{"auth":{"client_token":"manager-token"}}`, nil
+	case strings.Contains(joined, "baseharbor-pki/root/rotate/internal"):
+		return `{"data":{"issuer_id":"rotated-root"}}`, nil
+	case strings.Contains(joined, "baseharbor-pki/config/issuers"):
+		parts := strings.SplitN(string(input), "\n", 2)
+		if len(parts) != 2 {
+			return "", nil
+		}
+		f.configPayloads = append(f.configPayloads, strings.TrimSpace(parts[1]))
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(parts[1]), &payload); err == nil {
+			f.defaultIssuer = payload["default"]
+			if f.defaultIssuer == "rotated-root" {
+				f.activeCA = "NEW-CA"
+			}
+		}
+		return `{"data":{"default":"rotated-root"}}`, nil
+	case strings.Contains(joined, "baseharbor-pki/cert/ca"):
+		ca := f.activeCA
+		if ca == "" {
+			ca = "OLD-CA"
+		}
+		return `{"data":{"certificate":"-----BEGIN CERTIFICATE-----\n` + ca + `\n-----END CERTIFICATE-----"}}`, nil
+	default:
+		return "", nil
+	}
+}
+
+func TestRotateServiceCAActivatesRotatedIssuerAsDefault(t *testing.T) {
+	files := servicePKITestFiles(t)
+	fake := &servicePKIRotationFake{activeCA: "OLD-CA"}
+	if err := RotateServiceCA(context.Background(), fake, files); err != nil {
+		t.Fatal(err)
+	}
+	if fake.defaultIssuer != "rotated-root" {
+		t.Fatalf("default issuer = %q, want rotated-root", fake.defaultIssuer)
+	}
+	if fake.activeCA != "NEW-CA" {
+		t.Fatalf("active CA = %q, want NEW-CA", fake.activeCA)
+	}
+	if len(fake.configPayloads) != 1 || !strings.Contains(fake.configPayloads[0], `"default":"rotated-root"`) {
+		t.Fatalf("unexpected default-issuer payloads: %#v", fake.configPayloads)
+	}
+}
