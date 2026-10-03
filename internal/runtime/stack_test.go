@@ -196,7 +196,7 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 		"PATRONI_NAME: postgres-member-1",
 		"PATRONI_NAME: postgres-member-2",
 		"PATRONI_NAME: postgres-member-3",
-		"PATRONI_ETCD3_HOSTS: \"'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'\"",
+		"ETCD3_HOSTS: \"'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'\"",
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro",
 		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
@@ -337,7 +337,7 @@ func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	if got := strings.Count(text, scope); got != 3 {
 		t.Fatalf("PATRONI_SCOPE appears %d times, want exactly 3", got)
 	}
-	if strings.Contains(text, "PATRONI_ETCD3_HOSTS:") {
+	if strings.Contains(text, "ETCD3_HOSTS:") {
 		t.Fatal("Spilo runtime must use ETCD3_HOSTS so /launch.sh configures one shared DCS")
 	}
 }
