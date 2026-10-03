@@ -155,12 +155,43 @@ func validateProviderLogSource(m application.Manifest, source observability.Sign
 
 func waitForStream(ctx context.Context, client *http.Client, endpoint string, m application.Manifest, service string) error {
 	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_service=%q}`, m.Name, m.Environment, service)
-	// Stream verification is about durable ingestion and label/query continuity.
-	// Loki 3.7 can report matching entries in query stats while query_range
-	// returns an empty line result during HA ring transitions. The /series API
-	// is the stable contract for proving that the matching stream is present
-	// and queryable across members.
-	return waitForSeries(ctx, client, endpoint, query, m.Name+"/"+service)
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		probeCtx, probeCancel := context.WithTimeout(deadline, 4*time.Second)
+		ok, queryErr := queryStream(probeCtx, client, endpoint, query)
+		probeCancel()
+		if queryErr == nil && ok {
+			return nil
+		}
+
+		probeCtx, probeCancel = context.WithTimeout(deadline, 4*time.Second)
+		ok, seriesErr := querySeries(probeCtx, client, endpoint, query)
+		probeCancel()
+		if seriesErr == nil && ok {
+			return nil
+		}
+
+		switch {
+		case queryErr != nil && seriesErr != nil:
+			last = fmt.Errorf("query_range: %v; series: %v", queryErr, seriesErr)
+		case queryErr != nil:
+			last = queryErr
+		case seriesErr != nil:
+			last = seriesErr
+		default:
+			last = errors.New("Loki has not ingested a matching log stream yet")
+		}
+		select {
+		case <-deadline.Done():
+			return fmt.Errorf("verify Loki ingestion for %s/%s: %w", m.Name, service, last)
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, description string) error {
