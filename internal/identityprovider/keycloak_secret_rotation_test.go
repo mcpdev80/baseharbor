@@ -19,6 +19,10 @@ func TestKeycloakClientSecretOverlapRotation(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"value":"new-secret"}`))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/client-secret/rotated"):
+			if retired {
+				http.NotFound(w, r)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"value":"old-secret"}`))
 		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/client-secret/rotated"):
