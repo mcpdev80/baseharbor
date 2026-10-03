@@ -240,14 +240,46 @@ func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Clie
 			}
 		}
 		if values["BASEHARBOR_PROMETHEUS_UI_USER"] != "" && values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] != "" {
-			return serviceaccess.NewHTTPClientWithBasicAuth(
+			client, err := serviceaccess.NewHTTPClientWithBasicAuth(
 				material,
 				values["BASEHARBOR_PROMETHEUS_UI_USER"],
 				values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"],
 			)
+			if err != nil {
+				return nil, err
+			}
+			return withPrometheusHostHeader(client, policy.ServerName), nil
 		}
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withPrometheusHostHeader(client, policy.ServerName), nil
+}
+
+type prometheusHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t prometheusHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withPrometheusHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = prometheusHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {
