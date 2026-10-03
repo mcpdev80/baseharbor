@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,31 @@ func TestWriteOpenBaoRuntimeConfigEncodesPostgresCredentialsAsURLUserinfo(t *tes
 	}
 	if parsed.Host != "postgres:5432" || parsed.Path != "/openbao" {
 		t.Fatalf("unexpected PostgreSQL storage URL target: %s", parsed.String())
+	}
+}
+
+
+func TestWriteOpenBaoHAProxyConfigRoutesOnlyToActiveLeader(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeOpenBaoHAProxyConfig(dir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "haproxy.cfg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(data)
+	for _, required := range []string{
+		"option httpchk",
+		"http-check connect ssl verify none",
+		"/v1/sys/health?standbyok=false&perfstandbyok=false",
+		"http-check expect status 200",
+	} {
+		if !strings.Contains(config, required) {
+			t.Fatalf("OpenBao HAProxy config missing leader-aware health check %q:\n%s", required, config)
+		}
+	}
+	if strings.Contains(config, "balance roundrobin") || strings.Contains(config, "option tcp-check") {
+		t.Fatalf("OpenBao HAProxy must not route writes to healthy standbys:\n%s", config)
 	}
 }
