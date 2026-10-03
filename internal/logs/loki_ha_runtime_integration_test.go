@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
@@ -32,7 +34,7 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	namespace := "loki-ha-acceptance"
 	t.Setenv(application.LogsEnabledEnv, "true")
 
-	m := application.WithLogsCollection(application.New("loki-ha-ci", "dev", false, false, false), "application")
+	m := application.WithLogsCollection(application.New("loki-ha-ci", "test", false, false, false), "application")
 	m.HA = true
 	driver := logs.NewDriverAt(runtime, m, serviceissuer.New(t), dataDir, namespace)
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
@@ -136,6 +138,89 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	emitLokiHAProbes(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
+
+	if err := driver.RotateStorageCredentials(ctx); err != nil {
+		t.Fatalf("rotate Loki platform-storage credentials: %v", err)
+	}
+	emitLokiHAProbes(t, registration.SyslogPort)
+	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
+
+	accessPolicy, err := serviceaccess.Resolve(m.Environment, "loki", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessDir := filepath.Join(files.Dir, "service-access", "pki")
+	oldMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCA := mustReadLokiPKIFile(t, oldMaterial.CA)
+	oldClientCert := mustReadLokiPKIFile(t, oldMaterial.ClientCertificate)
+	oldClientKey := mustReadLokiPKIFile(t, oldMaterial.ClientKey)
+
+	issuer.Rotate(t)
+	if err := driver.RotateAccessPKI(ctx); err != nil {
+		t.Fatalf("rotate Loki access PKI: %v", err)
+	}
+	emitLokiHAProbes(t, registration.SyslogPort)
+	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
+
+	newMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := logs.ProviderEndpoint(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLokiRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, oldCA, nil, nil, "retired CA")
+	assertLokiRetiredMaterialRejected(t, ctx, accessPolicy, endpoint, newMaterial, nil, oldClientCert, oldClientKey, "retired client certificate")
+}
+
+func mustReadLokiPKIFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func assertLokiRetiredMaterialRejected(t *testing.T, ctx context.Context, policy serviceaccess.Policy, endpoint string, current serviceaccess.TLSMaterial, oldCA, oldClientCert, oldClientKey []byte, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	material := current
+	if oldCA != nil {
+		material.CA = filepath.Join(dir, "old-ca.pem")
+		if err := os.WriteFile(material.CA, oldCA, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if oldClientCert != nil {
+		material.ClientCertificate = filepath.Join(dir, "old-client.pem")
+		material.ClientKey = filepath.Join(dir, "old-client-key.pem")
+		if err := os.WriteFile(material.ClientCertificate, oldClientCert, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(material.ClientKey, oldClientKey, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/status/buildinfo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("%s still authenticates/validates the rotated Loki endpoint", label)
+	}
 }
 
 func emitLokiHAProbes(t *testing.T, port int) {
