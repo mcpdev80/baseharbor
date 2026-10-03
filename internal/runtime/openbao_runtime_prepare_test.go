@@ -55,9 +55,9 @@ func TestWriteOpenBaoHAProxyConfigRoutesOnlyToActiveLeader(t *testing.T) {
 	config := string(data)
 	for _, required := range []string{
 		"option httpchk",
-		"http-check connect ssl verify none",
 		"/v1/sys/health?standbyok=false&perfstandbyok=false",
 		"http-check expect status 200,501,503",
+		"default-server check check-ssl verify none",
 	} {
 		if !strings.Contains(config, required) {
 			t.Fatalf("OpenBao HAProxy config missing leader-aware health check %q:\n%s", required, config)
