@@ -198,3 +198,40 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 		t.Fatalf("shared Valkey compose must not use symbolic runtime identity:\n%s", got)
 	}
 }
+
+
+func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
+	var b strings.Builder
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	got := b.String()
+
+	for _, want := range []string{
+		"shared-postgres-tls-init:",
+		"user: \"0:0\"",
+		"chmod 0600 /target/server-key.pem",
+		"shared-postgres-tls:/run/baseharbor/tls:ro",
+		"condition: service_completed_successfully",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("shared PostgreSQL Compose missing %q:\n%s", want, got)
+		}
+	}
+	for _, member := range []string{
+		sharedPostgresMemberService("dev", 1),
+		sharedPostgresMemberService("dev", 2),
+		sharedPostgresMemberService("dev", 3),
+	} {
+		start := strings.Index(got, "  "+member+":\n")
+		if start < 0 {
+			t.Fatalf("missing shared PostgreSQL member %s:\n%s", member, got)
+		}
+		end := strings.Index(got[start+2:], "\n  ")
+		block := got[start:]
+		if end >= 0 {
+			block = got[start : start+2+end]
+		}
+		if strings.Contains(block, `cap_drop: ["ALL"]`) {
+			t.Fatalf("Spilo member %s must retain bootstrap capabilities:\n%s", member, block)
+		}
+	}
+}
