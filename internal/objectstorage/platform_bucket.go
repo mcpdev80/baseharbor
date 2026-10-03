@@ -198,7 +198,6 @@ func seaweedBucketListed(output, name string) bool {
 	return false
 }
 
-
 const platformBucketAdminRetryTimeout = 30 * time.Second
 
 func execSeaweedPlatformCommand(ctx context.Context, runtime Runtime, files ProviderFiles, command string) (string, error) {
