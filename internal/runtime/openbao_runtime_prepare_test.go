@@ -43,7 +43,7 @@ func TestWriteOpenBaoRuntimeConfigEncodesPostgresCredentialsAsURLUserinfo(t *tes
 }
 
 
-func TestWriteOpenBaoHAProxyConfigRoutesOnlyToActiveLeader(t *testing.T) {
+func TestWriteOpenBaoHAProxyConfigAcceptsHealthyHAStandbys(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeOpenBaoHAProxyConfig(dir); err != nil {
 		t.Fatal(err)
@@ -55,15 +55,15 @@ func TestWriteOpenBaoHAProxyConfigRoutesOnlyToActiveLeader(t *testing.T) {
 	config := string(data)
 	for _, required := range []string{
 		"option httpchk",
-		"/v1/sys/health?standbyok=false&perfstandbyok=false",
+		"/v1/sys/health?standbyok=true&perfstandbyok=true",
 		"http-check expect status 200",
 		"default-server check check-ssl verify none",
 	} {
 		if !strings.Contains(config, required) {
-			t.Fatalf("OpenBao HAProxy config missing leader-aware health check %q:\n%s", required, config)
+			t.Fatalf("OpenBao HAProxy config missing HA-aware health check %q:\n%s", required, config)
 		}
 	}
-	if strings.Contains(config, "balance roundrobin") || strings.Contains(config, "option tcp-check") {
-		t.Fatalf("OpenBao HAProxy must not route writes to healthy standbys:\n%s", config)
+	if strings.Contains(config, "option tcp-check") {
+		t.Fatalf("OpenBao HAProxy must use HTTP health semantics for active/standby readiness:\n%s", config)
 	}
 }
