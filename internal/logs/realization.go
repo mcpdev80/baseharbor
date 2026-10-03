@@ -238,5 +238,12 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 	if err != nil {
 		return nil, fmt.Errorf("load Loki service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	if m.HA {
+		client.Timeout = 30 * time.Second
+	}
+	return client, nil
 }
