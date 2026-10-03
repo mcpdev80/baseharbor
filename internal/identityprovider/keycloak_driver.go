@@ -397,6 +397,84 @@ func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 	return value, nil
 }
 
+func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
+	r, ok := d.realization.(*localKeycloakRealization)
+	if !ok || r == nil {
+		return errors.New("Keycloak PKI rotation requires the managed local realization")
+	}
+	if r.issuer == nil {
+		return errors.New("Keycloak PKI rotation requires a managed issuer")
+	}
+
+	reconcile := func() (KeycloakFiles, error) {
+		files, err := EnsureKeycloakFilesAt(ctx, r.app, r.issuer, r.dataDir, r.namespace)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		publicBase, err := localKeycloakPublicBaseURL(r.app, r.namespace, r.runtime, files)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := r.lifecycle.Validate(ctx, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := r.lifecycle.Apply(ctx, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		instance, err := r.instance(ctx, files, publicBase)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		r.files = files
+		d.instance = instance
+		if _, err := d.adminClient(ctx); err != nil {
+			return KeycloakFiles{}, fmt.Errorf("verify Keycloak after PKI reconcile: %w", err)
+		}
+		return files, nil
+	}
+
+	files, err := reconcile()
+	if err != nil {
+		return fmt.Errorf("reconcile replacement Keycloak PKI with overlap: %w", err)
+	}
+
+	publicPolicy, err := serviceaccess.Resolve(r.app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	publicPolicy.ServerName = keycloakPublicHost
+	frontendPolicy := publicPolicy
+	frontendPolicy.AuthenticationRequired = false
+	frontendPolicy.Authentication = serviceaccess.AuthenticationNative
+	dbPolicy, err := serviceaccess.Resolve(r.app.Environment, "keycloak-db", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	dbPolicy.ServerName = "keycloak-db"
+
+	for _, item := range []struct {
+		name   string
+		policy serviceaccess.Policy
+		dir    string
+	}{
+		{name: "native", policy: publicPolicy, dir: filepath.Join(files.Dir, "native-tls", "pki")},
+		{name: "database", policy: dbPolicy, dir: filepath.Join(files.Dir, "db-ha", "pki")},
+		{name: "frontend", policy: frontendPolicy, dir: filepath.Join(files.Dir, "service-access", "pki")},
+	} {
+		if err := serviceaccess.RetireTLSOverlap(ctx, r.issuer, item.policy, item.dir); err != nil {
+			return fmt.Errorf("retire previous Keycloak %s CA: %w", item.name, err)
+		}
+	}
+
+	if _, err := reconcile(); err != nil {
+		return fmt.Errorf("reconcile Keycloak after CA retirement: %w", err)
+	}
+	return nil
+}
+
 func rebaseIdentityDiscovery(discovery application.IdentityDiscovery, fromIssuer, toIssuer string) application.IdentityDiscovery {
 	fromIssuer = strings.TrimRight(strings.TrimSpace(fromIssuer), "/")
 	toIssuer = strings.TrimRight(strings.TrimSpace(toIssuer), "/")
