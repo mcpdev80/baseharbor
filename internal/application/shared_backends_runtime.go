@@ -92,10 +92,17 @@ func waitSharedPostgresReady(ctx context.Context, compose bhruntime.RuntimeProvi
 
 		select {
 		case <-waitCtx.Done():
-			if lastErr != nil {
-				return fmt.Errorf("wait for shared PostgreSQL readiness: %w", lastErr)
+			cause := lastErr
+			if cause == nil {
+				cause = waitCtx.Err()
 			}
-			return fmt.Errorf("wait for shared PostgreSQL readiness: %w", waitCtx.Err())
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			details := strings.TrimSpace(compose.DiagnosticsProject(diagnosticCtx, shared.Project, shared.Compose, shared.Env))
+			diagnosticCancel()
+			if details != "" {
+				return fmt.Errorf("wait for shared PostgreSQL readiness: %w; runtime diagnostics:\n%s", cause, details)
+			}
+			return fmt.Errorf("wait for shared PostgreSQL readiness: %w", cause)
 		case <-ticker.C:
 		}
 	}
