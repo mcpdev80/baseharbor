@@ -506,7 +506,35 @@ func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client,
 	if err != nil {
 		return nil, fmt.Errorf("load Tempo service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withTempoHostHeader(client, policy.ServerName), nil
+}
+
+type tempoHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t tempoHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withTempoHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = tempoHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {
