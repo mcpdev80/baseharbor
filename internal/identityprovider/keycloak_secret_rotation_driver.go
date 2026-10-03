@@ -36,6 +36,9 @@ func (d *KeycloakDriver) RotateClientSecret(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := admin.ensureClientSecretRotationPolicy(ctx, d.realm); err != nil {
+		return err
+	}
 	clientUUID, err := admin.resolveClientUUID(ctx, d.realm, d.clientID)
 	if err != nil {
 		return err
