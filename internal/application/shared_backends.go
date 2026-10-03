@@ -23,6 +23,7 @@ type sharedBackendState struct {
 	Version                       int                              `json:"version"`
 	Environment                   string                           `json:"environment"`
 	PostgresAdminCredential       string                           `json:"postgres_admin_credential,omitempty"`
+	PostgresSuperuserCredential   string                           `json:"postgres_superuser_credential,omitempty"`
 	PostgresReplicationCredential string                           `json:"postgres_replication_credential,omitempty"`
 	PostgresHostPort              int                              `json:"postgres_host_port,omitempty"`
 	PostgresUIHostPort            int                              `json:"postgres_ui_host_port,omitempty"`
@@ -165,6 +166,13 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			}
 			state.PostgresAdminCredential = ref
 		}
+		if state.PostgresSuperuserCredential == "" {
+			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-superuser", "")
+			if err != nil {
+				return false, err
+			}
+			state.PostgresSuperuserCredential = ref
+		}
 		if state.PostgresReplicationCredential == "" {
 			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
 			if err != nil {
@@ -258,6 +266,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 	if UsesSharedPostgreSQL(m) {
 		if err := waitSharedPostgresReady(ctx, compose, shared, m.Environment); err != nil {
+			return false, err
+		}
+		if err := ensureSharedPostgresAdminIdentity(ctx, compose, shared, m.Environment); err != nil {
 			return false, err
 		}
 		if err := reconcileSharedPostgresApplication(ctx, compose, shared, app); err != nil {
