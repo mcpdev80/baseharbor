@@ -32,14 +32,14 @@ type keycloakComponent struct {
 }
 
 type keycloakKeyMetadata struct {
-	ProviderID       string   `json:"providerId"`
-	ProviderPriority int      `json:"providerPriority"`
-	Kid              string   `json:"kid"`
-	Status           string   `json:"status,omitempty"`
-	Type             string   `json:"type,omitempty"`
-	Algorithm        string   `json:"algorithm,omitempty"`
-	PublicKey        string   `json:"publicKey,omitempty"`
-	Certificate      string   `json:"certificate,omitempty"`
+	ProviderID       string `json:"providerId"`
+	ProviderPriority int    `json:"providerPriority"`
+	Kid              string `json:"kid"`
+	Status           string `json:"status,omitempty"`
+	Type             string `json:"type,omitempty"`
+	Algorithm        string `json:"algorithm,omitempty"`
+	PublicKey        string `json:"publicKey,omitempty"`
+	Certificate      string `json:"certificate,omitempty"`
 }
 
 type keycloakKeysMetadata struct {
