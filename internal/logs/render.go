@@ -427,11 +427,11 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	} else if len(registrations) > 0 {
 		b.WriteString("    ports:\n")
 		for _, registration := range registrations {
-			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", registration.SyslogPort, registration.SyslogPort)))
-			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", registration.ProviderSyslogPort, registration.ProviderSyslogPort)))
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/tcp", registration.SyslogPort, registration.SyslogPort)))
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/tcp", registration.ProviderSyslogPort, registration.ProviderSyslogPort)))
 		}
 		if platformPort > 0 {
-			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/udp", platformPort, platformPort)))
+			fmt.Fprintf(&b, "      - %s\n", strconv.Quote(fmt.Sprintf("127.0.0.1:%d:%d/tcp", platformPort, platformPort)))
 		}
 	}
 	if storageNetwork == "" {
