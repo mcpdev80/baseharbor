@@ -86,7 +86,6 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 	)
 }
 
-
 // RotateAccessPKI rotates Loki's stable HTTPS/mTLS access identity with
 // old+new trust overlap, verifies the replacement path, retires the old CA,
 // reprojects new-only material, and verifies the stable endpoint again.
