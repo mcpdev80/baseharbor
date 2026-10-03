@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/credential"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -12,6 +13,24 @@ func rabbitMQCreateApplicationUser(ctx context.Context, runtime bhruntime.Runtim
 	script := "IFS= read -r username\nIFS= read -r password\nrabbitmqctl add_user \"$username\" \"$password\" >/dev/null\nrabbitmqctl set_permissions -p / \"$username\" '.*' '.*' '.*' >/dev/null\n"
 	_, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(username+"\n"+password+"\n"), service, "sh", "-ceu", script)
 	return err
+}
+
+func loadPreparedRabbitMQCredential(store credential.PreparedMaterialStore, key string) (rabbitMQCredentialRotationMaterial, error) {
+	data, err := store.Load(key)
+	if err != nil {
+		return rabbitMQCredentialRotationMaterial{}, err
+	}
+	if len(data) == 0 {
+		return rabbitMQCredentialRotationMaterial{}, errors.New("prepared RabbitMQ credential material is missing")
+	}
+	var material rabbitMQCredentialRotationMaterial
+	if err := json.Unmarshal(data, &material); err != nil {
+		return rabbitMQCredentialRotationMaterial{}, err
+	}
+	if material.OldAppUser == "" || material.OldAppPassword == "" || material.NewAppUser == "" || material.NewAppPassword == "" {
+		return rabbitMQCredentialRotationMaterial{}, errors.New("prepared RabbitMQ credential material is invalid")
+	}
+	return material, nil
 }
 
 func rabbitMQCreateAdminUser(ctx context.Context, runtime bhruntime.RuntimeProvider, files RuntimeFiles, service, username, password string) error {
