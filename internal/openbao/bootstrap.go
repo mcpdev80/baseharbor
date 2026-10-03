@@ -447,7 +447,7 @@ func configureManager(ctx context.Context, executor Executor, files bhruntime.Fi
 	commands := []string{
 		`if ! bao secrets list -format=json | grep -q '"baseharbor/"'; then bao secrets enable -path=baseharbor -version=2 kv >/dev/null; fi`,
 		`if ! bao secrets list -format=json | grep -q '"baseharbor-pki/"'; then bao secrets enable -path=baseharbor-pki pki >/dev/null; fi`,
-		`bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null`,
+		`for attempt in 1 2 3 4 5 6 7 8 9 10; do if bao secrets list -format=json | grep -q '"'"'"baseharbor-pki/"'"'"' && bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null 2>&1; then exit 0; fi; sleep 1; done; echo "baseharbor-pki mount did not converge before tune" >&2; exit 1`,
 		`if ! bao auth list -format=json | grep -q '"approle/"'; then bao auth enable approle >/dev/null; fi`,
 	}
 	for _, command := range commands {
