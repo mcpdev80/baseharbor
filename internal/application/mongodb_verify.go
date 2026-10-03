@@ -71,8 +71,8 @@ func verifyMongoDBInstance(ctx context.Context, m Manifest, values map[string]st
 			ApplyURI(uri).
 			SetDirect(true).
 			SetTLSConfig(tlsConfig).
-			SetConnectTimeout(10*time.Second).
-			SetServerSelectionTimeout(10*time.Second))
+			SetConnectTimeout(10 * time.Second).
+			SetServerSelectionTimeout(10 * time.Second))
 		if err != nil {
 			lastErr = err
 			continue
