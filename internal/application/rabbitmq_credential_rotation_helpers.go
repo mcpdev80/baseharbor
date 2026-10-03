@@ -14,7 +14,6 @@ func rabbitMQCreateApplicationUser(ctx context.Context, runtime bhruntime.Runtim
 	return err
 }
 
-
 func rabbitMQCreateAdminUser(ctx context.Context, runtime bhruntime.RuntimeProvider, files RuntimeFiles, service, username, password string) error {
 	script := "IFS= read -r username\nIFS= read -r password\nrabbitmqctl add_user \"$username\" \"$password\" >/dev/null\nrabbitmqctl set_user_tags \"$username\" administrator >/dev/null\nrabbitmqctl set_permissions -p / \"$username\" '.*' '.*' '.*' >/dev/null\n"
 	_, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(username+"\n"+password+"\n"), service, "sh", "-ceu", script)
