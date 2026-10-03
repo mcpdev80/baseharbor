@@ -104,8 +104,12 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 			accessRef = target.Name
 		}
 		if _, exists := cfg.Access[accessRef]; !exists {
+			accessProvider := strings.TrimSpace(target.AccessProvider)
+			if accessProvider == "" {
+				accessProvider = "local"
+			}
 			cfg.Access[accessRef] = deployment.AccessDefinition{
-				Provider:  target.RuntimeProvider,
+				Provider:  accessProvider,
 				Reference: target.AccessReference,
 			}
 			if strings.TrimSpace(cfg.Access[accessRef].Reference) == "" {
