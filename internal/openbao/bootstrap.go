@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -61,19 +62,32 @@ type AdminCredentials struct {
 }
 
 func Inspect(ctx context.Context, executor Executor, files bhruntime.Files) (State, error) {
-	const script = `bao status -format=json 2>/dev/null
-code=$?
-if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
-  exit 0
-fi
-exit "$code"`
+	var lastErr error
+	for _, member := range openBaoHAMembers {
+		state, err := inspectMemberState(ctx, executor, files, member)
+		if err == nil {
+			return state, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return State{}, fmt.Errorf("inspect OpenBao status: %w", lastErr)
+	}
+	return State{}, errors.New("inspect OpenBao status: no HA member is reachable")
+}
+
+func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
+	script := "code=0\n" +
+		"BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null || code=$?\n" +
+		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
+		"exit \"$code\""
 	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
 	if err != nil {
-		return State{}, fmt.Errorf("inspect OpenBao status: %w", err)
+		return State{}, err
 	}
 	var state State
 	if err := json.Unmarshal([]byte(out), &state); err != nil {
-		return State{}, errors.New("inspect OpenBao status: invalid status response")
+		return State{}, errors.New("invalid status response")
 	}
 	return state, nil
 }
@@ -115,7 +129,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 	}()
 
 	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName,
-		"bao", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json")
+		"sh", "-ec", "BAO_ADDR=https://openbao-member-1:8200 exec bao operator init -key-shares=1 -key-threshold=1 -format=json")
 	if err != nil {
 		return fmt.Errorf("initialize OpenBao: %w", err)
 	}
@@ -146,6 +160,9 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 
 	if err := unsealAllMembersWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
 		return err
+	}
+	if err := waitForActiveGateway(ctx, executor, files); err != nil {
+		return fmt.Errorf("wait for active OpenBao HA gateway after bootstrap: %w", err)
 	}
 
 	rootToken := initReply.RootToken
@@ -192,7 +209,36 @@ func Unseal(ctx context.Context, executor Executor, files bhruntime.Files, recov
 	if err != nil {
 		return err
 	}
-	return unsealAllMembersWithKey(ctx, executor, files, bundle.UnsealKeys[0])
+	if err := unsealAllMembersWithKey(ctx, executor, files, bundle.UnsealKeys[0]); err != nil {
+		return err
+	}
+	return waitForActiveGateway(ctx, executor, files)
+}
+
+func waitForActiveGateway(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	const script = `code=0
+bao status -format=json >/dev/null 2>&1 || code=$?
+if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
+  exit 0
+fi
+exit "$code"`
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for {
+		if _, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files) error {
@@ -379,17 +425,9 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 var openBaoHAMembers = []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"}
 
 func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
-	script := "code=0\n" +
-		"BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null || code=$?\n" +
-		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
-		"exit \"$code\""
-	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
+	state, err := inspectMemberState(ctx, executor, files, member)
 	if err != nil {
 		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
-	}
-	var state State
-	if err := json.Unmarshal([]byte(out), &state); err != nil {
-		return State{}, fmt.Errorf("inspect OpenBao HA member %s: invalid status response", member)
 	}
 	return state, nil
 }
