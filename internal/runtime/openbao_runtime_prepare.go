@@ -115,8 +115,10 @@ frontend openbao
   default_backend members
 
 backend members
-  balance roundrobin
-  option tcp-check
+  option httpchk
+  http-check connect ssl verify none
+  http-check send meth GET uri /v1/sys/health?standbyok=false&perfstandbyok=false ver HTTP/1.1 hdr Host openbao
+  http-check expect status 200
   default-server check inter 2s fall 2 rise 2 init-addr last,libc,none
   server openbao-1 openbao-member-1:8200
   server openbao-2 openbao-member-2:8200
