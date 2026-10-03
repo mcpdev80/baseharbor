@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -206,5 +207,22 @@ func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T)
 	}
 	if !found {
 		t.Fatal("member status probe was not executed")
+	}
+}
+
+func TestRetryManagerProvisioningConvergesAfterTransientFailures(t *testing.T) {
+	attempts := 0
+	err := retryManagerProvisioning(context.Background(), func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("transient HA handoff")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
 	}
 }
