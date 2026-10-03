@@ -55,10 +55,7 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	policyName := applicationPolicyName(identity)
 	roleName := applicationRoleName(identity)
 	policy := applicationPolicy(identity)
-	policyScript := fmt.Sprintf(`tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-cat >"$tmp"
-bao policy write %s "$tmp" >/dev/null`, policyName)
+	policyScript := fmt.Sprintf(`exec bao write sys/policies/acl/%s policy=- >/dev/null`, policyName)
 	if err := retryManagerProvisioning(ctx, func() error {
 		_, err := execWithTokenPayload(ctx, executor, files, managerToken, policyScript, policy)
 		return err
