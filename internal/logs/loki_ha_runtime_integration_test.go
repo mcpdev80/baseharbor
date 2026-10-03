@@ -148,7 +148,7 @@ func emitLokiHAProbes(t *testing.T, port int) {
 
 func emitLokiHAProbe(t *testing.T, port int) {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	conn, err := net.DialTimeout("udp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
 	if err != nil {
 		t.Fatalf("connect to Alloy syslog ingress: %v", err)
 	}
