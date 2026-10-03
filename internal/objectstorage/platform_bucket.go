@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -57,22 +58,28 @@ func EnsurePlatformBucketAt(ctx context.Context, runtime Runtime, issuer service
 		return PlatformBucket{}, err
 	}
 
-	list, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte("s3.bucket.list\n"), ProviderService, "weed", "shell")
+	list, err := execSeaweedPlatformCommand(ctx, runtime, files, "s3.bucket.list\n")
 	if err != nil {
-		return PlatformBucket{}, errors.New("inspect SeaweedFS platform buckets failed")
+		return PlatformBucket{}, fmt.Errorf("inspect SeaweedFS platform buckets failed: %w", err)
 	}
 	if !seaweedBucketListed(list, state.Name) {
 		command := "s3.bucket.create -name=" + state.Name + "\n"
-		if _, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(command), ProviderService, "weed", "shell"); err != nil {
-			return PlatformBucket{}, errors.New("create SeaweedFS platform bucket failed")
+		if _, err := execSeaweedPlatformCommand(ctx, runtime, files, command); err != nil {
+			// The shell command is not a transactional transport boundary. If the
+			// process result was lost after SeaweedFS accepted the create, confirm
+			// state before reporting failure or issuing another create.
+			list, inspectErr := execSeaweedPlatformCommand(ctx, runtime, files, "s3.bucket.list\n")
+			if inspectErr != nil || !seaweedBucketListed(list, state.Name) {
+				return PlatformBucket{}, fmt.Errorf("create SeaweedFS platform bucket failed: %w", err)
+			}
 		}
 	}
 	configure := fmt.Sprintf(
 		"s3.configure -access_key=%s -secret_key=%s -buckets=%s -user=%s -actions=Read,Write,List,Tagging -apply\n",
 		state.AccessKeyID, state.SecretAccessKey, state.Name, state.User,
 	)
-	if _, err := runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(configure), ProviderService, "weed", "shell"); err != nil {
-		return PlatformBucket{}, errors.New("configure SeaweedFS platform bucket identity failed")
+	if _, err := execSeaweedPlatformCommand(ctx, runtime, files, configure); err != nil {
+		return PlatformBucket{}, fmt.Errorf("configure SeaweedFS platform bucket identity failed: %w", err)
 	}
 	trust, err := ServiceTrustBundle(files)
 	if err != nil {
@@ -189,4 +196,31 @@ func seaweedBucketListed(output, name string) bool {
 		}
 	}
 	return false
+}
+
+
+const platformBucketAdminRetryTimeout = 30 * time.Second
+
+func execSeaweedPlatformCommand(ctx context.Context, runtime Runtime, files ProviderFiles, command string) (string, error) {
+	retryCtx, cancel := context.WithTimeout(ctx, platformBucketAdminRetryTimeout)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		out, err := runtime.ExecProjectInput(retryCtx, files.Project, files.Compose, files.Env, []byte(command), ProviderService, "weed", "shell")
+		if err == nil {
+			return out, nil
+		}
+		last = err
+		select {
+		case <-retryCtx.Done():
+			if last == nil {
+				last = retryCtx.Err()
+			}
+			return "", last
+		case <-ticker.C:
+		}
+	}
 }
