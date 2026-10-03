@@ -16,19 +16,19 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
+	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 )
 
 type targetInspectionResult struct {
-	ContractVersion string                             `json:"contract_version"`
-	Target          deployment.ResolvedTarget          `json:"target"`
-	Application     string                             `json:"application,omitempty"`
-	Environment     string                             `json:"environment,omitempty"`
-	Repository      string                             `json:"repository,omitempty"`
-	Effective       string                             `json:"effective"`
+	ContractVersion    string                             `json:"contract_version"`
+	Target             deployment.ResolvedTarget          `json:"target"`
+	Application        string                             `json:"application,omitempty"`
+	Environment        string                             `json:"environment,omitempty"`
+	Repository         string                             `json:"repository,omitempty"`
+	Effective          string                             `json:"effective"`
 	OperatorAuth       map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
-	AccessCapabilities *targetaccess.Descriptor            `json:"access_capabilities,omitempty"`
+	AccessCapabilities *targetaccess.Descriptor           `json:"access_capabilities,omitempty"`
 }
 
 type targetOverrideContextKey struct{}
