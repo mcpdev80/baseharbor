@@ -104,4 +104,3 @@ func mongodbConnectionURL(values map[string]string, instance string) (string, er
 	}
 	return mongodbConnectionURI(loopbackHost, port, database, username, password), nil
 }
-
