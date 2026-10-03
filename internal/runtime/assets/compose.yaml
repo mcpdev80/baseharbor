@@ -295,6 +295,13 @@ services:
   openbao:
     image: docker.io/library/haproxy:3.2.23-alpine
     restart: unless-stopped
+    depends_on:
+      openbao-member-1:
+        condition: service_started
+      openbao-member-2:
+        condition: service_started
+      openbao-member-3:
+        condition: service_started
     user: "99:99"
     read_only: true
     cap_drop: ["ALL"]
