@@ -423,7 +423,6 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("      PGPASSWORD_SUPERUSER: ${SHARED_POSTGRES_SUPERUSER_PASSWORD}\n")
 		b.WriteString("      PGUSER_STANDBY: baseharbor_replication\n")
 		b.WriteString("      PGPASSWORD_STANDBY: ${SHARED_POSTGRES_REPLICATION_PASSWORD}\n")
-		b.WriteString("      USE_ADMIN: \"false\"\n")
 		b.WriteString("      ALLOW_NOSSL: \"true\"\n")
 		fmt.Fprintf(b, "      SPILO_CONFIGURATION: %s\n", strconv.Quote(fmt.Sprintf(`{"postgresql":{"connect_address":"%s:5432"},"restapi":{"connect_address":"%s:8008"}}`, name, name)))
 		b.WriteString("      SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem\n")
