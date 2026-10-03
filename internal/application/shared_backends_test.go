@@ -206,10 +206,12 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	got := b.String()
 
 	for _, want := range []string{
-		"install -d -o postgres -g postgres -m 0750 /run/baseharbor/tls",
-		"chmod 0600 /run/baseharbor/tls/server-key.pem",
+		"uid=$(id -u postgres); gid=$(id -g postgres)",
+		"chmod 0755 /run/baseharbor",
+		"chown \"0:$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
+		"chmod 0640 /run/baseharbor/tls/server-key.pem",
 		"./postgresql/runtime:/run/baseharbor/tls-source:ro",
-		"exec /launch.sh",
+		"exec /bin/sh /launch.sh init",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("shared PostgreSQL Compose missing %q:\n%s", want, got)
