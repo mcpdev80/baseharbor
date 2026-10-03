@@ -52,6 +52,14 @@ func (a *keycloakAdmin) rotateClientSecret(ctx context.Context, realm, clientUUI
 		return "", "", fmt.Errorf("rotated Keycloak client secret is empty")
 	}
 
+	// In HA mode the regenerate response and the next request may traverse
+	// different members. Re-read the authoritative current credential from
+	// the admin API before publishing it to consumers.
+	current, err = a.currentClientSecret(ctx, realm, clientUUID)
+	if err != nil {
+		return "", "", fmt.Errorf("read regenerated Keycloak client secret: %w", err)
+	}
+
 	status, body, err = a.do(ctx, http.MethodGet, keycloakAdminClientSecretPath(realm, clientUUID)+"/rotated", nil)
 	if err != nil {
 		return "", "", err
