@@ -2,11 +2,34 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/credential"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+func loadPreparedMongoDBCredential(store credential.PreparedMaterialStore, key string) (mongoDBCredentialRotationMaterial, error) {
+	data, err := store.Load(key)
+	if err != nil {
+		return mongoDBCredentialRotationMaterial{}, err
+	}
+	if len(data) == 0 {
+		return mongoDBCredentialRotationMaterial{}, errors.New("prepared MongoDB credential material is missing")
+	}
+	var material mongoDBCredentialRotationMaterial
+	if err := json.Unmarshal(data, &material); err != nil {
+		return mongoDBCredentialRotationMaterial{}, err
+	}
+	if material.Database == "" || material.OldAppUser == "" || material.NewAppUser == "" ||
+		material.OldAdminUser == "" || material.NewAdminUser == "" ||
+		material.OldAppPassword == "" || material.NewAppPassword == "" ||
+		material.OldAdminPassword == "" || material.NewAdminPassword == "" {
+		return mongoDBCredentialRotationMaterial{}, errors.New("prepared MongoDB credential material is invalid")
+	}
+	return material, nil
+}
 
 func mongoDBUpsertUser(ctx context.Context, runtime bhruntime.RuntimeProvider, files RuntimeFiles, service, authUser, authPassword, database, username, password, role string) error {
 	script := "IFS= read -r auth_user\nIFS= read -r auth_password\nIFS= read -r database\nIFS= read -r username\nIFS= read -r password\nIFS= read -r role\nexport ROTATE_DB=\"$database\" ROTATE_USER=\"$username\" ROTATE_PASSWORD=\"$password\" ROTATE_ROLE=\"$role\"\nmongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$auth_user\" --password \"$auth_password\" --authenticationDatabase admin --eval 'const d=db.getSiblingDB(process.env.ROTATE_DB); const u=process.env.ROTATE_USER; const p=process.env.ROTATE_PASSWORD; const r=process.env.ROTATE_ROLE; if (d.getUser(u)) { d.updateUser(u,{pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); } else { d.createUser({user:u,pwd:p,roles:[{role:r,db:process.env.ROTATE_DB}]}); }'\n"
