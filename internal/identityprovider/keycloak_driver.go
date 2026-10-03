@@ -444,7 +444,7 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		return errors.New("Keycloak PKI rotation requires a managed issuer")
 	}
 
-	reconcile := func() (KeycloakFiles, error) {
+	reconcile := func(waitForNativeReload bool) (KeycloakFiles, error) {
 		files, err := EnsureKeycloakFilesAt(ctx, r.app, r.issuer, r.dataDir, r.namespace)
 		if err != nil {
 			return KeycloakFiles{}, err
@@ -462,6 +462,15 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		if err := r.lifecycle.Apply(ctx, files); err != nil {
 			return KeycloakFiles{}, err
 		}
+		// Keycloak polls its native HTTPS leaf files. During overlap creation the
+		// running members can still present the previous leaf, so do not reload
+		// the gateway onto the replacement trust set until every member has had
+		// a full native reload window.
+		if waitForNativeReload {
+			if err := waitKeycloakNativeCertificateReload(ctx); err != nil {
+				return KeycloakFiles{}, err
+			}
+		}
 		if err := reloadKeycloakAccessGateway(ctx, r.runtime, files); err != nil {
 			return KeycloakFiles{}, err
 		}
@@ -477,16 +486,11 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		return files, nil
 	}
 
-	files, err := reconcile()
+	files, err := reconcile(true)
 	if err != nil {
 		return fmt.Errorf("reconcile replacement Keycloak PKI with overlap: %w", err)
 	}
-	// Keycloak reloads its native HTTPS leaf files on a 30s interval. Keep the
-	// old+new CA overlap active until every member has had a full reload window.
-	if err := waitKeycloakNativeCertificateReload(ctx); err != nil {
-		return fmt.Errorf("wait for Keycloak native certificate reload before CA retirement: %w", err)
-	}
-	if _, err := reconcile(); err != nil {
+	if _, err := reconcile(false); err != nil {
 		return fmt.Errorf("verify Keycloak after native certificate reload: %w", err)
 	}
 
@@ -518,7 +522,7 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		}
 	}
 
-	if _, err := reconcile(); err != nil {
+	if _, err := reconcile(false); err != nil {
 		return fmt.Errorf("reconcile Keycloak after CA retirement: %w", err)
 	}
 	return nil
