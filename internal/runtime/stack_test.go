@@ -337,6 +337,13 @@ func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	if got := strings.Count(text, "ETCD3_HOSTS:"); got != 3 {
 		t.Fatalf("Spilo runtime must configure ETCD3_HOSTS exactly three times, got %d", got)
 	}
+	const pgroot = "      PGROOT: /home/postgres/pgdata/pgroot\n"
+	if got := strings.Count(text, pgroot); got != 3 {
+		t.Fatalf("Spilo PGROOT appears %d times, want exactly 3", got)
+	}
+	if got := strings.Count(text, ":/home/postgres/pgdata/pgroot"); got != 3 {
+		t.Fatalf("Spilo persistent PGROOT mount appears %d times, want exactly 3", got)
+	}
 }
 
 func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
