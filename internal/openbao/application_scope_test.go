@@ -1,6 +1,7 @@
 package openbao
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
