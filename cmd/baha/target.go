@@ -117,7 +117,7 @@ func targetCommand() *cli.Command {
 			}
 			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
 			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
-			fmt.Fprintf(out, "Access   %s\n", result.Target.AccessReference)
+			fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
 			if result.Target.Scope != "" {
 				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
 			}
@@ -164,21 +164,26 @@ func targetCommand() *cli.Command {
 						names = append(names, "local")
 						sort.Strings(names)
 					}
-					fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "SCOPE", "SELECTOR")
+					fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "ACCESS PROVIDER", "SCOPE", "SELECTOR")
 					for _, name := range names {
 						var (
-							provider string
-							access   string
-							scope    string
-							marks    []string
+							provider       string
+							access         string
+							accessProvider string
+							scope          string
+							marks          []string
 						)
 						if target, configured := cfg.Targets[name]; configured {
 							provider = target.Runtime.Provider
 							access = target.Access.Reference
+							if definition, ok := cfg.Access[access]; ok {
+								accessProvider = definition.Provider
+							}
 							scope = target.Scope
 						} else {
 							provider = "docker"
 							access = "local"
+							accessProvider = "local"
 							scope = "default"
 							marks = append(marks, "implicit")
 						}
@@ -191,7 +196,7 @@ func targetCommand() *cli.Command {
 						if name == effective.Name {
 							marks = append(marks, "effective")
 						}
-						fmt.Fprintf(out, "%-20s %-12s %-20s %-16s %s\n", name, provider, access, scope, strings.Join(marks, ","))
+						fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", name, provider, access, accessProvider, scope, strings.Join(marks, ","))
 					}
 					return nil
 				},
@@ -216,7 +221,7 @@ func targetCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s\n", target.Name, target.RuntimeProvider, target.AccessReference)
+					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
 					if target.Scope != "" {
 						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
 					}
