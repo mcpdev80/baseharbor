@@ -193,9 +193,6 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
 		"ghcr.io/zalando/spilo-18:4.1-p2",
 		"postgres-member-1",
-		"PATRONI_NAME: postgres-member-1",
-		"PATRONI_NAME: postgres-member-2",
-		"PATRONI_NAME: postgres-member-3",
 		"ETCD3_HOSTS: \"'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'\"",
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro",
@@ -333,12 +330,12 @@ func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	if got := strings.Count(text, hosts); got != 3 {
 		t.Fatalf("Spilo ETCD3_HOSTS appears %d times, want exactly 3", got)
 	}
-	const scope = "      PATRONI_SCOPE: baseharbor-control-postgres\n"
+	const scope = "      SCOPE: baseharbor-control-postgres\n"
 	if got := strings.Count(text, scope); got != 3 {
-		t.Fatalf("PATRONI_SCOPE appears %d times, want exactly 3", got)
+		t.Fatalf("SCOPE appears %d times, want exactly 3", got)
 	}
-	if strings.Contains(text, "ETCD3_HOSTS:") {
-		t.Fatal("Spilo runtime must use ETCD3_HOSTS so /launch.sh configures one shared DCS")
+	if got := strings.Count(text, "ETCD3_HOSTS:"); got != 3 {
+		t.Fatalf("Spilo runtime must configure ETCD3_HOSTS exactly three times, got %d", got)
 	}
 }
 
@@ -483,14 +480,10 @@ func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testi
 		for _, want := range []string{
 			"  " + member + ":\n",
 			"    hostname: " + member + "\n",
-			"      PATRONI_NAME: " + member + "\n",
 		} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("embedded runtime missing stable Patroni identity %q", want)
 			}
-		}
-		if got := strings.Count(text, "      PATRONI_NAME: "+member+"\n"); got != 1 {
-			t.Fatalf("embedded runtime PATRONI_NAME for %s appears %d times, want exactly 1", member, got)
 		}
 	}
 }
