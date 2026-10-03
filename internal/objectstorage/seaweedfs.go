@@ -289,12 +289,8 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 		if err := d.runSeaweedShell(ctx, create); err != nil {
 			return fmt.Errorf("create S3 bucket %s: %w", resource.Name, err)
 		}
-		created, err := d.bucketExists(ctx, physical)
-		if err != nil {
+		if err := d.waitBucketExists(ctx, physical); err != nil {
 			return fmt.Errorf("verify S3 bucket %s creation: %w", resource.Name, err)
-		}
-		if !created {
-			return fmt.Errorf("verify S3 bucket %s creation: bucket was not listed after create", resource.Name)
 		}
 		d.createdBuckets[resource.Name] = struct{}{}
 	}
@@ -448,6 +444,35 @@ func (d *Driver) runSeaweedShellOutput(ctx context.Context, command string) (str
 		return "", errors.New("SeaweedFS realization is required")
 	}
 	return d.realization.Admin(ctx, command)
+}
+
+func (d *Driver) waitBucketExists(ctx context.Context, bucket string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		exists, err := d.bucketExists(waitCtx, bucket)
+		if err == nil && exists {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = errors.New("bucket was not listed after create")
+		}
+		select {
+		case <-waitCtx.Done():
+			if lastErr == nil {
+				lastErr = waitCtx.Err()
+			}
+			return lastErr
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Driver) bucketExists(ctx context.Context, bucket string) (bool, error) {
