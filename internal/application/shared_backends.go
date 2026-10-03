@@ -785,20 +785,3 @@ func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntim
 	return nil
 }
 
-func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
-	for _, app := range state.Applications {
-		if app.SQLManagementUI {
-			return true
-		}
-	}
-	return false
-}
-
-func sharedBackendCacheUIRequested(state sharedBackendState) bool {
-	for _, app := range state.Applications {
-		if app.CacheManagementUI {
-			return true
-		}
-	}
-	return false
-}
