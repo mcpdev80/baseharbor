@@ -242,8 +242,33 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 	if err != nil {
 		return nil, err
 	}
+	client = withLokiHostHeader(client, policy.ServerName)
 	if m.HA {
 		client.Timeout = 30 * time.Second
 	}
 	return client, nil
+}
+
+type lokiHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t lokiHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withLokiHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = lokiHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
