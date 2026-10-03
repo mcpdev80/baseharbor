@@ -397,6 +397,44 @@ func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 	return value, nil
 }
 
+type keycloakProjectExecutor interface {
+	ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error)
+}
+
+func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
+	executor, ok := runtime.(keycloakProjectExecutor)
+	if !ok {
+		return errors.New("Keycloak PKI rotation requires runtime gateway reload support")
+	}
+	if _, err := executor.ExecProject(
+		ctx,
+		files.Project,
+		files.Compose,
+		files.Env,
+		"keycloak-access",
+		"/run/baseharbor/caddy",
+		"reload",
+		"--config",
+		"/etc/caddy/Caddyfile",
+		"--adapter",
+		"caddyfile",
+	); err != nil {
+		return fmt.Errorf("reload Keycloak access gateway trust: %w", err)
+	}
+	return nil
+}
+
+func waitKeycloakNativeCertificateReload(ctx context.Context) error {
+	timer := time.NewTimer(35 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 	r, ok := d.realization.(*localKeycloakRealization)
 	if !ok || r == nil {
@@ -424,6 +462,9 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		if err := r.lifecycle.Apply(ctx, files); err != nil {
 			return KeycloakFiles{}, err
 		}
+		if err := reloadKeycloakAccessGateway(ctx, r.runtime, files); err != nil {
+			return KeycloakFiles{}, err
+		}
 		instance, err := r.instance(ctx, files, publicBase)
 		if err != nil {
 			return KeycloakFiles{}, err
@@ -439,6 +480,14 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 	files, err := reconcile()
 	if err != nil {
 		return fmt.Errorf("reconcile replacement Keycloak PKI with overlap: %w", err)
+	}
+	// Keycloak reloads its native HTTPS leaf files on a 30s interval. Keep the
+	// old+new CA overlap active until every member has had a full reload window.
+	if err := waitKeycloakNativeCertificateReload(ctx); err != nil {
+		return fmt.Errorf("wait for Keycloak native certificate reload before CA retirement: %w", err)
+	}
+	if _, err := reconcile(); err != nil {
+		return fmt.Errorf("verify Keycloak after native certificate reload: %w", err)
 	}
 
 	publicPolicy, err := serviceaccess.Resolve(r.app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
