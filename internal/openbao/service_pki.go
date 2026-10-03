@@ -42,10 +42,19 @@ fi`
 	if _, err := execWithToken(ctx, executor, files, rootToken, ensureRoot); err != nil {
 		return fmt.Errorf("configure OpenBao service PKI root: %w", err)
 	}
-	if _, err := execWithToken(ctx, executor, files, rootToken,
-		`exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`); err != nil {
-		return fmt.Errorf("configure OpenBao service PKI role: %w", err)
+	const roleCommand = `exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`
+	var roleErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		if _, roleErr = execWithToken(ctx, executor, files, rootToken, roleCommand); roleErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
+	return fmt.Errorf("configure OpenBao service PKI role: %w", roleErr)
 	return nil
 }
 
