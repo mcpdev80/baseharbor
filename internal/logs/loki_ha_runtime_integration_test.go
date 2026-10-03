@@ -3,6 +3,7 @@ package logs_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,15 +101,34 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		return runtime.DiagnosticsProject(diagnosticCtx, placement.Project, files.Compose, files.Env)
 	}
 
+	emitLokiHAProbe(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("stop Loki member: %v", err)
 	}
+	emitLokiHAProbe(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("restart Loki member: %v", err)
 	}
+	emitLokiHAProbe(t, registration.SyslogPort)
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
+}
+
+func emitLokiHAProbe(t *testing.T, port int) {
+	t.Helper()
+	conn, err := net.DialTimeout("udp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+	if err != nil {
+		t.Fatalf("connect to Alloy syslog ingress: %v", err)
+	}
+	defer conn.Close()
+	message := fmt.Sprintf(
+		"<14>1 %s localhost api - - - baseharbor-loki-ha-probe\n",
+		time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if _, err := conn.Write([]byte(message)); err != nil {
+		t.Fatalf("write Alloy syslog ingress probe: %v", err)
+	}
 }
 
 func waitLokiHA(t *testing.T, ctx context.Context, driver interface {
