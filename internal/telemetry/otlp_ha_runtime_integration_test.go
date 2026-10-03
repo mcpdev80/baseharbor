@@ -35,7 +35,7 @@ func TestOTelHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		Version:       application.CurrentVersion,
 		ApplicationID: application.MustNewApplicationID(),
 		Name:          "otel-ha-ci",
-		Environment:   "dev",
+		Environment:   "test",
 		HA:            true,
 		Workload:      application.WorkloadConfig{Components: []string{"api"}},
 	}, "traces")
