@@ -199,7 +199,6 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 	}
 }
 
-
 func TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers(t *testing.T) {
 	var b strings.Builder
 	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
