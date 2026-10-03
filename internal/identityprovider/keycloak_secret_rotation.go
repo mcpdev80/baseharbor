@@ -104,6 +104,7 @@ func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, re
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Close = true
 	resp, err := a.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("verify Keycloak client secret: %w", err)
