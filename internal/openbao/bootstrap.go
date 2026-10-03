@@ -695,6 +695,10 @@ path "sys/policies/acl/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "sys/policy/baseharbor-app-*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
 path "sys/auth" {
   capabilities = ["read"]
 }
