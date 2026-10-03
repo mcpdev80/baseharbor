@@ -28,6 +28,35 @@ grep -Fq 'AvailabilitySupportForProvider' internal/capability/availability.go
 grep -Fq 'ResolveAvailability' internal/application/availability_resolution.go
 grep -Fq 'application secret confirmation does not match; no changes were made' cmd/baha/app_secret.go
 
+grep -Fq 'v0421_ha_groups:' .github/workflows/pre-release.yml
+grep -Fq 'Reference Journey · Docker · Full E2E' .github/workflows/pre-release.yml
+grep -Fq 'gate_count 54' .github/workflows/pre-release.yml
+
+for group in data identity observability routing; do
+  grep -Fq "$group)" scripts/v0.4.21-ha-acceptance.sh
+done
+
+required_ha_tests=(
+  TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+  TestMongoDBHARuntimeFailoverAcceptanceInCI
+  TestValkeyHARuntimeFailoverAcceptanceInCI
+  TestRabbitMQHARuntimeFailoverAcceptanceInCI
+  TestSeaweedFSHARuntimeFailoverAcceptanceInCI
+  TestKeycloakHARuntimeFailoverAcceptanceInCI
+  TestOTelHARuntimeFailoverAcceptanceInCI
+  TestPrometheusHARuntimeFailoverAcceptanceInCI
+  TestLokiHARuntimeFailoverAcceptanceInCI
+  TestTempoHARuntimeFailoverAcceptanceInCI
+  TestGatewayRuntimeContinuityAcceptanceInCI
+)
+
+for test_name in "${required_ha_tests[@]}"; do
+  grep -Fq "$test_name" scripts/v0.4.21-ha-acceptance.sh || {
+    echo "v0.4.21 readiness: HA acceptance is not wired: $test_name" >&2
+    exit 1
+  }
+done
+
 release_internal="$(
   grep -n -Ei 'unit test|conformance|candidate sha|gofmt|go test|go vet|implementation evidence|validation|CI gate' docs/releases/v0.4.21.md || true
 )"
