@@ -82,7 +82,7 @@ func (d *KeycloakDriver) RotateSigningKey(ctx context.Context) error {
 			return fmt.Errorf("verify pre-rotation Keycloak token: %w", err)
 		}
 
-		suffix, err := randomIdentitySecret(8)
+		suffix, err := randomIdentitySecret(16)
 		if err != nil {
 			return err
 		}
