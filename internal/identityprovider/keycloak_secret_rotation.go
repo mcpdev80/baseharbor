@@ -2,12 +2,15 @@ package identityprovider
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 )
+
+var errKeycloakClientSecretRejected = errors.New("Keycloak rejected client secret")
 
 type keycloakSecretCredential struct {
 	Value string `json:"value"`
@@ -103,7 +106,7 @@ func (a *keycloakAdmin) verifyClientSecretAuthentication(ctx context.Context, re
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&payload)
 	if strings.EqualFold(strings.TrimSpace(payload.Error), "invalid_client") || resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("Keycloak rejected client secret")
+		return errKeycloakClientSecretRejected
 	}
 	if resp.StatusCode >= 500 {
 		return fmt.Errorf("Keycloak client-secret verification failed: HTTP %d", resp.StatusCode)
