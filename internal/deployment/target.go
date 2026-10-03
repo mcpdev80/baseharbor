@@ -73,6 +73,7 @@ type Config struct {
 type ResolvedTarget struct {
 	Name            string `json:"name"`
 	RuntimeProvider string `json:"runtime_provider"`
+	AccessProvider  string `json:"access_provider"`
 	AccessReference string `json:"access_reference"`
 	Scope           string `json:"scope,omitempty"`
 }
@@ -275,15 +276,18 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 			return ResolvedTarget{
 				Name:            "local",
 				RuntimeProvider: "docker",
+				AccessProvider:  "local",
 				AccessReference: "local",
 				Scope:           "default",
 			}, nil
 		}
 		return ResolvedTarget{}, fmt.Errorf("target %q is not configured", name)
 	}
+	access := c.Access[target.Access.Reference]
 	return ResolvedTarget{
 		Name:            name,
 		RuntimeProvider: target.Runtime.Provider,
+		AccessProvider:  access.Provider,
 		AccessReference: target.Access.Reference,
 		Scope:           target.Scope,
 	}, nil
