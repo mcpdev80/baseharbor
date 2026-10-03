@@ -49,7 +49,19 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 			},
 		}, nil
 	case ProviderOTelCollector:
-		return unsupported("current BaseHarbor OTLP collector reference realization is single-instance"), nil
+		return availability.Support{
+			Level:                availability.Supported,
+			RecommendedInstances: 2,
+			Limits:               "verified redundant OpenTelemetry Collector member/process failure tolerance and stable OTLP endpoint continuity on one runtime host; host-failure tolerance requires a multi-host runtime",
+			Guarantees: availability.Guarantees{
+				MemberFailureTolerance: true,
+				HostFailureTolerance:   false,
+				RollingMaintenance:     true,
+				ManagementContinuity:   true,
+				PKIRotation:            true,
+				FailureDomain:          "runtime-host",
+			},
+		}, nil
 	case ProviderExternalOTLP:
 		return unsupported("external OTLP availability must be explicitly declared and verified by the selected external provider"), nil
 	case ProviderPrometheus:
