@@ -843,6 +843,8 @@ jobs:
           cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
           cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
+          cp "$RUNNER_TEMP/v0421-ha-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/reference-journey-evidence/manifest.json" "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json"
 
       - name: Generate immutable release approval
         id: approval
@@ -854,7 +856,11 @@ jobs:
           steps.adoption_manifest.outcome == 'success' &&
           needs.static_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
-          needs.runtime_heavy_gates.result == 'success'
+          needs.runtime_heavy_gates.result == 'success' &&
+          needs.v0421_ha_groups.result == 'success' &&
+          steps.ha_manifest.outcome == 'success' &&
+          needs.reference_journey.result == 'success' &&
+          steps.reference_manifest.outcome == 'success'
         shell: bash
         env:
           TAG: ${{ needs.source.outputs.tag }}
@@ -873,7 +879,7 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg result "success" \
-            --argjson gate_count 45 \
+            --argjson gate_count 54 \
             '{
               schema: $schema,
               tag: $tag,
@@ -890,6 +896,8 @@ jobs:
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
           cp "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json" "$out/adoption-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json" "$out/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json" "$out/reference-journey-manifest.json"
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
@@ -912,7 +920,11 @@ jobs:
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
           Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
+          v0.4.21 HA groups	${{ needs.v0421_ha_groups.result }}	data, identity, observability and routing failover on Docker/Podman
+          Reference journey	${{ needs.reference_journey.result }}	complete pinned-demo Docker end-to-end journey after atomic gates
           Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
+          HA evidence	${{ steps.ha_manifest.outcome }}	8 grouped HA evidence bundles bound to the candidate SHA
+          Reference evidence	${{ steps.reference_manifest.outcome }}	full E2E evidence bound to candidate and demo SHA
           Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
