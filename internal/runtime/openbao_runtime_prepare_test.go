@@ -42,7 +42,6 @@ func TestWriteOpenBaoRuntimeConfigEncodesPostgresCredentialsAsURLUserinfo(t *tes
 	}
 }
 
-
 func TestWriteOpenBaoHAProxyConfigAcceptsHealthyHAStandbys(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeOpenBaoHAProxyConfig(dir); err != nil {
