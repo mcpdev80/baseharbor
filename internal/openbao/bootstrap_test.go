@@ -186,7 +186,6 @@ func assertOwnerOnly(t *testing.T, path string) {
 	}
 }
 
-
 type haInspectExecutor struct {
 	states map[string]State
 }
