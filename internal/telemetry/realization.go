@@ -88,8 +88,22 @@ func (r *runtimeOTLPRealization) Apply(ctx context.Context) (OTLPInstance, error
 	if err != nil {
 		return OTLPInstance{}, err
 	}
-	if err := waitOTLP(ctx, instance.HTTPClient, instance.HostEndpoint); err != nil {
-		return OTLPInstance{}, err
+	readyCtx, readyCancel := context.WithTimeout(ctx, 45*time.Second)
+	err = waitOTLP(readyCtx, instance.HTTPClient, instance.HostEndpoint)
+	readyCancel()
+	if err != nil {
+		detail := ""
+		if diagnostics, ok := r.runtime.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail = strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env))
+			diagnosticCancel()
+		}
+		if detail != "" {
+			return OTLPInstance{}, fmt.Errorf("wait for OpenTelemetry Collector readiness: %w\n%s", err, detail)
+		}
+		return OTLPInstance{}, fmt.Errorf("wait for OpenTelemetry Collector readiness: %w", err)
 	}
 	return instance, nil
 }
