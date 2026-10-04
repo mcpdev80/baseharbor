@@ -3,6 +3,7 @@ package serviceaccess
 import (
 	"context"
 	"crypto/tls"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -177,10 +178,36 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		spec.HealthStatus,
 		spec.DenyPaths...,
 	)
+	if fingerprint, err := gatewayUpstreamTLSFingerprint(spec); err != nil {
+		return HTTPGatewayFiles{}, err
+	} else if fingerprint != "" {
+		config = "# baseharbor-upstream-tls-sha256=" + fingerprint + "\n" + config
+	}
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
 	return files, nil
+}
+
+func gatewayUpstreamTLSFingerprint(spec HTTPGatewaySpec) (string, error) {
+	var payload []byte
+	for _, path := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read HTTP service gateway upstream TLS material %s: %w", filepath.Base(path), err)
+		}
+		payload = append(payload, data...)
+		payload = append(payload, 0)
+	}
+	if len(payload) == 0 {
+		return "", nil
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum[:]), nil
 }
 
 type gatewayState struct {
