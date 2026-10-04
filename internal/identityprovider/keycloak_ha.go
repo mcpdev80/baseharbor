@@ -36,7 +36,7 @@ frontend postgres
 backend primary
   option httpchk GET /primary
   http-check expect status 200
-  default-server check port 8008 inter 2s fall 2 rise 2
+  default-server check port 8008 inter 2s fall 2 rise 2 init-addr last,libc,none
   server postgres-1 keycloak-db-member-1:5432 check
   server postgres-2 keycloak-db-member-2:5432 check
   server postgres-3 keycloak-db-member-3:5432 check
