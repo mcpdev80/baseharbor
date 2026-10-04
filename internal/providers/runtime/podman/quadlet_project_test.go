@@ -646,7 +646,7 @@ func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
 	}
 	unit := got.Files["dependency-complete-api.container"]
 	for _, want := range []string{
-		"Requires=dependency-complete-init.service",
+		"Wants=dependency-complete-init.service",
 		"After=dependency-complete-init.service",
 		"ExecStartPre=/bin/sh -ec",
 		"systemctl --user is-active --quiet dependency-complete-init.service",
@@ -654,6 +654,9 @@ func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("completed dependency Quadlet missing %q:\n%s", want, unit)
 		}
+	}
+	if strings.Contains(unit, "Requires=dependency-complete-init.service") {
+		t.Fatalf("completed dependency must not use Requires= because successful one-shots become inactive:\n%s", unit)
 	}
 }
 
