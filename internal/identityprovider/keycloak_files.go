@@ -337,7 +337,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - --https-port=%d
       - --https-certificate-file=/run/baseharbor/tls/server.pem
       - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
-      - --https-certificates-reload-period=30s
+      - --https-certificates-reload-period=5s
       - --proxy-headers=xforwarded
 %s      - --health-enabled=true
       - --metrics-enabled=true
