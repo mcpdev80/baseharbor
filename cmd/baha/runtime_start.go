@@ -394,22 +394,16 @@ func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files
 }
 
 func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string, out io.Writer) error {
-	var state platformopenbao.State
-	var inspectErr error
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		state, inspectErr = platformopenbao.Inspect(ctx, compose, files)
-		if inspectErr == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("verify OpenBao after control-plane start: %w", inspectErr)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(250 * time.Millisecond):
-		}
+	// A restart may need to bring the PostgreSQL HA endpoint and the OpenBao
+	// members back in dependency order. Reuse the same bounded member-exec
+	// readiness budget as the initial start instead of racing a shorter
+	// restart-only probe window.
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao after control-plane start: %w", err)
+	}
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return fmt.Errorf("inspect OpenBao after control-plane start: %w", err)
 	}
 
 	if !state.Initialized {
