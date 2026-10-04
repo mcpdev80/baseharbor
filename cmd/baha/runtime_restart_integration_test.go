@@ -147,7 +147,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	}
 
 	if err := rotateControlPlaneDatabaseCredentials(ctx, compose, files, recovery); err != nil {
-		t.Fatalf("rotate control-plane database credentials: %v", err)
+		t.Fatalf("rotate control-plane database credentials: %v\n%s", err, compose.DiagnosticsProject(ctx, files.Project, files.Compose, files.Env))
 	}
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		t.Fatalf("manager auth after database credential rotation: %v", err)
@@ -272,5 +272,5 @@ func waitForPostgresHAAfterFailure(t *testing.T, ctx context.Context, runtime bh
 		}
 		time.Sleep(time.Second)
 	}
-	t.Fatalf("stable PostgreSQL endpoint did not recover after primary failure: %v", last)
+	t.Fatalf("stable PostgreSQL endpoint did not recover after primary failure: %v\n%s", last, runtime.DiagnosticsProject(ctx, files.Project, files.Compose, files.Env))
 }
