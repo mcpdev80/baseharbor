@@ -138,7 +138,7 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 	config := collectorConfigWithTraceBackend("http://tempo:4318")
 	for _, want := range []string{
 		"otlp_http/tempo:",
-		"endpoint: http://tempo:4318",
+		"endpoint: \"http://tempo:4318\"",
 		"exporters: [debug, otlp_http/tempo]",
 	} {
 		if !strings.Contains(config, want) {
@@ -157,7 +157,7 @@ func TestManagedCollectorTraceBackendWithoutClientAuthRendersValidSections(t *te
 	}
 	for _, want := range []string{
 		"otlp_http/tempo:",
-		"endpoint: http://tempo:4318",
+		"endpoint: \"http://tempo:4318\"",
 		"exporters: [debug, otlp_http/tempo]",
 	} {
 		if !strings.Contains(config, want) {
