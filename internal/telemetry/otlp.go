@@ -449,11 +449,11 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 }
 
 func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
-	var memberNetworks = "      - telemetry\n"
+	var memberNetworks = "      telemetry:\n        aliases:\n          - otel-collector-metrics\n"
 	var gatewayNetworks = []string{"telemetry"}
 	var networkDecl string
 	if strings.TrimSpace(traceNetwork) != "" {
-		memberNetworks += "      - traces\n"
+		memberNetworks += "      traces: {}\n"
 		gatewayNetworks = append(gatewayNetworks, "traces")
 		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
 	}
