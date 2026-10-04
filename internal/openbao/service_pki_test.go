@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,33 @@ func TestIssueServiceCertificateUsesOpenBaoPKIWithoutSecretArguments(t *testing.
 	}
 	if !foundIssue {
 		t.Fatal("OpenBao PKI issue endpoint was not called")
+	}
+}
+
+
+type transientServiceCAFaker struct {
+	servicePKIFake
+	failures int
+}
+
+func (f *transientServiceCAFaker) ExecProjectInput(ctx context.Context, project, compose, env string, input []byte, service string, args ...string) (string, error) {
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "baseharbor-pki/cert/ca") && f.failures > 0 {
+		f.failures--
+		return "", errors.New("transient EOF")
+	}
+	return f.servicePKIFake.ExecProjectInput(ctx, project, compose, env, input, service, args...)
+}
+
+func TestServiceCARetriesTransientReadFailure(t *testing.T) {
+	files := servicePKITestFiles(t)
+	fake := &transientServiceCAFaker{failures: 2}
+	ca, err := ServiceCA(context.Background(), fake, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ca), "BEGIN CERTIFICATE") {
+		t.Fatalf("unexpected CA material after retry: %s", ca)
 	}
 }
 
