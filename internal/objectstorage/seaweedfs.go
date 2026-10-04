@@ -97,6 +97,9 @@ func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer service
 	if err := runtime.UpProject(reconcileCtx, files.Project, files.Compose, files.Env); err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", fmt.Errorf("start SeaweedFS provider: %w", err)
 	}
+	if err := reconcileFilerMetadata(reconcileCtx, runtime, files); err != nil {
+		return ProviderFiles{}, AdminCredentials{}, "", err
+	}
 	credentials, credentialPath, err := EnsureAdminCredentials(files)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
