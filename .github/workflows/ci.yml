@@ -180,7 +180,7 @@ jobs:
   targeted_ha_podman:
     name: Targeted HA · podman
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       BASEHARBOR_TEST_RUNTIME: podman
