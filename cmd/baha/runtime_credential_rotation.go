@@ -111,14 +111,9 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			if err := waitForControlPlanePostgresMemberReady(ctx, runtime, files, member); err != nil {
 				return fmt.Errorf("wait for PostgreSQL member %s after rolling credential change: %w", member, err)
 			}
-			// The HAProxy endpoint resolves member service names when its
-			// backends are initialized. A force-recreated member may receive a
-			// different container address, especially with rootless Podman.
-			// Reconcile the stable endpoint before probing through it so the
-			// proxy never keeps routing to a retired member address.
-			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{"postgres"}, files.Compose); err != nil {
-				return fmt.Errorf("reconcile PostgreSQL stable endpoint after rolling %s: %w", member, err)
-			}
+			// The stable proxy refreshes member addresses through its native DNS
+			// resolver. Keep it running so rolling replicas do not disconnect
+			// otherwise healthy clients from the current primary.
 			if err := waitForControlPlanePostgresCredential(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres"); err != nil {
 				return fmt.Errorf("verify PostgreSQL after rolling %s: %w", member, err)
 			}

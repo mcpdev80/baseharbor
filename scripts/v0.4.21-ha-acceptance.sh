@@ -49,6 +49,11 @@ case "$group" in
       BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE 1 \
       ./internal/objectstorage TestSeaweedFSHARuntimeFailoverAcceptanceInCI 12m
     ;;
+  control-plane)
+    run_acceptance "PostgreSQL + OpenBao control plane" \
+      BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE true \
+      ./cmd/baha TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile 20m
+    ;;
   valkey)
     run_acceptance "Valkey" \
       BASEHARBOR_VALKEY_HA_ACCEPTANCE 1 \
