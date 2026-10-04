@@ -71,6 +71,26 @@ func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 }
 
+func waitForOpenBaoManagerReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if err := platformopenbao.CheckManager(ctx, compose, files); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
 	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
@@ -194,7 +214,7 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 			return fmt.Errorf("unseal OpenBao after native TLS reconcile: %w", err)
 		}
 	}
-	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+	if err := waitForOpenBaoManagerReady(ctx, compose, files, 30*time.Second); err != nil {
 		return fmt.Errorf("verify OpenBao manager after native TLS reconcile: %w", err)
 	}
 
@@ -236,7 +256,7 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
 		return err
 	}
-	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+	if err := waitForOpenBaoManagerReady(ctx, compose, files, 30*time.Second); err != nil {
 		return fmt.Errorf("verify OpenBao manager after CA retirement: %w", err)
 	}
 	postRetirePolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
