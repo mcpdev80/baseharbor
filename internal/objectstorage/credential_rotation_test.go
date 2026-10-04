@@ -65,6 +65,7 @@ func TestRotateBucketCredentialsUsesOverlapVerifyThenRetire(t *testing.T) {
 
 	var mu sync.Mutex
 	objects := map[string][]byte{}
+	retiredOldRequests := 0
 	var realization *rotationTestRealization
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		auth := req.Header.Get("Authorization")
@@ -73,8 +74,14 @@ func TestRotateBucketCredentialsUsesOverlapVerifyThenRetire(t *testing.T) {
 		retired := realization.retired
 		realization.mu.Unlock()
 		if usesOld && retired {
-			http.Error(w, "retired", http.StatusForbidden)
-			return
+			mu.Lock()
+			retiredOldRequests++
+			attempt := retiredOldRequests
+			mu.Unlock()
+			if attempt > 2 {
+				http.Error(w, "retired", http.StatusForbidden)
+				return
+			}
 		}
 		if !usesOld && !strings.Contains(auth, "Credential=BH") {
 			http.Error(w, "unknown credential", http.StatusForbidden)
@@ -157,6 +164,12 @@ func TestRotateBucketCredentialsUsesOverlapVerifyThenRetire(t *testing.T) {
 	realization.mu.Unlock()
 	if !retired {
 		t.Fatal("old SeaweedFS IAM identity was not retired")
+	}
+	mu.Lock()
+	retirementProbes := retiredOldRequests
+	mu.Unlock()
+	if retirementProbes < 8 {
+		t.Fatalf("credential retirement convergence was not proven across repeated probes: %d", retirementProbes)
 	}
 	if len(commands) < 2 || !strings.Contains(commands[0], "-access_key=") || !strings.Contains(commands[len(commands)-1], "-delete") {
 		t.Fatalf("unexpected rotation command sequence: %#v", commands)
