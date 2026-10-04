@@ -66,9 +66,14 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 	if err != nil {
 		return err
 	}
-	out, err := execWithToken(ctx, executor, files, token, `exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`)
+	leader, err := servicePKILeader(ctx, executor, files, token)
 	if err != nil {
-		return fmt.Errorf("rotate OpenBao service PKI root: %w", err)
+		return fmt.Errorf("resolve OpenBao leader for service PKI rotation: %w", err)
+	}
+	leaderPrefix := "BAO_ADDR=https://" + leader + ":8200 "
+	out, err := execWithToken(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`)
+	if err != nil {
+		return fmt.Errorf("rotate OpenBao service PKI root on leader %s: %w", leader, err)
 	}
 	var rotation struct {
 		Data struct {
@@ -82,8 +87,8 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 	if err != nil {
 		return errors.New("encode OpenBao service PKI default issuer")
 	}
-	if _, err := execWithTokenPayload(ctx, executor, files, token, `exec bao write -format=json baseharbor-pki/config/issuers -`, string(payload)); err != nil {
-		return fmt.Errorf("activate rotated OpenBao service PKI root: %w", err)
+	if _, err := execWithTokenPayload(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/config/issuers -`, string(payload)); err != nil {
+		return fmt.Errorf("activate rotated OpenBao service PKI root on leader %s: %w", leader, err)
 	}
 	after, err := ServiceCA(ctx, executor, files)
 	if err != nil {
@@ -93,6 +98,31 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 		return errors.New("OpenBao service PKI root rotation did not change the active CA")
 	}
 	return nil
+}
+
+func servicePKILeader(ctx context.Context, executor Executor, files bhruntime.Files, token string) (string, error) {
+	var lastErr error
+	for _, member := range openBaoHAMembers {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		out, err := execWithToken(
+			probeCtx,
+			executor,
+			files,
+			token,
+			"BAO_ADDR=https://"+member+":8200 exec bao read -field=is_self sys/leader",
+		)
+		cancel()
+		if err == nil && strings.EqualFold(strings.TrimSpace(out), "true") {
+			return member, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errors.New("no active OpenBao leader reported itself")
 }
 
 func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([]byte, error) {
