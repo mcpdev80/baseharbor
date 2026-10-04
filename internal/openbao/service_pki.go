@@ -58,10 +58,6 @@ fi`
 }
 
 func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) error {
-	before, err := ServiceCA(ctx, executor, files)
-	if err != nil {
-		return err
-	}
 	token, err := managerToken(ctx, executor, files)
 	if err != nil {
 		return err
@@ -71,6 +67,10 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 		return fmt.Errorf("resolve OpenBao leader for service PKI rotation: %w", err)
 	}
 	leaderPrefix := "BAO_ADDR=https://" + leader + ":8200 "
+	before, err := serviceCAWithToken(ctx, executor, files, token, leaderPrefix)
+	if err != nil {
+		return fmt.Errorf("read OpenBao service CA on leader %s before rotation: %w", leader, err)
+	}
 	out, err := execWithToken(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`)
 	if err != nil {
 		return fmt.Errorf("rotate OpenBao service PKI root on leader %s: %w", leader, err)
@@ -90,9 +90,9 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 	if _, err := execWithTokenPayload(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/config/issuers -`, string(payload)); err != nil {
 		return fmt.Errorf("activate rotated OpenBao service PKI root on leader %s: %w", leader, err)
 	}
-	after, err := ServiceCA(ctx, executor, files)
+	after, err := serviceCAWithToken(ctx, executor, files, token, leaderPrefix)
 	if err != nil {
-		return err
+		return fmt.Errorf("read OpenBao service CA on leader %s after rotation: %w", leader, err)
 	}
 	if string(before) == string(after) {
 		return errors.New("OpenBao service PKI root rotation did not change the active CA")
@@ -130,9 +130,17 @@ func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([
 	if err != nil {
 		return nil, err
 	}
-	out, err := execWithToken(ctx, executor, files, token, `exec bao read -format=json baseharbor-pki/cert/ca`)
+	ca, err := serviceCAWithToken(ctx, executor, files, token, "")
 	if err != nil {
 		return nil, fmt.Errorf("read OpenBao service CA: %w", err)
+	}
+	return ca, nil
+}
+
+func serviceCAWithToken(ctx context.Context, executor Executor, files bhruntime.Files, token, commandPrefix string) ([]byte, error) {
+	out, err := execWithToken(ctx, executor, files, token, commandPrefix+`exec bao read -format=json baseharbor-pki/cert/ca`)
+	if err != nil {
+		return nil, err
 	}
 	var reply struct {
 		Data struct {
