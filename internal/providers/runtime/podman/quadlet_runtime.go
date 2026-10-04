@@ -66,12 +66,20 @@ func quadletUserRuntimeEnv() []string {
 }
 
 func quadletSystemctl(ctx context.Context, input []byte, args ...string) (string, error) {
+	return quadletSystemctlMode(ctx, input, true, args...)
+}
+
+func quadletSystemctlBlocking(ctx context.Context, input []byte, args ...string) (string, error) {
+	return quadletSystemctlMode(ctx, input, false, args...)
+}
+
+func quadletSystemctlMode(ctx context.Context, input []byte, noBlock bool, args ...string) (string, error) {
 	path, err := exec.LookPath("systemctl")
 	if err != nil {
 		return "", err
 	}
 	full := append([]string{"--user"}, args...)
-	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
+	if noBlock && len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
 		full = append([]string{"--user", "--no-block"}, args...)
 	}
 	cmd := exec.CommandContext(ctx, path, full...)
@@ -558,13 +566,13 @@ func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, uni
 			return err
 		}
 		if exists {
-			if _, err := quadletSystemctl(ctx, nil, "start", unit); err != nil {
+			if _, err := quadletSystemctlBlocking(ctx, nil, "start", unit); err != nil {
 				return err
 			}
 			continue
 		}
 		_, _ = quadletSystemctl(ctx, nil, "reset-failed", unit)
-		if _, err := quadletSystemctl(ctx, nil, "restart", unit); err != nil {
+		if _, err := quadletSystemctlBlocking(ctx, nil, "restart", unit); err != nil {
 			return err
 		}
 		if err := quadletWaitRuntimeResource(ctx, kind, resource, 10*time.Second); err != nil {
