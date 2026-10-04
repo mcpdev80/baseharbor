@@ -38,6 +38,20 @@ func reloadManagedProviderManagementUI(ctx context.Context, runtime bhruntime.Ru
 	switch kind {
 	case ManagedProviderPKIValkey:
 		if m.Services.CacheManagementUI || m.Services.KeyValueManagementUI {
+			environment, err := RuntimeEnvironment(files)
+			if err != nil {
+				return err
+			}
+			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(
+				ctx,
+				files.Project,
+				files.Dir,
+				environment,
+				[]string{"cache-ui"},
+				files.Compose,
+			); err != nil {
+				return fmt.Errorf("restart cache management UI after Valkey trust rotation: %w", err)
+			}
 			service = "cache-ui-access"
 		}
 	case ManagedProviderPKIRabbitMQ:
