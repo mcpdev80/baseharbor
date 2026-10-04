@@ -439,8 +439,11 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 		t.Fatalf("implicit default network was not rendered")
 	}
 	unit := got.Files["implicit-network-api.container"]
-	if !strings.Contains(unit, "Network=implicit-network-default.network") || !strings.Contains(unit, "NetworkAlias=api") {
-		t.Fatalf("service was not attached to implicit default network with service alias:\n%s", unit)
+	if !strings.Contains(unit, "Network=implicit-network-default.network:alias=api") {
+		t.Fatalf("service was not attached to implicit default network with scoped service alias:\n%s", unit)
+	}
+	if strings.Contains(unit, "NetworkAlias=api") {
+		t.Fatalf("implicit default network alias must remain network-scoped:\n%s", unit)
 	}
 	if !strings.Contains(unit, "Requires=implicit-network-default-network.service") {
 		t.Fatalf("service does not depend on implicit default network unit:\n%s", unit)
