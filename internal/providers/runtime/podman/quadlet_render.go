@@ -408,10 +408,14 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 			// generator can resolve the matching network unit and its dependency.
 			spec = quadletResourceUnitBase(project, networkName, actual) + ".network"
 		}
-		fmt.Fprintf(unit, "Network=%s\n", spec)
-		for _, alias := range aliases {
-			fmt.Fprintf(unit, "NetworkAlias=%s\n", alias)
+		for index, alias := range aliases {
+			if index == 0 {
+				spec += ":alias=" + alias
+			} else {
+				spec += ",alias=" + alias
+			}
 		}
+		fmt.Fprintf(unit, "Network=%s\n", spec)
 	}
 	return nil
 }
