@@ -53,7 +53,7 @@ services:
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
-      SPILO_CONFIGURATION: '{"postgresql":{"connect_address":"postgres-member-1:5432"},"restapi":{"connect_address":"postgres-member-1:8008"}}'
+      SPILO_CONFIGURATION: '{"postgresql":{"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-1:5432"},"restapi":{"connect_address":"postgres-member-1:8008"}}'
     tmpfs:
       - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:
@@ -85,7 +85,7 @@ services:
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
-      SPILO_CONFIGURATION: '{"postgresql":{"connect_address":"postgres-member-2:5432"},"restapi":{"connect_address":"postgres-member-2:8008"}}'
+      SPILO_CONFIGURATION: '{"postgresql":{"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-2:5432"},"restapi":{"connect_address":"postgres-member-2:8008"}}'
     tmpfs:
       - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:
@@ -117,7 +117,7 @@ services:
       SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem
       SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem
       SSL_TEST_RELOAD: "true"
-      SPILO_CONFIGURATION: '{"postgresql":{"connect_address":"postgres-member-3:5432"},"restapi":{"connect_address":"postgres-member-3:8008"}}'
+      SPILO_CONFIGURATION: '{"postgresql":{"pg_hba":["local all all trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} trust","local replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} trust","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication} all scram-sha-256","hostssl replication ${BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER:-baseharbor_replication} all scram-sha-256","hostssl all all all scram-sha-256","hostnossl all all all reject"],"connect_address":"postgres-member-3:5432"},"restapi":{"connect_address":"postgres-member-3:8008"}}'
     tmpfs:
       - /run/baseharbor/tls-runtime:rw,noexec,nosuid,nodev,mode=0700
     volumes:

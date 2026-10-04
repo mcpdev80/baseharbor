@@ -6,6 +6,31 @@ import (
 	"testing"
 )
 
+func TestReplacementCredentialsKeepPreviousReplicationIdentityInProjection(t *testing.T) {
+	files, err := EnsureFilesWithPorts(t.TempDir(), Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, err := LoadControlPlaneCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := previous
+	next.PostgresReplicationUser = "replacement_replication"
+	next.PostgresReplicationPass = "replacement-password"
+	if err := ReplaceControlPlaneCredentials(files, next); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := RuntimeEnvironment(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if environment["BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER"] != previous.PostgresReplicationUser ||
+		environment["BASEHARBOR_POSTGRES_REPLICATION_USER"] != next.PostgresReplicationUser {
+		t.Fatal("rolling member projection does not admit both replication identities")
+	}
+}
+
 func TestControlPlaneCredentialRotationStateSurvivesRestartOwnerOnly(t *testing.T) {
 	dir := t.TempDir()
 	files := Files{Env: filepath.Join(dir, "runtime.env"), Compose: filepath.Join(dir, "compose.yaml")}

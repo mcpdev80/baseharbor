@@ -79,6 +79,10 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 		next.OpenBaoDBUser == "" || next.OpenBaoDBPassword == "" {
 		return errors.New("replacement control-plane credentials are incomplete")
 	}
+	previous, err := LoadControlPlaneCredentials(files)
+	if err != nil {
+		return err
+	}
 	updates := map[string]string{
 		"BASEHARBOR_POSTGRES_USER":                 next.PostgresUser,
 		"BASEHARBOR_POSTGRES_PASSWORD":             next.PostgresPassword,
@@ -89,6 +93,7 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 		"BASEHARBOR_OPENBAO_DB_USER":               next.OpenBaoDBUser,
 		"BASEHARBOR_OPENBAO_DB_PASSWORD":           next.OpenBaoDBPassword,
 	}
+	updates["BASEHARBOR_POSTGRES_REPLICATION_PREVIOUS_USER"] = previous.PostgresReplicationUser
 	if err := rewriteRuntimeEnvironment(files.Env, updates); err != nil {
 		return err
 	}

@@ -8,18 +8,14 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-// Spilo only generates the original replication HBA rule at bootstrap. Creating
-// a replacement SQL role does not authorize it for physical replication. Keep
-// both identities admitted in Patroni's DCS before recreating any member.
-const controlPlaneReplicationHBAPatch = `import json, os, subprocess, sys, urllib.request
+// Spilo's local pg_hba overrides Patroni DCS configuration. Reload every
+// running member with overlapping identities before the first recreate.
+const controlPlaneReplicationHBAPatch = `import os, stat, sys, urllib.request, yaml
 old, new = sys.argv[1:]
-url = 'http://127.0.0.1:8008/config'
-config = json.load(urllib.request.urlopen(url, timeout=5))
-rules = config.get('postgresql', {}).get('pg_hba')
-if rules is None:
-    path = subprocess.check_output(['psql', '-U', os.environ['PGUSER_SUPERUSER'], '-d', 'postgres', '-Atqc', 'SHOW hba_file'], text=True).strip()
-    with open(path) as source:
-        rules = source.read().splitlines()
+path = os.path.realpath('/home/postgres/postgres.yml')
+with open(path) as source:
+    config = yaml.safe_load(source)
+rules = config['postgresql']['pg_hba']
 replacement = []
 for rule in rules:
     fields = rule.split()
@@ -31,19 +27,29 @@ if not replacement:
 for rule in replacement:
     if rule not in rules:
         rules.insert(0, rule)
-request = urllib.request.Request(url, data=json.dumps({'postgresql': {'pg_hba': rules}}).encode(), headers={'Content-Type': 'application/json'}, method='PATCH')
+metadata = os.stat(path)
+temporary = path + '.baseharbor.tmp'
+try:
+    with open(temporary, 'w') as target:
+        yaml.safe_dump(config, target)
+    os.chmod(temporary, stat.S_IMODE(metadata.st_mode))
+    os.chown(temporary, metadata.st_uid, metadata.st_gid)
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+request = urllib.request.Request('http://127.0.0.1:8008/reload', data=b'{}', headers={'Content-Type': 'application/json'}, method='POST')
 with urllib.request.urlopen(request, timeout=5) as response:
-    if response.status != 200:
-        raise RuntimeError('Patroni rejected replication HBA overlap')
+    if response.status != 202:
+        raise RuntimeError('Patroni rejected local replication HBA reload')
 `
 
 func prepareControlPlaneReplicationOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, previous string, next bhruntime.ControlPlaneCredentials) error {
-	primary, err := controlPlanePostgresPrimary(ctx, runtime, files)
-	if err != nil {
-		return err
-	}
-	if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, primary, "python3", "-c", controlPlaneReplicationHBAPatch, previous, next.PostgresReplicationUser); err != nil {
-		return fmt.Errorf("prepare Patroni replication HBA overlap: %w", err)
+	var err error
+	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "python3", "-c", controlPlaneReplicationHBAPatch, previous, next.PostgresReplicationUser); err != nil {
+			return fmt.Errorf("prepare Patroni local replication HBA overlap on %s: %w", member, err)
+		}
 	}
 	// Prove actual physical-replication authentication on every member. A normal
 	// SELECT 1 uses database HBA rules and cannot detect this failure.
