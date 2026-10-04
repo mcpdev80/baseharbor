@@ -29,6 +29,8 @@ func (f *servicePKIFake) ExecProjectInput(_ context.Context, _, _, _ string, inp
 	switch {
 	case strings.Contains(joined, "auth/approle/login"):
 		return `{"auth":{"client_token":"manager-token"}}`, nil
+	case strings.Contains(joined, "sys/leader"):
+		return "true\n", nil
 	case strings.Contains(joined, "baseharbor-pki/cert/ca"):
 		return `{"data":{"certificate":"-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----"}}`, nil
 	case strings.Contains(joined, "baseharbor-pki/issue/baseharbor-services"):
