@@ -412,7 +412,7 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 			if index == 0 {
 				spec += ":alias=" + alias
 			} else {
-				spec += ",alias=" + alias
+				spec += ":alias=" + alias
 			}
 		}
 		fmt.Fprintf(unit, "Network=%s\n", spec)
