@@ -718,6 +718,10 @@ path "sys/policy/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "sys/leader" {
+  capabilities = ["read"]
+}
+
 path "sys/auth" {
   capabilities = ["read"]
 }
