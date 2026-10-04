@@ -343,7 +343,7 @@ networks:
 	api := got.Files["baseharbor-workload-demo-api.container"]
 	for _, want := range []string{
 		"PublishPort=8080:8080",
-		"Network=baseharbor-demo-backend:alias=api:alias=api-metrics",
+		"Network=baseharbor-demo-backend:alias=api,alias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
 		if !strings.Contains(api, want) {
@@ -385,8 +385,8 @@ networks:
 
 	unit := got.Files["alias-guard-api.container"]
 	for _, want := range []string{
-		"Network=alias-guard-managed.network:alias=api:alias=api-managed",
-		"Network=baseharbor-external:alias=api:alias=api-external",
+		"Network=alias-guard-managed.network:alias=api,alias=api-managed",
+		"Network=baseharbor-external:alias=api,alias=api-external",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("network-scoped alias Quadlet missing %q:\n%s", want, unit)
