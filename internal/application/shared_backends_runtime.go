@@ -259,6 +259,7 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
 	fmt.Fprintf(&b, "    name: %s\n", files.Network)
+	writeSharedValkeyHANetworks(&b, state, appKeys)
 	return os.WriteFile(files.Compose, []byte(b.String()), 0o600)
 }
 
@@ -470,6 +471,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 	root := "./" + filepath.ToSlash(filepath.Join("valkey", sharedBackendToken(app.Application), sharedBackendToken(instance)))
 	count := sharedValkeyMemberCount(resource)
 	primary := sharedValkeyMemberServiceName(app, instance, 0)
+	haNetwork := primary + "-ha"
 	for ordinal := 0; ordinal < count; ordinal++ {
 		service := sharedValkeyMemberServiceName(app, instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
@@ -499,7 +501,11 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(b, "      - %s:/data\n", sharedValkeyMemberVolumeName(app, instance, ordinal))
-		b.WriteString("    networks:\n      shared-backend: {}\n\n")
+		b.WriteString("    networks:\n      shared-backend: {}\n")
+		if count > 1 {
+			fmt.Fprintf(b, "      %s: {}\n", haNetwork)
+		}
+		b.WriteString("\n")
 	}
 	if count > 1 {
 		for ordinal := 0; ordinal < 3; ordinal++ {
@@ -528,7 +534,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			fmt.Fprintf(b, "          printf 'sentinel parallel-syncs %s 1\\n'\n", valkeySentinelMasterName)
 			b.WriteString("        } > /tmp/sentinel.conf\n")
 			b.WriteString("        exec valkey-sentinel /tmp/sentinel.conf\n")
-			b.WriteString("    networks:\n      shared-backend: {}\n\n")
+			fmt.Fprintf(b, "    networks:\n      %s: {}\n\n", haNetwork)
 		}
 	}
 	gatewayFiles := serviceaccess.TCPGatewayFiles{

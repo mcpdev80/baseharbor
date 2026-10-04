@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -99,6 +100,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
 	count := valkeyMemberCount(m, instance)
 	primary := valkeyMemberServiceName(instance, 0)
+	haNetwork := primary + "-ha"
 	for ordinal := 0; ordinal < count; ordinal++ {
 		service := valkeyMemberServiceName(instance, ordinal)
 		fmt.Fprintf(b, "  %s:\n", service)
@@ -129,6 +131,9 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(b, "      - %s:/data\n", valkeyMemberVolumeName(instance, ordinal))
 		fmt.Fprintf(b, "      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro\n", instance)
+		if count > 1 {
+			fmt.Fprintf(b, "    networks:\n      default: {}\n      %s: {}\n", haNetwork)
+		}
 		b.WriteString("    healthcheck:\n")
 		b.WriteString("      test: [\"CMD-SHELL\", \"valkey-cli ping 2>&1 | grep -Eq '^PONG$|^NOAUTH '\" ]\n")
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 5s\n\n")
@@ -162,6 +167,9 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		fmt.Fprintf(b, "          printf 'sentinel parallel-syncs %s 1\\n'\n", valkeySentinelMasterName)
 		b.WriteString("        } > /tmp/sentinel.conf\n")
 		b.WriteString("        exec valkey-sentinel /tmp/sentinel.conf\n")
+		// Internal DNS answers missing member names locally. Forwarding them
+		// to external DNS can block Sentinel's event loop and force TILT.
+		fmt.Fprintf(b, "    networks:\n      %s: {}\n", haNetwork)
 		b.WriteString("    healthcheck:\n")
 		b.WriteString("      test: [\"CMD-SHELL\", \"valkey-cli -p 26379 ping | grep -q '^PONG$'\"]\n")
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 12\n      start_period: 5s\n\n")
@@ -173,6 +181,22 @@ func sharedValkeyMemberCount(resource sharedValkeyResource) int {
 		return resource.Instances
 	}
 	return 1
+}
+
+func writeSharedValkeyHANetworks(b *strings.Builder, state sharedBackendState, appKeys []string) {
+	for _, key := range appKeys {
+		app := state.Applications[key]
+		var instances []string
+		for instance, resource := range app.Cache {
+			if sharedValkeyMemberCount(resource) > 1 {
+				instances = append(instances, instance)
+			}
+		}
+		sort.Strings(instances)
+		for _, instance := range instances {
+			fmt.Fprintf(b, "  %s-ha:\n    internal: true\n", sharedValkeyMemberServiceName(app, instance, 0))
+		}
+	}
 }
 
 func sharedValkeyMemberServiceName(app sharedBackendAppState, instance string, ordinal int) string {

@@ -1,8 +1,11 @@
 package application
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
@@ -24,6 +27,7 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertValkeyReplicasUseNumericPrimary(t, compose)
+	assertValkeySentinelInternalNetwork(t, compose, "valkey", "default")
 	if got := strings.Count(compose, "printf 'protected-mode no\\n'"); got != 3 {
 		t.Fatalf("Valkey HA compose has %d Sentinel protected-mode overrides, want 3:\n%s", got, compose)
 	}
@@ -53,12 +57,53 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 
 func TestSharedValkeyHAReplicasBootstrapWithNumericPrimary(t *testing.T) {
 	var b strings.Builder
-	writeSharedValkeyCompose(&b, sharedBackendAppState{
+	app := sharedBackendAppState{
 		Application: "demo", Environment: "dev",
 		Cache: map[string]sharedValkeyResource{"default": {Instances: 3}},
-	}, "default")
+	}
+	b.WriteString("services:\n")
+	writeSharedValkeyCompose(&b, app, "default")
+	b.WriteString("networks:\n  shared-backend: {}\n")
+	writeSharedValkeyHANetworks(&b, sharedBackendState{Applications: map[string]sharedBackendAppState{"demo/dev": app}}, []string{"demo/dev"})
 	assertValkeyReplicasUseNumericPrimary(t, b.String())
 	assertValkeySentinelRetainsMemberNames(t, b.String())
+	assertValkeySentinelInternalNetwork(t, b.String(), sharedValkeyMemberServiceName(app, "default", 0), "shared-backend")
+}
+
+func assertValkeySentinelInternalNetwork(t *testing.T, compose, primary, applicationNetwork string) {
+	t.Helper()
+	var model struct {
+		Services map[string]struct {
+			Networks map[string]any `yaml:"networks"`
+		} `yaml:"services"`
+		Networks map[string]struct {
+			Internal bool `yaml:"internal"`
+		} `yaml:"networks"`
+	}
+	if err := yaml.Unmarshal([]byte(compose), &model); err != nil {
+		t.Fatal(err)
+	}
+	network := primary + "-ha"
+	if !model.Networks[network].Internal {
+		t.Fatal("Sentinel's member discovery network must answer missing internal names without external DNS forwarding")
+	}
+	for ordinal := 0; ordinal < 3; ordinal++ {
+		suffix := ""
+		if ordinal > 0 {
+			suffix = fmt.Sprintf("-%d", ordinal+1)
+		}
+		sentinel := model.Services[primary+"-sentinel"+suffix].Networks
+		if _, ok := sentinel[network]; !ok || len(sentinel) != 1 {
+			t.Fatalf("Sentinel must use only its internal HA network, got %v", sentinel)
+		}
+		member := model.Services[primary+suffix].Networks
+		if _, ok := member[network]; !ok {
+			t.Fatalf("member is unreachable from Sentinel's internal network: %v", member)
+		}
+		if _, ok := member[applicationNetwork]; !ok {
+			t.Fatalf("member lost its application gateway network: %v", member)
+		}
+	}
 }
 
 func assertValkeySentinelRetainsMemberNames(t *testing.T, compose string) {

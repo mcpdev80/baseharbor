@@ -350,6 +350,11 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
+	for _, instance := range cacheInstances {
+		if valkeyMemberCount(m, instance) > 1 {
+			fmt.Fprintf(&b, "  %s-ha:\n    internal: true\n", valkeyMemberServiceName(instance, 0))
+		}
+	}
 	return b.String(), nil
 }
 
