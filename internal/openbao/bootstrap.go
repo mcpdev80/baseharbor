@@ -62,13 +62,27 @@ type AdminCredentials struct {
 }
 
 func Inspect(ctx context.Context, executor Executor, files bhruntime.Files) (State, error) {
-	var lastErr error
+	var (
+		lastErr       error
+		fallbackState State
+		haveFallback  bool
+	)
 	for _, member := range openBaoHAMembers {
 		state, err := inspectMemberState(ctx, executor, files, member)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if state.Initialized && !state.Sealed {
 			return state, nil
 		}
-		lastErr = err
+		if !haveFallback {
+			fallbackState = state
+			haveFallback = true
+		}
+	}
+	if haveFallback {
+		return fallbackState, nil
 	}
 	if lastErr != nil {
 		return State{}, fmt.Errorf("inspect OpenBao status: %w", lastErr)
