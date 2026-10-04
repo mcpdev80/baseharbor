@@ -333,7 +333,6 @@ services:
       - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
     networks:
       - default
-      - secrets
 
 volumes:
   postgres-data-1:
