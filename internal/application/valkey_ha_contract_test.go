@@ -36,12 +36,10 @@ func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
 	if got := strings.Count(compose, "attempt=$$((attempt+1)); [ \"$$attempt\" -lt 60 ] || exit 1; sleep 1"); got != 5 {
 		t.Fatalf("Valkey HA compose bounds member/Sentinel bootstrap retries %d times, want 5:\n%s", got, compose)
 	}
-	if got := strings.Count(compose, "sentinel monitor baseharbor %s 6379 2"); got != 3 {
-		t.Fatalf("Valkey HA compose has %d numeric Sentinel quorum monitors, want 3:\n%s", got, compose)
+	if got := strings.Count(compose, "sentinel monitor baseharbor valkey 6379 2"); got != 3 {
+		t.Fatalf("Valkey HA compose has %d stable member Sentinel quorum monitors, want 3:\n%s", got, compose)
 	}
-	if strings.Contains(compose, "sentinel resolve-hostnames yes") || strings.Contains(compose, "replica-announce-ip valkey-") {
-		t.Fatalf("Valkey HA compose must not depend on stopped-container DNS for failover:\n%s", compose)
-	}
+	assertValkeySentinelRetainsMemberNames(t, compose)
 	if got := strings.Count(compose, "sentinel auth-pass baseharbor"); got != 3 {
 		t.Fatalf("Valkey HA compose has %d Sentinel auth-pass entries, want 3:\n%s", got, compose)
 	}
@@ -60,6 +58,19 @@ func TestSharedValkeyHAReplicasBootstrapWithNumericPrimary(t *testing.T) {
 		Cache: map[string]sharedValkeyResource{"default": {Instances: 3}},
 	}, "default")
 	assertValkeyReplicasUseNumericPrimary(t, b.String())
+	assertValkeySentinelRetainsMemberNames(t, b.String())
+}
+
+func assertValkeySentinelRetainsMemberNames(t *testing.T, compose string) {
+	t.Helper()
+	for _, directive := range []string{"sentinel resolve-hostnames yes", "sentinel announce-hostnames no", "replica-announce-ip "} {
+		if got := strings.Count(compose, directive); got != 3 {
+			t.Fatalf("Valkey HA must retain all stable member identities while Sentinel sends numeric replication addresses: %q count=%d, want 3", directive, got)
+		}
+	}
+	if strings.Contains(compose, "sentinel announce-hostnames yes") {
+		t.Fatal("Sentinel must not configure replicas to resolve primary hostnames from their event loops")
+	}
 }
 
 func assertValkeyReplicasUseNumericPrimary(t *testing.T, compose string) {

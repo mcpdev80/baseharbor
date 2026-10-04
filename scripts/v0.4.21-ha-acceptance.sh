@@ -54,6 +54,11 @@ case "$group" in
       BASEHARBOR_VALKEY_HA_ACCEPTANCE 1 \
       ./internal/application TestValkeyHARuntimeFailoverAcceptanceInCI 12m
     ;;
+  rabbitmq)
+    run_acceptance "RabbitMQ" \
+      BASEHARBOR_RABBITMQ_HA_ACCEPTANCE 1 \
+      ./internal/application TestRabbitMQHARuntimeFailoverAcceptanceInCI 12m
+    ;;
   seaweedfs)
     run_acceptance "SeaweedFS" \
       BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE 1 \

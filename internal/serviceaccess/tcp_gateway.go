@@ -199,6 +199,7 @@ listen baseharbor_stats
 backend upstream
   balance roundrobin
   option log-health-checks
+  default-server resolvers runtime-dns resolve-prefer ipv4 init-addr last,libc,none on-marked-down shutdown-sessions
 `, spec.ContainerPort)
 	for _, directive := range spec.BackendDirectives {
 		directive = strings.TrimSpace(directive)
@@ -221,6 +222,7 @@ backend upstream
 	for _, upstream := range upstreams {
 		fmt.Fprintf(&b, "  server %s %s:%d check%s\n", upstream.Name, upstream.Host, upstream.Port, suffix)
 	}
+	b.WriteString("\nresolvers runtime-dns\n  parse-resolv-conf\n  hold valid 2s\n  hold obsolete 1s\n  hold nx 1s\n  timeout resolve 1s\n  timeout retry 1s\n")
 	return b.String()
 }
 

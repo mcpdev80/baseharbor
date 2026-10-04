@@ -25,6 +25,8 @@ func TestTCPGatewayConfigSupportsMultipleHealthyMembers(t *testing.T) {
 	})
 	for _, want := range []string{
 		"balance roundrobin",
+		"default-server resolvers runtime-dns resolve-prefer ipv4 init-addr last,libc,none on-marked-down shutdown-sessions",
+		"resolvers runtime-dns\n  parse-resolv-conf",
 		"server rabbit-1 rabbitmq-default-1:5672 check",
 		"server rabbit-2 rabbitmq-default-2:5672 check",
 		"server rabbit-3 rabbitmq-default-3:5672 check",

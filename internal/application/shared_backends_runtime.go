@@ -491,6 +491,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("          printf 'masterauth %s\\n' \"$$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'appendonly yes\\n'\n")
 		b.WriteString("          printf 'dir /data\\n'\n")
+		fmt.Fprintf(b, "          printf 'replica-announce-ip %s\\n'\n", service)
 		if ordinal > 0 {
 			b.WriteString("          printf 'replicaof %s 6379\\n' \"$$primary_ip\"\n")
 		}
@@ -518,7 +519,9 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			b.WriteString("        {\n")
 			b.WriteString("          printf 'port 26379\\n'\n")
 			b.WriteString("          printf 'protected-mode no\\n'\n")
-			fmt.Fprintf(b, "          printf 'sentinel monitor %s %%s 6379 2\\n' \"$$primary_ip\"\n", valkeySentinelMasterName)
+			b.WriteString("          printf 'sentinel resolve-hostnames yes\\n'\n")
+			b.WriteString("          printf 'sentinel announce-hostnames no\\n'\n")
+			fmt.Fprintf(b, "          printf 'sentinel monitor %s %s 6379 2\\n'\n", valkeySentinelMasterName, primary)
 			fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
 			fmt.Fprintf(b, "          printf 'sentinel down-after-milliseconds %s 5000\\n'\n", valkeySentinelMasterName)
 			fmt.Fprintf(b, "          printf 'sentinel failover-timeout %s 15000\\n'\n", valkeySentinelMasterName)

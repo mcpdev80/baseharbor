@@ -83,7 +83,8 @@ func valkeyGatewaySpec(m Manifest, instance string) serviceaccess.TCPGatewaySpec
 // Resolve while the primary is available. Valkey resolves replicaof hostnames
 // synchronously on every reconnect, which can stall the replica event loop
 // when a stopped container disappears from runtime DNS. Sentinel manages
-// subsequent primary changes using member IP addresses.
+// subsequent primary changes using resolved member IP addresses. Its discovery
+// retains stable member names so a recreated member can rejoin at a new IP.
 func writeValkeyPrimaryAddressBootstrap(b *strings.Builder, primary string) {
 	b.WriteString("        primary_ip=\"\"\n")
 	b.WriteString("        attempt=0\n")
@@ -119,6 +120,7 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("          printf 'masterauth %s\\n' \"$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'appendonly yes\\n'\n")
 		b.WriteString("          printf 'dir /data\\n'\n")
+		fmt.Fprintf(b, "          printf 'replica-announce-ip %s\\n'\n", service)
 		if ordinal > 0 {
 			b.WriteString("          printf 'replicaof %s 6379\\n' \"$$primary_ip\"\n")
 		}
@@ -151,7 +153,9 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		b.WriteString("        {\n")
 		b.WriteString("          printf 'port 26379\\n'\n")
 		b.WriteString("          printf 'protected-mode no\\n'\n")
-		fmt.Fprintf(b, "          printf 'sentinel monitor %s %%s 6379 2\\n' \"$$primary_ip\"\n", valkeySentinelMasterName)
+		b.WriteString("          printf 'sentinel resolve-hostnames yes\\n'\n")
+		b.WriteString("          printf 'sentinel announce-hostnames no\\n'\n")
+		fmt.Fprintf(b, "          printf 'sentinel monitor %s %s 6379 2\\n'\n", valkeySentinelMasterName, primary)
 		fmt.Fprintf(b, "          printf 'sentinel auth-pass %s %%s\\n' \"$$VALKEY_PASSWORD\"\n", valkeySentinelMasterName)
 		fmt.Fprintf(b, "          printf 'sentinel down-after-milliseconds %s 5000\\n'\n", valkeySentinelMasterName)
 		fmt.Fprintf(b, "          printf 'sentinel failover-timeout %s 15000\\n'\n", valkeySentinelMasterName)
