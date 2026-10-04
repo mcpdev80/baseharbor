@@ -505,50 +505,50 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
 }
 
 func collectorConfigWithTraceBackendAccess(traceEndpoint string, requireClientCertificate bool) string {
-	traceExporters := "[debug]"
-	extraExporter := ""
-	if strings.TrimSpace(traceEndpoint) != "" {
-		traceExporters = "[debug, otlp_http/tempo]"
-		extraExporter = fmt.Sprintf("  otlp_http/tempo:\n    endpoint: %s\n", strings.TrimRight(strings.TrimSpace(traceEndpoint), "/"))
+	traceEndpoint = strings.TrimSpace(traceEndpoint)
+	var b strings.Builder
+	b.WriteString("receivers:\n")
+	b.WriteString("  otlp:\n")
+	b.WriteString("    protocols:\n")
+	b.WriteString("      http:\n")
+	b.WriteString("        endpoint: 0.0.0.0:4318\n")
+	b.WriteString("        tls:\n")
+	b.WriteString("          cert_file: /run/baseharbor/tls/server.pem\n")
+	b.WriteString("          key_file: /run/baseharbor/tls/server-key.pem\n")
+	if requireClientCertificate {
+		b.WriteString("          client_ca_file: /run/baseharbor/tls/ca.pem\n")
 	}
-	return fmt.Sprintf(`receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-        tls:
-          cert_file: /run/baseharbor/tls/server.pem
-          key_file: /run/baseharbor/tls/server-key.pem
-%s          min_version: "1.2"
-          reload_interval: 30s
-exporters:
-  debug:
-    verbosity: basic
-%sservice:
-  telemetry:
-    metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: 0.0.0.0
-                port: 8888
-  pipelines:
-    traces:
-      receivers: [otlp]
-      exporters: %s
-    metrics:
-      receivers: [otlp]
-      exporters: [debug]
-    logs:
-      receivers: [otlp]
-      exporters: [debug]
-`, func() string {
-		if requireClientCertificate {
-			return "          client_ca_file: /run/baseharbor/tls/ca.pem\n"
-		}
-		return ""
-	}(), extraExporter, traceExporters)
+	b.WriteString("          min_version: \"1.2\"\n")
+	b.WriteString("          reload_interval: 30s\n")
+	b.WriteString("exporters:\n")
+	b.WriteString("  debug:\n")
+	b.WriteString("    verbosity: basic\n")
+	traceExporters := "[debug]"
+	if traceEndpoint != "" {
+		b.WriteString("  otlp_http/tempo:\n")
+		fmt.Fprintf(&b, "    endpoint: %q\n", strings.TrimRight(traceEndpoint, "/"))
+		traceExporters = "[debug, otlp_http/tempo]"
+	}
+	b.WriteString("service:\n")
+	b.WriteString("  telemetry:\n")
+	b.WriteString("    metrics:\n")
+	b.WriteString("      readers:\n")
+	b.WriteString("        - pull:\n")
+	b.WriteString("            exporter:\n")
+	b.WriteString("              prometheus:\n")
+	b.WriteString("                host: 0.0.0.0\n")
+	b.WriteString("                port: 8888\n")
+	b.WriteString("  pipelines:\n")
+	b.WriteString("    traces:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	fmt.Fprintf(&b, "      exporters: %s\n", traceExporters)
+	b.WriteString("    metrics:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	b.WriteString("    logs:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	return b.String()
 }
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
