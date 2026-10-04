@@ -94,7 +94,6 @@ func TestIssueServiceCertificateUsesOpenBaoPKIWithoutSecretArguments(t *testing.
 	}
 }
 
-
 type transientServiceCAFaker struct {
 	servicePKIFake
 	failures int
