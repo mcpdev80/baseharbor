@@ -620,3 +620,59 @@ volumes:
 		t.Fatalf("same-target override volume missing: %s", rendered)
 	}
 }
+
+
+func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  init:
+    image: docker.io/library/alpine:3.22
+    restart: "no"
+    command: ["sh", "-ec", "exit 0"]
+  api:
+    image: docker.io/library/alpine:3.22
+    depends_on:
+      init:
+        condition: service_completed_successfully
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "dependency-complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := got.Files["dependency-complete-api.container"]
+	for _, want := range []string{
+		"Requires=dependency-complete-init.service",
+		"After=dependency-complete-init.service",
+		"ExecStartPre=/bin/sh -ec",
+		"systemctl --user is-active --quiet dependency-complete-init.service",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("completed dependency Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+}
+
+func TestRenderComposeProjectQuadletsRejectsMultilineEnvironmentValue(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    environment:
+      STRUCTURED: |
+        first: value
+        second: value
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := RenderComposeProjectQuadlets(compose, "", "multiline-env")
+	if err == nil {
+		t.Fatal("multiline environment value must fail instead of silently corrupting the env file")
+	}
+	if !strings.Contains(err.Error(), "multiline value unsupported by Podman env files") {
+		t.Fatalf("unexpected multiline environment error: %v", err)
+	}
+}
