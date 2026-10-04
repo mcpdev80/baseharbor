@@ -54,6 +54,11 @@ case "$group" in
       BASEHARBOR_VALKEY_HA_ACCEPTANCE 1 \
       ./internal/application TestValkeyHARuntimeFailoverAcceptanceInCI 12m
     ;;
+  seaweedfs)
+    run_acceptance "SeaweedFS" \
+      BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE 1 \
+      ./internal/objectstorage TestSeaweedFSHARuntimeFailoverAcceptanceInCI 12m
+    ;;
   identity)
     run_acceptance "Keycloak" \
       BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE 1 \

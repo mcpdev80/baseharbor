@@ -25,13 +25,11 @@ func (d *Driver) waitBucketIdentityReady(ctx context.Context, bucket string, cre
 	if err != nil {
 		return err
 	}
-	client := d.client
-	if client == nil {
-		client = instance.HTTPClient
-	}
+	client := instance.HTTPClient
 	if client == nil {
 		return errors.New("SeaweedFS realization did not provide an HTTP client")
 	}
+	defer client.CloseIdleConnections()
 	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 

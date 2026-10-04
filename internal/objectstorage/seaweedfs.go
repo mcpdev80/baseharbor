@@ -50,7 +50,6 @@ type Driver struct {
 	app            application.Manifest
 	files          application.RuntimeFiles
 	issuer         serviceaccess.Issuer
-	client         *http.Client
 	createdBuckets map[string]struct{}
 	dataDir        string
 	namespace      string
@@ -346,12 +345,11 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 		return err
 	}
 	endpoint := instance.Endpoint
-	if d.client == nil {
-		d.client = instance.HTTPClient
-	}
-	if d.client == nil {
+	client := instance.HTTPClient
+	if client == nil {
 		return errors.New("SeaweedFS realization did not provide an HTTP client")
 	}
+	defer client.CloseIdleConnections()
 	physical := PhysicalBucketName(d.app, resource.Name)
 	var probe [18]byte
 	if _, err := rand.Read(probe[:]); err != nil {
@@ -360,16 +358,16 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	key := ".baseharbor/verify-" + hex.EncodeToString(probe[:6])
 	payload := []byte("baseharbor-s3-verification-" + hex.EncodeToString(probe[:]))
 
-	status, _, err := signedS3Request(ctx, d.client, endpoint, http.MethodPut, physical, key, credentials, payload)
+	status, _, err := signedS3Request(ctx, client, endpoint, http.MethodPut, physical, key, credentials, payload)
 	if err != nil {
 		return fmt.Errorf("S3 PutObject verification: %w", err)
 	}
 	if status != http.StatusOK && status != http.StatusNoContent {
 		return fmt.Errorf("S3 PutObject verification returned HTTP %d", status)
 	}
-	defer signedS3Request(context.WithoutCancel(ctx), d.client, endpoint, http.MethodDelete, physical, key, credentials, nil)
+	defer signedS3Request(context.WithoutCancel(ctx), client, endpoint, http.MethodDelete, physical, key, credentials, nil)
 
-	status, body, err := signedS3Request(ctx, d.client, endpoint, http.MethodGet, physical, key, credentials, nil)
+	status, body, err := signedS3Request(ctx, client, endpoint, http.MethodGet, physical, key, credentials, nil)
 	if err != nil {
 		return fmt.Errorf("S3 GetObject verification: %w", err)
 	}

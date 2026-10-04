@@ -162,7 +162,7 @@ jobs:
           set -euo pipefail
           rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
           group="${rest%%/*}"
-          case "$group" in data|valkey|identity|observability|routing) ;; *) exit 2 ;; esac
+          case "$group" in data|valkey|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
           echo "value=$group" >> "$GITHUB_OUTPUT"
       - name: Reset Docker runtime
         shell: bash
@@ -207,7 +207,7 @@ jobs:
           set -euo pipefail
           rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
           group="${rest%%/*}"
-          case "$group" in data|valkey|identity|observability|routing) ;; *) exit 2 ;; esac
+          case "$group" in data|valkey|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
           echo "value=$group" >> "$GITHUB_OUTPUT"
       - name: Reset Podman runtime
         shell: bash
