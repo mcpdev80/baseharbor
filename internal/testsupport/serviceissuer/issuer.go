@@ -30,7 +30,7 @@ func New(t testing.TB) *Issuer {
 	}
 	now := time.Now().UTC()
 	template := &x509.Certificate{
-		SerialNumber:          func() *big.Int {
+		SerialNumber: func() *big.Int {
 			serial, serialErr := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 			if serialErr != nil {
 				t.Fatal(serialErr)
