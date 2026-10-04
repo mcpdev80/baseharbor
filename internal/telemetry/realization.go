@@ -176,7 +176,7 @@ func registerOTLPObservation(app application.Manifest, instance OTLPInstance) er
 	if metricsEnabled {
 		signals["collector-metrics"] = observability.ProviderSignalRuntime{
 			Network: instance.Network,
-			Target:  ProviderService + ":8888",
+			Target:  "otel-collector-metrics:8888",
 		}
 	}
 	return observability.RegisterProviderSignals(observability.ProviderSignalRegistration{
