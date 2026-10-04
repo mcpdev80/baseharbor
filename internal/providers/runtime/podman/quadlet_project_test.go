@@ -89,8 +89,7 @@ networks:
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
 		"Volume=baseharbor-demo-db-data.volume:/var/lib/postgresql",
-		"Network=baseharbor-demo-internal.network",
-		"NetworkAlias=db",
+		"Network=baseharbor-demo-internal.network:alias=db",
 		"Requires=baseharbor-demo-internal-network.service",
 		"After=baseharbor-demo-internal-network.service",
 		"HealthInterval=2s",
@@ -337,9 +336,7 @@ networks:
 	api := got.Files["baseharbor-workload-demo-api.container"]
 	for _, want := range []string{
 		"PublishPort=8080:8080",
-		"Network=baseharbor-demo-backend",
-		"NetworkAlias=api",
-		"NetworkAlias=api-metrics",
+		"Network=baseharbor-demo-backend:alias=api:alias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
 		if !strings.Contains(api, want) {
@@ -352,7 +349,7 @@ networks:
 	}
 }
 
-func TestRenderComposeProjectQuadletsNeverEmbedsAliasInNetworkValue(t *testing.T) {
+func TestRenderComposeProjectQuadletsScopesAliasesToNetworkAttachments(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
 	if err := os.WriteFile(compose, []byte(`services:
@@ -379,23 +376,17 @@ networks:
 		t.Fatal(err)
 	}
 
-	for name, content := range got.Files {
-		if strings.Contains(content, ":alias=") {
-			t.Fatalf("%s contains legacy network alias syntax:\n%s", name, content)
-		}
-	}
-
 	unit := got.Files["alias-guard-api.container"]
 	for _, want := range []string{
-		"Network=alias-guard-managed.network",
-		"Network=baseharbor-external",
-		"NetworkAlias=api",
-		"NetworkAlias=api-managed",
-		"NetworkAlias=api-external",
+		"Network=alias-guard-managed.network:alias=api:alias=api-managed",
+		"Network=baseharbor-external:alias=api:alias=api-external",
 	} {
 		if !strings.Contains(unit, want) {
-			t.Fatalf("alias guard Quadlet missing %q:\n%s", want, unit)
+			t.Fatalf("network-scoped alias Quadlet missing %q:\n%s", want, unit)
 		}
+	}
+	if strings.Contains(unit, "NetworkAlias=") {
+		t.Fatalf("multi-network Quadlet must not use global NetworkAlias= entries:\n%s", unit)
 	}
 }
 
