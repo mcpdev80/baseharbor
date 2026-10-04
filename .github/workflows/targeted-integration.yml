@@ -3,6 +3,9 @@ name: "Targeted · Integration"
 run-name: "Targeted · Integration · ${{ inputs.gate }} · ${{ inputs.ref }}"
 
 on:
+  push:
+    branches:
+      - 'runtime-validation/ha/**'
   workflow_dispatch:
     inputs:
       gate:
@@ -37,7 +40,7 @@ concurrency:
 
 jobs:
   focused:
-    if: ${{ !startsWith(inputs.gate, 'adoption-') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
@@ -176,8 +179,233 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
+  v0421_ha:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && !(contains(github.ref_name, '/gateway/') && matrix.runtime == 'docker') }}
+    name: v0.4.21 HA · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+    steps:
+      - name: Resolve targeted HA failure image
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="runtime-validation/ha/"
+          payload="${GITHUB_REF_NAME#"$prefix"}"
+          gate="${payload%%/*}"
+          case "$gate" in
+            control-plane|keycloak|otel|gateway) ;;
+            *) echo "unsupported v0.4.21 HA failure image: $gate" >&2; exit 2 ;;
+          esac
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare hosted Podman runtime
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Reset runtime state
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Run targeted HA failure image
+        shell: bash
+        env:
+          GATE: ${{ steps.resolve.outputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            control-plane)
+              BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true                 go test -p 1 ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+ -count=1 -timeout 20m -v
+              ;;
+            keycloak)
+              BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1                 go test -p 1 ./internal/identityprovider -run '^TestKeycloakHARuntimeFailoverAcceptanceInCI    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+ -count=1 -timeout 18m -v
+              ;;
+            otel)
+              BASEHARBOR_OTEL_HA_ACCEPTANCE=1                 go test -p 1 ./internal/telemetry -run '^TestOTelHARuntimeFailoverAcceptanceInCI    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+ -count=1 -timeout 12m -v
+              ;;
+            gateway)
+              BASEHARBOR_GATEWAY_ACCEPTANCE=1                 go test -p 1 ./internal/devgateway -run '^TestGatewayRuntimeContinuityAcceptanceInCI    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+ -count=1 -timeout 10m -v
+              ;;
+          esac
+
+      - name: Runtime diagnostics
+        if: failure()
+        shell: bash
+        run: bash scripts/ci-failure-diagnostics.sh "${{ matrix.runtime }}" "$RUNNER_TEMP/targeted-ha-diagnostics" "$GITHUB_WORKSPACE" || true
+
+      - name: Cleanup runtime state
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   adoption:
-    if: ${{ startsWith(inputs.gate, 'adoption-') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
