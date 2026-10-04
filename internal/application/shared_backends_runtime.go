@@ -483,13 +483,16 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 		b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
+		if ordinal > 0 {
+			writeValkeyPrimaryAddressBootstrap(b, primary)
+		}
 		b.WriteString("        {\n")
 		b.WriteString("          printf 'requirepass %s\\n' \"$$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'masterauth %s\\n' \"$$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'appendonly yes\\n'\n")
 		b.WriteString("          printf 'dir /data\\n'\n")
 		if ordinal > 0 {
-			fmt.Fprintf(b, "          printf 'replicaof %s 6379\\n'\n", primary)
+			b.WriteString("          printf 'replicaof %s 6379\\n' \"$$primary_ip\"\n")
 		}
 		b.WriteString("        } > /tmp/valkey.conf\n")
 		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
@@ -511,13 +514,7 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 			b.WriteString("    environment:\n")
 			fmt.Fprintf(b, "      VALKEY_PASSWORD: ${%s}\n", passwordEnv)
 			b.WriteString("    command:\n      - sh\n      - -ec\n      - |\n")
-			b.WriteString("        primary_ip=\"\"\n")
-			b.WriteString("        attempt=0\n")
-			b.WriteString("        until [ -n \"$$primary_ip\" ]; do\n")
-			fmt.Fprintf(b, "          primary_addr=\"$(VALKEYCLI_AUTH=\"$$VALKEY_PASSWORD\" valkey-cli -h %s -p 6379 --raw CLIENT INFO 2>/dev/null || true)\"\n", primary)
-			b.WriteString("          primary_ip=\"$(printf '%s\\n' \"$$primary_addr\" | tr ' ' '\\n' | sed -n 's/^laddr=\\([^:]*\\):.*/\\1/p' | head -n1)\"\n")
-			b.WriteString("          if [ -z \"$$primary_ip\" ]; then attempt=$$((attempt+1)); [ \"$$attempt\" -lt 60 ] || exit 1; sleep 1; fi\n")
-			b.WriteString("        done\n")
+			writeValkeyPrimaryAddressBootstrap(b, primary)
 			b.WriteString("        {\n")
 			b.WriteString("          printf 'port 26379\\n'\n")
 			b.WriteString("          printf 'protected-mode no\\n'\n")
