@@ -567,12 +567,12 @@ func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, uni
 		if _, err := quadletSystemctl(ctx, nil, "restart", unit); err != nil {
 			return err
 		}
-		exists, err = quadletRuntimeResourceExists(ctx, kind, resource)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s", kind, resource, unit)
+		if err := quadletWaitRuntimeResource(ctx, kind, resource, 10*time.Second); err != nil {
+			diagnostic := quadletServiceDiagnostic(ctx, unit)
+			if strings.TrimSpace(diagnostic) != "" {
+				return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s: %w\n%s", kind, resource, unit, err, diagnostic)
+			}
+			return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s: %w", kind, resource, unit, err)
 		}
 	}
 	return nil
@@ -597,6 +597,27 @@ func quadletFileForUnit(project QuadletProject, unit, kind string) string {
 		}
 	}
 	return ""
+}
+
+func quadletWaitRuntimeResource(ctx context.Context, kind, name string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		exists, err := quadletRuntimeResourceExists(ctx, kind, name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			return fmt.Errorf("Podman %s resource %s did not materialize within %s", kind, name, timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func quadletRuntimeResourceExists(ctx context.Context, kind, name string) (bool, error) {
