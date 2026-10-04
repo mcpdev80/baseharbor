@@ -545,7 +545,7 @@ exporters:
       exporters: [debug]
 `, func() string {
 		if requireClientCertificate {
-			return "          client_ca_file: /run/baseharbor/tls/ca.pem\\n"
+			return "          client_ca_file: /run/baseharbor/tls/ca.pem\n"
 		}
 		return ""
 	}(), extraExporter, traceExporters)
