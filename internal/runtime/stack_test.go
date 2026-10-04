@@ -197,6 +197,10 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro",
 		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"postgres-member-1:\n        condition: service_started",
+		"postgres-member-2:\n        condition: service_started",
+		"postgres-member-3:\n        condition: service_started",
+		"postgres-init:\n    image: docker.io/library/postgres:18-alpine\n    restart: \"no\"\n    depends_on:\n      postgres:\n        condition: service_started",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("reconciled runtime is missing %q", wanted)
