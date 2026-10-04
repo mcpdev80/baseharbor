@@ -619,18 +619,26 @@ func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
 	defer ticker.Stop()
 	var last error
 	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
-		req.Header.Set("Content-Type", "application/x-protobuf")
-		resp, err := client.Do(req)
+		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
 		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			var resp *http.Response
+			resp, err = client.Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					cancel()
+					return nil
+				}
+				last = fmt.Errorf("HTTP %d", resp.StatusCode)
+			} else {
+				last = err
 			}
-			last = fmt.Errorf("HTTP %d", resp.StatusCode)
 		} else {
 			last = err
 		}
+		cancel()
 		select {
 		case <-ctx.Done():
 			if last == nil {
