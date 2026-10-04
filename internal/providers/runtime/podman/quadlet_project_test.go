@@ -121,8 +121,11 @@ networks:
 		}
 	}
 	worker := got.Files["baseharbor-demo-worker.container"]
+	if strings.Contains(worker, "Requires=baseharbor-demo-db.service") {
+		t.Fatalf("Compose depends_on must not create stop propagation between services:\n%s", worker)
+	}
 	for _, want := range []string{
-		"Requires=baseharbor-demo-db.service",
+		"Wants=baseharbor-demo-db.service",
 		"After=baseharbor-demo-db.service",
 		"Entrypoint=[\"/bin/sh\",\"-ec\"]",
 		"Exec=sh -c \"sleep 60\"",
