@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -265,7 +267,7 @@ func waitSeaweedFSHAReady(t *testing.T, ctx context.Context, driver *Driver, res
 }
 
 func assertSeaweedFSManagementUIPublished(t *testing.T, ctx context.Context, runtime interface {
-	StatusProject(context.Context, string, string, string) (string, error)
+	ServiceStatesProjectFilesEnv(context.Context, string, string, map[string]string, ...string) ([]bhruntime.ServiceState, error)
 }, files ProviderFiles, stage string) {
 	t.Helper()
 	envData, err := os.ReadFile(files.Env)
@@ -287,12 +289,23 @@ func assertSeaweedFSManagementUIPublished(t *testing.T, ctx context.Context, run
 	if !strings.Contains(string(composeData), "127.0.0.1:${"+seaweedAdminPortEnv+"}:9443") {
 		t.Fatalf("%s: provider compose does not declare management UI host publication", stage)
 	}
-	status, err := runtime.StatusProject(ctx, files.Project, files.Compose, files.Env)
+	publishedPort, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatalf("%s: invalid management UI port %q: %v", stage, port, err)
+	}
+	states, err := runtime.ServiceStatesProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values, files.Compose)
 	if err != nil {
 		t.Fatalf("%s: inspect provider runtime: %v", stage, err)
 	}
-	want := "127.0.0.1:" + port + "->9443/tcp"
-	if !strings.Contains(status, want) {
-		t.Fatalf("%s: management UI container is not published as %s:\n%s", stage, want, status)
+	for _, state := range states {
+		if state.Service != "seaweedfs-admin-access" || !state.Ready() {
+			continue
+		}
+		for _, binding := range state.Publishers {
+			if binding.URL == "127.0.0.1" && binding.PublishedPort == publishedPort && binding.TargetPort == 9443 && strings.EqualFold(binding.Protocol, "tcp") {
+				return
+			}
+		}
 	}
+	t.Fatalf("%s: management UI container is not published as 127.0.0.1:%s->9443/tcp: %+v", stage, port, states)
 }
