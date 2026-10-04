@@ -81,7 +81,9 @@ func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.
 		"BAO_ADDR=https://" + member + ":8200 bao status -format=json 2>/dev/null || code=$?\n" +
 		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
 		"exit \"$code\""
-	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := executor.ExecProject(probeCtx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
 	if err != nil {
 		return State{}, err
 	}
@@ -246,8 +248,25 @@ func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files)
 	if err != nil {
 		return err
 	}
-	_, err = loginManager(ctx, executor, files, credentials)
-	return err
+	deadline := time.Now().Add(20 * time.Second)
+	var lastErr error
+	for {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, err = loginManager(probeCtx, executor, files, credentials)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func RotateManagerCredentials(ctx context.Context, executor Executor, files bhruntime.Files) error {
