@@ -37,11 +37,14 @@ func (d *Driver) waitBucketIdentityReady(ctx context.Context, bucket string, cre
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	probeKey := fmt.Sprintf(".baseharbor/identity-ready-%d", time.Now().UnixNano())
+	probePayload := []byte("baseharbor-s3-identity-readiness")
 	var lastStatus int
 	var lastErr error
 	for {
-		status, _, err := signedS3Request(waitCtx, client, instance.Endpoint, http.MethodHead, bucket, "", credentials, nil)
-		if err == nil && status == http.StatusOK {
+		status, _, err := signedS3Request(waitCtx, client, instance.Endpoint, http.MethodPut, bucket, probeKey, credentials, probePayload)
+		if err == nil && (status == http.StatusOK || status == http.StatusNoContent) {
+			_, _, _ = signedS3Request(context.WithoutCancel(ctx), client, instance.Endpoint, http.MethodDelete, bucket, probeKey, credentials, nil)
 			return nil
 		}
 		lastStatus = status
