@@ -418,6 +418,7 @@ func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, f
 		"/etc/caddy/Caddyfile",
 		"--adapter",
 		"caddyfile",
+		"--force",
 	); err != nil {
 		return fmt.Errorf("reload Keycloak access gateway trust: %w", err)
 	}
