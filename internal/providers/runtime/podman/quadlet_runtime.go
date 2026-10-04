@@ -70,14 +70,11 @@ func quadletSystemctl(ctx context.Context, input []byte, args ...string) (string
 	if err != nil {
 		return "", err
 	}
-	commandCtx := ctx
-	cancel := func() {}
-	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
-		commandCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	}
-	defer cancel()
 	full := append([]string{"--user"}, args...)
-	cmd := exec.CommandContext(commandCtx, path, full...)
+	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
+		full = append([]string{"--user", "--no-block"}, args...)
+	}
+	cmd := exec.CommandContext(ctx, path, full...)
 	cmd.Env = quadletUserRuntimeEnv()
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
@@ -398,19 +395,19 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	}
 	if len(restartUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 30*time.Second); waitErr != nil {
+			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, restartUnits, err)
 			}
 		}
 	}
 	if len(startUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 30*time.Second); waitErr != nil {
+			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, startUnits, err)
 			}
 		}
 	}
-	if err := quadletWaitServiceUnitsActive(ctx, units, 30*time.Second); err != nil {
+	if err := quadletWaitServiceUnitsActive(ctx, units, 120*time.Second); err != nil {
 		return err
 	}
 	return quadletEnsureServiceContainersExist(ctx, project, selected)
