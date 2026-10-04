@@ -282,7 +282,11 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 			}
 		}
 		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
-		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
+		if service.DependsOn.Conditions[dep] == "service_completed_successfully" {
+			fmt.Fprintf(unit, "Wants=%s\nAfter=%s\n", depUnit, depUnit)
+		} else {
+			fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
+		}
 	}
 
 	serviceNetworks := append([]string(nil), service.Networks.Names...)
