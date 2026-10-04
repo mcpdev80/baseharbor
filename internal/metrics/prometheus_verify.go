@@ -158,7 +158,7 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	for _, source := range sources {
 		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		query := fmt.Sprintf(
-			`up{job="baseharbor-providers",baseharbor_provider=%q,baseharbor_source=%q}`,
+			`up{baseharbor_provider=%q,baseharbor_source=%q}`,
 			string(source.Provider), source.ID,
 		)
 		ticker := time.NewTicker(time.Second)
