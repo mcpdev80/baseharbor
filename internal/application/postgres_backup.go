@@ -45,10 +45,14 @@ func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime,
 		if err != nil {
 			return nil, fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
 		}
-		// Spilo owns metric_helpers in every database. Its monitoring objects
-		// remain provider state; the application role cannot restore them.
-		// Exclude only that schema so custom application schemas are preserved.
-		command := fmt.Sprintf("IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --clean --if-exists --no-owner --no-privileges --format=plain --exclude-schema=metric_helpers -h postgres-access -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
+		// Spilo owns its monitoring and administration objects in every
+		// database. The application role cannot restore that provider state.
+		// Preserve other schemas and extensions belonging to the application.
+		command := fmt.Sprintf("IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --clean --if-exists --no-owner --no-privileges --format=plain"+
+			" --exclude-schema=metric_helpers --exclude-schema=user_management"+
+			" --exclude-extension=pg_stat_statements --exclude-extension=pg_stat_kcache"+
+			" --exclude-extension=set_user --exclude-extension=pg_mon"+
+			" -h postgres-access -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
 		out, err := runtime.ExecProjectInput(
 			ctx,
 			shared.Project,
