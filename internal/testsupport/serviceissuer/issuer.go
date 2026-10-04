@@ -17,8 +17,9 @@ import (
 )
 
 type Issuer struct {
-	ca    *x509.Certificate
-	caKey *ecdsa.PrivateKey
+	ca        *x509.Certificate
+	caKey     *ecdsa.PrivateKey
+	reference string
 }
 
 func New(t testing.TB) *Issuer {
@@ -29,7 +30,13 @@ func New(t testing.TB) *Issuer {
 	}
 	now := time.Now().UTC()
 	template := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
+		SerialNumber:          func() *big.Int {
+			serial, serialErr := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+			if serialErr != nil {
+				t.Fatal(serialErr)
+			}
+			return serial
+		}(),
 		Subject:               pkix.Name{CommonName: "BaseHarbor Test CA"},
 		NotBefore:             now.Add(-time.Minute),
 		NotAfter:              now.Add(24 * time.Hour),
@@ -45,7 +52,7 @@ func New(t testing.TB) *Issuer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Issuer{ca: ca, caKey: key}
+	return &Issuer{ca: ca, caKey: key, reference: "test://baseharbor/" + ca.SerialNumber.Text(16)}
 }
 
 func (i *Issuer) Rotate(t testing.TB) {
@@ -53,11 +60,12 @@ func (i *Issuer) Rotate(t testing.TB) {
 	replacement := New(t)
 	i.ca = replacement.ca
 	i.caKey = replacement.caKey
+	i.reference = replacement.reference
 }
 
 func (i *Issuer) TrustBundle(context.Context) (serviceaccess.TrustBundle, error) {
 	return serviceaccess.TrustBundle{
-		IssuerReference: "test://baseharbor",
+		IssuerReference: i.reference,
 		PEM:             pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
 	}, nil
 }
@@ -100,7 +108,7 @@ func (i *Issuer) Issue(_ context.Context, request serviceaccess.CertificateReque
 		return serviceaccess.IssuedCertificate{}, err
 	}
 	return serviceaccess.IssuedCertificate{
-		IssuerReference: "test://baseharbor",
+		IssuerReference: i.reference,
 		Certificate:     pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 		PrivateKey:      pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}),
 		IssuingCA:       pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
@@ -116,7 +124,7 @@ func (i *Issuer) Renew(ctx context.Context, _ serviceaccess.IssuedCertificate, r
 func (i *Issuer) Revoke(context.Context, string) error { return nil }
 
 func (i *Issuer) Status(context.Context) (serviceaccess.IssuerStatus, error) {
-	return serviceaccess.IssuerStatus{IssuerReference: "test://baseharbor", Ready: true}, nil
+	return serviceaccess.IssuerStatus{IssuerReference: i.reference, Ready: true}, nil
 }
 
 var _ serviceaccess.Issuer = (*Issuer)(nil)
