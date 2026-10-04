@@ -332,7 +332,12 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := projectReadable(material.ServerCertificate, files.Cert); err != nil {
 		return err
 	}
-	if err := projectReadableMode(material.ServerKey, files.Key, 0o600); err != nil {
+	// This is a derived runtime projection mounted read-only into an
+	// unprivileged container. Rootless Podman remaps container UIDs, so a 0600
+	// host-owned projection is unreadable even though the authoritative PKI key
+	// remains protected under pki/. Match the service-access gateway projection
+	// model and make only this read-only runtime copy container-readable.
+	if err := projectReadableMode(material.ServerKey, files.Key, 0o644); err != nil {
 		return err
 	}
 	trustTargets := map[string]string{}
