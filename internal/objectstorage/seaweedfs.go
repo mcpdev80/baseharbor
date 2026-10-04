@@ -304,6 +304,9 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 	if err := d.runSeaweedShell(ctx, configure); err != nil {
 		return fmt.Errorf("configure least-privilege S3 identity for %s: %w", resource.Name, err)
 	}
+	if err := d.waitBucketIdentityReady(ctx, physical, credentials); err != nil {
+		return fmt.Errorf("activate least-privilege S3 identity for %s: %w", resource.Name, err)
+	}
 	return nil
 }
 
@@ -444,6 +447,43 @@ func (d *Driver) runSeaweedShellOutput(ctx context.Context, command string) (str
 		return "", errors.New("SeaweedFS realization is required")
 	}
 	return d.realization.Admin(ctx, command)
+}
+
+func (d *Driver) waitBucketIdentityReady(ctx context.Context, bucket string, credentials application.ObjectStorageCredentials) error {
+	instance, err := d.realization.Existing(ctx)
+	if err != nil {
+		return err
+	}
+	client := d.client
+	if client == nil {
+		client = instance.HTTPClient
+	}
+	if client == nil {
+		return errors.New("SeaweedFS realization did not provide an HTTP client")
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	var lastStatus int
+	var lastErr error
+	for {
+		status, _, err := signedS3Request(waitCtx, client, instance.Endpoint, http.MethodHead, bucket, "", credentials, nil)
+		if err == nil && status == http.StatusOK {
+			return nil
+		}
+		lastStatus = status
+		lastErr = err
+		select {
+		case <-waitCtx.Done():
+			if lastErr != nil {
+				return lastErr
+			}
+			return fmt.Errorf("S3 identity did not become active before deadline; last HTTP status %d", lastStatus)
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Driver) waitBucketExists(ctx context.Context, bucket string) error {
