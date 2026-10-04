@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -133,20 +134,8 @@ func (d *Driver) RotateBucketCredentials(ctx context.Context, logicalBucket stri
 			if err := d.runSeaweedShell(ctx, fmt.Sprintf("s3.configure -user=%s -delete -apply", state.OldUser)); err != nil {
 				return fmt.Errorf("retire old SeaweedFS IAM identity: %w", err)
 			}
-			instance, err := d.realization.Existing(ctx)
-			if err != nil {
+			if err := d.waitBucketCredentialsRetired(ctx, physical, state.Old); err != nil {
 				return err
-			}
-			client := instance.HTTPClient
-			if client == nil {
-				return errors.New("SeaweedFS realization did not provide an HTTP client")
-			}
-			status, _, err := signedS3Request(ctx, client, instance.Endpoint, http.MethodGet, physical, "", state.Old, nil)
-			if err != nil {
-				return fmt.Errorf("verify old SeaweedFS credential retirement: %w", err)
-			}
-			if status != http.StatusForbidden && status != http.StatusUnauthorized {
-				return fmt.Errorf("old SeaweedFS credentials remain valid after retirement: HTTP %d", status)
 			}
 			return saveBucketCredentialIdentityState(d.files, logicalBucket, state.NewUser)
 		},
@@ -169,6 +158,52 @@ func (d *Driver) RotateBucketCredentials(ctx context.Context, logicalBucket stri
 		return err
 	}
 	return os.Remove(statePath)
+}
+
+func (d *Driver) waitBucketCredentialsRetired(ctx context.Context, physical string, old application.ObjectStorageCredentials) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	const requiredConsecutiveRejections = 6
+	consecutive := 0
+	var lastErr error
+	for {
+		instance, err := d.realization.Existing(waitCtx)
+		if err != nil {
+			lastErr = err
+		} else if instance.HTTPClient == nil {
+			lastErr = errors.New("SeaweedFS realization did not provide an HTTP client")
+		} else {
+			status, _, requestErr := signedS3Request(waitCtx, instance.HTTPClient, instance.Endpoint, http.MethodGet, physical, "", old, nil)
+			instance.HTTPClient.CloseIdleConnections()
+			switch {
+			case requestErr != nil:
+				lastErr = requestErr
+				consecutive = 0
+			case status == http.StatusForbidden || status == http.StatusUnauthorized:
+				consecutive++
+				if consecutive >= requiredConsecutiveRejections {
+					return nil
+				}
+				lastErr = nil
+			default:
+				consecutive = 0
+				lastErr = fmt.Errorf("old SeaweedFS credentials remain valid after retirement: HTTP %d", status)
+			}
+		}
+
+		select {
+		case <-waitCtx.Done():
+			if lastErr == nil {
+				lastErr = waitCtx.Err()
+			}
+			return fmt.Errorf("verify old SeaweedFS credential retirement: %w", lastErr)
+		case <-ticker.C:
+		}
+	}
 }
 
 func newObjectStorageCredentials() (application.ObjectStorageCredentials, error) {
