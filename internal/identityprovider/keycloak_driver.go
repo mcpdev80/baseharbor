@@ -340,27 +340,32 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 		user:     d.instance.AdminUsername,
 		password: d.instance.AdminPassword,
 	}
-	loginCtx, cancel := context.WithTimeout(ctx, identityEndpointReadyTimeout)
+	loginCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	var last error
 	for {
-		if err := admin.login(loginCtx); err == nil {
+		attemptCtx, attemptCancel := context.WithTimeout(loginCtx, 5*time.Second)
+		err := admin.login(attemptCtx)
+		attemptCancel()
+		if err == nil {
 			return admin, nil
-		} else {
-			last = err
-			var loginErr *keycloakAdminLoginError
-			if !errors.As(err, &loginErr) || loginErr.Status != http.StatusServiceUnavailable {
-				return nil, err
-			}
+		}
+		last = err
+		var loginErr *keycloakAdminLoginError
+		retryable := errors.As(err, &loginErr) &&
+			(loginErr.Status == http.StatusServiceUnavailable ||
+				(loginErr.Status == http.StatusBadRequest && strings.Contains(loginErr.Body, "invalid_grant")))
+		if !retryable {
+			return nil, err
 		}
 		select {
 		case <-loginCtx.Done():
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			return nil, fmt.Errorf("Keycloak admin bootstrap timeout after %s: %w", identityEndpointReadyTimeout, last)
+			return nil, fmt.Errorf("Keycloak admin authentication did not converge within 20s: %w", last)
 		case <-ticker.C:
 		}
 	}
