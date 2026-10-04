@@ -9,6 +9,10 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+type providerPKIRuntimeReconciler interface {
+	UpProjectFilesSelectedForceRecreateNoBuild(context.Context, string, string, map[string]string, []string, ...string) error
+}
+
 // RotateProviderPKIAt reconciles SeaweedFS service and management TLS material
 // against a replacement issuer, verifies both stable endpoints while the old
 // and new trust roots overlap, and retires the previous trust root only after
@@ -36,6 +40,19 @@ func RotateProviderPKIAt(ctx context.Context, runtime Runtime, issuer serviceacc
 	}
 	if err := runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("apply SeaweedFS replacement PKI: %w", err)
+	}
+	if reconciler, ok := runtime.(providerPKIRuntimeReconciler); ok {
+		environment, envErr := readProviderValues(files.Env)
+		if envErr != nil {
+			return envErr
+		}
+		services := []string{"seaweedfs-access"}
+		if managementUI {
+			services = append(services, "seaweedfs-admin-access")
+		}
+		if err := reconciler.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, files.Dir, environment, services, files.Compose); err != nil {
+			return fmt.Errorf("activate replacement SeaweedFS PKI: %w", err)
+		}
 	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, providerReadinessTimeout)
