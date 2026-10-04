@@ -222,17 +222,35 @@ func deleteKeycloakUserByUsername(ctx context.Context, admin *keycloakAdmin, rea
 
 func replaceKeycloakAdminState(stateDir, username, password string) error {
 	stateDir = strings.TrimSpace(stateDir)
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
 	if stateDir == "" {
 		return errors.New("Keycloak state directory is required")
 	}
-	envPath := filepath.Join(stateDir, "runtime.env")
-	values, err := readProtectedEnv(envPath)
-	if err != nil {
-		return err
+	if username == "" || password == "" || strings.ContainsAny(username+password, "\r\n") {
+		return errors.New("Keycloak admin credential is invalid")
 	}
-	values["BASEHARBOR_KEYCLOAK_ADMIN_USER"] = strings.TrimSpace(username)
-	values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"] = strings.TrimSpace(password)
-	return writeProtectedEnv(envPath, values)
+	return writeProtectedEnv(filepath.Join(stateDir, "active-admin.env"), map[string]string{
+		"BASEHARBOR_KEYCLOAK_ADMIN_USER":     username,
+		"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD": password,
+	})
+}
+
+func activeKeycloakAdminCredential(stateDir string, fallback map[string]string) (string, string, error) {
+	username := strings.TrimSpace(fallback["BASEHARBOR_KEYCLOAK_ADMIN_USER"])
+	password := strings.TrimSpace(fallback["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"])
+	path := filepath.Join(strings.TrimSpace(stateDir), "active-admin.env")
+	values, err := readProtectedEnv(path)
+	if err == nil {
+		username = strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_ADMIN_USER"])
+		password = strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"])
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", "", err
+	}
+	if username == "" || password == "" {
+		return "", "", errors.New("Keycloak admin credential is incomplete")
+	}
+	return username, password, nil
 }
 
 func loadPreparedKeycloakAdminCredentialRotation(store credential.PreparedMaterialStore, key string) (preparedKeycloakAdminCredentialRotation, error) {
