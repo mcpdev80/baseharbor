@@ -76,6 +76,9 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 	}
 
 	if state.Phase == bhruntime.ControlPlaneRotationProjected {
+		if err := prepareControlPlaneReplicationOverlap(ctx, runtime, files, current.PostgresReplicationUser, next); err != nil {
+			return err
+		}
 		environment, err := bhruntime.RuntimeEnvironment(files)
 		if err != nil {
 			return err
