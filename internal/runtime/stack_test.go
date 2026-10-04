@@ -355,6 +355,8 @@ func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	for _, want := range []string{
 		"ghcr.io/zalando/spilo-18:4.1-p2",
 		"gcr.io/etcd-development/etcd:v3.7.2",
+		`"create_replica_methods":["basebackup"]`,
+		`"basebackup":{"checkpoint":"fast"}`,
 		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
 		"SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem",
 		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",

@@ -118,10 +118,18 @@ backend members
   option httpchk
   http-check send meth GET uri /v1/sys/health ver HTTP/1.1 hdr Host openbao
   http-check expect status 200
-  default-server check check-ssl verify none inter 2s fall 2 rise 2 init-addr last,libc,none
+  default-server check check-ssl verify none inter 2s fall 2 rise 2 on-marked-down shutdown-sessions resolvers runtime-dns resolve-prefer ipv4 init-addr last,libc,none
   server openbao-1 openbao-member-1:8200
   server openbao-2 openbao-member-2:8200
   server openbao-3 openbao-member-3:8200
+
+resolvers runtime-dns
+  parse-resolv-conf
+  hold valid 2s
+  hold obsolete 1s
+  hold nx 1s
+  timeout resolve 1s
+  timeout retry 1s
 `
 	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }

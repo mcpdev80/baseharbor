@@ -1,9 +1,49 @@
 package main
 
 import (
+	"context"
 	"os/exec"
+	"reflect"
+	"strings"
 	"testing"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+type replicationRotationOrderRuntime struct {
+	bhruntime.RuntimeProvider
+	calls []string
+}
+
+func (r *replicationRotationOrderRuntime) ExecProject(_ context.Context, _, _, _, member string, args ...string) (string, error) {
+	action := "ready"
+	if strings.Contains(strings.Join(args, " "), "safe_load") {
+		action = "reload"
+	}
+	r.calls = append(r.calls, action+":"+member)
+	return "", nil
+}
+
+func (r *replicationRotationOrderRuntime) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, args ...string) (string, error) {
+	r.calls = append(r.calls, "authenticate:"+args[len(args)-2])
+	return "", nil
+}
+
+func TestReplicationRotationWaitsForAllMembersBeforeReload(t *testing.T) {
+	runtime := &replicationRotationOrderRuntime{}
+	if err := prepareControlPlaneReplicationOverlap(context.Background(), runtime, bhruntime.Files{}, "old", bhruntime.ControlPlaneCredentials{PostgresReplicationUser: "new", PostgresReplicationPass: "password"}); err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, action := range []string{"ready", "reload", "authenticate"} {
+		for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+			want = append(want, action+":"+member)
+		}
+	}
+	if !reflect.DeepEqual(runtime.calls, want) {
+		t.Fatalf("credential rotation actions = %v, want %v", runtime.calls, want)
+	}
+}
 
 func TestReplicationHBAOverlapPreservesRulesAndRejectsMissingIdentity(t *testing.T) {
 	python, err := exec.LookPath("python3")

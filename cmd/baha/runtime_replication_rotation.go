@@ -46,6 +46,14 @@ with urllib.request.urlopen(request, timeout=5) as response:
 
 func prepareControlPlaneReplicationOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, previous string, next bhruntime.ControlPlaneCredentials) error {
 	var err error
+	// A stable primary endpoint does not prove that restored replicas have
+	// finished their basebackup. Reloading Patroni during replica bootstrap can
+	// race creation of postgresql.conf. Require readiness before any mutation.
+	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+		if err := waitForControlPlanePostgresMemberReady(ctx, runtime, files, member); err != nil {
+			return fmt.Errorf("require PostgreSQL member %s ready before credential rotation: %w", member, err)
+		}
+	}
 	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
 		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "python3", "-c", controlPlaneReplicationHBAPatch, previous, next.PostgresReplicationUser); err != nil {
 			return fmt.Errorf("prepare Patroni local replication HBA overlap on %s: %w", member, err)

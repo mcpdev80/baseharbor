@@ -18,6 +18,15 @@ func TestReplacementCredentialsKeepPreviousReplicationIdentityInProjection(t *te
 	next := previous
 	next.PostgresReplicationUser = "replacement_replication"
 	next.PostgresReplicationPass = "replacement-password"
+	if err := SaveControlPlaneCredentialRotation(files, ControlPlaneCredentialRotationState{
+		Version: 1, Phase: ControlPlaneRotationPrepared, Previous: previous, Next: next,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReplaceControlPlaneCredentials(files, next); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate resuming after projection but before the phase was persisted.
 	if err := ReplaceControlPlaneCredentials(files, next); err != nil {
 		t.Fatal(err)
 	}

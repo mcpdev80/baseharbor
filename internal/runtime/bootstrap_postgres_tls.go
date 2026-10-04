@@ -112,10 +112,18 @@ frontend postgres
 backend primary
   option httpchk GET /primary
   http-check expect status 200
-  default-server check port 8008 inter 2s fall 2 rise 2 init-addr last,libc,none
+  default-server check port 8008 inter 2s fall 2 rise 2 on-marked-down shutdown-sessions resolvers runtime-dns resolve-prefer ipv4 init-addr last,libc,none
   server postgres-1 postgres-member-1:5432 check
   server postgres-2 postgres-member-2:5432 check
   server postgres-3 postgres-member-3:5432 check
+
+resolvers runtime-dns
+  parse-resolv-conf
+  hold valid 2s
+  hold obsolete 1s
+  hold nx 1s
+  timeout resolve 1s
+  timeout retry 1s
 `
 	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }

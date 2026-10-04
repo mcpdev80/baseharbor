@@ -83,6 +83,15 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 	if err != nil {
 		return err
 	}
+	rotation, found, err := LoadControlPlaneCredentialRotation(files)
+	if err != nil {
+		return err
+	}
+	if found {
+		// A crash can leave the environment projected while the durable phase
+		// is still PREPARED. Keep the original peer identity on resume.
+		previous = rotation.Previous
+	}
 	updates := map[string]string{
 		"BASEHARBOR_POSTGRES_USER":                 next.PostgresUser,
 		"BASEHARBOR_POSTGRES_PASSWORD":             next.PostgresPassword,
