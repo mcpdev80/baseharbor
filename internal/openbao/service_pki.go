@@ -138,19 +138,29 @@ func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([
 }
 
 func serviceCAWithToken(ctx context.Context, executor Executor, files bhruntime.Files, token, commandPrefix string) ([]byte, error) {
-	out, err := execWithToken(ctx, executor, files, token, commandPrefix+`exec bao read -format=json baseharbor-pki/cert/ca`)
-	if err != nil {
-		return nil, err
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		out, err := execWithToken(ctx, executor, files, token, commandPrefix+`exec bao read -format=json baseharbor-pki/cert/ca`)
+		if err == nil {
+			var reply struct {
+				Data struct {
+					Certificate string `json:"certificate"`
+				} `json:"data"`
+			}
+			if decodeErr := json.Unmarshal([]byte(out), &reply); decodeErr == nil && strings.TrimSpace(reply.Data.Certificate) != "" {
+				return []byte(strings.TrimSpace(reply.Data.Certificate) + "\n"), nil
+			}
+			lastErr = errors.New("read OpenBao service CA returned an invalid response")
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
-	var reply struct {
-		Data struct {
-			Certificate string `json:"certificate"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal([]byte(out), &reply); err != nil || strings.TrimSpace(reply.Data.Certificate) == "" {
-		return nil, errors.New("read OpenBao service CA returned an invalid response")
-	}
-	return []byte(strings.TrimSpace(reply.Data.Certificate) + "\n"), nil
+	return nil, lastErr
 }
 
 func IssueServiceCertificate(ctx context.Context, executor Executor, files bhruntime.Files, request ServiceCertificateRequest) (ServiceCertificate, error) {
