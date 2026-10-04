@@ -33,6 +33,9 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	if err := validateApplicationIdentity(identity); err != nil {
 		return err
 	}
+	scopeCtx, scopeCancel := context.WithTimeout(ctx, 45*time.Second)
+	defer scopeCancel()
+	ctx = scopeCtx
 	state, err := Inspect(ctx, executor, files)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrApplicationScopeUnavailable, err)
@@ -56,16 +59,16 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	roleName := applicationRoleName(identity)
 	policy := applicationPolicy(identity)
 	policyScript := fmt.Sprintf(`exec bao write sys/policies/acl/%s policy=- >/dev/null`, policyName)
-	if err := retryManagerProvisioning(ctx, func() error {
-		_, err := execWithTokenPayload(ctx, executor, files, managerToken, policyScript, policy)
+	if err := retryManagerProvisioning(ctx, func(attemptCtx context.Context) error {
+		_, err := execWithTokenPayload(attemptCtx, executor, files, managerToken, policyScript, policy)
 		return err
 	}); err != nil {
 		return errors.New("OpenBao manager cannot provision application policies; bootstrap or reconcile the trust plane with the current BaseHarbor version")
 	}
 
 	roleCommand := fmt.Sprintf(`exec bao write auth/approle/role/%s token_policies=%s token_no_default_policy=true secret_id_ttl=0 secret_id_num_uses=0 token_ttl=15m token_max_ttl=1h`, roleName, policyName)
-	if err := retryManagerProvisioning(ctx, func() error {
-		_, err := execWithToken(ctx, executor, files, managerToken, roleCommand)
+	if err := retryManagerProvisioning(ctx, func(attemptCtx context.Context) error {
+		_, err := execWithToken(attemptCtx, executor, files, managerToken, roleCommand)
 		return err
 	}); err != nil {
 		return errors.New("OpenBao manager cannot provision application AppRoles; bootstrap or reconcile the trust plane with the current BaseHarbor version")
@@ -107,7 +110,7 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	return nil
 }
 
-func retryManagerProvisioning(ctx context.Context, operation func() error) error {
+func retryManagerProvisioning(ctx context.Context, operation func(context.Context) error) error {
 	retryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -116,11 +119,13 @@ func retryManagerProvisioning(ctx context.Context, operation func() error) error
 
 	var lastErr error
 	for {
-		if err := operation(); err == nil {
+		attemptCtx, attemptCancel := context.WithTimeout(retryCtx, 3*time.Second)
+		err := operation(attemptCtx)
+		attemptCancel()
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
+		lastErr = err
 		select {
 		case <-retryCtx.Done():
 			if lastErr != nil {
