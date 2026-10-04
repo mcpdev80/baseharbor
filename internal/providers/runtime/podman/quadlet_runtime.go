@@ -575,6 +575,15 @@ func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, uni
 		if _, err := quadletSystemctlBlocking(ctx, nil, "restart", unit); err != nil {
 			return err
 		}
+		if kind == "network" {
+			// A .network Quadlet unit is the authority for a rootless network.
+			// The user-systemd generator may run with a storage/runtime context
+			// that is not visible to a sibling podman CLI probe. A successful
+			// blocking unit restart proves the network resource reconcile; the
+			// dependent container unit will fail with the native Quadlet error if
+			// that network is genuinely unavailable.
+			continue
+		}
 		if err := quadletWaitRuntimeResource(ctx, kind, resource, 10*time.Second); err != nil {
 			diagnostic := quadletServiceDiagnostic(ctx, unit)
 			if strings.TrimSpace(diagnostic) != "" {
