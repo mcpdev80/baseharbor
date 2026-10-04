@@ -23,6 +23,8 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
     security_opt: ["no-new-privileges:true"]
+    dns_opt: ["ndots:1"]
+    dns_search: ["."]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     environment:
@@ -86,6 +88,8 @@ networks:
 		"DropCapability=all",
 		"AddCapability=NET_BIND_SERVICE",
 		"NoNewPrivileges=true",
+		"DNSOption=ndots:1",
+		"DNSSearch=.",
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
 		"Volume=baseharbor-demo-db-data.volume:/var/lib/postgresql",

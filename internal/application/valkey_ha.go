@@ -167,6 +167,10 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 		fmt.Fprintf(b, "          printf 'sentinel parallel-syncs %s 1\\n'\n", valkeySentinelMasterName)
 		b.WriteString("        } > /tmp/sentinel.conf\n")
 		b.WriteString("        exec valkey-sentinel /tmp/sentinel.conf\n")
+		// Docker keeps forwarding missing names from internal networks unless
+		// ndots is explicit. Sentinel uses only unqualified member names;
+		// keep their negative answers local and suppress host search domains.
+		b.WriteString("    dns_opt: [\"ndots:1\"]\n    dns_search: [\".\"]\n")
 		// Internal DNS answers missing member names locally. Forwarding them
 		// to external DNS can block Sentinel's event loop and force TILT.
 		fmt.Fprintf(b, "    networks:\n      %s: {}\n", haNetwork)

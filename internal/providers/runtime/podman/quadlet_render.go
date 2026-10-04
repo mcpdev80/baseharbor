@@ -341,6 +341,16 @@ func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeS
 			fmt.Fprintf(unit, "AddCapability=%s\n", strings.TrimSpace(capability))
 		}
 	}
+	for _, option := range service.DNSOptions {
+		if strings.TrimSpace(option) != "" {
+			fmt.Fprintf(unit, "DNSOption=%s\n", strings.TrimSpace(option))
+		}
+	}
+	for _, domain := range service.DNSSearch {
+		if strings.TrimSpace(domain) != "" {
+			fmt.Fprintf(unit, "DNSSearch=%s\n", strings.TrimSpace(domain))
+		}
+	}
 	for _, option := range service.SecurityOpt {
 		if strings.EqualFold(strings.TrimSpace(option), "no-new-privileges:true") || strings.EqualFold(strings.TrimSpace(option), "no-new-privileges") {
 			unit.WriteString("NoNewPrivileges=true\n")

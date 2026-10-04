@@ -44,6 +44,8 @@ type quadletComposeService struct {
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
 	CapAdd      []string                  `yaml:"cap_add"`
+	DNSOptions  []string                  `yaml:"dns_opt"`
+	DNSSearch   quadletStringList         `yaml:"dns_search"`
 	SecurityOpt []string                  `yaml:"security_opt"`
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
