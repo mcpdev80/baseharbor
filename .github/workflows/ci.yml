@@ -8,6 +8,7 @@ on:
     branches:
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
+      - 'runtime-validation/ha/**'
   pull_request:
     branches:
       - develop
@@ -139,8 +140,90 @@ jobs:
           CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=v0.4.21 -X main.commit=$candidate_sha -X main.date=unknown"             -o "$RUNNER_TEMP/baha" ./cmd/baha
           "$RUNNER_TEMP/baha" version | grep -F "$candidate_sha"
 
+  targeted_ha_docker:
+    name: Targeted HA · docker
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && contains(github.ref_name, '/docker/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Docker runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+      - name: Run targeted HA acceptance
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  targeted_ha_podman:
+    name: Targeted HA · podman
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && contains(github.ref_name, '/podman/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+    steps:
+      - name: Prepare hosted Podman runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+          podman info
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Podman runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+      - name: Run targeted HA acceptance
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Podman runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     services:
