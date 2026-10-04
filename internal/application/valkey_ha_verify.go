@@ -106,44 +106,26 @@ func ValkeyHAMaster(ctx context.Context, runtime valkeyHAProbeRuntime, m Manifes
 		return "", err
 	}
 
-	votes := map[string]int{}
-	var observations []string
-	for sentinelOrdinal := 0; sentinelOrdinal < 3; sentinelOrdinal++ {
-		sentinel := valkeySentinelServiceName(instance, sentinelOrdinal)
-		out, err := runtime.Run(ctx, sentinel, "valkey-cli", "-p", "26379", "SENTINEL", "get-master-addr-by-name", valkeySentinelMasterName)
-		if err != nil {
-			observations = append(observations, fmt.Sprintf("%s:error", sentinel))
+	var masters []string
+	for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+		member := valkeyMemberServiceName(instance, ordinal)
+		script := "IFS= read -r password; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli -h 127.0.0.1 -p 6379 info replication"
+		out, probeErr := runtime.RunSensitive(ctx, member, []byte(password+"\n"), "sh", "-ec", script)
+		if probeErr != nil {
 			continue
 		}
-		lines := nonEmptyLines(out)
-		if len(lines) < 2 || lines[1] != "6379" {
-			observations = append(observations, fmt.Sprintf("%s:incomplete", sentinel))
-			continue
-		}
-		reportedAddress := lines[0]
-		mappedMember := ""
-		for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
-			member := valkeyMemberServiceName(instance, ordinal)
-			address, addrErr := valkeyMemberAddressFromSentinel(ctx, runtime, sentinel, member, password)
-			if addrErr != nil {
-				continue
-			}
-			if reportedAddress == address {
-				mappedMember = member
-				break
-			}
-		}
-		if mappedMember == "" {
-			observations = append(observations, fmt.Sprintf("%s:%s(unmapped)", sentinel, reportedAddress))
-			continue
-		}
-		votes[mappedMember]++
-		observations = append(observations, fmt.Sprintf("%s:%s", sentinel, mappedMember))
-		if votes[mappedMember] >= 2 {
-			return mappedMember, nil
+		if parseValkeyReplicationRole(out) == "master" {
+			masters = append(masters, member)
 		}
 	}
-	return "", fmt.Errorf("Valkey Sentinel quorum has no mapped master majority: %s", strings.Join(observations, ", "))
+	switch len(masters) {
+	case 1:
+		return masters[0], nil
+	case 0:
+		return "", fmt.Errorf("Valkey HA has no reachable member reporting role=master")
+	default:
+		return "", fmt.Errorf("Valkey HA has multiple members reporting role=master: %s", strings.Join(masters, ", "))
+	}
 }
 
 func valkeyMemberAddressFromSentinel(ctx context.Context, runtime valkeyHAProbeRuntime, sentinel, member, password string) (string, error) {
