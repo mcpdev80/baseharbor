@@ -83,7 +83,7 @@ func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.
 	// rootless Podman Quadlet) while still verifying the member's native TLS
 	// listener and bootstrap CA through its configured BAO_CACERT.
 	script := "code=0\n" +
-		"BAO_ADDR=https://127.0.0.1:8200 bao status -format=json 2>/dev/null || code=$?\n" +
+		"BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || code=$?\n" +
 		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
 		"exit \"$code\""
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
