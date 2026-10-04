@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: targeted-integration-${{ inputs.gate }}-${{ inputs.ref }}
+  group: targeted-integration-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -181,7 +181,7 @@ jobs:
 
   v0421_ha:
     if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') }}
-    name: v0.4.21 HA · ${{ steps.resolve.outputs.gate }} · ${{ matrix.runtime }}
+    name: v0.4.21 HA · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
