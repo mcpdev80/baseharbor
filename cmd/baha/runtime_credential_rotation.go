@@ -105,6 +105,9 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
 				return fmt.Errorf("roll PostgreSQL member %s: %w", member, err)
 			}
+			if err := waitForControlPlanePostgresMemberReady(ctx, runtime, files, member); err != nil {
+				return fmt.Errorf("wait for PostgreSQL member %s after rolling credential change: %w", member, err)
+			}
 			// The HAProxy endpoint resolves member service names when its
 			// backends are initialized. A force-recreated member may receive a
 			// different container address, especially with rootless Podman.
@@ -231,6 +234,22 @@ func controlPlanePostgresPrimary(ctx context.Context, runtime bhruntime.RuntimeP
 		}
 	}
 	return "", fmt.Errorf("no Patroni PostgreSQL primary found")
+}
+
+func waitForControlPlanePostgresMemberReady(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, member string) error {
+	const probe = "import urllib.request,sys;\nfor path in ('/primary','/replica'):\n try:\n  r=urllib.request.urlopen('http://127.0.0.1:8008'+path, timeout=2)\n  if r.status == 200: sys.exit(0)\n except Exception:\n  pass\nsys.exit(1)"
+	deadline := time.Now().Add(90 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe)
+		cancel()
+		if last == nil {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("Patroni member did not become primary or replica before deadline: %w", last)
 }
 
 func execControlPlanePostgresSQL(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, user, password, database, sql string) error {
