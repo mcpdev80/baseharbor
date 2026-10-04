@@ -15,10 +15,11 @@ import (
 
 func emptyQuadletProject(project string) QuadletProject {
 	return QuadletProject{
-		Project:      project,
-		Files:        map[string]string{},
-		ServiceUnits: map[string]string{},
-		Containers:   map[string]string{},
+		Project:           project,
+		Files:             map[string]string{},
+		ServiceUnits:      map[string]string{},
+		Containers:        map[string]string{},
+		CompletedServices: map[string]bool{},
 	}
 }
 
@@ -145,6 +146,17 @@ func quadletEnabledServiceNames(model quadletComposeProject, selected map[string
 
 func quadletRenderProjectService(result *QuadletProject, composePath, project string, model quadletComposeProject, serviceName string, selected map[string]struct{}) error {
 	service := model.Services[serviceName]
+	for _, dependency := range service.DependsOn.Names {
+		if service.DependsOn.Conditions[dependency] != "service_completed_successfully" {
+			continue
+		}
+		if len(selected) > 0 {
+			if _, ok := selected[dependency]; !ok {
+				continue
+			}
+		}
+		result.CompletedServices[dependency] = true
+	}
 	unitBase := project + "-" + sanitizeQuadletName(serviceName)
 	containerName := unitBase
 
