@@ -186,6 +186,38 @@ func assertOwnerOnly(t *testing.T, path string) {
 	}
 }
 
+
+type haInspectExecutor struct {
+	states map[string]State
+}
+
+func (f *haInspectExecutor) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
+	state, ok := f.states[service]
+	if !ok {
+		return "", errors.New("member unavailable")
+	}
+	return statusJSON(state.Initialized, state.Sealed), nil
+}
+
+func (f *haInspectExecutor) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, _ ...string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func TestInspectPrefersUnsealedHAMemberOverReachableSealedMember(t *testing.T) {
+	executor := &haInspectExecutor{states: map[string]State{
+		"openbao-member-1": {Initialized: true, Sealed: true},
+		"openbao-member-2": {Initialized: true, Sealed: false},
+	}}
+	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	state, err := Inspect(context.Background(), executor, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Initialized || state.Sealed {
+		t.Fatalf("Inspect returned unhealthy HA member state: %#v", state)
+	}
+}
+
 func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T) {
 	executor := &fakeExecutor{initialized: true, sealed: true}
 	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
