@@ -641,6 +641,9 @@ func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !got.CompletedServices["init"] {
+		t.Fatal("completed dependency must be classified as a one-shot service")
+	}
 	unit := got.Files["dependency-complete-api.container"]
 	for _, want := range []string{
 		"Requires=dependency-complete-init.service",
