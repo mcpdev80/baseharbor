@@ -212,7 +212,7 @@ func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T)
 
 func TestRetryManagerProvisioningConvergesAfterTransientFailures(t *testing.T) {
 	attempts := 0
-	err := retryManagerProvisioning(context.Background(), func() error {
+	err := retryManagerProvisioning(context.Background(), func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errors.New("transient HA handoff")
