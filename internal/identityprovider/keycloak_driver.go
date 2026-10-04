@@ -425,7 +425,7 @@ func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, f
 }
 
 func waitKeycloakNativeCertificateReload(ctx context.Context) error {
-	timer := time.NewTimer(35 * time.Second)
+	timer := time.NewTimer(12 * time.Second)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
