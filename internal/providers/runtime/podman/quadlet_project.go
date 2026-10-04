@@ -14,10 +14,11 @@ import (
 )
 
 type QuadletProject struct {
-	Project      string
-	Files        map[string]string
-	ServiceUnits map[string]string
-	Containers   map[string]string
+	Project           string
+	Files             map[string]string
+	ServiceUnits      map[string]string
+	Containers        map[string]string
+	CompletedServices map[string]bool
 }
 
 type quadletComposeProject struct {
