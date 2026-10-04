@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
@@ -167,6 +169,25 @@ func TestManagedCollectorTraceBackendWithoutClientAuthRendersValidSections(t *te
 	traceExporter := strings.Index(config, "  otlp_http/tempo:\n")
 	if tlsStart < 0 || exportersStart < 0 || traceExporter < exportersStart {
 		t.Fatalf("trace exporter rendered inside TLS section:\n%s", config)
+	}
+}
+
+func TestManagedCollectorConfigIsValidYAML(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		traceEndpoint string
+		requireClient bool
+	}{
+		{name: "development", traceEndpoint: "", requireClient: false},
+		{name: "managed", traceEndpoint: "https://tempo:4318", requireClient: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			config := collectorConfigWithTraceBackendAccess(tt.traceEndpoint, tt.requireClient)
+			var decoded map[string]any
+			if err := yaml.Unmarshal([]byte(config), &decoded); err != nil {
+				t.Fatalf("collector config is invalid YAML: %v\n%s", err, config)
+			}
+		})
 	}
 }
 
