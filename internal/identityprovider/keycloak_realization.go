@@ -153,6 +153,10 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 	if err != nil {
 		return KeycloakInstance{}, err
 	}
+	adminUsername, adminPassword, err := activeKeycloakAdminCredential(files.Dir, values)
+	if err != nil {
+		return KeycloakInstance{}, err
+	}
 
 	workloadBase := files.PublicURL
 	trustBundle := append([]byte(nil), files.PublicAccess.Material.CA...)
@@ -179,8 +183,8 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 		TrustBundle:      trustBundle,
 		PublicHTTPClient: publicClient,
 		AdminHTTPClient:  adminClient,
-		AdminUsername:    values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
-		AdminPassword:    values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
+		AdminUsername:    adminUsername,
+		AdminPassword:    adminPassword,
 	}, nil
 }
 
