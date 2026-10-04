@@ -310,7 +310,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o755); err != nil {
 		return err
 	}
 	hosts := make([]string, 0, len(current.Routes))
@@ -728,7 +728,10 @@ func projectReadableMode(source, target string, mode os.FileMode) error {
 	if len(data) == 0 {
 		return fmt.Errorf("%s is empty", filepath.Base(source))
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
 	tmp := target + ".tmp"
