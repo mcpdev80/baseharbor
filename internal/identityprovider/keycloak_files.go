@@ -140,7 +140,9 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 			values[key] = secret
 		}
 	}
-	values["BASEHARBOR_KEYCLOAK_ADMIN_USER"] = "baseharbor-admin"
+	if strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_ADMIN_USER"]) == "" {
+		values["BASEHARBOR_KEYCLOAK_ADMIN_USER"] = "baseharbor-admin"
+	}
 	values["BASEHARBOR_KEYCLOAK_DB_USER"] = "keycloak"
 	values["BASEHARBOR_KEYCLOAK_DB_NAME"] = "keycloak"
 	if err := writeProtectedEnv(files.Env, values); err != nil {
