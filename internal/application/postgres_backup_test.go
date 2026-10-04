@@ -229,6 +229,9 @@ func TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources(t *te
 		if !strings.Contains(joined, "pg_dump --clean --if-exists --no-owner --no-privileges --format=plain") {
 			t.Fatalf("shared dump args = %q", joined)
 		}
+		if !strings.Contains(joined, "--exclude-schema=metric_helpers") || strings.Contains(joined, " --schema=") {
+			t.Fatalf("shared dump must preserve custom application schemas without restoring provider monitoring objects: %q", joined)
+		}
 		if len(call.input) == 0 {
 			t.Fatalf("shared dump credential was not supplied over stdin")
 		}
