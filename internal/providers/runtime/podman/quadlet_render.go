@@ -282,11 +282,10 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 			}
 		}
 		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
-		if service.DependsOn.Conditions[dep] == "service_completed_successfully" {
-			fmt.Fprintf(unit, "Wants=%s\nAfter=%s\n", depUnit, depUnit)
-		} else {
-			fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
-		}
+		// Compose depends_on controls startup ordering/readiness. It must not
+		// introduce systemd stop propagation between otherwise independent
+		// services, especially HA members and their stable proxy.
+		fmt.Fprintf(unit, "Wants=%s\nAfter=%s\n", depUnit, depUnit)
 	}
 
 	serviceNetworks := append([]string(nil), service.Networks.Names...)
