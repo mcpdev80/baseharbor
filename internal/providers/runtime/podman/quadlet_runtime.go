@@ -147,6 +147,23 @@ func quadletProjectServiceUnits(project QuadletProject, selected []string) ([]st
 	return result, nil
 }
 
+func quadletPersistentServiceUnits(project QuadletProject, units []string) []string {
+	completedUnits := make(map[string]struct{}, len(project.CompletedServices))
+	for service := range project.CompletedServices {
+		if unit, ok := project.ServiceUnits[service]; ok {
+			completedUnits[unit] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(units))
+	for _, unit := range units {
+		if _, completed := completedUnits[unit]; completed {
+			continue
+		}
+		result = append(result, unit)
+	}
+	return result
+}
+
 func quadletRenderProject(composeFile, envFile, project string) (QuadletProject, error) {
 	return RenderComposeProjectQuadlets(composeFile, envFile, project)
 }
@@ -368,19 +385,27 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	}
 	if len(restartUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 120*time.Second); waitErr != nil {
+			persistent := quadletPersistentServiceUnits(project, restartUnits)
+			if len(persistent) == 0 {
+				return quadletServiceStartError(ctx, restartUnits, err)
+			}
+			if waitErr := quadletWaitServiceUnitsActive(ctx, persistent, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, restartUnits, err)
 			}
 		}
 	}
 	if len(startUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 120*time.Second); waitErr != nil {
+			persistent := quadletPersistentServiceUnits(project, startUnits)
+			if len(persistent) == 0 {
+				return quadletServiceStartError(ctx, startUnits, err)
+			}
+			if waitErr := quadletWaitServiceUnitsActive(ctx, persistent, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, startUnits, err)
 			}
 		}
 	}
-	if err := quadletWaitServiceUnitsActive(ctx, units, 120*time.Second); err != nil {
+	if err := quadletWaitServiceUnitsActive(ctx, quadletPersistentServiceUnits(project, units), 120*time.Second); err != nil {
 		return err
 	}
 	return quadletEnsureServiceContainersExist(ctx, project, selected)
@@ -449,6 +474,9 @@ func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletPro
 		return err
 	}
 	for _, service := range services {
+		if project.CompletedServices[service] {
+			continue
+		}
 		container, ok := project.Containers[service]
 		if !ok {
 			return fmt.Errorf("Quadlet service %q has no expected container name", service)
