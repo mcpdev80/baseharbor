@@ -139,6 +139,8 @@ jobs:
           preserved_workflows = {
               ".github/workflows/pre-release.yml",
               ".github/workflows/release.yml",
+              # Atomic runs can be nominated as immutable release proof origins.
+              ".github/workflows/targeted-demo-acceptance.yml",
           }
 
           preserved_branches = {

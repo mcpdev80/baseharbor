@@ -252,14 +252,14 @@ jobs:
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
-                .schema == "baseharbor.pre-release.approval/v1" and
+                (.schema == "baseharbor.pre-release.approval/v1" or (.tag == "v0.4.22" and .schema == "baseharbor.pre-release.approval/v2")) and
                 .tag == $tag and
                 (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and
                 .tested_sha == $tested_sha and
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
-                .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
+                (.gate_evidence_schema == (if .schema == "baseharbor.pre-release.approval/v2" then "baseharbor.pre-release.coverage/v2" else "baseharbor.pre-release.gate-evidence/v1" end)) and
                 (.gate_count == (if .tag == "v0.4.22" then 55 elif .tag == "v0.4.21" then 54 else 45 end)) and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
@@ -267,6 +267,22 @@ jobs:
                 echo "Pre-Release approval artifact failed atomic evidence validation." >&2
                 exit 1
               }
+            if [ "$(jq -r '.schema' "$approval_json")" = "baseharbor.pre-release.approval/v2" ]; then
+              python -m pip install --disable-pip-version-check -r requirements-docs.txt
+              coverage_json="$approval_dir/evidence-coverage.json"
+              test -s "$coverage_json"
+              python - "$approval_json" "$coverage_json" <<'PY_DIGEST'
+          import hashlib, json, sys
+          approval, coverage = [json.load(open(path)) for path in sys.argv[1:]]
+          calculated = hashlib.sha256(json.dumps(coverage, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          if approval.get('coverage_digest') != calculated:
+              raise SystemExit('Release coverage digest differs from approval.')
+          PY_DIGEST
+              git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/release-evidence-demo"
+              python scripts/pre-release-resume.py check-approval --candidate "$tested_sha" \
+                --demo "$(jq -r '.demo_sha' "$approval_json")" --tag "$tag" \
+                --demo-repo "$RUNNER_TEMP/release-evidence-demo" --output "$approval_dir"
+            fi
             if [ "${detached_v0421}" = "true" ]; then
               test "${run_id}" = "37345507011"
               jq -e '

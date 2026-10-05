@@ -33,12 +33,21 @@ On single-host Docker/Podman, BaseHarbor does not claim host-failure tolerance.
 
 ### v0.4.22
 
-Machine Operator Authorization and Extension Trust.
+Machine Operator Authorization, Extension Trust and release readiness.
 
 - transport-neutral machine-operation authorization;
 - MCP enforcement of the shared authorization boundary;
 - product-neutral extension trust metadata and policy boundary;
 - public versioned provider/extension conformance artifacts.
+- documented CLI/JSON/MCP coverage and practical automation examples;
+- consistent repository init and lifecycle preflight, plus buildable Go starters;
+- single-instance control-plane and PostgreSQL defaults, with explicit HA intent;
+- ownership-safe target/provider cleanup and accurate resource planning;
+- earlier Docker/Podman journeys, actionable failure diagnostics and selective
+  evidence reuse for unchanged gate inputs, without weaker acceptance criteria.
+
+Implementation and documentation are in PR #790. Focused runtime verification
+has passed; complete candidate acceptance and release approval remain required.
 
 ### v0.4.23
 
