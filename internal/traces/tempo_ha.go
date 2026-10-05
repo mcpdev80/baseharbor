@@ -9,7 +9,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const redpandaImage = "docker.redpanda.com/redpandadata/redpanda:v26.2.3"
+const redpandaImage = "docker.io/redpandadata/redpanda:v26.2.3"
 
 func tempoHAConfig() string {
 	return `server:
