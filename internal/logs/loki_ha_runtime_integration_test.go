@@ -65,7 +65,7 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	workdir := t.TempDir()
 	composeFile := filepath.Join(workdir, "compose.yaml")
 	envFile := filepath.Join(workdir, "runtime.env")
-	project := application.WorkloadProjectName(m)
+	project := application.WorkloadProjectNameForNamespace(m, namespace)
 	yaml := strings.ReplaceAll(`services:
   api:
     image: busybox:1.37
