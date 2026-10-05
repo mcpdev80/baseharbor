@@ -368,9 +368,6 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if err != nil {
 		return err
 	}
-	// Registry downloads are preparation, before dependency start ordering and
-	// the unchanged service-readiness deadline. A cold image must not consume
-	// the time available for its dependent service to become healthy.
 	if err := quadletPrepareServiceImages(ctx, project, units); err != nil {
 		return err
 	}
