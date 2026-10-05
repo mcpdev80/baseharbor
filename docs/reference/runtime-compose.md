@@ -1,15 +1,15 @@
 # Local control-plane runtime
 
-BaseHarbor's current operational control plane is intentionally single-node. On Docker and Podman Targets it is local-first and owned by the effective Target.
+BaseHarbor's current operational control plane is local-first and owned by the effective Target. The v0.4.21 reference realization is member-redundant inside one runtime host: PostgreSQL and OpenBao use provider-native HA, while host-failure tolerance remains explicitly unsupported on single-host Docker/Podman.
 
 ## Services
 
 `baha up` materializes the BaseHarbor runtime definition and starts:
 
-- PostgreSQL 18;
-- OpenBao 2.7.x.
+- PostgreSQL 18 as a three-member Patroni/Spilo cluster with etcd coordination and a stable HAProxy endpoint;
+- OpenBao 2.7.x as three HA members backed by PostgreSQL HA and a stable HAProxy API/UI endpoint.
 
-Both services bind to loopback by default.
+Only the stable logical endpoints bind to loopback by default; member identities remain runtime-internal.
 
 Docker executes the generated runtime through Docker Compose. Podman consumes the same Compose-based runtime model, renders native Quadlet units, and manages them through rootless `systemd --user`. BaseHarbor does not require `podman-compose` for the Podman lifecycle.
 
@@ -44,7 +44,7 @@ baha openbao bootstrap --recovery-file /secure/off-host/openbao-recovery.json
 baha openbao status
 ```
 
-Bootstrap initializes and unseals the current single-node Shamir profile, enables the `baseharbor/` KV v2 mount and AppRole auth, creates and verifies the restricted BaseHarbor manager identity, then revokes the initial root token.
+Bootstrap initializes the shared Shamir seal state, unseals all OpenBao HA members, enables the `baseharbor/` KV v2 mount and AppRole auth, creates and verifies the restricted BaseHarbor manager identity, then revokes the initial root token.
 
 After a restart, the normal path is simply:
 
@@ -55,8 +55,8 @@ baha openbao status
 
 `baha up` uses the recovery-file path persisted for the effective Target. The recovery material remains operator-held outside normal BaseHarbor state. `baha up --recovery-file PATH` remains the explicit override when the file was moved or a custom location should be used.
 
-Automatic KMS/HSM/transit unseal is a future deployment profile, not current single-node behavior.
+Automatic KMS/HSM/transit unseal is a future deployment profile. The current local HA realization still requires operator-held recovery material after member/process restarts that leave OpenBao sealed.
 
 ## Scope
 
-The current control plane does not imply high availability, public network exposure, Kubernetes deployment or KMS/HSM automatic unseal. Those are separate deployment/architecture concerns.
+The current control plane provides member/process continuity and rolling maintenance within one runtime host. It does **not** claim runtime-host failure tolerance, public network exposure, Kubernetes deployment or KMS/HSM automatic unseal. Those remain separate deployment/architecture concerns.

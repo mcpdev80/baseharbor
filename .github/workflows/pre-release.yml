@@ -12,7 +12,7 @@ on:
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: release/v0.4.20
+        default: release/v0.4.21
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
@@ -22,12 +22,15 @@ on:
     branches:
       - 'release-candidate/**'
       - 'validation/pre-release/**'
+      - 'validation/evidence/**'
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   source:
+    if: ${{ !startsWith(github.ref_name, 'validation/evidence/') }}
     name: Source · Contracts · Docs
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -71,12 +74,16 @@ jobs:
           fi
 
           git fetch origin main develop
+          release_ref="refs/remotes/origin/release/$tag"
+          git fetch origin "refs/heads/release/$tag:$release_ref" || true
           if git merge-base --is-ancestor origin/develop HEAD; then
-            echo "Candidate follows the normal develop release line."
+            echo "Candidate follows the current develop release line."
           elif git merge-base --is-ancestor origin/main HEAD; then
-            echo "Candidate follows the released main hotfix line."
+            echo "Candidate follows the current released main line."
+          elif git show-ref --verify --quiet "$release_ref" && [ "$(git rev-parse "$release_ref")" = "$(git rev-parse HEAD)" ]; then
+            echo "Candidate exactly matches the current release/$tag branch tip."
           else
-            echo "Pre-release candidate must either be contained in develop or descend from released main." >&2
+            echo "Pre-release candidate must follow current develop/main or exactly match release/$tag." >&2
             exit 1
           fi
 
@@ -179,6 +186,12 @@ jobs:
             echo "$release_internal" >&2
             exit 1
           }
+
+      - name: Validate v0.4.21 release readiness
+        id: v0421_readiness
+        if: steps.release.outputs.tag == 'v0.4.21'
+        shell: bash
+        run: bash scripts/v0.4.21-readiness.sh
 
       - name: Validate workflow syntax
         id: workflow_syntax
@@ -423,10 +436,10 @@ jobs:
 
   runtime_light_gates:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, adoption]
+    needs: [source, runtime_candidate]
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
         runtime: [docker, podman]
         gate:
@@ -447,10 +460,10 @@ jobs:
 
   runtime_heavy_gates:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, adoption]
+    needs: [source, runtime_candidate]
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [docker, podman]
         gate:
@@ -473,10 +486,221 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-runtime-candidate
 
+  v0421_ha_groups:
+    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+    needs: source
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        runtime: [docker, podman]
+        group:
+          - data
+          - identity
+          - observability
+          - routing
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+
+    steps:
+      - name: Prepare hosted Podman runtime
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+          podman info
+
+      - name: Checkout exact candidate
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset runtime before HA group
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Run grouped HA acceptance
+        id: ha
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ matrix.group }}"
+
+      - name: Cleanup runtime after HA group
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Generate HA evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/v0421-ha-evidence"
+          mkdir -p "$out"
+          jq -n \
+            --arg schema "baseharbor.pre-release.v0.4.21-ha-evidence/v1" \
+            --arg group "${{ matrix.group }}" \
+            --arg runtime "${{ matrix.runtime }}" \
+            --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
+            --arg outcome "${{ steps.ha.outcome }}" \
+            '{
+              schema: $schema,
+              group: $group,
+              runtime: $runtime,
+              candidate_sha: $candidate_sha,
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload HA evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-v0421-ha-${{ matrix.runtime }}-${{ matrix.group }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v0421-ha-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  reference_journey:
+    name: Reference Journey · Docker · Full E2E
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Reset Docker runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Download exact candidate artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: pre-release-runtime-candidate
+          path: ${{ runner.temp }}/pre-release-candidate
+
+      - name: Load exact runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+          archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+          test -s "$archive"
+          docker load -i "$archive"
+          docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source.outputs.candidate_sha }}"
+
+      - name: Checkout exact demo revision
+        id: demo
+        shell: bash
+        env:
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          workdir="$RUNNER_TEMP/baseharbor-demo-reference"
+          rm -rf "$workdir"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
+          echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+
+      - name: Run complete reference journey
+        id: journey
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-reference-artifacts"
+          workdir="${{ steps.demo.outputs.workdir }}"
+          cd "$workdir"
+          BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+          BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
+          BASEHARBOR_TEST_RUNTIME=docker \
+            bash scripts/acceptance.sh
+
+      - name: Collect reference journey diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          bash scripts/ci-failure-diagnostics.sh \
+            docker \
+            "$RUNNER_TEMP/reference-journey-diagnostics" \
+            "${{ steps.demo.outputs.workdir }}" \
+            "$RUNNER_TEMP/pre-release-candidate/baha" || true
+
+      - name: Cleanup Docker runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate reference journey evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/reference-journey-evidence"
+          mkdir -p "$out"
+          cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
+          jq -n \
+            --arg schema "baseharbor.pre-release.reference-journey/v1" \
+            --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
+            --arg demo_ref "${{ needs.source.outputs.demo_ref }}" \
+            --arg outcome "${{ steps.journey.outcome }}" \
+            '{
+              schema: $schema,
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              runtime: "docker",
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload reference journey evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reference-journey-evidence
+          if-no-files-found: error
+          retention-days: 30
+
   evidence:
     name: Evidence · Candidate Manifest
-    if: always()
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates]
+    if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -495,6 +719,43 @@ jobs:
         with:
           pattern: pre-release-adoption-*-evidence-*
           path: ${{ runner.temp }}/adoption-evidence
+
+      - name: Download v0.4.21 HA evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-v0421-ha-*-evidence-*
+          path: ${{ runner.temp }}/v0421-ha-evidence
+
+      - name: Download reference journey evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reference-journey-evidence
+
+      - name: Select latest evidence attempt per gate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, shutil
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          for family in ("gate-evidence", "adoption-evidence", "v0421-ha-evidence"):
+              groups = {}
+              for directory in (root / family).iterdir():
+                  match = re.fullmatch(r"(.+)-([0-9]+)-([0-9]+)", directory.name)
+                  if not match or not directory.is_dir():
+                      raise SystemExit(f"Unexpected evidence directory: {directory}")
+                  key, run, attempt = match.groups()
+                  if run != os.environ.get("EVIDENCE_RUN_ID", os.environ["GITHUB_RUN_ID"]):
+                      raise SystemExit(f"Wrong source run: {directory}")
+                  groups.setdefault(key, []).append((int(attempt), directory))
+              for key, entries in groups.items():
+                  entries.sort()
+                  for attempt, directory in entries[:-1]:
+                      archive = root / "superseded-evidence" / family
+                      archive.mkdir(parents=True, exist_ok=True)
+                      shutil.move(str(directory), archive / directory.name)
+                  print(f"{key}: selected attempt {entries[-1][0]}")
+          PY
 
       - name: Verify adoption evidence
         id: adoption_manifest
@@ -517,6 +778,49 @@ jobs:
               ) and
               ([.[].gate] | sort) == ["conformance","realworld-compose","realworld-kubernetes","realworld-quadlet"]
             ' "$RUNNER_TEMP/adoption-manifests.json" >/dev/null
+
+      - name: Verify v0.4.21 HA evidence
+        id: ha_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find "$RUNNER_TEMP/v0421-ha-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 8
+          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/v0421-ha-manifests.json"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            '
+              length == 8 and
+              all(.[];
+                .schema == "baseharbor.pre-release.v0.4.21-ha-evidence/v1" and
+                .candidate_sha == $candidate and
+                .outcome == "success"
+              ) and
+              ([.[] | [.runtime,.group]] | sort) == [["docker","data"],["docker","identity"],["docker","observability"],["docker","routing"],["podman","data"],["podman","identity"],["podman","observability"],["podman","routing"]]
+            ' "$RUNNER_TEMP/v0421-ha-manifests.json" >/dev/null
+
+      - name: Verify complete reference journey evidence
+        id: reference_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/reference-journey-evidence/manifest.json"
+          test -s "$manifest"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            --arg demo "$DEMO_REF" \
+            '
+              .schema == "baseharbor.pre-release.reference-journey/v1" and
+              .candidate_sha == $candidate and
+              .demo_ref == $demo and
+              .runtime == "docker" and
+              .outcome == "success"
+            ' "$manifest" >/dev/null
 
       - name: Verify complete atomic evidence set
         id: manifest
@@ -570,6 +874,8 @@ jobs:
           cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
           cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
+          cp "$RUNNER_TEMP/v0421-ha-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/reference-journey-evidence/manifest.json" "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json"
 
       - name: Generate immutable release approval
         id: approval
@@ -581,7 +887,11 @@ jobs:
           steps.adoption_manifest.outcome == 'success' &&
           needs.static_gates.result == 'success' &&
           needs.runtime_light_gates.result == 'success' &&
-          needs.runtime_heavy_gates.result == 'success'
+          needs.runtime_heavy_gates.result == 'success' &&
+          needs.v0421_ha_groups.result == 'success' &&
+          steps.ha_manifest.outcome == 'success' &&
+          needs.reference_journey.result == 'success' &&
+          steps.reference_manifest.outcome == 'success'
         shell: bash
         env:
           TAG: ${{ needs.source.outputs.tag }}
@@ -600,7 +910,7 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg result "success" \
-            --argjson gate_count 45 \
+            --argjson gate_count 54 \
             '{
               schema: $schema,
               tag: $tag,
@@ -617,6 +927,8 @@ jobs:
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
           cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
           cp "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json" "$out/adoption-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json" "$out/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json" "$out/reference-journey-manifest.json"
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
@@ -639,10 +951,324 @@ jobs:
           Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
           Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
           Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
+          v0.4.21 HA groups	${{ needs.v0421_ha_groups.result }}	data, identity, observability and routing failover on Docker/Podman
+          Reference journey	${{ needs.reference_journey.result }}	complete pinned-demo Docker end-to-end journey after atomic gates
           Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
+          HA evidence	${{ steps.ha_manifest.outcome }}	8 grouped HA evidence bundles bound to the candidate SHA
+          Reference evidence	${{ steps.reference_manifest.outcome }}	full E2E evidence bound to candidate and demo SHA
           Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
           EOF
           bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
+
+      - name: Upload final pre-release evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-final-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  evidence_recovery:
+    name: Evidence · Candidate Manifest
+    if: startsWith(github.ref_name, 'validation/evidence/')
+    runs-on: ubuntu-latest
+    env:
+      EVIDENCE_RUN_ID: '37335642463'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout workflow control
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Audit original validation jobs
+        id: source_audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only 4db0e86e391c037d14d7bd7c13ba7c13ee517420 HEAD > "$RUNNER_TEMP/evidence-control-diff.txt"
+          test -s "$RUNNER_TEMP/evidence-control-diff.txt"
+          unexpected="$(grep -Ev '^\.github/workflows/(pre-release|release)\.yml$' "$RUNNER_TEMP/evidence-control-diff.txt" || true)"
+          test -z "$unexpected"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/jobs?filter=latest&per_page=100" --jq '.jobs[]' | jq -s . > "$RUNNER_TEMP/source-jobs.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          run = json.loads((root / "source-run.json").read_text())
+          assert run["head_sha"] == "4db0e86e391c037d14d7bd7c13ba7c13ee517420"
+          assert run["path"] == ".github/workflows/pre-release.yml"
+          assert run["status"] == "completed"
+          jobs = json.loads((root / "source-jobs.json").read_text())
+          expected = ["Adoption · conformance","Adoption · realworld-compose","Adoption · realworld-kubernetes","Adoption · realworld-quadlet","Candidate · Runtime Image","Heavy · docker · backup-restore / docker · backup-restore","Heavy · docker · control-plane-recovery / docker · control-plane-recovery","Heavy · docker · data-capabilities / docker · data-capabilities","Heavy · docker · durable-key-value / docker · durable-key-value","Heavy · docker · identity / docker · identity","Heavy · docker · loki-runtime / docker · loki-runtime","Heavy · docker · mongodb-runtime / docker · mongodb-runtime","Heavy · docker · observability / docker · observability","Heavy · docker · rabbitmq-runtime / docker · rabbitmq-runtime","Heavy · docker · security / docker · security","Heavy · docker · tempo-runtime / docker · tempo-runtime","Heavy · podman · backup-restore / podman · backup-restore","Heavy · podman · control-plane-recovery / podman · control-plane-recovery","Heavy · podman · data-capabilities / podman · data-capabilities","Heavy · podman · durable-key-value / podman · durable-key-value","Heavy · podman · identity / podman · identity","Heavy · podman · loki-runtime / podman · loki-runtime","Heavy · podman · mongodb-runtime / podman · mongodb-runtime","Heavy · podman · observability / podman · observability","Heavy · podman · rabbitmq-runtime / podman · rabbitmq-runtime","Heavy · podman · security / podman · security","Heavy · podman · tempo-runtime / podman · tempo-runtime","Light · docker · connectivity / docker · connectivity","Light · docker · failure / docker · failure","Light · docker · full-destroy / docker · full-destroy","Light · docker · guided / docker · guided","Light · docker · lifecycle / docker · lifecycle","Light · docker · policy / docker · policy","Light · docker · reconciliation / docker · reconciliation","Light · podman · connectivity / podman · connectivity","Light · podman · failure / podman · failure","Light · podman · full-destroy / podman · full-destroy","Light · podman · guided / podman · guided","Light · podman · lifecycle / podman · lifecycle","Light · podman · policy / podman · policy","Light · podman · reconciliation / podman · reconciliation","Reference Journey · Docker · Full E2E","Source · Contracts · Docs","Static · agent / static · agent","Static · config-matrix / static · config-matrix","Static · init / static · init","Static · mcp / static · mcp","Static · shell-ux / static · shell-ux","v0.4.21 HA · data · docker","v0.4.21 HA · data · podman","v0.4.21 HA · identity · docker","v0.4.21 HA · identity · podman","v0.4.21 HA · observability · docker","v0.4.21 HA · observability · podman","v0.4.21 HA · routing · docker","v0.4.21 HA · routing · podman"]
+          actual = [j for j in jobs if j["name"] != "Evidence · Candidate Manifest"]
+          assert sorted(j["name"] for j in actual) == expected
+          assert all(j["status"] == "completed" and j["conclusion"] == "success" for j in actual)
+          assert len(actual) == 56
+          print("Verified all 56 original validation jobs on the exact product candidate.")
+          PY
+      - name: Checkout evidence tooling
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+
+      - name: Download gate evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-gate-*-evidence-*
+          path: ${{ runner.temp }}/gate-evidence
+          github-token: ${{ github.token }}
+          run-id: 37335642463
+
+      - name: Download adoption evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-adoption-*-evidence-*
+          path: ${{ runner.temp }}/adoption-evidence
+          github-token: ${{ github.token }}
+          run-id: 37335642463
+
+      - name: Download v0.4.21 HA evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: pre-release-v0421-ha-*-evidence-*
+          path: ${{ runner.temp }}/v0421-ha-evidence
+          github-token: ${{ github.token }}
+          run-id: 37335642463
+
+      - name: Download reference journey evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: pre-release-reference-journey-evidence-37335642463-2
+          path: ${{ runner.temp }}/reference-journey-evidence
+          github-token: ${{ github.token }}
+          run-id: 37335642463
+
+      - name: Select latest evidence attempt per gate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, shutil
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          for family in ("gate-evidence", "adoption-evidence", "v0421-ha-evidence"):
+              groups = {}
+              for directory in (root / family).iterdir():
+                  match = re.fullmatch(r"(.+)-([0-9]+)-([0-9]+)", directory.name)
+                  if not match or not directory.is_dir():
+                      raise SystemExit(f"Unexpected evidence directory: {directory}")
+                  key, run, attempt = match.groups()
+                  if run != os.environ.get("EVIDENCE_RUN_ID", os.environ["GITHUB_RUN_ID"]):
+                      raise SystemExit(f"Wrong source run: {directory}")
+                  groups.setdefault(key, []).append((int(attempt), directory))
+              for key, entries in groups.items():
+                  entries.sort()
+                  for attempt, directory in entries[:-1]:
+                      archive = root / "superseded-evidence" / family
+                      archive.mkdir(parents=True, exist_ok=True)
+                      shutil.move(str(directory), archive / directory.name)
+                  print(f"{key}: selected attempt {entries[-1][0]}")
+          PY
+
+      - name: Verify adoption evidence
+        id: adoption_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find "$RUNNER_TEMP/adoption-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 4
+          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/adoption-manifests.json"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            '
+              length == 4 and
+              all(.[];
+                .schema == "baseharbor.pre-release.adoption-evidence/v1" and
+                .candidate_sha == $candidate and
+                .outcome == "success"
+              ) and
+              ([.[].gate] | sort) == ["conformance","realworld-compose","realworld-kubernetes","realworld-quadlet"]
+            ' "$RUNNER_TEMP/adoption-manifests.json" >/dev/null
+
+      - name: Verify v0.4.21 HA evidence
+        id: ha_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find "$RUNNER_TEMP/v0421-ha-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 8
+          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/v0421-ha-manifests.json"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            '
+              length == 8 and
+              all(.[];
+                .schema == "baseharbor.pre-release.v0.4.21-ha-evidence/v1" and
+                .candidate_sha == $candidate and
+                .outcome == "success"
+              ) and
+              ([.[] | [.runtime,.group]] | sort) == [["docker","data"],["docker","identity"],["docker","observability"],["docker","routing"],["podman","data"],["podman","identity"],["podman","observability"],["podman","routing"]]
+            ' "$RUNNER_TEMP/v0421-ha-manifests.json" >/dev/null
+
+      - name: Verify complete reference journey evidence
+        id: reference_manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+          DEMO_REF: 330eb510776686ce796ff13a00b5ea8d9ca1aa25
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/reference-journey-evidence/manifest.json"
+          test -s "$manifest"
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            --arg demo "$DEMO_REF" \
+            '
+              .schema == "baseharbor.pre-release.reference-journey/v1" and
+              .candidate_sha == $candidate and
+              .demo_ref == $demo and
+              .runtime == "docker" and
+              .outcome == "success"
+            ' "$manifest" >/dev/null
+
+      - name: Verify complete atomic evidence set
+        id: manifest
+        shell: bash
+        env:
+          CANDIDATE_SHA: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+          DEMO_REF: 330eb510776686ce796ff13a00b5ea8d9ca1aa25
+        run: |
+          set -euo pipefail
+          expected_ids="$RUNNER_TEMP/expected-gate-ids.txt"
+          actual_ids="$RUNNER_TEMP/actual-gate-ids.txt"
+          manifests="$RUNNER_TEMP/gate-manifests.json"
+
+          {
+            for gate in config-matrix init mcp agent shell-ux; do
+              printf 'static/%s\n' "$gate"
+            done
+            for runtime in docker podman; do
+              for gate in guided lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy rabbitmq-runtime mongodb-runtime durable-key-value control-plane-recovery loki-runtime tempo-runtime; do
+                printf '%s/%s\n' "$runtime" "$gate"
+              done
+            done
+          } | sort > "$expected_ids"
+
+          mapfile -d '' manifest_files < <(find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 | sort -z)
+          test "${#manifest_files[@]}" -eq 41
+          jq -s '.' "${manifest_files[@]}" > "$manifests"
+
+          jq -e \
+            --arg candidate "$CANDIDATE_SHA" \
+            --arg demo "$DEMO_REF" \
+            '
+              length == 41 and
+              all(.[];
+                .schema == "baseharbor.pre-release.gate-evidence/v1" and
+                .candidate_sha == $candidate and
+                .demo_ref == $demo and
+                .outcome == "success"
+              ) and
+              ([.[].id] | unique | length) == 41
+            ' "$manifests" >/dev/null
+
+          jq -r '.[].id' "$manifests" | sort > "$actual_ids"
+          diff -u "$expected_ids" "$actual_ids"
+
+          summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
+          test "$summary_count" -eq 41
+
+          mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
+          cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
+          cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
+          cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
+          cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
+          cp "$RUNNER_TEMP/v0421-ha-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/reference-journey-evidence/manifest.json" "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json"
+
+      - name: Generate immutable release approval
+        id: approval
+        if: >-
+          steps.source_audit.outcome == 'success' &&
+          steps.manifest.outcome == 'success' &&
+          steps.adoption_manifest.outcome == 'success' &&
+          steps.ha_manifest.outcome == 'success' &&
+          steps.reference_manifest.outcome == 'success'
+        shell: bash
+        env:
+          TAG: v0.4.21
+          CANDIDATE_SHA: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
+          DEMO_SHA: 330eb510776686ce796ff13a00b5ea8d9ca1aa25
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pre-release-approval"
+          mkdir -p "$out"
+          jq -n \
+            --arg schema "baseharbor.pre-release.approval/v1" \
+            --arg tag "$TAG" \
+            --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg demo_sha "$DEMO_SHA" \
+            --arg workflow "pre-release.yml" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg workflow_sha "$GITHUB_SHA" \
+            --argjson source_run_id 37335642463 \
+            --arg result "success" \
+            --argjson gate_count 54 \
+            '{
+              workflow_sha: $workflow_sha,
+              evidence_source_run_id: $source_run_id,
+              schema: $schema,
+              tag: $tag,
+              candidate_sha: $candidate_sha,
+              tested_sha: $candidate_sha,
+              demo_sha: $demo_sha,
+              workflow: $workflow,
+              workflow_run_id: ($run_id | tonumber),
+              workflow_run_attempt: ($run_attempt | tonumber),
+              gate_evidence_schema: "baseharbor.pre-release.gate-evidence/v1",
+              gate_count: $gate_count,
+              result: $result
+            }' > "$out/release-approved.json"
+          cp "$RUNNER_TEMP/source-run.json" "$RUNNER_TEMP/source-jobs.json" "$RUNNER_TEMP/evidence-control-diff.txt" "$out/"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json" "$out/adoption-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json" "$out/v0421-ha-manifests.json"
+          cp "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json" "$out/reference-journey-manifest.json"
+
+      - name: Upload immutable release approval
+        if: steps.approval.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-approval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pre-release-approval
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Generate final pre-release evidence
+        if: always()
+        shell: bash
+        run: |
+          rows="$RUNNER_TEMP/pre-release-final.tsv"
+          cat >"$rows" <<EOF
+          Source	success	exact candidate source/contracts/docs
+          Runtime candidate	success	one runtime image built and shared
+          Static gates	success	5 independently rerunnable demo/static gates
+          Light runtime gates	success	14 independently rerunnable Docker/Podman gates
+          Adoption gates	success	conformance, security/parity and pinned 10/10/10 real-world corpus
+          Heavy runtime gates	success	22 independently rerunnable Docker/Podman gates
+          v0.4.21 HA groups	success	data, identity, observability and routing failover on Docker/Podman
+          Reference journey	success	complete pinned-demo Docker end-to-end journey after atomic gates
+          Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
+          HA evidence	${{ steps.ha_manifest.outcome }}	8 grouped HA evidence bundles bound to the candidate SHA
+          Reference evidence	${{ steps.reference_manifest.outcome }}	full E2E evidence bound to candidate and demo SHA
+          Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
+          EOF
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "4db0e86e391c037d14d7bd7c13ba7c13ee517420"             "$rows"
 
       - name: Upload final pre-release evidence
         if: always()

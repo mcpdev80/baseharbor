@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
@@ -136,7 +138,7 @@ func TestManagedCollectorTraceBackendUsesCanonicalOTLPHTTPExporter(t *testing.T)
 	config := collectorConfigWithTraceBackend("http://tempo:4318")
 	for _, want := range []string{
 		"otlp_http/tempo:",
-		"endpoint: http://tempo:4318",
+		"endpoint: \"http://tempo:4318\"",
 		"exporters: [debug, otlp_http/tempo]",
 	} {
 		if !strings.Contains(config, want) {
@@ -155,7 +157,7 @@ func TestManagedCollectorTraceBackendWithoutClientAuthRendersValidSections(t *te
 	}
 	for _, want := range []string{
 		"otlp_http/tempo:",
-		"endpoint: http://tempo:4318",
+		"endpoint: \"http://tempo:4318\"",
 		"exporters: [debug, otlp_http/tempo]",
 	} {
 		if !strings.Contains(config, want) {
@@ -170,6 +172,25 @@ func TestManagedCollectorTraceBackendWithoutClientAuthRendersValidSections(t *te
 	}
 }
 
+func TestManagedCollectorConfigIsValidYAML(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		traceEndpoint string
+		requireClient bool
+	}{
+		{name: "development", traceEndpoint: "", requireClient: false},
+		{name: "managed", traceEndpoint: "https://tempo:4318", requireClient: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			config := collectorConfigWithTraceBackendAccess(tt.traceEndpoint, tt.requireClient)
+			var decoded map[string]any
+			if err := yaml.Unmarshal([]byte(config), &decoded); err != nil {
+				t.Fatalf("collector config is invalid YAML: %v\n%s", err, config)
+			}
+		})
+	}
+}
+
 func TestManagedCollectorClientCertificateRequirementFollowsPolicy(t *testing.T) {
 	dev := collectorConfigWithTraceBackendAccess("", false)
 	if strings.Contains(dev, "client_ca_file:") {
@@ -179,6 +200,9 @@ func TestManagedCollectorClientCertificateRequirementFollowsPolicy(t *testing.T)
 	managed := collectorConfigWithTraceBackendAccess("", true)
 	if !strings.Contains(managed, "client_ca_file: /run/baseharbor/tls/ca.pem") {
 		t.Fatalf("managed collector is missing required mTLS client CA:\n%s", managed)
+	}
+	if !strings.Contains(managed, "client_ca_file_reload: true") {
+		t.Fatalf("managed collector must reload the client trust pool during CA rotation:\n%s", managed)
 	}
 }
 
@@ -235,5 +259,18 @@ func TestProviderInteractionTracePayloadIsAttributedAndUnique(t *testing.T) {
 	}
 	if len(first) == 0 || len(second) == 0 {
 		t.Fatal("provider interaction trace payload is empty")
+	}
+}
+
+func TestManagedCollectorHAGatewayMountsUpstreamMTLSProjection(t *testing.T) {
+	text := providerComposeYAML()
+	for _, want := range []string{
+		"./members/service-access/runtime:/upstream:ro",
+		"otel-collector-access:",
+		"127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("managed OTLP HA compose missing %q:\n%s", want, text)
+		}
 	}
 }

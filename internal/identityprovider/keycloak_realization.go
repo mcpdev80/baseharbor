@@ -3,10 +3,12 @@ package identityprovider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -83,6 +85,11 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 		return KeycloakInstance{}, err
 	}
 	if err := r.lifecycle.Apply(ctx, files); err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if diagnostics := r.Diagnostics(diagnosticCtx); diagnostics != "" {
+			return KeycloakInstance{}, fmt.Errorf("%w\n%s", err, diagnostics)
+		}
 		return KeycloakInstance{}, err
 	}
 	return r.instance(ctx, files, publicBase)
@@ -146,6 +153,10 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 	if err != nil {
 		return KeycloakInstance{}, err
 	}
+	adminUsername, adminPassword, err := activeKeycloakAdminCredential(files.Dir, values)
+	if err != nil {
+		return KeycloakInstance{}, err
+	}
 
 	workloadBase := files.PublicURL
 	trustBundle := append([]byte(nil), files.PublicAccess.Material.CA...)
@@ -172,8 +183,8 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 		TrustBundle:      trustBundle,
 		PublicHTTPClient: publicClient,
 		AdminHTTPClient:  adminClient,
-		AdminUsername:    values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
-		AdminPassword:    values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
+		AdminUsername:    adminUsername,
+		AdminPassword:    adminPassword,
 	}, nil
 }
 

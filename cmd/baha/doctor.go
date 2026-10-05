@@ -41,6 +41,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header("Doctor", "")
 	checks := health.Doctor()
+	checks = appendControlPlaneAvailabilityDoctor(ctx, checks)
 	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
 		fmt.Fprintln(out, "\nREADY")
@@ -67,6 +68,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 
 	after := health.Doctor()
+	after = appendControlPlaneAvailabilityDoctor(ctx, after)
 	term.Section("After repair")
 	afterOK := renderControlPlaneDoctor(term, after)
 	if afterOK {
@@ -81,6 +83,18 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	fmt.Fprintln(out, "  baha doctor --verbose")
 	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
 	return cli.Presented(errors.New("one or more checks still require action"))
+}
+
+func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.Check) []health.Check {
+	report, err := collectControlPlaneAvailability(ctx, checks)
+	if err != nil {
+		return checks
+	}
+	return append(checks, health.Check{
+		Name:    "control-plane-ha",
+		OK:      report.Satisfied,
+		Message: report.Detail(),
+	})
 }
 
 func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {

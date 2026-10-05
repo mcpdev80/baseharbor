@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 func TestAgentDescribeJSON(t *testing.T) {
@@ -213,6 +215,70 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		}
 	})
 
+	t.Run("managed read fails closed before repository inspection", func(t *testing.T) {
+		prodRoot := t.TempDir()
+		prodManifest := application.Manifest{
+			Version:       application.CurrentVersion,
+			ApplicationID: application.MustNewApplicationID(),
+			Name:          "managed-read-denied",
+			Environment:   "prod",
+			Workload:      application.WorkloadConfig{Components: []string{"api"}},
+		}
+		if err := prodManifest.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(prodRoot, application.RepositoryManifestName), []byte(prodManifest.YAML()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "baseharbor.inspect",
+			Arguments: map[string]any{"path": prodRoot},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("managed read without authenticated operator unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"authentication_failed"`)) {
+			t.Fatalf("managed read authorization error is not typed: %s", encoded)
+		}
+	})
+
+	t.Run("managed mutation fails closed before filesystem mutation", func(t *testing.T) {
+		parent := t.TempDir()
+		name := "managed-denied"
+		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+			Name: "baseharbor.app.new",
+			Arguments: map[string]any{
+				"directory":   parent,
+				"name":        name,
+				"environment": "prod",
+				"stack":       "go",
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatalf("managed mutation without authenticated operator unexpectedly succeeded: %#v", result)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(encoded, []byte(`"code":"authentication_failed"`)) {
+			t.Fatalf("managed authorization error is not typed: %s", encoded)
+		}
+		if _, err := os.Stat(filepath.Join(parent, name)); !os.IsNotExist(err) {
+			t.Fatalf("managed mutation touched filesystem before authorization: %v", err)
+		}
+	})
+
 	t.Run("destroy requires explicit approval", func(t *testing.T) {
 		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "baseharbor.destroy",
@@ -265,5 +331,56 @@ func TestMachineCLIErrorClassification(t *testing.T) {
 	}
 	if got.Next != "use a valid input" {
 		t.Fatalf("next = %q", got.Next)
+	}
+}
+
+func TestMachineCLIErrorClassificationExpectedPreconditions(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code machine.ErrorCode
+	}{
+		{
+			name: "repository manifest missing",
+			err:  application.ErrRepositoryManifestNotFound,
+			code: machine.ErrorSourceMissing,
+		},
+		{
+			name: "organization not configured",
+			err:  orgconfig.ErrNotConfigured,
+			code: machine.ErrorValidationFailed,
+		},
+		{
+			name: "organization source unsupported",
+			err:  orgconfig.ErrUnsupportedSource,
+			code: machine.ErrorUnsupported,
+		},
+		{
+			name: "organization source unavailable",
+			err:  orgconfig.ErrSourceUnavailable,
+			code: machine.ErrorProviderUnavailable,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := machine.Classify(classifyMachineCLIError(tc.err))
+			if got == nil || got.Code != tc.code {
+				t.Fatalf("classified = %#v, want %q", got, tc.code)
+			}
+		})
+	}
+}
+
+func TestMachineClassifyPreservesTypedNotFound(t *testing.T) {
+	input := &machine.Error{
+		Code:      machine.ErrorNotFound,
+		CauseCode: "application_deployment_not_found",
+		Message:   "application not found",
+		Next:      "inspect applications",
+		Cause:     errors.New("missing"),
+	}
+	got := machine.Classify(classifyMachineCLIError(input))
+	if got.Code != machine.ErrorNotFound || got.CauseCode != input.CauseCode || got.Next != input.Next {
+		t.Fatalf("typed not-found changed: %#v", got)
 	}
 }

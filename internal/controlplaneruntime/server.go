@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/auth"
+	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
@@ -137,7 +138,7 @@ func (c Config) shutdownTimeout() time.Duration {
 	return c.ShutdownTimeout
 }
 
-func Run(ctx context.Context, cfg Config, store application.Store) error {
+func Run(ctx context.Context, cfg Config, store application.Store, machineExecutors ...machinehttp.Executor) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -150,7 +151,11 @@ func Run(ctx context.Context, cfg Config, store application.Store) error {
 		defer deps.pool.Close()
 	}
 
-	handler, err := buildServerHandler(ctx, cfg, deps)
+	var machineExecutor machinehttp.Executor
+	if len(machineExecutors) > 0 {
+		machineExecutor = machineExecutors[0]
+	}
+	handler, err := buildServerHandler(ctx, cfg, deps, machineExecutor)
 	if err != nil {
 		return err
 	}

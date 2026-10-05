@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -73,6 +74,7 @@ type Config struct {
 type ResolvedTarget struct {
 	Name            string `json:"name"`
 	RuntimeProvider string `json:"runtime_provider"`
+	AccessProvider  string `json:"access_provider"`
 	AccessReference string `json:"access_reference"`
 	Scope           string `json:"scope,omitempty"`
 }
@@ -188,6 +190,9 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(access.Provider) == "" || strings.TrimSpace(access.Reference) == "" {
 			return fmt.Errorf("access %q requires provider and reference", name)
 		}
+		if _, err := targetaccess.ParseProviderKind(access.Provider); err != nil {
+			return fmt.Errorf("access %q: %w", name, err)
+		}
 	}
 	for name, target := range c.Targets {
 		if err := ValidateTargetName(name); err != nil {
@@ -225,12 +230,8 @@ func (c Config) Validate() error {
 		if ref == "" {
 			return fmt.Errorf("target %q requires access.reference", name)
 		}
-		access, ok := c.Access[ref]
-		if !ok {
+		if _, ok := c.Access[ref]; !ok {
 			return fmt.Errorf("target %q references unknown access %q", name, ref)
-		}
-		if strings.TrimSpace(access.Provider) != strings.TrimSpace(target.Runtime.Provider) {
-			return fmt.Errorf("target %q runtime provider %q does not match access provider %q", name, target.Runtime.Provider, access.Provider)
 		}
 	}
 	if c.DefaultTarget != "" {
@@ -279,15 +280,18 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 			return ResolvedTarget{
 				Name:            "local",
 				RuntimeProvider: "docker",
+				AccessProvider:  "local",
 				AccessReference: "local",
 				Scope:           "default",
 			}, nil
 		}
 		return ResolvedTarget{}, fmt.Errorf("target %q is not configured", name)
 	}
+	access := c.Access[target.Access.Reference]
 	return ResolvedTarget{
 		Name:            name,
 		RuntimeProvider: target.Runtime.Provider,
+		AccessProvider:  access.Provider,
 		AccessReference: target.Access.Reference,
 		Scope:           target.Scope,
 	}, nil

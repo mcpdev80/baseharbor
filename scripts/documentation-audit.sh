@@ -60,8 +60,36 @@ max_bytes docs/roadmap.md 6000
 max_bytes docs/DEVELOPMENT_GUIDELINES.md 12000
 
 
-# The CLI is a first-class, categorized public documentation axis.
-grep -Fq "  - CLI:" mkdocs.yml
+# Public navigation is task/domain-first. CLI pages remain reachable but must
+# not return as one primary top-level catch-all.
+if grep -Fq "  - CLI:" mkdocs.yml; then
+  echo "documentation audit: top-level CLI catch-all must not return" >&2
+  exit 1
+fi
+
+if grep -Fq "    - navigation.tabs" mkdocs.yml; then
+  echo "documentation audit: horizontal domain tabs must not return" >&2
+  exit 1
+fi
+
+for domain in \
+  "Getting Started:" \
+  "Applications:" \
+  "Targets:" \
+  "Providers:" \
+  "Workspaces:" \
+  "Development Stacks:" \
+  "Organization / Platform Configuration:" \
+  "Security / Trust:" \
+  "Operations:" \
+  "Automation / Agents:" \
+  "Reference:"; do
+  grep -Fq "  - $domain" mkdocs.yml || {
+    echo "documentation audit: required task/domain navigation missing: $domain" >&2
+    exit 1
+  }
+done
+
 for cli_page in \
   cli/index.md \
   cli/command-index.md \
@@ -76,7 +104,7 @@ for cli_page in \
   cli/shell-ux.md \
   cli/global-options.md; do
   grep -Fq "$cli_page" mkdocs.yml || {
-    echo "documentation audit: CLI page missing from public navigation: $cli_page" >&2
+    echo "documentation audit: CLI page missing from task/domain navigation: $cli_page" >&2
     exit 1
   }
 done
@@ -182,5 +210,28 @@ echo "Internal evidence  PASS"
 echo "ADR identifiers    PASS"
 echo "Governance         PASS"
 echo "Runtime docs       PASS"
-echo "CLI information architecture PASS"
+echo "Task/domain information architecture PASS"
 echo "Podman release CI  PASS"
+
+
+# Public Pages must consume the canonical BaseHarbor brand package.
+for config in mkdocs.yml mkdocs.de.yml; do
+  grep -Fq "baseharbor-master-lockup.png" "$config" || {
+    echo "documentation audit: canonical BaseHarbor master lockup missing from $config" >&2
+    exit 1
+  }
+  grep -Fq "brand-tokens.css" "$config" || {
+    echo "documentation audit: canonical BaseHarbor brand tokens missing from $config" >&2
+    exit 1
+  }
+  grep -Fq "baseharbor-docs.css" "$config" || {
+    echo "documentation audit: BaseHarbor documentation shell missing from $config" >&2
+    exit 1
+  }
+done
+
+grep -Fq -- "--bh-font-ui" docs/brand/brand-tokens.css
+grep -Fq -- "--bh-font-code" docs/brand/brand-tokens.css
+grep -Fq "baseharbor-master-lockup.png" docs/brand/README.md
+
+echo "Brand identity      PASS"

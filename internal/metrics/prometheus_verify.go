@@ -155,19 +155,19 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 	if err != nil {
 		return err
 	}
-	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
 	for _, source := range sources {
+		sourceCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		query := fmt.Sprintf(
-			`up{job="baseharbor-providers",baseharbor_provider=%q,baseharbor_source=%q}`,
+			`up{baseharbor_provider=%q,baseharbor_source=%q}`,
 			string(source.Provider), source.ID,
 		)
 		ticker := time.NewTicker(time.Second)
 		var last error
 		for {
-			ok, err := queryUp(deadline, client, endpoint, query)
+			ok, err := queryUp(sourceCtx, client, endpoint, query)
 			if err == nil && ok {
 				ticker.Stop()
+				cancel()
 				break
 			}
 			if err != nil {
@@ -176,8 +176,9 @@ func VerifyProviderSourcesAt(ctx context.Context, m application.Manifest, dataDi
 				last = errors.New("provider target has not produced an up=1 sample yet")
 			}
 			select {
-			case <-deadline.Done():
+			case <-sourceCtx.Done():
 				ticker.Stop()
+				cancel()
 				return fmt.Errorf("verify provider metrics %s: %w", source.ID, last)
 			case <-ticker.C:
 			}
@@ -240,14 +241,46 @@ func providerHTTPClient(m application.Manifest, files ProviderFiles) (*http.Clie
 			}
 		}
 		if values["BASEHARBOR_PROMETHEUS_UI_USER"] != "" && values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] != "" {
-			return serviceaccess.NewHTTPClientWithBasicAuth(
+			client, err := serviceaccess.NewHTTPClientWithBasicAuth(
 				material,
 				values["BASEHARBOR_PROMETHEUS_UI_USER"],
 				values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"],
 			)
+			if err != nil {
+				return nil, err
+			}
+			return withPrometheusHostHeader(client, policy.ServerName), nil
 		}
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withPrometheusHostHeader(client, policy.ServerName), nil
+}
+
+type prometheusHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t prometheusHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withPrometheusHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = prometheusHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func queryUp(ctx context.Context, client *http.Client, endpoint, query string) (bool, error) {

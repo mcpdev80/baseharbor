@@ -151,7 +151,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	fmt.Fprintln(out, "Target")
 	fmt.Fprintf(out, "  EFFECTIVE  %s\n", target.Name)
 	fmt.Fprintf(out, "  Runtime    %s\n", target.RuntimeProvider)
-	fmt.Fprintf(out, "  Access     %s\n", target.AccessReference)
+	fmt.Fprintf(out, "  Access     %s (%s)\n", target.AccessReference, target.AccessProvider)
 	if target.Scope != "" {
 		fmt.Fprintf(out, "  Scope      %s\n", target.Scope)
 	}
@@ -191,6 +191,12 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 				return errors.New("runtime is running but not ready")
 			}
 		}
+		availability := evaluateControlPlaneAvailability(running, health.RuntimeChecksForFiles(files))
+		state := "SATISFIED"
+		if !availability.Satisfied {
+			state = "UNSATISFIED"
+		}
+		fmt.Fprintf(out, "  %-9s availability · %s\n", state, availability.Detail())
 	}
 
 	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)

@@ -14,7 +14,7 @@ on:
       ref:
         description: Git ref to test
         required: false
-        default: release/v0.4.20
+        default: release/v0.4.21
         type: string
 
   push:
@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   docker-runtime:
+    if: github.event_name != 'push' || !startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
@@ -157,3 +158,106 @@ jobs:
           path: ${{ runner.temp }}/docker-runtime-evidence
           if-no-files-found: error
           retention-days: 1
+
+
+  provider-ha:
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: ${{ fromJSON(contains(github.ref_name, '/control-plane/') && '["control-plane"]' || contains(github.ref_name, '/keycloak/') && '["keycloak"]' || contains(github.ref_name, '/mongodb/') && '["mongodb"]' || contains(github.ref_name, '/valkey/') && '["valkey"]' || contains(github.ref_name, '/rabbitmq/') && '["rabbitmq"]' || contains(github.ref_name, '/seaweedfs/') && '["seaweedfs"]' || contains(github.ref_name, '/otel/') && '["otel"]' || contains(github.ref_name, '/prometheus/') && '["prometheus"]' || contains(github.ref_name, '/loki/') && '["loki"]' || contains(github.ref_name, '/tempo/') && '["tempo"]' || contains(github.ref_name, '/gateway/') && '["gateway"]' || '["rabbitmq","valkey","mongodb","seaweedfs","gateway"]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset Docker runtime
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Run provider HA acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.provider }}" in
+            rabbitmq)
+              export BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1
+              test_package=./internal/application
+              test_name=TestRabbitMQHARuntimeFailoverAcceptanceInCI
+              ;;
+            valkey)
+              export BASEHARBOR_VALKEY_HA_ACCEPTANCE=1
+              test_package=./internal/application
+              test_name=TestValkeyHARuntimeFailoverAcceptanceInCI
+              ;;
+            mongodb)
+              export BASEHARBOR_MONGODB_HA_ACCEPTANCE=1
+              test_package=./internal/application
+              test_name=TestMongoDBHARuntimeFailoverAcceptanceInCI
+              ;;
+            control-plane)
+              export BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true
+              test_package=./cmd/baha
+              test_name=TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile
+              test_timeout=18m
+              ;;
+            keycloak)
+              export BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1
+              test_package=./internal/identityprovider
+              test_name=TestKeycloakHARuntimeFailoverAcceptanceInCI
+              test_timeout=16m
+              ;;
+            seaweedfs)
+              export BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE=1
+              test_package=./internal/objectstorage
+              test_name=TestSeaweedFSHARuntimeFailoverAcceptanceInCI
+              ;;
+            otel)
+              export BASEHARBOR_OTEL_HA_ACCEPTANCE=1
+              test_package=./internal/telemetry
+              test_name=TestOTelHARuntimeFailoverAcceptanceInCI
+              ;;
+            prometheus)
+              export BASEHARBOR_PROMETHEUS_HA_ACCEPTANCE=1
+              test_package=./internal/metrics
+              test_name=TestPrometheusHARuntimeFailoverAcceptanceInCI
+              ;;
+            loki)
+              export BASEHARBOR_LOKI_HA_ACCEPTANCE=1
+              test_package=./internal/logs
+              test_name=TestLokiHARuntimeFailoverAcceptanceInCI
+              ;;
+            tempo)
+              export BASEHARBOR_TEMPO_HA_ACCEPTANCE=1
+              test_package=./internal/traces
+              test_name=TestTempoHARuntimeFailoverAcceptanceInCI
+              test_timeout=16m
+              ;;
+            gateway)
+              export BASEHARBOR_GATEWAY_ACCEPTANCE=1
+              test_package=./internal/devgateway
+              test_name=TestGatewayRuntimeContinuityAcceptanceInCI
+              ;;
+            *)
+              exit 2
+              ;;
+          esac
+          test_timeout="${test_timeout:-10m}"
+          go test "$test_package" -run "^${test_name}$" -count=1 -timeout "$test_timeout" -v
+
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker

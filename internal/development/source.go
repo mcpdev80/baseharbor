@@ -247,6 +247,61 @@ func WorkspaceMappingPath(manifestPath, application string) (string, error) {
 	return filepath.Join(configRoot, "baseharbor", "workspaces", app+"-"+key+".json"), nil
 }
 
+func ListWorkspaceMappings() ([]WorkspaceMapping, []error, error) {
+	configRoot, err := os.UserConfigDir()
+	if err != nil {
+		return nil, nil, err
+	}
+	root := filepath.Join(configRoot, "baseharbor", "workspaces")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return []WorkspaceMapping{}, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mappings := make([]WorkspaceMapping, 0, len(entries))
+	var warnings []error
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			warnings = append(warnings, fmt.Errorf("inspect workspace mapping %s: %w", entry.Name(), infoErr))
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			warnings = append(warnings, fmt.Errorf("ignore non-regular workspace mapping %s", entry.Name()))
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			warnings = append(warnings, fmt.Errorf("read workspace mapping %s: %w", entry.Name(), readErr))
+			continue
+		}
+		var mapping WorkspaceMapping
+		if decodeErr := json.Unmarshal(data, &mapping); decodeErr != nil {
+			warnings = append(warnings, fmt.Errorf("decode workspace mapping %s: %w", entry.Name(), decodeErr))
+			continue
+		}
+		if mapping.SchemaVersion != WorkspaceMappingVersion || strings.TrimSpace(mapping.Application) == "" || strings.TrimSpace(mapping.Manifest) == "" {
+			warnings = append(warnings, fmt.Errorf("ignore invalid workspace mapping %s", entry.Name()))
+			continue
+		}
+		mappings = append(mappings, mapping)
+	}
+	sort.Slice(mappings, func(i, j int) bool {
+		if mappings[i].Application != mappings[j].Application {
+			return mappings[i].Application < mappings[j].Application
+		}
+		return mappings[i].Manifest < mappings[j].Manifest
+	})
+	return mappings, warnings, nil
+}
+
 func LoadWorkspaceMapping(manifestPath, application string) (WorkspaceMapping, string, error) {
 	path, err := WorkspaceMappingPath(manifestPath, application)
 	if err != nil {

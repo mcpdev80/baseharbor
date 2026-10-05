@@ -120,6 +120,33 @@ func collectApplicationEvidence(ctx context.Context, store application.Store, ap
 		Kind: evidence.StateObserved, ID: "operator-auth",
 		Status: strings.ToLower(status.OperatorAuth.Status), Resource: authResource, Detail: authDetail,
 	})
+	for _, availabilityResult := range status.Availability {
+		state := "unsatisfied"
+		if availabilityResult.Satisfied {
+			state = "satisfied"
+		}
+		detail := fmt.Sprintf("requested_ha=%t; support=%s; effective_instances=%d", availabilityResult.RequiredHA, availabilityResult.Support, availabilityResult.EffectiveInstances)
+		if availabilityResult.Reason != "" {
+			detail += "; reason=" + availabilityResult.Reason
+		}
+		record := evidence.Record{
+			Kind: evidence.StateObserved, ID: "availability:" + availabilityResult.Component,
+			Status: state, Resource: availabilityResult.Component, Provider: availabilityResult.Provider, Detail: detail,
+		}
+		bundle.Observed = append(bundle.Observed, record)
+		if availabilityResult.ExplicitException {
+			record.Kind = evidence.StateException
+			record.ID = "availability-exception:" + availabilityResult.Component
+			record.Status = "explicit-non-ha"
+			bundle.Exceptions = append(bundle.Exceptions, record)
+		} else if availabilityResult.RequiredHA && !availabilityResult.Satisfied {
+			record.Kind = evidence.StateUnsupported
+			record.ID = "availability-unsupported:" + availabilityResult.Component
+			record.Status = "unsupported"
+			bundle.Unsupported = append(bundle.Unsupported, record)
+		}
+	}
+
 	if status.RuntimeArtifact != nil {
 		identity := status.RuntimeArtifact.Digest
 		if identity == "" {

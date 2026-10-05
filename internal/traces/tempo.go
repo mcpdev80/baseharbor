@@ -15,6 +15,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -182,6 +183,10 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer, m app
 }
 
 func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) (ProviderFiles, Placement, error) {
+	return ensureProviderFilesAt(ctx, issuer, dataDir, namespace, m, nil)
+}
+
+func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, storage *objectstorage.PlatformBucket) (ProviderFiles, Placement, error) {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
@@ -209,21 +214,46 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		port = strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
 		_ = ln.Close()
 	}
-	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_TEMPO_PORT="+port+"\n"), 0o600); err != nil {
+	var env strings.Builder
+	fmt.Fprintf(&env, "BASEHARBOR_TEMPO_PORT=%s\n", port)
+	config := configYAML()
+	if storage != nil {
+		fmt.Fprintf(&env, "BASEHARBOR_TEMPO_S3_ENDPOINT=%s\n", strings.TrimPrefix(storage.Endpoint, "https://"))
+		fmt.Fprintf(&env, "BASEHARBOR_TEMPO_S3_BUCKET=%s\n", storage.Name)
+		fmt.Fprintf(&env, "BASEHARBOR_TEMPO_S3_ACCESS_KEY_ID=%s\n", storage.AccessKeyID)
+		fmt.Fprintf(&env, "BASEHARBOR_TEMPO_S3_SECRET_ACCESS_KEY=%s\n", storage.SecretAccessKey)
+		trust, err := os.ReadFile(storage.TrustBundle)
+		if err != nil {
+			return ProviderFiles{}, p, fmt.Errorf("read Tempo object-storage trust bundle: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(files.Dir, "object-storage-ca.pem"), trust, 0o644); err != nil {
+			return ProviderFiles{}, p, fmt.Errorf("project Tempo object-storage trust bundle: %w", err)
+		}
+		config = tempoHAConfig()
+	}
+	if err := os.WriteFile(files.Env, []byte(env.String()), 0o600); err != nil {
 		return ProviderFiles{}, p, err
 	}
-	if err := os.WriteFile(files.Config, []byte(configYAML()), 0o644); err != nil {
+	if err := os.WriteFile(files.Config, []byte(config), 0o644); err != nil {
 		return ProviderFiles{}, p, err
 	}
 	accessPolicy, err := serviceaccess.Resolve(m.Environment, "tempo", serviceaccess.AuthenticationMTLS)
 	if err != nil {
 		return ProviderFiles{}, p, err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, tempoAccessSpec())
+	accessSpec := tempoAccessSpec()
+	if storage != nil {
+		accessSpec = tempoHAQueryAccessSpec()
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, p, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(composeYAMLWithAccess(p, accessFiles)), 0o600); err != nil {
+	compose := composeYAMLWithAccess(p, accessFiles)
+	if storage != nil {
+		compose = tempoHACompose(p, accessFiles, *storage)
+	}
+	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
 		return ProviderFiles{}, p, err
 	}
 	return files, p, nil
@@ -263,7 +293,24 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 }
 
 func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest, dataDir, namespace string) (Placement, error) {
-	files, p, err := EnsureProviderFilesAt(ctx, issuer, dataDir, namespace, m)
+	var (
+		files ProviderFiles
+		p     Placement
+		err   error
+	)
+	if m.HA {
+		storageRuntime, ok := runtime.(objectstorage.Runtime)
+		if !ok {
+			return Placement{}, errors.New("Tempo HA requires runtime object-storage administration support")
+		}
+		bucket, bucketErr := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, issuer, dataDir, namespace, "tempo")
+		if bucketErr != nil {
+			return Placement{}, fmt.Errorf("prepare Tempo HA object storage: %w", bucketErr)
+		}
+		files, p, err = ensureProviderFilesAt(ctx, issuer, dataDir, namespace, m, &bucket)
+	} else {
+		files, p, err = EnsureProviderFilesAt(ctx, issuer, dataDir, namespace, m)
+	}
 	if err != nil {
 		return Placement{}, err
 	}
@@ -271,6 +318,15 @@ func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issu
 		return Placement{}, err
 	}
 	if err := runtime.UpProject(ctx, p.Project, files.Compose, files.Env); err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if diagnostics, ok := runtime.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, p.Project, files.Compose, files.Env)); details != "" {
+				return Placement{}, fmt.Errorf("%w\n%s", err, details)
+			}
+		}
 		return Placement{}, err
 	}
 	endpoint, err := ProviderEndpoint(files)
@@ -450,7 +506,35 @@ func tempoHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client,
 	if err != nil {
 		return nil, fmt.Errorf("load Tempo service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withTempoHostHeader(client, policy.ServerName), nil
+}
+
+type tempoHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t tempoHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withTempoHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = tempoHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func VerifyTrace(ctx context.Context, m application.Manifest, traceID string) error {

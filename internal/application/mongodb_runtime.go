@@ -1,6 +1,8 @@
 package application
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +16,17 @@ const MongoDBImage = "docker.io/library/mongo:7.0.43"
 
 func mongodbRuntimeKey(instance, suffix string) string {
 	return runtimeInstanceKey("MONGODB", instance, suffix)
+}
+
+func randomMongoDBReplicaKey(size int) (string, error) {
+	if size < 6 {
+		return "", fmt.Errorf("MongoDB replica key size must be at least 6 bytes")
+	}
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate MongoDB replica key: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
 }
 
 func mongodbContainerHostKey(instance string) string {
@@ -79,6 +92,29 @@ func ensureMongoDBRuntimeValues(values map[string]string, m Manifest, excluded m
 			values[portKey] = strconv.Itoa(port)
 			excluded[port] = struct{}{}
 		}
+		if mongodbMemberCount(m, instance) > 1 {
+			if values[mongodbReplicaSetKey(instance)] == "" {
+				values[mongodbReplicaSetKey(instance)] = mongodbReplicaSetName(instance)
+			}
+			if values[mongodbReplicaKeyKey(instance)] == "" {
+				key, err := randomMongoDBReplicaKey(64)
+				if err != nil {
+					return err
+				}
+				values[mongodbReplicaKeyKey(instance)] = key
+			}
+			for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+				memberPortKey := mongodbMemberHostPortKey(instance, ordinal)
+				if values[memberPortKey] == "" {
+					port, err := allocateLoopbackPort(excluded)
+					if err != nil {
+						return err
+					}
+					values[memberPortKey] = strconv.Itoa(port)
+					excluded[port] = struct{}{}
+				}
+			}
+		}
 		if m.Services.DocumentDatabaseManagementUI {
 			uiPortKey := mongodbUIHostPortKey(instance)
 			if values[uiPortKey] == "" {
@@ -101,8 +137,16 @@ func appendMongoDBRuntimeEnv(b *strings.Builder, m Manifest, values map[string]s
 		}
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
-		for _, suffix := range []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		suffixes := []string{"DB", "USER", "PASSWORD", "ADMIN_USER", "ADMIN_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		if mongodbMemberCount(m, instance) > 1 {
+			suffixes = append(suffixes, "REPLICA_SET", "REPLICA_KEY")
+		}
+		for _, suffix := range suffixes {
 			key := mongodbRuntimeKey(instance, suffix)
+			fmt.Fprintf(b, "%s=%s\n", key, values[key])
+		}
+		for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			key := mongodbMemberHostPortKey(instance, ordinal)
 			fmt.Fprintf(b, "%s=%s\n", key, values[key])
 		}
 		if m.Services.DocumentDatabaseManagementUI {
@@ -131,6 +175,22 @@ func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
 		if err := validatePortValue(values[portKey], portKey); err != nil {
 			return err
 		}
+		if mongodbMemberCount(m, instance) > 1 {
+			for _, key := range []string{mongodbReplicaSetKey(instance), mongodbReplicaKeyKey(instance)} {
+				if values[key] == "" {
+					return fmt.Errorf("application runtime environment is missing %s", key)
+				}
+			}
+			for ordinal := 1; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+				key := mongodbMemberHostPortKey(instance, ordinal)
+				if values[key] == "" {
+					return fmt.Errorf("application runtime environment is missing %s", key)
+				}
+				if err := validatePortValue(values[key], key); err != nil {
+					return err
+				}
+			}
+		}
 		if m.Services.DocumentDatabaseManagementUI {
 			uiPortKey := mongodbUIHostPortKey(instance)
 			if values[uiPortKey] == "" {
@@ -144,47 +204,67 @@ func validateMongoDBRuntimeValues(values map[string]string, m Manifest) error {
 	return nil
 }
 
-func writeMongoDBComposeService(b *strings.Builder, instance string) {
-	service := runtimeServiceName("mongodb", instance)
+func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string) {
 	dbKey := mongodbRuntimeKey(instance, "DB")
 	userKey := mongodbRuntimeKey(instance, "USER")
 	passwordKey := mongodbRuntimeKey(instance, "PASSWORD")
 	adminUserKey := mongodbRuntimeKey(instance, "ADMIN_USER")
 	adminPasswordKey := mongodbRuntimeKey(instance, "ADMIN_PASSWORD")
+	replicaSetKey := mongodbReplicaSetKey(instance)
+	replicaKeyKey := mongodbReplicaKeyKey(instance)
 	initScript := "./" + filepath.ToSlash(filepath.Join("providers", "mongodb", instance, "init.js"))
-	fmt.Fprintf(b, `  %s:
-    image: %s
-    restart: unless-stopped
-    read_only: true
-    cap_drop: ["ALL"]
-    cap_add: ["CHOWN", "SETGID", "SETUID"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /data/configdb:rw,noexec,nosuid,nodev
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${%s}
-      MONGO_INITDB_ROOT_PASSWORD: ${%s}
-      MONGO_INITDB_DATABASE: ${%s}
-      BASEHARBOR_MONGODB_USER: ${%s}
-      BASEHARBOR_MONGODB_PASSWORD: ${%s}
-    volumes:
-      - %s-data:/data/db
-      - %s:/docker-entrypoint-initdb.d/10-baseharbor-app-user.js:ro
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'"]
-      interval: 5s
-      timeout: 10s
-      retries: 18
-      start_period: 15s
-
-`, service, MongoDBImage, adminUserKey, adminPasswordKey, dbKey, userKey, passwordKey, service, initScript)
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		service := mongodbMemberServiceName(instance, ordinal)
+		hostPortKey := mongodbMemberHostPortKey(instance, ordinal)
+		fmt.Fprintf(b, "  %s:\n", service)
+		fmt.Fprintf(b, "    image: %s\n", MongoDBImage)
+		b.WriteString("    restart: unless-stopped\n")
+		b.WriteString("    read_only: true\n")
+		b.WriteString("    cap_drop: [\"ALL\"]\n")
+		b.WriteString("    cap_add: [\"CHOWN\", \"DAC_OVERRIDE\", \"SETGID\", \"SETUID\"]\n")
+		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+		b.WriteString("    tmpfs:\n      - /tmp:rw,noexec,nosuid,nodev\n      - /data/configdb:rw,noexec,nosuid,nodev\n")
+		b.WriteString("    ports:\n")
+		fmt.Fprintf(b, "      - \"127.0.0.1:${%s}:27017\"\n", hostPortKey)
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(b, "      MONGO_INITDB_ROOT_USERNAME: ${%s}\n", adminUserKey)
+		fmt.Fprintf(b, "      MONGO_INITDB_ROOT_PASSWORD: ${%s}\n", adminPasswordKey)
+		fmt.Fprintf(b, "      MONGO_INITDB_DATABASE: ${%s}\n", dbKey)
+		fmt.Fprintf(b, "      BASEHARBOR_MONGODB_USER: ${%s}\n", userKey)
+		fmt.Fprintf(b, "      BASEHARBOR_MONGODB_PASSWORD: ${%s}\n", passwordKey)
+		if mongodbMemberCount(m, instance) > 1 {
+			fmt.Fprintf(b, "      BASEHARBOR_MONGODB_REPLICA_SET: ${%s}\n", replicaSetKey)
+			fmt.Fprintf(b, "      BASEHARBOR_MONGODB_REPLICA_KEY: ${%s}\n", replicaKeyKey)
+			b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+			b.WriteString("    command:\n      - |\n")
+			b.WriteString("        printf '%s\\n' \"- \\\"$$BASEHARBOR_MONGODB_REPLICA_KEY\\\"\" > /tmp/mongodb-keyfile\n")
+			b.WriteString("        chmod 0400 /tmp/mongodb-keyfile\n")
+			b.WriteString("        chown mongodb:mongodb /tmp/mongodb-keyfile\n")
+			b.WriteString("        exec /usr/local/bin/docker-entrypoint.sh mongod --bind_ip_all --replSet \"$$BASEHARBOR_MONGODB_REPLICA_SET\" --keyFile /tmp/mongodb-keyfile --tlsMode requireTLS --tlsCertificateKeyFile /run/baseharbor/tls/server.pem --tlsCAFile /run/baseharbor/tls/ca.pem --tlsAllowConnectionsWithoutCertificates --setParameter tlsWithholdClientCertificate=true\n")
+		} else {
+			b.WriteString("    command: [\"mongod\", \"--bind_ip_all\", \"--tlsMode\", \"requireTLS\", \"--tlsCertificateKeyFile\", \"/run/baseharbor/tls/server.pem\", \"--tlsCAFile\", \"/run/baseharbor/tls/ca.pem\", \"--tlsAllowConnectionsWithoutCertificates\"]\n")
+		}
+		b.WriteString("    volumes:\n")
+		fmt.Fprintf(b, "      - %s:/data/db\n", mongodbMemberVolumeName(instance, ordinal))
+		fmt.Fprintf(b, "      - %s:/docker-entrypoint-initdb.d/10-baseharbor-app-user.js:ro\n", initScript)
+		fmt.Fprintf(b, "      - ./providers/mongodb/%s/runtime/server.pem:/run/baseharbor/tls/server.pem:ro\n", instance)
+		fmt.Fprintf(b, "      - ./providers/mongodb/%s/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro\n", instance)
+		b.WriteString("    healthcheck:\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \\\"$${MONGO_INITDB_ROOT_USERNAME}\\\" --password \\\"$${MONGO_INITDB_ROOT_PASSWORD}\\\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'\"]\n")
+		b.WriteString("      interval: 5s\n      timeout: 10s\n      retries: 18\n      start_period: 15s\n\n")
+	}
 }
-
 func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance string) {
 	uiService := mongodbUIServiceName(instance)
 	accessService := mongodbUIAccessServiceName(instance)
-	mongoAccess := mongodbAccessService(instance)
+	var mongoHosts []string
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		mongoHosts = append(mongoHosts, mongodbMemberServiceName(instance, ordinal)+":27017")
+	}
+	replicaQuery := ""
+	if mongodbMemberCount(m, instance) > 1 {
+		replicaQuery = "&replicaSet=${" + mongodbReplicaSetKey(instance) + "}"
+	}
 	dbKey := mongodbRuntimeKey(instance, "DB")
 	userKey := mongodbRuntimeKey(instance, "USER")
 	passwordKey := mongodbRuntimeKey(instance, "PASSWORD")
@@ -200,7 +280,7 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     environment:
-      MONGOKU_DEFAULT_HOST: "mongodb://${%s}:${%s}@%s:27017/${%s}?authSource=${%s}&tls=true&tlsCAFile=/run/baseharbor/mongodb-ca.pem"
+      MONGOKU_DEFAULT_HOST: "mongodb://${%s}:${%s}@%s/${%s}?authSource=${%s}&tls=true&tlsCAFile=/run/baseharbor/mongodb-ca.pem%s"
       MONGOKU_SERVER_PROTOCOL_HEADER: "x-forwarded-proto"
       MONGOKU_SERVER_HOST_HEADER: "x-forwarded-host"
       MONGOKU_DATABASE_FILE: "/tmp/mongoku.db"
@@ -233,7 +313,7 @@ func writeMongoDBUIComposeServices(b *strings.Builder, m Manifest, instance stri
         aliases:
           - %q
 
-`, uiService, MongoDBUIImage, userKey, passwordKey, mongoAccess, dbKey, dbKey, instance,
+`, uiService, MongoDBUIImage, userKey, passwordKey, strings.Join(mongoHosts, ","), dbKey, dbKey, replicaQuery, instance,
 		accessService, UIProxyImage, uiPortKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
 }
 

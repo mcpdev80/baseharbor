@@ -22,18 +22,14 @@ func VerifyMongoDBRuntime(ctx context.Context, m Manifest, files RuntimeFiles) e
 		return err
 	}
 	for _, instance := range DocumentDatabaseInstanceNames(m) {
-		if err := verifyMongoDBInstance(ctx, values, instance); err != nil {
+		if err := verifyMongoDBInstance(ctx, m, values, instance); err != nil {
 			return fmt.Errorf("verify MongoDB instance %s: %w", instance, err)
 		}
 	}
 	return nil
 }
 
-func verifyMongoDBInstance(ctx context.Context, values map[string]string, instance string) error {
-	port, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "HOST_PORT"))
-	if err != nil {
-		return err
-	}
+func verifyMongoDBInstance(ctx context.Context, m Manifest, values map[string]string, instance string) error {
 	database, err := requireRuntimeValue(values, mongodbRuntimeKey(instance, "DB"))
 	if err != nil {
 		return err
@@ -58,26 +54,60 @@ func verifyMongoDBInstance(ctx context.Context, values map[string]string, instan
 	if !roots.AppendCertsFromPEM(ca) {
 		return fmt.Errorf("MongoDB trust bundle contains no certificate")
 	}
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    roots,
-		ServerName: loopbackHost,
-	}
-	uri := mongodbConnectionURI(loopbackHost, port, database, username, password)
-	client, err := mongo.Connect(options.Client().
-		ApplyURI(uri).
-		SetTLSConfig(tlsConfig).
-		SetConnectTimeout(10 * time.Second).
-		SetServerSelectionTimeout(10 * time.Second))
-	if err != nil {
-		return err
-	}
-	defer client.Disconnect(context.Background())
 
+	var lastErr error
+	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+		port, err := requireRuntimeValue(values, mongodbMemberHostPortKey(instance, ordinal))
+		if err != nil {
+			return err
+		}
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    roots,
+			ServerName: loopbackHost,
+		}
+		uri := mongodbConnectionURI(loopbackHost, port, database, username, password)
+		client, err := mongo.Connect(options.Client().
+			ApplyURI(uri).
+			SetDirect(true).
+			SetTLSConfig(tlsConfig).
+			SetConnectTimeout(10 * time.Second).
+			SetServerSelectionTimeout(10 * time.Second))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		var hello struct {
+			IsPrimary bool `bson:"isWritablePrimary"`
+		}
+		err = client.Database("admin").RunCommand(ctx, bson.D{{Key: "hello", Value: 1}}).Decode(&hello)
+		if err != nil || !hello.IsPrimary {
+			_ = client.Disconnect(context.Background())
+			if err != nil {
+				lastErr = err
+			} else {
+				lastErr = fmt.Errorf("member %s is not primary", mongodbMemberServiceName(instance, ordinal))
+			}
+			continue
+		}
+		err = verifyMongoDBCRUD(ctx, client, database)
+		_ = client.Disconnect(context.Background())
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no MongoDB primary was reachable")
+	}
+	return lastErr
+}
+
+func verifyMongoDBCRUD(ctx context.Context, client *mongo.Client, database string) error {
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
 		return fmt.Errorf("ping: %w", err)
 	}
-
 	collection := client.Database(database).Collection("__baseharbor_verify__")
 	token := fmt.Sprintf("verify-%d", time.Now().UnixNano())
 	result, err := collection.InsertOne(ctx, bson.M{"token": token})

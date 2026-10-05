@@ -25,10 +25,10 @@ fi
 
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
 	printf '%s\n' \
-	  '/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
-	  '/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true||running|0|' \
-	  '/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy|running|0|' \
-	  '/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false||exited|0|'
+	  'id1|/demo-api|baseharbor-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  'id2|/demo-worker|<no value>|baseharbor-demo-dev|<no value>|worker|true||running|0|' \
+	  'id3|/other-api|baseharbor-other-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+	  'id4|/stopped-api|baseharbor-demo-dev|<no value>|stopped|<no value>|false||exited|0|'
 	exit 0
 fi
 
@@ -100,7 +100,7 @@ if [ "$1" = "container" ] && [ "$2" = "ls" ]; then
 	exit 0
 fi
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then
-	printf '%s\n' '/demo-app|baseharbor-demo-dev|<no value>|demo-app|<no value>|false||created|128|failed to set up container networking: port is already allocated'
+	printf '%s\n' 'failed1|/demo-app|baseharbor-demo-dev|<no value>|demo-app|<no value>|false||created|128|failed to set up container networking: port is already allocated'
 	exit 0
 fi
 exit 2
@@ -265,14 +265,14 @@ fi
 if [ "$1 $2" = "container inspect" ]; then
 	if [ -f "$STATE_DIR/stopped" ]; then
 		printf '%s\n' \
-		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|false||exited|0|' \
-		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
-		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+		  'app1|/app1|bh-local-demo-dev|<no value>|api|<no value>|false||exited|0|' \
+		  'app2|/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  'other1|/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
 	else
 		printf '%s\n' \
-		  '/app1|bh-local-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
-		  '/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
-		  '/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
+		  'app1|/app1|bh-local-demo-dev|<no value>|api|<no value>|true|healthy|running|0|' \
+		  'app2|/app2|bh-local-demo-dev|<no value>|worker|<no value>|false||exited|0|' \
+		  'other1|/other1|other-project|<no value>|api|<no value>|true|healthy|running|0|'
 	fi
 	exit 0
 fi

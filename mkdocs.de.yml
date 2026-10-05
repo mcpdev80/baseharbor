@@ -9,6 +9,8 @@ site_dir: site/de
 theme:
   name: material
   language: de
+  logo: ../brand/baseharbor-master-lockup.png
+  favicon: ../brand/baseharbor.ico
   features:
     - navigation.instant
     - navigation.sections
@@ -37,6 +39,10 @@ markdown_extensions:
   - md_in_html
   - pymdownx.details
   - pymdownx.superfences
+
+extra_css:
+  - ../brand/brand-tokens.css
+  - ../stylesheets/baseharbor-docs.css
 
 extra:
   alternate:

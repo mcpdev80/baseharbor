@@ -23,6 +23,8 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
     security_opt: ["no-new-privileges:true"]
+    dns_opt: ["ndots:1"]
+    dns_search: ["."]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
     environment:
@@ -86,11 +88,12 @@ networks:
 		"DropCapability=all",
 		"AddCapability=NET_BIND_SERVICE",
 		"NoNewPrivileges=true",
+		"DNSOption=ndots:1",
+		"DNSSearch=.",
 		"Tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"PublishPort=127.0.0.1:15432:5432",
 		"Volume=baseharbor-demo-db-data.volume:/var/lib/postgresql",
-		"Network=baseharbor-demo-internal.network",
-		"NetworkAlias=db",
+		"Network=baseharbor-demo-internal.network:alias=db",
 		"Requires=baseharbor-demo-internal-network.service",
 		"After=baseharbor-demo-internal-network.service",
 		"HealthInterval=2s",
@@ -122,8 +125,11 @@ networks:
 		}
 	}
 	worker := got.Files["baseharbor-demo-worker.container"]
+	if strings.Contains(worker, "Requires=baseharbor-demo-db.service") {
+		t.Fatalf("Compose depends_on must not create stop propagation between services:\n%s", worker)
+	}
 	for _, want := range []string{
-		"Requires=baseharbor-demo-db.service",
+		"Wants=baseharbor-demo-db.service",
 		"After=baseharbor-demo-db.service",
 		"Entrypoint=[\"/bin/sh\",\"-ec\"]",
 		"Exec=sh -c \"sleep 60\"",
@@ -337,9 +343,7 @@ networks:
 	api := got.Files["baseharbor-workload-demo-api.container"]
 	for _, want := range []string{
 		"PublishPort=8080:8080",
-		"Network=baseharbor-demo-backend",
-		"NetworkAlias=api",
-		"NetworkAlias=api-metrics",
+		"Network=baseharbor-demo-backend:alias=api,alias=api-metrics",
 		"EnvironmentFile=./baseharbor-workload-demo-api.env",
 	} {
 		if !strings.Contains(api, want) {
@@ -352,7 +356,7 @@ networks:
 	}
 }
 
-func TestRenderComposeProjectQuadletsNeverEmbedsAliasInNetworkValue(t *testing.T) {
+func TestRenderComposeProjectQuadletsScopesAliasesToNetworkAttachments(t *testing.T) {
 	root := t.TempDir()
 	compose := filepath.Join(root, "compose.yaml")
 	if err := os.WriteFile(compose, []byte(`services:
@@ -379,23 +383,17 @@ networks:
 		t.Fatal(err)
 	}
 
-	for name, content := range got.Files {
-		if strings.Contains(content, ":alias=") {
-			t.Fatalf("%s contains legacy network alias syntax:\n%s", name, content)
-		}
-	}
-
 	unit := got.Files["alias-guard-api.container"]
 	for _, want := range []string{
-		"Network=alias-guard-managed.network",
-		"Network=baseharbor-external",
-		"NetworkAlias=api",
-		"NetworkAlias=api-managed",
-		"NetworkAlias=api-external",
+		"Network=alias-guard-managed.network:alias=api,alias=api-managed",
+		"Network=baseharbor-external:alias=api,alias=api-external",
 	} {
 		if !strings.Contains(unit, want) {
-			t.Fatalf("alias guard Quadlet missing %q:\n%s", want, unit)
+			t.Fatalf("network-scoped alias Quadlet missing %q:\n%s", want, unit)
 		}
+	}
+	if strings.Contains(unit, "NetworkAlias=") {
+		t.Fatalf("multi-network Quadlet must not use global NetworkAlias= entries:\n%s", unit)
 	}
 }
 
@@ -448,8 +446,11 @@ func TestRenderComposeProjectQuadletsCreatesImplicitDefaultNetwork(t *testing.T)
 		t.Fatalf("implicit default network was not rendered")
 	}
 	unit := got.Files["implicit-network-api.container"]
-	if !strings.Contains(unit, "Network=implicit-network-default.network") || !strings.Contains(unit, "NetworkAlias=api") {
-		t.Fatalf("service was not attached to implicit default network with service alias:\n%s", unit)
+	if !strings.Contains(unit, "Network=implicit-network-default.network:alias=api") {
+		t.Fatalf("service was not attached to implicit default network with scoped service alias:\n%s", unit)
+	}
+	if strings.Contains(unit, "NetworkAlias=api") {
+		t.Fatalf("implicit default network alias must remain network-scoped:\n%s", unit)
 	}
 	if !strings.Contains(unit, "Requires=implicit-network-default-network.service") {
 		t.Fatalf("service does not depend on implicit default network unit:\n%s", unit)
@@ -618,5 +619,66 @@ volumes:
 	}
 	if !strings.Contains(rendered, `"replacement:/var/lib/app"`) {
 		t.Fatalf("same-target override volume missing: %s", rendered)
+	}
+}
+
+func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  init:
+    image: docker.io/library/alpine:3.22
+    restart: "no"
+    command: ["sh", "-ec", "exit 0"]
+  api:
+    image: docker.io/library/alpine:3.22
+    depends_on:
+      init:
+        condition: service_completed_successfully
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderComposeProjectQuadlets(compose, "", "dependency-complete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.CompletedServices["init"] {
+		t.Fatal("completed dependency must be classified as a one-shot service")
+	}
+	unit := got.Files["dependency-complete-api.container"]
+	for _, want := range []string{
+		"Wants=dependency-complete-init.service",
+		"After=dependency-complete-init.service",
+		"ExecStartPre=/bin/sh -ec",
+		"systemctl --user is-active --quiet dependency-complete-init.service",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("completed dependency Quadlet missing %q:\n%s", want, unit)
+		}
+	}
+	if strings.Contains(unit, "Requires=dependency-complete-init.service") {
+		t.Fatalf("completed dependency must not use Requires= because successful one-shots become inactive:\n%s", unit)
+	}
+}
+
+func TestRenderComposeProjectQuadletsRejectsMultilineEnvironmentValue(t *testing.T) {
+	root := t.TempDir()
+	compose := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(compose, []byte(`services:
+  api:
+    image: docker.io/library/alpine:3.22
+    environment:
+      STRUCTURED: |
+        first: value
+        second: value
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := RenderComposeProjectQuadlets(compose, "", "multiline-env")
+	if err == nil {
+		t.Fatal("multiline environment value must fail instead of silently corrupting the env file")
+	}
+	if !strings.Contains(err.Error(), "multiline value unsupported by Podman env files") {
+		t.Fatalf("unexpected multiline environment error: %v", err)
 	}
 }

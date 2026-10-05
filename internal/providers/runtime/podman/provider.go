@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mcpdev80/baseharbor/internal/availability"
+
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
@@ -67,6 +69,7 @@ func Descriptor() ProviderDescriptor {
 		WorkloadSources: []string{"compose-spec"},
 		Realization:     "podman-quadlet-systemd-user",
 		Capabilities:    capabilities,
+		Availability:    availability.Support{Level: availability.Unsupported, Limits: "Podman Quadlet reference runtime does not provide verified HA workload orchestration"},
 	}
 }
 

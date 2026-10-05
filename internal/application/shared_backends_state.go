@@ -52,6 +52,14 @@ func sharedPostgresService(environment string) string {
 
 func sharedPostgresAlias() string { return "postgres-access" }
 
+func sharedPostgresMemberService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-member-%d", sharedPostgresService(environment), ordinal)
+}
+
+func sharedPostgresEtcdService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-etcd-%d", sharedPostgresService(environment), ordinal)
+}
+
 func sharedValkeyService(m Manifest, instance string) string {
 	return sharedValkeyServiceFor(m.Name, m.Environment, instance)
 }
@@ -240,4 +248,22 @@ func quotePostgresLiteral(value string) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.SQLManagementUI {
+			return true
+		}
+	}
+	return false
+}
+
+func sharedBackendCacheUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.CacheManagementUI {
+			return true
+		}
+	}
+	return false
 }

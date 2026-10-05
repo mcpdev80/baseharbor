@@ -136,6 +136,15 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 	}
 	instance, err := d.realization.Apply(ctx)
 	if err != nil {
+		detail := ""
+		if diagnostics, ok := d.realization.(keycloakRealizationDiagnostics); ok {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			detail = strings.TrimSpace(diagnostics.Diagnostics(diagnosticCtx))
+			diagnosticCancel()
+		}
+		if detail != "" {
+			return fmt.Errorf("realize Keycloak provider: %w\n%s", err, detail)
+		}
 		return fmt.Errorf("realize Keycloak provider: %w", err)
 	}
 	d.instance = instance
@@ -169,6 +178,12 @@ func (d *KeycloakDriver) Provision(ctx context.Context, resource capability.Reso
 		Attributes: realmAttributes,
 	}
 	if err := admin.reconcileRealm(ctx, realm); err != nil {
+		return err
+	}
+	if _, _, err := admin.ensureManagedSigningProvider(ctx, d.realm); err != nil {
+		return fmt.Errorf("ensure BaseHarbor-managed Keycloak signing provider: %w", err)
+	}
+	if err := admin.ensureClientSecretRotationPolicy(ctx, d.realm); err != nil {
 		return err
 	}
 
@@ -325,10 +340,38 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 		user:     d.instance.AdminUsername,
 		password: d.instance.AdminPassword,
 	}
-	if err := admin.login(ctx); err != nil {
-		return nil, err
+	loginCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var last error
+	for {
+		attemptCtx, attemptCancel := context.WithTimeout(loginCtx, 5*time.Second)
+		err := admin.login(attemptCtx)
+		attemptCancel()
+		if err == nil {
+			return admin, nil
+		}
+		last = err
+		var loginErr *keycloakAdminLoginError
+		retryable := errors.As(err, &loginErr) &&
+			(loginErr.Status == http.StatusInternalServerError ||
+				loginErr.Status == http.StatusBadGateway ||
+				loginErr.Status == http.StatusServiceUnavailable ||
+				loginErr.Status == http.StatusGatewayTimeout ||
+				(loginErr.Status == http.StatusBadRequest && strings.Contains(loginErr.Body, "invalid_grant")))
+		if !retryable {
+			return nil, err
+		}
+		select {
+		case <-loginCtx.Done():
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, fmt.Errorf("Keycloak admin authentication did not converge within 20s: %w", last)
+		case <-ticker.C:
+		}
 	}
-	return admin, nil
 }
 
 func (d *KeycloakDriver) ensureClientSecret() (string, error) {
@@ -360,6 +403,170 @@ func (d *KeycloakDriver) ensureClientSecret() (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+type keycloakProjectExecutor interface {
+	ExecProject(ctx context.Context, project, composeFile, envFile, service string, args ...string) (string, error)
+}
+
+func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
+	executor, ok := runtime.(keycloakProjectExecutor)
+	if !ok {
+		return errors.New("Keycloak PKI rotation requires runtime gateway reload support")
+	}
+	if _, err := executor.ExecProject(
+		ctx,
+		files.Project,
+		files.Compose,
+		files.Env,
+		"keycloak-access",
+		"/run/baseharbor/caddy",
+		"reload",
+		"--config",
+		"/etc/caddy/Caddyfile",
+		"--adapter",
+		"caddyfile",
+		"--force",
+	); err != nil {
+		return fmt.Errorf("reload Keycloak access gateway trust: %w", err)
+	}
+	return nil
+}
+
+// Spilo's periodic TLS reload runs every five minutes. Reload every database
+// member while both CAs are trusted, before retiring the previous CA.
+func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
+	executor, ok := runtime.(keycloakProjectExecutor)
+	if !ok {
+		return errors.New("Keycloak PKI rotation requires runtime database reload support")
+	}
+	reloadCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+		for {
+			_, err := executor.ExecProject(reloadCtx, files.Project, files.Compose, files.Env, service,
+				"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'")
+			if err == nil {
+				break
+			}
+			select {
+			case <-reloadCtx.Done():
+				return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, errors.Join(reloadCtx.Err(), err))
+			case <-ticker.C:
+			}
+		}
+	}
+	return nil
+}
+
+func waitKeycloakNativeCertificateReload(ctx context.Context) error {
+	timer := time.NewTimer(12 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
+	r, ok := d.realization.(*localKeycloakRealization)
+	if !ok || r == nil {
+		return errors.New("Keycloak PKI rotation requires the managed local realization")
+	}
+	if r.issuer == nil {
+		return errors.New("Keycloak PKI rotation requires a managed issuer")
+	}
+
+	reconcile := func(waitForNativeReload bool) (KeycloakFiles, error) {
+		files, err := EnsureKeycloakFilesAt(ctx, r.app, r.issuer, r.dataDir, r.namespace)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		publicBase, err := localKeycloakPublicBaseURL(r.app, r.namespace, r.runtime, files)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := r.lifecycle.Validate(ctx, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := r.lifecycle.Apply(ctx, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := reloadKeycloakDatabaseCertificates(ctx, r.runtime, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		// Keycloak polls its native HTTPS leaf files. During overlap creation the
+		// running members can still present the previous leaf, so do not reload
+		// the gateway onto the replacement trust set until every member has had
+		// a full native reload window.
+		if waitForNativeReload {
+			if err := waitKeycloakNativeCertificateReload(ctx); err != nil {
+				return KeycloakFiles{}, err
+			}
+		}
+		if err := reloadKeycloakAccessGateway(ctx, r.runtime, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		instance, err := r.instance(ctx, files, publicBase)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		r.files = files
+		d.instance = instance
+		if _, err := d.adminClient(ctx); err != nil {
+			return KeycloakFiles{}, fmt.Errorf("verify Keycloak after PKI reconcile: %w", err)
+		}
+		return files, nil
+	}
+
+	files, err := reconcile(true)
+	if err != nil {
+		return fmt.Errorf("reconcile replacement Keycloak PKI with overlap: %w", err)
+	}
+	if _, err := reconcile(false); err != nil {
+		return fmt.Errorf("verify Keycloak after native certificate reload: %w", err)
+	}
+
+	publicPolicy, err := serviceaccess.Resolve(r.app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	publicPolicy.ServerName = keycloakPublicHost
+	frontendPolicy := publicPolicy
+	frontendPolicy.AuthenticationRequired = false
+	frontendPolicy.Authentication = serviceaccess.AuthenticationNative
+	dbPolicy, err := serviceaccess.Resolve(r.app.Environment, "keycloak-db", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	dbPolicy.ServerName = "keycloak-db"
+
+	for _, item := range []struct {
+		name   string
+		policy serviceaccess.Policy
+		dir    string
+	}{
+		{name: "native", policy: publicPolicy, dir: filepath.Join(files.Dir, "native-tls", "pki")},
+		{name: "database", policy: dbPolicy, dir: filepath.Join(files.Dir, "db-ha", "pki")},
+		{name: "frontend", policy: frontendPolicy, dir: filepath.Join(files.Dir, "service-access", "pki")},
+	} {
+		if err := serviceaccess.RetireTLSOverlap(ctx, r.issuer, item.policy, item.dir); err != nil {
+			return fmt.Errorf("retire previous Keycloak %s CA: %w", item.name, err)
+		}
+	}
+
+	if _, err := reconcile(false); err != nil {
+		return fmt.Errorf("reconcile Keycloak after CA retirement: %w", err)
+	}
+	return nil
 }
 
 func rebaseIdentityDiscovery(discovery application.IdentityDiscovery, fromIssuer, toIssuer string) application.IdentityDiscovery {

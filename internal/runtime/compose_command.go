@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -95,4 +96,29 @@ func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, e
 		return stdout.String(), fmt.Errorf("compose %s: %s", strings.Join(args, " "), message)
 	}
 	return stdout.String(), nil
+}
+
+func (c Compose) directStream(ctx context.Context, args ...string) (io.ReadCloser, error) {
+	if strings.TrimSpace(c.command) == "" {
+		return nil, ErrRuntimeNotFound
+	}
+	cmd := exec.CommandContext(ctx, c.command, args...)
+	cmd.Env = runtimeCommandEnv(c.command)
+	reader, writer := io.Pipe()
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+	if err := cmd.Start(); err != nil {
+		_ = reader.Close()
+		_ = writer.Close()
+		return nil, fmt.Errorf("start runtime %s: %w", strings.Join(args, " "), err)
+	}
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			_ = writer.CloseWithError(fmt.Errorf("runtime %s: %w", strings.Join(args, " "), err))
+			return
+		}
+		_ = writer.Close()
+	}()
+	return reader, nil
 }

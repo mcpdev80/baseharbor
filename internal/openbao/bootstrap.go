@@ -9,13 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const (
 	projectName     = "baseharbor"
-	serviceName     = "openbao"
+	serviceName     = "openbao-admin"
 	adminFileName   = "openbao-admin.env"
 	recoveryVersion = 1
 )
@@ -61,19 +62,53 @@ type AdminCredentials struct {
 }
 
 func Inspect(ctx context.Context, executor Executor, files bhruntime.Files) (State, error) {
-	const script = `bao status -format=json 2>/dev/null
-code=$?
-if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
-  exit 0
-fi
-exit "$code"`
-	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script)
+	var (
+		lastErr       error
+		fallbackState State
+		haveFallback  bool
+	)
+	for _, member := range openBaoHAMembers {
+		state, err := inspectMemberState(ctx, executor, files, member)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if state.Initialized && !state.Sealed {
+			return state, nil
+		}
+		if !haveFallback {
+			fallbackState = state
+			haveFallback = true
+		}
+	}
+	if haveFallback {
+		return fallbackState, nil
+	}
+	if lastErr != nil {
+		return State{}, fmt.Errorf("inspect OpenBao status: %w", lastErr)
+	}
+	return State{}, errors.New("inspect OpenBao status: no HA member is reachable")
+}
+
+func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
+	// Probe each HA member from inside that member instead of routing the
+	// readiness check through openbao-admin. This keeps initial readiness
+	// independent from cross-container DNS/alias convergence (notably with
+	// rootless Podman Quadlet) while still verifying the member's native TLS
+	// listener and bootstrap CA through its configured BAO_CACERT.
+	script := "code=0\n" +
+		"BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || code=$?\n" +
+		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
+		"exit \"$code\""
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := executor.ExecProject(probeCtx, projectNameForFiles(files), files.Compose, files.Env, member, "sh", "-c", script)
 	if err != nil {
-		return State{}, fmt.Errorf("inspect OpenBao status: %w", err)
+		return State{}, err
 	}
 	var state State
 	if err := json.Unmarshal([]byte(out), &state); err != nil {
-		return State{}, errors.New("inspect OpenBao status: invalid status response")
+		return State{}, errors.New("invalid status response")
 	}
 	return state, nil
 }
@@ -115,7 +150,7 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 	}()
 
 	out, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName,
-		"bao", "operator", "init", "-key-shares=1", "-key-threshold=1", "-format=json")
+		"sh", "-ec", "BAO_ADDR=https://openbao-member-1:8200 exec bao operator init -key-shares=1 -key-threshold=1 -format=json")
 	if err != nil {
 		return fmt.Errorf("initialize OpenBao: %w", err)
 	}
@@ -144,8 +179,11 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 	}
 	keepRecoveryFile = true
 
-	if err := unsealWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
+	if err := unsealAllMembersWithKey(ctx, executor, files, initReply.UnsealKeys[0]); err != nil {
 		return err
+	}
+	if err := waitForActiveGateway(ctx, executor, files); err != nil {
+		return fmt.Errorf("wait for active OpenBao HA gateway after bootstrap: %w", err)
 	}
 
 	rootToken := initReply.RootToken
@@ -188,14 +226,40 @@ func Unseal(ctx context.Context, executor Executor, files bhruntime.Files, recov
 	if !state.Initialized {
 		return ErrNotInitialized
 	}
-	if !state.Sealed {
-		return nil
-	}
 	bundle, err := loadRecoveryFile(recoveryPath)
 	if err != nil {
 		return err
 	}
-	return unsealWithKey(ctx, executor, files, bundle.UnsealKeys[0])
+	if err := unsealAllMembersWithKey(ctx, executor, files, bundle.UnsealKeys[0]); err != nil {
+		return err
+	}
+	return waitForActiveGateway(ctx, executor, files)
+}
+
+func waitForActiveGateway(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	const script = `code=0
+bao status -format=json >/dev/null 2>&1 || code=$?
+if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
+  exit 0
+fi
+exit "$code"`
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for {
+		if _, err := executor.ExecProject(ctx, projectNameForFiles(files), files.Compose, files.Env, serviceName, "sh", "-c", script); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files) error {
@@ -203,7 +267,75 @@ func CheckManager(ctx context.Context, executor Executor, files bhruntime.Files)
 	if err != nil {
 		return err
 	}
-	_, err = loginManager(ctx, executor, files, credentials)
+	deadline := time.Now().Add(20 * time.Second)
+	var lastErr error
+	for {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, err = loginManager(probeCtx, executor, files, credentials)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+func RotateManagerCredentials(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	oldCredentials, err := LoadAdminCredentials(files)
+	if err != nil {
+		return err
+	}
+	oldToken, err := loginManager(ctx, executor, files, oldCredentials)
+	if err != nil {
+		return fmt.Errorf("authenticate current OpenBao manager before rotation: %w", err)
+	}
+
+	newCredentials, err := issueManagerCredentials(ctx, executor, files, oldToken)
+	if err != nil {
+		return fmt.Errorf("prepare replacement OpenBao manager credential: %w", err)
+	}
+	newToken, err := loginManager(ctx, executor, files, newCredentials)
+	if err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return fmt.Errorf("verify replacement OpenBao manager credential: %w", err)
+	}
+	if err := verifyManagerKV(ctx, executor, files, newToken); err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return fmt.Errorf("verify replacement OpenBao manager authorization: %w", err)
+	}
+
+	adminPath := AdminCredentialsPath(files)
+	if err := replaceAdminCredentials(adminPath, newCredentials); err != nil {
+		_ = destroyManagerSecretID(ctx, executor, files, oldToken, newCredentials.SecretID)
+		return err
+	}
+
+	if err := destroyManagerSecretID(ctx, executor, files, newToken, oldCredentials.SecretID); err != nil {
+		return fmt.Errorf("retire previous OpenBao manager credential: %w", err)
+	}
+	if _, err := loginManager(ctx, executor, files, oldCredentials); err == nil {
+		return errors.New("previous OpenBao manager credential still authenticates after retirement")
+	}
+	if err := CheckManager(ctx, executor, files); err != nil {
+		return fmt.Errorf("verify persisted OpenBao manager credential after rotation: %w", err)
+	}
+	return nil
+}
+
+func destroyManagerSecretID(ctx context.Context, executor Executor, files bhruntime.Files, token, secretID string) error {
+	payload, err := json.Marshal(map[string]string{"secret_id": secretID})
+	if err != nil {
+		return errors.New("encode OpenBao manager SecretID retirement request")
+	}
+	_, err = execWithTokenPayload(ctx, executor, files, token, "exec bao write auth/approle/role/baseharbor-manager/secret-id/destroy -", string(payload))
 	return err
 }
 
@@ -328,6 +460,46 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 	return bundle, nil
 }
 
+var openBaoHAMembers = []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"}
+
+func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
+	state, err := inspectMemberState(ctx, executor, files, member)
+	if err != nil {
+		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
+	}
+	return state, nil
+}
+
+func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhruntime.Files, key string) error {
+	payload, err := json.Marshal(map[string]string{"key": key})
+	if err != nil {
+		return errors.New("encode OpenBao unseal request")
+	}
+	for _, member := range openBaoHAMembers {
+		state, err := memberState(ctx, executor, files, member)
+		if err != nil {
+			return err
+		}
+		if !state.Initialized {
+			return fmt.Errorf("OpenBao HA member %s is not initialized", member)
+		}
+		if state.Sealed {
+			script := "BAO_ADDR=https://" + member + ":8200 exec bao write -format=json sys/unseal -"
+			if _, err := executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, payload, serviceName, "sh", "-ec", script); err != nil {
+				return fmt.Errorf("unseal OpenBao HA member %s: %w", member, err)
+			}
+		}
+		state, err = memberState(ctx, executor, files, member)
+		if err != nil {
+			return err
+		}
+		if state.Sealed {
+			return fmt.Errorf("%w: member %s remains sealed", ErrSealed, member)
+		}
+	}
+	return nil
+}
+
 func unsealWithKey(ctx context.Context, executor Executor, files bhruntime.Files, key string) error {
 	payload, err := json.Marshal(map[string]string{"key": key})
 	if err != nil {
@@ -351,7 +523,7 @@ func configureManager(ctx context.Context, executor Executor, files bhruntime.Fi
 	commands := []string{
 		`if ! bao secrets list -format=json | grep -q '"baseharbor/"'; then bao secrets enable -path=baseharbor -version=2 kv >/dev/null; fi`,
 		`if ! bao secrets list -format=json | grep -q '"baseharbor-pki/"'; then bao secrets enable -path=baseharbor-pki pki >/dev/null; fi`,
-		`bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null`,
+		`for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do if bao secrets tune -max-lease-ttl=87600h baseharbor-pki >/dev/null 2>&1; then exit 0; fi; sleep 1; done; echo "baseharbor-pki mount did not converge before tune" >&2; exit 1`,
 		`if ! bao auth list -format=json | grep -q '"approle/"'; then bao auth enable approle >/dev/null; fi`,
 	}
 	for _, command := range commands {
@@ -360,11 +532,14 @@ func configureManager(ctx context.Context, executor Executor, files bhruntime.Fi
 		}
 	}
 
-	const policyScript = `tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-cat >"$tmp"
-bao policy write baseharbor-manager "$tmp" >/dev/null`
-	if _, err := execWithTokenPayload(ctx, executor, files, rootToken, policyScript, managerPolicy); err != nil {
+	if _, err := execWithTokenPayload(
+		ctx,
+		executor,
+		files,
+		rootToken,
+		`exec bao policy write baseharbor-manager -`,
+		managerPolicy,
+	); err != nil {
 		return fmt.Errorf("configure OpenBao manager policy: %w", err)
 	}
 
@@ -406,6 +581,23 @@ func issueManagerCredentials(ctx context.Context, executor Executor, files bhrun
 		return AdminCredentials{}, errors.New("create OpenBao manager SecretID: invalid response")
 	}
 	return AdminCredentials{RoleID: roleReply.Data.RoleID, SecretID: secretReply.Data.SecretID}, nil
+}
+
+func replaceAdminCredentials(path string, credentials AdminCredentials) error {
+	content := fmt.Sprintf("OPENBAO_ROLE_ID=%s\nOPENBAO_SECRET_ID=%s\n", credentials.RoleID, credentials.SecretID)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write replacement OpenBao manager credentials: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("protect replacement OpenBao manager credentials: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("activate replacement OpenBao manager credentials: %w", err)
+	}
+	return nil
 }
 
 func writeAdminCredentials(path string, credentials AdminCredentials) (err error) {
@@ -456,14 +648,35 @@ func loginManager(ctx context.Context, executor Executor, files bhruntime.Files,
 }
 
 func verifyManagerKV(ctx context.Context, executor Executor, files bhruntime.Files, token string) error {
-	if _, err := execWithToken(ctx, executor, files, token, `exec bao kv put -mount=baseharbor apps/_baseharbor/bootstrap-probe value=ok`); err != nil {
+	retry := func(command string, validate func(string) bool) error {
+		var lastErr error
+		for attempt := 0; attempt < 20; attempt++ {
+			out, err := execWithToken(ctx, executor, files, token, command)
+			if err == nil && (validate == nil || validate(out)) {
+				return nil
+			}
+			lastErr = err
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+		if lastErr != nil {
+			return lastErr
+		}
+		return errors.New("OpenBao manager verification did not converge")
+	}
+
+	if err := retry(`exec bao kv put -mount=baseharbor apps/_baseharbor/bootstrap-probe value=ok`, nil); err != nil {
 		return errors.New("OpenBao manager cannot write application secrets")
 	}
-	out, err := execWithToken(ctx, executor, files, token, `exec bao kv get -field=value -mount=baseharbor apps/_baseharbor/bootstrap-probe`)
-	if err != nil || strings.TrimSpace(out) != "ok" {
+	if err := retry(`exec bao kv get -field=value -mount=baseharbor apps/_baseharbor/bootstrap-probe`, func(out string) bool {
+		return strings.TrimSpace(out) == "ok"
+	}); err != nil {
 		return errors.New("OpenBao manager cannot read application secrets")
 	}
-	if _, err := execWithToken(ctx, executor, files, token, `exec bao kv metadata delete -mount=baseharbor apps/_baseharbor/bootstrap-probe`); err != nil {
+	if err := retry(`exec bao delete baseharbor/metadata/apps/_baseharbor/bootstrap-probe`, nil); err != nil {
 		return errors.New("OpenBao manager cannot delete application secret metadata")
 	}
 	return nil
@@ -488,7 +701,15 @@ export BAO_TOKEN
 	return executor.ExecProjectInput(ctx, projectNameForFiles(files), files.Compose, files.Env, input, serviceName, "sh", "-ceu", prefix+command)
 }
 
-const managerPolicy = `path "baseharbor/data/apps/*" {
+const managerPolicy = `path "baseharbor/data/managed/*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
+path "baseharbor/metadata/managed/*" {
+  capabilities = ["read", "list", "delete"]
+}
+
+path "baseharbor/data/apps/*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
@@ -512,6 +733,14 @@ path "sys/policies/acl/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "sys/policy/baseharbor-app-*" {
+  capabilities = ["create", "update", "read", "delete"]
+}
+
+path "sys/leader" {
+  capabilities = ["read"]
+}
+
 path "sys/auth" {
   capabilities = ["read"]
 }
@@ -528,6 +757,18 @@ path "auth/approle/role/baseharbor-app-*" {
   capabilities = ["create", "update", "read", "delete"]
 }
 
+path "auth/approle/role/baseharbor-manager/role-id" {
+  capabilities = ["read"]
+}
+
+path "auth/approle/role/baseharbor-manager/secret-id" {
+  capabilities = ["create", "update"]
+}
+
+path "auth/approle/role/baseharbor-manager/secret-id/destroy" {
+  capabilities = ["create", "update"]
+}
+
 path "baseharbor-pki/issue/baseharbor-services" {
   capabilities = ["create", "update"]
 }
@@ -542,5 +783,13 @@ path "baseharbor-pki/cert/*" {
 
 path "baseharbor-pki/revoke" {
   capabilities = ["create", "update"]
+}
+
+path "baseharbor-pki/root/rotate/internal" {
+  capabilities = ["create", "update"]
+}
+
+path "baseharbor-pki/config/issuers" {
+  capabilities = ["read", "update"]
 }
 `

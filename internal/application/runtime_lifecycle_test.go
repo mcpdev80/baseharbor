@@ -18,8 +18,8 @@ func TestExpectedRuntimeResourcesAreProjectScoped(t *testing.T) {
 		"baseharbor-mailflow-prod-postgres-1",
 		"baseharbor-mailflow-prod_postgres-data",
 		"baseharbor-mailflow-prod-valkey-1",
-		"baseharbor-mailflow-prod-valkey-access-1",
 		"baseharbor-mailflow-prod_valkey-data",
+		"baseharbor-mailflow-prod-valkey-access-1",
 	}
 	if len(resources) != len(wantNames) {
 		t.Fatalf("expected %d resources, got %d", len(wantNames), len(resources))

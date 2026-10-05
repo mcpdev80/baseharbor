@@ -129,6 +129,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		openBaoPolicy,
 		filepath.Join(openBaoRoot, "service-access", "pki"),
 		"openbao",
+		"openbao-member-1",
+		"openbao-member-2",
+		"openbao-member-3",
 		"127.0.0.1",
 	)
 	if err != nil {
@@ -145,6 +148,9 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 		postgresPolicy,
 		filepath.Join(postgresRoot, "service-access", "pki"),
 		"postgres",
+		"postgres-member-1",
+		"postgres-member-2",
+		"postgres-member-3",
 		"127.0.0.1",
 	)
 	if err != nil {
@@ -177,6 +183,49 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	}
 	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return fmt.Errorf("write control-plane service access compose: %w", err)
+	}
+	return nil
+}
+
+func RetireControlPlaneServiceAccessOverlap(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
+	if issuer == nil {
+		return errors.New("control-plane service access requires an issuer")
+	}
+	stateDir := filepath.Dir(files.Compose)
+
+	openBaoPolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	openBaoPolicy.ServerName = "openbao"
+	openBaoRoot := filepath.Join(stateDir, "providers", "openbao")
+	openBaoPKI := filepath.Join(openBaoRoot, "service-access", "pki")
+	if err := serviceaccess.RetireTLSOverlap(ctx, issuer, openBaoPolicy, openBaoPKI); err != nil {
+		return fmt.Errorf("retire previous OpenBao CA: %w", err)
+	}
+	openBaoMaterial, err := serviceaccess.ExistingTLSMaterial(openBaoPolicy, openBaoPKI)
+	if err != nil {
+		return fmt.Errorf("load retired OpenBao TLS material: %w", err)
+	}
+	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
+		return fmt.Errorf("project retired OpenBao trust: %w", err)
+	}
+
+	postgresPolicy, err := serviceaccess.Resolve("prod", "control-plane-postgresql", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postgresRoot := filepath.Join(stateDir, "providers", "postgresql")
+	postgresPKI := filepath.Join(postgresRoot, "service-access", "pki")
+	if err := serviceaccess.RetireTLSOverlap(ctx, issuer, postgresPolicy, postgresPKI); err != nil {
+		return fmt.Errorf("retire previous control-plane PostgreSQL CA: %w", err)
+	}
+	postgresMaterial, err := serviceaccess.ExistingTLSMaterial(postgresPolicy, postgresPKI)
+	if err != nil {
+		return fmt.Errorf("load retired control-plane PostgreSQL TLS material: %w", err)
+	}
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+		return fmt.Errorf("project retired control-plane PostgreSQL trust: %w", err)
 	}
 	return nil
 }
@@ -229,7 +278,10 @@ hostssl all all ::/0 scram-sha-256
 hostnossl all all 0.0.0.0/0 reject
 hostnossl all all ::/0 reject
 `
-	return os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644)
+	if err := os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
+		return err
+	}
+	return writeControlPlanePostgresHAProxyConfig(runtimeDir)
 }
 
 func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMaterial) error {
@@ -263,9 +315,16 @@ func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMateri
 
 func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 	for _, required := range []string{
-		"  openbao:\n",
+		"  openbao-member-1:\n",
+		"  openbao-member-2:\n",
+		"  openbao-member-3:\n",
 		"docker.io/openbao/openbao:2.7.0",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
+		"BAO_CLUSTER_ADDR: https://openbao-member-1:8201",
+		"  openbao:\n",
+		"docker.io/library/haproxy:3.2.23-alpine",
+		"./providers/openbao/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"  openbao-admin:\n",
 		"./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
 	} {
@@ -283,11 +342,17 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 
 func renderSecureControlPlanePostgres(rendered string) (string, error) {
 	for _, required := range []string{
+		"  postgres-member-1:\n",
+		"  postgres-member-2:\n",
+		"  postgres-member-3:\n",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"gcr.io/etcd-development/etcd:v3.7.2",
 		"  postgres:\n",
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"docker.io/library/haproxy:3.2.23-alpine",
+		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"BASEHARBOR_POSTGRES_REPLICATION_PASSWORD",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
-		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",
 	} {
 		if !strings.Contains(rendered, required) {
 			return "", fmt.Errorf("embedded runtime compose is missing secure PostgreSQL runtime %q", required)

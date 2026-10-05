@@ -137,7 +137,7 @@ func TestMongoDBManagementUIRuntimeAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	sort.Strings(running)
-	want := []string{"mongodb", "mongodb-access", "mongodb-ui", "mongodb-ui-access"}
+	want := []string{"mongodb", "mongodb-ui", "mongodb-ui-access"}
 	if len(running) != len(want) {
 		t.Fatalf("unexpected MongoDB UI runtime services: got %#v want %#v", running, want)
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"os/exec"
 
+	"github.com/mcpdev80/baseharbor/internal/availability"
+
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
@@ -38,6 +40,7 @@ func Descriptor() runtimecontract.ProviderDescriptor {
 		WorkloadSources: []string{"compose-spec"},
 		Realization:     "docker-compose",
 		Capabilities:    capabilities,
+		Availability:    availability.Support{Level: availability.Unsupported, Limits: "Docker Compose reference runtime does not provide verified HA workload orchestration"},
 	}
 }
 

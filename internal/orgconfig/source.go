@@ -69,7 +69,7 @@ func Resolve(ctx context.Context, source Source) (Resolution, Config, error) {
 	case SourceOCI:
 		return resolveOCI(ctx, source)
 	default:
-		return Resolution{}, Config{}, fmt.Errorf("organization source kind %q is unsupported", source.Kind)
+		return Resolution{}, Config{}, fmt.Errorf("%w: kind %q", ErrUnsupportedSource, source.Kind)
 	}
 }
 
@@ -80,7 +80,7 @@ func resolveLocal(source Source) (Resolution, Config, error) {
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("read organization configuration: %w", err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: read organization configuration: %v", ErrSourceUnavailable, err)
 	}
 	config, err := parseConfig(content)
 	if err != nil {
@@ -121,10 +121,10 @@ func resolveGit(ctx context.Context, source Source) (Resolution, Config, error) 
 	}
 	defer os.RemoveAll(tmp)
 	if _, err := run(ctx, "git", "clone", "--quiet", "--no-checkout", source.Location, tmp); err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("clone organization Git source: %w", err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: clone organization Git source: %v", ErrSourceUnavailable, err)
 	}
 	if _, err := run(ctx, "git", "-C", tmp, "checkout", "--quiet", "--detach", revision); err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("checkout organization Git revision %s: %w", revision, err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: checkout organization Git revision %s: %v", ErrSourceUnavailable, revision, err)
 	}
 	path, err := locateOrganizationFile(tmp)
 	if err != nil {
@@ -159,7 +159,7 @@ func gitResolveRevision(ctx context.Context, location, requested string) (string
 		out, err = run(ctx, "git", "ls-remote", "--exit-code", strings.TrimSpace(location), "HEAD")
 	}
 	if err != nil {
-		return "", fmt.Errorf("resolve organization Git ref %q: %w", requested, err)
+		return "", fmt.Errorf("%w: resolve organization Git ref %q: %v", ErrSourceUnavailable, requested, err)
 	}
 	fields := strings.Fields(out)
 	if len(fields) < 2 || len(fields[0]) != 40 {
@@ -183,9 +183,9 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	out, err := run(ctx, "oras", "resolve", ref)
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return Resolution{}, Config{}, fmt.Errorf("resolve organization OCI source: oras is required; install ORAS or use Git/local/system distribution")
+			return Resolution{}, Config{}, fmt.Errorf("%w: oras is required to resolve OCI organization sources; install ORAS or use Git/local/system distribution", ErrSourceUnavailable)
 		}
-		return Resolution{}, Config{}, fmt.Errorf("resolve organization OCI source %q: %w", ref, err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err)
 	}
 	digest := firstDigest(out)
 	if digest == "" {
@@ -198,7 +198,7 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	defer os.RemoveAll(tmp)
 	immutableRef := strings.TrimSpace(source.Location) + "@" + digest
 	if _, err := run(ctx, "oras", "pull", immutableRef, "--output", tmp); err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("pull organization OCI source %q: %w", immutableRef, err)
+		return Resolution{}, Config{}, fmt.Errorf("%w: pull organization OCI source %q: %v", ErrSourceUnavailable, immutableRef, err)
 	}
 	path, err := locateOrganizationFile(tmp)
 	if err != nil {
