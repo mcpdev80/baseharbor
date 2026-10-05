@@ -13,7 +13,7 @@ func TestTargetSharedBackendDestroyRequiresReleasedConsumersAndCanonicalOwnershi
 	if err := os.MkdirAll(shared.Dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	state := sharedBackendState{Version: sharedBackendStateVersion, Environment: "dev", PostgresAdminCredential: "credentials/admin", Applications: map[string]sharedBackendAppState{"demo/dev": {Application: "demo", Environment: "dev", SQL: map[string]sharedPostgresResource{"default": {Database: "owned"}}}}}
+	state := sharedBackendState{Version: sharedBackendStateVersion, Environment: "dev", PostgresAdminCredential: "credentials/admin", PostgresMembers: 1, Applications: map[string]sharedBackendAppState{"demo/dev": {Application: "demo", Environment: "dev", SQL: map[string]sharedPostgresResource{"default": {Database: "owned"}}}}}
 	if err := writeSharedBackendState(shared.State, state); err != nil {
 		t.Fatal(err)
 	}

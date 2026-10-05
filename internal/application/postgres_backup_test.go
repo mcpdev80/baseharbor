@@ -181,7 +181,7 @@ func TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources(t *te
 		t.Fatal(err)
 	}
 	state := sharedBackendState{
-		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef,
+		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef, PostgresMembers: 1,
 		Applications: map[string]sharedBackendAppState{
 			sharedBackendApplicationKey(m): {
 				Application: m.Name, Environment: m.Environment,
@@ -267,7 +267,7 @@ func TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources(t *testing.T
 		t.Fatal(err)
 	}
 	state := sharedBackendState{
-		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef,
+		Version: sharedBackendStateVersion, Environment: m.Environment, PostgresAdminCredential: adminRef, PostgresMembers: 1,
 		Applications: map[string]sharedBackendAppState{
 			sharedBackendApplicationKey(m): {
 				Application: m.Name, Environment: m.Environment,

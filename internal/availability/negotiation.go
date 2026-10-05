@@ -84,6 +84,8 @@ func Negotiate(requirement Requirement, provider string, support Support) (Negot
 	}
 	if !requirement.HA {
 		result.Satisfied = true
+		result.EffectiveInstances = 1
+		result.Guarantees = Guarantees{FailureDomain: support.Guarantees.FailureDomain}
 		if requirement.Instances > 0 {
 			result.EffectiveInstances = requirement.Instances
 		}

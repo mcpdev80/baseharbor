@@ -243,9 +243,11 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("volumes:\n")
 	if hasPostgres {
-		for ordinal := 1; ordinal <= 3; ordinal++ {
+		for ordinal := 1; ordinal <= sharedPostgresMemberCount(state); ordinal++ {
 			fmt.Fprintf(&b, "  shared-postgres-data-%d:\n    name: %s-%s-postgres-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
-			fmt.Fprintf(&b, "  shared-postgres-etcd-data-%d:\n    name: %s-%s-postgres-etcd-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+			if sharedPostgresMemberCount(state) > 1 {
+				fmt.Fprintf(&b, "  shared-postgres-etcd-data-%d:\n    name: %s-%s-postgres-etcd-data-%d\n", ordinal, files.ResourceProject, sharedBackendToken(state.Environment), ordinal)
+			}
 		}
 	}
 	for _, key := range appKeys {
@@ -355,20 +357,28 @@ func writeSharedCacheUICompose(b *strings.Builder) {
 }
 
 func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
-	service := sharedPostgresService(state.Environment)
+	if sharedPostgresMemberCount(state) > 1 {
+		writeSharedPostgresClusterCompose(b, state)
+		writeSharedPostgresAccessCompose(b, state)
+	} else {
+		writeSharedPostgresSingleCompose(b, state)
+	}
+}
+
+func writeSharedPostgresClusterCompose(b *strings.Builder, state sharedBackendState) {
 	cluster := "baseharbor-" + sharedBackendToken(state.Environment) + "-postgres"
 	etcdCluster := make([]string, 0, 3)
-	for ordinal := 1; ordinal <= 3; ordinal++ {
+	for ordinal := 1; ordinal <= sharedPostgresMemberCount(state); ordinal++ {
 		name := sharedPostgresEtcdService(state.Environment, ordinal)
 		etcdCluster = append(etcdCluster, fmt.Sprintf("%s=http://%s:2380", name, name))
 	}
 	etcdInitialCluster := strings.Join(etcdCluster, ",")
 	etcdHosts := make([]string, 0, 3)
-	for ordinal := 1; ordinal <= 3; ordinal++ {
+	for ordinal := 1; ordinal <= sharedPostgresMemberCount(state); ordinal++ {
 		etcdHosts = append(etcdHosts, sharedPostgresEtcdService(state.Environment, ordinal)+":2379")
 	}
 
-	for ordinal := 1; ordinal <= 3; ordinal++ {
+	for ordinal := 1; ordinal <= sharedPostgresMemberCount(state); ordinal++ {
 		name := sharedPostgresEtcdService(state.Environment, ordinal)
 		fmt.Fprintf(b, "  %s:\n", name)
 		b.WriteString("    image: gcr.io/etcd-development/etcd:v3.7.2\n")
@@ -391,7 +401,7 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("    networks:\n      shared-backend: {}\n\n")
 	}
 
-	for ordinal := 1; ordinal <= 3; ordinal++ {
+	for ordinal := 1; ordinal <= sharedPostgresMemberCount(state); ordinal++ {
 		name := sharedPostgresMemberService(state.Environment, ordinal)
 		fmt.Fprintf(b, "  %s:\n", name)
 		b.WriteString("    image: ghcr.io/zalando/spilo-18:4.1-p2\n")
@@ -440,6 +450,10 @@ func writeSharedPostgresCompose(b *strings.Builder, state sharedBackendState) {
 		b.WriteString("      interval: 5s\n      timeout: 5s\n      retries: 24\n      start_period: 10s\n\n")
 	}
 
+}
+
+func writeSharedPostgresAccessCompose(b *strings.Builder, state sharedBackendState) {
+	service := sharedPostgresService(state.Environment)
 	fmt.Fprintf(b, "  %s:\n", sharedPostgresAlias())
 	fmt.Fprintf(b, "    image: %s\n", serviceaccess.TCPGatewayImage)
 	b.WriteString("    restart: unless-stopped\n")

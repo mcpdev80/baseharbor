@@ -460,6 +460,9 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			if err := preflightRepositoryWorkload(resolved); err != nil {
 				return fmt.Errorf("application workload preflight failed before control-plane start: %w", err)
 			}
+			if err := application.CheckSharedPostgresTopologyAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); err != nil {
+				return fmt.Errorf("shared backend topology preflight failed before control-plane start: %w", err)
+			}
 		}
 	}
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {

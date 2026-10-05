@@ -222,12 +222,14 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 		}
 		for _, resource := range resources {
 			detail := fmt.Sprintf(
-				"scope=%s owner=%s database=%s role=%s credential_scope=%s",
+				"scope=%s owner=%s database=%s role=%s credential_scope=%s topology_ha=%t members=%d",
 				resource.ProviderScope,
 				resource.Owner,
 				resource.Database,
 				resource.Role,
 				resource.CredentialScope,
+				resource.HA,
+				resource.Members,
 			)
 			c.result.AddCheck("postgres/"+resource.Instance, true, detail)
 		}

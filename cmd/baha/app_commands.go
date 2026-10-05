@@ -244,6 +244,7 @@ func collectApplicationPreflight(ctx context.Context, resolved resolvedApplicati
 			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 		}},
 		applicationWorkloadContractCheck(resolved),
+		applicationSharedBackendTopologyCheck(resolved),
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
 			compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
