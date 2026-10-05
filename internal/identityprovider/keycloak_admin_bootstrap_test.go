@@ -35,7 +35,7 @@ func TestKeycloakAdminWriteRetriesExplicitBootstrap(t *testing.T) {
 }
 
 func TestKeycloakAdminWriteDoesNotRetryOtherResponses(t *testing.T) {
-	for _, status := range []int{http.StatusServiceUnavailable, http.StatusForbidden, http.StatusBadRequest} {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusForbidden, http.StatusBadRequest} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			attempts := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -54,6 +54,65 @@ func TestKeycloakAdminWriteDoesNotRetryOtherResponses(t *testing.T) {
 }
 
 type ambiguousAdminWriteTransport struct{ attempts int }
+
+func TestKeycloakAdminReadRecoversTransientServerFailure(t *testing.T) {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			attempts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				if r.Method != http.MethodGet || r.URL.Path != "/admin/realms/demo" || r.Header.Get("Authorization") != "Bearer token" {
+					t.Errorf("read lost method, path or authorization: %s %s", r.Method, r.URL.Path)
+				}
+				if attempts == 1 {
+					w.WriteHeader(status)
+					return
+				}
+				_, _ = io.WriteString(w, `{"enabled":true}`)
+			}))
+			defer server.Close()
+			admin := keycloakAdmin{endpoint: server.URL, client: server.Client(), token: "token"}
+			got, body, err := admin.do(context.Background(), http.MethodGet, "/admin/realms/demo", nil)
+			if err != nil || got != http.StatusOK || body != `{"enabled":true}` || attempts != 2 {
+				t.Fatalf("read did not recover: status %d, body %s, attempts %d, error %v", got, body, attempts, err)
+			}
+		})
+	}
+}
+
+func TestKeycloakAdminReadDoesNotRetryRejectedAccess(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			attempts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempts++
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+			admin := keycloakAdmin{endpoint: server.URL, client: server.Client()}
+			got, _, err := admin.do(context.Background(), http.MethodGet, "/admin/realms/demo", nil)
+			if err != nil || got != status || attempts != 1 {
+				t.Fatalf("rejected access retried: status %d, attempts %d, error %v", got, attempts, err)
+			}
+		})
+	}
+}
+
+func TestKeycloakAdminReadPersistentServerFailureHonorsDeadline(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	admin := keycloakAdmin{endpoint: server.URL, client: server.Client()}
+	_, _, err := admin.do(ctx, http.MethodGet, "/admin/realms/demo", nil)
+	if !errors.Is(err, context.DeadlineExceeded) || attempts != 1 {
+		t.Fatalf("persistent read failure ignored deadline: attempts %d, error %v", attempts, err)
+	}
+}
 
 func (r *ambiguousAdminWriteTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
 	r.attempts++

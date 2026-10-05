@@ -746,7 +746,13 @@ func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any
 		status, body, err := attempt()
 		// Bootstrap 503s reject the operation before it runs. Only that explicit
 		// response may retry writes; transport failures may have applied them.
-		retry := method == http.MethodGet && (err != nil || status == http.StatusServiceUnavailable)
+		// Read-only verification can encounter stale database connections while
+		// the provider resumes, just like admin token acquisition.
+		retry := method == http.MethodGet && (err != nil ||
+			status == http.StatusInternalServerError ||
+			status == http.StatusBadGateway ||
+			status == http.StatusServiceUnavailable ||
+			status == http.StatusGatewayTimeout)
 		if method != http.MethodGet {
 			retry = err == nil && status == http.StatusServiceUnavailable && strings.HasPrefix(body, "Bootstrap in progress.")
 		}
