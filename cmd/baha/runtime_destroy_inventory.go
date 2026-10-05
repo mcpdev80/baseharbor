@@ -18,6 +18,12 @@ type targetDestroyInventory struct {
 	Target   deployment.ResolvedTarget
 	Runtime  bhruntime.RuntimeProvider
 	Projects map[string][]bhruntime.ProjectResource
+	Volumes  map[string][]bhruntime.ContainerVolume
+}
+
+type destroyVolumeInventory interface {
+	InventoryOwnedContainerVolumes(context.Context, string) ([]bhruntime.ContainerVolume, error)
+	ContainerVolumeExists(context.Context, string) (bool, error)
 }
 
 // Inventory uses the same provider ownership checks as execution. Names alone
@@ -35,7 +41,7 @@ func collectTargetDestroyInventory(ctx context.Context, target deployment.Resolv
 }
 
 func collectTargetDestroyInventoryWithRuntime(ctx context.Context, target deployment.ResolvedTarget, provider bhruntime.RuntimeProvider, sharedOnly bool) (targetDestroyInventory, error) {
-	plan := targetDestroyInventory{Target: target, Runtime: provider, Projects: map[string][]bhruntime.ProjectResource{}}
+	plan := targetDestroyInventory{Target: target, Runtime: provider, Projects: map[string][]bhruntime.ProjectResource{}, Volumes: map[string][]bhruntime.ContainerVolume{}}
 	projects := map[string]bool{bhruntime.SharedProjectName(target.Name): true}
 	if !sharedOnly {
 		containers, err := provider.ListRuntimeContainers(ctx)
@@ -58,6 +64,23 @@ func collectTargetDestroyInventoryWithRuntime(ctx context.Context, target deploy
 			return resources[i].Name < resources[j].Name
 		})
 		plan.Projects[project] = resources
+		if inventory, ok := provider.(destroyVolumeInventory); ok {
+			volumes, err := inventory.InventoryOwnedContainerVolumes(ctx, project)
+			if err != nil {
+				return plan, fmt.Errorf("inventory mounted volumes for %s: %w", project, err)
+			}
+			ownedNamed := map[string]bool{}
+			for _, resource := range resources {
+				if resource.Kind == "volume" {
+					ownedNamed[resource.Name] = true
+				}
+			}
+			for _, volume := range volumes {
+				if !ownedNamed[volume.Name] {
+					plan.Volumes[project] = append(plan.Volumes[project], volume)
+				}
+			}
+		}
 	}
 	return plan, nil
 }
@@ -76,8 +99,14 @@ func (plan targetDestroyInventory) render(out io.Writer) {
 		for _, resource := range plan.Projects[project] {
 			fmt.Fprintf(out, "  owned resource: target=%s project=%s %s %s\n", plan.Target.Name, project, resource.Kind, resource.Name)
 		}
+		for _, volume := range plan.Volumes[project] {
+			action := "PRESERVED"
+			if volume.Removable {
+				action = "REMOVE"
+			}
+			fmt.Fprintf(out, "  mounted volume: target=%s project=%s %s %s (%s)\n", plan.Target.Name, project, action, volume.Name, volume.Reason)
+		}
 	}
-	fmt.Fprintln(out, "  owned container anonymous volumes: remove with owned containers when unshared; named/external repository data is preserved")
 }
 
 func (plan targetDestroyInventory) cleanup(ctx context.Context, results *[]fullDestroyResult) {
@@ -100,6 +129,20 @@ func (plan targetDestroyInventory) cleanup(ctx context.Context, results *[]fullD
 		set := map[bhruntime.ProjectResource]bool{}
 		for _, resource := range remaining {
 			set[resource] = true
+		}
+		if inventory, ok := plan.Runtime.(destroyVolumeInventory); ok {
+			for _, volume := range plan.Volumes[project] {
+				status, detail := "PRESERVED", volume.Reason
+				if volume.Removable {
+					exists, err := inventory.ContainerVolumeExists(ctx, volume.Name)
+					status = "REMOVED"
+					if err != nil || exists {
+						status = "FAILED"
+						detail = "owned anonymous volume removal could not be verified; target state preserved"
+					}
+				}
+				*results = append(*results, fullDestroyResult{Status: status, Target: plan.Target.Name, Resource: "mounted volume " + volume.Name, Detail: detail})
+			}
 		}
 		for _, resource := range resources {
 			status := "REMOVED"

@@ -38,6 +38,13 @@ func recordDestroyPlan(ctx context.Context, plans []targetDestroyInventory, pres
 			for _, resource := range plan.Projects[project] {
 				report.Resources = append(report.Resources, ownedDestroyResource{Target: plan.Target.Name, Project: project, Kind: resource.Kind, Name: resource.Name})
 			}
+			for _, volume := range plan.Volumes[project] {
+				if volume.Removable {
+					report.Resources = append(report.Resources, ownedDestroyResource{Target: plan.Target.Name, Project: project, Kind: "anonymous-volume", Name: volume.Name})
+				} else {
+					report.Preserved = append(report.Preserved, fullDestroyResult{Status: "PRESERVED", Target: plan.Target.Name, Resource: "mounted volume " + volume.Name, Detail: volume.Reason})
+				}
+			}
 		}
 	}
 	report.Preserved = append(report.Preserved, preserved...)
