@@ -4,6 +4,30 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.22] - Unreleased
+
+### Added
+
+- Complete generated CLI/JSON/Core/MCP coverage inventory with typed supported product operations and explicit host/presentation exclusions.
+- Shared semantic operations for repository/workspace adoption, targets, stacks, secrets/TLS, trust, identity, connectivity and control-plane lifecycle; MCP discovery is checked against the registry and documentation.
+- Versioned extension artifact descriptors and separate verification/trust-policy results across six extension families, with digest-bound JWS/in-toto/SBOM/provenance verification through operator-configured keys.
+- Public `conformance/provider/v1` package and discovery profile extending the existing provider harness with drift, faults, recovery, ownership and idempotent destroy checks; an independent external module proves execution without internal imports.
+
+### Changed
+
+- CLI, JSON and MCP use the existing transport-neutral operator authorization boundary and stable application identity; destructive tools require explicit approval.
+- Structured secret/environment/connection results mask unknown secret fields and omit private material; protected file input is authorized before reading.
+- Public automation documentation includes concrete CLI and generic MCP client examples.
+
+### Fixed
+
+- Quick repository adoption writes detected HTTP/HTTPS exposures using the same validation as guided adoption and rejects ambiguous ports before writing.
+- Standalone application preflight includes the shared repository workload contract gate; repository up validates that contract before control-plane startup.
+- Deployment configuration is distinct from applying state, rejected applies record failure, and target teardown reconciles inactive observations without deleting application source, inputs or data.
+- Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
+- Application help registers `new` once.
+- Control-plane memory planning includes every service in the shipped HA startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
+
 ## [0.4.21] - 2026-10-03
 
 ### Added

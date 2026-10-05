@@ -1,6 +1,11 @@
 package hostresource
 
-import "github.com/mcpdev80/baseharbor/internal/application"
+import (
+	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"strings"
+)
 
 const (
 	MiB uint64 = 1 << 20
@@ -26,12 +31,37 @@ func heuristic(name string, estimatedMiB uint64) ComponentEstimate {
 	}
 }
 
-func EstimateControlPlane() MemoryEstimate {
-	return Sum([]ComponentEstimate{
-		baseline("control-plane PostgreSQL", 192),
-		baseline("OpenBao", 192),
-		baseline("runtime control", 64),
-	})
+// EstimateControlPlane accounts for every service in the shipped HA topology.
+// These per-role planning budgets are estimates, not measured RSS baselines.
+func EstimateControlPlane() (MemoryEstimate, error) {
+	names, err := bhruntime.ControlPlaneStartupServices()
+	if err != nil {
+		return MemoryEstimate{}, err
+	}
+	var components []ComponentEstimate
+	for _, name := range names {
+		var mib uint64
+		switch {
+		case strings.HasPrefix(name, "postgres-member-"):
+			mib = 512
+		case strings.HasPrefix(name, "postgres-etcd-"):
+			mib = 192
+		case strings.HasPrefix(name, "openbao-member-"):
+			mib = 384
+		case name == "postgres" || name == "openbao":
+			mib = 64
+		case name == "postgres-admin" || name == "openbao-admin":
+			mib = 64
+		case name == "postgres-init":
+			mib = 128
+		default:
+			return MemoryEstimate{}, fmt.Errorf("control-plane service %s has no resource planning budget", name)
+		}
+		component := heuristic(name, mib)
+		component.Source = "topology-aware startup budget; not measured; includes bootstrap/admin services"
+		components = append(components, component)
+	}
+	return Sum(components), nil
 }
 
 func EstimateApplication(m application.Manifest) MemoryEstimate {

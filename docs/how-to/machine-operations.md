@@ -33,6 +33,23 @@ Use a fresh stable application UUID for each new application. The typed intent s
 
 For a repository, use deterministic `baha app init orders --sql --json`, or `baseharbor.app.adopt` with `repository` and complete `intent`. Existing repository deployment inputs use `baseharbor.app.configure` with explicit `hostname`, `tls_mode` and, for existing TLS, `certificate_directory`; ambiguous or missing inputs produce errors rather than prompts.
 
+## Adopt and validate detected HTTPS exposure
+
+For the reference demo:
+
+```bash
+git clone https://github.com/mcpdev80/baseharbor-demo.git
+cd baseharbor-demo
+git checkout 37c3b91287978351d0c23643ce9782c9de224a10
+baha app inspect .
+baha --no-input app init --quick --json
+baha app preflight --json
+```
+
+Quick init includes the detected `demo-app` HTTPS exposure on container port 8080. If a labeled workload has multiple target ports, adoption stops before writing; select an explicit exposure contract. Preflight also checks runtime availability and workload security, so it requires a usable selected runtime for a full pass.
+
+Running quick init again reports the existing manifest without changing its stable identity or accepting newly detected capabilities. Review repository evolution and edit the existing `exposures` entries explicitly; `baha app init` configures deployment inputs after the contract exists.
+
 ## Map a multi-repository workspace
 
 Inside the repository with `baseharbor.yaml` and an `api` component:

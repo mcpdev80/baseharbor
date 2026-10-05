@@ -77,7 +77,7 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 		if !hasExposure {
 			return usageError(
 				fmt.Sprintf("repository workload service %s requires HTTPS but the application contract does not declare exposure.http for that service", service),
-				"Add an exposure.http contract for the workload service, or rerun guided/quick app init and explicitly review the detected contract addition before retrying.",
+				"Add an exposure.http entry to baseharbor.yaml for the named workload service, its container target port and protocol https; inspect the repository and review that contract before retrying.",
 			)
 		}
 	}
@@ -143,6 +143,9 @@ func preflightRepositoryWorkloadSecurity(ctx context.Context, compose bhruntime.
 	selected, composePath, err := application.SelectedWorkloadServicesFromCompose(repositoryRoot, composeSource, resolved.Manifest)
 	if err != nil {
 		return application.WorkloadSecurityReport{}, err
+	}
+	if compose == nil {
+		return application.WorkloadSecurityReport{}, machine.NewError(machine.ErrorRuntimeUnavailable, "Runtime provider unavailable for workload security preflight.", "Resolve runtime orchestration before retrying.", false)
 	}
 	environment := workloadSecurityPreflightEnvironment(resolved.Manifest)
 	rendered, err := compose.ConfigJSONProjectFilesEnv(ctx, application.WorkloadProjectName(resolved.Manifest), repositoryRoot, environment, composePath)

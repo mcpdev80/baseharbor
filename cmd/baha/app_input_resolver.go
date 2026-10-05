@@ -23,7 +23,7 @@ const (
 
 func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base := appInitOrConfigureCommand(store)
-	base.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
+	base.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
 	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -56,6 +56,43 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		manifestPath, hasLocalManifest, err := currentRepositoryManifest(cwd)
 		if err != nil {
 			return err
+		}
+		for _, arg := range forwarded {
+			if arg != "--quick" {
+				continue
+			}
+			if len(forwarded) != 1 || agents || len(injected) > 0 {
+				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
+			}
+			if hasLocalManifest {
+				m, err := application.LoadManifestFile(manifestPath)
+				if err != nil {
+					return err
+				}
+				if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(destination, map[string]any{"application": m.Name, "application_id": m.ApplicationID, "environment": m.Environment, "manifest": manifestPath, "created": false})
+				}
+				fmt.Fprintln(out, "baseharbor.yaml already exists; no changes were made. Inspect the repository and review changes in the existing contract; use 'baha app init' to configure deployment inputs.")
+				return nil
+			}
+			if format == outputJSON {
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				m, err := manifestFromDetectedProject(detected, true)
+				if err != nil {
+					return err
+				}
+				result, err := persistRepositoryApplication(ctx, cwd, m, nil)
+				if err != nil {
+					return err
+				}
+				return writeJSON(destination, result)
+			}
 		}
 		if !hasLocalManifest {
 			if len(injected) != 0 {
@@ -405,6 +442,26 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// Validate repository contracts before starting any control-plane resources.
+	if !opts.ControlPlaneOnly {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		found, err := application.HasRepositoryApplication(cwd)
+		if err != nil {
+			return err
+		}
+		if found {
+			resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+			if err != nil {
+				return err
+			}
+			if err := preflightRepositoryWorkload(resolved); err != nil {
+				return fmt.Errorf("application workload preflight failed before control-plane start: %w", err)
+			}
+		}
+	}
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}

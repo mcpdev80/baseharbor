@@ -195,7 +195,11 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 	if err != nil {
 		return err
 	}
-	if err := runHostMemoryPreflight(parent, in, out, bhruntime.ProviderKind(target.RuntimeProvider), hostresource.EstimateControlPlane(), true); err != nil {
+	estimate, err := hostresource.EstimateControlPlane()
+	if err != nil {
+		return err
+	}
+	if err := runHostMemoryPreflight(parent, in, out, bhruntime.ProviderKind(target.RuntimeProvider), estimate, true); err != nil {
 		return err
 	}
 

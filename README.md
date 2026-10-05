@@ -144,6 +144,14 @@ integration surface — it does not change how BaseHarbor detects, plans or
 verifies infrastructure. Without an agent, none of this matters: it is just
 a CLI doing work for you.
 
+The [coverage matrix](docs/reference/cli-machine-coverage.md) lists every supported
+command, its JSON/MCP equivalent and explicit host or presentation modes.
+[Automation examples](docs/how-to/machine-operations.md) cover protected secret
+files, workspaces, trust and control-plane operations. Extension publishers can
+run the [public conformance profile](docs/spec/provider-conformance-v1.md);
+[artifact verification and trust policy](docs/spec/extension-artifact-trust-v1.md)
+remain separate checks.
+
 ## Application contract
 
 The application describes **what it needs**, not how infrastructure must be

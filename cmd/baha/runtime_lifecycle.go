@@ -53,6 +53,10 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	if err := application.CheckControlPlaneDestroySafeAt(dataDir); err != nil {
 		return fmt.Errorf("target destroy preflight: %w", err)
 	}
+	inactive, err := inactiveTargetDeployments(parent, target.Name)
+	if err != nil {
+		return fmt.Errorf("inspect retained deployment observations: %w", err)
+	}
 	runtimeDir, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		return err
@@ -75,6 +79,7 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	} else if len(records) > 0 {
 		fmt.Fprintf(out, "  host trust:    %d BaseHarbor-owned CA anchor(s)\n", len(records))
 	}
+	fmt.Fprintln(out, "  application registrations/inputs: preserved; inactive observations reconciled")
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
 	if !confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the selected BaseHarbor target control plane.")
@@ -135,6 +140,15 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	}
 	if err := os.RemoveAll(filepath.Join(dataDir, "connectivity")); err != nil {
 		return fmt.Errorf("remove BaseHarbor connectivity runtime state: %w", err)
+	}
+	if len(inactive) > 0 {
+		containers, err := compose.ListRuntimeContainers(ctx)
+		if err != nil {
+			return fmt.Errorf("verify application runtime absence after target teardown: %w", err)
+		}
+		if err := markInactiveTargetDeployments(inactive, containers); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintln(out, "BaseHarbor target control plane was permanently destroyed.")
 	return nil

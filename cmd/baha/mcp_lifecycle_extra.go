@@ -35,7 +35,10 @@ func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.S
 		}
 		result, err := collectApplicationPreflight(ctx, resolved, io.Discard, io.Discard)
 		if err != nil {
-			return machineMCPFailure(err)
+			if len(result.Checks) == 0 {
+				return machineMCPFailure(err)
+			}
+			return &mcp.CallToolResult{IsError: true}, result, nil
 		}
 		return nil, result, nil
 	})

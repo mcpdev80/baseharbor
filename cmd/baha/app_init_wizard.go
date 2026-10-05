@@ -25,6 +25,7 @@ type appProjectDetection struct {
 	ComposeCandidates        []string
 	Compose                  string
 	WorkloadServices         []string
+	WorkloadProtocols        map[string]string
 	InfrastructureServices   []string
 	AmbiguousServices        []string
 	SQL                      bool
@@ -239,6 +240,11 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	}
 	if len(d.WorkloadServices) > 0 {
 		m = application.WithWorkloadComponents(m, d.WorkloadServices...)
+		var err error
+		m, err = addGuidedDetectedExposures(m, guidedInitSelection{workloadServices: d.WorkloadServices, workloadProtocols: d.WorkloadProtocols, workloadPorts: d.Ports})
+		if err != nil {
+			return application.Manifest{}, err
+		}
 	}
 	if quick && d.Metrics {
 		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)

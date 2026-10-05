@@ -81,7 +81,7 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 		}},
-		{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
+		applicationWorkloadContractCheck(resolved),
 		{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
 		{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {

@@ -63,6 +63,9 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 	if !found {
 		t.Fatal("deployment record was not created before deployment-local state")
 	}
+	if record.Observed.State != "configured" || record.Observed.Ready || !record.Observed.VerifiedAt.IsZero() {
+		t.Fatalf("configuration falsely claims apply/verification: %#v", record.Observed)
+	}
 	if record.Identity.Application != m.Name || record.Identity.Environment != m.Environment {
 		t.Fatalf("deployment identity = %#v", record.Identity)
 	}

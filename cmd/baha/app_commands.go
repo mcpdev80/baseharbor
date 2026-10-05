@@ -221,6 +221,7 @@ type applicationPreflightResult struct {
 	Environment string             `json:"environment"`
 	Passed      bool               `json:"passed"`
 	Checks      []preflight.Result `json:"checks"`
+	Error       *machine.Error     `json:"error,omitempty"`
 }
 
 func collectApplicationPreflight(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (applicationPreflightResult, error) {
@@ -242,6 +243,7 @@ func collectApplicationPreflight(ctx context.Context, resolved resolvedApplicati
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
 		}},
+		applicationWorkloadContractCheck(resolved),
 		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
 			compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
@@ -307,8 +309,16 @@ func collectApplicationPreflight(ctx context.Context, resolved resolvedApplicati
 			fmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
 		}
 	}
+	// Human diagnostics have already been rendered. Structured consumers receive
+	// bounded findings rather than raw runtime/provider error strings.
+	for i := range result.Checks {
+		if !result.Checks[i].OK && result.Checks[i].Name != "application workload" {
+			result.Checks[i].Detail = "Check failed; review local preflight diagnostics."
+		}
+	}
 	if !ok {
-		return result, machine.Wrap(machine.ErrorVerificationFailed, errors.New("application preflight failed"), "Resolve failed preflight checks before applying this application.", false)
+		result.Error = machine.NewError(machine.ErrorVerificationFailed, "application preflight failed", "Resolve failed preflight checks before applying this application.", false)
+		return result, result.Error
 	}
 	fmt.Fprintln(out, "Preflight passed. No changes were made.")
 	return result, nil
