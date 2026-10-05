@@ -440,7 +440,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	for ordinal := 1; ordinal <= 3; ordinal++ {
 		service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
 		if _, err := executor.ExecProject(ctx, files.Project, files.Compose, files.Env, service,
-			"su", "postgres", "-c", "pg_ctl reload"); err != nil {
+			"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'"); err != nil {
 			return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, err)
 		}
 	}

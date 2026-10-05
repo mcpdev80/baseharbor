@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -206,6 +207,8 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 		NetworkAliases:     []string{providerAlias, providerAdminAlias, "keycloak"},
 		CertificateNames:   []string{keycloakPublicHost, providerAlias, providerAdminAlias, "keycloak"},
 		RequireClient:      false,
+		HealthURI:          "/realms/master/.well-known/openid-configuration",
+		HealthStatus:       http.StatusOK,
 	}
 	frontendPolicy := publicPolicy
 	frontendPolicy.AuthenticationRequired = false
