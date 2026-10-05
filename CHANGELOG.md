@@ -32,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
 - Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
 - Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
-- Full Docker and Podman journeys start after candidate construction alongside atomic gates; release approval requires both exact candidate/demo/run identities, latest-attempt selection and successful cleanup. Journey summaries show group outcomes and duration.
+- Full Docker and Podman journeys start after candidate construction alongside one light-gate lane per runtime; subsequent heavy/HA matrices use at most two lanes per runtime. Release approval binds all 55 proofs to candidate, demo pin, run and artifact attempt, requires successful cleanup, retains superseded reports and records bounded original assertions, job/queue timing and recurring failures.
 
 ## [0.4.21] - 2026-10-03
 

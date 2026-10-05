@@ -118,7 +118,13 @@ Pre-release must pin and record both:
 - the exact BaseHarbor candidate SHA;
 - the exact `baseharbor-demo` SHA used as the external consumer contract.
 
-Pre-release is atomic-first. Static contract/DX gates run without provider containers. Docker and Podman gates run independently with the smallest declared resource profile for the behavior under test, including dedicated provider-semantic gates for durable key-value, MongoDB document storage and RabbitMQ queue/pubsub/stream semantics. A failed gate is debugged and repeated independently; successful unrelated gates are not rerun during diagnosis.
+Both complete journeys start immediately after source validation and candidate construction, alongside one light-gate lane per runtime. Heavy gates and HA groups subsequently use two lanes per runtime. The workflow stays within two Docker and two Podman runtime jobs; static/adoption checks do not consume provider lanes. A failed earlier phase does not suppress later independent gates.
+
+Static contract/DX gates run without provider containers. Docker and Podman gates run independently with the smallest declared resource profile for the behavior under test, including dedicated provider-semantic gates for durable key-value, MongoDB document storage and RabbitMQ queue/pubsub/stream semantics. A failed gate is debugged and repeated independently; successful unrelated gates are not rerun during diagnosis.
+
+Use GitHub Actions **Re-run failed jobs** for the same unchanged candidate. An evidence-only rerun may use successful gate artifacts from earlier attempts. The selector always uses the newest attempt of each logical gate, including journeys; a new failure cannot be hidden by an older success. Selected manifests must match the candidate, demo pin, workflow run, runtime/gate identity, artifact attempt and successful cleanup. Superseded artifacts remain available separately. Any source fix creates a new candidate and requires its own complete evidence.
+
+Failure summaries retain bounded, redacted original assertions before outer cleanup. Final evidence records per-job duration, retries, repeated failure classes and the longest jobs. Queue time is reported only when Actions supplies an actual job creation timestamp; it is otherwise unknown.
 
 The release-boundary approval is valid only when the complete expected atomic gate set is reproduced on one unchanged BaseHarbor candidate SHA and one pinned external demo SHA, every required gate reports success, and the immutable evidence manifest is complete. The final release workflow consumes that approval and must not rerun the same expensive acceptance work.
 
