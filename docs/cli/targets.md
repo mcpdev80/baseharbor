@@ -74,3 +74,16 @@ access.provider = native-api
 
 The legacy `--provider` flag remains an alias for `--runtime-provider`.
 Non-local access must declare `--access-provider` explicitly.
+
+## Example: inspect deployment context before applying
+
+After creating `docker-dev` as above, with a working Docker runtime:
+
+```bash
+baha target list
+baha target show docker-dev -o json
+baha --target docker-dev plan -e dev
+baha --target docker-dev up -e dev
+```
+
+Run the last two commands inside an application repository. Confirm `runtime_provider`, access settings and the plan's environment before applying. An explicit `--target` applies to that invocation without relying on the shell's active Target. Target registration alone does not install Docker or validate every provider capability.

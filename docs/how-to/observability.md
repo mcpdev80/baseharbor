@@ -1,15 +1,32 @@
-# Use observability
+# Trace requests in a Go API
 
-BaseHarbor treats metrics, logs and traces as capabilities and platform concerns rather than hard-coding one product into the application contract.
+Use OpenTelemetry for application traces, standard application logs for logging, and OpenMetrics where metrics are exposed. Provider placement remains deployment configuration.
 
-Current reference implementations may use products such as Prometheus, Loki, Alloy or Tempo, but applications should emit standard signals.
+## Create a traced API scaffold
 
-Use standard interfaces where applicable:
+From a parent directory, with `baha` installed:
 
-- OpenMetrics;
-- OpenTelemetry / OTLP;
-- normal application logs.
+```bash
+baha app new observed-api --stack go --http --telemetry
+cd observed-api
+baha plan
+baha up -e dev
+baha doctor
+```
 
-Run `baha doctor` to verify that configured observability capabilities are actually usable.
+`up` requires a configured runtime Target. The scaffold adds the OpenTelemetry SDK and OTLP HTTP trace exporter. It prepares `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, protocol, resource attributes and certificate bindings in `.env.example`.
 
-Visualization tooling such as Grafana is optional ecosystem tooling and is not part of the portable application contract.
+## Trace a business operation
+
+After the generated telemetry setup, add a span around an order calculation:
+
+```go
+tracer := otel.Tracer("orders")
+ctx, span := tracer.Start(request.Context(), "calculate-order-total")
+defer span.End()
+// Pass ctx to database and outbound HTTP operations.
+```
+
+Here `request` is the HTTP handler's request. A configured exporter does not automatically instrument every operation: add spans or instrumentation libraries to your application.
+
+Check the effective bindings with `baha app env --format json` and inspect workload logs with `baha app logs app`. `baha doctor` verifies configured capabilities; seeing your business span in a collector or trace UI requires sending an actual request through the instrumented code. Grafana or another visualization tool is optional ecosystem tooling.
