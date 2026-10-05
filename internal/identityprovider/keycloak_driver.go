@@ -355,7 +355,10 @@ func (d *KeycloakDriver) adminClient(ctx context.Context) (*keycloakAdmin, error
 		last = err
 		var loginErr *keycloakAdminLoginError
 		retryable := errors.As(err, &loginErr) &&
-			(loginErr.Status == http.StatusServiceUnavailable ||
+			(loginErr.Status == http.StatusInternalServerError ||
+				loginErr.Status == http.StatusBadGateway ||
+				loginErr.Status == http.StatusServiceUnavailable ||
+				loginErr.Status == http.StatusGatewayTimeout ||
 				(loginErr.Status == http.StatusBadRequest && strings.Contains(loginErr.Body, "invalid_grant")))
 		if !retryable {
 			return nil, err

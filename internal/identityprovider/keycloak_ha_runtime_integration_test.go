@@ -77,7 +77,7 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	defer func() {
 		if t.Failed() {
 			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 20*time.Second)
-			if logs, logErr := runtimeProvider.LogsProject(diagnosticCtx, files.Project, files.Compose, files.Env); logErr == nil {
+			if logs, logErr := runtimeProvider.LogsProject(diagnosticCtx, files.Project, files.Compose, files.Env, "keycloak-1", "keycloak-2", "keycloak-3", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"); logErr == nil {
 				t.Logf("Keycloak HA project logs:\n%s", logs)
 			} else {
 				t.Logf("Keycloak HA project log capture failed: %v", logErr)

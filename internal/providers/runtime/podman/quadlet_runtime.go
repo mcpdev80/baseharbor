@@ -330,16 +330,12 @@ func quadletBuildProject(ctx context.Context, project QuadletProject, selected [
 	if len(units) == 0 {
 		return nil
 	}
-	_, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...)
+	_, err := quadletSystemctlBlocking(ctx, nil, append([]string{"restart"}, units...)...)
 	return err
 }
 
 func quadletStartProject(ctx context.Context, project QuadletProject, selected []string) error {
 	return quadletStartProjectMode(ctx, project, selected, true)
-}
-
-func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, selected []string) error {
-	return quadletStartProjectMode(ctx, project, selected, false)
 }
 
 func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {

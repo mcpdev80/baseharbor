@@ -6,6 +6,11 @@ import (
 )
 
 func quadletForceRestartProjectNoBuild(ctx context.Context, project QuadletProject, selected []string) error {
+	var err error
+	project, err = quadletProjectWithBuiltImages(project)
+	if err != nil {
+		return err
+	}
 	if err := quadletInstallProject(ctx, project); err != nil {
 		return err
 	}
