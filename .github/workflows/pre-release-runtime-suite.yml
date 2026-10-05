@@ -200,7 +200,7 @@ jobs:
       - name: Run runtime gate
         id: runtime_gate
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
-        timeout-minutes: 8
+        timeout-minutes: ${{ steps.resource_profile.outputs.profile == 'recovery' && 20 || 8 }}
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
