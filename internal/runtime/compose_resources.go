@@ -385,7 +385,7 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 			var args []string
 			switch resource.Kind {
 			case "container":
-				args = []string{"container", "rm", "-f", resource.Name}
+				args = []string{"container", "rm", "-f", "-v", resource.Name}
 			case "network":
 				args = []string{"network", "rm", resource.Name}
 			case "volume":

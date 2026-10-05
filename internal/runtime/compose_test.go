@@ -226,8 +226,8 @@ exit 2
 	}
 	calls := string(raw)
 	for _, want := range []string{
-		"container rm -f current",
-		"container rm -f orphan",
+		"container rm -f -v current",
+		"container rm -f -v orphan",
 		"network rm shared-net",
 		"volume rm shared-vol",
 	} {
@@ -236,7 +236,7 @@ exit 2
 		}
 	}
 	for _, forbidden := range []string{
-		"container rm -f unrelated",
+		"container rm -f -v unrelated",
 		"network rm unrelated-net",
 	} {
 		if strings.Contains(calls, forbidden) {
