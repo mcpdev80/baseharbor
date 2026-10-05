@@ -97,11 +97,11 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	network := application.MetricsProviderNetworkNameForNamespace(app, namespace)
 	cmd := exec.CommandContext(
 		ctx,
-		"docker", "run", "-d", "--rm",
+		string(runtime.Kind()), "run", "-d", "--rm",
 		"--name", containerName,
 		"--network", network,
 		"--network-alias", application.MetricsTargetAlias(app, "api"),
-		"python:3.13-alpine",
+		"docker.io/library/python:3.13-alpine",
 		"python", "-c", script,
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -110,7 +110,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
-		_ = exec.CommandContext(cleanupCtx, "docker", "rm", "-f", containerName).Run()
+		_ = exec.CommandContext(cleanupCtx, string(runtime.Kind()), "rm", "-f", containerName).Run()
 	}()
 
 	if err := driver.Bind(ctx, resource, binding); err != nil {

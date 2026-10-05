@@ -93,6 +93,12 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 	if d.runtime == nil || d.issuer == nil {
 		return errors.New("Loki access PKI rotation requires managed runtime and issuer")
 	}
+	executor, ok := d.runtime.(interface {
+		ExecProject(context.Context, string, string, string, string, ...string) (string, error)
+	})
+	if !ok {
+		return errors.New("Loki access PKI rotation requires runtime service execution")
+	}
 	dataDir := strings.TrimSpace(d.dataDir)
 	if dataDir == "" || dataDir == "." {
 		var err error
@@ -136,6 +142,10 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 		}
 		if err := d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 			return err
+		}
+		if _, err := executor.ExecProject(ctx, placement.Project, files.Compose, files.Env, spec.ServiceName,
+			"/run/baseharbor/caddy", "reload", "--force", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"); err != nil {
+			return fmt.Errorf("reload Loki gateway TLS material: %w", err)
 		}
 		client, err := lokiHTTPClient(d.app, files)
 		if err != nil {
