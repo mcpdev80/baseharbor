@@ -2,6 +2,7 @@ package extension
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -12,8 +13,12 @@ const JSONSchema202012 = "https://json-schema.org/draft/2020-12/schema"
 type Family string
 
 const (
-	FamilyProvider    Family = "provider"
-	FamilyDevelopment Family = "development"
+	FamilyProvider       Family = "provider"
+	FamilyDevelopment    Family = "development"
+	FamilyRuntime        Family = "runtime"
+	FamilyDelivery       Family = "delivery"
+	FamilyWorkloadSource Family = "workload-source"
+	FamilyTargetAccess   Family = "target-access"
 )
 
 type Artifact struct {
@@ -28,6 +33,7 @@ type SchemaReference struct {
 }
 
 type Provenance struct {
+	Publisher      string `json:"publisher,omitempty"`
 	SignatureRef   string `json:"signature_ref,omitempty"`
 	SBOMRef        string `json:"sbom_ref,omitempty"`
 	AttestationRef string `json:"attestation_ref,omitempty"`
@@ -68,7 +74,7 @@ func (m Metadata) Validate() error {
 		return fmt.Errorf("extension id %q must use namespace/name form", m.ID)
 	}
 	switch m.Family {
-	case FamilyProvider, FamilyDevelopment:
+	case FamilyProvider, FamilyDevelopment, FamilyRuntime, FamilyDelivery, FamilyWorkloadSource, FamilyTargetAccess:
 	default:
 		return fmt.Errorf("extension %q has unsupported family %q", m.ID, m.Family)
 	}
@@ -83,6 +89,14 @@ func (m Metadata) Validate() error {
 	}
 	if err := m.ConfigurationSchema.Validate(); err != nil {
 		return fmt.Errorf("extension %q configuration schema: %w", m.ID, err)
+	}
+	for _, ref := range []string{m.Artifact.OCIReference, m.Provenance.SignatureRef, m.Provenance.SBOMRef, m.Provenance.AttestationRef} {
+		if strings.Contains(ref, "://") {
+			parsed, err := url.Parse(ref)
+			if err != nil || parsed.User != nil || parsed.RawQuery != "" {
+				return fmt.Errorf("extension public references must not contain credentials or query parameters")
+			}
+		}
 	}
 	return nil
 }
@@ -99,6 +113,9 @@ func (a Artifact) Validate() error {
 	}
 	if digest != "" && !digestPattern.MatchString(digest) {
 		return fmt.Errorf("digest %q must be an immutable sha256 digest", digest)
+	}
+	if index := strings.LastIndex(ref, "@"); index >= 0 && digest != "" && ref[index+1:] != digest {
+		return fmt.Errorf("OCI reference digest does not match immutable artifact digest")
 	}
 	return nil
 }

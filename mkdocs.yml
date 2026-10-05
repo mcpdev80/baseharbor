@@ -105,6 +105,7 @@ nav:
       - Security model: explanation/security.md
       - Authentication: explanation/authentication.md
       - Security & trust commands: cli/security-trust.md
+      - Extension artifact trust: spec/extension-artifact-trust-v1.md
 
   - Operations:
       - Troubleshooting: troubleshooting/index.md

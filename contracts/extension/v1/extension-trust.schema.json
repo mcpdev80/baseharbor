@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.baseharbor.dev/extension/v1/extension-trust.schema.json",
+  "title": "BaseHarbor Extension Artifact Trust v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "metadata": {
+      "$ref": "extension-descriptor.schema.json"
+    },
+    "trusted": {
+      "type": "boolean"
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "baseharbor.extension-trust/v1"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unverifiable",
+            "invalid"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "signature_verified": {
+          "type": "boolean"
+        },
+        "sbom_verified": {
+          "type": "boolean"
+        },
+        "attestation_verified": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "signature_verified",
+        "sbom_verified",
+        "attestation_verified"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "digest"
+            ]
+          }
+        }
+      ]
+    },
+    "trust_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "baseharbor.extension-trust/v1"
+        },
+        "status": {
+          "enum": [
+            "trusted",
+            "denied"
+          ]
+        },
+        "policy_reference": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "denied"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "code",
+              "next"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "required": [
+    "metadata",
+    "trusted",
+    "verification",
+    "trust_decision"
+  ]
+}

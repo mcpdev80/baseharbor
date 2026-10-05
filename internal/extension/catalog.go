@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -39,18 +40,29 @@ type ResolveRequest struct {
 }
 
 type Resolution struct {
-	Metadata Metadata `json:"metadata"`
-	Trusted  bool     `json:"trusted"`
+	Metadata     Metadata      `json:"metadata"`
+	Trusted      bool          `json:"trusted"`
+	Verification Verification  `json:"verification"`
+	Decision     TrustDecision `json:"trust_decision"`
 }
 
 type TrustPolicy struct {
-	RequireDigest      bool `json:"require_digest,omitempty"`
-	RequireSignature   bool `json:"require_signature,omitempty"`
-	RequireSBOM        bool `json:"require_sbom,omitempty"`
-	RequireAttestation bool `json:"require_attestation,omitempty"`
+	RequireDigest       bool     `json:"require_digest,omitempty"`
+	RequireSignature    bool     `json:"require_signature,omitempty"`
+	RequireSBOM         bool     `json:"require_sbom,omitempty"`
+	RequireAttestation  bool     `json:"require_attestation,omitempty"`
+	RequireVerification bool     `json:"require_verification,omitempty"`
+	AllowedPublishers   []string `json:"allowed_publishers,omitempty"`
+	Reference           string   `json:"reference,omitempty"`
 }
 
 func (c Catalog) Resolve(request ResolveRequest, policy TrustPolicy) (Resolution, error) {
+	return c.ResolveVerified(context.Background(), request, policy, nil)
+}
+
+// ResolveVerified keeps descriptor identity, verifier evidence and policy separate.
+// A nil verifier produces an explicit unverifiable result, never a verified one.
+func (c Catalog) ResolveVerified(ctx context.Context, request ResolveRequest, policy TrustPolicy, verifier Verifier) (Resolution, error) {
 	id := strings.TrimSpace(request.ID)
 	if id == "" {
 		return Resolution{}, fmt.Errorf("extension resolution requires id")
@@ -86,10 +98,13 @@ func (c Catalog) Resolve(request ResolveRequest, policy TrustPolicy) (Resolution
 		return Resolution{}, fmt.Errorf("extension %q resolution is ambiguous; specify version or immutable digest", id)
 	}
 	selected := candidates[0]
-	if err := policy.Validate(selected); err != nil {
-		return Resolution{}, err
+	verification := VerifyArtifact(ctx, selected, verifier)
+	decision := policy.Evaluate(selected, verification)
+	result := Resolution{Metadata: selected, Verification: verification, Decision: decision, Trusted: decision.Status == TrustTrusted}
+	if decision.Status != TrustTrusted {
+		return result, &TrustError{Code: decision.Code, Next: decision.Next}
 	}
-	return Resolution{Metadata: selected, Trusted: true}, nil
+	return result, nil
 }
 
 func (p TrustPolicy) Validate(metadata Metadata) error {

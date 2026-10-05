@@ -1,6 +1,9 @@
 package extension
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestCatalogResolutionRequiresDeterminism(t *testing.T) {
 	a := Metadata{
@@ -43,7 +46,7 @@ func TestTrustPolicyFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTrustPolicyAcceptsProvenanceReferences(t *testing.T) {
+func TestTrustPolicyRequiresVerifiedProvenanceReferences(t *testing.T) {
 	entry := Metadata{
 		SchemaVersion: DescriptorVersion,
 		ID:            "example/provider",
@@ -63,9 +66,17 @@ func TestTrustPolicyAcceptsProvenanceReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = catalog.Resolve(ResolveRequest{ID: entry.ID, Version: entry.Version}, TrustPolicy{
+	policy := TrustPolicy{
 		RequireDigest: true, RequireSignature: true, RequireSBOM: true, RequireAttestation: true,
-	})
+	}
+	request := ResolveRequest{ID: entry.ID, Version: entry.Version}
+	if _, err = catalog.Resolve(request, policy); err == nil {
+		t.Fatal("public evidence references must not substitute for verification")
+	}
+	_, err = catalog.ResolveVerified(context.Background(), request, policy, testVerifier{result: Verification{
+		Status: VerificationVerified, Digest: entry.Artifact.Digest,
+		SignatureVerified: true, SBOMVerified: true, AttestationVerified: true,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
