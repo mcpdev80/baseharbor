@@ -31,3 +31,16 @@ Existing infrastructure can be registered/referenced without transferring owners
 External provider removal removes the BaseHarbor binding/reference and must not destroy foreign infrastructure.
 
 See [External / BYO providers](../how-to/external-providers.md).
+
+## Example: scaffold and test a provider extension
+
+From a directory with no `company-sql-provider` folder:
+
+```bash
+baha provider init company/sql --path ./company-sql-provider
+baha provider test ./company-sql-provider -o json
+```
+
+The first command writes a provider descriptor and reference implementation skeleton. Inspect the generated contract and implement its operations before treating the provider as production-ready. `provider test` runs the descriptor/contract checks; it does not prove that an arbitrary external database is reachable or authorized.
+
+For an existing service registration, use `baha provider list`, `baha provider inspect company-db` and `baha provider verify company-db` after registering it as described in [External / BYO providers](../how-to/external-providers.md).

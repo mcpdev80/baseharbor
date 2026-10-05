@@ -2,25 +2,43 @@
 
 Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, ohne dass du Provider-Interna verstehen oder das Manifest manuell bearbeiten musst.
 
-## Empfohlener Entwicklerpfad
+## Konkretes Beispiel: Go-API mit SQL
 
-```text
-optionale Inspektion
-      |
-      v
-baha app init
-      |
-      v
-menschenlesbare Übernahme-Zusammenfassung
-      |
-      v
-baha up
-      |
-      v
-READY
+Voraussetzungen: `baha` ist installiert, Docker oder Podman ist lokal verfügbar und der aktuelle Ordner enthält noch keinen Unterordner `orders-api`. Prüfe zuerst CLI und Target:
+
+```bash
+baha version
+baha target show
 ```
 
-Der normale Ablauf erfordert **keine** manuellen YAML-Ergänzungen, keine Compose-Umschreibung, keinen separaten OpenBao-Bootstrap, keine verpflichtende Vorprüfungs-/Anwendungskette und kein Weiterreichen von Geheimnissen über Shell-Pipes.
+Fehlt ein Target, konfiguriere es anhand der [Target-Befehle](https://mcpdev80.github.io/baseharbor/cli/targets/). Erzeuge danach eine neue Anwendung:
+
+```bash
+baha app new orders-api --stack go --http --sql
+cd orders-api
+baha plan
+baha up -e dev
+baha status
+baha doctor
+```
+
+`app new` erzeugt `main.go`, `go.mod`, `Dockerfile`, `compose.yaml`, `baseharbor.yaml`, Repository-Metadaten und `.env.example` mit leeren Werten. Das Manifest fordert SQL an und beschreibt den HTTP-Workload `app` auf Port 8080. Der Go-Code verwendet `pgx` und die geschützte Bindung `DATABASE_URL`; vor dem HTTP-Start prüft er die Datenbankverbindung.
+
+Beim ersten `up` beantwortest du die unten beschriebenen Betreiberentscheidungen. Erst eine erfolgreiche Bereitstellung führt zu READY; erzeugte Dateien allein starten keine Runtime. Öffne danach die von `status` angezeigte HTTPS-Adresse und rufe `/healthz` auf. Übernimm den angezeigten Port, da Docker und rootless Podman unterschiedliche Ports verwenden können.
+
+Eigene Bestell-Endpunkte und Tabellen ergänzt du im erzeugten Code. Das [PostgreSQL-Beispiel](https://mcpdev80.github.io/baseharbor/how-to/postgres/) zeigt das Einfügen und Lesen einer konkreten Bestellung.
+
+Nur die Anwendung stoppen und ihre persistenten Daten behalten:
+
+```bash
+baha app down
+```
+
+Mit `baha up` im selben Repository startest du sie wieder.
+
+## Bestehendes Repository übernehmen
+
+Bei einer vorhandenen Anwendung folgt auf die optionale Inspektion `baha app init` und danach `baha up`. Dafür brauchst du kein neues Scaffold und keine manuelle Compose-Umschreibung.
 
 ## 1. Optional: Repository prüfen
 

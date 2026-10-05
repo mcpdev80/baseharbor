@@ -1,50 +1,43 @@
-# Back up and restore
+# Back up and restore an application
 
-A BaseHarbor backup is not successful only because an archive or snapshot exists.
+Create one encrypted recovery unit for an application's owned data. Run these commands inside a deployed application repository, such as `orders-api` with SQL data.
 
-## Back up
+## Interactive backup
 
 ```bash
-baha backup
+baha app backup --output ../orders-api.baha-backup
 ```
 
-BaseHarbor must verify the backup and record enough ownership and compatibility metadata to support recovery.
+The terminal flow asks for a hidden password and shows the recovery scope. Preserve that password separately from the archive. An archive without a verified backup result is not proof of recoverability.
 
-## Restore
+## Backup from automation
 
-Use the supported restore flow for the application and environment.
+Prepare an owner-only password file outside Git through your secret manager and keep the same password available for recovery:
 
-A successful restore includes:
-
-```text
-preflight
--> restore state/data
--> rebind
--> reconcile
--> verify
+```bash
+baha --no-input app backup   --password-file "$HOME/.config/orders/backup-password"   --output ../orders-api.baha-backup
 ```
 
-BaseHarbor must not report recovery success before the restored application capabilities are verified.
+Copy the encrypted archive and required recovery material to your protected off-host backup storage. The application name alone is not enough to restore an archive whose password has been lost.
 
-Provider-owned data is backed up through the provider that understands its data semantics.
+## Restore deliberately
 
-## Shared PostgreSQL
+Restore replaces the selected application's owned recovery state. Check the destination Target and application before proceeding:
 
-Application backup remains application-scoped even when PostgreSQL infrastructure is shared.
-
-`baha app backup` derives the SQL backup set from the protected provider registration for the selected Application + Environment and dumps only that application's registered databases. It never uses `pg_dumpall`, sibling databases or provider-global state.
-
-For a multi-instance application:
-
-```text
-app-a
-├── default
-└── analytics
+```bash
+baha target show
+baha app show
+baha app restore ../orders-api.baha-backup   --password-file "$HOME/.config/orders/backup-password"
+baha status
+baha doctor
 ```
 
-both app-a databases are included; app-b databases are not.
+BaseHarbor validates/decrypts the archive before mutation, restores owned state, rebinds and verifies the recovered capabilities. Finally check a known business record, such as order `42`, through your application's own API or database query.
 
-Restore targets exactly the registered databases for that application. It does not drop sibling databases, alter sibling roles, rotate sibling credentials or restore the provider as a whole. Ownership is re-verified before/after mutation, and sibling applications must remain usable.
+## Shared PostgreSQL boundary
 
-Application destroy follows the same boundary: terminate connections only to the owned database, verify registered ownership, drop that database and role, remove its credential reference and registration, then preserve the shared provider while any sibling application remains. Only the last consumer may remove the shared provider runtime and volume.
+For `orders-api` with SQL instances `default` and `analytics`, backup includes both registered application databases. It excludes a sibling application's databases and provider-global state; it never uses `pg_dumpall`.
 
+Restore targets those registered databases without dropping sibling databases, changing sibling roles or rotating sibling credentials. Ownership is checked before and after mutation. Shared provider infrastructure stays available while sibling applications consume it.
+
+See [Backup and restore reference](../reference/backup-and-restore.md) for exact recovery behavior and supported state classes.

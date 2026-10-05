@@ -50,3 +50,17 @@ Inside an application repository it uses the same application doctor semantics a
 Without `--all`, BaseHarbor shows the ownership-safe destruction scope for the effective Target.
 
 `baha destroy --all` is the explicit installation-cleanup path and removes BaseHarbor-owned installation state while preserving application source repositories and external infrastructure.
+
+## Example: start, inspect and stop an order API
+
+Inside a scaffold created with `baha app new orders-api --stack go --http --sql`, with a configured runtime Target:
+
+```bash
+baha plan -e dev
+baha up -e dev
+baha status -o json
+baha doctor
+baha app down
+```
+
+The plan previews deployment; `up` converges it; status reports its result. `app down` stops the application's runtime while preserving persistent data. Use `baha up` to resume it. Top-level `baha down` stops the local control plane and is a different scope.

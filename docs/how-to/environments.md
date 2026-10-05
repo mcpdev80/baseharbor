@@ -1,20 +1,34 @@
-# Choose an environment
+# Select a deployment environment
 
-Use an environment to select deployment context without coupling the application contract to a runtime.
+An environment selects policy, placement and protected deployment state. It does not change SQL intent into a product choice.
+
+## Inspect development before starting it
+
+Inside the `orders-api` repository from [Getting started](../tutorials/getting-started.md):
 
 ```bash
+baha plan -e dev
 baha up -e dev
 baha status -e dev
+baha doctor -e dev
 ```
 
-BaseHarbor uses the environment to resolve policy, provider placement and protected deployment state.
+A configured runtime Target is required for deployment. Confirm the reported application, environment and Target before relying on its URLs or data.
 
-Use:
+## Compare test policy without deploying
 
-- `dev` for secure local development with convenience enabled where safe;
-- `test` for production-like validation;
-- `prod` for restrictive, auditable defaults.
+```bash
+baha plan -e test
+baha policy check -e test
+baha policy explain -e test
+```
 
-Do not use environments to encode product choices such as PostgreSQL versus another SQL provider.
+Use this to discover a missing provider, authorization requirement or policy restriction before a test deployment. A successful `dev` deployment does not prove that `test` or `prod` is permitted or configured.
 
-For the exact manifest behavior, see [Manifest reference](../reference/manifest.md).
+| Environment | Typical purpose |
+| --- | --- |
+| `dev` | Secure local development |
+| `test` | Production-like validation |
+| `prod` | Restrictive, auditable operation |
+
+Select a separate Target explicitly when needed, for example `baha --target docker-dev plan -e test`. Creating an environment is not a substitute for configuring the Target and its providers. See the [Manifest reference](../reference/manifest.md) for environment intent.
