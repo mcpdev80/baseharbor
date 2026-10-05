@@ -233,17 +233,26 @@ jobs:
               echo "Pre-Release approval artifact does not contain release-approved.json." >&2
               exit 1
             }
+            workflow_sha="${tested_sha}"
+            approved_candidate="$(jq -r '.candidate_sha' "${approval_json}")"
+            compatible_candidate "${approved_candidate}" || {
+              echo "Approval product candidate differs from release content." >&2
+              exit 1
+            }
+            tested_sha="${approved_candidate}"
             jq -e \
+              --arg workflow_sha "${workflow_sha}" \
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
                 .schema == "baseharbor.pre-release.approval/v1" and
+                (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and
                 .tested_sha == $tested_sha and
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
                 .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
-                .gate_count == 45 and
+                (.gate_count == (if .tag == "v0.4.21" then 54 else 45 end)) and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
               ' "${approval_json}" >/dev/null || {
