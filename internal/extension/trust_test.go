@@ -106,3 +106,18 @@ func TestTrustMetadataSupportsIndependentFamiliesAndRejectsCredentialReferences(
 		t.Fatal("contradicting immutable digests accepted")
 	}
 }
+
+func TestPermissivePolicyRejectsUnverifiableEvidenceClaims(t *testing.T) {
+	metadata := trustFixture()
+	for _, verification := range []Verification{
+		{SchemaVersion: TrustVersion, Status: VerificationUnverifiable, SignatureVerified: true},
+		{SchemaVersion: TrustVersion, Status: VerificationUnverifiable, SBOMVerified: true},
+		{SchemaVersion: TrustVersion, Status: VerificationUnverifiable, AttestationVerified: true},
+		{SchemaVersion: TrustVersion, Status: VerificationUnverifiable, Publisher: "unverified-claim"},
+	} {
+		decision := (TrustPolicy{}).Evaluate(metadata, verification)
+		if decision.Status != TrustDenied || decision.Code != "verification_invalid" {
+			t.Fatalf("inconsistent evidence accepted: %#v", decision)
+		}
+	}
+}

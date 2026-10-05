@@ -30,6 +30,11 @@ func appSecretTLSSetCommand(store application.Store) *cli.Command {
 		Usage:   "baha app secret tls-set [NAME] --cert-file PATH --key-file PATH [--chain-file PATH]",
 		Long:    "Validates certificate parsing, certificate/private-key matching and the leaf validity window before storing TLS_CERT_FILE and TLS_KEY_FILE in the application's OpenBao-backed secret scope. Certificate input may be PEM or DER; an optional chain file may contain PEM or DER certificate data.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "secret tls-set")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			name, certFile, keyFile, chainFile, err := parseTLSSetArgs(args)
 			if err != nil {
 				return err
@@ -38,50 +43,67 @@ func appSecretTLSSetCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			service, err := resolvedApplicationSecretService(ctx, resolved)
-			if err != nil {
+			if err := setApplicationTLSMaterial(ctx, resolved, certFile, keyFile, chainFile); err != nil {
 				return err
 			}
-			certData, err := readSecretFile(certFile)
-			if err != nil {
-				return fmt.Errorf("read TLS certificate: %w", err)
-			}
-			keyData, err := readSecretFile(keyFile)
-			if err != nil {
-				return fmt.Errorf("read TLS private key: %w", err)
-			}
-			certPEM, leaf, err := normalizeCertificateInput(certData)
-			if err != nil {
-				return fmt.Errorf("validate TLS certificate: %w", err)
-			}
-			if chainFile != "" {
-				chainData, err := readSecretFile(chainFile)
-				if err != nil {
-					return fmt.Errorf("read TLS certificate chain: %w", err)
-				}
-				chainPEM, _, err := normalizeCertificateInput(chainData)
-				if err != nil {
-					return fmt.Errorf("validate TLS certificate chain: %w", err)
-				}
-				certPEM = append(append(certPEM, '\n'), chainPEM...)
-			}
-			if _, err := tls.X509KeyPair(certPEM, keyData); err != nil {
-				return fmt.Errorf("TLS certificate and private key do not match: %w", err)
-			}
-			now := time.Now()
-			if now.Before(leaf.NotBefore) {
-				return fmt.Errorf("TLS certificate is not valid before %s", leaf.NotBefore.UTC().Format(time.RFC3339))
-			}
-			if !now.Before(leaf.NotAfter) {
-				return fmt.Errorf("TLS certificate expired at %s", leaf.NotAfter.UTC().Format(time.RFC3339))
-			}
-			if err := storeTLSMaterial(ctx, service, resolved.Manifest.Name, certPEM, keyData); err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, secretMutationResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, Key: "TLS_CERT_FILE/TLS_KEY_FILE", Updated: true})
 			}
 			fmt.Fprintf(out, "TLS certificate and private key stored for application %s (%s).\n", resolved.Manifest.Name, resolved.Manifest.Environment)
 			return nil
 		},
 	}
+}
+
+func setApplicationTLSMaterial(ctx context.Context, resolved resolvedApplication, certFile, keyFile, chainFile string) error {
+	return setApplicationTLSMaterialWithKeyReader(ctx, resolved, certFile, keyFile, chainFile, readSecretFile)
+}
+func setApplicationTLSMaterialWithKeyReader(ctx context.Context, resolved resolvedApplication, certFile, keyFile, chainFile string, readKey func(string) ([]byte, error)) error {
+	if err := authorizeApplicationOperation(ctx, "secret.tls-set", resolved); err != nil {
+		return err
+	}
+	service, err := resolvedApplicationSecretService(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	certData, err := readSecretFile(certFile)
+	if err != nil {
+		return fmt.Errorf("read TLS certificate: %w", err)
+	}
+	keyData, err := readKey(keyFile)
+	if err != nil {
+		return fmt.Errorf("read TLS private key: %w", err)
+	}
+	defer zeroBytes(keyData)
+	certPEM, leaf, err := normalizeCertificateInput(certData)
+	if err != nil {
+		return fmt.Errorf("validate TLS certificate: %w", err)
+	}
+	if chainFile != "" {
+		chainData, err := readSecretFile(chainFile)
+		if err != nil {
+			return fmt.Errorf("read TLS certificate chain: %w", err)
+		}
+		chainPEM, _, err := normalizeCertificateInput(chainData)
+		if err != nil {
+			return fmt.Errorf("validate TLS certificate chain: %w", err)
+		}
+		certPEM = append(append(certPEM, '\n'), chainPEM...)
+	}
+	if _, err := tls.X509KeyPair(certPEM, keyData); err != nil {
+		return fmt.Errorf("TLS certificate and private key do not match: %w", err)
+	}
+	now := time.Now()
+	if now.Before(leaf.NotBefore) {
+		return fmt.Errorf("TLS certificate is not valid before %s", leaf.NotBefore.UTC().Format(time.RFC3339))
+	}
+	if !now.Before(leaf.NotAfter) {
+		return fmt.Errorf("TLS certificate expired at %s", leaf.NotAfter.UTC().Format(time.RFC3339))
+	}
+	if err := storeTLSMaterial(ctx, service, resolved.Manifest.Name, certPEM, keyData); err != nil {
+		return err
+	}
+	return nil
 }
 
 type previousSecret struct {
@@ -116,10 +138,12 @@ func storeTLSMaterial(ctx context.Context, service *applicationsecret.Service, a
 	if err != nil {
 		return fmt.Errorf("inspect existing TLS certificate secret: %w", err)
 	}
+	defer zeroBytes(previousCert.value)
 	previousKey, err := getPreviousSecret(ctx, service, app, defaultTLSKeySecret)
 	if err != nil {
 		return fmt.Errorf("inspect existing TLS private-key secret: %w", err)
 	}
+	defer zeroBytes(previousKey.value)
 	if err := service.Set(ctx, app, defaultTLSCertSecret, certPEM); err != nil {
 		return fmt.Errorf("store TLS certificate: %w", err)
 	}

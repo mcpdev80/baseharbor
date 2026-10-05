@@ -12,7 +12,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -30,6 +29,13 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 		default:
 			return usageError("unknown argument "+arg, "Usage: baha destroy [--yes]")
 		}
+	}
+
+	return destroyControlPlane(parent, confirmed, out)
+}
+func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) error {
+	if err := authorizeCurrentMCPContext(parent, "control-plane.destroy", "", "", ""); err != nil {
+		return err
 	}
 
 	target, err := effectiveTarget(parent)
@@ -137,68 +143,45 @@ func runtimeDestroy(parent context.Context, args []string, out io.Writer) error 
 func runtimeStatus(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
-
+	result, err := inspectControlPlane(ctx)
+	if err != nil {
+		return err
+	}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
-	compose, err := detectRuntimeForTarget(ctx, target)
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(out, "BaseHarbor · %s\n\n", target.Name)
-	fmt.Fprintln(out, "Target")
-	fmt.Fprintf(out, "  EFFECTIVE  %s\n", target.Name)
-	fmt.Fprintf(out, "  Runtime    %s\n", target.RuntimeProvider)
-	fmt.Fprintf(out, "  Access     %s (%s)\n", target.AccessReference, target.AccessProvider)
+	fmt.Fprintf(out, "BaseHarbor · %s\n\nTarget\n  EFFECTIVE  %s\n  Runtime    %s\n  Access     %s (%s)\n", target.Name, target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
 	if target.Scope != "" {
 		fmt.Fprintf(out, "  Scope      %s\n", target.Scope)
 	}
-
-	files, err := existingTargetRuntimeFiles(ctx)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintln(out, "\nControl Plane")
-			fmt.Fprintln(out, "  NOT DEPLOYED")
-			return nil
-		}
-		return fmt.Errorf("runtime is not initialized: %w", err)
-	}
-	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
-	if err != nil {
-		return err
-	}
-
 	fmt.Fprintln(out, "\nControl Plane")
-	if len(running) == 0 {
+	switch result.State {
+	case "not_deployed":
+		fmt.Fprintln(out, "  NOT DEPLOYED")
+		return nil
+	case "stopped":
 		fmt.Fprintln(out, "  STOPPED")
-	} else {
-		checks := health.RuntimeChecksForFiles(files)
-		if len(checks) == 0 {
-			fmt.Fprintf(out, "  RUNNING    %d service(s)\n", len(running))
-		} else {
-			ready := true
-			for _, check := range checks {
-				state := "READY"
-				if !check.OK {
-					state = "FAILED"
-					ready = false
-				}
-				fmt.Fprintf(out, "  %-9s %s\n", state, check.Name)
-			}
-			if !ready {
-				return errors.New("runtime is running but not ready")
-			}
+	default:
+		if len(result.Checks) == 0 {
+			fmt.Fprintf(out, "  RUNNING    %d service(s)\n", len(result.Running))
 		}
-		availability := evaluateControlPlaneAvailability(running, health.RuntimeChecksForFiles(files))
+		for _, check := range result.Checks {
+			state := "READY"
+			if !check.Ready {
+				state = "FAILED"
+			}
+			fmt.Fprintf(out, "  %-9s %s\n", state, check.Name)
+		}
+		if !result.Ready {
+			return errors.New("runtime is running but not ready")
+		}
 		state := "SATISFIED"
-		if !availability.Satisfied {
+		if !result.AvailabilitySatisfied {
 			state = "UNSATISFIED"
 		}
-		fmt.Fprintf(out, "  %-9s availability · %s\n", state, availability.Detail())
+		fmt.Fprintf(out, "  %-9s availability · %s\n", state, result.AvailabilityDetail)
 	}
-
 	records, warnings, listErr := deployment.ListDeploymentsForDisplay(target.Name)
 	fmt.Fprintln(out, "\nApplications")
 	if listErr != nil {

@@ -13,7 +13,7 @@ Use isolated test infrastructure: the suite provisions and binds the supplied re
 ## Invoke
 
 ```go
-report := provider.Run(ctx, target)
+report := provider.RunFull(ctx, target)
 if err := provider.WriteJSON(os.Stdout, report); err != nil {
     os.Exit(2)
 }
@@ -34,4 +34,8 @@ go run -mod=mod .
 
 The repository test `TestExternalModuleCanRunPublicProfileWithoutInternalImports` executes that module and checks its JSON/pass result. The local `replace` in the fixture is solely for testing this checkout; external consumers pin the public module revision normally.
 
-Existing deterministic drift/repair, outage, malformed binding, verification failure, retry and ownership-safe destroy tests remain in `internal/providerconformance` without changing their acceptance criteria. Packaging these additional fault/ownership scenarios for arbitrary external drivers remains part of #772 before release completion; the initial profile alone does not claim that broader proof.
+`Run` provides the lifecycle-only suite (`suite=lifecycle`). Release semantic acceptance uses `RunFull` (`suite=full`), which retains the existing lifecycle harness and adds the retained fault/recovery/ownership scenarios: observable drift and stable-identity repair, side-effect-free outage rejection and recovery, failed provisioning/binding/verification with convergent retries, foreign-ownership blocking before mutation, sibling-safe destroy, owned destroy and repeated destroy.
+
+For full acceptance, the isolated fixture implements `ReconciliationDriver`, `Drifter`, `Destroyer`, `FaultFixture` and `OwnershipFixture` as well as `StateDigester`. `SetFailure(FailureNone)` clears a fault; fault controls and operational counters must not change state fingerprints. `ConformanceDrift` must visibly change owned state. Destroy uses the exact immutable application/kind/name/provider resource identity and refuses a sibling application. Missing hooks fail the full suite; they are never skipped. The full run destroys the disposable resource, so reruns need a clean fixture.
+
+Discover the public provider contract at `docs/spec/provider-contract-v1.md`, this profile at `conformance/provider/v1`, and its machine-readable discovery artifact at `contracts/conformance/provider/v1/profile.json`. These artifacts are versioned together in the public Go module; pin an immutable BaseHarbor source commit during pre-release or the release module version after publication. New public contract families publish separate profile paths and versions without changing provider v1.

@@ -121,6 +121,9 @@ func parsePort(value string) (int, error) {
 }
 
 func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
+		return err
+	}
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}

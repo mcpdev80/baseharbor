@@ -8,7 +8,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	providerauthoring "github.com/mcpdev80/baseharbor/internal/provider/authoring"
 )
 
 func providerCommand() *cli.Command {
@@ -39,7 +38,7 @@ func providerInitCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			result, err := providerauthoring.Init(root, id)
+			result, err := initializeProviderScaffold(ctx, root, id)
 			if err != nil {
 				return err
 			}
@@ -74,11 +73,10 @@ func providerTestCommand() *cli.Command {
 			if len(filtered) == 1 {
 				root = filtered[0]
 			}
-			descriptor, err := providerauthoring.Load(root)
+			report, err := inspectProviderContract(ctx, root)
 			if err != nil {
 				return err
 			}
-			report := providerauthoring.Check(descriptor)
 			if format == outputJSON {
 				if err := writeJSON(out, report); err != nil {
 					return err

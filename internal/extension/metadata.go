@@ -90,7 +90,7 @@ func (m Metadata) Validate() error {
 	if err := m.ConfigurationSchema.Validate(); err != nil {
 		return fmt.Errorf("extension %q configuration schema: %w", m.ID, err)
 	}
-	for _, ref := range []string{m.Artifact.OCIReference, m.Provenance.SignatureRef, m.Provenance.SBOMRef, m.Provenance.AttestationRef} {
+	for _, ref := range []string{m.ConfigurationSchema.URI, m.Artifact.OCIReference, m.Provenance.SignatureRef, m.Provenance.SBOMRef, m.Provenance.AttestationRef} {
 		if strings.Contains(ref, "://") {
 			parsed, err := url.Parse(ref)
 			if err != nil || parsed.User != nil || parsed.RawQuery != "" {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -42,24 +40,24 @@ func devCommand() *cli.Command {
 }
 
 func devDomainCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "dev domain")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	if len(args) > 1 {
 		return usageError("baha dev domain accepts at most one domain", "Run 'baha dev domain --help' for usage.")
 	}
-	target, err := effectiveTarget(ctx)
+	result, err := configureDevelopmentDomain(ctx, firstArgument(args))
 	if err != nil {
 		return err
 	}
-	var domain string
-	if len(args) == 1 {
-		domain, err = devaccess.ConfigureDomain(target.Name, args[0])
-	} else {
-		domain, err = devaccess.EnsureDomain(target.Name)
+	if format == outputJSON {
+		return writeJSON(out, result)
 	}
-	if err != nil {
-		return err
-	}
+	targetName, domain := result.Target, result.Domain
 	fmt.Fprintf(out, "Development domain\n")
-	fmt.Fprintf(out, "  Target  %s\n", target.Name)
+	fmt.Fprintf(out, "  Target  %s\n", targetName)
 	fmt.Fprintf(out, "  Domain  %s\n", domain)
 	fmt.Fprintln(out, "  Scope   target / dev")
 	if len(args) == 1 {
@@ -69,6 +67,11 @@ func devDomainCommand(ctx context.Context, args []string, out, errOut io.Writer)
 }
 
 func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "dev credentials")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	reset := false
 	username := ""
 	passwordFile := ""
@@ -92,55 +95,19 @@ func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Wr
 		}
 	}
 
-	target, err := effectiveTarget(ctx)
+	credentials, targetName, err := configureDevelopmentCredentials(ctx, reset, username, passwordFile)
 	if err != nil {
 		return err
 	}
-	const environment = "dev"
-
-	existing, existingErr := devaccess.Load(target.Name, environment)
-	var credentials devaccess.Credentials
-	explicitReplace := passwordFile != "" || reset || username != ""
-	switch {
-	case passwordFile != "":
-		password, err := readDevAccessPasswordFile(passwordFile)
+	if format == outputJSON {
+		path, err := devaccess.Path(targetName, "dev")
 		if err != nil {
 			return err
 		}
-		credentials, err = devaccess.Configure(target.Name, environment, username, password)
-		if err != nil {
-			return err
-		}
-	case reset || username != "":
-		credentials, err = devaccess.Reset(target.Name, environment, username)
-		if err != nil {
-			return err
-		}
-	default:
-		credentials, err = devaccess.Ensure(target.Name, environment)
-		if err != nil {
-			return err
-		}
+		return writeJSON(out, map[string]any{"target": targetName, "environment": "dev", "username": credentials.Username, "protected_file": path})
 	}
-
-	authoritative, err := reconcileDeveloperCredentialAuthority(ctx, target.Name, environment, credentials, explicitReplace)
-	if err != nil {
-		if existingErr == nil {
-			_, _ = devaccess.Configure(target.Name, environment, existing.Username, existing.Password)
-		} else if path, pathErr := devaccess.Path(target.Name, environment); pathErr == nil {
-			_ = os.Remove(path)
-		}
-		return err
-	}
-	if authoritative != credentials {
-		credentials, err = devaccess.Configure(target.Name, environment, authoritative.Username, authoritative.Password)
-		if err != nil {
-			return fmt.Errorf("project authoritative developer credential: %w", err)
-		}
-	}
-
 	fmt.Fprintf(out, "Developer management access\n")
-	fmt.Fprintf(out, "  Target    %s\n", target.Name)
+	fmt.Fprintf(out, "  Target    %s\n", targetName)
 	fmt.Fprintf(out, "  Scope     dev\n")
 	fmt.Fprintf(out, "  Username  %s\n", credentials.Username)
 	fmt.Fprintf(out, "  Password  %s\n", credentials.Password)
@@ -152,36 +119,20 @@ func devCredentialsCommand(ctx context.Context, args []string, out, errOut io.Wr
 }
 
 func readDevAccessPasswordFile(path string) (string, error) {
-	info, err := os.Lstat(path)
+	value, err := readProtectedSecretInput(path)
 	if err != nil {
 		return "", err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", errors.New("developer access password file must be a regular non-symlink file")
+	defer zeroBytes(value)
+	if len(value) > 64<<10 {
+		return "", errors.New("developer access password file exceeds the 65536-byte limit")
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return "", fmt.Errorf("developer access password file is accessible by group or others (%o)", info.Mode().Perm())
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(io.LimitReader(file, 64<<10))
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return "", err
-		}
-		return "", errors.New("developer access password file is empty")
-	}
-	password := scanner.Text()
+	password := strings.TrimSuffix(string(value), "\n")
+	password = strings.TrimSuffix(password, "\r")
 	if strings.TrimSpace(password) == "" || strings.ContainsAny(password, "\r\n") {
-		return "", errors.New("developer access password is invalid")
+		return "", errors.New("developer access password file must contain exactly one nonempty line")
 	}
-	if scanner.Scan() {
-		return "", errors.New("developer access password file must contain exactly one line")
-	}
-	return password, scanner.Err()
+	return password, nil
 }
 
 func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environment string, candidate devaccess.Credentials, replace bool) (devaccess.Credentials, error) {

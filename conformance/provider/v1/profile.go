@@ -32,13 +32,14 @@ type Profile struct {
 
 func Describe() Profile {
 	return Profile{ID: ProfileID, Contract: capability.ProviderProtocolV1, ReportVersion: ReportVersion,
-		FixtureRequirements: []string{"disposable application resource", "valid integration descriptor", "provider driver", "state fingerprint hook", "immutable application/resource identity"}}
+		FixtureRequirements: []string{"disposable application resource", "valid integration descriptor", "provider driver", "state fingerprint hook", "immutable application/resource identity", "full acceptance: typed reconciliation, drift/fault/ownership/destroy hooks"}}
 }
 
 type Report struct {
 	SchemaVersion string `json:"schema_version"`
 	Profile       string `json:"profile"`
 	Contract      string `json:"contract"`
+	Suite         string `json:"suite"`
 	providerconformance.Report
 }
 
@@ -46,7 +47,7 @@ type Report struct {
 // The caller must provide isolated test infrastructure; this provisions data.
 func Run(ctx context.Context, target Target) Report {
 	if _, ok := target.Request.Driver.(StateDigester); !ok {
-		return Report{SchemaVersion: ReportVersion, Profile: ProfileID, Contract: ProtocolVersion,
+		return Report{SchemaVersion: ReportVersion, Profile: ProfileID, Contract: ProtocolVersion, Suite: "lifecycle",
 			Report: providerconformance.Report{Provider: target.Descriptor.Provider.Kind, Status: Fail,
 				Checks: []Check{{Name: "fixture-state-fingerprint", Status: Fail, Message: "Implement ConformanceStateDigest to prove preflight and repeated-convergence state."}}}}
 	}
@@ -57,7 +58,19 @@ func Run(ctx context.Context, target Target) Report {
 			report.Checks[index].Message = "Conformance check failed; review the implementation and protected fixture diagnostics."
 		}
 	}
-	return Report{SchemaVersion: ReportVersion, Profile: ProfileID, Contract: capability.ProviderProtocolV1, Report: report}
+	return Report{SchemaVersion: ReportVersion, Profile: ProfileID, Contract: capability.ProviderProtocolV1, Suite: "lifecycle", Report: report}
+}
+
+// RunFull exercises the retained fault/recovery and ownership suite in addition
+// to the core lifecycle. Missing fixture hooks fail; they never become skips.
+func RunFull(ctx context.Context, target Target) Report {
+	report := providerconformance.RunScenarios(ctx, target)
+	for i := range report.Checks {
+		if report.Checks[i].Status == Fail {
+			report.Checks[i].Message = "Conformance check failed; review protected fixture diagnostics."
+		}
+	}
+	return Report{SchemaVersion: ReportVersion, Profile: ProfileID, Contract: ProtocolVersion, Suite: "full", Report: report}
 }
 
 // WriteJSON emits one deterministic report without timestamps or terminal text.

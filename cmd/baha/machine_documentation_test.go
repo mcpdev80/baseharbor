@@ -34,22 +34,25 @@ func TestMachineDocumentationTracksRegistryAndCommandTree(t *testing.T) {
 	checkGeneratedDocumentation(t, docPath, expected)
 	var coverage strings.Builder
 	fmt.Fprint(&coverage, "# CLI / machine coverage\n\n")
-	fmt.Fprint(&coverage, "Generated from the actual command tree and typed operation registry. `gap` explicitly means pending #787 implementation, not an approved exclusion. A semantic mapping describes the canonical operation; interactive/optional modes require separate review before release acceptance. `baha up`, top-level status/doctor and control-plane operations retain explicit gaps because their repository and host modes are broader than one application tool.\n\n")
+	fmt.Fprint(&coverage, "Generated from the actual command tree and typed operation registry. Every command is semantic, an alias, presentation, or an explicitly justified host/transport exclusion. Optional and compound modes are documented in each row. Unknown product commands fail the inventory test.\n\n")
 	fmt.Fprint(&coverage, "Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update this reference after a code change with `BASEHARBOR_UPDATE_MACHINE_DOCS=1 go test ./cmd/baha -run TestMachineDocumentationTracksRegistryAndCommandTree`. Ordinary test runs reject drift.\n\n")
-	fmt.Fprintln(&coverage, "| Command | Classification | Operation / tool | Reason |")
-	fmt.Fprintln(&coverage, "| --- | --- | --- | --- |")
+	fmt.Fprintln(&coverage, "| Command | Classification | CLI JSON / structured result | Operation / tool | Reason |")
+	fmt.Fprintln(&coverage, "| --- | --- | --- | --- | --- |")
 	seen := map[string]bool{}
 	for _, row := range currentCommandCoverage() {
 		if seen[row.Command] {
 			t.Fatalf("duplicate command: %s", row.Command)
 		}
 		seen[row.Command] = true
+		if row.Classification == "gap" {
+			t.Fatalf("unclassified product command: %s", row.Command)
+		}
 		if row.Classification == "semantic" {
 			if operation, ok := machine.OperationByID(row.Operation); !ok || operation.MCPTool != row.MCPTool {
 				t.Fatalf("invalid semantic mapping: %#v", row)
 			}
 		}
-		fmt.Fprintf(&coverage, "| `%s` | %s | %s | %s |\n", row.Command, row.Classification, row.MCPTool, strings.ReplaceAll(row.Reason, "|", "/"))
+		fmt.Fprintf(&coverage, "| `%s` | %s | %s | %s | %s |\n", row.Command, row.Classification, row.JSONSurface, row.MCPTool, strings.ReplaceAll(row.Reason, "|", "/"))
 	}
 	checkGeneratedDocumentation(t, filepath.Join("..", "..", "docs", "reference", "cli-machine-coverage.md"), coverage.String())
 }

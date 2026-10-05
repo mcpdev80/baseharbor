@@ -34,3 +34,13 @@ Trust policy stays outside portable Application Intent. Artifact resolution retu
 ## Machine-readable contract
 
 The authoritative schemas are `contracts/extension/v1/extension-descriptor.schema.json` and `contracts/extension/v1/extension-trust.schema.json` in the source repository. These trust semantics are independent from provider behavioral conformance.
+
+## Concrete standards backend
+
+The operator-configured `JWSVerifier` recomputes SHA-256 from bounded OCI manifest bytes fetched by `ArtifactReader` at the selected digest. It verifies RFC 7515 asymmetric JWS evidence over in-toto v1 Statements with artifact subjects bound to that digest. The reference implementation accepts EdDSA, ES256, RS256 and PS256; key IDs resolve only to operator-configured public keys and publisher identities. Embedded keys and key URLs do not establish trust.
+
+SBOM statements use SPDX or CycloneDX predicate identities; provenance statements use SLSA Provenance v1. Verified flags mean authenticated, digest-bound evidence, not a claim of an achieved SLSA level or a vulnerability-free artifact. Declared evidence that is unavailable yields `unverifiable`; invalid signatures, wrong subjects or modified manifests yield `invalid`. A valid publisher signature can still be denied by deployment policy.
+
+OCI/evidence transport remains operator-configured and separate from the verifier. This backend is one supported implementation behind the common interface, without requiring a signing vendor or replacing any family's behavioral contract.
+
+Standards: [JWS RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) and [in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md).

@@ -112,6 +112,9 @@ func (p TrustPolicy) Evaluate(metadata Metadata, verification Verification) Trus
 	if verification.Status != VerificationVerified && verification.Status != VerificationUnverifiable {
 		return deny("verification_invalid", "Use a supported verification result.")
 	}
+	if verification.Status != VerificationVerified && (verification.SignatureVerified || verification.SBOMVerified || verification.AttestationVerified || verification.Publisher != "") {
+		return deny("verification_invalid", "Do not claim evidence or publisher verification for an unverifiable artifact.")
+	}
 	if verification.Status == VerificationVerified && (metadata.Artifact.Digest == "" || verification.Digest != metadata.Artifact.Digest) {
 		return deny("verification_invalid", "Verify the selected immutable artifact digest.")
 	}

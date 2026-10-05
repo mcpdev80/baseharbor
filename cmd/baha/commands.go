@@ -85,7 +85,7 @@ func rootCommand() *cli.Command {
 			Name:    "down",
 			Summary: "Stop the local BaseHarbor control-plane runtime",
 			Usage:   "baha down",
-			Run:     noArgsCtx("baha down", runtimeDown),
+			Run:     controlPlaneDownCLI,
 		},
 		{
 			Name:    "destroy",
@@ -116,8 +116,19 @@ func rootCommand() *cli.Command {
 				if inApplicationRepository() {
 					return appStatusCommandWithTLS(store).Run(ctx, args, out, errOut)
 				}
-				if len(args) != 0 {
-					return usageError("structured application status requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app status NAME -o json'.")
+				filtered, format, err := parseReadOutputArgs(args, "status")
+				if err != nil {
+					return err
+				}
+				if len(filtered) != 0 {
+					return usageError("status accepts output options only", "Use --json for structured control-plane state.")
+				}
+				if format == outputJSON {
+					result, err := inspectControlPlane(ctx)
+					if err != nil {
+						return err
+					}
+					return writeJSON(out, result)
 				}
 				return runtimeStatus(ctx, out)
 			},
@@ -131,9 +142,7 @@ func rootCommand() *cli.Command {
 				if inApplicationRepository() {
 					return appDoctorRepairCommandWithTLS(store).Run(ctx, args, out, errOut)
 				}
-				if requestsJSONOutput(args) {
-					return usageError("structured application doctor requires an application repository", "Run inside a repository containing baseharbor.yaml, or use 'baha app doctor NAME -o json'.")
-				}
+
 				return doctorCommand(ctx, args, out, errOut)
 			},
 		},

@@ -100,7 +100,7 @@ func appGuidedInitCommand() *cli.Command {
 				}
 				printProjectDetection(out, detected)
 				fmt.Fprintln(out, "\nQuick mode selected detected values and safe defaults.")
-				return writeRepositoryManifest(m, out)
+				return writeRepositoryManifest(ctx, m, out)
 			}
 
 			if !appInitReaderIsTerminal(appInitInput) {
@@ -150,6 +150,14 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 		zeroBytes(devSetup.password)
 		return nil
 	}
+	manifestPath, err := filepath.Abs(application.RepositoryManifestName)
+	if err != nil {
+		return err
+	}
+	if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
+		zeroBytes(devSetup.password)
+		return err
+	}
 	if err := applyGuidedDevAccess(devSetup); err != nil {
 		return fmt.Errorf("configure local development access: %w", err)
 	}
@@ -160,7 +168,7 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 			return fmt.Errorf("persist workload source selection: %w", err)
 		}
 	}
-	if err := writeRepositoryManifest(m, out); err != nil {
+	if err := writeRepositoryManifest(ctx, m, out); err != nil {
 		if repositoryMetadataPath != "" {
 			_ = os.Remove(repositoryMetadataPath)
 		}
@@ -275,24 +283,12 @@ func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPo
 	return m
 }
 
-func writeRepositoryManifest(m application.Manifest, out io.Writer) error {
-	path := application.RepositoryManifestName
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io.Writer) error {
+	result, err := persistRepositoryApplication(ctx, ".", m, nil)
 	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s already exists; edit the existing application contract instead", path)
-		}
 		return err
 	}
-	if _, err := file.WriteString(m.YAML()); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	absolute, _ := filepath.Abs(path)
+	absolute := result.Manifest
 	fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
 	fmt.Fprintf(out, "manifest: %s\n", absolute)
 	if len(application.RequiredSecretNames(m)) > 0 {

@@ -9,6 +9,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *testing.T) {
@@ -50,7 +52,7 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryRuntimeInitResolved(context.Background(), resolved, repo, repositoryInitOptions{Yes: true}, &out); err != nil {
+	if err := runRepositoryRuntimeInitResolved(operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{Subject: "authenticated-fixture", Issuer: "https://issuer.example"}), resolved, repo, repositoryInitOptions{Yes: true}, &out); err != nil {
 		t.Fatalf("initialize repository deployment inputs: %v\n%s", err, out.String())
 	}
 

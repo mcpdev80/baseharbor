@@ -27,6 +27,17 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		filtered, format, err := parseReadOutputArgs(args, "app init")
+		if err != nil {
+			return err
+		}
+		args = filtered
+		destination := out
+		if format == outputJSON {
+			out = io.Discard
+			ctx = machineNoninteractiveContext(ctx)
+		}
+
 		filtered, agents, err := extractAgentsOption(args)
 		if err != nil {
 			return err
@@ -49,6 +60,12 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if !hasLocalManifest {
 			if len(injected) != 0 {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
+			}
+			if format == outputJSON {
+				if agents {
+					return usageError("--agents is a host guidance mode", "Use deterministic initialization JSON separately from host guidance generation.")
+				}
+				return appInitCommand().Run(ctx, append(forwarded, "--json"), destination, errOut)
 			}
 			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
 				return err
@@ -92,6 +109,10 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
 			}
 		}
+		if format == outputJSON {
+			return writeJSON(destination, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "configured": true})
+		}
+
 		return nil
 	}
 	return base
@@ -183,6 +204,9 @@ func repositoryDeploymentInputDefinitions(needsTLS bool) []applicationinput.Defi
 }
 
 func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
+	if err := authorizeApplicationOperation(ctx, "app.configure", resolved); err != nil {
+		return err
+	}
 	current, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return err
@@ -363,6 +387,16 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 }
 
 func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "up")
+	if err != nil {
+		return err
+	}
+	args = filtered
+	destination := out
+	if format == outputJSON {
+		out = io.Discard
+		ctx = machineNoninteractiveContext(ctx)
+	}
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -375,7 +409,17 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+		if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+			return err
+		}
+		if format == outputJSON {
+			report, err := inspectControlPlane(ctx)
+			if err != nil {
+				return err
+			}
+			return writeJSON(destination, report)
+		}
+		return nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -391,11 +435,31 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if !initialized {
-			return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+			if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				report, err := inspectControlPlane(ctx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(destination, report)
+			}
+			return nil
 		}
 	}
 	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
-	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
+	if err := repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts); err != nil {
+		return err
+	}
+	if format == outputJSON {
+		status, err := collectApplicationStatusResult(ctx, application.DefaultStore(), nil)
+		if err != nil {
+			return err
+		}
+		return writeJSON(destination, status)
+	}
+	return nil
 }

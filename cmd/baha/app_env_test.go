@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,11 +40,41 @@ func TestAppEnvMasksSecretsByDefaultAndRevealsExplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	private := `AMQP_URL=amqps://alice:NEVER_EXPOSE@host/
+RABBITMQ_ORDERS_URL=amqps://alice:NEVER_EXPOSE@host/
+MONGODB_URL=mongodb://alice:NEVER_EXPOSE@host/
+MONGO_URL=mongodb://alice:NEVER_EXPOSE@host/
+CUSTOM_PROVIDER_CREDENTIAL=NEVER_EXPOSE
+TLS_PRIVATE_KEY=NEVER_EXPOSE
+`
+	data, err := os.ReadFile(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.ApplicationEnv, append(data, []byte(private)...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	session := workspaceMutationClient(t)
+	response, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.app.environment", Arguments: map[string]any{"name": "demo"}})
+	if err != nil || response.IsError {
+		t.Fatalf("environment query failed: %#v %v", response, err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("NEVER_EXPOSE")) || !bytes.Contains(encoded, []byte("masked")) {
+		t.Fatalf("MCP leaked provider credential: %s", encoded)
+	}
+
 	var out bytes.Buffer
 	if err := runWithIO(context.Background(), []string{"app", "env", "demo"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
+	if strings.Contains(text, "NEVER_EXPOSE") {
+		t.Fatal("CLI default leaked provider credential")
+	}
 	if !strings.Contains(text, "DATABASE_URL=<masked>") || !strings.Contains(text, "REDIS_URL=<masked>") {
 		t.Fatalf("default output did not mask service credentials: %s", text)
 	}

@@ -25,7 +25,7 @@ func TestExternalModuleCanRunPublicProfileWithoutInternalImports(t *testing.T) {
 	if err := json.Unmarshal(output, &report); err != nil {
 		t.Fatalf("not a JSON report: %v\n%s", err, output)
 	}
-	if report.Status != provider.Pass || report.Profile != provider.ProfileID || len(report.Checks) < 8 {
+	if report.Status != provider.Pass || report.Profile != provider.ProfileID || report.Suite != "full" || len(report.Checks) < 20 {
 		t.Fatalf("external report = %#v", report)
 	}
 }

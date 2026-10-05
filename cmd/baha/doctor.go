@@ -28,6 +28,11 @@ type doctorFinding struct {
 }
 
 func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "doctor")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	fix := false
 	for _, arg := range args {
 		switch arg {
@@ -38,10 +43,31 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 	}
 
+	if format == outputJSON {
+		if fix {
+			return usageError("structured doctor output is read-only", "Use the explicit control-plane.repair semantic operation or human doctor --fix.")
+		}
+		result, err := inspectControlPlaneDoctor(ctx)
+		if err != nil {
+			return err
+		}
+		if fix && !result.Ready && hasAutoFixableDoctorFinding(classifyDoctorFindings(collectControlPlaneDoctorChecks(ctx))) {
+			if err := repairExistingControlPlaneRuntime(ctx, io.Discard); err != nil {
+				return err
+			}
+			result, err = inspectControlPlaneDoctor(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		return writeJSON(out, result)
+	}
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header("Doctor", "")
-	checks := health.Doctor()
-	checks = appendControlPlaneAvailabilityDoctor(ctx, checks)
+	if err := authorizeCurrentMCPContext(ctx, "control-plane.doctor", "", "", ""); err != nil {
+		return err
+	}
+	checks := collectControlPlaneDoctorChecks(ctx)
 	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
 		fmt.Fprintln(out, "\nREADY")
@@ -67,8 +93,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		}
 	}
 
-	after := health.Doctor()
-	after = appendControlPlaneAvailabilityDoctor(ctx, after)
+	after := collectControlPlaneDoctorChecks(ctx)
 	term.Section("After repair")
 	afterOK := renderControlPlaneDoctor(term, after)
 	if afterOK {
@@ -178,6 +203,9 @@ func hasAutoFixableDoctorFinding(findings []doctorFinding) bool {
 }
 
 func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) error {
+	if err := authorizeCurrentMCPContext(parent, "control-plane.repair", "", "", ""); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
 

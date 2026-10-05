@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -336,6 +335,11 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target create")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	if len(args) == 0 {
 		return usageError("baha target create requires NAME", "Example: baha target create docker-dev --provider docker --access local-docker --reference local")
 	}
@@ -381,30 +385,12 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	cfg, err := deployment.LoadConfig()
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault})
 	if err != nil {
 		return err
 	}
-	if _, exists := cfg.Targets[name]; exists {
-		return fmt.Errorf("target %q already exists", name)
-	}
-	if existing, exists := cfg.Access[accessName]; exists {
-		if existing.Provider != accessProvider || existing.Reference != reference {
-			return fmt.Errorf("access %q already exists with different provider/reference", accessName)
-		}
-	} else {
-		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
-	}
-	cfg.Targets[name] = deployment.TargetDefinition{
-		Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
-		Access:  deployment.TargetAccess{Reference: accessName},
-		Scope:   scope,
-	}
-	if makeDefault {
-		cfg.DefaultTarget = name
-	}
-	if err := cfg.Save(); err != nil {
-		return err
+	if format == outputJSON {
+		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "Target %s created (runtime %s, access %s via %s", name, runtimeProvider, accessName, accessProvider)
 	if scope != "" {
@@ -415,42 +401,21 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 }
 
 func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target delete")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
 	}
 	name := args[0]
-	cfg, err := deployment.LoadConfig()
+	result, err := deleteTargetDefinition(ctx, name)
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.Targets[name]; !ok {
-		return fmt.Errorf("target %q is not configured", name)
-	}
-	deployments, err := deployment.ListDeployments(name)
-	if err != nil {
-		return err
-	}
-	if len(deployments) != 0 {
-		return fmt.Errorf("target %q still owns %d deployment(s); destroy them before deleting the target", name, len(deployments))
-	}
-	root, err := deployment.TargetStateRoot(name)
-	if err != nil {
-		return err
-	}
-	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
-		return fmt.Errorf("target %q still owns runtime state under %s; destroy or detach owned state before deleting the target", name, root)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	delete(cfg.Targets, name)
-	if cfg.DefaultTarget == name {
-		cfg.DefaultTarget = ""
-	}
-	if err := cfg.Save(); err != nil {
-		return err
-	}
-	if err := os.Remove(root); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove empty target state directory: %w", err)
+	if format == outputJSON {
+		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "Target %s deleted\n", name)
 	return nil

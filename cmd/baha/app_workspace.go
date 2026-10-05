@@ -206,31 +206,16 @@ func appWorkspaceShowCommand() *cli.Command {
 					return unknownOptionUsage("baha app workspace show", args[i], "--manifest", "--output")
 				}
 			}
-			manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+			result, err := inspectApplicationWorkspace(ctx, manifestArg)
 			if err != nil {
 				return err
 			}
-			model, sourcePath, err := development.LoadSourceModel(manifestPath)
-			if err != nil {
-				return err
-			}
-			mapping, mappingPath, mapErr := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
-			if os.IsNotExist(mapErr) {
-				mapping = development.WorkspaceMapping{SchemaVersion: development.WorkspaceMappingVersion, Application: manifest.Name, Manifest: manifestPath, Sources: map[string]string{}}
-				mappingPath, _ = development.WorkspaceMappingPath(manifestPath, manifest.Name)
-			} else if mapErr != nil {
-				return mapErr
-			}
-			result := struct {
-				SourceModelPath string                       `json:"source_model_path"`
-				WorkspacePath   string                       `json:"workspace_path"`
-				Model           development.SourceModel      `json:"source_model"`
-				Workspace       development.WorkspaceMapping `json:"workspace"`
-			}{sourcePath, mappingPath, model, mapping}
+			manifestPath := result.Workspace.Manifest
+			sourcePath, mappingPath, model, mapping := result.SourceModelPath, result.WorkspacePath, result.Model, result.Workspace
 			if format == outputJSON {
 				return writeJSON(out, result)
 			}
-			fmt.Fprintf(out, "application: %s\nmanifest: %s\nsource model: %s\nworkspace: %s\n", manifest.Name, manifestPath, sourcePath, mappingPath)
+			fmt.Fprintf(out, "application: %s\nmanifest: %s\nsource model: %s\nworkspace: %s\n", result.Workspace.Application, manifestPath, sourcePath, mappingPath)
 			for _, source := range model.Sources {
 				local := mapping.Sources[source.ID]
 				if source.Type == development.SourceOCI {
@@ -306,4 +291,33 @@ func appWorkspaceResolveCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+type workspaceInspectionResult struct {
+	SourceModelPath string                       `json:"source_model_path"`
+	WorkspacePath   string                       `json:"workspace_path"`
+	Model           development.SourceModel      `json:"source_model"`
+	Workspace       development.WorkspaceMapping `json:"workspace"`
+}
+
+func inspectApplicationWorkspace(ctx context.Context, manifestArg string) (workspaceInspectionResult, error) {
+	manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+	if err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	if err := authorizeMCPOperation(ctx, "workspace.show", "", manifest.Environment, manifest.ApplicationID, manifestPath); err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	model, sourcePath, err := development.LoadSourceModel(manifestPath)
+	if err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	mapping, mappingPath, mapErr := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+	if os.IsNotExist(mapErr) {
+		mapping = development.WorkspaceMapping{SchemaVersion: development.WorkspaceMappingVersion, Application: manifest.Name, Manifest: manifestPath, Sources: map[string]string{}}
+		mappingPath, _ = development.WorkspaceMappingPath(manifestPath, manifest.Name)
+	} else if mapErr != nil {
+		return workspaceInspectionResult{}, mapErr
+	}
+	return workspaceInspectionResult{SourceModelPath: sourcePath, WorkspacePath: mappingPath, Model: model, Workspace: mapping}, nil
 }

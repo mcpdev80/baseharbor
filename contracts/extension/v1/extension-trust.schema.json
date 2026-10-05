@@ -69,6 +69,36 @@
               "digest"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "unverifiable",
+                  "invalid"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "signature_verified": {
+                "const": false
+              },
+              "sbom_verified": {
+                "const": false
+              },
+              "attestation_verified": {
+                "const": false
+              }
+            },
+            "not": {
+              "required": [
+                "publisher"
+              ]
+            }
+          }
         }
       ]
     },
@@ -123,5 +153,44 @@
     "trusted",
     "verification",
     "trust_decision"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "trust_decision": {
+            "properties": {
+              "status": {
+                "const": "trusted"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trusted": {
+            "const": true
+          },
+          "verification": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "verified",
+                  "unverifiable"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "trusted": {
+            "const": false
+          }
+        }
+      }
+    }
   ]
 }

@@ -22,6 +22,50 @@ The complete current registry is checked against actual MCP discovery by the sou
 
 | Tool | Safety | Policy required | Approval required |
 | --- | --- | --- | --- |
+| `baseharbor.installation.destroy` | `destructive` | false | true |
+| `baseharbor.release.check` | `read_only` | false | false |
+| `baseharbor.control-plane.status` | `read_only` | false | false |
+| `baseharbor.control-plane.doctor` | `read_only` | false | false |
+| `baseharbor.control-plane.up` | `mutating` | false | false |
+| `baseharbor.control-plane.stop` | `mutating` | false | false |
+| `baseharbor.control-plane.repair` | `mutating` | false | false |
+| `baseharbor.control-plane.destroy` | `destructive` | false | true |
+| `baseharbor.openbao.status` | `read_only` | false | false |
+| `baseharbor.openbao.bootstrap` | `mutating` | false | false |
+| `baseharbor.openbao.unseal` | `mutating` | false | false |
+| `baseharbor.openbao.rotate` | `mutating` | false | false |
+| `baseharbor.dev.domain` | `mutating` | false | false |
+| `baseharbor.dev.credentials` | `mutating` | false | false |
+| `baseharbor.app.environment` | `read_only` | false | false |
+| `baseharbor.app.connection` | `read_only` | false | false |
+| `baseharbor.connectivity.list` | `read_only` | false | false |
+| `baseharbor.connectivity.connect` | `mutating` | false | false |
+| `baseharbor.connectivity.disconnect` | `mutating` | false | false |
+| `baseharbor.operator.identity` | `read_only` | false | false |
+| `baseharbor.provider.init` | `mutating` | false | false |
+| `baseharbor.provider.test` | `read_only` | false | false |
+| `baseharbor.workspace.show` | `read_only` | false | false |
+| `baseharbor.app.show` | `read_only` | false | false |
+| `baseharbor.app.create` | `mutating` | false | false |
+| `baseharbor.app.adopt` | `mutating` | false | false |
+| `baseharbor.app.configure` | `mutating` | false | false |
+| `baseharbor.runtime-identity.rotate` | `mutating` | false | true |
+| `baseharbor.runtime-identity.revoke` | `destructive` | false | true |
+| `baseharbor.tls.update` | `mutating` | false | false |
+| `baseharbor.trust.status` | `read_only` | false | false |
+| `baseharbor.trust.export` | `mutating` | false | false |
+| `baseharbor.trust.install` | `mutating` | false | true |
+| `baseharbor.app.stop` | `mutating` | false | false |
+| `baseharbor.app.preflight` | `read_only` | false | false |
+| `baseharbor.secret.list` | `read_only` | false | false |
+| `baseharbor.secret.set` | `mutating` | false | false |
+| `baseharbor.secret.delete` | `destructive` | false | true |
+| `baseharbor.secret.tls-set` | `mutating` | false | false |
+| `baseharbor.target.create` | `mutating` | false | false |
+| `baseharbor.target.delete` | `mutating` | false | false |
+| `baseharbor.stack.list` | `read_only` | false | false |
+| `baseharbor.stack.show` | `read_only` | false | false |
+| `baseharbor.stack.create` | `mutating` | false | false |
 | `baseharbor.workspace.init` | `mutating` | false | false |
 | `baseharbor.workspace.map` | `mutating` | false | false |
 | `baseharbor.target` | `read_only` | false | false |
@@ -175,4 +219,9 @@ destruction requires explicit BaseHarbor approval too
 
 ## CLI coverage
 
-The [CLI / machine matrix](cli-machine-coverage.md) includes every supported visible command and alias. Missing operations remain explicit `gap` entries until #787 is complete. `workspace.init` and `workspace.map` accept typed inputs and use the same shared operations as the noninteractive CLI/JSON paths.
+The [CLI / machine matrix](cli-machine-coverage.md) includes every supported visible command and alias. Unclassified new commands fail the generated inventory check; host, interactive and transport exclusions include reasons and safe alternatives. `workspace.init` and `workspace.map` accept typed inputs and use the same shared operations as the noninteractive CLI/JSON paths.
+
+
+## Typed operation examples
+
+Follow [machine operation recipes](../how-to/machine-operations.md) for application creation, workspace mapping, protected secrets, trust approval and provider conformance. Inputs and required properties come from the actual MCP `tools/list` schema. CLI JSON and MCP use shared operations; raw credentials and arbitrary runtime execution are excluded from MCP.

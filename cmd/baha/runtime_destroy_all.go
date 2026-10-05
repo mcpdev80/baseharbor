@@ -34,6 +34,35 @@ type fullDestroyResult struct {
 }
 
 func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "destroy")
+	if err != nil {
+		return err
+	}
+	args = filtered
+	if format == outputJSON {
+		confirmed, all := false, false
+		for _, arg := range args {
+			switch arg {
+			case "--yes":
+				confirmed = true
+			case "--all":
+				all = true
+			default:
+				return usageError("unknown destruction argument", "Use --yes or --all.")
+			}
+		}
+		var err error
+		if all {
+			err = destroyInstallation(machineNoninteractiveContext(parent), confirmed, io.Discard, io.Discard)
+		} else {
+			err = destroyControlPlane(parent, confirmed, io.Discard)
+		}
+		if err != nil {
+			return err
+		}
+		return writeJSON(out, map[string]any{"destroyed": confirmed, "preview": !confirmed, "all": all})
+	}
+
 	full := false
 	for _, arg := range args {
 		if arg == "--all" {
@@ -59,8 +88,22 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		}
 	}
 
+	return destroyInstallation(parent, confirmed, out, errOut)
+}
+func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.Writer) error {
+	if err := authorizeCurrentMCPContext(parent, "installation.destroy", "", "", ""); err != nil {
+		return err
+	}
+
 	targets, discoveryResults := discoverFullDestroyTargets()
 	deployments, deploymentResults := discoverFullDestroyDeployments()
+	// Authorize every discovered stable deployment before any target/network or
+	// best-effort cleanup. One unauthorized boundary blocks the whole operation.
+	for _, record := range deployments {
+		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {
+			return err
+		}
+	}
 
 	fmt.Fprintln(out, "WARNING")
 	fmt.Fprintln(out)

@@ -39,10 +39,21 @@ type Observed = reconciliation.Observed
 type StateDigester = providerconformance.StateDigester
 type Drifter = providerconformance.Drifter
 type Destroyer = providerconformance.Destroyer
+type FaultFixture = providerconformance.FaultFixture
+type OwnershipFixture = providerconformance.OwnershipFixture
+type FailureMode = providerconformance.FailureMode
+type Ownership = reconciliation.Ownership
 
 const (
-	ProtocolVersion  = capability.ProviderProtocolV1
-	ScopeApplication = capability.ScopeApplication
-	ScopeShared      = capability.ScopeShared
-	ScopeExternal    = capability.ScopeExternal
+	FailureNone             = providerconformance.FailureNone
+	FailureUnavailable      = providerconformance.FailureUnavailable
+	FailureProvision        = providerconformance.FailureProvision
+	FailureMalformedBinding = providerconformance.FailureMalformedBinding
+	FailureVerify           = providerconformance.FailureVerify
+	OwnershipBaseHarbor     = reconciliation.OwnershipBaseHarbor
+	OwnershipForeign        = reconciliation.OwnershipForeign
+	ProtocolVersion         = capability.ProviderProtocolV1
+	ScopeApplication        = capability.ScopeApplication
+	ScopeShared             = capability.ScopeShared
+	ScopeExternal           = capability.ScopeExternal
 )
