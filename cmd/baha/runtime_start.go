@@ -253,6 +253,16 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	// Retire previous trust only after both stable service paths have accepted
 	// the replacement leaves. Re-project the new-only CA bundles afterwards
 	// and verify the operator path one more time.
+	// An overlap bundle also accepts the old listener certificate while
+	// OpenBao's automatic TLS reload is still pending. Verify against only
+	// the active issuer before removing that fallback trust.
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve active OpenBao CA before retirement: %w", err)
+	}
+	if err := waitForOpenBaoReplacementCA(ctx, material, endpoint, trust.PEM); err != nil {
+		return fmt.Errorf("verify replacement OpenBao listener before CA retirement: %w", err)
+	}
 	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
 		return err
 	}
