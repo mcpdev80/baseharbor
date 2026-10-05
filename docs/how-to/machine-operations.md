@@ -48,7 +48,7 @@ baha app preflight --json
 
 Quick init includes the detected `demo-app` HTTPS exposure on container port 8080. If a labeled workload has multiple target ports, adoption stops before writing; select an explicit exposure contract. Preflight also checks runtime availability and workload security, so it requires a usable selected runtime for a full pass.
 
-Running quick init again reports the existing manifest without changing its stable identity or accepting newly detected capabilities. Review repository evolution and edit the existing `exposures` entries explicitly; `baha app init` configures deployment inputs after the contract exists.
+Running quick init again reports the existing manifest without changing its stable identity or accepting newly detected capabilities. Review repository evolution and edit the existing `exposure.http` entries explicitly; `baha app init` configures deployment inputs after the contract exists.
 
 ## Map a multi-repository workspace
 

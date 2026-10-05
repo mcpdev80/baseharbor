@@ -20,6 +20,10 @@ func loadSharedBackendState(path, environment string) (sharedBackendState, error
 	if err != nil {
 		return sharedBackendState{}, err
 	}
+	return decodeSharedBackendState(data)
+}
+
+func decodeSharedBackendState(data []byte) (sharedBackendState, error) {
 	var state sharedBackendState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return sharedBackendState{}, err

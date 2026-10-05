@@ -211,6 +211,8 @@ destruction requires explicit BaseHarbor approval too
 
 `baseharbor.app.new` is the semantic greenfield creation operation. It uses the same Application Contract, Stack Profile, Development Plan and adapter model as the human CLI and does not expose a generic shell.
 
+The result identifies `validation_scope: repository_capability_evidence` and `build_verified: false`. A satisfied repository inspection does not claim that the generated project has compiled or its runtime is ready.
+
 `baseharbor.workspace.resolve` is read-only. It resolves canonical component/source identity against the developer-local XDG workspace mapping.
 
 `baseharbor.workspace.status` exposes the same per-repository Git state model as the human CLI. Optional fetch refreshes remote-tracking state but never changes checked-out revisions.

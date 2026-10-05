@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Deployment configuration is distinct from applying state, rejected applies record failure, and target teardown reconciles inactive observations without deleting application source, inputs or data.
 - Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
 - Application help registers `new` once.
+- Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
+- Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
 - Control-plane memory planning includes every service in the shipped HA startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
 
 ## [0.4.21] - 2026-10-03

@@ -439,6 +439,8 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 			DevelopmentPlan development.DevelopmentPlan `json:"development_plan"`
 			Files           []string                    `json:"files"`
 			Validation      development.Validation      `json:"validation"`
+			ValidationScope string                      `json:"validation_scope"`
+			BuildVerified   bool                        `json:"build_verified"`
 		}{
 			ContractVersion: machine.ContractVersion,
 			Application:     result.Manifest.Name,
@@ -447,6 +449,8 @@ func registerMCPDevelopmentTools(server *mcp.Server) {
 			DevelopmentPlan: result.Plan,
 			Files:           result.FilePaths,
 			Validation:      result.Validation,
+			ValidationScope: "repository_capability_evidence",
+			BuildVerified:   false,
 		}, nil
 	})
 

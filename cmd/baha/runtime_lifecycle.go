@@ -53,6 +53,10 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	if err := application.CheckControlPlaneDestroySafeAt(dataDir); err != nil {
 		return fmt.Errorf("target destroy preflight: %w", err)
 	}
+	sharedBackends, err := application.SharedBackendDestroyPlan(dataDir, target.Name)
+	if err != nil {
+		return fmt.Errorf("target shared-backend destroy preflight: %w", err)
+	}
 	inactive, err := inactiveTargetDeployments(parent, target.Name)
 	if err != nil {
 		return fmt.Errorf("inspect retained deployment observations: %w", err)
@@ -71,6 +75,9 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	}
 	if instances, err := metricsprovider.ExistingSharedProviderInstancesAt(dataDir, target.Name); err == nil && len(instances) > 0 {
 		fmt.Fprintf(out, "  metrics: %d shared Prometheus provider instance(s) across default/sharing boundaries\n", len(instances))
+	}
+	for _, shared := range sharedBackends {
+		fmt.Fprintf(out, "  shared data: project %s module %s (owned SQL/cache containers, network and volumes)\n", shared.Project, shared.Dir)
 	}
 	fmt.Fprintf(out, "  runtime state: %s\n", runtimeDir)
 	fmt.Fprintf(out, "  registry:      %s\n", filepath.Join(dataDir, "provider-registry.json"))
@@ -109,6 +116,9 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	if err := runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
+	if err := application.DestroyAllSharedBackendsAt(ctx, compose, dataDir, target.Name); err != nil {
+		return fmt.Errorf("destroy target shared SQL/cache providers: %w", err)
+	}
 	if err := objectstorage.DestroySharedProviderAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared object-storage provider: %w", err)
 	}
@@ -123,6 +133,15 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	}
 	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
+	}
+	for _, shared := range sharedBackends {
+		remaining, err := compose.ListOwnedProjectResources(ctx, shared.Project)
+		if err != nil {
+			return fmt.Errorf("verify target shared-provider teardown before removing runtime state: %w", err)
+		}
+		if len(remaining) != 0 {
+			return fmt.Errorf("target shared-provider teardown incomplete: project %s retains %d owned resource(s); runtime and registry state preserved", shared.Project, len(remaining))
+		}
 	}
 	if err := os.RemoveAll(runtimeDir); err != nil {
 		return fmt.Errorf("remove BaseHarbor runtime state: %w", err)

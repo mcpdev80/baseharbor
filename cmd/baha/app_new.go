@@ -109,6 +109,8 @@ func appNewCommand() *cli.Command {
 					DevelopmentPlan development.DevelopmentPlan `json:"development_plan"`
 					Files           []string                    `json:"files"`
 					Satisfied       bool                        `json:"satisfied"`
+					ValidationScope string                      `json:"validation_scope"`
+					BuildVerified   bool                        `json:"build_verified"`
 				}{
 					ContractVersion: development.NewApplicationResultVersion,
 					Application:     result.Manifest.Name,
@@ -117,13 +119,15 @@ func appNewCommand() *cli.Command {
 					DevelopmentPlan: result.Plan,
 					Files:           result.FilePaths,
 					Satisfied:       result.Validation.Satisfied,
+					ValidationScope: "repository_capability_evidence",
+					BuildVerified:   false,
 				})
 			}
 			fmt.Fprintf(out, "created %s (%s) with %s\n", result.Manifest.Name, result.Manifest.Environment, result.Profile.Metadata.Name)
 			for _, path := range result.FilePaths {
 				fmt.Fprintf(out, "  %s\n", path)
 			}
-			fmt.Fprintln(out, "validation: SATISFIED")
+			fmt.Fprintln(out, "validation: SATISFIED (repository capability evidence; build not run)")
 			fmt.Fprintln(out, "next: review the generated source, then run 'baha up'")
 			return nil
 		},

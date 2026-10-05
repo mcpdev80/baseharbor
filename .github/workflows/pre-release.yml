@@ -153,6 +153,9 @@ jobs:
         id: source_readability
         run: bash scripts/source-readability-audit.sh
 
+      - name: Validate partial-rerun evidence selection
+        run: python scripts/test_select_evidence_attempts.py
+
       - name: Run release-source tests
         id: source_tests
         shell: bash
@@ -729,33 +732,14 @@ jobs:
       - name: Download reference journey evidence
         uses: actions/download-artifact@v6
         with:
-          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: pre-release-reference-journey-evidence-*
           path: ${{ runner.temp }}/reference-journey-evidence
 
       - name: Select latest evidence attempt per gate
         shell: bash
         run: |
-          python3 - <<'PY'
-          import os, pathlib, re, shutil
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          for family in ("gate-evidence", "adoption-evidence", "v0421-ha-evidence"):
-              groups = {}
-              for directory in (root / family).iterdir():
-                  match = re.fullmatch(r"(.+)-([0-9]+)-([0-9]+)", directory.name)
-                  if not match or not directory.is_dir():
-                      raise SystemExit(f"Unexpected evidence directory: {directory}")
-                  key, run, attempt = match.groups()
-                  if run != os.environ.get("EVIDENCE_RUN_ID", os.environ["GITHUB_RUN_ID"]):
-                      raise SystemExit(f"Wrong source run: {directory}")
-                  groups.setdefault(key, []).append((int(attempt), directory))
-              for key, entries in groups.items():
-                  entries.sort()
-                  for attempt, directory in entries[:-1]:
-                      archive = root / "superseded-evidence" / family
-                      archive.mkdir(parents=True, exist_ok=True)
-                      shutil.move(str(directory), archive / directory.name)
-                  print(f"{key}: selected attempt {entries[-1][0]}")
-          PY
+          python scripts/select-evidence-attempts.py "$RUNNER_TEMP" "$GITHUB_RUN_ID" \
+            gate-evidence adoption-evidence v0421-ha-evidence reference-journey-evidence
 
       - name: Verify adoption evidence
         id: adoption_manifest
@@ -809,7 +793,9 @@ jobs:
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
         run: |
           set -euo pipefail
-          manifest="$RUNNER_TEMP/reference-journey-evidence/manifest.json"
+          mapfile -d '' files < <(find "$RUNNER_TEMP/reference-journey-evidence" -mindepth 2 -maxdepth 2 -type f -name manifest.json -print0 | sort -z)
+          test "${#files[@]}" -eq 1
+          manifest="${files[0]}"
           test -s "$manifest"
           jq -e \
             --arg candidate "$CANDIDATE_SHA" \
@@ -875,7 +861,7 @@ jobs:
           cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
           cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
           cp "$RUNNER_TEMP/v0421-ha-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json"
-          cp "$RUNNER_TEMP/reference-journey-evidence/manifest.json" "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json"
+          find "$RUNNER_TEMP/reference-journey-evidence" -mindepth 2 -maxdepth 2 -type f -name manifest.json -exec cp {} "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json" \;
 
       - name: Generate immutable release approval
         id: approval
