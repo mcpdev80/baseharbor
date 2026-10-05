@@ -75,6 +75,15 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
+		if t.Failed() {
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(context.Background(), 20*time.Second)
+			if logs, logErr := runtimeProvider.LogsProject(diagnosticCtx, files.Project, files.Compose, files.Env); logErr == nil {
+				t.Logf("Keycloak HA project logs:\n%s", logs)
+			} else {
+				t.Logf("Keycloak HA project log capture failed: %v", logErr)
+			}
+			diagnosticCancel()
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		_ = runtimeProvider.DestroyProject(cleanupCtx, files.Project, files.Compose, files.Env)

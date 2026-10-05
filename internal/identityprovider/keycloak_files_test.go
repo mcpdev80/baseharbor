@@ -35,8 +35,8 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 	if !strings.Contains(got, "keycloak-db-member-1") || !strings.Contains(got, "keycloak-db-member-2") || !strings.Contains(got, "keycloak-db-member-3") {
 		t.Fatalf("Keycloak compose must include the three Patroni database members:\n%s", got)
 	}
-	if !strings.Contains(got, "pg_isready") {
-		t.Fatalf("Keycloak compose missing PostgreSQL readiness probe:\n%s", got)
+	if !strings.Contains(got, "until psql -h keycloak-db -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null;") {
+		t.Fatalf("Keycloak compose missing authenticated PostgreSQL TLS readiness probe:\n%s", got)
 	}
 	if !strings.Contains(got, "/dev/tcp/127.0.0.1/8443") {
 		t.Fatalf("Keycloak compose missing native HTTPS listener health probe:\n%s", got)

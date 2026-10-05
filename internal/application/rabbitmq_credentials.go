@@ -30,17 +30,17 @@ IFS= read -r admin_user
 IFS= read -r admin_password
 
 if rabbitmqctl list_users -q | awk '{print $1}' | grep -Fxq "$app_user"; then
-  rabbitmqctl change_password "$app_user" "$app_password" >/dev/null
+  printf '%s\n' "$app_password" | rabbitmqctl change_password "$app_user" >/dev/null
 else
-  rabbitmqctl add_user "$app_user" "$app_password" >/dev/null
+  printf '%s\n' "$app_password" | rabbitmqctl add_user "$app_user" >/dev/null
 fi
 rabbitmqctl set_permissions -p / "$app_user" '.*' '.*' '.*' >/dev/null
 
 if [ -n "$admin_user" ]; then
   if rabbitmqctl list_users -q | awk '{print $1}' | grep -Fxq "$admin_user"; then
-    rabbitmqctl change_password "$admin_user" "$admin_password" >/dev/null
+    printf '%s\n' "$admin_password" | rabbitmqctl change_password "$admin_user" >/dev/null
   else
-    rabbitmqctl add_user "$admin_user" "$admin_password" >/dev/null
+    printf '%s\n' "$admin_password" | rabbitmqctl add_user "$admin_user" >/dev/null
   fi
   rabbitmqctl set_user_tags "$admin_user" administrator >/dev/null
   rabbitmqctl set_permissions -p / "$admin_user" '.*' '.*' '.*' >/dev/null

@@ -47,6 +47,16 @@ func TestRabbitMQHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Exercise passwords that the native CLI would otherwise parse as options.
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values[rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD")] = "-" + values[rabbitmqRuntimeKey(defaultServiceInstance, "PASSWORD")]
+	values[rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")] = "-" + values[rabbitmqRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")]
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		t.Fatal(err)
+	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		t.Fatal(err)
 	}
