@@ -134,15 +134,6 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			}
 			return nil
 		}},
-		{Name: "managed identity", Run: func(ctx context.Context) error {
-			if !application.HasIdentity(m) {
-				return nil
-			}
-			if c.runtimeErr != nil {
-				return c.runtimeErr
-			}
-			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, nil)
-		}},
 		{Name: "canonical development URLs", Run: func(ctx context.Context) error {
 			if !requiresDevelopmentGateway(m) {
 				return nil
@@ -168,6 +159,15 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			var err error
 			c.compose, err = detectRuntimeForApplication(ctx, c.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
 			return err
+		}},
+		{Name: "managed identity", Run: func(ctx context.Context) error {
+			if !application.HasIdentity(m) {
+				return nil
+			}
+			if c.runtimeErr != nil {
+				return c.runtimeErr
+			}
+			return verifyExistingManagedIdentity(ctx, c.compose, c.resolved, nil)
 		}},
 		{Name: "availability guarantees", Run: func(context.Context) error {
 			if c.compose == nil {
