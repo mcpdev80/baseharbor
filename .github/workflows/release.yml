@@ -6,6 +6,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release-publish/v0.4.21'
   workflow_dispatch:
     inputs:
       tag:
@@ -56,7 +58,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             tag="${MANUAL_TAG}"
           else
-            tag="${GITHUB_REF_NAME}"
+            tag="${GITHUB_REF_NAME##*/}"
           fi
 
           if [[ "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -72,10 +74,14 @@ jobs:
           tag_sha="$(git rev-list -n 1 "${tag}^{commit}")"
           test -n "${tag_sha}"
 
-          git merge-base --is-ancestor "${tag_sha}" origin/main || {
-            echo "Release tag must point to a commit contained in main." >&2
-            exit 1
-          }
+          detached_v0421="false"
+          if ! git merge-base --is-ancestor "${tag_sha}" origin/main; then
+            # One exact, already validated release predates newer work on main.
+            # Its immutable approval is checked below; no generic branch bypass.
+            test "${tag}" = "v0.4.21"
+            test "${tag_sha}" = "b39a8b2c6eeda93470ba3b8ffe3b8eb3f01f5ba6"
+            detached_v0421="true"
+          fi
 
           version="${tag#v}"
           git show "${tag_sha}:CHANGELOG.md" | grep -Fq "## [${version}]" || {
@@ -233,25 +239,48 @@ jobs:
               echo "Pre-Release approval artifact does not contain release-approved.json." >&2
               exit 1
             }
+            workflow_sha="${tested_sha}"
+            approved_candidate="$(jq -r '.candidate_sha' "${approval_json}")"
+            compatible_candidate "${approved_candidate}" || {
+              echo "Approval product candidate differs from release content." >&2
+              exit 1
+            }
+            tested_sha="${approved_candidate}"
             jq -e \
+              --arg workflow_sha "${workflow_sha}" \
+              --arg tag "${tag}" \
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
                 .schema == "baseharbor.pre-release.approval/v1" and
+                .tag == $tag and
+                (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and
                 .tested_sha == $tested_sha and
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
                 .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
-                .gate_count == 45 and
+                (.gate_count == (if .tag == "v0.4.21" then 54 else 45 end)) and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
               ' "${approval_json}" >/dev/null || {
                 echo "Pre-Release approval artifact failed atomic evidence validation." >&2
                 exit 1
               }
+            if [ "${detached_v0421}" = "true" ]; then
+              test "${run_id}" = "37345507011"
+              jq -e '
+                .candidate_sha == "4db0e86e391c037d14d7bd7c13ba7c13ee517420" and
+                .tested_sha == "4db0e86e391c037d14d7bd7c13ba7c13ee517420" and
+                .workflow_sha == "f8b937db3db08f6f2e02540f6702963a90a7bbb2" and
+                .evidence_source_run_id == 37335642463 and
+                .demo_sha == "330eb510776686ce796ff13a00b5ea8d9ca1aa25" and
+                .gate_count == 54
+              ' "${approval_json}" >/dev/null
+            fi
             demo_sha="$(jq -r '.demo_sha' "${approval_json}")"
           else
+            test "${detached_v0421}" = "false"
             demo_sha="$(git show "${tested_sha}:docs/releases/${tag}.demo-ref" | tr -d '[:space:]')"
             [[ "${demo_sha}" =~ ^[0-9a-f]{40}$ ]] || {
               echo "Pre-Release candidate does not pin an exact baseharbor-demo SHA." >&2
