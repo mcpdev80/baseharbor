@@ -200,7 +200,9 @@ jobs:
       - name: Run runtime gate
         id: runtime_gate
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
-        timeout-minutes: ${{ steps.resource_profile.outputs.profile == 'recovery' && 20 || 8 }}
+        # Security starts the complete provider set; budget cold builds and
+        # teardown after acceptance without changing service readiness limits.
+        timeout-minutes: ${{ steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'security' && 12 || 8 }}
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}

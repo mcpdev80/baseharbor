@@ -219,6 +219,9 @@ func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 
 	for _, want := range []string{
 		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
+		"PGROOT: /home/postgres/pgroot",
+		"PGDATA: /home/postgres/pgroot/data",
+		"shared-postgres-data-1:/home/postgres/pgroot",
 		"chmod 0755 /run/baseharbor",
 		"chown \"0:$$gid\" /run/baseharbor/tls/server-cert.pem /run/baseharbor/tls/server-key.pem",
 		"chmod 0640 /run/baseharbor/tls/server-key.pem",
