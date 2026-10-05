@@ -734,10 +734,6 @@ func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any
 		return resp.StatusCode, strings.TrimSpace(string(data)), nil
 	}
 
-	if method != http.MethodGet {
-		return attempt()
-	}
-
 	retryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -748,12 +744,21 @@ func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any
 	var lastErr error
 	for {
 		status, body, err := attempt()
-		if err == nil && status != http.StatusServiceUnavailable {
-			return status, body, nil
+		// Bootstrap 503s reject the operation before it runs. Only that explicit
+		// response may retry writes; transport failures may have applied them.
+		retry := method == http.MethodGet && (err != nil || status == http.StatusServiceUnavailable)
+		if method != http.MethodGet {
+			retry = err == nil && status == http.StatusServiceUnavailable && strings.HasPrefix(body, "Bootstrap in progress.")
+		}
+		if !retry {
+			return status, body, err
 		}
 		lastStatus, lastBody, lastErr = status, body, err
 		select {
 		case <-retryCtx.Done():
+			if ctx.Err() != nil {
+				return 0, "", ctx.Err()
+			}
 			if lastErr != nil {
 				return 0, "", lastErr
 			}
