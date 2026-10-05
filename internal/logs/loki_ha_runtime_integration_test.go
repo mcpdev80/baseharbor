@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -76,6 +77,15 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
         syslog-format: rfc5424
         tag: "api"
 `, "PORT", fmt.Sprint(registration.SyslogPort))
+	if runtime.LogCollectionMode() == bhruntime.LogCollectionJournald {
+		yaml = `services:
+  api:
+    image: busybox:1.37
+    command: ["sh", "-c", "while true; do echo baseharbor-loki-ha-acceptance; sleep 1; done"]
+    logging:
+      driver: journald
+`
+	}
 	if err := os.WriteFile(composeFile, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +127,7 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		}
 		var relevant []string
 		for _, line := range strings.Split(metrics, "\n") {
-			if strings.Contains(line, "loki_source_syslog_") || strings.Contains(line, "loki_write_") {
+			if strings.Contains(line, "loki_source_") || strings.Contains(line, "loki_write_") {
 				relevant = append(relevant, line)
 			}
 		}
@@ -127,23 +137,34 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 		return detail
 	}
 
-	emitLokiHAProbes(t, registration.SyslogPort)
+	emitProbes := func() {
+		if runtime.LogCollectionMode() == bhruntime.LogCollectionJournald {
+			if output, err := runtime.ExecProject(ctx, project, composeFile, envFile, "api", "sh", "-c",
+				"echo baseharbor-loki-ha-probe > /proc/1/fd/1"); err != nil {
+				t.Fatalf("emit Loki HA journal probe: %v\n%s", err, output)
+			}
+			return
+		}
+		emitLokiHAProbes(t, registration.SyslogPort)
+	}
+
+	emitProbes()
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.StopProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("stop Loki member: %v", err)
 	}
-	emitLokiHAProbes(t, registration.SyslogPort)
+	emitProbes()
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 	if err := runtime.UpProjectFilesSelected(ctx, placement.Project, files.Dir, env, []string{"loki-2"}, files.Compose); err != nil {
 		t.Fatalf("restart Loki member: %v", err)
 	}
-	emitLokiHAProbes(t, registration.SyslogPort)
+	emitProbes()
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 
 	if err := driver.RotateStorageCredentials(ctx); err != nil {
 		t.Fatalf("rotate Loki platform-storage credentials: %v", err)
 	}
-	emitLokiHAProbes(t, registration.SyslogPort)
+	emitProbes()
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 
 	accessPolicy, err := serviceaccess.Resolve(m.Environment, "loki", serviceaccess.AuthenticationMTLS)
@@ -163,7 +184,7 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if err := driver.RotateAccessPKI(ctx); err != nil {
 		t.Fatalf("rotate Loki access PKI: %v", err)
 	}
-	emitLokiHAProbes(t, registration.SyslogPort)
+	emitProbes()
 	waitLokiHA(t, ctx, driver, resource, binding, diagnose)
 
 	newMaterial, err := serviceaccess.ExistingTLSMaterial(accessPolicy, accessDir)
