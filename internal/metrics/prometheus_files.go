@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -290,6 +291,11 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"] = credentials.Password
 	}
 	var envBuilder strings.Builder
+	if username, password := strings.TrimSpace(values["BASEHARBOR_PROMETHEUS_UI_USER"]), values["BASEHARBOR_PROMETHEUS_UI_PASSWORD"]; username != "" && password != "" {
+		values["BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+	} else {
+		delete(values, "BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION")
+	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
@@ -323,6 +329,9 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 		return ProviderFiles{}, err
 	}
 	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA)
+	if values["BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"] != "" {
+		accessSpec.HealthAuthorizationEnv = "BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"
+	}
 	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -465,7 +474,11 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	if err := writePrometheusWebConfig(files.WebConfig, memberPolicy, values); err != nil {
 		return err
 	}
-	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, prometheusHAAccessSpec(memberTLS.Material.CA))
+	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA)
+	if values["BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"] != "" {
+		accessSpec.HealthAuthorizationEnv = "BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return err
 	}

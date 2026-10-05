@@ -22,10 +22,11 @@ import (
 const GatewayImage = "docker.io/library/caddy:2.11.4-alpine"
 
 type HTTPGatewayFiles struct {
-	Dir       string
-	Caddyfile string
-	Material  TLSMaterial
-	AuthToken string
+	Dir                    string
+	Caddyfile              string
+	Material               TLSMaterial
+	AuthToken              string
+	HealthAuthorizationEnv string
 }
 
 type NativeTLSFiles struct {
@@ -71,9 +72,20 @@ type HTTPGatewaySpec struct {
 	BasicAuthPassword         string
 	HealthURI                 string
 	HealthStatus              int
+	HealthAuthorizationEnv    string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
+	if spec.HealthAuthorizationEnv != "" {
+		for i, c := range spec.HealthAuthorizationEnv {
+			if c != '_' && (c < 'A' || c > 'Z') && (i == 0 || c < '0' || c > '9') {
+				return HTTPGatewayFiles{}, errors.New("HTTP service gateway health authorization environment name is invalid")
+			}
+		}
+		if strings.TrimSpace(spec.HealthURI) == "" {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway health authorization requires a health URI")
+		}
+	}
 	if strings.TrimSpace(spec.ServiceName) == "" {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway name is required")
 	}
@@ -164,7 +176,7 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfileWithUpstreamsTLSHealthClient(
+	config := caddyfileWithUpstreamsTLSHealthClientAuthorization(
 		spec.Upstreams,
 		spec.UpstreamTrustFile,
 		spec.UpstreamServerName,
@@ -176,12 +188,16 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		basicAuthHash,
 		spec.HealthURI,
 		spec.HealthStatus,
+		spec.HealthAuthorizationEnv,
 		spec.DenyPaths...,
 	)
 	if fingerprint, err := gatewayUpstreamTLSFingerprint(spec); err != nil {
 		return HTTPGatewayFiles{}, err
 	} else if fingerprint != "" {
 		config = "# baseharbor-upstream-tls-sha256=" + fingerprint + "\n" + config
+	}
+	if spec.HealthAuthorizationEnv != "" {
+		files.HealthAuthorizationEnv = spec.HealthAuthorizationEnv
 	}
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
@@ -356,6 +372,10 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	fmt.Fprintf(&b, "  %s:\n", spec.ServiceName)
 	fmt.Fprintf(&b, "    image: %s\n", GatewayImage)
 	b.WriteString("    restart: unless-stopped\n")
+	if files.HealthAuthorizationEnv != "" {
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(&b, "      %s: ${%s}\n", files.HealthAuthorizationEnv, files.HealthAuthorizationEnv)
+	}
 	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -644,6 +664,10 @@ func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upst
 }
 
 func caddyfileWithUpstreamsTLSHealthClient(upstreams []string, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealthClientAuthorization(upstreams, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey, port, authentication, basicAuthUsername, basicAuthHash, healthURI, healthStatus, "", denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealthClientAuthorization(upstreams []string, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, healthAuthorizationEnv string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -681,6 +705,9 @@ func caddyfileWithUpstreamsTLSHealthClient(upstreams []string, upstreamTrustFile
 	activeHealth := ""
 	if healthURI != "" && strings.HasPrefix(healthURI, "/") && !strings.ContainsAny(healthURI, "\r\n{}") {
 		activeHealth = "    health_uri " + healthURI + "\n"
+		if healthAuthorizationEnv != "" {
+			activeHealth += "    health_headers {\n      Authorization \"{$" + healthAuthorizationEnv + "}\"\n    }\n"
+		}
 		if healthStatus >= 100 && healthStatus <= 599 {
 			activeHealth += fmt.Sprintf("    health_status %d\n", healthStatus)
 		}
