@@ -100,6 +100,10 @@ jobs:
           test -n "$ref"
           test -n "$demo_ref"
           test -n "$gate"
+          if [ "$gate" = "reference-journey" ] && [ "$runtime" != "docker" ]; then
+            echo "The complete reference journey requires Docker." >&2
+            exit 2
+          fi
           {
             echo "ref=$ref"
             echo "demo_ref=$demo_ref"
@@ -108,6 +112,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   selected_gate:
+    if: needs.resolve.outputs.gate != 'reference-journey'
     needs: resolve
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
@@ -116,3 +121,133 @@ jobs:
       runtime: ${{ needs.resolve.outputs.runtime }}
       gate: ${{ needs.resolve.outputs.gate }}
       candidate_artifact: ""
+
+  reference_journey:
+    name: Reference Journey · Docker · Full E2E
+    if: needs.resolve.outputs.gate == 'reference-journey' && needs.resolve.outputs.runtime == 'docker'
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - name: Reset Docker runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build exact candidate and runtime image
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          out="$RUNNER_TEMP/pre-release-candidate"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=v0.4.21 -X main.commit=$candidate_sha -X main.date=unknown" \
+            -o "$out/baha" ./cmd/baha
+          "$out/baha" version | grep -F "$candidate_sha"
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+          docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact demo revision
+        id: demo
+        shell: bash
+        env:
+          DEMO_REF: ${{ needs.resolve.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          workdir="$RUNNER_TEMP/baseharbor-demo-reference"
+          rm -rf "$workdir"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
+          echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+
+      - name: Run complete reference journey
+        id: journey
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-reference-artifacts"
+          workdir="${{ steps.demo.outputs.workdir }}"
+          cd "$workdir"
+          BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+          BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
+          BASEHARBOR_TEST_RUNTIME=docker \
+            bash scripts/acceptance.sh
+
+      - name: Collect reference journey diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          bash scripts/ci-failure-diagnostics.sh \
+            docker \
+            "$RUNNER_TEMP/reference-journey-diagnostics" \
+            "${{ steps.demo.outputs.workdir }}" \
+            "$RUNNER_TEMP/pre-release-candidate/baha" || true
+
+      - name: Cleanup Docker runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate reference journey evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/reference-journey-evidence"
+          mkdir -p "$out"
+          cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
+          jq -n \
+            --arg schema "baseharbor.pre-release.reference-journey/v1" \
+            --arg candidate_sha "${{ steps.candidate.outputs.sha }}" \
+            --arg demo_ref "${{ needs.resolve.outputs.demo_ref }}" \
+            --arg outcome "${{ steps.journey.outcome }}" \
+            '{
+              schema: $schema,
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              runtime: "docker",
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Upload reference journey evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reference-journey-evidence
+          if-no-files-found: error
+          retention-days: 30
