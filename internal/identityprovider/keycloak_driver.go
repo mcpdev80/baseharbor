@@ -430,6 +430,23 @@ func reloadKeycloakAccessGateway(ctx context.Context, runtime KeycloakRuntime, f
 	return nil
 }
 
+// Spilo's periodic TLS reload runs every five minutes. Reload every database
+// member while both CAs are trusted, before retiring the previous CA.
+func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRuntime, files KeycloakFiles) error {
+	executor, ok := runtime.(keycloakProjectExecutor)
+	if !ok {
+		return errors.New("Keycloak PKI rotation requires runtime database reload support")
+	}
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+		if _, err := executor.ExecProject(ctx, files.Project, files.Compose, files.Env, service,
+			"su", "postgres", "-c", "pg_ctl reload"); err != nil {
+			return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, err)
+		}
+	}
+	return nil
+}
+
 func waitKeycloakNativeCertificateReload(ctx context.Context) error {
 	timer := time.NewTimer(12 * time.Second)
 	defer timer.Stop()
@@ -466,6 +483,9 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 			return KeycloakFiles{}, err
 		}
 		if err := r.lifecycle.Apply(ctx, files); err != nil {
+			return KeycloakFiles{}, err
+		}
+		if err := reloadKeycloakDatabaseCertificates(ctx, r.runtime, files); err != nil {
 			return KeycloakFiles{}, err
 		}
 		// Keycloak polls its native HTTPS leaf files. During overlap creation the
