@@ -106,7 +106,7 @@ func UsesSharedPostgreSQL(m Manifest) bool {
 
 func UsesSharedValkey(m Manifest) bool {
 	placement, err := ResolveProviderPlacement(m, capability.ProviderValkey)
-	return err == nil && placement.Scope == capability.ScopeShared && len(CacheInstanceNames(m)) > 0
+	return err == nil && placement.Scope == capability.ScopeShared && len(ValkeyInstanceNames(m)) > 0
 }
 
 func HasSharedBackends(m Manifest) bool {
@@ -212,7 +212,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 
 	if UsesSharedValkey(m) {
-		for _, instance := range CacheInstanceNames(m) {
+		for _, instance := range ValkeyInstanceNames(m) {
 			port, convErr := strconv.Atoi(strings.TrimSpace(values[valkeyRuntimeKey(instance, "HOST_PORT")]))
 			if convErr != nil || port <= 0 {
 				port, err = allocateLoopbackPort(nil)

@@ -9,6 +9,7 @@ import (
 )
 
 func TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork(t *testing.T) {
+	useApplicationScopedDataProviders(t)
 	m := Manifest{
 		Version:       CurrentVersion,
 		ApplicationID: MustNewApplicationID(),
