@@ -201,6 +201,9 @@ func TestManagedCollectorClientCertificateRequirementFollowsPolicy(t *testing.T)
 	if !strings.Contains(managed, "client_ca_file: /run/baseharbor/tls/ca.pem") {
 		t.Fatalf("managed collector is missing required mTLS client CA:\n%s", managed)
 	}
+	if !strings.Contains(managed, "client_ca_file_reload: true") {
+		t.Fatalf("managed collector must reload the client trust pool during CA rotation:\n%s", managed)
+	}
 }
 
 func TestManagedCollectorExposesInternalMetricsOnProviderNetwork(t *testing.T) {

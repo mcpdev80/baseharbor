@@ -207,6 +207,12 @@ func (d *Driver) RotatePKI(ctx context.Context) error {
 	if d.runtime == nil || d.issuer == nil {
 		return errors.New("managed OTLP PKI rotation requires runtime and issuer")
 	}
+	executor, ok := d.runtime.(interface {
+		ExecProject(context.Context, string, string, string, string, ...string) (string, error)
+	})
+	if !ok {
+		return errors.New("managed OTLP PKI rotation requires runtime service execution")
+	}
 	reconcile := func() (ProviderFiles, error) {
 		files, err := d.ensureProviderFiles(ctx)
 		if err != nil {
@@ -217,6 +223,13 @@ func (d *Driver) RotatePKI(ctx context.Context) error {
 		}
 		if err := d.runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 			return ProviderFiles{}, err
+		}
+		// Caddy's watcher compares adapted configuration, so a changed TLS
+		// fingerprint comment cannot activate replacement trust or identities.
+		// Reprovision in place before verifying overlap or retiring the old CA.
+		if _, err := executor.ExecProject(ctx, files.Project, files.Compose, files.Env, "otel-collector-access",
+			"/run/baseharbor/caddy", "reload", "--force", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"); err != nil {
+			return ProviderFiles{}, fmt.Errorf("reload OTLP gateway TLS material: %w", err)
 		}
 		endpoint, err := providerEndpoint(files)
 		if err != nil {

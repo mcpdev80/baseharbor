@@ -517,6 +517,7 @@ func collectorConfigWithTraceBackendAccess(traceEndpoint string, requireClientCe
 	b.WriteString("          key_file: /run/baseharbor/tls/server-key.pem\n")
 	if requireClientCertificate {
 		b.WriteString("          client_ca_file: /run/baseharbor/tls/ca.pem\n")
+		b.WriteString("          client_ca_file_reload: true\n")
 	}
 	b.WriteString("          min_version: \"1.2\"\n")
 	b.WriteString("          reload_interval: 30s\n")
