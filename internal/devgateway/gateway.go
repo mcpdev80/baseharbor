@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -83,7 +84,7 @@ func FilesFor(target string) (Files, error) {
 		State:     filepath.Join(dir, "routes.json"),
 		Compose:   filepath.Join(dir, "compose.yaml"),
 		Env:       filepath.Join(dir, "runtime.env"),
-		Caddyfile: filepath.Join(dir, "Caddyfile"),
+		Caddyfile: filepath.Join(dir, "runtime", "Caddyfile"),
 		Project:   bhruntime.ApplicationProjectName(target, "dev-gateway", "dev"),
 		Cert:      filepath.Join(dir, "runtime", "server.pem"),
 		Key:       filepath.Join(dir, "runtime", "server-key.pem"),
@@ -195,15 +196,18 @@ func cloneState(input state) state {
 }
 
 func saveRouteStateForReconcile(ctx context.Context, runtime Runtime, files Files, previous, next state) error {
-	if len(next.Routes) > 0 && routeNetworkSetChanged(previous.Routes, next.Routes) {
-		if _, err := os.Stat(files.Compose); err == nil {
-			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-				return fmt.Errorf("restart development gateway after route network change: %w", err)
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
+	// Route/network changes are reconciled in place by Reconcile through
+	// ConfigProject + UpProject. Do not destroy the currently healthy gateway
+	// before the replacement configuration has even been validated. Compose
+	// may still need to recreate the single ingress container when its attached
+	// network set changes, but the existing capacity remains available until
+	// the validated reconciliation actually starts. This is the strongest
+	// continuity possible on a single-host runtime where one loopback host port
+	// has a single owner.
+	_ = ctx
+	_ = runtime
+	_ = files
+	_ = previous
 	return saveState(files.State, next)
 }
 
@@ -306,7 +310,7 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o755); err != nil {
 		return err
 	}
 	hosts := make([]string, 0, len(current.Routes))
@@ -328,7 +332,12 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := projectReadable(material.ServerCertificate, files.Cert); err != nil {
 		return err
 	}
-	if err := projectReadable(material.ServerKey, files.Key); err != nil {
+	// This is a derived runtime projection mounted read-only into an
+	// unprivileged container. Rootless Podman remaps container UIDs, so a 0600
+	// host-owned projection is unreadable even though the authoritative PKI key
+	// remains protected under pki/. Match the service-access gateway projection
+	// model and make only this read-only runtime copy container-readable.
+	if err := projectReadableMode(material.ServerKey, files.Key, 0o644); err != nil {
 		return err
 	}
 	trustTargets := map[string]string{}
@@ -350,7 +359,9 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if err := os.WriteFile(files.Caddyfile, []byte(renderCaddyfile(current.Routes, hostPort)), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
+	uid, gid := gatewayRuntimeIdentity()
+	gatewayEnv := fmt.Sprintf("BASEHARBOR_GATEWAY_UID=%s\nBASEHARBOR_GATEWAY_GID=%s\n", uid, gid)
+	if err := os.WriteFile(files.Env, []byte(gatewayEnv), 0o600); err != nil {
 		return err
 	}
 	if err := saveState(files.State, current); err != nil {
@@ -706,6 +717,10 @@ func normalizedRoutes(routes []Route) []Route {
 }
 
 func projectReadable(source, target string) error {
+	return projectReadableMode(source, target, 0o644)
+}
+
+func projectReadableMode(source, target string, mode os.FileMode) error {
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
@@ -713,11 +728,18 @@ func projectReadable(source, target string) error {
 	if len(data) == 0 {
 		return fmt.Errorf("%s is empty", filepath.Base(source))
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
 	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
+		_ = os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, target); err != nil {
@@ -725,4 +747,24 @@ func projectReadable(source, target string) error {
 		return err
 	}
 	return nil
+}
+
+func gatewayRuntimeIdentity() (string, string) {
+	current, err := user.Current()
+	if err == nil && numericIdentity(current.Uid) && numericIdentity(current.Gid) {
+		return current.Uid, current.Gid
+	}
+	return "65532", "65532"
+}
+
+func numericIdentity(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

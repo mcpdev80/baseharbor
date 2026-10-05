@@ -14,10 +14,11 @@ import (
 )
 
 type QuadletProject struct {
-	Project      string
-	Files        map[string]string
-	ServiceUnits map[string]string
-	Containers   map[string]string
+	Project           string
+	Files             map[string]string
+	ServiceUnits      map[string]string
+	Containers        map[string]string
+	CompletedServices map[string]bool
 }
 
 type quadletComposeProject struct {
@@ -37,12 +38,14 @@ type quadletComposeService struct {
 	Entrypoint  quadletStringList         `yaml:"entrypoint"`
 	Volumes     []string                  `yaml:"volumes"`
 	Networks    quadletNetworkAttachments `yaml:"networks"`
-	DependsOn   quadletStringSet          `yaml:"depends_on"`
+	DependsOn   quadletDependencies       `yaml:"depends_on"`
 	Profiles    []string                  `yaml:"profiles"`
 	User        string                    `yaml:"user"`
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
 	CapAdd      []string                  `yaml:"cap_add"`
+	DNSOptions  []string                  `yaml:"dns_opt"`
+	DNSSearch   quadletStringList         `yaml:"dns_search"`
 	SecurityOpt []string                  `yaml:"security_opt"`
 	Tmpfs       []string                  `yaml:"tmpfs"`
 	Healthcheck quadletComposeHealthcheck `yaml:"healthcheck"`
@@ -146,28 +149,54 @@ func (s *quadletStringList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
-type quadletStringSet []string
+type quadletDependencies struct {
+	Names      []string
+	Conditions map[string]string
+}
 
-func (s *quadletStringSet) UnmarshalYAML(node *yaml.Node) error {
+func (d *quadletDependencies) UnmarshalYAML(node *yaml.Node) error {
+	d.Conditions = map[string]string{}
 	switch node.Kind {
 	case 0:
 		return nil
 	case yaml.SequenceNode:
-		var values []string
 		for _, item := range node.Content {
-			values = append(values, item.Value)
+			name := strings.TrimSpace(item.Value)
+			if name == "" {
+				continue
+			}
+			d.Names = append(d.Names, name)
+			d.Conditions[name] = "service_started"
 		}
-		*s = values
 		return nil
 	case yaml.MappingNode:
-		var values []string
 		for i := 0; i+1 < len(node.Content); i += 2 {
-			values = append(values, node.Content[i].Value)
+			name := strings.TrimSpace(node.Content[i].Value)
+			if name == "" {
+				continue
+			}
+			condition := "service_started"
+			value := node.Content[i+1]
+			if value.Kind == yaml.MappingNode {
+				for j := 0; j+1 < len(value.Content); j += 2 {
+					if value.Content[j].Value == "condition" {
+						condition = strings.TrimSpace(value.Content[j+1].Value)
+					}
+				}
+			}
+			switch condition {
+			case "", "service_started":
+				condition = "service_started"
+			case "service_healthy", "service_completed_successfully":
+			default:
+				return fmt.Errorf("unsupported Compose depends_on condition %q for %s", condition, name)
+			}
+			d.Names = append(d.Names, name)
+			d.Conditions[name] = condition
 		}
-		*s = values
 		return nil
 	default:
-		return errors.New("unsupported Compose sequence/mapping syntax")
+		return errors.New("unsupported Compose depends_on syntax")
 	}
 }
 

@@ -20,6 +20,9 @@ The current surface is intentionally small:
 
 ```text
 baseharbor.target
+baseharbor.target.list
+baseharbor.app.list
+baseharbor.workspace.list
 baseharbor.workspace.resolve
 baseharbor.workspace.status
 baseharbor.workspace.update
@@ -52,6 +55,15 @@ These are BaseHarbor lifecycle operations, not wrappers around CLI commands.
 
 Backup and restore accept an owner-only local password-file reference. Plaintext backup passwords are not accepted as MCP arguments.
 
+## Operator authorization
+
+MCP does not define its own RBAC model. Every mutating or destructive tool passes through the shared BaseHarbor Machine Operator Authorization boundary before mutation begins.
+
+- development uses explicit `trusted-local` actor semantics;
+- managed environments require the configured authenticated operator identity and fail closed when it is missing or invalid;
+- machine safety metadata (`read_only`, `mutating`, `destructive`, policy and confirmation requirements) is preserved by the authorization decision;
+- authorization/audit metadata is secret-safe and never returns bearer tokens, refresh tokens, private keys or equivalent credential material.
+
 ## Rules
 
 - MCP uses the same semantic lifecycle as CLI/JSON.
@@ -59,7 +71,7 @@ Backup and restore accept an owner-only local password-file reference. Plaintext
 - MCP does not expose a generic shell.
 - MCP does not grant unrestricted Docker, Compose, Podman or provider-native execution.
 - Operations carry read-only, mutating or destructive safety semantics.
-- Policy, ownership, preflight, reconciliation, verification and secure bindings cannot be bypassed.
+- Authorization, policy, ownership, preflight, reconciliation, verification and secure bindings cannot be bypassed.
 - Operations do not prompt interactively; unresolved choices return typed actionable results.
 - Outputs are secret-safe.
 - Runtime-specific realization details do not become MCP semantics.

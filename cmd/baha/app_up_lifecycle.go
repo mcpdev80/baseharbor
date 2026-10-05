@@ -157,6 +157,10 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			}
 			var err error
 			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
+			if err != nil {
+				return err
+			}
+			_, err = application.ResolveAvailability(m, string(e.compose.Kind()), e.compose.Descriptor().Availability)
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {

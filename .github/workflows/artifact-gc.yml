@@ -132,7 +132,9 @@ jobs:
           repo = os.environ["REPOSITORY"]
           token = os.environ["GH_TOKEN"]
           current_run_id = int(os.environ["CURRENT_RUN_ID"])
-          branch_cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+          now = datetime.now(timezone.utc)
+          run_cutoff = now - timedelta(hours=24)
+          branch_cutoff = now - timedelta(hours=2)
 
           preserved_workflows = {
               ".github/workflows/pre-release.yml",
@@ -222,6 +224,17 @@ jobs:
                       continue
                   if run.get("path") in preserved_workflows:
                       continue
+                  completed_at = run.get("updated_at") or run.get("run_started_at") or run.get("created_at")
+                  if completed_at:
+                      completed_time = datetime.fromisoformat(
+                          completed_at.replace("Z", "+00:00")
+                      )
+                      if completed_time > run_cutoff:
+                          print(
+                              f"keep recent run {run['id']} "
+                              f"path={run.get('path')} completed={completed_at}"
+                          )
+                          continue
                   run_candidates.append(run)
               if len(runs) < 100:
                   break
@@ -309,6 +322,7 @@ jobs:
           print(
               f"deleted_runs={deleted_runs} "
               f"deleted_branches={deleted_branches} "
+              f"run_cutoff={run_cutoff.isoformat()} "
               f"branch_cutoff={branch_cutoff.isoformat()}"
           )
           PY

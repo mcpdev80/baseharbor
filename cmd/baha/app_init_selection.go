@@ -94,7 +94,7 @@ func collectGuidedInitSelection(reader *bufio.Reader, out io.Writer, d appProjec
 		}
 	}
 	if selection.selected[guidedCapabilityDurableKeyValue] {
-		selection.keyValueInstances, err = promptServiceInstances(reader, out, "Durable Valkey / Redis", nil)
+		selection.keyValueInstances, err = promptDurableKeyValueInstances(reader, out, selection.selected[guidedCapabilityCache], selection.cacheInstances)
 		if err != nil {
 			return selection, err
 		}

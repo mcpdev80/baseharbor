@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,12 +81,22 @@ func TestBootstrapKeepsRootAndUnsealSecretsOutOfCommandArguments(t *testing.T) {
 		t.Fatalf("bootstrap failed: %v", err)
 	}
 
+	foundPolicyStream := false
 	for _, args := range executor.args {
 		for _, secret := range []string{"root-secret", "unseal-secret", "manager-secret", "manager-token"} {
 			if strings.Contains(args, secret) {
 				t.Fatalf("secret %q leaked into command arguments %q", secret, args)
 			}
 		}
+		if strings.Contains(args, "policy write baseharbor-manager") {
+			foundPolicyStream = true
+			if strings.Contains(args, "mktemp") || !strings.Contains(args, "baseharbor-manager -") {
+				t.Fatalf("manager policy must stream through stdin on read-only runtime: %q", args)
+			}
+		}
+	}
+	if !foundPolicyStream {
+		t.Fatal("manager policy write was not executed")
 	}
 
 	recoveryData, err := os.ReadFile(recovery)
@@ -172,5 +183,88 @@ func assertOwnerOnly(t *testing.T, path string) {
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("%s is accessible by group or others: %o", path, info.Mode().Perm())
+	}
+}
+
+type haInspectExecutor struct {
+	states map[string]State
+}
+
+func (f *haInspectExecutor) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
+	state, ok := f.states[service]
+	if !ok {
+		return "", errors.New("member unavailable")
+	}
+	return statusJSON(state.Initialized, state.Sealed), nil
+}
+
+func (f *haInspectExecutor) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, _ ...string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func TestInspectPrefersUnsealedHAMemberOverReachableSealedMember(t *testing.T) {
+	executor := &haInspectExecutor{states: map[string]State{
+		"openbao-member-1": {Initialized: true, Sealed: true},
+		"openbao-member-2": {Initialized: true, Sealed: false},
+	}}
+	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	state, err := Inspect(context.Background(), executor, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Initialized || state.Sealed {
+		t.Fatalf("Inspect returned unhealthy HA member state: %#v", state)
+	}
+}
+
+func TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit(t *testing.T) {
+	executor := &fakeExecutor{initialized: true, sealed: true}
+	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	state, err := memberState(context.Background(), executor, files, "openbao-member-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Initialized || !state.Sealed {
+		t.Fatalf("unexpected member state: %#v", state)
+	}
+	found := false
+	for _, args := range executor.args {
+		if strings.Contains(args, "bao status -format=json") {
+			found = true
+			if strings.HasPrefix(args, "sh -ec ") || strings.Contains(args, " sh -ec ") {
+				t.Fatalf("member status probe uses shell errexit and cannot handle bao status exit 2: %q", args)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("member status probe was not executed")
+	}
+}
+
+func TestRetryManagerProvisioningConvergesAfterTransientFailures(t *testing.T) {
+	attempts := 0
+	err := retryManagerProvisioning(context.Background(), func(context.Context) error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("transient HA handoff")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+}
+
+func TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints(t *testing.T) {
+	for _, path := range []string{
+		`path "sys/policies/acl/baseharbor-app-*"`,
+		`path "sys/policy/baseharbor-app-*"`,
+	} {
+		if !strings.Contains(managerPolicy, path) {
+			t.Fatalf("manager policy missing %s", path)
+		}
 	}
 }

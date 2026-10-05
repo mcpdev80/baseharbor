@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -30,6 +31,10 @@ func (c Compose) CommandPath() string {
 
 func (c Compose) DirectOutput(ctx context.Context, args ...string) (string, error) {
 	return c.directOutput(ctx, args...)
+}
+
+func (c Compose) DirectStream(ctx context.Context, args ...string) (io.ReadCloser, error) {
+	return c.directStream(ctx, args...)
 }
 
 func (c Compose) Up(ctx context.Context, composeFile, envFile string) error {
@@ -181,7 +186,7 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
-	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
+	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "1000")
 	var b strings.Builder
 	if statusErr != nil {
 		fmt.Fprintf(&b, "compose ps -a failed: %v\n", statusErr)

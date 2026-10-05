@@ -90,6 +90,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	if err := ensureMongoDBInitFiles(files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
+	if err := ensureRabbitMQHAConfigFiles(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
 		return RuntimeFiles{}, err
 	}
@@ -233,7 +236,41 @@ func VerifyValkeyProvider(ctx context.Context, executor BackendProbeExecutor, m 
 	return nil
 }
 func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
-	return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+	if UsesSharedValkey(m) {
+		return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+	}
+	executor := NewRuntimeBackendProbeExecutor(runtime, files)
+	for _, instance := range CacheInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, false); err != nil {
+				return fmt.Errorf("verify Valkey HA cache instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	for _, instance := range KeyValueInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, true); err != nil {
+				return fmt.Errorf("verify durable Valkey HA instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "durable" {
+			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
 }
 
 func RuntimeComposeYAML(m Manifest) (string, error) {
@@ -266,19 +303,18 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		writePostgresComposeService(&b, instance)
 	}
 	for _, instance := range cacheInstances {
-		writeValkeyComposeService(&b, instance)
-		b.WriteString(valkeyGatewayCompose(instance))
+		writeValkeyHAComposeServices(&b, m, instance)
+		b.WriteString(valkeyGatewayCompose(m, instance))
 	}
 	for _, instance := range rabbitInstances {
 		writeRabbitMQComposeService(&b, m, instance)
-		b.WriteString(rabbitmqGatewayCompose(instance))
+		b.WriteString(rabbitmqGatewayCompose(m, instance))
 		if m.Services.MessagingManagementUI {
 			writeRabbitMQUIComposeService(&b, m, instance)
 		}
 	}
 	for _, instance := range mongoInstances {
-		writeMongoDBComposeService(&b, instance)
-		b.WriteString(mongodbGatewayCompose(instance))
+		writeMongoDBComposeService(&b, m, instance)
 		if m.Services.DocumentDatabaseManagementUI {
 			writeMongoDBUIComposeServices(&b, m, instance)
 		}
@@ -295,54 +331,33 @@ func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, e
 		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
 	}
 	for _, instance := range cacheInstances {
-		service := runtimeServiceName("valkey", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+			volume := valkeyMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	for _, instance := range rabbitInstances {
-		service := runtimeServiceName("rabbitmq", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			volume := rabbitmqMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	for _, instance := range mongoInstances {
-		service := runtimeServiceName("mongodb", instance)
-		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			volume := mongodbMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
 	}
 	b.WriteString("\nnetworks:\n  default:\n")
 	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
+	for _, instance := range cacheInstances {
+		if valkeyMemberCount(m, instance) > 1 {
+			fmt.Fprintf(&b, "  %s-ha:\n    internal: true\n", valkeyMemberServiceName(instance, 0))
+		}
+	}
 	return b.String(), nil
 }
 
-func writeRabbitMQComposeService(b *strings.Builder, m Manifest, instance string) {
-	service := runtimeServiceName("rabbitmq", instance)
-	userKey := rabbitmqRuntimeKey(instance, "USER")
-	passwordKey := rabbitmqRuntimeKey(instance, "PASSWORD")
-	image := "docker.io/library/rabbitmq:4.3.6-alpine"
-	if m.Services.MessagingManagementUI {
-		image = "docker.io/library/rabbitmq:4.3.6-management-alpine"
-	}
-	fmt.Fprintf(b, `  %s:
-    image: %s
-    restart: unless-stopped
-    user: "rabbitmq"
-    read_only: true
-    cap_drop: ["ALL"]
-    cap_add: ["CHOWN", "SETGID", "SETUID"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      RABBITMQ_DEFAULT_USER: ${%s}
-      RABBITMQ_DEFAULT_PASS: ${%s}
-    volumes:
-      - %s-data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-`, service, image, userKey, passwordKey, service)
-}
 func writePostgresComposeService(b *strings.Builder, instance string) {
 	service := runtimeServiceName("postgres", instance)
 	dbKey := postgresRuntimeKey(instance, "DB")
@@ -388,39 +403,6 @@ func writePostgresComposeService(b *strings.Builder, instance string) {
       start_period: 5s
 
 `, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot, tlsRoot)
-}
-
-func writeValkeyComposeService(b *strings.Builder, instance string) {
-	service := runtimeServiceName("valkey", instance)
-	passwordKey := valkeyRuntimeKey(instance, "PASSWORD")
-	fmt.Fprintf(b, `  %s:
-    image: docker.io/valkey/valkey:9.1.2-alpine
-    restart: unless-stopped
-    user: "999:1000"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-    environment:
-      VALKEY_PASSWORD: ${%s}
-    command:
-      - sh
-      - -ec
-      - |
-        printf 'requirepass %%s\nappendonly yes\ndir /data\n' "$$VALKEY_PASSWORD" > /tmp/valkey.conf
-        exec valkey-server /tmp/valkey.conf
-    volumes:
-      - %s-data:/data
-      - ./bindings/valkey/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
-    healthcheck:
-      test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$${VALKEY_PASSWORD}\" valkey-cli ping | grep -q '^PONG$'"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-
-`, service, passwordKey, service, instance)
 }
 
 func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
@@ -506,39 +488,6 @@ func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
 
 `)
 	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
-}
-
-func writeRabbitMQUIComposeService(b *strings.Builder, m Manifest, instance string) {
-	service := rabbitmqUIServiceName(instance)
-	portKey := rabbitmqUIHostPortKey(instance)
-	routeName := rabbitmqUIRouteName(instance)
-	fmt.Fprintf(b, `  %s:
-    image: %s
-    restart: unless-stopped
-    user: "65532:65532"
-    read_only: true
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev
-      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
-      - /data:rw,noexec,nosuid,nodev,mode=1777
-      - /config:rw,noexec,nosuid,nodev,mode=1777
-    ports:
-      - "127.0.0.1:${%s}:8443"
-    volumes:
-      - ./providers/management-ui/rabbitmq/%s/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./providers/management-ui/rabbitmq/%s/server.pem:/certs/server.pem:ro
-      - ./providers/management-ui/rabbitmq/%s/server-key.pem:/certs/server-key.pem:ro
-    networks:
-      default:
-        aliases:
-          - %q
-
-`, service, UIProxyImage, portKey, instance, instance, instance, devaccess.ApplicationAlias(m.Name, routeName))
 }
 
 func ensureRuntimeEnv(path string, m Manifest) error {
@@ -642,6 +591,42 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 				return err
 			}
 			values[passwordKey] = password
+		}
+		bootstrapUserKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_USER")
+		bootstrapPasswordKey := rabbitmqRuntimeKey(instance, "BOOTSTRAP_PASSWORD")
+		if values[bootstrapUserKey] == "" {
+			values[bootstrapUserKey] = "baseharbor_internal"
+		}
+		if values[bootstrapPasswordKey] == "" {
+			password, err := randomApplicationSecret(32)
+			if err != nil {
+				return err
+			}
+			values[bootstrapPasswordKey] = password
+		}
+		if m.Services.MessagingManagementUI {
+			adminUserKey := rabbitmqRuntimeKey(instance, "ADMIN_USER")
+			adminPasswordKey := rabbitmqRuntimeKey(instance, "ADMIN_PASSWORD")
+			if values[adminUserKey] == "" {
+				values[adminUserKey] = "developer"
+			}
+			if values[adminPasswordKey] == "" {
+				password, err := randomApplicationSecret(32)
+				if err != nil {
+					return err
+				}
+				values[adminPasswordKey] = password
+			}
+		}
+		if rabbitmqMemberCount(m) > 1 {
+			cookieKey := rabbitmqRuntimeKey(instance, "ERLANG_COOKIE")
+			if values[cookieKey] == "" {
+				cookie, err := randomApplicationSecret(32)
+				if err != nil {
+					return err
+				}
+				values[cookieKey] = cookie
+			}
 		}
 		if values[portKey] == "" {
 			port, err := allocateLoopbackPort(excluded)
@@ -749,7 +734,14 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range RabbitMQInstanceNames(m) {
-		for _, suffix := range []string{"USER", "PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		suffixes := []string{"USER", "PASSWORD", "BOOTSTRAP_USER", "BOOTSTRAP_PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"}
+		if m.Services.MessagingManagementUI {
+			suffixes = append(suffixes, "ADMIN_USER", "ADMIN_PASSWORD")
+		}
+		if rabbitmqMemberCount(m) > 1 {
+			suffixes = append(suffixes, "ERLANG_COOKIE")
+		}
+		for _, suffix := range suffixes {
 			key := rabbitmqRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}

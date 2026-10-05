@@ -71,7 +71,7 @@ func EnsureWorkloadOverrideForModeAt(dataDir, namespace string, m application.Ma
 		}
 		b.WriteString("      driver: syslog\n")
 		b.WriteString("      options:\n")
-		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", registration.SyslogPort)))
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("tcp://127.0.0.1:%d", registration.SyslogPort)))
 		b.WriteString("        syslog-format: rfc5424\n")
 		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(service))
 	}
@@ -192,7 +192,7 @@ func EnsureRuntimeModuleOverrideForModeAt(
 		}
 		b.WriteString("      driver: syslog\n")
 		b.WriteString("      options:\n")
-		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("udp://127.0.0.1:%d", port)))
+		fmt.Fprintf(&b, "        syslog-address: %s\n", strconv.Quote(fmt.Sprintf("tcp://127.0.0.1:%d", port)))
 		b.WriteString("        syslog-format: rfc5424\n")
 		fmt.Fprintf(&b, "        tag: %s\n", strconv.Quote(string(source.Provider)+"/"+source.Service))
 	}

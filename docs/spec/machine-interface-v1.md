@@ -41,6 +41,26 @@ Destructive operations declare whether explicit approval is required. `destroy` 
 
 Unknown or unresolved safety requirements fail closed.
 
+## Machine operator authorization
+
+Every machine operation is authorized below the presentation layer through one transport-neutral decision model.
+
+The decision binds:
+
+```text
+effective actor/principal
+        +
+operation + safety class
+        +
+application/environment/target/workspace context
+        ↓
+allow / deny
+```
+
+Development uses explicit `trusted-local` actor semantics. Managed environments fail closed when the required authenticated operator principal is absent or invalid. The decision is secret-safe and exposes only stable actor identity/provenance fields, never tokens or private credential material.
+
+MCP, CLI/JSON and future HTTP/Console adapters must consume the same authorization boundary; no adapter may define a separate RBAC model.
+
 ## Non-interactive behavior
 
 Machine operations never depend on an interactive terminal.
@@ -66,7 +86,8 @@ Credential-bearing URLs MUST NOT be returned as normal machine output.
 - Machine results MUST be versioned.
 - Errors MUST be structured and secret-safe.
 - CLI, JSON and MCP MUST reuse the same lifecycle semantics.
-- Interfaces MUST NOT bypass policy, ownership, preflight, reconciliation or verification.
+- Interfaces MUST NOT bypass authorization, policy, ownership, preflight, reconciliation or verification.
+- Managed-environment machine operations MUST fail closed without the required authenticated operator identity.
 - Mutations MUST preserve the `plan -> preflight -> apply -> verify` lifecycle.
 - Destructive operations MUST preserve explicit safety/approval semantics.
 - MCP MUST NOT expose generic shell, Docker, Compose, Podman or provider-native execution as a substitute for BaseHarbor lifecycle operations.

@@ -26,7 +26,7 @@ trap cleanup EXIT
 mkdir -p "$workdir"
 cd "$workdir"
 
-"$baha" target create "$target" --provider "$runtime" --access "$target" --reference local --default
+"$baha" target create "$target" --runtime-provider "$runtime" --access "$target" --access-provider local --reference local --default
 "$baha" up --control-plane-only --yes
 "$baha" openbao bootstrap --recovery-file "$recovery"
 "$baha" openbao status | grep -q "AppRole login succeeded"

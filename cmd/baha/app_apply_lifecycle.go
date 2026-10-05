@@ -156,6 +156,10 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 			}
 			var err error
 			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
+			if err != nil {
+				return err
+			}
+			_, err = application.ResolveAvailability(m, string(e.compose.Kind()), e.compose.Descriptor().Availability)
 			return err
 		}},
 		{Name: "workload security", Run: func(ctx context.Context) error {
@@ -191,7 +195,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 			e.manifest.Services.IdentityManagementUI ||
 			e.manifest.Services.ObservabilityManagementUI ||
 			e.manifest.Services.Identity) {
-		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("prepare developer access: %w", err)
 		}
@@ -233,7 +237,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return err
 	}
 	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.Identity {
-		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("load developer access for OIDC: %w", err)
 		}
@@ -290,7 +294,7 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 		return fmt.Errorf("required secrets check failed: %w", err)
 	}
 	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.SecretsManagementUI {
-		credentials, err := devaccess.Ensure(e.resolved.Target.Name, e.manifest.Environment)
+		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("load developer access for OpenBao: %w", err)
 		}

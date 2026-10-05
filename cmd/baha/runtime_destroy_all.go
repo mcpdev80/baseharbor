@@ -443,6 +443,8 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "control-plane-state", Detail: filesErr.Error()})
 	}
 
+	cleanupOrphanedTargetRuntimeProjects(ctx, compose, target.Name, results)
+
 	if containers, err := compose.ListRuntimeContainers(ctx); err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-audit", Detail: err.Error()})
 	} else if residual := targetOwnedRuntimeContainers(target.Name, containers); len(residual) > 0 {
@@ -472,6 +474,87 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
 	} else {
 		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state"})
+	}
+}
+
+func cleanupOrphanedTargetRuntimeProjects(ctx context.Context, runtime bhruntime.RuntimeProvider, target string, results *[]fullDestroyResult) {
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{
+			Status:   "FAILED",
+			Target:   target,
+			Resource: "orphan-runtime-discovery",
+			Detail:   err.Error(),
+		})
+		return
+	}
+
+	projects := map[string]struct{}{}
+	for _, container := range targetOwnedRuntimeContainers(target, containers) {
+		project := strings.TrimSpace(container.Project)
+		if project != "" {
+			projects[project] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(projects))
+	for project := range projects {
+		names = append(names, project)
+	}
+	sort.Strings(names)
+
+	for _, project := range names {
+		resources, err := runtime.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "inventory owned resources: " + err.Error(),
+			})
+			continue
+		}
+		if len(resources) == 0 {
+			continue
+		}
+		if err := runtime.DestroyOwnedProjectResources(ctx, project, resources); err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   err.Error(),
+			})
+			continue
+		}
+		remaining, err := runtime.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "verify owned resources: " + err.Error(),
+			})
+			continue
+		}
+		if len(remaining) > 0 {
+			var residual []string
+			for _, resource := range remaining {
+				residual = append(residual, resource.Kind+" "+resource.Name)
+			}
+			sort.Strings(residual)
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "owned resources remain: " + strings.Join(residual, ", "),
+			})
+			continue
+		}
+		*results = append(*results, fullDestroyResult{
+			Status:   "REMOVED",
+			Target:   target,
+			Resource: "orphan-runtime " + project,
+			Detail:   "removed using provider ownership labels",
+		})
 	}
 }
 

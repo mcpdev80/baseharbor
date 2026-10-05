@@ -88,7 +88,7 @@ func TestMongoDBRuntimeSemanticAcceptanceInCI(t *testing.T) {
 		t.Fatalf("inspect MongoDB runtime services: %v", err)
 	}
 	sort.Strings(running)
-	want := []string{"mongodb", "mongodb-access"}
+	want := []string{"mongodb"}
 	if len(running) != len(want) {
 		t.Fatalf("unexpected MongoDB runtime services: got %#v want %#v", running, want)
 	}
@@ -111,7 +111,7 @@ func TestMongoDBRuntimeSemanticAcceptanceInCI(t *testing.T) {
 			volumes++
 		}
 	}
-	if containers != 2 || volumes != 1 {
+	if containers != 1 || volumes != 1 {
 		t.Fatalf("MongoDB owned resource shape = containers:%d volumes:%d resources:%#v", containers, volumes, resources)
 	}
 }

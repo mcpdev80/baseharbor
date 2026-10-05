@@ -21,11 +21,19 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 			return err
 		}
 		root := filepath.Join(shared.Dir, "postgresql")
-		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), sharedPostgresService(m.Environment), sharedPostgresAlias(), "127.0.0.1")
+		policy.ServerName = sharedPostgresAlias()
+		memberNames := []string{sharedPostgresAlias(), "127.0.0.1"}
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
+		}
+		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
 		if err != nil {
 			return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
 		}
 		if err := projectPostgresServerMaterial(root, material); err != nil {
+			return err
+		}
+		if err := writeSharedPostgresHAProxyConfig(root, m.Environment); err != nil {
 			return err
 		}
 		for _, instance := range SQLInstanceNames(m) {
@@ -38,20 +46,14 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 	}
 
 	if UsesSharedValkey(m) {
+		app := state.Applications[sharedBackendApplicationKey(m)]
 		for _, instance := range ValkeyInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
 			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
 			}
-			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, serviceaccess.TCPGatewaySpec{
-				ServiceName:      sharedValkeyAccessService(m, instance),
-				UpstreamHost:     sharedValkeyService(m, instance),
-				UpstreamPort:     6379,
-				PublishedPortEnv: sharedValkeyPortEnv(m, instance),
-				ContainerPort:    6379,
-				Network:          "shared-backend",
-			})
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedValkeyGatewaySpec(app, instance))
 			if err != nil {
 				return fmt.Errorf("prepare shared Valkey TLS for %s: %w", instance, err)
 			}
@@ -67,6 +69,37 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		}
 	}
 	return nil
+}
+
+func writeSharedPostgresHAProxyConfig(root, environment string) error {
+	var b strings.Builder
+	b.WriteString(`global
+  log stdout format raw local0
+
+defaults
+  mode tcp
+  log global
+  timeout connect 5s
+  timeout client 30s
+  timeout server 30s
+
+frontend postgres
+  bind :5432
+  default_backend primary
+
+backend primary
+  option httpchk GET /primary
+  http-check expect status 200
+  default-server check port 8008 inter 2s fall 2 rise 2
+`)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		fmt.Fprintf(&b, "  server postgres-%d %s:5432 check\n", ordinal, sharedPostgresMemberService(environment, ordinal))
+	}
+	path := filepath.Join(root, "service-access", "haproxy.cfg")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func ensureSharedManagementUIState(state *sharedBackendState, m Manifest, values map[string]string) error {
@@ -163,7 +196,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
 	postgresPolicy, err := serviceaccess.Resolve(state.Environment, "postgresql", serviceaccess.AuthenticationNative)
@@ -211,7 +244,7 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 			index++
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pgpass"), []byte(pgpass.String()), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "pgpass"), []byte(pgpass.String())); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(servers, "", "  ")
@@ -248,7 +281,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n"), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "http-password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
 	var connections []map[string]any
@@ -297,7 +330,7 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "local.json"), append(data, '\n'), 0o644); err != nil {
+	if err := writeUIRuntimeProjection(filepath.Join(dir, "local.json"), append(data, '\n')); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "local-production.json"), []byte("{}\n"), 0o644); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
@@ -36,6 +37,7 @@ type applicationDoctorResult struct {
 	TLS             *applicationTLSObservation                   `json:"tls,omitempty"`
 	ServiceTLS      []application.BackendTLSLifecycleObservation `json:"service_tls,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
+	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
 
 	manifest               application.Manifest
 	workloadStatus         repositoryWorkloadStatus

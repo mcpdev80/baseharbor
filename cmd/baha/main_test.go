@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -179,5 +180,32 @@ func TestClassifyMachineCLIErrorWorkspaceNotInitialized(t *testing.T) {
 	}
 	if !strings.Contains(machineErr.Next, "baha app workspace init") {
 		t.Fatalf("next action is not workspace init: %q", machineErr.Next)
+	}
+}
+
+func TestVersionCommandStructuredOutput(t *testing.T) {
+	oldVersion, oldCommit, oldDate := version, commit, date
+	version, commit, date = "0.4.21-test", "abc123", "2026-10-02"
+	t.Cleanup(func() {
+		version, commit, date = oldVersion, oldCommit, oldDate
+	})
+
+	for _, args := range [][]string{
+		{"version", "--json"},
+		{"version", "-o", "json"},
+		{"version", "--output=json"},
+		{"version", "-ojson"},
+	} {
+		var out bytes.Buffer
+		if err := runWithIO(context.Background(), args, &out, &out); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+			t.Fatalf("%v invalid JSON: %v\n%s", args, err, out.String())
+		}
+		if payload["version"] != "0.4.21-test" || payload["commit"] != "abc123" || payload["built"] != "2026-10-02" {
+			t.Fatalf("%v unexpected payload: %#v", args, payload)
+		}
 	}
 }

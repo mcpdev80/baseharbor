@@ -159,6 +159,48 @@ func projectRuntimeIdentityWorkloadFile(files RuntimeFiles, source, targetName s
 	return absolute, nil
 }
 
+func projectRuntimeSecretWorkloadFile(files RuntimeFiles, source, targetName string) (string, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return "", fmt.Errorf("inspect canonical application secret %s: %w", targetName, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("canonical application secret %s must be a regular file", targetName)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("canonical application secret %s is accessible by group or others (%o)", targetName, info.Mode().Perm())
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return "", fmt.Errorf("read canonical application secret %s: %w", targetName, err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("canonical application secret %s is empty", targetName)
+	}
+
+	dir := filepath.Join(files.Bindings, "runtime-workload", "file-secrets")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create application secret projection directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", fmt.Errorf("protect application secret projection directory: %w", err)
+	}
+	path := filepath.Join(dir, targetName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", fmt.Errorf("write application secret runtime projection %s: %w", targetName, err)
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("prepare application secret runtime projection %s: %w", targetName, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("install application secret runtime projection %s: %w", targetName, err)
+	}
+	return filepath.Abs(path)
+}
+
 // MaterializeRuntimeIdentityWorkloadOverride adds only the protected bindings
 // that selected application services actually consume. Runtime identity is
 // injected through ordinary environment file paths plus Compose secret mounts;
@@ -273,14 +315,11 @@ func MaterializeRuntimeIdentityWorkloadOverride(m Manifest, workload WorkloadFil
 			if err := os.Chmod(filepath.Dir(hostSecretPath), 0o700); err != nil {
 				return "", false, fmt.Errorf("secure application secret binding directory: %w", err)
 			}
-			if err := os.Chmod(hostSecretPath, 0o644); err != nil {
-				return "", false, fmt.Errorf("prepare application secret file binding %s: %w", name, err)
-			}
-			hostPath, err := filepath.Abs(hostSecretPath)
+			projectedPath, err := projectRuntimeSecretWorkloadFile(files, hostSecretPath, name)
 			if err != nil {
-				return "", false, fmt.Errorf("resolve application secret file binding %s: %w", name, err)
+				return "", false, err
 			}
-			mounts = append(mounts, hostPath+":"+SecretFileContainerPath(name)+":ro")
+			mounts = append(mounts, projectedPath+":"+SecretFileContainerPath(name)+":ro")
 		}
 		if len(mounts) > 0 {
 			b.WriteString("    volumes:\n")

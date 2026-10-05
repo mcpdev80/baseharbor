@@ -2,6 +2,7 @@ package orgconfig
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -247,5 +248,25 @@ func TestOCIResolutionPinsDigestAndPullsImmutableReference(t *testing.T) {
 	}
 	if _, err := os.Stat(resolution.CachePath); err != nil {
 		t.Fatalf("immutable OCI cache missing: %v", err)
+	}
+}
+
+func TestTypedOrganizationSourceErrors(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+
+	if _, err := LoadActive(); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("LoadActive error = %v, want ErrNotConfigured", err)
+	}
+
+	_, _, err := Resolve(context.Background(), Source{Kind: SourceKind("unsupported"), Location: "ignored"})
+	if !errors.Is(err, ErrUnsupportedSource) {
+		t.Fatalf("Resolve unsupported error = %v, want ErrUnsupportedSource", err)
+	}
+
+	_, _, err = Resolve(context.Background(), Source{Kind: SourceGit, Location: filepath.Join(root, "missing.git"), Requested: "HEAD"})
+	if !errors.Is(err, ErrSourceUnavailable) {
+		t.Fatalf("Resolve unavailable Git error = %v, want ErrSourceUnavailable", err)
 	}
 }
