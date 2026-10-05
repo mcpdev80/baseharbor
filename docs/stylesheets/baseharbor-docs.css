@@ -51,6 +51,19 @@ pre {
   .md-sidebar--primary {
     border-right: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   }
+
+  /* Material flattens section children on desktop; retain a visible tree. */
+  .md-nav--primary .md-nav__item--section > .md-nav__link {
+    margin-top: 1rem;
+    font-weight: 750;
+    color: var(--md-default-fg-color);
+  }
+
+  .md-nav--primary .md-nav__item--section > .md-nav > .md-nav__list {
+    margin-inline-start: 0.35rem;
+    padding-inline-start: 0.8rem;
+    border-inline-start: 2px solid var(--md-default-fg-color--lighter);
+  }
 }
 
 

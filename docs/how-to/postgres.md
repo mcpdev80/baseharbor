@@ -1,22 +1,36 @@
-# Use PostgreSQL
+# Run an order API with PostgreSQL
 
-Declare that the application needs SQL. Do not make PostgreSQL-specific deployment topology part of portable application intent unless the capability contract requires a PostgreSQL-specific semantic.
-
-Typical flow:
+Create a Go API with SQL intent, then inspect and query its application-owned database. With `baha` installed, run from a parent directory:
 
 ```bash
-baha app inspect .
-baha app init
+baha app new orders-api --stack go --http --sql
+cd orders-api
 baha plan
 baha up -e dev
-baha doctor
+baha app env --format json
 ```
 
-The application consumes the binding BaseHarbor provides, typically through a standard database URL.
+`up` requires a configured local Docker or Podman Target. The scaffold adds `pgx`, declares `DATABASE_URL` and `DATABASE_CA_FILE`, and verifies database connectivity at startup. Protected bindings supply runtime credentials; normal environment output masks the database URL.
 
-BaseHarbor owns lifecycle only for resources it owns. Shared or external database providers keep their own lifecycle boundary.
+## Insert and read a sample order
 
-For exact fields, see [Manifest reference](../reference/manifest.md).
+After successful deployment, open the application's SQL instance:
+
+```bash
+baha app psql
+```
+
+In that PostgreSQL session:
+
+```sql
+CREATE TABLE IF NOT EXISTS orders (id integer PRIMARY KEY, total_cents integer NOT NULL);
+INSERT INTO orders VALUES (42, 1990) ON CONFLICT (id) DO NOTHING;
+SELECT id, total_cents FROM orders WHERE id = 42;
+```
+
+The query returns the sample order with a total of 1990 cents. Exit with `\q`, then run `baha doctor` to verify the SQL capability. This exercises application access, not provider-administrator credentials.
+
+Use [backup and restore](backup-restore.md) before relying on recovery of this order. For an existing API repository, use `baha app inspect .` and `baha app init` instead of creating a second scaffold.
 
 ## Shared PostgreSQL isolation
 
