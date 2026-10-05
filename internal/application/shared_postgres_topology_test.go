@@ -51,10 +51,13 @@ func TestSharedPostgresDefaultAndExplicitHARealizations(t *testing.T) {
 			if server.Image != "docker.io/library/postgres:18-alpine" || server.User != "70:70" {
 				t.Fatalf("non-HA PostgreSQL must be native and non-root: %#v", server)
 			}
-			for _, required := range []string{"ssl=on", "hba_file=", "postgres-access", "shared-postgres-data-1:/var/lib/postgresql"} {
+			for _, required := range []string{"ssl=on", "hba_file=", "postgres-access", "shared-postgres-data-1:/var/lib/postgresql", "./postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro", "./postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro", "./postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro"} {
 				if !strings.Contains(rendered.String(), required) {
 					t.Fatalf("non-HA missing %s", required)
 				}
+			}
+			if strings.Contains(rendered.String(), "./postgresql/runtime:/") {
+				t.Fatal("non-root PostgreSQL cannot traverse the owner-only host TLS directory; mount projected files individually")
 			}
 		} else if postgres != members || etcd != members || len(model.Services) != 2*members+2 {
 			t.Fatalf("explicit HA realization changed: postgres=%d etcd=%d services=%d", postgres, etcd, len(model.Services))

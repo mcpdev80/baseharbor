@@ -33,7 +33,9 @@ func writeSharedPostgresSingleCompose(b *strings.Builder, state sharedBackendSta
       - "127.0.0.1:${SHARED_POSTGRES_HOST_PORT}:5432"
     volumes:
       - shared-postgres-data-1:/var/lib/postgresql
-      - ./postgresql/runtime:/run/baseharbor/tls-source:ro
+      - ./postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+      - ./postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
     networks:
       shared-backend:
         aliases:
