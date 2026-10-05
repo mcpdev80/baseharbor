@@ -437,11 +437,23 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	if !ok {
 		return errors.New("Keycloak PKI rotation requires runtime database reload support")
 	}
+	reloadCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
 	for ordinal := 1; ordinal <= 3; ordinal++ {
 		service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
-		if _, err := executor.ExecProject(ctx, files.Project, files.Compose, files.Env, service,
-			"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'"); err != nil {
-			return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, err)
+		for {
+			_, err := executor.ExecProject(reloadCtx, files.Project, files.Compose, files.Env, service,
+				"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'")
+			if err == nil {
+				break
+			}
+			select {
+			case <-reloadCtx.Done():
+				return fmt.Errorf("reload Keycloak PostgreSQL certificates on %s: %w", service, errors.Join(reloadCtx.Err(), err))
+			case <-ticker.C:
+			}
 		}
 	}
 	return nil
