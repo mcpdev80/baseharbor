@@ -52,7 +52,7 @@ Capability-specific exact semantics are defined by the versioned service/capabil
 
 ## v0.4.21 availability
 
-The normal HA decision is one top-level boolean:
+Omitting `ha` or setting `ha: false` uses a single-server PostgreSQL realization. Explicit HA is selected by one top-level boolean:
 
 ```yaml
 ha: true

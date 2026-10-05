@@ -28,7 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Application help registers `new` once.
 - Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
 - Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
-- Control-plane memory planning includes every service in the shipped HA startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
+- Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
+- Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
+- Full Docker and Podman journeys start after candidate construction alongside atomic gates; release approval requires both exact candidate/demo/run identities, latest-attempt selection and successful cleanup. Journey summaries show group outcomes and duration.
 
 ## [0.4.21] - 2026-10-03
 

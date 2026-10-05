@@ -10,6 +10,7 @@ import (
 )
 
 type machineControlPlaneUpInput struct {
+	HA           bool   `json:"ha,omitempty"`
 	Target       string `json:"target,omitempty"`
 	PostgresPort int    `json:"postgres_port,omitempty"`
 	OpenBaoPort  int    `json:"openbao_port,omitempty"`
@@ -40,7 +41,7 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("control-plane.up", "Initialize or converge the selected target control plane through shared lifecycle and memory preflight.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneUpInput) (*mcp.CallToolResult, any, error) {
 		ctx, cancel := context.WithTimeout(machineNoninteractiveContext(withTargetOverride(ctx, input.Target)), 15*time.Minute)
 		defer cancel()
-		opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile}
+		opts := runtimeUpOptions{HA: input.HA, Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile}
 		if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, opts); err != nil {
 			return machineMCPFailure(err)
 		}
@@ -80,13 +81,20 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 	}
 	mcp.AddTool(server, machineMCPTool("installation.destroy", "Remove all owned BaseHarbor installation resources after explicit approval and authorization of every registered deployment; preserve external application source/data.", true), func(ctx context.Context, req *mcp.CallToolRequest, input struct {
 		Approval bool `json:"approval"`
-	}) (*mcp.CallToolResult, any, error) { if err := authorizeCurrentMCPContext(ctx, "installation.destroy", "", "", ""); err != nil {
-		return machineMCPFailure(err)
-	}; if err := applicationlifecycle.RequireApproval("installation.destroy", input.Approval); err != nil {
-		return machineMCPFailure(err)
-	}; ctx, cancel := machineLifecycleContext(ctx); defer cancel(); if err := destroyInstallation(ctx, true, io.Discard, io.Discard); err != nil {
-		return machineMCPFailure(err)
-	}; return nil, map[string]any{"destroyed": true, "external_application_source_and_data_preserved": true}, nil })
+	}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "installation.destroy", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := applicationlifecycle.RequireApproval("installation.destroy", input.Approval); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, cancel := machineLifecycleContext(ctx)
+		defer cancel()
+		if err := destroyInstallation(ctx, true, io.Discard, io.Discard); err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, map[string]any{"destroyed": true, "external_application_source_and_data_preserved": true}, nil
+	})
 
 	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Destroy selected owned control plane after approval and existing application-ownership preflight.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)

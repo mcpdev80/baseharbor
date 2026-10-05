@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -210,4 +211,23 @@ func ensureBootstrapOpenBaoTLS(stateDir string) error {
 		return err
 	}
 	return writePEM(keyPath, "PRIVATE KEY", keyDER, 0o644)
+}
+
+func writeControlPlanePostgresProxyConfig(dir string, ha bool) error {
+	if err := writeControlPlanePostgresHAProxyConfig(dir); err != nil {
+		return err
+	}
+	if ha {
+		return nil
+	}
+	path := filepath.Join(dir, "haproxy.cfg")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	config := strings.ReplaceAll(string(data), "  option httpchk GET /primary\n  http-check expect status 200\n", "")
+	config = strings.ReplaceAll(config, "check port 8008", "check")
+	config = strings.ReplaceAll(config, "  server postgres-2 postgres-member-2:5432 check\n", "")
+	config = strings.ReplaceAll(config, "  server postgres-3 postgres-member-3:5432 check\n", "")
+	return os.WriteFile(path, []byte(config), 0644)
 }

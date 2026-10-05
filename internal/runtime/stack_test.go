@@ -173,7 +173,7 @@ func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testin
 
 func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
-	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	files, err := EnsureFilesForProjectAndResources(dir, "baseharbor", "baseharbor", Ports{Postgres: 15432, OpenBao: 18200}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

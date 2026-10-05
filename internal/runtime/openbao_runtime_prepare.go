@@ -5,9 +5,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-func prepareOpenBaoStorage(stateDir, envPath string) error {
+func prepareOpenBaoStorage(stateDir, envPath string, ha bool) error {
 	user, err := ensureOpenBaoStorageUser(envPath)
 	if err != nil {
 		return fmt.Errorf("prepare OpenBao storage user: %w", err)
@@ -37,10 +38,26 @@ func prepareOpenBaoStorage(stateDir, envPath string) error {
 	if err := writeOpenBaoPostgresInit(stateDir); err != nil {
 		return err
 	}
-	if err := writeOpenBaoRuntimeConfig(stateDir, user, secret); err != nil {
+	if err := writeOpenBaoRuntimeConfig(stateDir, user, secret, ha); err != nil {
 		return err
 	}
-	return writeOpenBaoHAProxyConfig(stateDir)
+	if err := writeControlPlanePostgresProxyConfig(filepath.Join(stateDir, "providers", "postgresql", "runtime"), ha); err != nil {
+		return err
+	}
+	if err := writeOpenBaoHAProxyConfig(stateDir); err != nil {
+		return err
+	}
+	if !ha {
+		path := filepath.Join(stateDir, "providers", "openbao", "runtime", "haproxy.cfg")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		config := strings.ReplaceAll(string(data), "  server openbao-2 openbao-member-2:8200\n", "")
+		config = strings.ReplaceAll(config, "  server openbao-3 openbao-member-3:8200\n", "")
+		return os.WriteFile(path, []byte(config), 0644)
+	}
+	return nil
 }
 
 func writeOpenBaoPostgresInit(stateDir string) error {
@@ -134,7 +151,7 @@ resolvers runtime-dns
 	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }
 
-func writeOpenBaoRuntimeConfig(stateDir, user, secret string) error {
+func writeOpenBaoRuntimeConfig(stateDir, user, secret string, ha bool) error {
 	dir := filepath.Join(stateDir, "providers", "openbao", "runtime")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -152,7 +169,7 @@ disable_mlock = true
 
 storage "postgresql" {
   connection_url      = "%s"
-  ha_enabled          = "true"
+  ha_enabled          = "%t"
   max_connect_retries = 0
   max_parallel        = "20"
 }
@@ -170,6 +187,6 @@ listener "tcp" {
 }
 
 api_addr = "https://openbao:8200"
-`, connectionURL)
+`, connectionURL, ha)
 	return os.WriteFile(filepath.Join(dir, "openbao.hcl"), []byte(config), 0o644)
 }

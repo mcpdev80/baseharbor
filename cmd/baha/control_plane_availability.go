@@ -9,6 +9,7 @@ import (
 )
 
 type controlPlaneAvailability struct {
+	HA              bool
 	PostgresMembers int
 	PostgresEtcd    int
 	OpenBaoMembers  int
@@ -32,10 +33,10 @@ func collectControlPlaneAvailability(ctx context.Context, checks []health.Check)
 	if err != nil {
 		return controlPlaneAvailability{}, err
 	}
-	return evaluateControlPlaneAvailability(running, checks), nil
+	return evaluateControlPlaneAvailability(running, checks, files.HA), nil
 }
 
-func evaluateControlPlaneAvailability(running []string, checks []health.Check) controlPlaneAvailability {
+func evaluateControlPlaneAvailability(running []string, checks []health.Check, ha bool) controlPlaneAvailability {
 	runningSet := make(map[string]struct{}, len(running))
 	for _, service := range running {
 		runningSet[strings.TrimSpace(service)] = struct{}{}
@@ -59,6 +60,7 @@ func evaluateControlPlaneAvailability(running []string, checks []health.Check) c
 	}
 
 	report := controlPlaneAvailability{
+		HA:              ha,
 		PostgresMembers: count("postgres-member", 3),
 		PostgresEtcd:    count("postgres-etcd", 3),
 		OpenBaoMembers:  count("openbao-member", 3),
@@ -66,10 +68,16 @@ func evaluateControlPlaneAvailability(running []string, checks []health.Check) c
 	postgresSatisfied := report.PostgresMembers >= 2 && report.PostgresEtcd >= 2 && checkOK("postgres")
 	openBaoSatisfied := report.OpenBaoMembers >= 2 && checkOK("openbao")
 	report.Satisfied = postgresSatisfied && openBaoSatisfied
+	if !ha {
+		report.Satisfied = report.PostgresMembers == 1 && report.PostgresEtcd == 0 && report.OpenBaoMembers == 1 && checkOK("postgres") && checkOK("openbao")
+	}
 	return report
 }
 
 func (r controlPlaneAvailability) Detail() string {
+	if !r.HA {
+		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied)
+	}
 	return fmt.Sprintf(
 		"requested=ha resolved=postgresql:3,openbao:3 failure-domain=runtime-host host-failure-tolerance=false running=postgresql:%d/3,etcd:%d/3,openbao:%d/3 satisfied=%t",
 		r.PostgresMembers,

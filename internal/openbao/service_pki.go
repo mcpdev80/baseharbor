@@ -101,8 +101,18 @@ func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Fil
 }
 
 func servicePKILeader(ctx context.Context, executor Executor, files bhruntime.Files, token string) (string, error) {
+	if !files.HA {
+		state, err := Inspect(ctx, executor, files)
+		if err != nil {
+			return "", err
+		}
+		if !state.Initialized || state.Sealed {
+			return "", ErrSealed
+		}
+		return "openbao-member-1", nil
+	}
 	var lastErr error
-	for _, member := range openBaoHAMembers {
+	for _, member := range files.OpenBaoMembers() {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		out, err := execWithToken(
 			probeCtx,

@@ -9,11 +9,11 @@ import (
 
 // ControlPlaneStartupServices reads the actual embedded startup topology, including
 // transient admin/bootstrap services. Resource planning must not assume replicas.
-func ControlPlaneStartupServices() ([]string, error) {
+func ControlPlaneStartupServices(ha bool) ([]string, error) {
 	var spec struct {
 		Services map[string]yaml.Node `yaml:"services"`
 	}
-	if err := yaml.Unmarshal(composeYAML, &spec); err != nil {
+	if err := yaml.Unmarshal([]byte(renderComposeForProfile("baseharbor", ha)), &spec); err != nil {
 		return nil, fmt.Errorf("decode control-plane startup topology: %w", err)
 	}
 	if len(spec.Services) == 0 {

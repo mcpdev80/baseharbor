@@ -227,3 +227,11 @@ The [CLI / machine matrix](cli-machine-coverage.md) includes every supported vis
 ## Typed operation examples
 
 Follow [machine operation recipes](../how-to/machine-operations.md) for application creation, workspace mapping, protected secrets, trust approval and provider conformance. Inputs and required properties come from the actual MCP `tools/list` schema. CLI JSON and MCP use shared operations; raw credentials and arbitrary runtime execution are excluded from MCP.
+
+## Explicit control-plane availability
+
+`baseharbor.control-plane.up` accepts `ha` (boolean, default `false`) alongside target, ports and the protected recovery-file reference. The same lifecycle selects the standard topology for a fresh target and rejects an incompatible HA request for retained single-server state. `control-plane.status` reports actual running members and availability; single-server mode never claims failover.
+
+```json
+{"name":"baseharbor.control-plane.up","arguments":{"target":"local","ha":false}}
+```

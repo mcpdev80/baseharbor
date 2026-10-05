@@ -28,7 +28,11 @@ const (
 //go:embed assets/compose.yaml
 var composeYAML []byte
 
+//go:embed assets/compose-single.yaml
+var composeSingleYAML []byte
+
 type Files struct {
+	HA              bool
 	Compose         string
 	Env             string
 	Project         string
@@ -49,10 +53,10 @@ func EnsureFilesWithPorts(stateDir string, ports Ports) (Files, error) {
 }
 
 func EnsureFilesForProject(stateDir, project string, ports Ports) (Files, error) {
-	return EnsureFilesForProjectAndResources(stateDir, project, project, ports)
+	return EnsureFilesForProjectAndResources(stateDir, project, project, ports, false)
 }
 
-func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string, ports Ports) (Files, error) {
+func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string, ports Ports, ha bool) (Files, error) {
 	project = strings.TrimSpace(project)
 	resourceProject = strings.TrimSpace(resourceProject)
 	if project == "" {
@@ -79,7 +83,10 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 		return Files{}, fmt.Errorf("create runtime state directory: %w", err)
 	}
 
-	rendered := renderComposeForProject(resourceProject)
+	if err := ensureControlPlaneProfile(stateDir, ha); err != nil {
+		return Files{}, err
+	}
+	rendered := renderComposeForProfile(resourceProject, ha)
 	composePath := filepath.Join(stateDir, composeName)
 	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
@@ -99,7 +106,7 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 		return Files{}, fmt.Errorf("inspect runtime environment: %w", err)
 	}
 
-	if err := prepareOpenBaoStorage(stateDir, envPath); err != nil {
+	if err := prepareOpenBaoStorage(stateDir, envPath, ha); err != nil {
 		return Files{}, err
 	}
 	if err := normalizeProjectedFiles(
@@ -108,7 +115,7 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 	); err != nil {
 		return Files{}, err
 	}
-	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject}, nil
+	return Files{Compose: composePath, Env: envPath, Project: project, ResourceProject: resourceProject, HA: ha}, nil
 }
 
 func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files Files) error {
@@ -164,7 +171,7 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if err := projectControlPlaneOpenBaoTLS(openBaoRoot, openBaoMaterial); err != nil {
 		return fmt.Errorf("project OpenBao native TLS: %w", err)
 	}
-	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial, files.HA); err != nil {
 		return fmt.Errorf("project control-plane PostgreSQL TLS: %w", err)
 	}
 
@@ -172,7 +179,7 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if resourceProject == "" {
 		resourceProject = sharedResourceProjectNameForOperatorProject(files.Project)
 	}
-	rendered := renderComposeForProject(resourceProject)
+	rendered := renderComposeForProfile(resourceProject, files.HA)
 	rendered, err = renderSecureControlPlanePostgres(rendered)
 	if err != nil {
 		return err
@@ -224,7 +231,7 @@ func RetireControlPlaneServiceAccessOverlap(ctx context.Context, issuer servicea
 	if err != nil {
 		return fmt.Errorf("load retired control-plane PostgreSQL TLS material: %w", err)
 	}
-	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial); err != nil {
+	if err := projectControlPlanePostgresTLS(postgresRoot, postgresMaterial, files.HA); err != nil {
 		return fmt.Errorf("project retired control-plane PostgreSQL trust: %w", err)
 	}
 	return nil
@@ -238,17 +245,22 @@ func ControlPlaneNetworkName(resourceProject string) string {
 	return resourceProject + "-default"
 }
 
-func renderComposeForProject(project string) string {
+func renderComposeForProfile(project string, ha bool) string {
 	project = strings.TrimSpace(project)
 	if project == "" {
 		project = "baseharbor"
 	}
-	rendered := strings.ReplaceAll(string(composeYAML), "name: baseharbor-secrets", "name: "+project+"-secrets")
+	asset := composeSingleYAML
+	if ha {
+		asset = composeYAML
+	}
+	rendered := strings.ReplaceAll(string(asset), "name: baseharbor-secrets", "name: "+project+"-secrets")
 	rendered = strings.ReplaceAll(rendered, "  default: {}\n", "  default:\n    name: "+ControlPlaneNetworkName(project)+"\n")
+	rendered = strings.ReplaceAll(rendered, "name: baseharbor-control-plane", "name: "+ControlPlaneNetworkName(project))
 	return rendered
 }
 
-func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial) error {
+func projectControlPlanePostgresTLS(root string, material serviceaccess.TLSMaterial, ha bool) error {
 	runtimeDir := filepath.Join(root, "runtime")
 	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		return err
@@ -281,7 +293,7 @@ hostnossl all all ::/0 reject
 	if err := os.WriteFile(filepath.Join(runtimeDir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
 		return err
 	}
-	return writeControlPlanePostgresHAProxyConfig(runtimeDir)
+	return writeControlPlanePostgresProxyConfig(runtimeDir, ha)
 }
 
 func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMaterial) error {
@@ -314,6 +326,9 @@ func projectControlPlaneOpenBaoTLS(root string, material serviceaccess.TLSMateri
 }
 
 func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
+	if !strings.Contains(rendered, "  openbao-member-2:") {
+		return validateSingleControlPlane(rendered)
+	}
 	for _, required := range []string{
 		"  openbao-member-1:\n",
 		"  openbao-member-2:\n",
@@ -341,6 +356,9 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 }
 
 func renderSecureControlPlanePostgres(rendered string) (string, error) {
+	if !strings.Contains(rendered, "  postgres-member-2:") {
+		return validateSingleControlPlane(rendered)
+	}
 	for _, required := range []string{
 		"  postgres-member-1:\n",
 		"  postgres-member-2:\n",
@@ -380,6 +398,10 @@ func ExistingFilesForProject(stateDir, project string) (Files, error) {
 		if _, err := os.Stat(path); err != nil {
 			return Files{}, err
 		}
+	}
+	files.HA, err = readControlPlaneProfile(stateDir)
+	if err != nil {
+		return Files{}, err
 	}
 	return files, nil
 }

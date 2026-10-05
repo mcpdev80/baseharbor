@@ -58,7 +58,7 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 		result.Checks = append(result.Checks, publicControlPlaneCheck{Name: check.Name, Ready: check.OK})
 		result.Ready = result.Ready && check.OK
 	}
-	availability := evaluateControlPlaneAvailability(running, checks)
+	availability := evaluateControlPlaneAvailability(running, checks, files.HA)
 	result.AvailabilitySatisfied = availability.Satisfied
 	result.AvailabilityDetail = availability.Detail()
 	if !result.Ready {

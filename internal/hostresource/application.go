@@ -33,8 +33,8 @@ func heuristic(name string, estimatedMiB uint64) ComponentEstimate {
 
 // EstimateControlPlane accounts for every service in the shipped HA topology.
 // These per-role planning budgets are estimates, not measured RSS baselines.
-func EstimateControlPlane() (MemoryEstimate, error) {
-	names, err := bhruntime.ControlPlaneStartupServices()
+func EstimateControlPlane(ha bool) (MemoryEstimate, error) {
+	names, err := bhruntime.ControlPlaneStartupServices(ha)
 	if err != nil {
 		return MemoryEstimate{}, err
 	}

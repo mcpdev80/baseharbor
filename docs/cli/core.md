@@ -18,6 +18,17 @@ These commands form the shortest normal BaseHarbor workflow.
 
 Use `baha up` as the normal convergence command.
 
+Fresh targets use one native PostgreSQL server and one OpenBao server. Stable endpoints, administration and bootstrap services remain separate; the standard startup plan contains seven services, not a hidden HA cluster. OpenBao keeps authoritative PostgreSQL storage with native TLS. Memory planning counts the selected topology and reports estimates, not measured usage.
+
+```bash
+# Default single-server control plane outside an application repository
+baha up --control-plane-only --yes
+# Explicit HA on a separate fresh target
+baha up --control-plane-only --ha --yes
+```
+
+Repository `ha: true` requests HA when creating its initial control plane. A retained target keeps its recorded topology; requesting HA on an existing single-server target fails before mutation. Use a separate target or deliberately destroy and recreate it. There is no pre-freeze state migration or legacy topology support. `status` and `doctor` report actual members and the effective availability guarantee.
+
 Inside an application repository it resolves the effective Target, environment, provider placement and required input, then converges the application.
 
 Outside an application repository it keeps the control-plane-only behavior.

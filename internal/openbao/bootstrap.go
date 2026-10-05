@@ -67,7 +67,7 @@ func Inspect(ctx context.Context, executor Executor, files bhruntime.Files) (Sta
 		fallbackState State
 		haveFallback  bool
 	)
-	for _, member := range openBaoHAMembers {
+	for _, member := range files.OpenBaoMembers() {
 		state, err := inspectMemberState(ctx, executor, files, member)
 		if err != nil {
 			lastErr = err
@@ -460,8 +460,6 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 	return bundle, nil
 }
 
-var openBaoHAMembers = []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"}
-
 func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
 	state, err := inspectMemberState(ctx, executor, files, member)
 	if err != nil {
@@ -475,7 +473,7 @@ func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhrun
 	if err != nil {
 		return errors.New("encode OpenBao unseal request")
 	}
-	for _, member := range openBaoHAMembers {
+	for _, member := range files.OpenBaoMembers() {
 		state, err := memberState(ctx, executor, files, member)
 		if err != nil {
 			return err

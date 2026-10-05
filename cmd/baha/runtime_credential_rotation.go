@@ -96,7 +96,7 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 		if err != nil {
 			return err
 		}
-		members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+		members := files.PostgresMembers()
 		order := make([]string, 0, len(members))
 		for _, member := range members {
 			if member != primary {
@@ -119,7 +119,7 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			}
 		}
 
-		for _, member := range []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"} {
+		for _, member := range files.OpenBaoMembers() {
 			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
 				return fmt.Errorf("roll OpenBao member %s: %w", member, err)
 			}
@@ -225,6 +225,12 @@ func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime b
 }
 
 func controlPlanePostgresPrimary(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) (string, error) {
+	if !files.HA {
+		if err := waitForControlPlanePostgresMemberReady(ctx, runtime, files, "postgres-member-1"); err != nil {
+			return "", err
+		}
+		return "postgres-member-1", nil
+	}
 	const probe = "import urllib.request,sys;\ntry:\n r=urllib.request.urlopen('http://127.0.0.1:8008/primary', timeout=2); sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n sys.exit(1)"
 	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
 		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe); err == nil {
@@ -240,7 +246,11 @@ func waitForControlPlanePostgresMemberReady(ctx context.Context, runtime bhrunti
 	var last error
 	for time.Now().Before(deadline) {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe)
+		if files.HA {
+			_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe)
+		} else {
+			_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "pg_isready", "-h", "127.0.0.1", "-p", "5432")
+		}
 		cancel()
 		if last == nil {
 			return nil

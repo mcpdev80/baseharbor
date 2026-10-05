@@ -22,6 +22,19 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Skip("real control-plane restart acceptance requires BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true")
 	}
 
+	runControlPlaneRestartAcceptance(t, true)
+}
+
+func TestSingleControlPlaneRestartRotationAndCleanup(t *testing.T) {
+	if os.Getenv("BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE") != "true" {
+		t.Skip("single control-plane runtime acceptance requires BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE=true")
+	}
+	runControlPlaneRestartAcceptance(t, false)
+}
+
+func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
+	t.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
 
@@ -60,7 +73,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}); err != nil {
+	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, ha); err != nil {
 		t.Fatalf("initial control-plane start: %v\n%s", err, out.String())
 	}
 	runtimeFiles, err := existingTargetRuntimeFiles(ctx)
@@ -80,6 +93,29 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := runtimeFiles
+	if files.HA != ha {
+		t.Fatal("persisted control-plane topology differs from requested profile")
+	}
+	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers := 0
+	for _, name := range running {
+		if strings.HasPrefix(name, "postgres-member-") || strings.HasPrefix(name, "openbao-member-") {
+			servers++
+		}
+		if !ha && (strings.Contains(name, "etcd") || strings.HasSuffix(name, "-2") || strings.HasSuffix(name, "-3")) {
+			t.Fatalf("single control-plane started hidden HA service: %s", name)
+		}
+	}
+	wantedServers := 2
+	if ha {
+		wantedServers = 6
+	}
+	if servers != wantedServers {
+		t.Fatalf("running server count=%d want=%d", servers, wantedServers)
+	}
 	initialCredentials, err := bhruntime.LoadControlPlaneCredentials(files)
 	if err != nil {
 		t.Fatal(err)
@@ -161,6 +197,21 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	}
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		t.Fatalf("manager auth after service CA rotation: %v", err)
+	}
+
+	if !ha {
+		var destroyOut bytes.Buffer
+		if err := runtimeDestroy(ctx, []string{"--yes"}, &destroyOut); err != nil {
+			t.Fatalf("single control-plane cleanup: %v\n%s", err, destroyOut.String())
+		}
+		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)
+		if err != nil || len(resources) != 0 {
+			t.Fatalf("single control-plane retained owned resources: %v %v", resources, err)
+		}
+		if _, err := os.Stat(recovery); err != nil {
+			t.Fatal("destroy removed external operator recovery file")
+		}
+		return
 	}
 
 	environment := mustRuntimeEnvForHATest(t, files.Env)

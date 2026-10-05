@@ -1,0 +1,203 @@
+services:
+  postgres-member-1:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    user: 70:70
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    entrypoint:
+    - /bin/sh
+    - -ec
+    command:
+    - 'cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+
+      chmod 0600 /tmp/server-key.pem
+
+      exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem
+      -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
+
+      '
+    environment:
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
+      POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
+      POSTGRES_DB: postgres
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev
+    - /var/run/postgresql:rw,noexec,nosuid,nodev
+    volumes:
+    - postgres-data-1:/var/lib/postgresql
+    - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro
+    - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+    - ./providers/postgresql/runtime/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro
+  postgres:
+    image: docker.io/library/haproxy:3.2.23-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres-member-1:
+        condition: service_started
+    user: 99:99
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    command:
+    - haproxy
+    - -W
+    - -db
+    - -f
+    - /usr/local/etc/haproxy/haproxy.cfg
+    ports:
+    - 127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432
+    volumes:
+    - ./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+  postgres-admin:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    command:
+    - sh
+    - -ec
+    - 'trap : TERM INT; sleep infinity & wait'
+    environment:
+      PGPASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev
+    - /var/run/postgresql:rw,noexec,nosuid,nodev
+    volumes:
+    - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+  postgres-init:
+    image: docker.io/library/postgres:18-alpine
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_started
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
+      POSTGRES_DB: postgres
+      PGPASSWORD: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
+      PGHOST: postgres
+      PGPORT: '5432'
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/baseharbor/postgres-ca/ca.pem
+      PGCONNECT_TIMEOUT: '1'
+      BASEHARBOR_POSTGRES_USER: ${BASEHARBOR_POSTGRES_USER}
+      BASEHARBOR_POSTGRES_PASSWORD: ${BASEHARBOR_POSTGRES_PASSWORD}
+      BASEHARBOR_POSTGRES_DB: ${BASEHARBOR_POSTGRES_DB}
+      BASEHARBOR_OPENBAO_DB_USER: ${BASEHARBOR_OPENBAO_DB_USER:-openbao}
+      BASEHARBOR_OPENBAO_DB_PASSWORD: ${BASEHARBOR_OPENBAO_DB_PASSWORD}
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev
+    - /var/run/postgresql:rw,noexec,nosuid,nodev
+    volumes:
+    - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+    - ./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro
+    command:
+    - /bin/sh
+    - -ec
+    - "attempts=0\nuntil /bin/sh /run/baseharbor/openbao-init.sh; do\n  attempts=$$((attempts+1))\n\
+      \  if [ \"$${attempts}\" -ge 90 ]; then\n    echo \"BaseHarbor PostgreSQL HA\
+      \ endpoint did not become SQL-ready for initialization\" >&2\n    exit 1\n \
+      \ fi\n  sleep 1\ndone\n"
+  openbao-member-1:
+    image: docker.io/openbao/openbao:2.7.0
+    restart: unless-stopped
+    user: '100'
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev
+    - /openbao/config:rw,noexec,nosuid,nodev,mode=1777
+    command:
+    - server
+    - -config=/run/baseharbor/openbao/openbao.hcl
+    environment:
+      SKIP_CHOWN: '1'
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+      BAO_CLUSTER_ADDR: https://openbao-member-1:8201
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    volumes:
+    - ./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro
+    - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+    - ./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro
+    - ./providers/openbao/runtime/server-key.pem:/run/baseharbor/openbao/server-key.pem:ro
+    - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
+    networks:
+    - default
+    - secrets
+  openbao:
+    image: docker.io/library/haproxy:3.2.23-alpine
+    restart: unless-stopped
+    depends_on:
+      openbao-member-1:
+        condition: service_started
+    user: 99:99
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    command:
+    - haproxy
+    - -W
+    - -db
+    - -f
+    - /usr/local/etc/haproxy/haproxy.cfg
+    ports:
+    - 127.0.0.1:${BASEHARBOR_OPENBAO_PORT}:8200
+    volumes:
+    - ./providers/openbao/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      default:
+        aliases:
+        - openbao
+      secrets:
+        aliases:
+        - openbao
+  openbao-admin:
+    image: docker.io/openbao/openbao:2.7.0
+    restart: unless-stopped
+    user: '100'
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    entrypoint:
+    - /bin/sh
+    - -ec
+    command:
+    - 'trap : TERM INT; sleep infinity & wait'
+    environment:
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /run/baseharbor/openbao/ca.pem
+    volumes:
+    - ./providers/openbao/runtime/ca.pem:/run/baseharbor/openbao/ca.pem:ro
+    networks:
+    - default
+volumes:
+  postgres-data-1: null
+networks:
+  default:
+    name: baseharbor-control-plane
+  secrets:
+    name: baseharbor-secrets
+    internal: true

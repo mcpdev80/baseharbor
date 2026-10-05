@@ -458,7 +458,7 @@ func existingTargetRuntimeFiles(ctx context.Context) (bhruntime.Files, error) {
 	return files, err
 }
 
-func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deployment.ResolvedTarget, bhruntime.Files, error) {
+func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha bool) (deployment.ResolvedTarget, bhruntime.Files, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
@@ -467,7 +467,7 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports)
+	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports, ha)
 	if err != nil {
 		return target, bhruntime.Files{}, err
 	}

@@ -25,11 +25,11 @@ func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
 }
 
-func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports) error {
+func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports, ha bool) error {
 	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
-	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
+	compose, files, err := startControlPlaneRuntime(ctx, out, ports, ha)
 	if err != nil {
 		return err
 	}
@@ -298,7 +298,7 @@ func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeP
 	if err != nil {
 		return fmt.Errorf("resolve PostgreSQL primary before TLS rotation: %w", err)
 	}
-	members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+	members := files.PostgresMembers()
 	order := make([]string, 0, len(members))
 	for _, member := range members {
 		if member != primary {
@@ -333,8 +333,8 @@ func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeP
 	return nil
 }
 
-func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
-	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports, ha bool) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports, ha)
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}

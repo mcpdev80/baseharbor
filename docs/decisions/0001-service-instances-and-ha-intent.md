@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-08
+- Implementation update: v0.4.22 selects a native single PostgreSQL server and one OpenBao server for fresh standard targets, with authoritative PostgreSQL storage and native TLS. Explicit HA retains the three-member Patroni/etcd/OpenBao topology. Recorded topology is immutable; pre-freeze state is replaced directly, without migration or legacy support.
 
 ## Context
 
@@ -88,7 +89,7 @@ The intended future availability vocabulary is small and semantic, for example:
 - `high`
 - `critical`
 
-The exact supported values and guarantees will be introduced only when HA is implemented and tested. This ADR reserves the architectural direction; it does not enable HA behavior today.
+Explicit provider HA was introduced in v0.4.21. The v0.4.22 runtime realization honors the standard default as well as explicit HA and reports the selected topology; a single-host HA topology does not promise host-failure tolerance.
 
 ### 4. Availability intent also applies to the BaseHarbor control plane
 

@@ -457,6 +457,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			if err != nil {
 				return err
 			}
+			opts.HA = opts.HA || resolved.Manifest.HA
 			if err := preflightRepositoryWorkload(resolved); err != nil {
 				return fmt.Errorf("application workload preflight failed before control-plane start: %w", err)
 			}

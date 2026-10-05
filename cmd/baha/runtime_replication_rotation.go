@@ -45,6 +45,9 @@ with urllib.request.urlopen(request, timeout=5) as response:
 `
 
 func prepareControlPlaneReplicationOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, previous string, next bhruntime.ControlPlaneCredentials) error {
+	if !files.HA {
+		return nil
+	}
 	var err error
 	// A stable primary endpoint does not prove that restored replicas have
 	// finished their basebackup. Reloading Patroni during replica bootstrap can

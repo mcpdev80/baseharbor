@@ -46,7 +46,7 @@ func (f *servicePKIFake) ExecProjectInput(_ context.Context, _, _, _ string, inp
 func servicePKITestFiles(t *testing.T) bhruntime.Files {
 	t.Helper()
 	dir := t.TempDir()
-	files := bhruntime.Files{Env: filepath.Join(dir, "runtime.env"), Compose: filepath.Join(dir, "compose.yaml")}
+	files := bhruntime.Files{HA: true, Env: filepath.Join(dir, "runtime.env"), Compose: filepath.Join(dir, "compose.yaml")}
 	if err := os.WriteFile(AdminCredentialsPath(files), []byte("OPENBAO_ROLE_ID=role\nOPENBAO_SECRET_ID=secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

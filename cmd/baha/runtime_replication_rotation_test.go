@@ -31,7 +31,7 @@ func (r *replicationRotationOrderRuntime) ExecProjectInput(_ context.Context, _,
 
 func TestReplicationRotationWaitsForAllMembersBeforeReload(t *testing.T) {
 	runtime := &replicationRotationOrderRuntime{}
-	if err := prepareControlPlaneReplicationOverlap(context.Background(), runtime, bhruntime.Files{}, "old", bhruntime.ControlPlaneCredentials{PostgresReplicationUser: "new", PostgresReplicationPass: "password"}); err != nil {
+	if err := prepareControlPlaneReplicationOverlap(context.Background(), runtime, bhruntime.Files{HA: true}, "old", bhruntime.ControlPlaneCredentials{PostgresReplicationUser: "new", PostgresReplicationPass: "password"}); err != nil {
 		t.Fatal(err)
 	}
 	var want []string

@@ -9,11 +9,11 @@ import (
 )
 
 func TestControlPlaneEstimateCoversShippedHAStartupTopologyWithoutClaimingCalibration(t *testing.T) {
-	names, err := bhruntime.ControlPlaneStartupServices()
+	names, err := bhruntime.ControlPlaneStartupServices(true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	estimate, err := EstimateControlPlane()
+	estimate, err := EstimateControlPlane(true)
 	if err != nil {
 		t.Fatal(err)
 	}
