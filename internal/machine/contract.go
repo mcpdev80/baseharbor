@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/mcpdev80/baseharbor/internal/apierror"
+	"github.com/mcpdev80/baseharbor/internal/extension"
 )
 
 const ContractVersion = "v1"
@@ -103,6 +104,17 @@ func Classify(err error) *Error {
 		return typed
 	}
 	var apiErr *apierror.Error
+	var trustErr *extension.TrustError
+	if errors.As(err, &trustErr) {
+		code := ErrorVerificationFailed
+		if trustErr.Code == "publisher_denied" {
+			code = ErrorPolicyDenied
+		}
+		if trustErr.Code == "invalid_metadata" || trustErr.Code == "trust_metadata_required" {
+			code = ErrorValidationFailed
+		}
+		return &Error{Code: code, Message: trustErr.Error(), CauseCode: trustErr.Code, Next: trustErr.Next, Cause: err}
+	}
 	if errors.As(err, &apiErr) {
 		switch apiErr.Code {
 		case apierror.CodeBadRequest:
@@ -140,6 +152,8 @@ func ResultError(err error) ErrorResult {
 
 func Operations() []Operation {
 	return []Operation{
+		{ID: "workspace.init", MCPTool: "baseharbor.workspace.init", Description: "Configure canonical application component/source identities.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "workspace.map", MCPTool: "baseharbor.workspace.map", Description: "Map canonical repository identity to a developer-local checkout.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "target.list", MCPTool: "baseharbor.target.list", Description: "List configured BaseHarbor deployment targets using secret-safe target metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "runtime.capabilities", MCPTool: "baseharbor.runtime.capabilities", Description: "Inspect Runtime Explorer capabilities for the effective Target runtime provider.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},

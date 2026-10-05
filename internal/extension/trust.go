@@ -115,6 +115,9 @@ func (p TrustPolicy) Evaluate(metadata Metadata, verification Verification) Trus
 	if verification.Status == VerificationVerified && (metadata.Artifact.Digest == "" || verification.Digest != metadata.Artifact.Digest) {
 		return deny("verification_invalid", "Verify the selected immutable artifact digest.")
 	}
+	if verification.Status == VerificationVerified && metadata.Provenance.Publisher != "" && metadata.Provenance.Publisher != verification.Publisher {
+		return deny("verification_invalid", "Verify the claimed publisher identity against the selected artifact.")
+	}
 	if p.Validate(metadata) != nil {
 		return deny("trust_metadata_required", "Supply the immutable digest and public evidence references required by policy.")
 	}

@@ -160,7 +160,7 @@ jobs:
           set -euo pipefail
           logs="$RUNNER_TEMP/pre-release-source-logs"
           mkdir -p "$logs"
-          go test ./internal/... ./spec/... 2>&1 | tee "$logs/go-test-internal-spec.log"
+          go test ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
           go vet ./... 2>&1 | tee "$logs/go-vet.log"
 

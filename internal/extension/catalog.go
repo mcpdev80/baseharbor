@@ -107,6 +107,8 @@ func (c Catalog) ResolveVerified(ctx context.Context, request ResolveRequest, po
 	return result, nil
 }
 
+// Validate checks metadata requirements only. Evaluate applies verified evidence
+// and publisher policy; presence of a reference does not establish artifact trust.
 func (p TrustPolicy) Validate(metadata Metadata) error {
 	if p.RequireDigest && strings.TrimSpace(metadata.Artifact.Digest) == "" {
 		return fmt.Errorf("extension %q is rejected by trust policy: immutable artifact digest is required", metadata.ID)

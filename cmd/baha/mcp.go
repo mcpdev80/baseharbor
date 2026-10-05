@@ -209,6 +209,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	registerMCPReadTools(server, store)
 	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPLifecycleTools(server, store)
+	registerMCPWorkspaceMutationTools(server)
 	return server
 }
 

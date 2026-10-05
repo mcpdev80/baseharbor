@@ -114,6 +114,7 @@ nav:
   - Automation / Agents:
       - Automation commands: cli/automation-agents.md
       - MCP / agent interface: reference/mcp.md
+      - CLI / machine coverage: reference/cli-machine-coverage.md
       - Machine Interface v1: spec/machine-interface-v1.md
       - Protected Machine HTTP v1: spec/machine-http-v1.md
       - Runtime Explorer v1: spec/runtime-explorer-v1.md
@@ -134,6 +135,7 @@ nav:
       - Secrets & OpenBao: reference/secrets-and-openbao.md
       - Runtime Provider Contract v1: spec/runtime-provider-contract-v1.md
       - Runtime Provider Conformance v1: spec/runtime-provider-conformance-v1.md
+      - Public provider conformance v1: spec/provider-conformance-v1.md
       - Delivery Provider Contract v1: spec/delivery-provider-contract-v1.md
 
   - Architecture:

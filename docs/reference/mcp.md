@@ -16,32 +16,54 @@ baha agent describe -o json
 
 ## Semantic tools
 
-The current surface is intentionally small:
+The complete current registry is checked against actual MCP discovery by the source tests. The table is generated from the typed operation metadata; handwritten partial tool lists are not authoritative.
 
-```text
-baseharbor.target
-baseharbor.target.list
-baseharbor.app.list
-baseharbor.workspace.list
-baseharbor.workspace.resolve
-baseharbor.workspace.status
-baseharbor.workspace.update
-baseharbor.app.new
-baseharbor.inspect
-baseharbor.plan
-baseharbor.apply
-baseharbor.status
-baseharbor.doctor
-baseharbor.observe
-baseharbor.evidence
-baseharbor.update
-baseharbor.repair
-baseharbor.backup
-baseharbor.restore
-baseharbor.destroy
-baseharbor.policy.check
-baseharbor.policy.explain
-```
+<!-- BEGIN GENERATED MCP REGISTRY -->
+
+| Tool | Safety | Policy required | Approval required |
+| --- | --- | --- | --- |
+| `baseharbor.workspace.init` | `mutating` | false | false |
+| `baseharbor.workspace.map` | `mutating` | false | false |
+| `baseharbor.target` | `read_only` | false | false |
+| `baseharbor.target.list` | `read_only` | false | false |
+| `baseharbor.runtime.capabilities` | `read_only` | true | false |
+| `baseharbor.runtime.list` | `read_only` | true | false |
+| `baseharbor.runtime.inspect` | `read_only` | true | false |
+| `baseharbor.runtime.metrics` | `read_only` | true | false |
+| `baseharbor.runtime.start` | `mutating` | true | false |
+| `baseharbor.runtime.stop` | `mutating` | true | false |
+| `baseharbor.runtime.restart` | `mutating` | true | false |
+| `baseharbor.app.list` | `read_only` | false | false |
+| `baseharbor.inspect` | `read_only` | false | false |
+| `baseharbor.workspace.list` | `read_only` | false | false |
+| `baseharbor.workspace.resolve` | `read_only` | false | false |
+| `baseharbor.workspace.status` | `read_only` | false | false |
+| `baseharbor.workspace.update` | `mutating` | false | false |
+| `baseharbor.app.new` | `mutating` | false | false |
+| `baseharbor.plan` | `read_only` | false | false |
+| `baseharbor.apply` | `mutating` | true | false |
+| `baseharbor.status` | `read_only` | false | false |
+| `baseharbor.doctor` | `read_only` | false | false |
+| `baseharbor.observe` | `read_only` | false | false |
+| `baseharbor.evidence` | `read_only` | false | false |
+| `baseharbor.update` | `mutating` | true | false |
+| `baseharbor.repair` | `mutating` | true | false |
+| `baseharbor.backup` | `mutating` | false | false |
+| `baseharbor.restore` | `mutating` | true | false |
+| `baseharbor.destroy` | `destructive` | true | true |
+| `baseharbor.policy.check` | `read_only` | true | false |
+| `baseharbor.provider.list` | `read_only` | false | false |
+| `baseharbor.provider.inspect` | `read_only` | false | false |
+| `baseharbor.provider.verify` | `read_only` | false | false |
+| `baseharbor.provider.add` | `mutating` | true | false |
+| `baseharbor.provider.remove` | `destructive` | true | true |
+| `baseharbor.organization.inspect` | `read_only` | false | false |
+| `baseharbor.organization.check` | `read_only` | false | false |
+| `baseharbor.organization.set` | `mutating` | true | false |
+| `baseharbor.organization.update` | `mutating` | true | true |
+| `baseharbor.policy.explain` | `read_only` | false | false |
+
+<!-- END GENERATED MCP REGISTRY -->
 
 `baseharbor.target` reports the effective Target plus repository-resolved application/environment context. It accepts an optional target selector and returns the same target semantics as `baha target -o json`.
 
@@ -150,3 +172,7 @@ destruction requires explicit BaseHarbor approval too
 `baseharbor.workspace.status` exposes the same per-repository Git state model as the human CLI. Optional fetch refreshes remote-tracking state but never changes checked-out revisions.
 
 `baseharbor.workspace.update` uses the same guarded native-Git core as `baha app workspace update`: only clean, non-diverged branches with a configured upstream may fast-forward. MCP cannot bypass dirty/diverged/detached/missing-upstream safety restrictions. `check=true` performs preview-only evaluation.
+
+## CLI coverage
+
+The [CLI / machine matrix](cli-machine-coverage.md) includes every supported visible command and alias. Missing operations remain explicit `gap` entries until #787 is complete. `workspace.init` and `workspace.map` accept typed inputs and use the same shared operations as the noninteractive CLI/JSON paths.
