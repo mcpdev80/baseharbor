@@ -2,27 +2,43 @@
 
 This tutorial gets an existing application running under BaseHarbor without requiring provider knowledge or manual manifest editing.
 
-## Canonical developer path
+## Try it: a Go order API with SQL
 
-From a normal existing repository:
+Prerequisites: install the `baha` release binary, make a local Docker or Podman runtime available, and use a parent directory without an `orders-api` folder. Check the CLI and the effective Target first:
 
-```text
-optional inspection
-      |
-      v
-baha app init
-      |
-      v
-human-readable adoption summary
-      |
-      v
-baha up
-      |
-      v
-READY
+```bash
+baha version
+baha target show
 ```
 
-The normal happy path does **not** require manual YAML edits, Compose rewrites, explicit OpenBao bootstrap commands, a separate preflight/apply sequence, or shell-piped secret commands.
+If no Target is configured, follow [Target commands](../cli/targets.md) before deploying. Create a fresh application:
+
+```bash
+baha app new orders-api --stack go --http --sql
+cd orders-api
+baha plan
+baha up -e dev
+baha status
+baha doctor
+```
+
+`app new` writes `main.go`, `go.mod`, `Dockerfile`, `compose.yaml`, `baseharbor.yaml`, repository metadata and an empty-value `.env.example`. The manifest requests SQL and exposes the `app` workload on port 8080. The Go scaffold includes `pgx`, uses the protected `DATABASE_URL` binding and checks database connectivity before serving HTTP.
+
+On first `up`, answer the guided operator-owned decisions described below. Readiness is the expected result after successful deployment; creating files alone does not start a runtime. Open the canonical HTTPS application URL reported by `status` and request `/healthz`. Use the reported port, which can differ between Docker and rootless Podman.
+
+The scaffold is a starting point: add your order endpoints and schema. The [PostgreSQL example](../how-to/postgres.md) shows how to insert and query a real sample order.
+
+Stop only this application's runtime while preserving its persistent data:
+
+```bash
+baha app down
+```
+
+Run `baha up` again from the repository to resume it.
+
+## Adopt an existing application instead
+
+For a repository you already own, the normal path is inspection, guided adoption, then `baha up`. You do not need to create a new scaffold or manually rewrite Compose to use that path.
 
 ## 1. Optional: inspect the repository
 

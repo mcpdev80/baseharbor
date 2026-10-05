@@ -65,10 +65,26 @@ Application operations also include:
 - runtime identity;
 - PostgreSQL and Valkey access helpers.
 
-Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` and `baha down` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
+Use the top-level `baha status`, `baha plan`, `baha doctor`, `baha up` forms for the normal repository-local workflow. Use `baha app ...` when the explicit application namespace is useful for administration or automation.
 
 ## Machine parity
 
 Where an operation has structured output, human CLI and machine consumers use the same underlying domain result rather than separate lifecycle implementations.
 
 See [Automation and agents](automation-agents.md).
+
+## Example: create and inspect an API with two capabilities
+
+Run from a parent directory with no `shop-api` folder:
+
+```bash
+baha app new shop-api --stack go --http --sql --cache
+cd shop-api
+baha app inspect .
+baha app show
+baha app plan
+```
+
+The scaffold declares SQL and cache intent, adds Go clients, and records `DATABASE_URL`/`DATABASE_CA_FILE` and `REDIS_URL`/`REDIS_CA_FILE` binding names. It does not create shop-specific endpoints or tables. After deployment with `baha up`, inspect the workload with `baha app logs app` and the masked bindings with `baha app env --format json`.
+
+For adoption, start inside your existing repository with `baha app inspect .`, then `baha app init`. Do not create a second scaffold over existing application files.
