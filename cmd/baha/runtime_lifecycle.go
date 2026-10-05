@@ -12,7 +12,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/connectivityrelay"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
@@ -65,6 +67,21 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	if err != nil {
 		return err
 	}
+	inventoryCtx, inventoryCancel := context.WithTimeout(parent, 30*time.Second)
+	plan, err := collectTargetDestroyInventory(inventoryCtx, target, true)
+	inventoryCancel()
+	if err != nil {
+		return fmt.Errorf("target destroy ownership inventory: %w", err)
+	}
+	preserved, err := preservedTargetRecovery(parent, target)
+	if err != nil {
+		return fmt.Errorf("inventory external recovery file: %w", err)
+	}
+	recoveryPreserved := []fullDestroyResult{}
+	if preserved.Status != "" {
+		recoveryPreserved = append(recoveryPreserved, preserved)
+	}
+	recordDestroyPlan(parent, []targetDestroyInventory{plan}, recoveryPreserved)
 	fmt.Fprintln(out, "BaseHarbor target destroy plan")
 	fmt.Fprintf(out, "  control plane: project %s (containers, network and BaseHarbor-owned volumes)\n", files.Project)
 	if _, err := objectstorage.ExistingProviderFilesAt(dataDir, target.Name); err == nil {
@@ -88,6 +105,10 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	}
 	fmt.Fprintln(out, "  application registrations/inputs: preserved; inactive observations reconciled")
 	fmt.Fprintln(out, "  application-owned repository data/volumes: preserved")
+	plan.render(out)
+	if preserved.Status != "" {
+		fmt.Fprintf(out, "  PRESERVED %s %s\n", preserved.Resource, preserved.Detail)
+	}
 	if !confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the selected BaseHarbor target control plane.")
 		return nil
@@ -113,6 +134,12 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 			}
 		}
 	}
+	if err := devgateway.DestroyTarget(ctx, compose, target.Name); err != nil {
+		return fmt.Errorf("destroy target development gateway: %w", err)
+	}
+	if err := identityprovider.DestroyAllSharedKeycloakAt(ctx, compose, dataDir, target.Name); err != nil {
+		return fmt.Errorf("destroy unreferenced shared identity provider: %w", err)
+	}
 	if err := runtimeexecutor.DestroySharedAt(ctx, compose, dataDir, target.Name); err != nil {
 		return fmt.Errorf("destroy shared runtime provider executor: %w", err)
 	}
@@ -133,6 +160,16 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	}
 	if err := compose.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return fmt.Errorf("destroy BaseHarbor control-plane Compose project: %w", err)
+	}
+	resourceResults := []fullDestroyResult{}
+	plan.cleanup(ctx, &resourceResults)
+	if preserved.Status != "" {
+		resourceResults = append(resourceResults, preserved)
+	}
+	recordDestroyResults(parent, resourceResults, false)
+	renderFullDestroyReport(out, resourceResults)
+	if countFullDestroyBlockers(resourceResults) > 0 {
+		return errors.New("target resource cleanup incomplete; runtime and registry state preserved")
 	}
 	for _, shared := range sharedBackends {
 		remaining, err := compose.ListOwnedProjectResources(ctx, shared.Project)
@@ -169,7 +206,8 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 			return err
 		}
 	}
-	fmt.Fprintln(out, "BaseHarbor target control plane was permanently destroyed.")
+	recordDestroyResults(parent, nil, true)
+	fmt.Fprintln(out, "BaseHarbor target control plane and unreferenced shared providers were permanently destroyed.")
 	return nil
 }
 

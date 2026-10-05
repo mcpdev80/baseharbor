@@ -2,10 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -414,7 +414,15 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 	return nil
 }
 
-const runtimeContainerInspectTemplate = `{{.Id}}|{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{.State.Running}}|{{with .State.Health}}{{.Status}}{{end}}|{{.State.Status}}|{{.State.ExitCode}}|{{.State.Error}}`
+type runtimeContainerState struct {
+	Running  bool
+	Status   string
+	ExitCode int
+	Error    string
+	Health   *struct{ Status string }
+}
+
+const runtimeContainerInspectTemplate = `{{.Id}}|{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{ index .Config.Labels "io.podman.compose.service" }}|{{json .State}}`
 
 func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer, error) {
 	out, err := c.directOutput(ctx, "container", "ls", "-aq")
@@ -444,8 +452,8 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 
 	var result []RuntimeContainer
 	for _, line := range strings.Split(inspected, "\n") {
-		parts := strings.SplitN(strings.TrimSpace(line), "|", 11)
-		if len(parts) != 11 {
+		parts := strings.SplitN(strings.TrimSpace(line), "|", 7)
+		if len(parts) != 7 {
 			continue
 		}
 		id := strings.TrimSpace(parts[0])
@@ -455,17 +463,24 @@ func (c Compose) ListRuntimeContainers(ctx context.Context) ([]RuntimeContainer,
 		if id == "" || name == "" {
 			continue
 		}
-		exitCode, _ := strconv.Atoi(strings.TrimSpace(parts[9]))
+		var state runtimeContainerState
+		if err := json.Unmarshal([]byte(parts[6]), &state); err != nil {
+			return nil, fmt.Errorf("decode container state for %s: %w", name, err)
+		}
+		health := ""
+		if state.Health != nil {
+			health = state.Health.Status
+		}
 		result = append(result, RuntimeContainer{
 			ID:       id,
 			Name:     name,
 			Project:  project,
 			Service:  service,
-			Running:  strings.EqualFold(strings.TrimSpace(parts[6]), "true"),
-			Health:   strings.TrimSpace(parts[7]),
-			State:    strings.TrimSpace(parts[8]),
-			ExitCode: exitCode,
-			Error:    strings.TrimSpace(parts[10]),
+			Running:  state.Running,
+			Health:   health,
+			State:    state.Status,
+			ExitCode: state.ExitCode,
+			Error:    state.Error,
 		})
 	}
 	return result, nil

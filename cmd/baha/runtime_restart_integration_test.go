@@ -57,6 +57,14 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		t.Skip("existing global BaseHarbor Compose project detected; restart acceptance requires an isolated host")
 	}
 
+	baselineVolumes, err := exec.CommandContext(ctx, runtimeCommand, "volume", "ls", "-q").Output()
+	if err != nil {
+		t.Fatalf("inventory baseline volumes: %v", err)
+	}
+	baseline := map[string]bool{}
+	for _, name := range strings.Fields(string(baselineVolumes)) {
+		baseline[name] = true
+	}
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 
@@ -207,6 +215,15 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)
 		if err != nil || len(resources) != 0 {
 			t.Fatalf("single control-plane retained owned resources: %v %v", resources, err)
+		}
+		remainingVolumes, err := exec.CommandContext(ctx, runtimeCommand, "volume", "ls", "-q").Output()
+		if err != nil {
+			t.Fatalf("inventory volumes after target cleanup: %v", err)
+		}
+		for _, name := range strings.Fields(string(remainingVolumes)) {
+			if !baseline[name] {
+				t.Fatalf("target cleanup retained newly created named or anonymous volume: %s", name)
+			}
 		}
 		if _, err := os.Stat(recovery); err != nil {
 			t.Fatal("destroy removed external operator recovery file")

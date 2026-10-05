@@ -75,3 +75,15 @@ baha app down
 ```
 
 The plan previews deployment; `up` converges it; status reports its result. `app down` stops the application's runtime while preserving persistent data. Use `baha up` to resume it. Top-level `baha down` stops the local control plane and is a different scope.
+
+## Destroy inventory and preserved recovery material
+
+```bash
+baha destroy                 # preview this target after its applications are destroyed
+baha destroy --all -o json   # inventory the full installation without mutation
+baha destroy --all --yes -o json
+```
+
+The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. External recovery files are listed as `PRESERVED` and are never read for the report or deleted automatically. Decide separately whether the recovery copy is still needed before removing it.
+
+JSON and the MCP destroy operations return `resources`, `preserved` and `results` from the same lifecycle. A successful container cleanup removes its unshared anonymous volumes; declared external repository volumes remain preserved.

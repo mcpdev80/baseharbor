@@ -157,6 +157,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /var/run/postgresql:rw,noexec,nosuid,nodev
+      - /var/lib/postgresql:rw,noexec,nosuid,nodev
     volumes:
       - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
 
@@ -186,6 +187,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev
       - /var/run/postgresql:rw,noexec,nosuid,nodev
+      - /var/lib/postgresql:rw,noexec,nosuid,nodev
     volumes:
       - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
       - ./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro

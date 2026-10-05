@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
 - Application help registers `new` once.
 - Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
+- Target teardown includes unreferenced shared SQL/cache/identity/gateway resources. Full destruction previews concrete owned resources, reports removal/residue by name, preserves external recovery files explicitly, and returns the same structured inventory through JSON and MCP.
+- Docker/Podman container inventory decodes native JSON state, including absent healthchecks. Destructive container cleanup removes associated anonymous volumes without removing declared external volumes.
 - Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
 - Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
 - Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.

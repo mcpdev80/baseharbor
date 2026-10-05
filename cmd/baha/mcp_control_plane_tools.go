@@ -90,10 +90,11 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		}
 		ctx, cancel := machineLifecycleContext(ctx)
 		defer cancel()
+		ctx, report := withDestroyReport(ctx, true)
 		if err := destroyInstallation(ctx, true, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, map[string]any{"destroyed": true, "external_application_source_and_data_preserved": true}, nil
+		return nil, report, nil
 	})
 
 	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Destroy selected owned control plane after approval and existing application-ownership preflight.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
@@ -104,9 +105,10 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		if err := applicationlifecycle.RequireApproval("control-plane.destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx, report := withDestroyReport(ctx, false)
 		if err := destroyControlPlane(ctx, true, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, map[string]any{"destroyed": true, "application_data_preserved": true}, nil
+		return nil, report, nil
 	})
 }
