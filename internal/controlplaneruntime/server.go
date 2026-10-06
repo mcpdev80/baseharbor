@@ -24,34 +24,34 @@ var (
 )
 
 type Config struct {
-	ListenAddr               string
-	DatabaseURL              string
+	ListenAddr                 string
+	DatabaseURL                string
 	ConnectorEnrollmentEnabled bool
-	ConnectorAuthorityTarget string
-	OIDCIssuer               string
-	OIDCAudiences            []string
-	TLSCertFile              string
-	TLSKeyFile               string
-	TLSClientCAFile          string
-	RuntimeAppName           string
-	RuntimeEnvironment       string
-	RuntimeSecretsEnabled    bool
-	RuntimeOpenBaoURL        string
-	RuntimeOpenBaoCAFile     string
-	RuntimeCredentialsFile   string
-	RuntimeTokenFile         string
-	RuntimePermissionsFile   string
-	RuntimeServiceTokensFile string
-	RuntimeExecutorURL       string
-	RuntimeExecutorCAFile    string
-	RuntimeExecutorCertFile  string
-	RuntimeExecutorKeyFile   string
-	RuntimeOperationsDir     string
-	RuntimeMetricsTargetsDir string
-	RuntimeDocsListenAddr    string
-	RuntimeBuildVersion      string
-	RuntimeBuildCommit       string
-	ShutdownTimeout          time.Duration
+	ConnectorAuthorityTarget   string
+	OIDCIssuer                 string
+	OIDCAudiences              []string
+	TLSCertFile                string
+	TLSKeyFile                 string
+	TLSClientCAFile            string
+	RuntimeAppName             string
+	RuntimeEnvironment         string
+	RuntimeSecretsEnabled      bool
+	RuntimeOpenBaoURL          string
+	RuntimeOpenBaoCAFile       string
+	RuntimeCredentialsFile     string
+	RuntimeTokenFile           string
+	RuntimePermissionsFile     string
+	RuntimeServiceTokensFile   string
+	RuntimeExecutorURL         string
+	RuntimeExecutorCAFile      string
+	RuntimeExecutorCertFile    string
+	RuntimeExecutorKeyFile     string
+	RuntimeOperationsDir       string
+	RuntimeMetricsTargetsDir   string
+	RuntimeDocsListenAddr      string
+	RuntimeBuildVersion        string
+	RuntimeBuildCommit         string
+	ShutdownTimeout            time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {

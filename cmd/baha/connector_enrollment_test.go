@@ -19,14 +19,14 @@ func TestConnectorEnrollmentScopeUsesCoreOwnershipAndTypedAccess(t *testing.T) {
 		Version: deployment.ConfigVersion,
 		Access: map[string]deployment.AccessDefinition{
 			"connector": {Provider: "baseharbor-node-connector", Reference: "node-a"},
-			"local": {Provider: "local", Reference: "local"},
-			"native": {Provider: "native-api", Reference: "api"},
+			"local":     {Provider: "local", Reference: "local"},
+			"native":    {Provider: "native-api", Reference: "api"},
 		},
 		Targets: map[string]deployment.TargetDefinition{
-			"lab": {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "connector"}},
-			"unbound": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "connector"}},
-			"local": {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}},
-			"native": {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "native"}},
+			"lab":         {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "connector"}},
+			"unbound":     {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "connector"}},
+			"local":       {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}},
+			"native":      {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "native"}},
 			"unsupported": {TenantID: owner, Runtime: deployment.RuntimeDefinition{Provider: "kubernetes"}, Access: deployment.TargetAccess{Reference: "connector"}},
 		},
 	}

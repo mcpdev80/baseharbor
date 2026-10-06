@@ -74,7 +74,7 @@ type Bootstrap struct {
 }
 
 func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration) (Bootstrap, error) {
-	if scope.Validate() != nil || lifetime <= 0 || lifetime > 10*time.Minute || certificateTTL < time.Second || certificateTTL > 24*time.Hour || certificateTTL%time.Second != 0 {
+	if ctx.Err() != nil || scope.Validate() != nil || lifetime <= 0 || lifetime > 10*time.Minute || certificateTTL < time.Second || certificateTTL > 24*time.Hour || certificateTTL%time.Second != 0 {
 		return Bootstrap{}, ErrDenied
 	}
 	token, err := randomCredential()
@@ -106,7 +106,7 @@ type Result struct {
 }
 
 func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error) {
-	if request.Scope.Validate() != nil || !validCredential(request.Token) || !validCredential(request.Nonce) {
+	if ctx.Err() != nil || request.Scope.Validate() != nil || !validCredential(request.Token) || !validCredential(request.Nonce) {
 		return Result{}, ErrDenied
 	}
 	signing := serviceaccess.CSRSigningRequest{CSRPEM: request.CSRPEM, Identity: request.Scope.Identity(), TTL: time.Hour}
@@ -117,6 +117,9 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 	csrHash := sha256.Sum256(csr.Raw)
 	grant, err := a.store.Consume(ctx, request.Scope, digest(request.Token), digest(request.Nonce), hex.EncodeToString(csrHash[:]), time.Now().UTC())
 	if err != nil || grant.Scope != request.Scope || grant.CertificateTTL <= 0 || grant.CertificateTTL > 24*time.Hour {
+		return Result{}, ErrDenied
+	}
+	if ctx.Err() != nil {
 		return Result{}, ErrDenied
 	}
 	signing.TTL = grant.CertificateTTL

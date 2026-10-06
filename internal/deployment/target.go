@@ -46,7 +46,7 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
-	TenantID string `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
+	TenantID     string                                   `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
 	Runtime      RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
 	Access       TargetAccess                             `yaml:"access" json:"access"`
 	Scope        string                                   `yaml:"scope,omitempty" json:"scope,omitempty"`
@@ -75,7 +75,7 @@ type Config struct {
 }
 
 type ResolvedTarget struct {
-	TenantID string `json:"tenant_id,omitempty"`
+	TenantID        string `json:"tenant_id,omitempty"`
 	Name            string `json:"name"`
 	RuntimeProvider string `json:"runtime_provider"`
 	AccessProvider  string `json:"access_provider"`

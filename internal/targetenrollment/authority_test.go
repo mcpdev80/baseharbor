@@ -193,3 +193,23 @@ func TestCertificatePersistenceFailureRevokesAndReturnsNoMaterial(t *testing.T) 
 		t.Fatalf("orphan certificate exposed or not revoked: %v", err)
 	}
 }
+
+func TestEnrollmentCancelledAdmissionDoesNotCreateOrConsume(t *testing.T) {
+	store := newStore()
+	authority, err := New(store, serviceissuer.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := authority.Create(cancelled, testScope(), time.Minute, time.Hour); !errors.Is(err, ErrDenied) || len(store.grants) != 0 {
+		t.Fatal("cancelled admission created an authorization", err)
+	}
+	bootstrap, err := authority.Create(context.Background(), testScope(), time.Minute, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authority.Enroll(cancelled, requestFor(t, testScope(), bootstrap)); !errors.Is(err, ErrDenied) || len(store.consumed) != 0 {
+		t.Fatal("cancelled admission consumed an authorization", err)
+	}
+}
