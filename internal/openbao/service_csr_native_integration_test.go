@@ -22,11 +22,12 @@ import (
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
 // This opt-in test runs an isolated native OpenBao server with verified TLS,
 // production Bootstrap and its real manager AppRole. It does not qualify the
-// Connector transport, database admission or an application runtime journey.
+// Connector transport or an application runtime journey.
 func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if os.Getenv("BASEHARBOR_TEST_NATIVE_OPENBAO") != "1" {
 		t.Skip("isolated native OpenBao qualification was not requested")
@@ -100,12 +101,15 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	coreRequest := nativeBaoCSR(t, "spiffe://baseharbor/platform/core/native-test")
-	nodeRequest := nativeBaoCSR(t, "spiffe://baseharbor/platform/connectors/native-test/node")
+	scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "native-pki", NodeID: "node-a", Runtime: "docker"}
+	nodeRequest := nativeBaoCSR(t, scope.Identity())
+	authority, registry := nativeBaoEnrollmentAuthority(t, ctx, storageURL, issuer)
 	oldCore, err := issuer.SignCoreCSR(ctx, coreRequest)
 	if err != nil {
 		t.Fatal("real managed Core CSR signing failed", err)
 	}
-	oldNode, err := issuer.SignCSR(ctx, nodeRequest)
+	oldNode := nativeBaoEnroll(t, ctx, authority, scope, nodeRequest.CSRPEM, false)
+	err = registry.AdmitCertificate(ctx, scope, oldNode.Serial, oldNode.ExpiresAt)
 	if err != nil {
 		t.Fatal("real managed node CSR signing failed", err)
 	}
@@ -128,12 +132,21 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newNode, err := issuer.SignCSR(ctx, nodeRequest)
+	newNode := nativeBaoEnroll(t, ctx, authority, scope, nodeRequest.CSRPEM, true)
+	err = registry.AdmitCertificate(ctx, scope, newNode.Serial, newNode.ExpiresAt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	verifyNativeBaoCertificate(t, newCore, after.PEM, x509.ExtKeyUsageServerAuth)
 	verifyNativeBaoCertificate(t, newNode, after.PEM, x509.ExtKeyUsageClientAuth)
+	if err := registry.AdmitCertificate(ctx, scope, oldNode.Serial, oldNode.ExpiresAt); err != nil {
+		t.Fatal("persisted predecessor not admitted during bounded overlap", err)
+	}
+	other := scope
+	other.NodeID = "foreign"
+	if err := registry.AdmitCertificate(ctx, other, newNode.Serial, newNode.ExpiresAt); err == nil {
+		t.Fatal("real issued certificate escaped persisted node scope")
+	}
 	for _, pair := range []struct {
 		old, current serviceaccess.IssuedCertificate
 	}{{oldCore, newCore}, {oldNode, newNode}} {
@@ -152,6 +165,17 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		if _, err := oldLeaf.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: oldLeaf.ExtKeyUsage}); err == nil {
 			t.Fatal("old certificate survived retirement of its old CA")
 		}
+	}
+	if err := registry.RevokeCertificate(ctx, scope, newNode.Serial); err != nil {
+		t.Fatal("persisted certificate revocation failed", err)
+	}
+	for _, certificate := range []serviceaccess.IssuedCertificate{oldNode, newNode} {
+		if err := registry.AdmitCertificate(ctx, scope, certificate.Serial, certificate.ExpiresAt); err == nil {
+			t.Fatal("persisted revocation admitted old or current real certificate")
+		}
+	}
+	if _, err := authority.CreateRenewal(ctx, scope, time.Minute, time.Hour); err == nil {
+		t.Fatal("revoked real enrollment regained renewal authorization")
 	}
 	if err := issuer.Revoke(ctx, newNode.Serial); err != nil {
 		t.Fatal("managed node revocation failed", err)
