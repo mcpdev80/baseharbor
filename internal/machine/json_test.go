@@ -14,9 +14,9 @@ func TestMachineJSONObjectRejectsAmbiguityAndBounds(t *testing.T) {
 		[]byte(`{"target":"one","\u0074arget":"two"}`),
 		[]byte(`{"credential-secret":"sensitive-value","credential-secret":"other"}`),
 		[]byte(`{} {}`), []byte(`null`), []byte(`[]`), []byte(`true`),
-		[]byte(`{"broken":}`), []byte("{\"raw\":\""+string([]byte{255})+"\"}"),
-		[]byte(`{}`+strings.Repeat(" ", 4096)),
-		[]byte(`{"nested":`+strings.Repeat("[", 65)+"0"+strings.Repeat("]", 65)+"}"),
+		[]byte(`{"broken":}`), []byte("{\"raw\":\"" + string([]byte{255}) + "\"}"),
+		[]byte(`{}` + strings.Repeat(" ", 4096)),
+		[]byte(`{"nested":` + strings.Repeat("[", 65) + "0" + strings.Repeat("]", 65) + "}"),
 	} {
 		if err := ValidateJSONObject(data, 4096); !errors.Is(err, ErrJSONObject) ||
 			strings.Contains(err.Error(), "sensitive") || strings.Contains(err.Error(), "credential") {
