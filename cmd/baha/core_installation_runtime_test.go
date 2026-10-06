@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -215,7 +216,14 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	if err := os.WriteFile("compose.yaml", []byte(compose), 0600); err != nil {
 		t.Fatal(err)
 	}
-	var output bytes.Buffer
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			t.Errorf("fixture cleanup: %v", err)
+		}
+	}()
+	var output runtimeAcceptanceOutput
 	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
 		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
 		if runtimeErr == nil {
@@ -236,15 +244,21 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 				}
 			}
 		}
+		var operational *machine.Error
+		if errors.As(err, &operational) && operational.Cause != nil {
+			resolved, resolveErr := resolveApplication(ctx, application.DefaultStore(), nil, "failure diagnostics")
+			if resolveErr == nil {
+				files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+				if filesErr == nil {
+					environment, envErr := repositoryWorkloadEnvironment(ctx, resolved, files)
+					if envErr == nil {
+						t.Logf("Workload start diagnostic: %s", sanitizeWorkloadDiagnostic(operational.Cause.Error(), environment))
+					}
+				}
+			}
+		}
 		t.Fatalf("managed fixture apply: %v\n%s", err, output.String())
 	}
-	defer func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("fixture cleanup: %v", err)
-		}
-	}()
 	check := func() {
 		status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
 		if err != nil || !status.Ready {
@@ -258,7 +272,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 		if err != nil || !overview.Ready {
 			t.Fatalf("overview disagrees with READY: %+v %v", overview, err)
 		}
-		var doctor bytes.Buffer
+		var doctor runtimeAcceptanceOutput
 		if err := runWithIO(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
 			t.Fatalf("doctor after backup: %v\n%s", err, doctor.String())
 		}
@@ -299,7 +313,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-secret-regression", Adapter: pythonadapter.AdapterID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets}, Secrets: []string{"API_TOKEN"}}, registry)
+	created, err := development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-secret-regression", Adapter: pythonadapter.AdapterID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets, capability.ExposureHTTP}, Secrets: []string{"API_TOKEN"}}, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,12 +321,6 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		t.Fatalf("generated contract: %+v", created.Validation)
 	}
 	t.Chdir(root)
-	var output bytes.Buffer
-	err = runWithIO(ctx, []string{"app", "apply"}, &output, &output)
-	var missing *machine.Error
-	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
-		t.Fatalf("non-TTY first apply must fail closed for missing secret: %v\n%s", err, output.String())
-	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -320,6 +328,12 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 			t.Errorf("generated fixture cleanup: %v", err)
 		}
 	}()
+	var output runtimeAcceptanceOutput
+	err = runWithIO(ctx, []string{"app", "apply"}, &output, &output)
+	var missing *machine.Error
+	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
+		t.Fatalf("non-TTY first apply must fail closed for missing secret: %v\n%s", err, output.String())
+	}
 	payload := []byte("native-generated-secret-value")
 	secretPath := filepath.Join(t.TempDir(), "secret-input")
 	if err := os.WriteFile(secretPath, payload, 0600); err != nil {
@@ -361,4 +375,27 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		t.Fatal("secret value appeared in CLI output")
 	}
 	t.Log("Generated native Python app receives its named managed secret after actionable non-TTY failure and resumes READY without source edits")
+}
+
+// stdout and stderr can write concurrently during runtime convergence. The
+// acceptance recorder has the same concurrency guarantee as process streams.
+type runtimeAcceptanceOutput struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *runtimeAcceptanceOutput) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+func (b *runtimeAcceptanceOutput) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
+func (b *runtimeAcceptanceOutput) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buffer.Reset()
 }
