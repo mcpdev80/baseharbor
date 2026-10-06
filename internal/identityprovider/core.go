@@ -27,6 +27,9 @@ func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer ser
 	if err != nil {
 		return "", err
 	}
+	if err = SetKeycloakCanonicalURL(files, files.PublicURL); err != nil {
+		return "", err
+	}
 	if err = runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return "", err
 	}

@@ -2,6 +2,7 @@ package identityprovider
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -10,6 +11,33 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
+
+type coreHostnameRuntime struct {
+	testKeycloakRuntime
+	t    *testing.T
+	stop error
+}
+
+func (r coreHostnameRuntime) ConfigProject(_ context.Context, _, _, env string) error {
+	values, err := readProtectedEnv(env)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	want := "https://" + keycloakPublicHost + ":" + values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"]
+	if values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] != want {
+		r.t.Fatal("Core startup must bind Keycloak hostname to its owned HTTPS destination")
+	}
+	return r.stop
+}
+
+func TestCoreIdentityBindsHostnameBeforeRuntimeValidation(t *testing.T) {
+	stop := errors.New("stop before runtime mutation")
+	runtime := coreHostnameRuntime{t: t, stop: stop}
+	_, err := EnsureCoreIdentity(context.Background(), runtime, serviceissuer.New(t), t.TempDir(), "local", "64e3d34f-ff08-4f59-9696-215857eaaf84")
+	if !errors.Is(err, stop) {
+		t.Fatalf("unexpected bootstrap result: %v", err)
+	}
+}
 
 func TestCoreIdentityExistingDiscoveryRetainsHTTPSPort(t *testing.T) {
 	root := t.TempDir()
