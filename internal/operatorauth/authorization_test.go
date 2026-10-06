@@ -103,13 +103,13 @@ func TestVerifiedActorIsPreservedForDevelopmentEnvironment(t *testing.T) {
 
 func TestTenantMachinePermissionsFailClosed(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		roles []string
-		safety machine.SafetyClass
-		tenantID string
-		identityID string
+		name          string
+		roles         []string
+		safety        machine.SafetyClass
+		tenantID      string
+		identityID    string
 		authenticated bool
-		allowed bool
+		allowed       bool
 	}{
 		{name: "viewer read", roles: []string{"viewer"}, safety: machine.SafetyReadOnly, tenantID: "tenant-a", identityID: "identity-a", authenticated: true, allowed: true},
 		{name: "viewer mutation", roles: []string{"viewer"}, safety: machine.SafetyMutating, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
@@ -131,7 +131,7 @@ func TestTenantMachinePermissionsFailClosed(t *testing.T) {
 			}
 			decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
 				Operation: machine.Operation{ID: "tenant-test", Safety: test.safety},
-				Context: OperationContext{Environment: "dev"},
+				Context:   OperationContext{Environment: "dev"},
 			})
 			if decision.Allowed != test.allowed || (err == nil) != test.allowed {
 				t.Fatalf("decision = %#v, error = %v", decision, err)
