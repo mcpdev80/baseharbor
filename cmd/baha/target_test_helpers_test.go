@@ -19,7 +19,7 @@ func configureTestTarget(t *testing.T) deployment.ResolvedTarget {
 		Version:       deployment.ConfigVersion,
 		DefaultTarget: "docker-dev",
 		Access: map[string]deployment.AccessDefinition{
-			"local-docker": {Provider: "docker", Reference: "local"},
+			"local-docker": {Provider: "local", Reference: "local"},
 		},
 		Targets: map[string]deployment.TargetDefinition{
 			"docker-dev": {
