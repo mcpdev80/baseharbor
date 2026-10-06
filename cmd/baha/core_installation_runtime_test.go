@@ -329,10 +329,10 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		}
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(ctx, []string{"app", "apply"}, &output, &output)
+	err = runWithIO(ctx, []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
-		t.Fatalf("non-TTY first apply must fail closed for missing secret: %v\n%s", err, output.String())
+		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())
 	}
 	payload := []byte("native-generated-secret-value")
 	secretPath := filepath.Join(t.TempDir(), "secret-input")
@@ -342,7 +342,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
 		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
 	}
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIO(ctx, []string{"up", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("resume generated application: %v\n%s", err, output.String())
 	}
 	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
