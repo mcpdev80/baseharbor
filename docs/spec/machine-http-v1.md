@@ -279,3 +279,20 @@ read-model artifact. Runtime capability examples use Core's actual
 `runtimeexplorer.CapabilitySet`. These examples are explicitly synthetic and
 provide decoding/conformance checks only; they do not qualify an authenticated
 browser or a real PTY/runtime journey.
+
+## Managed trust rotation
+
+`openbao.rotate` is advertised only when the HTTP semantic executor implements
+it. Select an explicit installation target and environment and send
+`{"approval":true}`. Missing approval, mismatched input target and application
+or workspace selectors are rejected before runtime access. Core selects the
+protected recovery file from its own installation configuration; HTTP input
+cannot supply a recovery path or recovery keys.
+
+The executor calls the same credential and service-CA rotation used by CLI/MCP,
+then returns only initialized/unsealed/manager-ready flags. Replacement
+verification and retirement remain Core responsibilities. Protected regular
+recovery material is validated before mutation. Failure or interrupted
+observation must not be treated as completion or automatically replayed.
+Execution observation remains bounded by the existing authenticated five-minute
+HTTP/session lifetime; inspect the existing execution if observation ends.

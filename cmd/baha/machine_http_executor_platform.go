@@ -23,6 +23,8 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "openbao.rotate":
+		return executeHTTPManagedRotation(ctx, operationContext, raw, report)
 	case "control-plane.up":
 		var input machineControlPlaneUpInput
 		if err := decodeHTTPInput(raw, &input); err != nil {

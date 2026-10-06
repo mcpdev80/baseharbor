@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
 - Development/deployment machine-role defaults and an optional Console bound to one selected Core in the same installation/security boundary.
 
+- Protected HTTP managed-trust rotation reuses Core credential/CA semantics, requires explicit installation approval and keeps recovery material out of browser input/results.
+
 ### Changed
 
 - Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
