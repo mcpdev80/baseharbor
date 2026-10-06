@@ -87,6 +87,10 @@ jobs:
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
+            for path in $files; do
+              echo "PUBLIC_FORMAT_PATH:$path"
+              gofmt "$path" | base64 -w 0 | fold -w 3072 | sed 's/^/PUBLIC_FORMAT_CHUNK:/'
+            done
             exit 1
           }
 

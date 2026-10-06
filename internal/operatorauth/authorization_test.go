@@ -6,6 +6,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
 func TestAuthorizeMachineOperationTrustedLocalAndManagedFailClosed(t *testing.T) {
@@ -97,5 +98,51 @@ func TestVerifiedActorIsPreservedForDevelopmentEnvironment(t *testing.T) {
 	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{Operation: operation, Context: OperationContext{Environment: "dev", Target: "local"}})
 	if err != nil || decision.Actor.Mode != "authenticated" || decision.Actor.Subject != "operator-a" {
 		t.Fatal("verified HTTP/MCP actor collapsed into shared trusted-local identity", err)
+	}
+}
+
+func TestTenantMachinePermissionsFailClosed(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		roles []string
+		safety machine.SafetyClass
+		tenantID string
+		identityID string
+		authenticated bool
+		allowed bool
+	}{
+		{name: "viewer read", roles: []string{"viewer"}, safety: machine.SafetyReadOnly, tenantID: "tenant-a", identityID: "identity-a", authenticated: true, allowed: true},
+		{name: "viewer mutation", roles: []string{"viewer"}, safety: machine.SafetyMutating, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
+		{name: "viewer destruction", roles: []string{"viewer"}, safety: machine.SafetyDestructive, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
+		{name: "editor mutation", roles: []string{"editor"}, safety: machine.SafetyMutating, tenantID: "tenant-a", identityID: "identity-a", authenticated: true, allowed: true},
+		{name: "editor destruction", roles: []string{"editor"}, safety: machine.SafetyDestructive, tenantID: "tenant-a", identityID: "identity-a", authenticated: true, allowed: true},
+		{name: "unknown role", roles: []string{"admin"}, safety: machine.SafetyReadOnly, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
+		{name: "no roles", safety: machine.SafetyReadOnly, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
+		{name: "missing tenant", roles: []string{"editor"}, safety: machine.SafetyMutating, identityID: "identity-a", authenticated: true},
+		{name: "missing membership", roles: []string{"editor"}, safety: machine.SafetyMutating, tenantID: "tenant-a", authenticated: true},
+		{name: "unknown safety", roles: []string{"editor"}, tenantID: "tenant-a", identityID: "identity-a", authenticated: true},
+		{name: "no authenticated actor in dev", roles: []string{"editor"}, safety: machine.SafetyMutating, tenantID: "tenant-a", identityID: "identity-a"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := tenancy.WithContext(context.Background(), &tenancy.Context{TenantID: test.tenantID, ExternalIdentityID: test.identityID, Roles: test.roles})
+			ctx = WithEnforcement(ctx)
+			if test.authenticated {
+				setPrincipal(ctx, &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a"})
+			}
+			decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
+				Operation: machine.Operation{ID: "tenant-test", Safety: test.safety},
+				Context: OperationContext{Environment: "dev"},
+			})
+			if decision.Allowed != test.allowed || (err == nil) != test.allowed {
+				t.Fatalf("decision = %#v, error = %v", decision, err)
+			}
+			stored, ok := AuthorizationDecisionFromContext(ctx)
+			if !ok || stored.Allowed != test.allowed || stored.ReasonCode != decision.ReasonCode {
+				t.Fatal("tenant authorization decision was not retained")
+			}
+			if !test.allowed && test.authenticated && (machine.Classify(err).Code != machine.ErrorPolicyDenied || decision.Actor.Subject != "operator-a") {
+				t.Fatal("tenant denial must retain its actor and policy classification", err)
+			}
+		})
 	}
 }
