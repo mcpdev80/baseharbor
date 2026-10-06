@@ -193,6 +193,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
       BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
+      BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1

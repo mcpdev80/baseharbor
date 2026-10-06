@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -85,6 +87,20 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name), bhruntime.SharedProjectName(target.Name+"-core"))
 	defer sampler.stop()
 	opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
+	var preservedRecovery string
+	if role == coreinstallation.Development {
+		preservedRecovery, err = defaultTargetRecoveryFile(target.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(preservedRecovery), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(preservedRecovery, []byte("previous installation recovery material\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		opts.RecoveryFile = ""
+	}
 	first, err := installCore(ctx, strings.NewReader(""), &out, opts)
 	if err != nil {
 		t.Fatalf("Core-only bootstrap failed: %v", err)
@@ -149,4 +165,94 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 		t.Fatal(err)
 	}
 	t.Logf("Core resource evidence: %s", memory)
+	if preservedRecovery != "" {
+		data, err := os.ReadFile(preservedRecovery)
+		if err != nil || string(data) != "previous installation recovery material\n" {
+			t.Fatal("fresh bootstrap changed previous recovery material")
+		}
+		current, source, err := resolveTargetRecoveryFile(ctx, "")
+		if err != nil || current == preservedRecovery || source != "persisted target" {
+			t.Fatalf("fresh recovery reference not persisted: %s %s %v", current, source, err)
+		}
+	}
+	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
+		runManagedReadinessAndBackupRegression(t, ctx)
+	}
+}
+
+func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
+	t.Helper()
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
+	manifest := application.New("backup-broker-regression", "dev", true, false, false)
+	manifest = application.WithWorkloadComponents(manifest, "api")
+	manifest = application.WithRuntimePermission(manifest, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+	if err := manifest.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Services.Secrets || !application.RequiresRuntimeBroker(manifest) {
+		t.Fatal("fixture must require a broker without application secrets")
+	}
+	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	compose := `services:
+  api:
+    image: docker.io/library/python:3.13-alpine
+    command: ["python", "-m", "http.server", "8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/')"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+`
+	if err := os.WriteFile("compose.yaml", []byte(compose), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+		t.Fatalf("managed fixture apply: %v\n%s", err, output.String())
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			t.Errorf("fixture cleanup: %v", err)
+		}
+	}()
+	check := func() {
+		status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
+		if err != nil || !status.Ready {
+			t.Fatalf("canonical readiness: %+v %v", status, err)
+		}
+		resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "bug hunt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		overview, err := inspectApplicationOverview(ctx, resolved)
+		if err != nil || !overview.Ready {
+			t.Fatalf("overview disagrees with READY: %+v %v", overview, err)
+		}
+		var doctor bytes.Buffer
+		if err := runWithIO(ctx, []string{"app", "doctor"}, &doctor, &doctor); err != nil {
+			t.Fatalf("doctor after backup: %v\n%s", err, doctor.String())
+		}
+	}
+	check()
+	password := filepath.Join(t.TempDir(), "password")
+	if err := os.WriteFile(password, []byte("native-regression-backup-password"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first", "second"} {
+		archive := filepath.Join(t.TempDir(), name+".bhbackup")
+		output.Reset()
+		if err := runWithIO(ctx, []string{"app", "backup", "--password-file", password, "--output", archive}, &output, &output); err != nil {
+			t.Fatalf("backup: %v\n%s", err, output.String())
+		}
+		info, err := os.Stat(archive)
+		if err != nil || info.Size() == 0 {
+			t.Fatal("backup archive missing")
+		}
+		check()
+	}
+	t.Log("Shared provider app show/status/doctor agree; two encrypted backups restore the runtime-permission broker without application secrets")
 }

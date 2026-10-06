@@ -17,6 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
 
+### Fixed
+
+- Application overview uses the canonical managed-provider readiness model instead of requiring provider containers in the application Compose project (#811).
+- Backup loads Core runtime context for runtime-permission brokers and attempts bounded runtime recovery even when archive capture is cancelled (#812).
+- Missing required secrets without a terminal return an actionable typed error; `--yes` does not bypass secret availability (#813).
+- Generated Compose delivers the same runtime environment bindings required by generated source (#814).
+- Fresh Go image builds retain tidied module state; Next.js validates runtime bindings at request time; Quarkus packaging executes through the Maven lifecycle (#815).
+- Fresh Core bootstrap allocates a new default recovery output when old recovery material remains, preserving previous files and explicit/persisted path protection (#526).
+
 ## [0.4.22] - 2026-10-06
 
 ### Added
