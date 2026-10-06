@@ -4,6 +4,15 @@
 
 This specification defines the authenticated HTTPS projection of the BaseHarbor Machine Interface used by Console and other web-capable machine clients.
 
+The public envelope schema is
+`contracts/machine/v1/control.schema.json`. Its `discovery`, `execute_request`,
+`execution`, `event` and `error_result` definitions describe the serialized Core
+records. `control.golden.json` contains explicitly synthetic examples generated
+from Core's types and registries by
+`go run ./scripts/tools/machine-control-fixtures`. Consumers pin both files to an
+immutable public Core commit and retain their SHA-256 digests. Envelope validation
+does not replace operation-specific input validation, authentication or policy.
+
 The HTTP interface is a transport over the same BaseHarbor semantic operations used by CLI, JSON and MCP. It MUST NOT introduce a second lifecycle, desired-state store, authorization model or runtime abstraction.
 
 ## Security boundary

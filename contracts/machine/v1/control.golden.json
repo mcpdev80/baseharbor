@@ -1,0 +1,1219 @@
+{
+  "schema": "baseharbor.machine-control-fixtures/v1",
+  "synthetic": true,
+  "records": [
+    {
+      "record": "discovery",
+      "value": {
+        "http": {
+          "discovery": {
+            "href": "/api/v1/machine/discovery",
+            "method": "GET"
+          },
+          "exec": {
+            "href": "/api/v1/machine/streams/exec",
+            "method": "POST",
+            "protocol": "text"
+          },
+          "execute": {
+            "href": "/api/v1/machine/executions",
+            "method": "POST"
+          },
+          "execution": {
+            "href": "/api/v1/machine/executions/{execution_id}",
+            "method": "GET"
+          },
+          "execution_events": {
+            "href": "/api/v1/machine/executions/{execution_id}/events",
+            "method": "GET",
+            "protocol": "sse"
+          },
+          "logs": {
+            "href": "/api/v1/machine/streams/logs",
+            "method": "POST",
+            "protocol": "text"
+          },
+          "terminal_close": {
+            "href": "/api/v1/machine/terminals/{stream_id}",
+            "method": "DELETE"
+          },
+          "terminal_events": {
+            "href": "/api/v1/machine/terminals/{stream_id}/events",
+            "method": "GET",
+            "protocol": "sse"
+          },
+          "terminal_input": {
+            "href": "/api/v1/machine/terminals/{stream_id}/input",
+            "method": "POST"
+          },
+          "terminal_open": {
+            "href": "/api/v1/machine/terminals",
+            "method": "POST"
+          }
+        },
+        "contract_version": "v1",
+        "execution_version": "v1",
+        "operations": [
+          {
+            "id": "installation.destroy",
+            "description": "Destroy all owned installation state after approval and authorization of every deployment.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.installation.destroy"
+          },
+          {
+            "id": "release.check",
+            "description": "Inspect published release without host binary replacement.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.release.check"
+          },
+          {
+            "id": "control-plane.status",
+            "description": "Inspect selected target readiness and HA satisfaction.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.status"
+          },
+          {
+            "id": "control-plane.doctor",
+            "description": "Inspect control-plane prerequisites.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.doctor"
+          },
+          {
+            "id": "control-plane.up",
+            "description": "Initialize or converge selected owned control plane.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.up"
+          },
+          {
+            "id": "control-plane.stop",
+            "description": "Stop owned control plane and preserve data.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.stop"
+          },
+          {
+            "id": "control-plane.repair",
+            "description": "Reconverge existing owned control-plane configuration.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.repair"
+          },
+          {
+            "id": "control-plane.destroy",
+            "description": "Destroy owned control plane after approval and ownership preflight.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.control-plane.destroy"
+          },
+          {
+            "id": "openbao.status",
+            "description": "Inspect secret-safe managed trust-plane state.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.openbao.status"
+          },
+          {
+            "id": "openbao.bootstrap",
+            "description": "Initialize managed trust plane with protected recovery material.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.openbao.bootstrap"
+          },
+          {
+            "id": "openbao.unseal",
+            "description": "Unseal managed trust plane with protected recovery material.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.openbao.unseal"
+          },
+          {
+            "id": "openbao.rotate",
+            "description": "Rotate and verify managed trust-plane credentials and certificates.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.openbao.rotate"
+          },
+          {
+            "id": "dev.domain",
+            "description": "Ensure or configure target development domain.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.dev.domain"
+          },
+          {
+            "id": "dev.credentials",
+            "description": "Ensure or rotate development access without returning credentials.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.dev.credentials"
+          },
+          {
+            "id": "app.environment",
+            "description": "Inspect masked application environment contract.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.environment"
+          },
+          {
+            "id": "app.connection",
+            "description": "Inspect service connection metadata without credentials.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.connection"
+          },
+          {
+            "id": "connectivity.list",
+            "description": "List directional connectivity exceptions.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.connectivity.list"
+          },
+          {
+            "id": "connectivity.connect",
+            "description": "Converge one verified directional connectivity exception.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.connectivity.connect"
+          },
+          {
+            "id": "connectivity.disconnect",
+            "description": "Remove one exact directional connectivity exception.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.connectivity.disconnect"
+          },
+          {
+            "id": "operator.identity",
+            "description": "Inspect verified operator identity without session credentials.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.operator.identity"
+          },
+          {
+            "id": "provider.init",
+            "description": "Create a provider authoring scaffold.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.init"
+          },
+          {
+            "id": "provider.test",
+            "description": "Check provider descriptor conformance without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.test"
+          },
+          {
+            "id": "workspace.show",
+            "description": "Inspect canonical source identities and application-local checkout mappings.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.show"
+          },
+          {
+            "id": "app.show",
+            "description": "Inspect secret-safe application overview and recorded recovery metadata.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.show"
+          },
+          {
+            "id": "app.create",
+            "description": "Persist target-managed Application Intent without starting runtime resources.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.create"
+          },
+          {
+            "id": "app.adopt",
+            "description": "Adopt an existing repository from explicit portable Application Intent and source selection.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.adopt"
+          },
+          {
+            "id": "app.configure",
+            "description": "Configure deployment inputs through shared application initialization.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.configure"
+          },
+          {
+            "id": "runtime-identity.rotate",
+            "description": "Rotate app-scoped runtime credentials without exposing secret material.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime-identity.rotate"
+          },
+          {
+            "id": "runtime-identity.revoke",
+            "description": "Revoke app-scoped runtime credentials without exposing secret material.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime-identity.revoke"
+          },
+          {
+            "id": "tls.update",
+            "description": "Check or install newer existing TLS certificate material through the shared lifecycle.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.tls.update"
+          },
+          {
+            "id": "trust.status",
+            "description": "Inspect public CA trust on the execution host.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.trust.status"
+          },
+          {
+            "id": "trust.export",
+            "description": "Export public managed CA material without private keys.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.trust.export"
+          },
+          {
+            "id": "trust.install",
+            "description": "Install public managed CA on the execution host after explicit approval.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.trust.install"
+          },
+          {
+            "id": "app.stop",
+            "description": "Stop owned application runtime while preserving persistent data.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.stop"
+          },
+          {
+            "id": "app.preflight",
+            "description": "Validate application preflight without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.preflight"
+          },
+          {
+            "id": "secret.list",
+            "description": "List configured secret names without values.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.secret.list"
+          },
+          {
+            "id": "secret.set",
+            "description": "Set one application secret from protected input.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.secret.set"
+          },
+          {
+            "id": "secret.delete",
+            "description": "Permanently delete one application secret and all managed versions.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.secret.delete"
+          },
+          {
+            "id": "secret.tls-set",
+            "description": "Validate and store application TLS secret material.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.secret.tls-set"
+          },
+          {
+            "id": "target.create",
+            "description": "Create explicit runtime and access Target configuration.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.target.create"
+          },
+          {
+            "id": "target.delete",
+            "description": "Delete empty Target configuration without mutating owned or foreign infrastructure.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.target.delete"
+          },
+          {
+            "id": "stack.list",
+            "description": "List reusable development Stack Profiles.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.stack.list"
+          },
+          {
+            "id": "stack.show",
+            "description": "Resolve one reusable development Stack Profile.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.stack.show"
+          },
+          {
+            "id": "stack.create",
+            "description": "Validate and persist a reusable development Stack Profile.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.stack.create"
+          },
+          {
+            "id": "workspace.init",
+            "description": "Configure canonical application component/source identities.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.init"
+          },
+          {
+            "id": "workspace.map",
+            "description": "Map canonical repository identity to a developer-local checkout.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.map"
+          },
+          {
+            "id": "target",
+            "description": "Inspect the effective BaseHarbor deployment target and repository-resolved identity.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.target"
+          },
+          {
+            "id": "target.list",
+            "description": "List configured BaseHarbor deployment targets using secret-safe target metadata.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.target.list"
+          },
+          {
+            "id": "runtime.capabilities",
+            "description": "Inspect Runtime Explorer capabilities for the effective Target runtime provider.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.capabilities"
+          },
+          {
+            "id": "runtime.list",
+            "description": "List provider-neutral runtime resources with authoritative ownership and BaseHarbor relationships.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.list"
+          },
+          {
+            "id": "runtime.inspect",
+            "description": "Inspect one stable runtime resource reference without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.inspect"
+          },
+          {
+            "id": "runtime.metrics",
+            "description": "Resolve the provider-neutral metrics handle for one stable runtime resource.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.metrics"
+          },
+          {
+            "id": "runtime.start",
+            "description": "Start one authorized concrete runtime resource through Runtime Explorer.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.start"
+          },
+          {
+            "id": "runtime.stop",
+            "description": "Stop one authorized concrete runtime resource through Runtime Explorer.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.stop"
+          },
+          {
+            "id": "runtime.restart",
+            "description": "Restart one authorized concrete runtime resource through Runtime Explorer.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.runtime.restart"
+          },
+          {
+            "id": "app.list",
+            "description": "List registered application deployments using stable identity and secret-safe observed state.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.list"
+          },
+          {
+            "id": "inspect",
+            "description": "Inspect repository evidence without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.inspect"
+          },
+          {
+            "id": "workspace.list",
+            "description": "List developer-local workspace mappings without mutating source or runtime state.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.list"
+          },
+          {
+            "id": "workspace.resolve",
+            "description": "Resolve canonical component/source identity to developer-local worktrees without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.resolve"
+          },
+          {
+            "id": "workspace.status",
+            "description": "Inspect Git state for mapped repository sources without changing checked-out revisions.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.status"
+          },
+          {
+            "id": "workspace.update",
+            "description": "Safely fetch and fast-forward mapped repository sources when Git state is unambiguous.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.workspace.update"
+          },
+          {
+            "id": "app.new",
+            "description": "Create and validate a new ecosystem-native application from portable capability intent.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.new"
+          },
+          {
+            "id": "plan",
+            "description": "Build the deterministic desired-state plan without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.plan"
+          },
+          {
+            "id": "apply",
+            "description": "Converge and verify the selected application.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.apply"
+          },
+          {
+            "id": "status",
+            "description": "Observe application runtime and readiness state.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.status"
+          },
+          {
+            "id": "doctor",
+            "description": "Run diagnostic verification without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.doctor"
+          },
+          {
+            "id": "observe",
+            "description": "Return secret-safe application diagnostics and observability state.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.observe"
+          },
+          {
+            "id": "evidence",
+            "description": "Export deterministic secret-safe lifecycle, policy, verification and recovery evidence.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.evidence"
+          },
+          {
+            "id": "update",
+            "description": "Safely update repository source and reconverge the application.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.update"
+          },
+          {
+            "id": "repair",
+            "description": "Repair safely reconcilable BaseHarbor-owned application drift and verify the result.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.repair"
+          },
+          {
+            "id": "backup",
+            "description": "Create and verify the currently supported encrypted application recovery unit.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.backup"
+          },
+          {
+            "id": "restore",
+            "description": "Restore and verify the currently supported encrypted application recovery unit.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.restore"
+          },
+          {
+            "id": "destroy",
+            "description": "Permanently remove BaseHarbor-owned application runtime resources and state.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.destroy"
+          },
+          {
+            "id": "policy.check",
+            "description": "Evaluate effective environment policy without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.policy.check"
+          },
+          {
+            "id": "provider.list",
+            "description": "List registered externally owned capability providers.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.list"
+          },
+          {
+            "id": "provider.inspect",
+            "description": "Inspect one registered external capability provider.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.inspect"
+          },
+          {
+            "id": "provider.verify",
+            "description": "Verify external provider reachability and configured trust without mutation.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.verify"
+          },
+          {
+            "id": "provider.add",
+            "description": "Register externally owned provider deployment state and references.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.add"
+          },
+          {
+            "id": "provider.remove",
+            "description": "Remove BaseHarbor external-provider registration without mutating foreign infrastructure.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.provider.remove"
+          },
+          {
+            "id": "organization.inspect",
+            "description": "Inspect active organization/platform configuration and effective defaults.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.organization.inspect"
+          },
+          {
+            "id": "organization.check",
+            "description": "Resolve the configured organization source without changing active configuration.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.organization.check"
+          },
+          {
+            "id": "organization.set",
+            "description": "Resolve and activate an organization/platform configuration source.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.organization.set"
+          },
+          {
+            "id": "organization.update",
+            "description": "Explicitly activate the configured organization source at its newly resolved immutable version.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.organization.update"
+          },
+          {
+            "id": "policy.explain",
+            "description": "Explain effective policy defaults and bounded overrides.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.policy.explain"
+          }
+        ],
+        "capabilities": [
+          "operations.discovery",
+          "operations.execute",
+          "operations.events",
+          "streams.logs.boundary",
+          "streams.exec.boundary"
+        ]
+      }
+    },
+    {
+      "record": "execute_request",
+      "value": {
+        "operation_id": "status",
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "input": {}
+      }
+    },
+    {
+      "record": "error_result",
+      "value": {
+        "contract_version": "v1",
+        "error": {
+          "code": "policy_denied",
+          "message": "Synthetic policy denial",
+          "next": "Review policy"
+        }
+      }
+    },
+    {
+      "record": "execution",
+      "value": {
+        "contract_version": "v1",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "pending"
+      }
+    },
+    {
+      "record": "execution",
+      "value": {
+        "contract_version": "v1",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "running",
+        "started_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "record": "execution",
+      "value": {
+        "contract_version": "v1",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "succeeded",
+        "started_at": "2026-10-06T00:00:00Z",
+        "finished_at": "2026-10-06T00:00:00Z",
+        "result": {
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "record": "execution",
+      "value": {
+        "contract_version": "v1",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "failed",
+        "started_at": "2026-10-06T00:00:00Z",
+        "finished_at": "2026-10-06T00:00:00Z",
+        "error": {
+          "code": "runtime_unavailable",
+          "message": "Synthetic runtime unavailable",
+          "retryable": true,
+          "next": "Reconnect"
+        }
+      }
+    },
+    {
+      "record": "execution",
+      "value": {
+        "contract_version": "v1",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "cancelled",
+        "started_at": "2026-10-06T00:00:00Z",
+        "finished_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 1,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "operation.started",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 2,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "operation.progress",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "progress": {
+          "stage": "synthetic-progress",
+          "current": 1,
+          "total": 2,
+          "percent": 50
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 3,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "operation.succeeded",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "succeeded",
+        "result": {
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 4,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "operation.failed",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        },
+        "state": "failed",
+        "error": {
+          "code": "policy_denied",
+          "message": "Synthetic denial",
+          "next": "Review policy"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 5,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "operation.cancelled",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 6,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "application.state",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 7,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "provider.state",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 8,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "target.state",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    },
+    {
+      "record": "event",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 9,
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "kind": "runtime.resource",
+        "execution_id": "exec_0123456789abcdef0123456789abcdef",
+        "operation_id": "status",
+        "actor": {
+          "mode": "operator",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator",
+          "assurance": "verified",
+          "authentication_methods": [
+            "pwd"
+          ]
+        },
+        "context": {
+          "application": "synthetic-demo",
+          "environment": "prod",
+          "target": "synthetic-target"
+        }
+      }
+    }
+  ]
+}

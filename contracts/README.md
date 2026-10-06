@@ -1,5 +1,12 @@
 # BaseHarbor machine-readable contracts
 
+Machine HTTP semantic envelopes are shipped in `machine/v1/control.schema.json`,
+with Core-generated synthetic examples in `machine/v1/control.golden.json`.
+These cover discovery, execution requests, execution state, events and typed
+error results. Consumers pin immutable public Core commits and content digests;
+fixture agreement is a source check, never runtime, authentication or release
+evidence.
+
 Portable contract schemas use JSON Schema 2020-12.
 
 - `service/v1/` — provider-neutral service intent.
