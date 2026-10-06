@@ -155,10 +155,16 @@ for file in "${legacy_root_pages[@]}"; do
 done
 
 # German docs intentionally contain only maintained human-facing guidance.
-if find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md)$' >/dev/null; then
-  echo "documentation audit: German docs must stay limited to index/tutorials/explanation" >&2
-  find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md)$' >&2 || true
+if find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md|cli/[^/]+\.md|how-to/[^/]+\.md)$' >/dev/null; then
+  echo "documentation audit: German docs must stay in maintained human-facing index/tutorials/explanation/cli/how-to" >&2
+  find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md|cli/[^/]+\.md|how-to/[^/]+\.md)$' >&2 || true
   exit 1
+fi
+
+if [ -d site/de ]; then
+  python scripts/documentation-language-audit.py --built-site
+else
+  python scripts/documentation-language-audit.py
 fi
 
 # Release audits are internal evidence, not public product documentation.

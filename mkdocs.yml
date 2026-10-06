@@ -145,6 +145,7 @@ nav:
 
   - Architecture:
       - System architecture: explanation/architecture.md
+      - Workload sources: explanation/workload-sources.md
 
   - Developer:
       - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md

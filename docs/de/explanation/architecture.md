@@ -44,6 +44,8 @@ Die Anwendung beschreibt, was sie braucht. Sie schreibt nicht vor, welches Infra
 
 ## Drei Provider-Achsen
 
+Repository-Syntax wird vor Application Intent über einen Workload Source Adapter interpretiert. Compose, Repository-Quadlet und Raw Kubernetes YAML liefern normalisierte Evidenz; ihre Source-Identität bleibt Herkunft, logische Workload-Komponenten bilden den portablen Vertrag. Helm und Kustomize folgen später. Siehe [Workload-Quellen](workload-sources.md).
+
 ```text
 runtime != capability != delivery
 ```
@@ -66,6 +68,18 @@ external
 
 BaseHarbor verändert nur Ressourcen, die es besitzt.
 
+Shared Placement ist eine eigene Lebenszyklusgrenze. Das Target beziehungsweise der Provider besitzt Infrastruktur; jede Application besitzt isolierte logische Ressourcen, Zugangsdaten und Bindungen. Eine PostgreSQL-Instanz kann dadurch getrennte Datenbanken bedienen, ohne Application Intent an die Topologie zu binden.
+
+## Umgebung und Policy
+
+Die Umgebung beschreibt Deployment-Risiko und Policy-Kontext, weder Runtime noch Provider-Produkt. Der Abgleich vergleicht Soll- und Ist-Zustand und scheitert bei Mehrdeutigkeit, Besitzkonflikten oder nicht unterstützten Anforderungen sicher.
+
+## Lokales HTTPS-Routing
+
+Ein Target-weiter Dev-Gateway liefert kanonische Browser-URLs. Loopback-Ports und interne Provider-Endpunkte bleiben Implementierungsdetails. Die Standarddomain `baha.localhost` ist pro Target konfigurierbar.
+
+Applications verwenden `<app>.<domain>`, Application-Management `<app>-<service>.<domain>` und shared Provider semantische Hosts wie `pgadmin`, `cache`, `storage`, `auth`, `secrets` oder `metrics`. Routen folgen dem Provider-Placement und dessen Besitzgrenze. Externe Provider behalten ihre URLs. Gateway-TLS stammt aus der Service-PKI; HTTPS-Upstreams werden gegen projiziertes Vertrauensmaterial geprüft.
+
 ## Lebenszyklus
 
 ```text
@@ -73,5 +87,7 @@ planen -> vorprüfen -> anwenden -> verifizieren
 ```
 
 CLI, JSON und MCP benutzen dieselbe Semantik.
+
+Keine Schnittstelle darf Policy, Besitzprüfung, Verifikation oder Secret-Schutz umgehen. Menschliche Doku erklärt Nutzung und Konzepte; technische Referenzen und Spezifikationen definieren exaktes beziehungsweise normatives Verhalten. ADRs begründen Entscheidungen, GitHub Issues planen zukünftige Arbeit und Release Notes dokumentieren ausgeliefertes Verhalten.
 
 Normative Details stehen ausschließlich in den englischen [Spezifikationen](https://mcpdev80.github.io/baseharbor/spec/).

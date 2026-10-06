@@ -33,7 +33,7 @@ baha version
 baha target show
 ```
 
-Fehlt ein Target, konfiguriere es anhand der [Target-Befehle](https://mcpdev80.github.io/baseharbor/cli/targets/). Erzeuge danach eine neue Anwendung:
+Fehlt ein Target, konfiguriere es anhand der [Target-Befehle](../cli/targets.md). Erzeuge danach eine neue Anwendung:
 
 ```bash
 baha app new orders-api --stack go --http --sql
@@ -48,7 +48,7 @@ baha doctor
 
 Beim ersten `up` beantwortest du die unten beschriebenen Betreiberentscheidungen. Erst eine erfolgreiche Bereitstellung führt zu READY; erzeugte Dateien allein starten keine Runtime. Öffne danach die von `status` angezeigte HTTPS-Adresse und rufe `/healthz` auf. Übernimm den angezeigten Port, da Docker und rootless Podman unterschiedliche Ports verwenden können.
 
-Eigene Bestell-Endpunkte und Tabellen ergänzt du im erzeugten Code. Das [PostgreSQL-Beispiel](https://mcpdev80.github.io/baseharbor/how-to/postgres/) zeigt das Einfügen und Lesen einer konkreten Bestellung.
+Eigene Bestell-Endpunkte und Tabellen ergänzt du im erzeugten Code. Das [PostgreSQL-Beispiel](../how-to/postgres.md) zeigt das Einfügen und Lesen einer konkreten Bestellung.
 
 Nur die Anwendung stoppen und ihre persistenten Daten behalten:
 
@@ -119,7 +119,7 @@ Interaktive Eingabe von Geheimnissen erfolgt ohne Terminal-Echo. Zugangsdaten f�
 
 Derselbe `baha up`-Lauf konvergiert danach weiter bis READY. Nach erfolgreichem OpenBao-Bootstrap speichert BaseHarbor am effektiven Target nur die Pfadreferenz auf die Wiederherstellungsdatei. Spätere `baha up`-Läufe verwenden diese Referenz automatisch, um den gemeinsam genutzten OpenBao-Provider zu entsperren, wenn die Datei vorhanden ist.
 
-## 4. Ergebnis pruefen
+## 4. Ergebnis prüfen
 
 ```bash
 baha status
@@ -154,10 +154,14 @@ Das externe Repository `mcpdev80/baseharbor-demo` ist der Release-seitige Nachwe
 
 Die Vorabprüfung validiert sowohl den geführten Benutzerablauf als auch deterministische Komponentenpfade. Der finale Release verwendet diese unveränderlichen Nachweise wieder, statt dieselbe aufwendige Matrix erneut auszuführen.
 
-Weitere Themen:
+## Nächste Schritte
 
 - [Architektur](../explanation/architecture.md)
 - [Anwendungsvertrag](../explanation/application-contract.md)
 - [Provider](../explanation/providers.md)
 - [Sicherheit](../explanation/security.md)
-- [CLI-Referenz](https://mcpdev80.github.io/baseharbor/reference/cli/)
+- [Umgebungen](../how-to/environments.md)
+- [PostgreSQL](../how-to/postgres.md)
+- [Secrets](../how-to/secrets.md)
+- [Backup und Restore](../how-to/backup-restore.md)
+- [CLI-Überblick](../cli/index.md)
