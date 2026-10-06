@@ -82,7 +82,7 @@ func decodeHTTPInput(input json.RawMessage, target any) error {
 	invalid := func() error {
 		return machine.NewError(machine.ErrorValidationFailed, "Invalid machine operation input.", "Send valid JSON input for the selected operation.", false)
 	}
-	if len(input) > 1<<20 || !json.Valid(input) || bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+	if machine.ValidateJSONObject(input, 1<<20) != nil {
 		return invalid()
 	}
 	decoder := json.NewDecoder(bytes.NewReader(input))

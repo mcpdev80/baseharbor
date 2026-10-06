@@ -9,6 +9,11 @@ func TestRequestBoundsApplyToCompleteBodyAndNoCredentialsReachErrors(t *testing.
 	for _, body := range []string{
 		`{"operation_id":"runtime.info"} {"operation_id":"runtime.destroy"}`,
 		`{"credential-secret":"sensitive-value"}`,
+		`{"operation_id":"status","operation_id":"destroy","context":{"environment":"dev"}}`,
+		`{"operation_id":"status","context":{"environment":"dev","environment":"prod"}}`,
+		`{"operation_id":"status","input":{"credential-secret":"sensitive-value","credential-secret":"other"}}`,
+		`null`,
+		`[]`,
 		`{}` + strings.Repeat(" ", maxRequestBytes),
 	} {
 		var destination ExecuteRequest

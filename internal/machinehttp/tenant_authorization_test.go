@@ -30,7 +30,7 @@ func TestViewerCannotAdmitMachineMutation(t *testing.T) {
 			}))
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), `"cause_code":"tenant_permission_denied"`) {
+			if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), `"cause":"tenant_permission_denied"`) {
 				t.Fatalf("viewer admission status = %d, body = %s", recorder.Code, recorder.Body.String())
 			}
 			if recorder.Header().Get("Location") != "" {

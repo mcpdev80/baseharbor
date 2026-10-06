@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // decodeRequest enforces the bound on the entire body, not just the first JSON
@@ -13,6 +15,9 @@ func decodeRequest(body io.Reader, destination any) error {
 	data, err := io.ReadAll(io.LimitReader(body, maxRequestBytes+1))
 	if err != nil || len(data) > maxRequestBytes {
 		return errors.New("request body exceeds the limit or cannot be read")
+	}
+	if err := machine.ValidateJSONObject(data, maxRequestBytes); err != nil {
+		return errors.New("request JSON is invalid or ambiguous")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
