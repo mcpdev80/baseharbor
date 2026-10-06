@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -25,8 +26,8 @@ import (
 
 // This optional black-box extension uses the actual separately built Connector,
 // native runtime, production OpenBao issuer and persisted PostgreSQL admission.
-// Direct grant creation qualifies exchange, not operator OIDC authorization or
-// the Core-authoritative Application lifecycle. It is not release approval.
+// Enrollment/renewal grants traverse real Keycloak verification and the Core
+// identity/tenant HTTP boundary. Application lifecycle remains separate.
 func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Executor, files bhruntime.Files, issuer *ServiceIssuer, authority *targetenrollment.Authority, registry *database.ConnectorEnrollmentStore, coreRequest serviceaccess.CSRSigningRequest, coreKey []byte, coreCertificate serviceaccess.IssuedCertificate, trust []byte) {
 	t.Helper()
 	fixture := newNativeConnectorFixture(t, ctx)
@@ -48,6 +49,7 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 		fixture.write(t, "ca.pem", rootsPEM)
 	}
 	updateTLS(coreCertificate, trust)
+	operator := newNativeConnectorOIDC(t, ctx, fixture, *currentCertificate.Load(), currentRoots.Load())
 	configuration := &tls.Config{MinVersion: tls.VersionTLS13, SessionTicketsDisabled: true, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return currentCertificate.Load(), nil }}
 	handler, err := targetenrollment.NewHTTP(authority, func(_ context.Context, target, node, _ string) (targetenrollment.Scope, error) {
 		if target != scope.TargetID || node != scope.NodeID {
@@ -58,10 +60,20 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	if err != nil {
 		t.Fatal(err)
 	}
-	enrollment := httptest.NewUnstartedServer(handler)
+	protected := operator.security.Protect(handler)
+	enrollment := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == targetenrollment.EnrollmentPath {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		protected.ServeHTTP(w, r)
+	}))
 	enrollment.TLS = configuration.Clone()
 	enrollment.StartTLS()
 	defer enrollment.Close()
+	denialClient := nativeConnectorHTTPSClient(currentRoots.Load())
+	operator.qualifyGrantDenials(t, ctx, denialClient, enrollment.URL+targetenrollment.AuthorizationPath)
+	denialClient.CloseIdleConnections()
 	observed := &nativeConnectorAdmission{NodeRegistry: registry}
 	live, err := targetenrollment.WithLiveTrust(observed, func(context.Context) (*x509.CertPool, error) { return currentRoots.Load(), nil })
 	if err != nil {
@@ -89,13 +101,17 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	defer func() { _ = listener.Close(); <-serving }()
 	authorize := func(renew bool) {
 		t.Helper()
-		create := authority.Create
+		endpoint := targetenrollment.AuthorizationPath
 		if renew {
-			create = authority.CreateRenewal
+			endpoint = targetenrollment.RenewalAuthorizationPath
 		}
-		grant, err := create(ctx, scope, time.Minute, time.Hour)
-		if err != nil {
-			t.Fatal("managed Connector grant failed", err)
+		client := nativeConnectorHTTPSClient(currentRoots.Load())
+		defer client.CloseIdleConnections()
+		token := operator.token(t, ctx, "editor", "native-core")
+		status, data := nativeOperatorGrantRequest(t, ctx, client, enrollment.URL+endpoint, token, scope.TargetID)
+		var grant targetenrollment.Bootstrap
+		if status != http.StatusCreated || json.Unmarshal(data, &grant) != nil || grant.Token == "" || grant.Nonce == "" || !grant.ExpiresAt.After(time.Now()) {
+			t.Fatal("protected managed Connector grant failed", status)
 		}
 		data, err := json.Marshal(grant)
 		if err != nil {
@@ -181,7 +197,7 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	if _, err := authority.CreateRenewal(ctx, scope, time.Minute, time.Hour); err == nil {
 		t.Fatal("revoked actual Connector regained renewal")
 	}
-	t.Log("actual Connector managed enrollment, local-key renewal, CA overlap/retirement, native typed exec and persisted revocation passed; Application lifecycle and operator OIDC not qualified")
+	t.Log("actual Keycloak operator authorization/denials, Connector managed enrollment, local-key renewal, CA overlap/retirement, native typed exec and persisted revocation passed; Application lifecycle not qualified")
 }
 
 func nativeConnectorLeaf(t *testing.T, data []byte) *x509.Certificate {
