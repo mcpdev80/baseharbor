@@ -52,7 +52,7 @@ func TestConnectorRuntimeTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "baha-connector-" + hex.EncodeToString(nonce[:])
-	id := run("run", "--detach", "--name", name, image, "/bin/sh", "-c", "printf 'connector-runtime-ready\\n'; exec sleep 300")
+	id := run("run", "--detach", "--name", name, "--label", "baseharbor.transport-qualification=true", image, "/bin/sh", "-c", "printf 'connector-runtime-ready\\n'; exec sleep 300")
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 30*time.Second)
 		defer stop()
