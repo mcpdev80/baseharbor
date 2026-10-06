@@ -77,6 +77,46 @@
       ],
       "type": "object"
     },
+    "runtime.capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "resource_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "provider",
+        "target",
+        "capabilities",
+        "resource_kinds"
+      ],
+      "type": "object"
+    },
     "runtime.list": {
       "anyOf": [
         {
@@ -226,6 +266,91 @@
         }
       ]
     },
+    "stream.descriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "additionalProperties": false,
+          "properties": {
+            "assurance": {
+              "type": "string"
+            },
+            "authentication_methods": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "issuer": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "application": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "workspace": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "resource_kind": {
+          "type": "string"
+        },
+        "stream_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "stream_id",
+        "kind",
+        "actor",
+        "context",
+        "resource_kind",
+        "resource_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
     "target.list": {
       "additionalProperties": false,
       "properties": {
@@ -281,6 +406,76 @@
       "required": [
         "contract_version",
         "targets"
+      ],
+      "type": "object"
+    },
+    "terminal.event": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "data": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "exit_code": {
+          "type": [
+            "null",
+            "integer"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "stream_id",
+        "sequence",
+        "kind",
+        "occurred_at"
+      ],
+      "type": "object"
+    },
+    "terminal.input": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "type": "integer"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "data": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_version",
+        "sequence",
+        "kind"
       ],
       "type": "object"
     },

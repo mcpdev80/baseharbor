@@ -87,3 +87,40 @@ func readModelSchema(t *testing.T, raw []byte, operation string) *jsonschema.Res
 	}
 	return resolved
 }
+
+func TestGeneratedTerminalExamplesMatchNormativeTerminalSchemas(t *testing.T) {
+	for _, example := range machinereadmodels.Examples() {
+		name := ""
+		switch example.Operation {
+		case "terminal.event":
+			name = "terminal-event"
+		case "terminal.input":
+			name = "terminal-input"
+		default:
+			continue
+		}
+		raw, err := contracts.ReadSchema(contracts.Namespace + "machine/v1/" + name + ".schema.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema jsonschema.Schema
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		resolved, err := schema.Resolve(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := json.Marshal(example.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value any
+		if err := json.Unmarshal(wire, &value); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolved.Validate(value); err != nil {
+			t.Fatalf("%s: %v", example.Operation, err)
+		}
+	}
+}

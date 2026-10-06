@@ -244,3 +244,10 @@ Empty Runtime Explorer inventory can be `null`. Configured Targets do not
 report connection health, and deployment observations do not imply live runtime
 health. Unknown result fields or incompatible versions require a supported
 consumer update; a live error must never select fixture data.
+
+Terminal consumer examples are emitted from actual `machine.StreamDescriptor`,
+`machine.TerminalEvent` and `machine.TerminalInput` records in the generated
+read-model artifact. Runtime capability examples use Core's actual
+`runtimeexplorer.CapabilitySet`. These examples are explicitly synthetic and
+provide decoding/conformance checks only; they do not qualify an authenticated
+browser or a real PTY/runtime journey.

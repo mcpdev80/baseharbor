@@ -26,3 +26,9 @@ in `machine/v1/read-models.golden.json`. Regenerate with
 examples. Drift tests compare both packaged artifacts to the actual types.
 `runtime.list` permits `null` for an empty Core inventory. Target configuration
 is not a connectivity/health observation; consumers must not invent these fields.
+
+The same generated read-model artifact also includes Runtime Explorer capability
+records, authenticated stream descriptors and actual Core terminal event/input
+examples. Terminal binary data uses standard JSON base64. The dedicated shipped
+terminal schemas remain the normative frame/bounds contract; generated example
+regressions validate against both their actual Core types and these schemas.

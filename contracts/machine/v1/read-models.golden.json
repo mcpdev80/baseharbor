@@ -95,6 +95,93 @@
     {
       "operation": "runtime.list",
       "value": null
+    },
+    {
+      "operation": "runtime.capabilities",
+      "value": {
+        "contract_version": "baseharbor.runtime-explorer/v1",
+        "provider": "podman",
+        "target": "synthetic-target",
+        "capabilities": [
+          "resources.inspect",
+          "container.terminal"
+        ],
+        "resource_kinds": [
+          "container"
+        ]
+      }
+    },
+    {
+      "operation": "stream.descriptor",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "kind": "exec",
+        "actor": {
+          "mode": "authenticated",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator"
+        },
+        "context": {
+          "environment": "prod",
+          "target": "synthetic-target",
+          "resource": "synthetic-container"
+        },
+        "resource_kind": "container",
+        "resource_id": "synthetic-container",
+        "created_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 1,
+        "kind": "terminal.ready",
+        "occurred_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 2,
+        "kind": "terminal.output",
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "data": "c3ludGhldGljIG91dHB1dA0K"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 3,
+        "kind": "terminal.exit",
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "exit_code": 0
+      }
+    },
+    {
+      "operation": "terminal.input",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 1,
+        "kind": "input",
+        "data": "c3ludGhldGljIGlucHV0DQ=="
+      }
+    },
+    {
+      "operation": "terminal.input",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 2,
+        "kind": "resize",
+        "rows": 24,
+        "columns": 80
+      }
     }
   ]
 }
