@@ -65,36 +65,6 @@ func quadletUserRuntimeEnv() []string {
 	return env
 }
 
-func quadletSystemctl(ctx context.Context, input []byte, args ...string) (string, error) {
-	path, err := exec.LookPath("systemctl")
-	if err != nil {
-		return "", err
-	}
-	commandCtx := ctx
-	cancel := func() {}
-	if len(args) > 0 && (args[0] == "start" || args[0] == "restart") {
-		commandCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	}
-	defer cancel()
-	full := append([]string{"--user"}, args...)
-	cmd := exec.CommandContext(commandCtx, path, full...)
-	cmd.Env = quadletUserRuntimeEnv()
-	if input != nil {
-		cmd.Stdin = bytes.NewReader(input)
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		}
-		return stdout.String(), fmt.Errorf("systemctl --user %s: %s", strings.Join(args, " "), message)
-	}
-	return stdout.String(), nil
-}
-
 func quadletValidateProject(ctx context.Context, project QuadletProject) error {
 	dir, err := os.MkdirTemp("", "baseharbor-quadlet-validate-*")
 	if err != nil {
@@ -175,6 +145,23 @@ func quadletProjectServiceUnits(project QuadletProject, selected []string) ([]st
 		result = append(result, unit)
 	}
 	return result, nil
+}
+
+func quadletPersistentServiceUnits(project QuadletProject, units []string) []string {
+	completedUnits := make(map[string]struct{}, len(project.CompletedServices))
+	for service := range project.CompletedServices {
+		if unit, ok := project.ServiceUnits[service]; ok {
+			completedUnits[unit] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(units))
+	for _, unit := range units {
+		if _, completed := completedUnits[unit]; completed {
+			continue
+		}
+		result = append(result, unit)
+	}
+	return result
 }
 
 func quadletRenderProject(composeFile, envFile, project string) (QuadletProject, error) {
@@ -343,16 +330,12 @@ func quadletBuildProject(ctx context.Context, project QuadletProject, selected [
 	if len(units) == 0 {
 		return nil
 	}
-	_, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, units...)...)
+	_, err := quadletSystemctlBlocking(ctx, nil, append([]string{"restart"}, units...)...)
 	return err
 }
 
 func quadletStartProject(ctx context.Context, project QuadletProject, selected []string) error {
 	return quadletStartProjectMode(ctx, project, selected, true)
-}
-
-func quadletStartProjectNoBuild(ctx context.Context, project QuadletProject, selected []string) error {
-	return quadletStartProjectMode(ctx, project, selected, false)
 }
 
 func quadletStartProjectMode(ctx context.Context, project QuadletProject, selected []string, build bool) error {
@@ -381,6 +364,9 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	if err != nil {
 		return err
 	}
+	if err := quadletPrepareServiceImages(ctx, project, units); err != nil {
+		return err
+	}
 	if len(units) == 0 {
 		return nil
 	}
@@ -398,19 +384,27 @@ func quadletStartProjectMode(ctx context.Context, project QuadletProject, select
 	}
 	if len(restartUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"restart"}, restartUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, restartUnits, 30*time.Second); waitErr != nil {
+			persistent := quadletPersistentServiceUnits(project, restartUnits)
+			if len(persistent) == 0 {
+				return quadletServiceStartError(ctx, restartUnits, err)
+			}
+			if waitErr := quadletWaitServiceUnitsActive(ctx, persistent, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, restartUnits, err)
 			}
 		}
 	}
 	if len(startUnits) > 0 {
 		if _, err := quadletSystemctl(ctx, nil, append([]string{"start"}, startUnits...)...); err != nil {
-			if waitErr := quadletWaitServiceUnitsActive(ctx, startUnits, 30*time.Second); waitErr != nil {
+			persistent := quadletPersistentServiceUnits(project, startUnits)
+			if len(persistent) == 0 {
+				return quadletServiceStartError(ctx, startUnits, err)
+			}
+			if waitErr := quadletWaitServiceUnitsActive(ctx, persistent, 120*time.Second); waitErr != nil {
 				return quadletServiceStartError(ctx, startUnits, err)
 			}
 		}
 	}
-	if err := quadletWaitServiceUnitsActive(ctx, units, 30*time.Second); err != nil {
+	if err := quadletWaitServiceUnitsActive(ctx, quadletPersistentServiceUnits(project, units), 120*time.Second); err != nil {
 		return err
 	}
 	return quadletEnsureServiceContainersExist(ctx, project, selected)
@@ -479,6 +473,9 @@ func quadletEnsureServiceContainersExist(ctx context.Context, project QuadletPro
 		return err
 	}
 	for _, service := range services {
+		if project.CompletedServices[service] {
+			continue
+		}
 		container, ok := project.Containers[service]
 		if !ok {
 			return fmt.Errorf("Quadlet service %q has no expected container name", service)
@@ -561,21 +558,30 @@ func quadletEnsureResourceUnits(ctx context.Context, project QuadletProject, uni
 			return err
 		}
 		if exists {
-			if _, err := quadletSystemctl(ctx, nil, "start", unit); err != nil {
+			if _, err := quadletSystemctlBlocking(ctx, nil, "start", unit); err != nil {
 				return err
 			}
 			continue
 		}
 		_, _ = quadletSystemctl(ctx, nil, "reset-failed", unit)
-		if _, err := quadletSystemctl(ctx, nil, "restart", unit); err != nil {
+		if _, err := quadletSystemctlBlocking(ctx, nil, "restart", unit); err != nil {
 			return err
 		}
-		exists, err = quadletRuntimeResourceExists(ctx, kind, resource)
-		if err != nil {
-			return err
+		if kind == "network" {
+			// A .network Quadlet unit is the authority for a rootless network.
+			// The user-systemd generator may run with a storage/runtime context
+			// that is not visible to a sibling podman CLI probe. A successful
+			// blocking unit restart proves the network resource reconcile; the
+			// dependent container unit will fail with the native Quadlet error if
+			// that network is genuinely unavailable.
+			continue
 		}
-		if !exists {
-			return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s", kind, resource, unit)
+		if err := quadletWaitRuntimeResource(ctx, kind, resource, 10*time.Second); err != nil {
+			diagnostic := quadletServiceDiagnostic(ctx, unit)
+			if strings.TrimSpace(diagnostic) != "" {
+				return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s: %w\n%s", kind, resource, unit, err, diagnostic)
+			}
+			return fmt.Errorf("Quadlet %s resource %s is missing after restarting %s: %w", kind, resource, unit, err)
 		}
 	}
 	return nil

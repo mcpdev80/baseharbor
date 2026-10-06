@@ -65,7 +65,7 @@ func prepareManagedObjectStorage(ctx context.Context, compose bhruntime.RuntimeP
 		dataDir: resolved.TargetStateRoot, namespace: resolved.Target.Name,
 	}
 	if devaccess.Enabled(m.Environment) && m.Services.ObjectStorageManagementUI {
-		credentials, err := devaccess.Ensure(resolved.Target.Name, m.Environment)
+		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, resolved.Target.Name, m.Environment)
 		if err != nil {
 			return nil, fmt.Errorf("prepare SeaweedFS developer access: %w", err)
 		}

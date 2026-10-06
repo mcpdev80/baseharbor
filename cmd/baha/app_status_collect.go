@@ -15,6 +15,7 @@ import (
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
@@ -221,12 +222,14 @@ func (c *applicationStatusCollection) collectSQLCheck(ctx context.Context) {
 		}
 		for _, resource := range resources {
 			detail := fmt.Sprintf(
-				"scope=%s owner=%s database=%s role=%s credential_scope=%s",
+				"scope=%s owner=%s database=%s role=%s credential_scope=%s topology_ha=%t members=%d",
 				resource.ProviderScope,
 				resource.Owner,
 				resource.Database,
 				resource.Role,
 				resource.CredentialScope,
+				resource.HA,
+				resource.Members,
 			)
 			c.result.AddCheck("postgres/"+resource.Instance, true, detail)
 		}
@@ -266,7 +269,11 @@ func (c *applicationStatusCollection) collectCacheCheck(ctx context.Context) {
 		c.result.AddCheck("valkey", false, "one or more Valkey instances failed semantic verification")
 		return
 	}
-	c.result.AddCheck("valkey", true, fmt.Sprintf("%d instance(s) running and semantic Valkey verification passed", len(application.ValkeyInstanceNames(c.manifest))))
+	if err := application.VerifyValkeyHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
+		c.result.AddCheck("valkey", false, err.Error())
+		return
+	}
+	c.result.AddCheck("valkey", true, fmt.Sprintf("%d logical instance(s) passed semantic and availability verification", len(application.ValkeyInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context) {
@@ -279,7 +286,11 @@ func (c *applicationStatusCollection) collectMessagingCheck(ctx context.Context)
 		c.result.AddCheck("rabbitmq", false, err.Error())
 		return
 	}
-	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d instance(s) passed AMQPS semantic verification", len(application.RabbitMQInstanceNames(c.manifest))))
+	if err := application.VerifyRabbitMQHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
+		c.result.AddCheck("rabbitmq", false, err.Error())
+		return
+	}
+	c.result.AddCheck("rabbitmq", true, fmt.Sprintf("%d logical instance(s) passed AMQPS and availability verification", len(application.RabbitMQInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.Context) {
@@ -292,7 +303,11 @@ func (c *applicationStatusCollection) collectDocumentDatabaseCheck(ctx context.C
 		c.result.AddCheck("mongodb", false, err.Error())
 		return
 	}
-	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document write/read/delete verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
+	if err := application.VerifyMongoDBHACluster(checkCtx, provideroperation.New(c.compose, c.files.Project, c.files.Compose, c.files.Env), c.manifest, c.files); err != nil {
+		c.result.AddCheck("mongodb", false, err.Error())
+		return
+	}
+	c.result.AddCheck("mongodb", true, fmt.Sprintf("%d instance(s) passed TLS document semantics and availability verification", len(application.DocumentDatabaseInstanceNames(c.manifest))))
 }
 
 func (c *applicationStatusCollection) collectManagementUICheck(ctx context.Context) {

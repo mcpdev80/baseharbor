@@ -76,6 +76,13 @@ func TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy(t *testing.T)
 	if err != nil {
 		t.Fatalf("loadSharedBackendState() error = %v", err)
 	}
+	if state.PostgresMembers != 1 {
+		t.Fatalf("default shared PostgreSQL unexpectedly selected %d members", state.PostgresMembers)
+	}
+	running, err := compose.RunningServicesProject(ctx, shared.Project, shared.Compose, shared.Env)
+	if err != nil || len(running) != 1 || running[0] != sharedPostgresService("dev") {
+		t.Fatalf("non-HA provider must run exactly one native PostgreSQL service: %v, %v", running, err)
+	}
 	aState := state.Applications[sharedBackendApplicationKey(appA)]
 	bState := state.Applications[sharedBackendApplicationKey(appB)]
 

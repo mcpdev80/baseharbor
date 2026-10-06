@@ -120,6 +120,20 @@ func TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets(t *testing.T) 
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("token mode = %o, want 600", info.Mode().Perm())
 	}
+	canonicalSecretInfo, err := os.Stat(SecretFileHostPath(files, "TLS_KEY_FILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := canonicalSecretInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("canonical application secret mode = %o, want 600", got)
+	}
+	projectedSecretInfo, err := os.Stat(filepath.Join(files.Bindings, "runtime-workload", "file-secrets", "TLS_KEY_FILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedSecretInfo.Mode().Perm(); got != 0o644 {
+		t.Fatalf("runtime application secret projection mode = %o, want 644", got)
+	}
 	projectionDir := filepath.Join(files.Bindings, "runtime-workload")
 	projectionDirInfo, err := os.Stat(projectionDir)
 	if err != nil {

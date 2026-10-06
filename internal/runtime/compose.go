@@ -120,7 +120,8 @@ func consolidatedProject(project string) bool {
 type composeModuleModel struct {
 	Services map[string]json.RawMessage `json:"services"`
 	Volumes  map[string]struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		External bool   `json:"external"`
 	} `json:"volumes"`
 	Networks map[string]struct {
 		Name     string `json:"name"`
@@ -143,14 +144,18 @@ func (c Compose) removeComposeModule(ctx context.Context, project, composeFile, 
 	}
 	sort.Strings(services)
 	if len(services) > 0 {
-		args := append([]string{"rm", "-f", "-s"}, services...)
+		args := []string{"rm", "-f", "-s"}
+		if destroy {
+			args = append(args, "-v")
+		}
+		args = append(args, services...)
 		if err := c.runProject(ctx, project, composeFile, envFile, args...); err != nil {
 			return err
 		}
 	}
 	if destroy {
 		for _, volume := range model.Volumes {
-			if strings.TrimSpace(volume.Name) == "" {
+			if volume.External || strings.TrimSpace(volume.Name) == "" {
 				continue
 			}
 			if _, err := c.directOutput(ctx, "volume", "rm", "-f", volume.Name); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such volume") {
@@ -186,7 +191,7 @@ func (c Compose) LogsProject(ctx context.Context, project, composeFile, envFile 
 // before a fail-closed lifecycle rollback removes provider resources.
 func (c Compose) DiagnosticsProject(ctx context.Context, project, composeFile, envFile string) string {
 	status, statusErr := c.outputProject(ctx, project, composeFile, envFile, "ps", "-a")
-	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "100")
+	logs, logsErr := c.outputProject(ctx, project, composeFile, envFile, "logs", "--no-color", "--tail", "1000")
 	var b strings.Builder
 	if statusErr != nil {
 		fmt.Fprintf(&b, "compose ps -a failed: %v\n", statusErr)

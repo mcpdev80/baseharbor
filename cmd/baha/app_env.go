@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,32 +33,15 @@ func appEnvCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			m := resolved.Manifest
-			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+			result, err := inspectApplicationEnvironment(ctx, resolved, reveal)
 			if err != nil {
 				return err
-			}
-			if _, err := os.Stat(files.ApplicationEnv); err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("application runtime contract is not materialized; run 'baha app apply'")
-				}
-				return fmt.Errorf("inspect application environment contract: %w", err)
 			}
 			if pathOnly {
-				absolute, err := filepath.Abs(files.ApplicationEnv)
-				if err != nil {
-					return fmt.Errorf("resolve application environment path: %w", err)
-				}
-				fmt.Fprintln(out, absolute)
+				fmt.Fprintln(out, result.Path)
 				return nil
 			}
-			values, err := loadApplicationEnv(files.ApplicationEnv)
-			if err != nil {
-				return err
-			}
-			if !reveal {
-				maskRuntimeSecrets(values)
-			}
+			values := result.Values
 			return writeApplicationEnv(out, values, format)
 		},
 	}
@@ -121,22 +103,30 @@ func loadApplicationEnv(path string) (map[string]string, error) {
 	return values, nil
 }
 
+// Environment contracts can include credentials from any provider. Only known
+// public contract fields are exposed by default; new fields fail closed.
 func maskRuntimeSecrets(values map[string]string) {
-	for key := range values {
-		if (isCredentialServiceURL(key) || isCredentialEnvironmentValue(key)) && values[key] != "" {
+	for key, value := range values {
+		if value != "" && !isPublicRuntimeEnvironmentField(key) {
 			values[key] = "<masked>"
 		}
 	}
 }
 
-func isCredentialServiceURL(key string) bool {
-	if key == "DATABASE_URL" || key == "REDIS_URL" || key == "VALKEY_URL" {
+func isPublicRuntimeEnvironmentField(key string) bool {
+	switch key {
+	case "BASEHARBOR_APP_NAME", "BASEHARBOR_ENVIRONMENT", "BASEHARBOR_BINDINGS":
 		return true
 	}
-	if !strings.HasSuffix(key, "_URL") {
-		return false
+	// Generated CA references contain public trust material, never private keys.
+	if strings.HasSuffix(key, "_CA_FILE") {
+		for _, prefix := range []string{"DATABASE_", "REDIS_", "VALKEY_", "RABBITMQ_", "MONGODB_"} {
+			if strings.HasPrefix(key, prefix) {
+				return true
+			}
+		}
 	}
-	return strings.HasPrefix(key, "DATABASE_") || strings.HasPrefix(key, "REDIS_") || strings.HasPrefix(key, "VALKEY_")
+	return false
 }
 
 func writeApplicationEnv(out io.Writer, values map[string]string, format string) error {
@@ -168,11 +158,4 @@ func writeApplicationEnv(out io.Writer, values map[string]string, format string)
 		}
 	}
 	return nil
-}
-
-func isCredentialEnvironmentValue(key string) bool {
-	return key == "AWS_ACCESS_KEY_ID" ||
-		key == "AWS_SECRET_ACCESS_KEY" ||
-		strings.HasSuffix(key, "_ACCESS_KEY_ID") ||
-		strings.HasSuffix(key, "_SECRET_ACCESS_KEY")
 }

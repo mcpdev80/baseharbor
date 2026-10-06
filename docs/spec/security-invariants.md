@@ -7,6 +7,7 @@ These requirements apply across BaseHarbor.
 - Ownership MUST be checked before destructive mutation.
 - Knowing a resource identifier MUST NOT be sufficient authorization.
 - Workload identity, application-user identity, human/operator identity and provider-admin credentials MUST remain distinct.
+- Managed credentials MUST follow the versioned A/B/C ownership taxonomy in `credential-access-v1`; Class C machine identity MUST never inherit shared human/developer or application-service credentials.
 - Trusted local `dev` MUST NOT require operator login; `test` and `prod` application operations MUST fail closed without a valid Target/Environment OIDC operator boundary.
 - Shared identity-provider infrastructure MUST NOT imply shared application/environment identity scope.
 - Environment policy MAY strengthen application authentication requirements but MUST NOT silently weaken them.

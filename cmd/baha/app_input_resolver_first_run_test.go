@@ -9,6 +9,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *testing.T) {
@@ -50,7 +52,7 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 	}
 
 	var out bytes.Buffer
-	if err := runRepositoryRuntimeInitResolved(context.Background(), resolved, repo, repositoryInitOptions{Yes: true}, &out); err != nil {
+	if err := runRepositoryRuntimeInitResolved(operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{Subject: "authenticated-fixture", Issuer: "https://issuer.example"}), resolved, repo, repositoryInitOptions{Yes: true}, &out); err != nil {
 		t.Fatalf("initialize repository deployment inputs: %v\n%s", err, out.String())
 	}
 
@@ -60,6 +62,9 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 	}
 	if !found {
 		t.Fatal("deployment record was not created before deployment-local state")
+	}
+	if record.Observed.State != "configured" || record.Observed.Ready || !record.Observed.VerifiedAt.IsZero() {
+		t.Fatalf("configuration falsely claims apply/verification: %#v", record.Observed)
 	}
 	if record.Identity.Application != m.Name || record.Identity.Environment != m.Environment {
 		t.Fatalf("deployment identity = %#v", record.Identity)

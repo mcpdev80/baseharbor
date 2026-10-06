@@ -66,6 +66,13 @@ func detectAppProject(root string) (appProjectDetection, error) {
 		}
 		d.Ports = uniquePortEvidence(d.Ports)
 	}
+	if d.Compose != "" {
+		analysis, err := repositoryinspect.AnalyzeComposeFile(root, d.Compose)
+		if err != nil {
+			return appProjectDetection{}, err
+		}
+		d.WorkloadProtocols = analysis.WorkloadProtocols
+	}
 	for name, source := range result.SecretSources {
 		d.SecretSources[name] = source
 	}

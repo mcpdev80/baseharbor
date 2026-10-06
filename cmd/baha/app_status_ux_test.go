@@ -123,7 +123,7 @@ func TestStatusNotAppliedRendersExpectedLifecycleState(t *testing.T) {
 	renderApplicationStatus(context.Background(), &out, &out, result)
 	got := out.String()
 
-	for _, wanted := range []string{"NOT APPLIED", "no BaseHarbor-managed runtime state exists", "baha up", "baha app apply"} {
+	for _, wanted := range []string{"NOT APPLIED", "no BaseHarbor-managed application runtime state exists", "baha up", "baha app apply"} {
 		if !strings.Contains(got, wanted) {
 			t.Fatalf("not-applied status missing %q:\n%s", wanted, got)
 		}

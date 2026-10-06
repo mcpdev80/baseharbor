@@ -38,12 +38,15 @@ func parseReadOutputArgs(args []string, command string) ([]string, cliOutputForm
 				return nil, "", usageError("unsupported output format "+value, "Use human or json.")
 			}
 			format = cliOutputFormat(value)
+		case strings.HasPrefix(arg, "-o") && len(arg) > 2:
+			value := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(arg, "-o")))
+			if value != "json" && value != "human" {
+				return nil, "", usageError("unsupported output format "+value, "Use human or json.")
+			}
+			format = cliOutputFormat(value)
 		default:
 			filtered = append(filtered, arg)
 		}
-	}
-	if format == outputJSON && len(filtered) > 1 {
-		return nil, "", usageError("baha "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
 	}
 	return filtered, format, nil
 }
@@ -68,6 +71,8 @@ func requestsJSONOutput(args []string) bool {
 			}
 		case strings.HasPrefix(args[i], "--output="):
 			return strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(args[i], "--output=")), "json")
+		case strings.HasPrefix(args[i], "-o") && len(args[i]) > 2:
+			return strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(args[i], "-o")), "json")
 		}
 	}
 	return false

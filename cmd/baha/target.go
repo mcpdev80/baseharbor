@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +18,21 @@ import (
 	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 )
+
+type targetListItem struct {
+	Name           string   `json:"name"`
+	Runtime        string   `json:"runtime"`
+	Access         string   `json:"access"`
+	AccessProvider string   `json:"access_provider"`
+	Scope          string   `json:"scope"`
+	Selectors      []string `json:"selectors,omitempty"`
+}
+
+type targetShowResult struct {
+	ContractVersion string                    `json:"contract_version"`
+	Target          deployment.ResolvedTarget `json:"target"`
+	StateRoot       string                    `json:"state_root"`
+}
 
 type targetInspectionResult struct {
 	ContractVersion    string                             `json:"contract_version"`
@@ -92,29 +106,20 @@ func targetCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
-		Usage:   "baha target [list|show|create|delete|activate|deactivate]",
+		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			jsonOutput := false
-			for i := 0; i < len(args); i++ {
-				switch args[i] {
-				case "-o", "--output":
-					if i+1 >= len(args) {
-						return usageError(args[i]+" requires a value", "Use -o json or --output json.")
-					}
-					i++
-					if args[i] != "json" {
-						return usageError("unsupported target output "+args[i], "Only json is supported for structured target output.")
-					}
-					jsonOutput = true
-				default:
-					return unknownOptionUsage("baha target", args[i], "-o", "--output")
-				}
+			filtered, format, err := parseReadOutputArgs(args, "target")
+			if err != nil {
+				return err
+			}
+			if len(filtered) != 0 {
+				return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
 			}
 			result, err := collectTargetInspection(ctx)
 			if err != nil {
 				return err
 			}
-			if jsonOutput {
+			if format == outputJSON {
 				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
@@ -147,10 +152,14 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "list",
 				Summary: "List configured targets",
-				Usage:   "baha target list",
+				Usage:   "baha target list [-o json|--output json|--json]",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) != 0 {
-						return usageError("baha target list does not accept arguments", "Run 'baha target list --help' for usage.")
+					filtered, format, err := parseReadOutputArgs(args, "target list")
+					if err != nil {
+						return err
+					}
+					if len(filtered) != 0 {
+						return usageError("baha target list does not accept positional arguments", "Use --json or -o json for structured output.")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
@@ -166,7 +175,7 @@ func targetCommand() *cli.Command {
 						names = append(names, "local")
 						sort.Strings(names)
 					}
-					fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "ACCESS PROVIDER", "SCOPE", "SELECTOR")
+					items := make([]targetListItem, 0, len(names))
 					for _, name := range names {
 						var (
 							provider       string
@@ -198,38 +207,45 @@ func targetCommand() *cli.Command {
 						if name == effective.Name {
 							marks = append(marks, "effective")
 						}
-						fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", name, provider, access, accessProvider, scope, strings.Join(marks, ","))
+						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
 					}
-					return nil
+					return writeTargetList(out, format, items)
 				},
 			},
 			{
 				Name:    "show",
 				Summary: "Show one target",
-				Usage:   "baha target show [NAME]",
+				Usage:   "baha target show [NAME] [-o json|--output json|--json]",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) > 1 {
-						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME'.")
+					filtered, format, err := parseReadOutputArgs(args, "target show")
+					if err != nil {
+						return err
+					}
+					if len(filtered) > 1 {
+						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
 						return err
 					}
 					name := ""
-					if len(args) == 1 {
-						name = args[0]
+					if len(filtered) == 1 {
+						name = filtered[0]
 					}
 					target, err := cfg.ResolveTarget(name, os.Getenv("BASEHARBOR_TARGET"))
 					if err != nil {
 						return err
 					}
-					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
-					if target.Scope != "" {
-						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
-					}
 					root, err := deployment.TargetStateRoot(target.Name)
 					if err != nil {
 						return err
+					}
+					if format == outputJSON {
+						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root})
+					}
+					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
+					if target.Scope != "" {
+						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
 					}
 					fmt.Fprintf(out, "State    %s\n", root)
 					return nil
@@ -319,6 +335,11 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target create")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	if len(args) == 0 {
 		return usageError("baha target create requires NAME", "Example: baha target create docker-dev --provider docker --access local-docker --reference local")
 	}
@@ -364,30 +385,12 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	cfg, err := deployment.LoadConfig()
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault})
 	if err != nil {
 		return err
 	}
-	if _, exists := cfg.Targets[name]; exists {
-		return fmt.Errorf("target %q already exists", name)
-	}
-	if existing, exists := cfg.Access[accessName]; exists {
-		if existing.Provider != accessProvider || existing.Reference != reference {
-			return fmt.Errorf("access %q already exists with different provider/reference", accessName)
-		}
-	} else {
-		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
-	}
-	cfg.Targets[name] = deployment.TargetDefinition{
-		Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
-		Access:  deployment.TargetAccess{Reference: accessName},
-		Scope:   scope,
-	}
-	if makeDefault {
-		cfg.DefaultTarget = name
-	}
-	if err := cfg.Save(); err != nil {
-		return err
+	if format == outputJSON {
+		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "Target %s created (runtime %s, access %s via %s", name, runtimeProvider, accessName, accessProvider)
 	if scope != "" {
@@ -398,42 +401,21 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 }
 
 func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target delete")
+	if err != nil {
+		return err
+	}
+	args = filtered
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
 	}
 	name := args[0]
-	cfg, err := deployment.LoadConfig()
+	result, err := deleteTargetDefinition(ctx, name)
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.Targets[name]; !ok {
-		return fmt.Errorf("target %q is not configured", name)
-	}
-	deployments, err := deployment.ListDeployments(name)
-	if err != nil {
-		return err
-	}
-	if len(deployments) != 0 {
-		return fmt.Errorf("target %q still owns %d deployment(s); destroy them before deleting the target", name, len(deployments))
-	}
-	root, err := deployment.TargetStateRoot(name)
-	if err != nil {
-		return err
-	}
-	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
-		return fmt.Errorf("target %q still owns runtime state under %s; destroy or detach owned state before deleting the target", name, root)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	delete(cfg.Targets, name)
-	if cfg.DefaultTarget == name {
-		cfg.DefaultTarget = ""
-	}
-	if err := cfg.Save(); err != nil {
-		return err
-	}
-	if err := os.Remove(root); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove empty target state directory: %w", err)
+	if format == outputJSON {
+		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "Target %s deleted\n", name)
 	return nil
@@ -476,7 +458,7 @@ func existingTargetRuntimeFiles(ctx context.Context) (bhruntime.Files, error) {
 	return files, err
 }
 
-func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deployment.ResolvedTarget, bhruntime.Files, error) {
+func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha bool) (deployment.ResolvedTarget, bhruntime.Files, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
@@ -485,7 +467,7 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports) (deplo
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
 	}
-	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports)
+	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports, ha)
 	if err != nil {
 		return target, bhruntime.Files{}, err
 	}
@@ -498,4 +480,15 @@ func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarge
 		return nil, err
 	}
 	return provider, nil
+}
+
+func writeTargetList(out io.Writer, format cliOutputFormat, items []targetListItem) error {
+	if format == outputJSON {
+		return writeJSON(out, map[string]any{"contract_version": machine.ContractVersion, "targets": items})
+	}
+	fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", "TARGET", "RUNTIME", "ACCESS", "ACCESS PROVIDER", "SCOPE", "SELECTOR")
+	for _, item := range items {
+		fmt.Fprintf(out, "%-20s %-12s %-20s %-20s %-16s %s\n", item.Name, item.Runtime, item.Access, item.AccessProvider, item.Scope, strings.Join(item.Selectors, ","))
+	}
+	return nil
 }

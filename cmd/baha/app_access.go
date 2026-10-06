@@ -85,6 +85,11 @@ func appCredsCommand(store application.Store) *cli.Command {
 		Summary: "Show connection metadata without revealing credentials by default",
 		Usage:   "baha app creds postgres|valkey [INSTANCE] [--app NAME] [--reveal]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app creds")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			kind, appName, instance, reveal, err := parseCredsArgs(args)
 			if err != nil {
 				return err
@@ -92,6 +97,12 @@ func appCredsCommand(store application.Store) *cli.Command {
 			_, binding, err := resolveAccessBinding(ctx, store, appName, kind, instance)
 			if err != nil {
 				return err
+			}
+			if format == outputJSON {
+				if reveal {
+					return usageError("JSON connection metadata never reveals credentials", "Load protected credential material with an operator-owned client instead.")
+				}
+				return writeJSON(out, publicApplicationConnection(kind, binding))
 			}
 			fmt.Fprintf(out, "RESOURCE=%s\nINSTANCE=%s\nHOST=%s\nPORT=%s\n", kind, binding.Instance, binding.Host, binding.Port)
 			if binding.Database != "" {
@@ -194,6 +205,9 @@ func resolveAccessBinding(ctx context.Context, store application.Store, appName,
 	}
 	resolved, err := resolveApplication(ctx, store, appArgs, kind)
 	if err != nil {
+		return resolvedApplication{}, application.ServiceBinding{}, err
+	}
+	if err := authorizeApplicationOperation(ctx, "app.connection", resolved); err != nil {
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
 	instances := application.ValkeyInstanceNames(resolved.Manifest)

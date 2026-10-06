@@ -27,13 +27,43 @@ import (
 )
 
 type fullDestroyResult struct {
-	Status   string
-	Target   string
-	Resource string
-	Detail   string
+	Status   string `json:"status"`
+	Target   string `json:"target,omitempty"`
+	Resource string `json:"resource"`
+	Detail   string `json:"detail,omitempty"`
 }
 
 func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "destroy")
+	if err != nil {
+		return err
+	}
+	args = filtered
+	if format == outputJSON {
+		confirmed, all := false, false
+		for _, arg := range args {
+			switch arg {
+			case "--yes":
+				confirmed = true
+			case "--all":
+				all = true
+			default:
+				return usageError("unknown destruction argument", "Use --yes or --all.")
+			}
+		}
+		parent, report := withDestroyReport(parent, all)
+		var err error
+		if all {
+			err = destroyInstallation(machineNoninteractiveContext(parent), confirmed, io.Discard, io.Discard)
+		} else {
+			err = destroyControlPlane(parent, confirmed, io.Discard)
+		}
+		if err != nil {
+			return err
+		}
+		return writeJSON(out, report)
+	}
+
 	full := false
 	for _, arg := range args {
 		if arg == "--all" {
@@ -59,9 +89,39 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		}
 	}
 
+	return destroyInstallation(parent, confirmed, out, errOut)
+}
+func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.Writer) error {
+	if err := authorizeCurrentMCPContext(parent, "installation.destroy", "", "", ""); err != nil {
+		return err
+	}
+
 	targets, discoveryResults := discoverFullDestroyTargets()
 	deployments, deploymentResults := discoverFullDestroyDeployments()
+	// Authorize every discovered stable deployment before any target/network or
+	// best-effort cleanup. One unauthorized boundary blocks the whole operation.
+	for _, record := range deployments {
+		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {
+			return err
+		}
+	}
 
+	plans, err := collectFullDestroyInventory(parent, targets)
+	if err != nil {
+		return err
+	}
+	preserved := []fullDestroyResult{}
+	for _, target := range targets {
+		item, err := preservedTargetRecovery(parent, target)
+		if err != nil {
+			return fmt.Errorf("inventory external recovery material: %w", err)
+		}
+		if item.Status != "" {
+			preserved = append(preserved, item)
+		}
+	}
+
+	recordDestroyPlan(parent, plans, preserved)
 	fmt.Fprintln(out, "WARNING")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "This will permanently remove all BaseHarbor-managed deployments,")
@@ -71,6 +131,12 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.")
 	fmt.Fprintf(out, "Targets: %d\n", len(targets))
 	fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
+	for _, plan := range plans {
+		plan.render(out)
+	}
+	for _, item := range preserved {
+		fmt.Fprintf(out, "  PRESERVED %s %s\n", item.Resource, item.Detail)
+	}
 	if !confirmed {
 		if noInput(parent) || !readerIsTerminal(runtimeInput) {
 			fmt.Fprintln(out, "No changes were made. Re-run with --yes to perform the full cleanup.")
@@ -86,7 +152,8 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		}
 	}
 
-	results := append([]fullDestroyResult{}, discoveryResults...)
+	results := append([]fullDestroyResult{}, preserved...)
+	results = append(results, discoveryResults...)
 	results = append(results, deploymentResults...)
 	for _, target := range targets {
 		releaseFullDestroyConnectivity(parent, target, &results)
@@ -111,8 +178,8 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 		})
 	}
 
-	for _, target := range targets {
-		destroyTargetBestEffort(parent, target, &results)
+	for i, target := range targets {
+		destroyTargetBestEffort(parent, target, &results, plans[i])
 	}
 
 	blockers := countFullDestroyBlockers(results)
@@ -124,6 +191,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 			fullDestroyResult{Status: "SKIPPED", Resource: "xdg-config", Detail: "preserved because runtime cleanup is incomplete; ownership evidence remains available for retry"},
 		)
 	}
+	recordDestroyResults(parent, results, countFullDestroyBlockers(results) == 0)
 	renderFullDestroyReport(out, results)
 
 	blockers = countFullDestroyBlockers(results)
@@ -358,7 +426,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 	}
 }
 
-func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedTarget, results *[]fullDestroyResult) {
+func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedTarget, results *[]fullDestroyResult, plan targetDestroyInventory) {
 	dataDir, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
@@ -443,6 +511,9 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "control-plane-state", Detail: filesErr.Error()})
 	}
 
+	plan.cleanup(ctx, results)
+	cleanupOrphanedTargetRuntimeProjects(ctx, compose, target.Name, results)
+
 	if containers, err := compose.ListRuntimeContainers(ctx); err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "runtime-audit", Detail: err.Error()})
 	} else if residual := targetOwnedRuntimeContainers(target.Name, containers); len(residual) > 0 {
@@ -472,6 +543,87 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
 	} else {
 		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state"})
+	}
+}
+
+func cleanupOrphanedTargetRuntimeProjects(ctx context.Context, runtime bhruntime.RuntimeProvider, target string, results *[]fullDestroyResult) {
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{
+			Status:   "FAILED",
+			Target:   target,
+			Resource: "orphan-runtime-discovery",
+			Detail:   err.Error(),
+		})
+		return
+	}
+
+	projects := map[string]struct{}{}
+	for _, container := range targetOwnedRuntimeContainers(target, containers) {
+		project := strings.TrimSpace(container.Project)
+		if project != "" {
+			projects[project] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(projects))
+	for project := range projects {
+		names = append(names, project)
+	}
+	sort.Strings(names)
+
+	for _, project := range names {
+		resources, err := runtime.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "inventory owned resources: " + err.Error(),
+			})
+			continue
+		}
+		if len(resources) == 0 {
+			continue
+		}
+		if err := runtime.DestroyOwnedProjectResources(ctx, project, resources); err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   err.Error(),
+			})
+			continue
+		}
+		remaining, err := runtime.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "verify owned resources: " + err.Error(),
+			})
+			continue
+		}
+		if len(remaining) > 0 {
+			var residual []string
+			for _, resource := range remaining {
+				residual = append(residual, resource.Kind+" "+resource.Name)
+			}
+			sort.Strings(residual)
+			*results = append(*results, fullDestroyResult{
+				Status:   "FAILED",
+				Target:   target,
+				Resource: "orphan-runtime " + project,
+				Detail:   "owned resources remain: " + strings.Join(residual, ", "),
+			})
+			continue
+		}
+		*results = append(*results, fullDestroyResult{
+			Status:   "REMOVED",
+			Target:   target,
+			Resource: "orphan-runtime " + project,
+			Detail:   "removed using provider ownership labels",
+		})
 	}
 }
 

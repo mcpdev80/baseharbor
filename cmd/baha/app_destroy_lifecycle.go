@@ -108,7 +108,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
-		{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(e.resolved) }},
+		applicationWorkloadContractCheck(e.resolved),
 	}
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
@@ -400,14 +400,7 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 		return err
 	}
 	if keycloakFound {
-		driver := identityprovider.NewKeycloakDriver(
-			e.compose, e.manifest, e.files, nil,
-			e.resolved.TargetStateRoot, e.resolved.Target.Name,
-		)
-		if err := driver.DestroyApplication(ctx); err != nil {
-			return fmt.Errorf("destroy managed identity scope: %w", err)
-		}
-		return nil
+		return e.cleanupKeycloakIdentity(ctx)
 	}
 
 	if _, found, err := application.RegisteredProviderPlacementAt(
@@ -428,19 +421,34 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 	}
 	switch capability.ProviderKind(strings.TrimSpace(string(data))) {
 	case capability.ProviderKeycloak:
-		driver := identityprovider.NewKeycloakDriver(
-			e.compose, e.manifest, e.files, nil,
-			e.resolved.TargetStateRoot, e.resolved.Target.Name,
-		)
-		if err := driver.DestroyApplication(ctx); err != nil {
-			return fmt.Errorf("destroy managed identity scope: %w", err)
-		}
-		return nil
+		return e.cleanupKeycloakIdentity(ctx)
 	case capability.ProviderExternalOIDC:
 		return nil
 	default:
 		return fmt.Errorf("identity provider ownership is unsupported or ambiguous")
 	}
+}
+
+func (e *applicationDestroyExecution) cleanupKeycloakIdentity(ctx context.Context) error {
+	var issuer serviceaccess.Issuer
+	if devaccess.Enabled(e.manifest.Environment) {
+		if e.platformFiles.Compose == "" {
+			var err error
+			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			if err != nil {
+				return fmt.Errorf("load managed trust plane for identity cleanup: %w", err)
+			}
+		}
+		issuer = openbao.NewServiceIssuer(e.compose, e.platformFiles)
+	}
+	driver := identityprovider.NewKeycloakDriver(
+		e.compose, e.manifest, e.files, issuer,
+		e.resolved.TargetStateRoot, e.resolved.Target.Name,
+	)
+	if err := driver.DestroyApplication(ctx); err != nil {
+		return fmt.Errorf("destroy managed identity scope: %w", err)
+	}
+	return nil
 }
 
 func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {

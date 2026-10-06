@@ -13,6 +13,38 @@ func (m Manifest) YAML() string {
 		fmt.Fprintf(&b, "  id: %s\n", m.ApplicationID)
 	}
 	fmt.Fprintf(&b, "  name: %s\n  environment: %s\n", m.Name, m.Environment)
+	if m.HA {
+		b.WriteString("ha: true\n")
+	}
+	if len(m.Availability) > 0 {
+		b.WriteString("availability:\n")
+		for _, component := range AvailabilityIntent(m).Components() {
+			override := m.Availability[component]
+			fmt.Fprintf(&b, "  %s:\n", component)
+			if override.HA != nil {
+				fmt.Fprintf(&b, "    ha: %t\n", *override.HA)
+			}
+			if override.Instances > 0 {
+				fmt.Fprintf(&b, "    instances: %d\n", override.Instances)
+			}
+		}
+	}
+	if len(m.Consumes) > 0 {
+		consumes := append([]ConsumptionRequirement(nil), m.Consumes...)
+		sort.Slice(consumes, func(i, j int) bool { return consumes[i].Name < consumes[j].Name })
+		b.WriteString("consumes:\n")
+		for _, consumption := range consumes {
+			fmt.Fprintf(&b, "  - name: %s\n", consumption.Name)
+			if consumption.ApplicationID != "" {
+				fmt.Fprintf(&b, "    application_id: %s\n", consumption.ApplicationID)
+			}
+			fmt.Fprintf(&b, "    component: %s\n", consumption.Component)
+			fmt.Fprintf(&b, "    interface: %s\n", consumption.Interface)
+			if consumption.Protocol != "" {
+				fmt.Fprintf(&b, "    protocol: %s\n", consumption.Protocol)
+			}
+		}
+	}
 	if hasManifestServices(m.Services) {
 		b.WriteString("services:\n")
 		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {

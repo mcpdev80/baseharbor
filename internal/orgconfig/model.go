@@ -1,6 +1,7 @@
 package orgconfig
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -8,6 +9,12 @@ import (
 )
 
 const ContractVersion = "baseharbor.organization/v1"
+
+var (
+	ErrNotConfigured     = errors.New("organization configuration is not configured")
+	ErrUnsupportedSource = errors.New("organization source kind is unsupported")
+	ErrSourceUnavailable = errors.New("organization source is unavailable")
+)
 
 type SourceKind string
 
@@ -76,7 +83,7 @@ func (s Source) Validate() error {
 	switch s.Kind {
 	case SourceOCI, SourceGit, SourceLocal, SourceSystem:
 	default:
-		return fmt.Errorf("organization source kind %q is unsupported", s.Kind)
+		return fmt.Errorf("%w: %q", ErrUnsupportedSource, s.Kind)
 	}
 	if strings.TrimSpace(s.Location) == "" {
 		return fmt.Errorf("organization source location is required")

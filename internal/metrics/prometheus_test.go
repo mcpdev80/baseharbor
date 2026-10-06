@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -409,18 +410,21 @@ func TestProviderComposeUsesNativeTLSMaterial(t *testing.T) {
 		false,
 	)
 	for _, want := range []string{
+		"prometheus-1:",
+		"prometheus-2:",
 		"--web.config.file=/etc/prometheus/web-config.yml",
 		"./web-config.yml:/etc/prometheus/web-config.yml:ro",
-		"./service-access/runtime:/run/baseharbor/tls:ro",
+		"./members/service-access/runtime:/run/baseharbor/tls:ro",
+		"prometheus-access:",
 		"127.0.0.1:${BASEHARBOR_PROMETHEUS_PORT}:9090",
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("Prometheus native-TLS compose missing %q:\n%s", want, rendered)
+			t.Fatalf("Prometheus HA compose missing %q:\n%s", want, rendered)
 		}
 	}
-	for _, forbidden := range []string{"prometheus-access:", "/certs/server.pem", "/service-access/pki/"} {
+	for _, forbidden := range []string{"/service-access/pki/"} {
 		if strings.Contains(rendered, forbidden) {
-			t.Fatalf("Prometheus native-TLS compose contains obsolete gateway material %q:\n%s", forbidden, rendered)
+			t.Fatalf("Prometheus HA compose contains authority material %q:\n%s", forbidden, rendered)
 		}
 	}
 }
@@ -453,7 +457,7 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 		t.Fatal(err)
 	}
 
-	runtimeDir := filepath.Join(files.Dir, "service-access", "runtime")
+	runtimeDir := filepath.Join(files.Dir, "members", "service-access", "runtime")
 	if err := os.RemoveAll(runtimeDir); err != nil {
 		t.Fatal(err)
 	}
@@ -483,16 +487,47 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	}
 	text := string(compose)
 	for _, want := range []string{
-		"/service-access/runtime:/run/baseharbor/tls:ro",
+		"prometheus-1:",
+		"prometheus-2:",
+		"/members/service-access/runtime:/run/baseharbor/tls:ro",
 		"--web.config.file=/etc/prometheus/web-config.yml",
+		"prometheus-access:",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("reconciled shared Prometheus compose missing native-TLS material %q:\n%s", want, text)
+			t.Fatalf("reconciled shared Prometheus HA compose missing %q:\n%s", want, text)
 		}
 	}
-	for _, forbidden := range []string{"prometheus-access:", "/service-access/pki/"} {
+	for _, forbidden := range []string{"/service-access/pki/"} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("reconciled shared Prometheus compose contains obsolete access material %q:\n%s", forbidden, text)
+			t.Fatalf("reconciled shared Prometheus compose contains authority material %q:\n%s", forbidden, text)
 		}
+	}
+}
+
+func TestPrometheusHAFrontendUsesBindMountedMemberTrust(t *testing.T) {
+	root := t.TempDir()
+	placement := Placement{
+		Scope:   capability.ScopeShared,
+		Project: "bh-prometheus-ha-test",
+		Network: "bh-prometheus-ha-test-network",
+		Volume:  "bh-prometheus-ha-test-data",
+		Dir:     root,
+	}
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: filepath.Join(root, "service-access", "config", "Caddyfile"),
+		Material: serviceaccess.TLSMaterial{
+			CA:                filepath.Join(root, "service-access", "pki", "ca.pem"),
+			ServerCertificate: filepath.Join(root, "service-access", "pki", "server.pem"),
+			ServerKey:         filepath.Join(root, "service-access", "pki", "server-key.pem"),
+			ServerName:        "prometheus",
+		},
+	}
+	got := providerComposeYAMLWithProviderNetworksAndAccess(placement, nil, nil, false, false, access)
+	want := filepath.Join(root, "members", "service-access", "runtime") + ":/upstream:ro"
+	if !strings.Contains(got, want) {
+		t.Fatalf("Prometheus HA frontend does not bind member trust directory %q:\n%s", want, got)
+	}
+	if strings.Contains(got, "      - members/service-access/runtime:/upstream:ro") {
+		t.Fatalf("Prometheus HA frontend rendered member trust as named volume:\n%s", got)
 	}
 }

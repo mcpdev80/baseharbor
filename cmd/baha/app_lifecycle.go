@@ -28,111 +28,152 @@ func appDownCommand(store application.Store) *cli.Command {
 		Usage:   "baha app down [NAME]",
 		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app down")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			resolved, err := resolveApplication(ctx, store, args, "down")
 			if err != nil {
 				return err
 			}
-			m := resolved.Manifest
-			runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
-			resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
-			term := cli.NewTerminal(ctx, out, errOut)
-			term.Header(m.Name, m.Environment)
-			term.Info("target", resolved.Target.Name)
-			files, err := application.ExistingRuntimeFiles(resolved.Store, m)
-			if err != nil {
+			humanOut, humanErr := out, errOut
+			if format == outputJSON {
+				humanOut, humanErr = io.Discard, io.Discard
+			}
+			if err := stopApplicationRuntime(ctx, resolved, humanOut, humanErr); err != nil {
 				return err
 			}
-			var compose bhruntime.RuntimeProvider
-			var before []bhruntime.ProjectResource
-			checks := []preflight.Check{
-				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error {
-					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
-				}},
-				{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(resolved) }},
-				{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
-				{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
-				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
-					var err error
-					compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
-					return err
-				}},
-				{Name: "runtime configuration", Run: func(ctx context.Context) error {
-					return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
-				}},
-				{Name: "runtime ownership", Run: func(ctx context.Context) error {
-					var err error
-					before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
-					return err
-				}},
+			if format == outputJSON {
+				return writeJSON(out, applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "stopped", DataPreserved: true})
 			}
-			results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
-			renderPreflightUX(term, results)
-			if !ok {
-				return errors.New("application down preflight failed")
-			}
-
-			if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
-				return fmt.Errorf("suspend cross-application connectivity: %w", err)
-			}
-			if err := removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m); err != nil {
-				return err
-			}
-			if len(m.Exposures) > 0 {
-				if err := stopManagedExposure(ctx, compose, m, files); err != nil {
-					return err
-				}
-				term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
-			}
-			if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
-				return fmt.Errorf("stop application-scoped metrics provider: %w", err)
-			}
-			if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
-				return err
-			} else if found && tracePlacement.Scope == capability.ScopeApplication {
-				if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
-					return fmt.Errorf("stop application-scoped traces provider: %w", err)
-				}
-			}
-			if removed, err := destroyRepositoryWorkloadRuntime(ctx, compose, resolved, files); err != nil {
-				return err
-			} else if removed {
-				term.Result("STOPPED", "workload", "repository workload containers and networks removed; application-owned volumes preserved")
-			}
-			if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
-				return fmt.Errorf("stop application-scoped logs provider: %w", err)
-			}
-			if application.RequiresRuntimeBroker(m) {
-				if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
-					return err
-				}
-				term.Result("STOPPED", "runtime-broker", "application runtime broker stopped")
-			}
-
-			project := runtimeProject
-			if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
-				return err
-			}
-			after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
-			if err != nil {
-				return fmt.Errorf("verify application down: %w", err)
-			}
-			if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
-				return errors.New("verify application down: container or network still exists")
-			}
-			for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, resourceProject) {
-				if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
-					return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
-				}
-			}
-			if err := recordObservedDeployment(resolved, "stopped", false); err != nil {
-				return fmt.Errorf("record stopped application state: %w", err)
-			}
-			term.Section("Application")
-			term.Result("STOPPED", "application", "persistent data preserved")
 			return nil
 		},
+	}
+}
+
+type applicationStopResult struct {
+	Application   string `json:"application"`
+	Environment   string `json:"environment"`
+	State         string `json:"state"`
+	DataPreserved bool   `json:"data_preserved"`
+}
+
+func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
+	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
+		return err
+	}
+	m := resolved.Manifest
+	runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
+	resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
+	term := cli.NewTerminal(ctx, out, errOut)
+	term.Header(m.Name, m.Environment)
+	term.Info("target", resolved.Target.Name)
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		return err
+	}
+	var compose bhruntime.RuntimeProvider
+	var before []bhruntime.ProjectResource
+	checks := []preflight.Check{
+		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
+		{Name: "manifest permissions", Run: func(context.Context) error {
+			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+		}},
+		applicationWorkloadContractCheck(resolved),
+		{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(files) }},
+		{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(files, m) }},
+		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
+			var err error
+			compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			return err
+		}},
+		{Name: "runtime configuration", Run: func(ctx context.Context) error {
+			return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
+		}},
+		{Name: "runtime ownership", Run: func(ctx context.Context) error {
+			var err error
+			before, err = compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
+			return err
+		}},
+	}
+	results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
+	renderPreflightUX(term, results)
+	if !ok {
+		return errors.New("application down preflight failed")
+	}
+
+	if err := suspendConnectivityForManifest(ctx, compose, resolved); err != nil {
+		return fmt.Errorf("suspend cross-application connectivity: %w", err)
+	}
+	runBestEffortDevelopmentRouteSuspension(term, func() error {
+		return removeApplicationDevelopmentRoutesBeforeDown(ctx, compose, resolved, m)
+	})
+	if len(m.Exposures) > 0 {
+		if err := stopManagedExposure(ctx, compose, m, files); err != nil {
+			return err
+		}
+		term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
+	}
+	if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
+		return fmt.Errorf("stop application-scoped metrics provider: %w", err)
+	}
+	if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
+		return err
+	} else if found && tracePlacement.Scope == capability.ScopeApplication {
+		if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
+			return fmt.Errorf("stop application-scoped traces provider: %w", err)
+		}
+	}
+	if removed, err := destroyRepositoryWorkloadRuntime(ctx, compose, resolved, files); err != nil {
+		return err
+	} else if removed {
+		term.Result("STOPPED", "workload", "repository workload containers and networks removed; application-owned volumes preserved")
+	}
+	if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
+		return fmt.Errorf("stop application-scoped logs provider: %w", err)
+	}
+	if application.RequiresRuntimeBroker(m) {
+		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+			return err
+		}
+		term.Result("STOPPED", "runtime-broker", "application runtime broker stopped")
+	}
+
+	project := runtimeProject
+	if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
+	if err != nil {
+		return fmt.Errorf("verify application down: %w", err)
+	}
+	if application.ResourceExists(after, "container") || application.ResourceExists(after, "network") {
+		return errors.New("verify application down: container or network still exists")
+	}
+	for _, volume := range application.ExpectedPersistentRuntimeResourcesForProject(m, resourceProject) {
+		if application.ResourceNamedExists(before, volume) && !application.ResourceNamedExists(after, volume) {
+			return fmt.Errorf("verify application down: persistent volume %s was not preserved", volume.Name)
+		}
+	}
+	if err := recordObservedDeployment(resolved, "stopped", false); err != nil {
+		return fmt.Errorf("record stopped application state: %w", err)
+	}
+	term.Section("Application")
+	term.Result("STOPPED", "application", "persistent data preserved")
+	return nil
+}
+
+func runBestEffortDevelopmentRouteSuspension(term *cli.Terminal, suspend func() error) {
+	if suspend == nil {
+		return
+	}
+	if err := suspend(); err != nil {
+		term.Warn(
+			"development-routes",
+			"canonical development-route reconciliation deferred; application shutdown will continue: "+err.Error(),
+		)
 	}
 }
 

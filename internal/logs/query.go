@@ -155,7 +155,43 @@ func validateProviderLogSource(m application.Manifest, source observability.Sign
 
 func waitForStream(ctx context.Context, client *http.Client, endpoint string, m application.Manifest, service string) error {
 	query := fmt.Sprintf(`{baseharbor_application=%q,baseharbor_environment=%q,baseharbor_service=%q}`, m.Name, m.Environment, service)
-	return waitForQuery(ctx, client, endpoint, query, m.Name+"/"+service)
+	deadline, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var last error
+	for {
+		probeCtx, probeCancel := context.WithTimeout(deadline, 20*time.Second)
+		ok, queryErr := queryStream(probeCtx, client, endpoint, query)
+		probeCancel()
+		if queryErr == nil && ok {
+			return nil
+		}
+
+		probeCtx, probeCancel = context.WithTimeout(deadline, 20*time.Second)
+		ok, seriesErr := querySeries(probeCtx, client, endpoint, query)
+		probeCancel()
+		if seriesErr == nil && ok {
+			return nil
+		}
+
+		switch {
+		case queryErr != nil && seriesErr != nil:
+			last = fmt.Errorf("query_range: %v; series: %v", queryErr, seriesErr)
+		case queryErr != nil:
+			last = queryErr
+		case seriesErr != nil:
+			last = seriesErr
+		default:
+			last = errors.New("Loki has not ingested a matching log stream yet")
+		}
+		select {
+		case <-deadline.Done():
+			return fmt.Errorf("verify Loki ingestion for %s/%s: %w", m.Name, service, last)
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitForSeries(ctx context.Context, client *http.Client, endpoint, match, description string) error {
@@ -189,7 +225,7 @@ func querySeries(ctx context.Context, client *http.Client, endpoint, match strin
 	values := url.Values{
 		"match[]": {match},
 		"start":   {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
-		"end":     {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+		"end":     {strconv.FormatInt(now.UnixNano(), 10)},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/series?"+values.Encode(), nil)
 	if err != nil {
@@ -245,7 +281,7 @@ func queryStream(ctx context.Context, client *http.Client, endpoint, query strin
 	values := url.Values{
 		"query": {query},
 		"start": {strconv.FormatInt(now.Add(-10*time.Minute).UnixNano(), 10)},
-		"end":   {strconv.FormatInt(now.Add(time.Minute).UnixNano(), 10)},
+		"end":   {strconv.FormatInt(now.UnixNano(), 10)},
 		"limit": {"1"},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/loki/api/v1/query_range?"+values.Encode(), nil)

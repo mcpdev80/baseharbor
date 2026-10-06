@@ -34,6 +34,7 @@ type applicationOverview struct {
 	SecretsState    string
 	BrokerState     string
 	TelemetryState  string
+	LastRecovery    *application.RecoveryMetadata `json:"last_recovery,omitempty"`
 	LastBackup      *application.BackupMetadata
 }
 
@@ -44,6 +45,11 @@ func appShowCommand(store application.Store) *cli.Command {
 		Usage:   "baha app show [NAME]",
 		Long:    "Shows application identity, backend readiness, repository workload state, secret readiness and the last recorded successful backup without revealing secret values or credential-bearing URLs. It uses the same repository workload readiness model as app status and app doctor. Applications that have not been applied yet are shown as NOT READY instead of failing the inspection.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app show")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			resolved, err := resolveApplication(ctx, store, args, "show")
 			if err != nil {
 				return err
@@ -52,6 +58,9 @@ func appShowCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			if format == outputJSON {
+				return writeJSON(out, overview)
+			}
 			formatApplicationOverview(out, overview)
 			return nil
 		},
@@ -59,6 +68,9 @@ func appShowCommand(store application.Store) *cli.Command {
 }
 
 func inspectApplicationOverview(ctx context.Context, resolved resolvedApplication) (applicationOverview, error) {
+	if err := authorizeApplicationOperation(ctx, "app.show", resolved); err != nil {
+		return applicationOverview{}, err
+	}
 	m := resolved.Manifest
 	overview := applicationOverview{
 		Name:           m.Name,
@@ -83,6 +95,12 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		return overview, backupErr
 	}
 
+	lastRecovery, recoveryErr := resolved.Store.LastRecovery(m.Name)
+	if recoveryErr == nil && lastRecovery.Environment == m.Environment {
+		overview.LastRecovery = &lastRecovery
+	} else if recoveryErr != nil && !errors.Is(recoveryErr, application.ErrNoRecoveryMetadata) {
+		return overview, recoveryErr
+	}
 	for _, name := range application.SQLInstanceNames(m) {
 		overview.Postgres = append(overview.Postgres, overviewResource{Name: name, State: "not applied"})
 	}

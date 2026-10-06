@@ -23,10 +23,21 @@ const (
 
 func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base := appInitOrConfigureCommand(store)
-	base.Usage = "baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
+	base.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
 	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		filtered, format, err := parseReadOutputArgs(args, "app init")
+		if err != nil {
+			return err
+		}
+		args = filtered
+		destination := out
+		if format == outputJSON {
+			out = io.Discard
+			ctx = machineNoninteractiveContext(ctx)
+		}
+
 		filtered, agents, err := extractAgentsOption(args)
 		if err != nil {
 			return err
@@ -46,9 +57,52 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
+		for _, arg := range forwarded {
+			if arg != "--quick" {
+				continue
+			}
+			if len(forwarded) != 1 || agents || len(injected) > 0 {
+				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
+			}
+			if hasLocalManifest {
+				m, err := application.LoadManifestFile(manifestPath)
+				if err != nil {
+					return err
+				}
+				if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(destination, map[string]any{"application": m.Name, "application_id": m.ApplicationID, "environment": m.Environment, "manifest": manifestPath, "created": false})
+				}
+				fmt.Fprintln(out, "baseharbor.yaml already exists; no changes were made. Inspect the repository and review changes in the existing contract; use 'baha app init' to configure deployment inputs.")
+				return nil
+			}
+			if format == outputJSON {
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				m, err := manifestFromDetectedProject(detected, true)
+				if err != nil {
+					return err
+				}
+				result, err := persistRepositoryApplication(ctx, cwd, m, nil)
+				if err != nil {
+					return err
+				}
+				return writeJSON(destination, result)
+			}
+		}
 		if !hasLocalManifest {
 			if len(injected) != 0 {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
+			}
+			if format == outputJSON {
+				if agents {
+					return usageError("--agents is a host guidance mode", "Use deterministic initialization JSON separately from host guidance generation.")
+				}
+				return appInitCommand().Run(ctx, append(forwarded, "--json"), destination, errOut)
 			}
 			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
 				return err
@@ -92,6 +146,10 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
 			}
 		}
+		if format == outputJSON {
+			return writeJSON(destination, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "configured": true})
+		}
+
 		return nil
 	}
 	return base
@@ -183,6 +241,9 @@ func repositoryDeploymentInputDefinitions(needsTLS bool) []applicationinput.Defi
 }
 
 func runRepositoryRuntimeInitResolved(ctx context.Context, resolved resolvedApplication, repoRoot string, opts repositoryInitOptions, out io.Writer) error {
+	if err := authorizeApplicationOperation(ctx, "app.configure", resolved); err != nil {
+		return err
+	}
 	current, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
 	if err != nil {
 		return err
@@ -363,6 +424,16 @@ func ensureRepositoryDeploymentInputsForUp(ctx context.Context, in io.Reader, ou
 }
 
 func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "up")
+	if err != nil {
+		return err
+	}
+	args = filtered
+	destination := out
+	if format == outputJSON {
+		out = io.Discard
+		ctx = machineNoninteractiveContext(ctx)
+	}
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -371,11 +442,45 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// Validate repository contracts before starting any control-plane resources.
+	if !opts.ControlPlaneOnly {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		found, err := application.HasRepositoryApplication(cwd)
+		if err != nil {
+			return err
+		}
+		if found {
+			resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+			if err != nil {
+				return err
+			}
+			opts.HA = opts.HA || resolved.Manifest.HA
+			if err := preflightRepositoryWorkload(resolved); err != nil {
+				return fmt.Errorf("application workload preflight failed before control-plane start: %w", err)
+			}
+			if err := application.CheckSharedPostgresTopologyAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); err != nil {
+				return fmt.Errorf("shared backend topology preflight failed before control-plane start: %w", err)
+			}
+		}
+	}
 	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+		if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+			return err
+		}
+		if format == outputJSON {
+			report, err := inspectControlPlane(ctx)
+			if err != nil {
+				return err
+			}
+			return writeJSON(destination, report)
+		}
+		return nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -391,11 +496,31 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if !initialized {
-			return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+			if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				report, err := inspectControlPlane(ctx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(destination, report)
+			}
+			return nil
 		}
 	}
 	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
 		return err
 	}
-	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
+	if err := repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts); err != nil {
+		return err
+	}
+	if format == outputJSON {
+		status, err := collectApplicationStatusResult(ctx, application.DefaultStore(), nil)
+		if err != nil {
+			return err
+		}
+		return writeJSON(destination, status)
+	}
+	return nil
 }

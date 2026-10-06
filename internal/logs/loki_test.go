@@ -236,7 +236,7 @@ func TestWorkloadLoggingOverrideUsesLoopbackSyslog(t *testing.T) {
 		t.Fatal(err)
 	}
 	override := string(data)
-	for _, required := range []string{"driver: syslog", "udp://127.0.0.1:", "syslog-format: rfc5424", "tag: \"api\"", "tag: \"worker\""} {
+	for _, required := range []string{"driver: syslog", "tcp://127.0.0.1:", "syslog-format: rfc5424", "tag: \"api\"", "tag: \"worker\""} {
 		if !strings.Contains(override, required) {
 			t.Fatalf("override missing %q:\n%s", required, override)
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -82,6 +81,11 @@ func operatorWhoAmICommand() *cli.Command {
 		Summary: "Show the authenticated BaseHarbor operator identity",
 		Usage:   "baha whoami -e ENV|--environment ENV",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			outputArgs, format, err := parseReadOutputArgs(args, "whoami")
+			if err != nil {
+				return err
+			}
+			args = outputArgs
 			filtered, environment, err := extractApplicationEnvironment(args, "whoami")
 			if err != nil {
 				return err
@@ -89,35 +93,24 @@ func operatorWhoAmICommand() *cli.Command {
 			if len(filtered) != 0 || strings.TrimSpace(environment) == "" {
 				return usageError("baha whoami requires only -e/--environment", "Example: baha whoami -e test")
 			}
-			if !operatorauth.ManagedEnvironment(environment) {
-				fmt.Fprintln(out, "Mode: trusted-local")
-				fmt.Fprintln(out, "Identity: local-operator")
+			result, err := inspectOperatorIdentity(ctx, environment)
+			if err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(out, result)
+			}
+			actor := result.Actor
+			if actor.Mode == "trusted-local" {
+				fmt.Fprintln(out, "Mode: trusted-local\nIdentity: local-operator")
 				return nil
 			}
-			target, err := effectiveTarget(ctx)
-			if err != nil {
-				return err
+			fmt.Fprintf(out, "Target: %s\nEnvironment: %s\nIssuer: %s\nSubject: %s\n", result.Target, result.Environment, actor.Issuer, actor.Subject)
+			if actor.Assurance != "" {
+				fmt.Fprintf(out, "Assurance: %s\n", actor.Assurance)
 			}
-			stored, found, err := resolveStoredOperatorAuthBoundary(target.Name, environment)
-			if err != nil {
-				return err
-			}
-			if !found {
-				return usageError("operator authentication is not configured", "Run a command against this environment interactively to bootstrap OIDC, or configure it first.")
-			}
-			principal, err := operatorauth.VerifySession(ctx, target.Name, environment, stored)
-			if err != nil {
-				if errors.Is(err, operatorauth.ErrAuthenticationRequired) {
-					return usageError("no valid operator session", "Run 'baha login -e "+environment+"'.")
-				}
-				return err
-			}
-			fmt.Fprintf(out, "Target: %s\nEnvironment: %s\nIssuer: %s\nSubject: %s\n", target.Name, environment, principal.Issuer, principal.Subject)
-			if principal.Assurance != "" {
-				fmt.Fprintf(out, "Assurance: %s\n", principal.Assurance)
-			}
-			if len(principal.Methods) > 0 {
-				fmt.Fprintf(out, "Authentication methods: %v\n", principal.Methods)
+			if len(actor.Methods) > 0 {
+				fmt.Fprintf(out, "Authentication methods: %v\n", actor.Methods)
 			}
 			return nil
 		},

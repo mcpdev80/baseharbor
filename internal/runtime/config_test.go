@@ -8,7 +8,7 @@ import (
 
 func TestLoadConfigReadsRuntimeEnvironment(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "runtime.env")
-	content := "BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=secret\nBASEHARBOR_OPENBAO_DB_PASSWORD=openbao-secret\nBASEHARBOR_POSTGRES_PORT=15432\nBASEHARBOR_OPENBAO_PORT=18200\n"
+	content := "BASEHARBOR_POSTGRES_DB=baseharbor\nBASEHARBOR_POSTGRES_USER=baseharbor\nBASEHARBOR_POSTGRES_PASSWORD=secret\nBASEHARBOR_POSTGRES_INTERNAL_PASSWORD=internal-secret\nBASEHARBOR_OPENBAO_DB_PASSWORD=openbao-secret\nBASEHARBOR_POSTGRES_PORT=15432\nBASEHARBOR_OPENBAO_PORT=18200\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

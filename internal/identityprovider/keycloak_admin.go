@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 type keycloakAdmin struct {
@@ -20,7 +21,17 @@ type keycloakAdmin struct {
 	token    string
 }
 
+type keycloakAdminLoginError struct {
+	Status int
+	Body   string
+}
+
+func (e *keycloakAdminLoginError) Error() string {
+	return fmt.Sprintf("authenticate Keycloak admin: HTTP %d: %s", e.Status, e.Body)
+}
+
 type keycloakRealm struct {
+	ID                                            string            `json:"id,omitempty"`
 	Realm                                         string            `json:"realm"`
 	Enabled                                       bool              `json:"enabled"`
 	DisplayName                                   string            `json:"displayName,omitempty"`
@@ -118,7 +129,10 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("authenticate Keycloak admin: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return &keycloakAdminLoginError{
+			Status: resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
 	}
 	var payload struct {
 		AccessToken string `json:"access_token"`
@@ -253,21 +267,54 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 }
 
 func (a *keycloakAdmin) ensureRealmAdminRole(ctx context.Context, realm, userID string) error {
+	if strings.EqualFold(strings.TrimSpace(realm), "master") {
+		status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/master/roles/admin", nil)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK {
+			return fmt.Errorf("resolve Keycloak master admin role: HTTP %d: %s", status, body)
+		}
+		var role keycloakRole
+		if err := json.Unmarshal([]byte(body), &role); err != nil {
+			return err
+		}
+		status, body, err = a.do(ctx, http.MethodPost, "/admin/realms/master/users/"+url.PathEscape(userID)+"/role-mappings/realm", []keycloakRole{role})
+		if err != nil {
+			return err
+		}
+		if status != http.StatusNoContent && status != http.StatusConflict {
+			return fmt.Errorf("grant Keycloak master admin role: HTTP %d: %s", status, body)
+		}
+		return nil
+	}
+
 	query := url.Values{}
 	query.Set("clientId", "realm-management")
-	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
-	if err != nil {
-		return err
+	lookupCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var clientID string
+	var lastBody string
+	for {
+		status, body, err := a.do(lookupCtx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients?"+query.Encode(), nil)
+		if err == nil && status == http.StatusOK {
+			var clients []keycloakClient
+			if json.Unmarshal([]byte(body), &clients) == nil && len(clients) == 1 && strings.TrimSpace(clients[0].ID) != "" {
+				clientID = clients[0].ID
+				break
+			}
+		}
+		lastBody = body
+		select {
+		case <-lookupCtx.Done():
+			return fmt.Errorf("resolve Keycloak realm-management client after HA convergence: %s", strings.TrimSpace(lastBody))
+		case <-ticker.C:
+		}
 	}
-	if status != http.StatusOK {
-		return fmt.Errorf("resolve Keycloak realm-management client: HTTP %d: %s", status, body)
-	}
-	var clients []keycloakClient
-	if err := json.Unmarshal([]byte(body), &clients); err != nil || len(clients) != 1 {
-		return fmt.Errorf("resolve Keycloak realm-management client")
-	}
-	clientID := clients[0].ID
-	status, body, err = a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
+	status, body, err := a.do(ctx, http.MethodGet, "/admin/realms/"+url.PathEscape(realm)+"/clients/"+url.PathEscape(clientID)+"/roles/realm-admin", nil)
 	if err != nil {
 		return err
 	}
@@ -651,34 +698,80 @@ func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) boo
 }
 
 func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any) (int, string, error) {
-	var body io.Reader
+	var payloadData []byte
 	if payload != nil {
 		data, err := json.Marshal(payload)
 		if err != nil {
 			return 0, "", err
 		}
-		body = bytes.NewReader(data)
+		payloadData = data
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.endpoint, "/")+path, body)
-	if err != nil {
-		return 0, "", err
+
+	attempt := func() (int, string, error) {
+		var body io.Reader
+		if payloadData != nil {
+			body = bytes.NewReader(payloadData)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.endpoint, "/")+path, body)
+		if err != nil {
+			return 0, "", err
+		}
+		if payloadData != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if a.token != "" {
+			req.Header.Set("Authorization", "Bearer "+a.token)
+		}
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return 0, "", err
+		}
+		defer resp.Body.Close()
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return 0, "", err
+		}
+		return resp.StatusCode, strings.TrimSpace(string(data)), nil
 	}
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+
+	retryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastStatus int
+	var lastBody string
+	var lastErr error
+	for {
+		status, body, err := attempt()
+		// Bootstrap 503s reject the operation before it runs. Only that explicit
+		// response may retry writes; transport failures may have applied them.
+		// Read-only verification can encounter stale database connections while
+		// the provider resumes, just like admin token acquisition.
+		retry := method == http.MethodGet && (err != nil ||
+			status == http.StatusInternalServerError ||
+			status == http.StatusBadGateway ||
+			status == http.StatusServiceUnavailable ||
+			status == http.StatusGatewayTimeout)
+		if method != http.MethodGet {
+			retry = err == nil && status == http.StatusServiceUnavailable && strings.HasPrefix(body, "Bootstrap in progress.")
+		}
+		if !retry {
+			return status, body, err
+		}
+		lastStatus, lastBody, lastErr = status, body, err
+		select {
+		case <-retryCtx.Done():
+			if ctx.Err() != nil {
+				return 0, "", ctx.Err()
+			}
+			if lastErr != nil {
+				return 0, "", lastErr
+			}
+			return lastStatus, lastBody, nil
+		case <-ticker.C:
+		}
 	}
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
-	}
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return 0, "", err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return 0, "", err
-	}
-	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
 func sortedUnique(values []string) []string {

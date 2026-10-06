@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -158,6 +159,16 @@ func renderHostMemoryPreflight(out io.Writer, result hostresource.Result) {
 	fmt.Fprintf(out, "  Planned minimum     %s\n", formatMemoryBytes(result.Estimate.MinimumBytes))
 	fmt.Fprintf(out, "  Planned estimate    %s\n", formatMemoryBytes(result.Estimate.EstimatedBytes))
 	fmt.Fprintf(out, "  Confidence          %s\n", result.Estimate.Confidence)
+	if len(result.Estimate.Components) > 0 {
+		names := make([]string, 0, len(result.Estimate.Components))
+		for _, component := range result.Estimate.Components {
+			names = append(names, component.Name)
+		}
+		fmt.Fprintf(out, "  Planned components  %d: %s\n", len(names), strings.Join(names, ", "))
+		if result.Estimate.MinimumBytes == 0 {
+			fmt.Fprintln(out, "  Estimate basis      planning budget; no measured reliable minimum")
+		}
+	}
 	fmt.Fprintf(out, "  Safety headroom     %s\n", result.Decision)
 	if result.Evidence.SwapTotalBytes > 0 {
 		used := result.Evidence.SwapTotalBytes - result.Evidence.SwapFreeBytes

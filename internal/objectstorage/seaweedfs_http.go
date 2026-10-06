@@ -20,6 +20,44 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
+func (d *Driver) waitBucketIdentityReady(ctx context.Context, bucket string, credentials application.ObjectStorageCredentials) error {
+	instance, err := d.realization.Existing(ctx)
+	if err != nil {
+		return err
+	}
+	client := instance.HTTPClient
+	if client == nil {
+		return errors.New("SeaweedFS realization did not provide an HTTP client")
+	}
+	defer client.CloseIdleConnections()
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	probeKey := fmt.Sprintf(".baseharbor/identity-ready-%d", time.Now().UnixNano())
+	probePayload := []byte("baseharbor-s3-identity-readiness")
+	var lastStatus int
+	var lastErr error
+	for {
+		status, _, err := signedS3Request(waitCtx, client, instance.Endpoint, http.MethodPut, bucket, probeKey, credentials, probePayload)
+		if err == nil && (status == http.StatusOK || status == http.StatusNoContent) {
+			_, _, _ = signedS3Request(context.WithoutCancel(ctx), client, instance.Endpoint, http.MethodDelete, bucket, probeKey, credentials, nil)
+			return nil
+		}
+		lastStatus = status
+		lastErr = err
+		select {
+		case <-waitCtx.Done():
+			if lastErr != nil {
+				return lastErr
+			}
+			return fmt.Errorf("S3 identity did not become active before deadline; last HTTP status %d", lastStatus)
+		case <-ticker.C:
+		}
+	}
+}
+
 func waitS3(ctx context.Context, client *http.Client, endpoint string) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()

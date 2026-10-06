@@ -343,11 +343,36 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	if err := os.Chmod(files.Config, 0o644); err != nil {
 		return ProviderFiles{}, err
 	}
+	// Keep the public/workload service identity stable at "otel-collector".
+	// HA members use the same server identity behind the authenticated frontend;
+	// the frontend terminates the client-authenticated mTLS contract and verifies
+	// each member with the provider CA.
 	accessPolicy.ServerName = "otel-collector"
-	if _, err := serviceaccess.EnsureNativeTLS(ctx, issuer, accessPolicy, files.Dir, "otel-collector", "127.0.0.1"); err != nil {
+	memberPolicy := accessPolicy
+	memberPolicy.AuthenticationRequired = true
+	memberPolicy.Authentication = serviceaccess.AuthenticationMTLS
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "otel-collector", "otel-collector-1", "otel-collector-2")
+	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, serviceaccess.HTTPGatewayFiles{}, files.Network)), 0o600); err != nil {
+	accessSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:               "otel-collector-access",
+		Upstreams:                 []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
+		UpstreamTrustFile:         memberTLS.Material.CA,
+		UpstreamServerName:        "otel-collector",
+		UpstreamClientCertificate: memberTLS.Material.ClientCertificate,
+		UpstreamClientKey:         memberTLS.Material.ClientKey,
+		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
+		ContainerPort:             4318,
+		Networks:                  []string{"telemetry"},
+		NetworkAliases:            []string{"otel-collector"},
+		RequireClient:             requireClientCertificate,
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -423,17 +448,18 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, _ serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
-	var networks = "      - telemetry\n"
-	var networkDecl = ""
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
+	var memberNetworks = "      telemetry:\n        aliases:\n          - otel-collector-metrics\n"
+	var gatewayNetworks = []string{"telemetry"}
+	var networkDecl string
 	if strings.TrimSpace(traceNetwork) != "" {
-		networks += "      - traces\n"
+		memberNetworks += "      traces: {}\n"
+		gatewayNetworks = append(gatewayNetworks, "traces")
 		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
 	}
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`services:
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
+	member := func(name string) string {
+		return fmt.Sprintf(`  %s:
+    image: %s
     restart: unless-stopped
     user: "10001:10001"
     read_only: true
@@ -444,16 +470,30 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
-      - ./service-access/runtime:/run/baseharbor/tls:ro
-    ports:
-      - "127.0.0.1:${BASEHARBOR_OTLP_PORT}:4318"
+      - ./members/service-access/runtime:/run/baseharbor/tls:ro
     networks:
-%s`, networks))
-	b.WriteString(fmt.Sprintf(`networks:
-  telemetry:
-    name: ${BASEHARBOR_TELEMETRY_NETWORK}
-%s`, networkDecl))
-	return strings.ReplaceAll(b.String(), "${BASEHARBOR_TELEMETRY_NETWORK}", telemetryNetwork)
+%s`, name, ProviderImage, memberNetworks)
+	}
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString(member("otel-collector-1"))
+	b.WriteString(member("otel-collector-2"))
+	spec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:               "otel-collector-access",
+		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
+		ContainerPort:             4318,
+		Networks:                  gatewayNetworks,
+		NetworkAliases:            []string{"otel-collector"},
+		RequireClient:             true,
+		UpstreamTrustFile:         "./members/service-access/runtime/ca.pem",
+		UpstreamClientCertificate: "./members/service-access/runtime/client-cert.pem",
+		UpstreamClientKey:         "./members/service-access/runtime/client-key.pem",
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, spec))
+	b.WriteString("networks:\n")
+	fmt.Fprintf(&b, "  telemetry:\n    name: %q\n", telemetryNetwork)
+	b.WriteString(networkDecl)
+	return b.String()
 }
 
 func collectorConfig() string {
@@ -465,50 +505,51 @@ func collectorConfigWithTraceBackend(traceEndpoint string) string {
 }
 
 func collectorConfigWithTraceBackendAccess(traceEndpoint string, requireClientCertificate bool) string {
-	traceExporters := "[debug]"
-	extraExporter := ""
-	if strings.TrimSpace(traceEndpoint) != "" {
-		traceExporters = "[debug, otlp_http/tempo]"
-		extraExporter = fmt.Sprintf("  otlp_http/tempo:\n    endpoint: %s\n", strings.TrimRight(strings.TrimSpace(traceEndpoint), "/"))
+	traceEndpoint = strings.TrimSpace(traceEndpoint)
+	var b strings.Builder
+	b.WriteString("receivers:\n")
+	b.WriteString("  otlp:\n")
+	b.WriteString("    protocols:\n")
+	b.WriteString("      http:\n")
+	b.WriteString("        endpoint: 0.0.0.0:4318\n")
+	b.WriteString("        tls:\n")
+	b.WriteString("          cert_file: /run/baseharbor/tls/server.pem\n")
+	b.WriteString("          key_file: /run/baseharbor/tls/server-key.pem\n")
+	if requireClientCertificate {
+		b.WriteString("          client_ca_file: /run/baseharbor/tls/ca.pem\n")
+		b.WriteString("          client_ca_file_reload: true\n")
 	}
-	return fmt.Sprintf(`receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-        tls:
-          cert_file: /run/baseharbor/tls/server.pem
-          key_file: /run/baseharbor/tls/server-key.pem
-%s          min_version: "1.2"
-          reload_interval: 30s
-exporters:
-  debug:
-    verbosity: basic
-%sservice:
-  telemetry:
-    metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: 0.0.0.0
-                port: 8888
-  pipelines:
-    traces:
-      receivers: [otlp]
-      exporters: %s
-    metrics:
-      receivers: [otlp]
-      exporters: [debug]
-    logs:
-      receivers: [otlp]
-      exporters: [debug]
-`, func() string {
-		if requireClientCertificate {
-			return "          client_ca_file: /run/baseharbor/tls/ca.pem\\n"
-		}
-		return ""
-	}(), extraExporter, traceExporters)
+	b.WriteString("          min_version: \"1.2\"\n")
+	b.WriteString("          reload_interval: 30s\n")
+	b.WriteString("exporters:\n")
+	b.WriteString("  debug:\n")
+	b.WriteString("    verbosity: basic\n")
+	traceExporters := "[debug]"
+	if traceEndpoint != "" {
+		b.WriteString("  otlp_http/tempo:\n")
+		fmt.Fprintf(&b, "    endpoint: %q\n", strings.TrimRight(traceEndpoint, "/"))
+		traceExporters = "[debug, otlp_http/tempo]"
+	}
+	b.WriteString("service:\n")
+	b.WriteString("  telemetry:\n")
+	b.WriteString("    metrics:\n")
+	b.WriteString("      readers:\n")
+	b.WriteString("        - pull:\n")
+	b.WriteString("            exporter:\n")
+	b.WriteString("              prometheus:\n")
+	b.WriteString("                host: 0.0.0.0\n")
+	b.WriteString("                port: 8888\n")
+	b.WriteString("  pipelines:\n")
+	b.WriteString("    traces:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	fmt.Fprintf(&b, "      exporters: %s\n", traceExporters)
+	b.WriteString("    metrics:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	b.WriteString("    logs:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	return b.String()
 }
 
 func ProviderEndpoint(files ProviderFiles) (string, error) {
@@ -543,7 +584,35 @@ func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Clien
 	if err != nil {
 		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
 	}
-	return serviceaccess.NewHTTPClientForPolicy(material, policy)
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withOTelHostHeader(client, policy.ServerName), nil
+}
+
+type otelHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t otelHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withOTelHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = otelHostHeaderTransport{base: base, host: host}
+	return &copyClient
 }
 
 func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
@@ -551,18 +620,26 @@ func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
 	defer ticker.Stop()
 	var last error
 	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
-		req.Header.Set("Content-Type", "application/x-protobuf")
-		resp, err := client.Do(req)
+		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
 		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			var resp *http.Response
+			resp, err = client.Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					cancel()
+					return nil
+				}
+				last = fmt.Errorf("HTTP %d", resp.StatusCode)
+			} else {
+				last = err
 			}
-			last = fmt.Errorf("HTTP %d", resp.StatusCode)
 		} else {
 			last = err
 		}
+		cancel()
 		select {
 		case <-ctx.Done():
 			if last == nil {

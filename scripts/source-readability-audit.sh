@@ -68,7 +68,7 @@ while IFS= read -r file; do
   done; then
     failed=1
   fi
-done < <(find cmd internal spec -type f -name '*.go' ! -name '*_test.go' -print | sort)
+done < <(find cmd internal spec conformance -type f -name '*.go' ! -name '*_test.go' -print | sort)
 
 if [ "$failed" -ne 0 ]; then
   exit 1

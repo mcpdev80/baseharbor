@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,7 @@ func ensureBootstrapPostgresTLS(stateDir string) error {
 	certPath := filepath.Join(dir, "server-cert.pem")
 	keyPath := filepath.Join(dir, "server-key.pem")
 	if filesExist(caPath, certPath, keyPath) {
-		return nil
+		return writeControlPlanePostgresHAProxyConfig(dir)
 	}
 
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -59,7 +60,7 @@ func ensureBootstrapPostgresTLS(stateDir string) error {
 		Subject:      pkix.Name{CommonName: "postgres"},
 		NotBefore:    now.Add(-time.Minute),
 		NotAfter:     now.Add(24 * time.Hour),
-		DNSNames:     []string{"postgres"},
+		DNSNames:     []string{"postgres", "postgres-member-1", "postgres-member-2", "postgres-member-3"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -79,7 +80,7 @@ func ensureBootstrapPostgresTLS(stateDir string) error {
 	if err := writePEM(certPath, "CERTIFICATE", serverDER, 0o644); err != nil {
 		return err
 	}
-	if err := writePEM(keyPath, "PRIVATE KEY", keyDER, 0o644); err != nil {
+	if err := writePEM(keyPath, "PRIVATE KEY", keyDER, 0o600); err != nil {
 		return err
 	}
 	const hba = `local all all trust
@@ -88,7 +89,44 @@ hostssl all all ::/0 scram-sha-256
 hostnossl all all 0.0.0.0/0 reject
 hostnossl all all ::/0 reject
 `
-	return os.WriteFile(filepath.Join(dir, "pg_hba.conf"), []byte(hba), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "pg_hba.conf"), []byte(hba), 0o644); err != nil {
+		return err
+	}
+	return writeControlPlanePostgresHAProxyConfig(dir)
+}
+
+func writeControlPlanePostgresHAProxyConfig(dir string) error {
+	const config = `global
+  log stdout format raw local0
+
+defaults
+  mode tcp
+  log global
+  timeout connect 5s
+  timeout client 30s
+  timeout server 30s
+
+frontend postgres
+  bind :5432
+  default_backend primary
+
+backend primary
+  option httpchk GET /primary
+  http-check expect status 200
+  default-server check port 8008 inter 2s fall 2 rise 2 on-marked-down shutdown-sessions resolvers runtime-dns resolve-prefer ipv4 init-addr last,libc,none
+  server postgres-1 postgres-member-1:5432 check
+  server postgres-2 postgres-member-2:5432 check
+  server postgres-3 postgres-member-3:5432 check
+
+resolvers runtime-dns
+  parse-resolv-conf
+  hold valid 2s
+  hold obsolete 1s
+  hold nx 1s
+  timeout resolve 1s
+  timeout retry 1s
+`
+	return os.WriteFile(filepath.Join(dir, "haproxy.cfg"), []byte(config), 0o644)
 }
 
 func filesExist(paths ...string) bool {
@@ -152,7 +190,7 @@ func ensureBootstrapOpenBaoTLS(stateDir string) error {
 		Subject:      pkix.Name{CommonName: "openbao"},
 		NotBefore:    now.Add(-time.Minute),
 		NotAfter:     now.Add(24 * time.Hour),
-		DNSNames:     []string{"openbao"},
+		DNSNames:     []string{"openbao", "openbao-member-1", "openbao-member-2", "openbao-member-3"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -173,4 +211,23 @@ func ensureBootstrapOpenBaoTLS(stateDir string) error {
 		return err
 	}
 	return writePEM(keyPath, "PRIVATE KEY", keyDER, 0o644)
+}
+
+func writeControlPlanePostgresProxyConfig(dir string, ha bool) error {
+	if err := writeControlPlanePostgresHAProxyConfig(dir); err != nil {
+		return err
+	}
+	if ha {
+		return nil
+	}
+	path := filepath.Join(dir, "haproxy.cfg")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	config := strings.ReplaceAll(string(data), "  option httpchk GET /primary\n  http-check expect status 200\n", "")
+	config = strings.ReplaceAll(config, "check port 8008", "check")
+	config = strings.ReplaceAll(config, "  server postgres-2 postgres-member-2:5432 check\n", "")
+	config = strings.ReplaceAll(config, "  server postgres-3 postgres-member-3:5432 check\n", "")
+	return os.WriteFile(path, []byte(config), 0644)
 }

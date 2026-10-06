@@ -22,6 +22,8 @@ The bundled OpenBao Compose service runs directly as the image's non-root `openb
 
 The bundled OpenBao runtime uses OpenBao 2.7 with the existing BaseHarbor PostgreSQL control-plane provider as durable storage. BaseHarbor provisions a dedicated `openbao` database and a dedicated least-privilege `openbao` login; the provider-administration identity is never used by the OpenBao process.
 
+In v0.4.21 the bundled control plane is a real HA realization: PostgreSQL runs as a three-member Patroni/Spilo cluster with etcd coordination and a stable logical endpoint, while OpenBao runs as three HA members against that PostgreSQL storage with a stable API/UI endpoint. This protects member/process failure and supports rolling maintenance on one runtime host; it does not claim host-failure tolerance.
+
 The storage connection is TLS-only with PostgreSQL `verify-full`. BaseHarbor bootstraps trust before OpenBao initialization, then rotates PostgreSQL and OpenBao onto the regular OpenBao-issued PKI after the managed issuer is available.
 
 OpenBao terminates TLS directly and uses `tls_auto_reload` for listener certificate/key renewal. Hybrid post-quantum key exchange is preferred where supported while retaining classical fallback interoperability. Pure-PQC remains supported/testable but is not forced as the default compatibility profile.

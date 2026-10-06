@@ -18,10 +18,10 @@ import (
 )
 
 type connectivityEndpointInput struct {
-	Application string
-	Environment string
-	Service     string
-	Port        int
+	Application string `json:"application"`
+	Environment string `json:"environment,omitempty"`
+	Service     string `json:"service"`
+	Port        int    `json:"port,omitempty"`
 }
 
 func connectCommand() *cli.Command {
@@ -31,24 +31,13 @@ func connectCommand() *cli.Command {
 		Usage:   "baha connect SOURCE TARGET",
 		Long:    "Creates one directional deny-by-default exception such as 'baha connect app-a/api app-b/sql'. BaseHarbor resolves environment, runtime network and target port from current runtime state. Qualify app@environment/service or service:port only when runtime state is ambiguous.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "connect")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			if len(args) != 2 {
 				return usageError("baha connect requires SOURCE and TARGET", "Example: baha connect app-a/api app-b/sql")
-			}
-			selectedTarget, err := effectiveTarget(ctx)
-			if err != nil {
-				return err
-			}
-			compose, err := detectRuntimeForTarget(ctx, selectedTarget)
-			if err != nil {
-				return err
-			}
-			dataDir, err := targetDataRoot(selectedTarget)
-			if err != nil {
-				return err
-			}
-			containers, err := compose.ListRuntimeContainers(ctx)
-			if err != nil {
-				return err
 			}
 			sourceInput, err := parseConnectivityEndpointInput(args[0])
 			if err != nil {
@@ -61,47 +50,17 @@ func connectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			source, sourceContainers, err := resolveConnectivityEndpoint(sourceInput, containers, selectedTarget.Name)
-			if err != nil {
-				return fmt.Errorf("resolve source %q: %w", args[0], err)
+			progress := out
+			if format == outputJSON {
+				progress = io.Discard
 			}
-			target, targetContainers, err := resolveConnectivityEndpoint(targetInput, containers, selectedTarget.Name)
+			result, err := connectApplications(ctx, sourceInput, targetInput, progress)
 			if err != nil {
-				return fmt.Errorf("resolve target %q: %w", args[1], err)
-			}
-			target.Port, err = resolveConnectivityTargetPort(ctx, compose, targetInput, target, targetContainers)
-			if err != nil {
-				return fmt.Errorf("resolve target %q: %w", args[1], err)
-			}
-			targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, target, containers, selectedTarget.Name)
-			if err != nil {
-				return fmt.Errorf("resolve target network for %q: %w", args[1], err)
-			}
-			rule := application.ConnectivityRule{Source: source, Target: target}
-			if err := rule.Validate(); err != nil {
 				return err
 			}
-			if _, err := application.LoadConnectivityRulesAt(dataDir); err != nil {
-				return fmt.Errorf("validate existing connectivity policy before mutation: %w", err)
+			if format == outputJSON {
+				return writeJSON(out, result)
 			}
-
-			fmt.Fprintln(out, "Connectivity plan")
-			fmt.Fprintf(out, "  source: %s\n", formatConnectivityEndpoint(rule.Source))
-			fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
-			fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
-
-			if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
-				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
-				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
-				return err
-			}
-			if err := application.AddConnectivityRuleAt(dataDir, rule); err != nil {
-				_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
-				_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
-				return fmt.Errorf("persist connectivity policy after verified convergence: %w", err)
-			}
-			fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
-			fmt.Fprintf(out, "     target alias:      %s\n", application.ConnectivityTargetAlias(rule))
 			return nil
 		},
 	}
@@ -113,6 +72,12 @@ func disconnectCommand() *cli.Command {
 		Summary: "Remove one explicit cross-application connectivity exception",
 		Usage:   "baha disconnect SOURCE TARGET",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "disconnect")
+			if err != nil {
+				return err
+			}
+			args = filtered
+
 			if len(args) != 2 {
 				return usageError("baha disconnect requires SOURCE and TARGET", "Example: baha disconnect app-a/api app-b/sql")
 			}
@@ -124,34 +89,12 @@ func disconnectCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			selectedTarget, err := effectiveTarget(ctx)
+			rule, err := disconnectApplications(ctx, source, target)
 			if err != nil {
 				return err
 			}
-			dataDir, err := targetDataRoot(selectedTarget)
-			if err != nil {
-				return err
-			}
-			rule, err := findConnectivityRule(dataDir, source, target)
-			if err != nil {
-				return err
-			}
-			compose, err := detectRuntimeForTarget(ctx, selectedTarget)
-			if err != nil {
-				return err
-			}
-			containers, err := compose.ListRuntimeContainers(ctx)
-			if err != nil {
-				return err
-			}
-			if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
-				return err
-			}
-			if err := application.RemoveConnectivityRuleAt(dataDir, rule); err != nil {
-				return err
-			}
-			if err := connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule)); err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, rule)
 			}
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Section("Connectivity")
@@ -167,20 +110,21 @@ func connectionsCommand() *cli.Command {
 		Summary: "List explicit cross-application connectivity policy",
 		Usage:   "baha connections",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "connections")
+			if err != nil {
+				return err
+			}
+			args = filtered
+
 			if len(args) != 0 {
 				return usageError("baha connections does not accept arguments", "Run 'baha connections --help' for usage.")
 			}
-			target, err := effectiveTarget(ctx)
+			rules, err := listConnectivityRules(ctx)
 			if err != nil {
 				return err
 			}
-			dataDir, err := targetDataRoot(target)
-			if err != nil {
-				return err
-			}
-			rules, err := application.LoadConnectivityRulesAt(dataDir)
-			if err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, rules)
 			}
 			if len(rules) == 0 {
 				fmt.Fprintln(out, "No cross-application connectivity is allowed.")
@@ -643,4 +587,151 @@ func formatConnectivityEndpoint(endpoint application.ConnectivityEndpoint) strin
 		value += ":" + strconv.Itoa(endpoint.Port)
 	}
 	return value
+}
+
+func formatConnectivityInput(input connectivityEndpointInput) string {
+	name := input.Application
+	if input.Environment != "" {
+		name += "@" + input.Environment
+	}
+	service := input.Service
+	if input.Port != 0 {
+		service += fmt.Sprintf(":%d", input.Port)
+	}
+	return name + "/" + service
+}
+func authorizeConnectivityRule(ctx context.Context, operationID, target string, rule application.ConnectivityRule) error {
+	for _, endpoint := range []application.ConnectivityEndpoint{rule.Source, rule.Target} {
+		if err := authorizeMCPOperation(ctx, operationID, target, endpoint.Environment, endpoint.Application, ""); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func connectApplications(ctx context.Context, sourceInput, targetInput connectivityEndpointInput, out io.Writer) (application.ConnectivityRule, error) {
+	if err := authorizeCurrentMCPContext(ctx, "connectivity.connect", "", sourceInput.Environment, ""); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := authorizeCurrentMCPContext(ctx, "connectivity.connect", "", targetInput.Environment, ""); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	selectedTarget, err := effectiveTarget(ctx)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	compose, err := detectRuntimeForTarget(ctx, selectedTarget)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	dataDir, err := targetDataRoot(selectedTarget)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	source, sourceContainers, err := resolveConnectivityEndpoint(sourceInput, containers, selectedTarget.Name)
+	if err != nil {
+		return application.ConnectivityRule{}, fmt.Errorf("resolve source %q: %w", formatConnectivityInput(sourceInput), err)
+	}
+	target, targetContainers, err := resolveConnectivityEndpoint(targetInput, containers, selectedTarget.Name)
+	if err != nil {
+		return application.ConnectivityRule{}, fmt.Errorf("resolve target %q: %w", formatConnectivityInput(targetInput), err)
+	}
+	target.Port, err = resolveConnectivityTargetPort(ctx, compose, targetInput, target, targetContainers)
+	if err != nil {
+		return application.ConnectivityRule{}, fmt.Errorf("resolve target %q: %w", formatConnectivityInput(targetInput), err)
+	}
+	targetNetwork, err := resolveConnectivityTargetNetwork(ctx, compose, target, containers, selectedTarget.Name)
+	if err != nil {
+		return application.ConnectivityRule{}, fmt.Errorf("resolve target network for %q: %w", formatConnectivityInput(targetInput), err)
+	}
+	rule := application.ConnectivityRule{Source: source, Target: target}
+	if err := rule.Validate(); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := authorizeConnectivityRule(ctx, "connectivity.connect", selectedTarget.Name, rule); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if _, err := application.LoadConnectivityRulesAt(dataDir); err != nil {
+		return application.ConnectivityRule{}, fmt.Errorf("validate existing connectivity policy before mutation: %w", err)
+	}
+
+	fmt.Fprintln(out, "Connectivity plan")
+	fmt.Fprintf(out, "  source: %s\n", formatConnectivityEndpoint(rule.Source))
+	fmt.Fprintf(out, "  target: %s\n", formatConnectivityEndpoint(rule.Target))
+	fmt.Fprintf(out, "  policy: directional, deny-by-default exception on TCP/%d\n", rule.Target.Port)
+
+	if err := convergeConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, sourceContainers, targetNetwork); err != nil {
+		_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
+		_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
+		return application.ConnectivityRule{}, err
+	}
+	if err := application.AddConnectivityRuleAt(dataDir, rule); err != nil {
+		_ = suspendConnectivityRuleAt(context.Background(), compose, dataDir, selectedTarget.Name, rule, containers)
+		_ = connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule))
+		return application.ConnectivityRule{}, fmt.Errorf("persist connectivity policy after verified convergence: %w", err)
+	}
+	fmt.Fprintf(out, "[OK] connectivity       %s -> %s\n", formatConnectivityEndpoint(rule.Source), formatConnectivityEndpoint(rule.Target))
+	fmt.Fprintf(out, "     target alias:      %s\n", application.ConnectivityTargetAlias(rule))
+	return rule, nil
+}
+
+func disconnectApplications(ctx context.Context, source, target connectivityEndpointInput) (application.ConnectivityRule, error) {
+	if err := authorizeCurrentMCPContext(ctx, "connectivity.disconnect", "", source.Environment, ""); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	selectedTarget, err := effectiveTarget(ctx)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	dataDir, err := targetDataRoot(selectedTarget)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	rule, err := findConnectivityRule(dataDir, source, target)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := authorizeConnectivityRule(ctx, "connectivity.disconnect", selectedTarget.Name, rule); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	compose, err := detectRuntimeForTarget(ctx, selectedTarget)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := suspendConnectivityRuleAt(ctx, compose, dataDir, selectedTarget.Name, rule, containers); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := application.RemoveConnectivityRuleAt(dataDir, rule); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	if err := connectivityrelay.RemoveFilesAt(dataDir, application.ConnectivityRuleID(rule)); err != nil {
+		return application.ConnectivityRule{}, err
+	}
+	return rule, nil
+}
+
+func listConnectivityRules(ctx context.Context) ([]application.ConnectivityRule, error) {
+	if err := authorizeCurrentMCPContext(ctx, "connectivity.list", "", "", ""); err != nil {
+		return nil, err
+	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := application.LoadConnectivityRulesAt(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return rules, nil
 }

@@ -112,26 +112,7 @@ func (d *Driver) RestoreBucket(ctx context.Context, backup BucketBackup) error {
 			return fmt.Errorf("restore S3 object %s/%s returned HTTP %d", logical, key, status)
 		}
 	}
-	keys, err := listBucketObjectKeys(ctx, client, endpoint, physical, credentials)
-	if err != nil {
-		return fmt.Errorf("verify restored S3 bucket %s: %w", logical, err)
-	}
-	sort.Strings(keys)
-	want := make([]string, 0, len(backup.Objects))
-	for _, object := range backup.Objects {
-		want = append(want, object.Key)
-	}
-	sort.Strings(want)
-	if strings.Join(keys, "\x00") != strings.Join(want, "\x00") {
-		return fmt.Errorf("verify restored S3 bucket %s: object set differs from recovery unit", logical)
-	}
-	for _, object := range backup.Objects {
-		status, body, err := signedS3RequestLimit(ctx, client, endpoint, http.MethodGet, physical, object.Key, credentials, nil, int64(len(object.Data))+1)
-		if err != nil || status != http.StatusOK || string(body) != string(object.Data) {
-			return fmt.Errorf("verify restored S3 object %s/%s failed", logical, object.Key)
-		}
-	}
-	return nil
+	return waitRestoredBucket(ctx, client, endpoint, physical, credentials, backup)
 }
 
 func listBucketObjectKeys(ctx context.Context, client *http.Client, endpoint, bucket string, credentials application.ObjectStorageCredentials) ([]string, error) {

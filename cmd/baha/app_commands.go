@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -23,6 +24,11 @@ func appCreateCommand() *cli.Command {
 		Usage:   "baha app create NAME [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...",
 		Long:    "Creates BaseHarbor-managed declarative application source on the effective Target; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app create")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			m, err := manifestFromCreateArgs(args)
 			if err != nil {
 				return err
@@ -30,6 +36,9 @@ func appCreateCommand() *cli.Command {
 			path, err := createTargetManagedApplication(ctx, m)
 			if err != nil {
 				return err
+			}
+			if format == outputJSON {
+				return writeJSON(out, applicationAdoptionResult{Application: m.Name, ApplicationID: m.ApplicationID, Environment: m.Environment, Manifest: path})
 			}
 			term := cli.NewTerminal(ctx, out, errOut)
 			term.Header(m.Name, m.Environment)
@@ -50,6 +59,11 @@ func appListCommand() *cli.Command {
 		Summary: "List registered deployments for the effective target",
 		Usage:   "baha app list [--all-targets]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app list")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			allTargets := false
 			for _, arg := range args {
 				switch arg {
@@ -59,10 +73,20 @@ func appListCommand() *cli.Command {
 					return unknownOptionUsage("baha app list", arg, "--all-targets")
 				}
 			}
+			if err := authorizeCurrentMCPContext(ctx, "app.list", "", "", ""); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				result, err := collectMachineApplicationList(ctx, machineApplicationListInput{AllTargets: allTargets})
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, result)
+			}
+
 			var (
 				items    []deployment.DeploymentRecord
 				warnings []error
-				err      error
 			)
 			if allTargets {
 				items, warnings, err = deployment.ListAllDeploymentsForDisplay()
@@ -168,94 +192,135 @@ func appPreflightCommand(store application.Store) *cli.Command {
 		Usage:   "baha app preflight [NAME]",
 		Long:    "Checks manifest integrity, supported desired services, local state, the container runtime, OpenBao application-provisioning prerequisites and required-secret readiness. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app preflight")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			resolved, err := resolveApplication(ctx, store, args, "preflight")
 			if err != nil {
 				return err
 			}
-			m := resolved.Manifest
-			var compose bhruntime.RuntimeProvider
-			var platformFiles bhruntime.Files
-			var requiredStatuses []openbao.RequiredSecretStatus
-			var workloadSecurity application.WorkloadSecurityReport
-			requiredKnown := false
-			checks := []preflight.Check{
-				{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-				{Name: "host memory", Run: func(ctx context.Context) error {
-					return runHostMemoryPreflight(ctx, runtimeInput, out, bhruntime.ProviderKind(resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), false)
-				}},
-				{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
-				{Name: "manifest permissions", Run: func(context.Context) error {
-					return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
-				}},
-				{Name: "runtime orchestration", Run: func(ctx context.Context) error {
-					var err error
-					compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
-					return err
-				}},
-				{Name: "desired-state plan", Run: func(context.Context) error {
-					_, err := application.BuildPlan(m)
-					return err
-				}},
-				{Name: "workload security", Run: func(ctx context.Context) error {
-					var err error
-					workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
-					return err
-				}},
+			humanOut, humanErr := out, errOut
+			if format == outputJSON {
+				humanOut, humanErr = io.Discard, io.Discard
 			}
-			if m.Services.Secrets {
-				identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-				checks = append(checks,
-					preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
-						var err error
-						platformFiles, err = existingTargetRuntimeFiles(ctx)
-						return err
-					}},
-					preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {
-						if platformFiles.Compose == "" {
-							return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
-						}
-						return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
-					}},
-				)
-				if len(application.RequiredSecretNames(m)) > 0 {
-					checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
-						files, err := application.ExistingRuntimeFiles(resolved.Store, m)
-						if errors.Is(err, application.ErrRuntimeNotApplied) {
-							return nil
-						}
-						if err != nil {
-							return err
-						}
-						requiredStatuses, err = inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
-						if err != nil {
-							return err
-						}
-						requiredKnown = true
-						return openbao.RequireApplicationSecrets(requiredStatuses)
-					}})
+			result, err := collectApplicationPreflight(ctx, resolved, humanOut, humanErr)
+			if format == outputJSON {
+				if jsonErr := writeJSON(out, result); jsonErr != nil {
+					return jsonErr
 				}
 			}
-			results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
-			preflight.Format(out, results)
-			if cli.NewTerminal(ctx, out, errOut).Verbose() {
-				printWorkloadSecurityFindings(out, workloadSecurity)
-			}
-			if len(application.RequiredSecretNames(m)) > 0 {
-				if requiredKnown {
-					printRequiredSecretStatus(out, requiredStatuses)
-				} else {
-					fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
-					for _, name := range application.RequiredSecretNames(m) {
-						fmt.Fprintf(out, "  %-24s %-38s %s\n", name, "unknown - secret scope not materialized yet", "baha app secret set "+name)
-					}
-					fmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
-				}
-			}
-			if !ok {
-				return errors.New("application preflight failed")
-			}
-			fmt.Fprintln(out, "Preflight passed. No changes were made.")
-			return nil
+			return err
 		},
 	}
+}
+
+type applicationPreflightResult struct {
+	Application string             `json:"application"`
+	Environment string             `json:"environment"`
+	Passed      bool               `json:"passed"`
+	Checks      []preflight.Result `json:"checks"`
+	Error       *machine.Error     `json:"error,omitempty"`
+}
+
+func collectApplicationPreflight(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (applicationPreflightResult, error) {
+	if err := authorizeApplicationOperation(ctx, "app.preflight", resolved); err != nil {
+		return applicationPreflightResult{}, err
+	}
+	m := resolved.Manifest
+	var compose bhruntime.RuntimeProvider
+	var platformFiles bhruntime.Files
+	var requiredStatuses []openbao.RequiredSecretStatus
+	var workloadSecurity application.WorkloadSecurityReport
+	requiredKnown := false
+	checks := []preflight.Check{
+		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "host memory", Run: func(ctx context.Context) error {
+			return runHostMemoryPreflight(ctx, runtimeInput, out, bhruntime.ProviderKind(resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), false)
+		}},
+		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
+		{Name: "manifest permissions", Run: func(context.Context) error {
+			return checkManifestPermissions(resolved.ManifestPath, resolved.FromRepository)
+		}},
+		applicationWorkloadContractCheck(resolved),
+		applicationSharedBackendTopologyCheck(resolved),
+		{Name: "runtime orchestration", Run: func(ctx context.Context) error {
+			var err error
+			compose, err = detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle)
+			return err
+		}},
+		{Name: "desired-state plan", Run: func(context.Context) error {
+			_, err := application.BuildPlan(m)
+			return err
+		}},
+		{Name: "workload security", Run: func(ctx context.Context) error {
+			var err error
+			workloadSecurity, err = preflightRepositoryWorkloadSecurity(ctx, compose, resolved)
+			return err
+		}},
+	}
+	if m.Services.Secrets {
+		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+		checks = append(checks,
+			preflight.Check{Name: "OpenBao control-plane runtime", Run: func(context.Context) error {
+				var err error
+				platformFiles, err = existingTargetRuntimeFiles(ctx)
+				return err
+			}},
+			preflight.Check{Name: "OpenBao application provisioning", Run: func(ctx context.Context) error {
+				if platformFiles.Compose == "" {
+					return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+				}
+				return openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity)
+			}},
+		)
+		if len(application.RequiredSecretNames(m)) > 0 {
+			checks = append(checks, preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
+				files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+				if errors.Is(err, application.ErrRuntimeNotApplied) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				requiredStatuses, err = inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+				if err != nil {
+					return err
+				}
+				requiredKnown = true
+				return openbao.RequireApplicationSecrets(requiredStatuses)
+			}})
+		}
+	}
+	results, ok := preflight.RunWithTimeout(ctx, checks, 30*time.Second)
+	result := applicationPreflightResult{Application: m.Name, Environment: m.Environment, Passed: ok, Checks: results}
+	preflight.Format(out, results)
+	if cli.NewTerminal(ctx, out, errOut).Verbose() {
+		printWorkloadSecurityFindings(out, workloadSecurity)
+	}
+	if len(application.RequiredSecretNames(m)) > 0 {
+		if requiredKnown {
+			printRequiredSecretStatus(out, requiredStatuses)
+		} else {
+			fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
+			for _, name := range application.RequiredSecretNames(m) {
+				fmt.Fprintf(out, "  %-24s %-38s %s\n", name, "unknown - secret scope not materialized yet", "baha app secret set "+name)
+			}
+			fmt.Fprintln(out, "Secret presence becomes verifiable after the application secret scope is materialized by 'baha app apply'.")
+		}
+	}
+	// Human diagnostics have already been rendered. Structured consumers receive
+	// bounded findings rather than raw runtime/provider error strings.
+	for i := range result.Checks {
+		if !result.Checks[i].OK && result.Checks[i].Name != "application workload" {
+			result.Checks[i].Detail = "Check failed; review local preflight diagnostics."
+		}
+	}
+	if !ok {
+		result.Error = machine.NewError(machine.ErrorVerificationFailed, "application preflight failed", "Resolve failed preflight checks before applying this application.", false)
+		return result, result.Error
+	}
+	fmt.Fprintln(out, "Preflight passed. No changes were made.")
+	return result, nil
 }

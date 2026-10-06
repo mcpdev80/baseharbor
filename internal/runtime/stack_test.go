@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,6 +106,20 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 			t.Fatalf("OpenBao bootstrap prerequisite %s: %v", path, err)
 		}
 	}
+	initScript, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql`,
+		`--username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB"`,
+		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql`,
+		`--username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao`,
+	} {
+		if !strings.Contains(string(initScript), want) {
+			t.Fatalf("OpenBao PostgreSQL init script missing credential verification %q", want)
+		}
+	}
 	for _, path := range []string{
 		filepath.Join(dir, "providers", "postgresql", "runtime", "openbao-init.sh"),
 		filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"),
@@ -158,7 +173,7 @@ func TestEnsureFilesDoesNotMaterializeServiceAccessBeforeIssuerIsReady(t *testin
 
 func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
-	files, err := EnsureFilesWithPorts(dir, Ports{Postgres: 15432, OpenBao: 18200})
+	files, err := EnsureFilesForProjectAndResources(dir, "baseharbor", "baseharbor", Ports{Postgres: 15432, OpenBao: 18200}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,18 +191,23 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"./providers/openbao/runtime/server-cert.pem:/run/baseharbor/openbao/server-cert.pem:ro",
 		"127.0.0.1:${BASEHARBOR_POSTGRES_PORT}:5432",
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
-		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"postgres-member-1",
+		"ETCD3_HOSTS: \"'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'\"",
+		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
+		"./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro",
+		"./providers/postgresql/runtime/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro",
+		"postgres-member-1:\n        condition: service_started",
+		"postgres-member-2:\n        condition: service_started",
+		"postgres-member-3:\n        condition: service_started",
+		"postgres-init:\n    image: docker.io/library/postgres:18-alpine\n    restart: \"no\"\n    depends_on:\n      postgres:\n        condition: service_started",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Fatalf("reconciled runtime is missing %q", wanted)
 		}
 	}
-	for _, forbidden := range []string{"postgres-access:", "openbao-access:"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("control-plane service must use native TLS instead of proxy %s", forbidden)
-		}
+	if strings.Contains(text, "postgres-access:") {
+		t.Fatal("control-plane PostgreSQL stable endpoint must remain named postgres")
 	}
 	hba, err := os.ReadFile(filepath.Join(dir, "providers", "postgresql", "runtime", "pg_hba.conf"))
 	if err != nil {
@@ -308,20 +328,72 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 	}
 }
 
+func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
+	text := string(composeYAML)
+	const hosts = `      ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"`
+	if got := strings.Count(text, hosts); got != 3 {
+		t.Fatalf("Spilo ETCD3_HOSTS appears %d times, want exactly 3", got)
+	}
+	const scope = "      SCOPE: baseharbor-control-postgres\n"
+	if got := strings.Count(text, scope); got != 3 {
+		t.Fatalf("SCOPE appears %d times, want exactly 3", got)
+	}
+	if got := strings.Count(text, "ETCD3_HOSTS:"); got != 3 {
+		t.Fatalf("Spilo runtime must configure ETCD3_HOSTS exactly three times, got %d", got)
+	}
+	const pgroot = "      PGROOT: /home/postgres/pgdata/pgroot\n"
+	if got := strings.Count(text, pgroot); got != 3 {
+		t.Fatalf("Spilo PGROOT appears %d times, want exactly 3", got)
+	}
+	if got := strings.Count(text, ":/home/postgres/pgdata/pgroot"); got != 3 {
+		t.Fatalf("Spilo persistent PGROOT mount appears %d times, want exactly 3", got)
+	}
+}
+
 func TestEmbeddedComposeUsesNativeTLSFromFirstStart(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"-c ssl=on",
-		"hba_file=/run/baseharbor/tls-source/pg_hba.conf",
+		"ghcr.io/zalando/spilo-18:4.1-p2",
+		"gcr.io/etcd-development/etcd:v3.7.2",
+		`"create_replica_methods":["basebackup"]`,
+		`"basebackup":{"checkpoint":"fast"}`,
+		"SSL_CERTIFICATE_FILE: /run/baseharbor/tls/server-cert.pem",
+		"SSL_PRIVATE_KEY_FILE: /run/baseharbor/tls-runtime/server-key.pem",
+		"install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime",
+		"install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem",
+		`until /bin/sh /run/baseharbor/openbao-init.sh; do`,
+		`attempts=$$((attempts+1))`,
+		`if [ "$${attempts}" -ge 90 ]; then`,
 		"BAO_ADDR: https://127.0.0.1:8200",
+		"openbao-member-1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded runtime missing native-TLS bootstrap %q", want)
 		}
 	}
-	if strings.Contains(text, "-dev") {
-		t.Fatal("openbao must not run in dev mode")
+	for _, forbidden := range []string{
+		"command: [\"server\", \"-dev",
+		"openbao server -dev",
+		"bao server -dev",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("openbao must not run in dev mode: found %q", forbidden)
+		}
+	}
+}
+
+func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
+	text := string(composeYAML)
+	for _, want := range []string{
+		"  openbao:\n",
+		"      openbao-member-1:\n        condition: service_started",
+		"      openbao-member-2:\n        condition: service_started",
+		"      openbao-member-3:\n        condition: service_started",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("embedded OpenBao gateway dependency missing %q", want)
+		}
 	}
 }
 
@@ -331,7 +403,7 @@ func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 		"docker.io/openbao/openbao:2.7.0",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
-		"./providers/postgresql/runtime/openbao-init.sh:/docker-entrypoint-initdb.d/20-baseharbor-openbao.sh:ro",
+		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",
 		"./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro",
 	} {
 		if !strings.Contains(text, wanted) {
@@ -413,7 +485,7 @@ func TestDataDirKeepsExplicitOverrideSelfContained(t *testing.T) {
 func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	text := string(composeYAML)
 	for _, want := range []string{
-		"user: \"70:70\"",
+		"user: \"99:99\"",
 		"user: \"100\"",
 		"SKIP_CHOWN: \"1\"",
 		"/openbao/config:rw,noexec,nosuid,nodev,mode=1777",
@@ -424,6 +496,21 @@ func TestEmbeddedComposeRunsControlPlaneServicesUnprivileged(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("embedded runtime compose missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestEmbeddedComposeUsesStablePatroniMemberIdentitiesAcrossRecreate(t *testing.T) {
+	text := string(composeYAML)
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		member := fmt.Sprintf("postgres-member-%d", ordinal)
+		for _, want := range []string{
+			"  " + member + ":\n",
+			"    hostname: " + member + "\n",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("embedded runtime missing stable Patroni identity %q", want)
+			}
 		}
 	}
 }

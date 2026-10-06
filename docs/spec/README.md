@@ -18,6 +18,8 @@ Prefer machine-readable authority where practical:
 
 - [Application Contract v1](application-contract-v1.md)
 - [Provider Contract v1](provider-contract-v1.md)
+- [Public provider conformance v1](provider-conformance-v1.md)
+- [Extension Artifact Trust v1](extension-artifact-trust-v1.md)
 - [Runtime Provider Contract v1](runtime-provider-contract-v1.md)
 - [Runtime Provider Conformance v1](runtime-provider-conformance-v1.md)
 - [Delivery Provider Contract v1](delivery-provider-contract-v1.md)
@@ -28,6 +30,11 @@ Prefer machine-readable authority where practical:
 - [Runtime Explorer Contract v1](runtime-explorer-v1.md)
 - [Audit & Evidence v1](audit-evidence-v1.md)
 - [Security invariants](security-invariants.md)
+- [Credential and access ownership v1](credential-access-v1.md)
+- [Management surface access v1](management-access-v1.md)
+- [Availability and high availability v1](availability-v1.md)
+- [Application consumption v1](application-consumption-v1.md)
+- [Provider and management-surface acceptance v1](provider-management-acceptance-v1.md)
 
 ## Runtime and access contracts
 

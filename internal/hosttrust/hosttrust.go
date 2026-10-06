@@ -33,11 +33,11 @@ type State struct {
 }
 
 type Status struct {
-	Fingerprint string
-	Trusted     bool
-	Owned       bool
-	Backend     string
-	Path        string
+	Fingerprint string `json:"fingerprint"`
+	Trusted     bool   `json:"trusted"`
+	Owned       bool   `json:"owned"`
+	Backend     string `json:"backend,omitempty"`
+	Path        string `json:"path,omitempty"`
 }
 
 type Backend interface {

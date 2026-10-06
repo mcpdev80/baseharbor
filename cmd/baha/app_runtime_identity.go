@@ -23,20 +23,28 @@ func appRuntimeIdentityCommand(store application.Store) *cli.Command {
 			Summary: "Rotate the application runtime credential",
 			Usage:   "baha app runtime-identity rotate [NAME] [--yes]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "app runtime-identity rotate")
+				if err != nil {
+					return err
+				}
+				args = filtered
+
 				resolved, confirmed, err := resolveRuntimeIdentityMutation(ctx, store, args, "rotate")
 				if err != nil {
 					return err
 				}
 				if !confirmed {
+					if format == outputJSON {
+						return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "action": "rotate", "completed": false, "approval_required": true})
+					}
 					fmt.Fprintf(out, "Runtime identity for %s would be rotated. No changes were made. Re-run with --yes.\n", resolved.Manifest.Name)
 					return nil
 				}
-				files, err := runtimeIdentityFiles(resolved)
-				if err != nil {
+				if err := mutateApplicationRuntimeIdentity(ctx, resolved, "rotate"); err != nil {
 					return err
 				}
-				if err := application.RotateRuntimeIdentity(resolved.Manifest, files); err != nil {
-					return err
+				if format == outputJSON {
+					return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "action": "rotate", "completed": true})
 				}
 				fmt.Fprintf(out, "Rotated runtime identity for %s. Stored secret references are unchanged.\n", resolved.Manifest.Name)
 				return nil
@@ -47,20 +55,28 @@ func appRuntimeIdentityCommand(store application.Store) *cli.Command {
 			Summary: "Immediately revoke the application runtime credential",
 			Usage:   "baha app runtime-identity revoke [NAME] [--yes]",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "app runtime-identity revoke")
+				if err != nil {
+					return err
+				}
+				args = filtered
+
 				resolved, confirmed, err := resolveRuntimeIdentityMutation(ctx, store, args, "revoke")
 				if err != nil {
 					return err
 				}
 				if !confirmed {
+					if format == outputJSON {
+						return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "action": "revoke", "completed": false, "approval_required": true})
+					}
 					fmt.Fprintf(out, "Runtime identity for %s would be revoked. No changes were made. Re-run with --yes.\n", resolved.Manifest.Name)
 					return nil
 				}
-				files, err := runtimeIdentityFiles(resolved)
-				if err != nil {
+				if err := mutateApplicationRuntimeIdentity(ctx, resolved, "revoke"); err != nil {
 					return err
 				}
-				if err := application.RevokeRuntimeIdentity(resolved.Manifest, files); err != nil {
-					return err
+				if format == outputJSON {
+					return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "action": "revoke", "completed": true})
 				}
 				fmt.Fprintf(out, "Revoked runtime identity for %s. Rotate it to restore dynamic secret access.\n", resolved.Manifest.Name)
 				return nil
@@ -81,6 +97,9 @@ func resolveRuntimeIdentityMutation(ctx context.Context, store application.Store
 	}
 	resolved, err := resolveApplication(ctx, store, appArgs, "runtime-identity "+action)
 	if err != nil {
+		return resolvedApplication{}, false, err
+	}
+	if err := authorizeApplicationOperation(ctx, "runtime-identity."+action, resolved); err != nil {
 		return resolvedApplication{}, false, err
 	}
 	if !resolved.Manifest.Services.Secrets {
@@ -118,4 +137,24 @@ func parseRuntimeIdentityMutationArgs(args []string) (string, bool, error) {
 		}
 	}
 	return name, confirmed, nil
+}
+
+func mutateApplicationRuntimeIdentity(ctx context.Context, resolved resolvedApplication, action string) error {
+	if action != "rotate" && action != "revoke" {
+		return errors.New("unknown runtime identity action")
+	}
+	if err := authorizeApplicationOperation(ctx, "runtime-identity."+action, resolved); err != nil {
+		return err
+	}
+	if !resolved.Manifest.Services.Secrets {
+		return errors.New("application does not enable managed secrets")
+	}
+	files, err := runtimeIdentityFiles(resolved)
+	if err != nil {
+		return err
+	}
+	if action == "rotate" {
+		return application.RotateRuntimeIdentity(resolved.Manifest, files)
+	}
+	return application.RevokeRuntimeIdentity(resolved.Manifest, files)
 }

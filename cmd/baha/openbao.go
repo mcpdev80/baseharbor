@@ -18,12 +18,13 @@ func openBaoCommand() *cli.Command {
 		Name:    "openbao",
 		Summary: "Bootstrap and operate the BaseHarbor OpenBao trust plane",
 		Usage:   "baha openbao <command> [options]",
-		Long:    "Manages the bundled single-node OpenBao lifecycle. Bootstrap and unseal are explicit security-sensitive operations; secret material is never printed by these commands.",
+		Long:    "Manages the bundled OpenBao HA trust plane. Bootstrap, unseal and rotation are explicit security-sensitive operations; secret material is never printed by these commands.",
 	}
 	command.Children = []*cli.Command{
 		openBaoStatusCommand(),
 		openBaoBootstrapCommand(),
 		openBaoUnsealCommand(),
+		openBaoRotateCommand(),
 	}
 	return command
 }
@@ -34,19 +35,24 @@ func openBaoStatusCommand() *cli.Command {
 		Summary: "Show OpenBao initialization, seal and manager-auth state",
 		Usage:   "baha openbao status",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "openbao status")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			if len(args) != 0 {
 				return usageError("baha openbao status does not accept arguments", "Run 'baha openbao status --help' for usage.")
 			}
 			checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			compose, files, err := openBaoRuntime(checkCtx)
+			report, err := inspectManagedOpenBao(checkCtx)
 			if err != nil {
 				return err
 			}
-			state, err := platformopenbao.Inspect(checkCtx, compose, files)
-			if err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, report)
 			}
+			state := platformopenbao.State{Initialized: report.Initialized, Sealed: !report.Unsealed}
 			fmt.Fprintln(out, "OpenBao trust plane")
 			if !state.Initialized {
 				fmt.Fprintln(out, "[FAIL] initialized        no")
@@ -58,7 +64,7 @@ func openBaoStatusCommand() *cli.Command {
 				return errors.New("OpenBao is sealed")
 			}
 			fmt.Fprintln(out, "[OK] unsealed           yes")
-			if err := platformopenbao.CheckManager(checkCtx, compose, files); err != nil {
+			if !report.ManagerReady {
 				fmt.Fprintln(out, "[FAIL] manager auth       unavailable")
 				return errors.New("OpenBao manager authentication is not ready")
 			}
@@ -75,29 +81,26 @@ func openBaoBootstrapCommand() *cli.Command {
 		Usage:   "baha openbao bootstrap --recovery-file PATH",
 		Long:    "Initializes the bundled single-node OpenBao instance with one Shamir key share, stores only the unseal material in the explicitly selected owner-only recovery file, configures the baseharbor KV v2 mount and a restricted manager AppRole, verifies that identity, and revokes the initial root token. The recovery file must be outside .baseharbor state.\n\nOptions:\n  --recovery-file PATH  Required destination for OpenBao unseal recovery material",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "openbao bootstrap")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			recoveryPath, err := parseRecoveryFileArg("bootstrap", args)
 			if err != nil {
 				return err
 			}
 			bootstrapCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
-			compose, files, err := openBaoRuntime(bootstrapCtx)
-			if err != nil {
+			if err := bootstrapManagedOpenBao(bootstrapCtx, recoveryPath); err != nil {
 				return err
 			}
-			for _, path := range []string{files.Compose, files.Env} {
-				if err := ownerOnly(path); err != nil {
-					return fmt.Errorf("OpenBao bootstrap preflight: %w", err)
+			if format == outputJSON {
+				report, err := inspectManagedOpenBao(bootstrapCtx)
+				if err != nil {
+					return err
 				}
-			}
-			if err := platformopenbao.Bootstrap(bootstrapCtx, compose, files, recoveryPath); err != nil {
-				return err
-			}
-			if err := persistTargetRecoveryFileReference(bootstrapCtx, recoveryPath); err != nil {
-				return fmt.Errorf("persist OpenBao recovery-file reference: %w", err)
-			}
-			if err := reconcileControlPlaneServiceAccess(bootstrapCtx, compose, files, recoveryPath); err != nil {
-				return fmt.Errorf("reconcile control-plane service access after OpenBao bootstrap: %w", err)
+				return writeJSON(out, report)
 			}
 			fmt.Fprintln(out, "[OK] OpenBao initialized and unsealed")
 			fmt.Fprintln(out, "[OK] baseharbor KV v2 mount configured")
@@ -117,27 +120,67 @@ func openBaoUnsealCommand() *cli.Command {
 		Usage:   "baha openbao unseal --recovery-file PATH",
 		Long:    "Reads owner-only recovery material from the explicitly supplied file and sends the unseal key to OpenBao over stdin. The key is never printed or placed in the host command argument list.\n\nOptions:\n  --recovery-file PATH  Required owner-only OpenBao recovery file",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "openbao unseal")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			recoveryPath, err := parseRecoveryFileArg("unseal", args)
 			if err != nil {
 				return err
 			}
 			unsealCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			compose, files, err := openBaoRuntime(unsealCtx)
-			if err != nil {
+			if err := unsealManagedOpenBao(unsealCtx, recoveryPath); err != nil {
 				return err
 			}
-			if err := platformopenbao.Unseal(unsealCtx, compose, files, recoveryPath); err != nil {
-				return err
-			}
-			if err := platformopenbao.CheckManager(unsealCtx, compose, files); err != nil {
-				return errors.New("OpenBao unsealed but manager authentication verification failed")
-			}
-			if err := reconcileControlPlaneServiceAccess(unsealCtx, compose, files, recoveryPath); err != nil {
-				return fmt.Errorf("reconcile control-plane service access after OpenBao unseal: %w", err)
+			if format == outputJSON {
+				report, err := inspectManagedOpenBao(unsealCtx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, report)
 			}
 			fmt.Fprintln(out, "[OK] OpenBao is unsealed")
 			fmt.Fprintln(out, "[OK] manager AppRole authentication succeeded")
+			return nil
+		},
+	}
+}
+
+func openBaoRotateCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "rotate",
+		Summary: "Rotate OpenBao/control-plane credentials and managed service PKI",
+		Usage:   "baha openbao rotate --recovery-file PATH",
+		Long:    "Rotates the restricted OpenBao manager AppRole credential, PostgreSQL control-plane administration/replication/OpenBao-storage credentials, and the managed service CA. Replacement credentials and trust are verified before previous material is retired. Secret values are never printed.\n\nOptions:\n  --recovery-file PATH  Required owner-only OpenBao recovery file used if a rolling member restart requires unseal",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "openbao rotate")
+			if err != nil {
+				return err
+			}
+			args = filtered
+			recoveryPath, err := parseRecoveryFileArg("rotate", args)
+			if err != nil {
+				return err
+			}
+			rotateCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+
+			if err := rotateManagedOpenBao(rotateCtx, recoveryPath); err != nil {
+				return err
+			}
+			if format == outputJSON {
+				report, err := inspectManagedOpenBao(rotateCtx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, report)
+			}
+			fmt.Fprintln(out, "[OK] control-plane database credentials rotated and previous logins retired")
+			fmt.Fprintln(out, "[OK] OpenBao manager AppRole credential rotated and previous SecretID retired")
+			fmt.Fprintln(out, "[OK] managed service certificates/CA rotated and previous CA retired")
+			fmt.Fprintln(out, "[OK] OpenBao API/UI and PostgreSQL stable endpoints verified")
 			return nil
 		},
 	}

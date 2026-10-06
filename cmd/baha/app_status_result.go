@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
@@ -32,6 +33,7 @@ type applicationStatusResult struct {
 	RuntimeDocsURL  string                                       `json:"runtime_docs_url,omitempty"`
 	ManagementUI    []application.ManagementUISurface            `json:"management_ui,omitempty"`
 	OperatorAuth    operatorAuthObservation                      `json:"operator_auth"`
+	Availability    []availability.NegotiationResult             `json:"availability,omitempty"`
 
 	tlsStatus     *applicationTLSStatus
 	tlsErr        error
@@ -176,6 +178,17 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		}
 	}
 
+	var availabilityResults []availability.NegotiationResult
+	if runtimeProvider, runtimeErr := detectRuntimeForTarget(ctx, resolved.Target); runtimeErr == nil {
+		resolution, availabilityErr := application.ResolveAvailability(resolved.Manifest, string(runtimeProvider.Kind()), runtimeProvider.Descriptor().Availability)
+		availabilityResults = resolution.Results
+		if availabilityErr != nil {
+			result.Ready = false
+		}
+	} else if resolved.Manifest.HA {
+		result.Ready = false
+	}
+
 	var runtimeArtifact *runtimeArtifactObservation
 	var runtimeDocsURL string
 	if application.RequiresRuntimeBroker(resolved.Manifest) && result.State != "not_applied" {
@@ -211,6 +224,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		ApplicationID:   resolved.Manifest.ApplicationID,
 		DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
 		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment),
+		Availability:    availabilityResults,
 		TLS:             tlsObservation,
 		ServiceTLS:      serviceTLS,
 		RuntimeArtifact: runtimeArtifact,

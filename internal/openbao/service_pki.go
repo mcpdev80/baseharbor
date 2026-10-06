@@ -42,11 +42,97 @@ fi`
 	if _, err := execWithToken(ctx, executor, files, rootToken, ensureRoot); err != nil {
 		return fmt.Errorf("configure OpenBao service PKI root: %w", err)
 	}
-	if _, err := execWithToken(ctx, executor, files, rootToken,
-		`exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`); err != nil {
-		return fmt.Errorf("configure OpenBao service PKI role: %w", err)
+	const roleCommand = `exec bao write baseharbor-pki/roles/baseharbor-services allow_any_name=true allow_localhost=true allow_ip_sans=true allowed_uri_sans="spiffe://baseharbor/apps/*,spiffe://baseharbor/platform/*" enforce_hostnames=false key_type=ec key_bits=256 ttl=720h max_ttl=720h generate_lease=true`
+	var roleErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		if _, roleErr = execWithToken(ctx, executor, files, rootToken, roleCommand); roleErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("configure OpenBao service PKI role: %w", roleErr)
+}
+
+func RotateServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) error {
+	token, err := managerToken(ctx, executor, files)
+	if err != nil {
+		return err
+	}
+	leader, err := servicePKILeader(ctx, executor, files, token)
+	if err != nil {
+		return fmt.Errorf("resolve OpenBao leader for service PKI rotation: %w", err)
+	}
+	leaderPrefix := "BAO_ADDR=https://" + leader + ":8200 "
+	before, err := serviceCAWithToken(ctx, executor, files, token, leaderPrefix)
+	if err != nil {
+		return fmt.Errorf("read OpenBao service CA on leader %s before rotation: %w", leader, err)
+	}
+	out, err := execWithToken(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/root/rotate/internal common_name="BaseHarbor Managed Service CA" ttl=87600h key_type=ec key_bits=256`)
+	if err != nil {
+		return fmt.Errorf("rotate OpenBao service PKI root on leader %s: %w", leader, err)
+	}
+	var rotation struct {
+		Data struct {
+			IssuerID string `json:"issuer_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &rotation); err != nil || strings.TrimSpace(rotation.Data.IssuerID) == "" {
+		return errors.New("rotate OpenBao service PKI root returned an invalid issuer")
+	}
+	payload, err := json.Marshal(map[string]string{"default": strings.TrimSpace(rotation.Data.IssuerID)})
+	if err != nil {
+		return errors.New("encode OpenBao service PKI default issuer")
+	}
+	if _, err := execWithTokenPayload(ctx, executor, files, token, leaderPrefix+`exec bao write -format=json baseharbor-pki/config/issuers -`, string(payload)); err != nil {
+		return fmt.Errorf("activate rotated OpenBao service PKI root on leader %s: %w", leader, err)
+	}
+	after, err := serviceCAWithToken(ctx, executor, files, token, leaderPrefix)
+	if err != nil {
+		return fmt.Errorf("read OpenBao service CA on leader %s after rotation: %w", leader, err)
+	}
+	if string(before) == string(after) {
+		return errors.New("OpenBao service PKI root rotation did not change the active CA")
 	}
 	return nil
+}
+
+func servicePKILeader(ctx context.Context, executor Executor, files bhruntime.Files, token string) (string, error) {
+	if !files.HA {
+		state, err := Inspect(ctx, executor, files)
+		if err != nil {
+			return "", err
+		}
+		if !state.Initialized || state.Sealed {
+			return "", ErrSealed
+		}
+		return "openbao-member-1", nil
+	}
+	var lastErr error
+	for _, member := range files.OpenBaoMembers() {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		out, err := execWithToken(
+			probeCtx,
+			executor,
+			files,
+			token,
+			"BAO_ADDR=https://"+member+":8200 exec bao read -field=is_self sys/leader",
+		)
+		cancel()
+		if err == nil && strings.EqualFold(strings.TrimSpace(out), "true") {
+			return member, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errors.New("no active OpenBao leader reported itself")
 }
 
 func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([]byte, error) {
@@ -54,19 +140,37 @@ func ServiceCA(ctx context.Context, executor Executor, files bhruntime.Files) ([
 	if err != nil {
 		return nil, err
 	}
-	out, err := execWithToken(ctx, executor, files, token, `exec bao read -format=json baseharbor-pki/cert/ca`)
+	ca, err := serviceCAWithToken(ctx, executor, files, token, "")
 	if err != nil {
 		return nil, fmt.Errorf("read OpenBao service CA: %w", err)
 	}
-	var reply struct {
-		Data struct {
-			Certificate string `json:"certificate"`
-		} `json:"data"`
+	return ca, nil
+}
+
+func serviceCAWithToken(ctx context.Context, executor Executor, files bhruntime.Files, token, commandPrefix string) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		out, err := execWithToken(ctx, executor, files, token, commandPrefix+`exec bao read -format=json baseharbor-pki/cert/ca`)
+		if err == nil {
+			var reply struct {
+				Data struct {
+					Certificate string `json:"certificate"`
+				} `json:"data"`
+			}
+			if decodeErr := json.Unmarshal([]byte(out), &reply); decodeErr == nil && strings.TrimSpace(reply.Data.Certificate) != "" {
+				return []byte(strings.TrimSpace(reply.Data.Certificate) + "\n"), nil
+			}
+			lastErr = errors.New("read OpenBao service CA returned an invalid response")
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
-	if err := json.Unmarshal([]byte(out), &reply); err != nil || strings.TrimSpace(reply.Data.Certificate) == "" {
-		return nil, errors.New("read OpenBao service CA returned an invalid response")
-	}
-	return []byte(strings.TrimSpace(reply.Data.Certificate) + "\n"), nil
+	return nil, lastErr
 }
 
 func IssueServiceCertificate(ctx context.Context, executor Executor, files bhruntime.Files, request ServiceCertificateRequest) (ServiceCertificate, error) {

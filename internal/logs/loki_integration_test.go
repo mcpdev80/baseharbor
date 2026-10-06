@@ -97,7 +97,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
     logging:
       driver: syslog
       options:
-        syslog-address: "udp://127.0.0.1:PORT"
+        syslog-address: "tcp://127.0.0.1:PORT"
         syslog-format: rfc5424
         tag: "api"
 `

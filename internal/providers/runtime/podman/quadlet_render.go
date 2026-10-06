@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -14,10 +15,11 @@ import (
 
 func emptyQuadletProject(project string) QuadletProject {
 	return QuadletProject{
-		Project:      project,
-		Files:        map[string]string{},
-		ServiceUnits: map[string]string{},
-		Containers:   map[string]string{},
+		Project:           project,
+		Files:             map[string]string{},
+		ServiceUnits:      map[string]string{},
+		Containers:        map[string]string{},
+		CompletedServices: map[string]bool{},
 	}
 }
 
@@ -144,6 +146,17 @@ func quadletEnabledServiceNames(model quadletComposeProject, selected map[string
 
 func quadletRenderProjectService(result *QuadletProject, composePath, project string, model quadletComposeProject, serviceName string, selected map[string]struct{}) error {
 	service := model.Services[serviceName]
+	for _, dependency := range service.DependsOn.Names {
+		if service.DependsOn.Conditions[dependency] != "service_completed_successfully" {
+			continue
+		}
+		if len(selected) > 0 {
+			if _, ok := selected[dependency]; !ok {
+				continue
+			}
+		}
+		result.CompletedServices[dependency] = true
+	}
 	unitBase := project + "-" + sanitizeQuadletName(serviceName)
 	containerName := unitBase
 
@@ -151,7 +164,10 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 	if err != nil {
 		return err
 	}
-	envName := quadletRenderServiceEnvironment(result, unitBase, service)
+	envName, err := quadletRenderServiceEnvironment(result, unitBase, service)
+	if err != nil {
+		return err
+	}
 
 	var unit strings.Builder
 	quadletRenderServiceUnitHeader(&unit, project, serviceName, image, containerName, envName, model, service, selected)
@@ -172,7 +188,7 @@ func quadletRenderProjectService(result *QuadletProject, composePath, project st
 		return err
 	}
 	quadletRenderServiceLogging(&unit, service)
-	if err := quadletRenderServiceRestart(&unit, service); err != nil {
+	if err := quadletRenderServiceRestart(&unit, project, service, selected); err != nil {
 		return err
 	}
 
@@ -232,9 +248,9 @@ func quadletLocalBaseHarborImage(image string) bool {
 	return strings.HasPrefix(name, "baseharbor-")
 }
 
-func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, service quadletComposeService) string {
+func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, service quadletComposeService) (string, error) {
 	if len(service.Environment) == 0 {
-		return ""
+		return "", nil
 	}
 	envName := unitBase + ".env"
 	keys := make([]string, 0, len(service.Environment))
@@ -244,16 +260,20 @@ func quadletRenderServiceEnvironment(result *QuadletProject, unitBase string, se
 	sort.Strings(keys)
 	var envOut strings.Builder
 	for _, key := range keys {
-		fmt.Fprintf(&envOut, "%s=%s\n", key, service.Environment[key])
+		value := service.Environment[key]
+		if strings.ContainsAny(value, "\r\n") {
+			return "", fmt.Errorf("Compose service environment %s contains a multiline value unsupported by Podman env files; encode structured values on one line", key)
+		}
+		fmt.Fprintf(&envOut, "%s=%s\n", key, value)
 	}
 	result.Files[envName] = envOut.String()
-	return envName
+	return envName, nil
 }
 
 func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName, image, containerName, envName string, model quadletComposeProject, service quadletComposeService, selected map[string]struct{}) {
 	unit.WriteString("[Unit]\n")
 	fmt.Fprintf(unit, "Description=BaseHarbor Quadlet service %s/%s\n", project, serviceName)
-	deps := append([]string(nil), service.DependsOn...)
+	deps := append([]string(nil), service.DependsOn.Names...)
 	sort.Strings(deps)
 	for _, dep := range deps {
 		if len(selected) > 0 {
@@ -262,7 +282,10 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 			}
 		}
 		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
-		fmt.Fprintf(unit, "Requires=%s\nAfter=%s\n", depUnit, depUnit)
+		// Compose depends_on controls startup ordering/readiness. It must not
+		// introduce systemd stop propagation between otherwise independent
+		// services, especially HA members and their stable proxy.
+		fmt.Fprintf(unit, "Wants=%s\nAfter=%s\n", depUnit, depUnit)
 	}
 
 	serviceNetworks := append([]string(nil), service.Networks.Names...)
@@ -316,6 +339,16 @@ func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeS
 	for _, capability := range service.CapAdd {
 		if strings.TrimSpace(capability) != "" {
 			fmt.Fprintf(unit, "AddCapability=%s\n", strings.TrimSpace(capability))
+		}
+	}
+	for _, option := range service.DNSOptions {
+		if strings.TrimSpace(option) != "" {
+			fmt.Fprintf(unit, "DNSOption=%s\n", strings.TrimSpace(option))
+		}
+	}
+	for _, domain := range service.DNSSearch {
+		if strings.TrimSpace(domain) != "" {
+			fmt.Fprintf(unit, "DNSSearch=%s\n", strings.TrimSpace(domain))
 		}
 	}
 	for _, option := range service.SecurityOpt {
@@ -384,10 +417,14 @@ func quadletRenderServiceNetworks(unit *strings.Builder, project, serviceName st
 			// generator can resolve the matching network unit and its dependency.
 			spec = quadletResourceUnitBase(project, networkName, actual) + ".network"
 		}
-		fmt.Fprintf(unit, "Network=%s\n", spec)
-		for _, alias := range aliases {
-			fmt.Fprintf(unit, "NetworkAlias=%s\n", alias)
+		for index, alias := range aliases {
+			if index == 0 {
+				spec += ":alias=" + alias
+			} else {
+				spec += ",alias=" + alias
+			}
 		}
+		fmt.Fprintf(unit, "Network=%s\n", spec)
 	}
 	return nil
 }
@@ -525,9 +562,27 @@ func quadletRenderPodmanProcessEnvironmentEntries(unit *strings.Builder) {
 	}
 }
 
-func quadletRenderServiceRestart(unit *strings.Builder, service quadletComposeService) error {
+func quadletRenderServiceRestart(unit *strings.Builder, project string, service quadletComposeService, selected map[string]struct{}) error {
 	unit.WriteString("\n[Service]\nTimeoutStartSec=900\n")
 	quadletRenderPodmanProcessEnvironmentEntries(unit)
+	deps := append([]string(nil), service.DependsOn.Names...)
+	sort.Strings(deps)
+	for _, dep := range deps {
+		if len(selected) > 0 {
+			if _, ok := selected[dep]; !ok {
+				continue
+			}
+		}
+		if service.DependsOn.Conditions[dep] != "service_completed_successfully" {
+			continue
+		}
+		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
+		script := fmt.Sprintf(
+			"for i in $(seq 1 240); do if systemctl --user is-failed --quiet %s; then exit 1; fi; if ! systemctl --user is-active --quiet %s; then exit 0; fi; sleep 0.5; done; exit 1",
+			depUnit, depUnit,
+		)
+		fmt.Fprintf(unit, "ExecStartPre=/bin/sh -ec %s\n", strconv.Quote(quadletSystemdValue(script)))
+	}
 	switch strings.ToLower(strings.TrimSpace(service.Restart)) {
 	case "always", "unless-stopped":
 		unit.WriteString("Restart=always\n")

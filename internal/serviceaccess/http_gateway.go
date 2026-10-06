@@ -2,6 +2,7 @@ package serviceaccess
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -21,10 +22,11 @@ import (
 const GatewayImage = "docker.io/library/caddy:2.11.4-alpine"
 
 type HTTPGatewayFiles struct {
-	Dir       string
-	Caddyfile string
-	Material  TLSMaterial
-	AuthToken string
+	Dir                    string
+	Caddyfile              string
+	Material               TLSMaterial
+	AuthToken              string
+	HealthAuthorizationEnv string
 }
 
 type NativeTLSFiles struct {
@@ -52,38 +54,76 @@ func EnsureNativeTLS(ctx context.Context, issuer Issuer, policy Policy, provider
 }
 
 type HTTPGatewaySpec struct {
-	ServiceName        string
-	Upstream           string
-	UpstreamTrustFile  string
-	UpstreamServerName string
-	PublishedPortEnv   string
-	ContainerPort      int
-	Networks           []string
-	NetworkAliases     []string
-	RequireClient      bool
-	DenyPaths          []string
-	BasicAuthUsername  string
-	BasicAuthPassword  string
+	ServiceName               string
+	Upstream                  string
+	Upstreams                 []string
+	UpstreamTrustFile         string
+	UpstreamServerName        string
+	UpstreamClientCertificate string
+	UpstreamClientKey         string
+	PublishedPortEnv          string
+	ContainerPort             int
+	Networks                  []string
+	NetworkAliases            []string
+	CertificateNames          []string
+	RequireClient             bool
+	DenyPaths                 []string
+	BasicAuthUsername         string
+	BasicAuthPassword         string
+	HealthURI                 string
+	HealthStatus              int
+	HealthAuthorizationEnv    string
 }
 
 func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, providerDir string, spec HTTPGatewaySpec) (HTTPGatewayFiles, error) {
+	if spec.HealthAuthorizationEnv != "" {
+		for i, c := range spec.HealthAuthorizationEnv {
+			if c != '_' && (c < 'A' || c > 'Z') && (i == 0 || c < '0' || c > '9') {
+				return HTTPGatewayFiles{}, errors.New("HTTP service gateway health authorization environment name is invalid")
+			}
+		}
+		if strings.TrimSpace(spec.HealthURI) == "" {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway health authorization requires a health URI")
+		}
+	}
 	if strings.TrimSpace(spec.ServiceName) == "" {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway name is required")
 	}
-	if strings.TrimSpace(spec.Upstream) == "" {
-		return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream is required")
+	upstreams, err := normalizedGatewayUpstreams(spec.Upstream, spec.Upstreams)
+	if err != nil {
+		return HTTPGatewayFiles{}, err
 	}
+	spec.Upstream = upstreams[0]
+	spec.Upstreams = upstreams
 	if spec.ContainerPort == 0 {
 		spec.ContainerPort = 8443
 	}
 	if spec.ContainerPort < 1 || spec.ContainerPort > 65535 {
 		return HTTPGatewayFiles{}, errors.New("HTTP service gateway container port is invalid")
 	}
+	if (strings.TrimSpace(spec.UpstreamClientCertificate) == "") != (strings.TrimSpace(spec.UpstreamClientKey) == "") {
+		return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream mTLS requires both client certificate and key")
+	}
+	upstreamMaterialDir := ""
+	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		dir := filepath.Dir(candidate)
+		if upstreamMaterialDir == "" {
+			upstreamMaterialDir = dir
+			continue
+		}
+		if dir != upstreamMaterialDir {
+			return HTTPGatewayFiles{}, errors.New("HTTP service gateway upstream TLS material must share one projection directory")
+		}
+	}
 	dir := filepath.Join(providerDir, "service-access")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return HTTPGatewayFiles{}, fmt.Errorf("create service access state: %w", err)
 	}
-	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), spec.ServiceName, "127.0.0.1")
+	certificateNames := append([]string{spec.ServiceName, "127.0.0.1"}, spec.CertificateNames...)
+	material, err := EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(dir, "pki"), certificateNames...)
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
@@ -91,9 +131,16 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 	if err != nil {
 		return HTTPGatewayFiles{}, err
 	}
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return HTTPGatewayFiles{}, fmt.Errorf("create service access runtime config: %w", err)
+	}
+	if err := os.Chmod(configDir, 0o755); err != nil {
+		return HTTPGatewayFiles{}, fmt.Errorf("set service access runtime config permissions: %w", err)
+	}
 	files := HTTPGatewayFiles{
 		Dir:       dir,
-		Caddyfile: filepath.Join(dir, "Caddyfile"),
+		Caddyfile: filepath.Join(configDir, "Caddyfile"),
 		Material:  gatewayMaterial,
 	}
 	authentication, err := reconcileGatewayAuthentication(dir, policy)
@@ -129,11 +176,54 @@ func EnsureHTTPGateway(ctx context.Context, issuer Issuer, policy Policy, provid
 		}
 		basicAuthHash = string(hash)
 	}
-	config := caddyfileWithUpstreamTLS(spec.Upstream, spec.UpstreamTrustFile, spec.UpstreamServerName, spec.ContainerPort, authentication, basicAuthUsername, basicAuthHash, spec.DenyPaths...)
+	config := caddyfileWithUpstreamsTLSHealthClientAuthorization(
+		spec.Upstreams,
+		spec.UpstreamTrustFile,
+		spec.UpstreamServerName,
+		spec.UpstreamClientCertificate,
+		spec.UpstreamClientKey,
+		spec.ContainerPort,
+		authentication,
+		basicAuthUsername,
+		basicAuthHash,
+		spec.HealthURI,
+		spec.HealthStatus,
+		spec.HealthAuthorizationEnv,
+		spec.DenyPaths...,
+	)
+	if fingerprint, err := gatewayUpstreamTLSFingerprint(spec); err != nil {
+		return HTTPGatewayFiles{}, err
+	} else if fingerprint != "" {
+		config = "# baseharbor-upstream-tls-sha256=" + fingerprint + "\n" + config
+	}
+	if spec.HealthAuthorizationEnv != "" {
+		files.HealthAuthorizationEnv = spec.HealthAuthorizationEnv
+	}
 	if err := writeAtomic(files.Caddyfile, []byte(config), 0o644); err != nil {
 		return HTTPGatewayFiles{}, err
 	}
 	return files, nil
+}
+
+func gatewayUpstreamTLSFingerprint(spec HTTPGatewaySpec) (string, error) {
+	var payload []byte
+	for _, path := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read HTTP service gateway upstream TLS material %s: %w", filepath.Base(path), err)
+		}
+		payload = append(payload, data...)
+		payload = append(payload, 0)
+	}
+	if len(payload) == 0 {
+		return "", nil
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum[:]), nil
 }
 
 type gatewayState struct {
@@ -231,8 +321,11 @@ func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, erro
 			return "", err
 		}
 		target := filepath.Join(runtimeDir, name)
-		// The enclosing directory is owner-only. Files mounted into the
-		// unprivileged gateway must be readable by its runtime UID.
+		// This is an explicit derived runtime projection, not authoritative
+		// service-access state. The source PKI remains protected under pki/
+		// (private keys 0600); this copy is readable because the third-party
+		// gateway runs as a fixed unprivileged UID and the directory is mounted
+		// read-only. Reconciliation regenerates it from the protected source.
 		if err := writeAtomic(target, data, 0o644); err != nil {
 			return "", err
 		}
@@ -253,6 +346,21 @@ func projectGatewayMaterial(dir string, material TLSMaterial) (TLSMaterial, erro
 	material.CA = ca
 	material.ServerCertificate = cert
 	material.ServerKey = key
+	if strings.TrimSpace(material.ClientCertificate) != "" || strings.TrimSpace(material.ClientKey) != "" {
+		if strings.TrimSpace(material.ClientCertificate) == "" || strings.TrimSpace(material.ClientKey) == "" {
+			return TLSMaterial{}, errors.New("project service client identity requires both certificate and key")
+		}
+		clientCert, err := project(material.ClientCertificate, "client-cert.pem")
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("project service client certificate: %w", err)
+		}
+		clientKey, err := project(material.ClientKey, "client-key.pem")
+		if err != nil {
+			return TLSMaterial{}, fmt.Errorf("project service client key: %w", err)
+		}
+		material.ClientCertificate = clientCert
+		material.ClientKey = clientKey
+	}
 	return material, nil
 }
 
@@ -264,6 +372,10 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	fmt.Fprintf(&b, "  %s:\n", spec.ServiceName)
 	fmt.Fprintf(&b, "    image: %s\n", GatewayImage)
 	b.WriteString("    restart: unless-stopped\n")
+	if files.HealthAuthorizationEnv != "" {
+		b.WriteString("    environment:\n")
+		fmt.Fprintf(&b, "      %s: ${%s}\n", files.HealthAuthorizationEnv, files.HealthAuthorizationEnv)
+	}
 	b.WriteString("    user: \"65532:65532\"\n")
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
@@ -279,24 +391,34 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 	b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
 	b.WriteString("    command:\n")
 	if files.AuthToken != "" {
-		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - export BASEHARBOR_ACCESS_TOKEN=\"$(cat /run/secrets/baseharbor-access-token)\"; cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	} else {
-		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile\n")
+		b.WriteString("      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --watch --config /etc/caddy/Caddyfile --adapter caddyfile\n")
 	}
 	if strings.TrimSpace(spec.PublishedPortEnv) != "" {
 		b.WriteString("    ports:\n")
 		fmt.Fprintf(&b, "      - \"127.0.0.1:$"+"{%s}:%d\"\n", spec.PublishedPortEnv, spec.ContainerPort)
 	}
 	b.WriteString("    volumes:\n")
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Caddyfile+":/etc/caddy/Caddyfile:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.ServerCertificate+":/certs/server.pem:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.ServerKey+":/certs/server-key.pem:ro"))
-	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.Material.CA+":/certs/ca.pem:ro"))
+	// Runtime config and active certificates are directory-mounted. The config
+	// directory contains only the public Caddyfile and is traversable by the
+	// unprivileged gateway UID; private service-access state remains owner-only.
+	// Managed files are replaced atomically, so directory mounts make replacement
+	// inodes visible to the running Caddy process and --watch can reload in place.
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(filepath.Dir(files.Caddyfile))+":/etc/caddy:ro"))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(filepath.Dir(files.Material.ServerCertificate))+":/certs:ro"))
 	if files.AuthToken != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(files.AuthToken+":/run/secrets/baseharbor-access-token:ro"))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(files.AuthToken)+":/run/secrets/baseharbor-access-token:ro"))
 	}
-	if strings.TrimSpace(spec.UpstreamTrustFile) != "" {
-		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(spec.UpstreamTrustFile+":/upstream/ca.pem:ro"))
+	upstreamMaterialDir := ""
+	for _, candidate := range []string{spec.UpstreamTrustFile, spec.UpstreamClientCertificate, spec.UpstreamClientKey} {
+		if strings.TrimSpace(candidate) != "" {
+			upstreamMaterialDir = filepath.Dir(candidate)
+			break
+		}
+	}
+	if upstreamMaterialDir != "" {
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(composeBindSource(upstreamMaterialDir)+":/upstream:ro"))
 	}
 	if len(spec.Networks) > 0 {
 		b.WriteString("    networks:\n")
@@ -331,6 +453,44 @@ func HTTPGatewayComposeService(files HTTPGatewayFiles, spec HTTPGatewaySpec) str
 		}
 	}
 	return b.String()
+}
+
+func composeBindSource(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "." || path == "" {
+		return path
+	}
+	if filepath.IsAbs(path) || strings.HasPrefix(path, "."+string(filepath.Separator)) || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return "." + string(filepath.Separator) + path
+}
+
+func normalizedGatewayUpstreams(single string, many []string) ([]string, error) {
+	values := append([]string(nil), many...)
+	if strings.TrimSpace(single) != "" {
+		values = append([]string{single}, values...)
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(value), "http://") && !strings.HasPrefix(strings.ToLower(value), "https://") {
+			return nil, fmt.Errorf("HTTP service gateway upstream %q must use http:// or https://", value)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("HTTP service gateway upstream is required")
+	}
+	return out, nil
 }
 
 func containsGatewayAlias(values []string, candidate string) bool {
@@ -488,6 +648,26 @@ func caddyfile(upstream string, port int, authentication AuthenticationMode, bas
 }
 
 func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLS([]string{upstream}, upstreamTrustFile, upstreamServerName, port, authentication, basicAuthUsername, basicAuthHash, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLS(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSStatus(upstreams, upstreamTrustFile, upstreamServerName, port, authentication, basicAuthUsername, basicAuthHash, 0, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSStatus(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealth(upstreams, upstreamTrustFile, upstreamServerName, port, authentication, basicAuthUsername, basicAuthHash, "", healthStatus, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealth(upstreams []string, upstreamTrustFile, upstreamServerName string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealthClient(upstreams, upstreamTrustFile, upstreamServerName, "", "", port, authentication, basicAuthUsername, basicAuthHash, healthURI, healthStatus, denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealthClient(upstreams []string, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, denyPaths ...string) string {
+	return caddyfileWithUpstreamsTLSHealthClientAuthorization(upstreams, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey, port, authentication, basicAuthUsername, basicAuthHash, healthURI, healthStatus, "", denyPaths...)
+}
+
+func caddyfileWithUpstreamsTLSHealthClientAuthorization(upstreams []string, upstreamTrustFile, upstreamServerName, upstreamClientCertificate, upstreamClientKey string, port int, authentication AuthenticationMode, basicAuthUsername, basicAuthHash, healthURI string, healthStatus int, healthAuthorizationEnv string, denyPaths ...string) string {
 	var tlsBlock string
 	var authBlock string
 	if authentication == AuthenticationMTLS {
@@ -516,12 +696,41 @@ func caddyfileWithUpstreamTLS(upstream, upstreamTrustFile, upstreamServerName st
 	if basicAuthUsername != "" {
 		authBlock += fmt.Sprintf("  basic_auth {\n    %s %s\n  }\n", basicAuthUsername, basicAuthHash)
 	}
-	proxy := "  reverse_proxy " + upstream + "\n"
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") && strings.TrimSpace(upstreamTrustFile) != "" {
+	normalized, err := normalizedGatewayUpstreams("", upstreams)
+	if err != nil {
+		normalized = []string{"http://127.0.0.1:1"}
+	}
+	proxyTargets := strings.Join(normalized, " ")
+	healthURI = strings.TrimSpace(healthURI)
+	activeHealth := ""
+	if healthURI != "" && strings.HasPrefix(healthURI, "/") && !strings.ContainsAny(healthURI, "\r\n{}") {
+		activeHealth = "    health_uri " + healthURI + "\n"
+		if healthAuthorizationEnv != "" {
+			activeHealth += "    health_headers {\n      Authorization \"{$" + healthAuthorizationEnv + "}\"\n    }\n"
+		}
+		if healthStatus >= 100 && healthStatus <= 599 {
+			activeHealth += fmt.Sprintf("    health_status %d\n", healthStatus)
+		}
+		activeHealth += "    health_interval 5s\n    health_timeout 2s\n"
+	}
+	proxy := "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + activeHealth + "    fail_duration 30s\n    max_fails 2\n  }\n"
+	allHTTPS := true
+	for _, upstream := range normalized {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstream)), "https://") {
+			allHTTPS = false
+			break
+		}
+	}
+	if allHTTPS && strings.TrimSpace(upstreamTrustFile) != "" {
 		serverName := strings.TrimSpace(upstreamServerName)
-		proxy = "  reverse_proxy " + upstream + " {\n    transport http {\n      tls\n      tls_trust_pool file /upstream/ca.pem\n"
+		proxy = "  reverse_proxy " + proxyTargets + " {\n    lb_policy round_robin\n    lb_try_duration 5s\n    lb_try_interval 250ms\n" + activeHealth + "    fail_duration 30s\n    max_fails 2\n    transport http {\n      tls\n      tls_trust_pool file /upstream/" + filepath.Base(upstreamTrustFile) + "\n"
 		if serverName != "" {
 			proxy += "      tls_server_name " + serverName + "\n"
+		}
+		if strings.TrimSpace(upstreamClientCertificate) != "" || strings.TrimSpace(upstreamClientKey) != "" {
+			if strings.TrimSpace(upstreamClientCertificate) != "" && strings.TrimSpace(upstreamClientKey) != "" {
+				proxy += "      tls_client_auth /upstream/" + filepath.Base(upstreamClientCertificate) + " /upstream/" + filepath.Base(upstreamClientKey) + "\n"
+			}
 		}
 		proxy += "    }\n  }\n"
 	}
