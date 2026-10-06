@@ -127,7 +127,13 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 	}
 
 	exposureRunning := managedExposureRunning(ctx, c.compose, c.manifest, c.files)
-	return applicationComponentsStopped(c.services, workloadRunning, c.workloadStatus.Found, brokerRunning, exposureRunning) && !application.HasObjectStorage(c.manifest)
+	// Shared SQL/cache live in provider projects. An empty application project
+	// cannot establish their state; the authenticated provider checks below must
+	// decide readiness, including failures, before status/show return.
+	return applicationComponentsStopped(c.services, workloadRunning, c.workloadStatus.Found, brokerRunning, exposureRunning) &&
+		!application.HasObjectStorage(c.manifest) &&
+		!application.UsesSharedPostgreSQL(c.manifest) &&
+		!application.UsesSharedValkey(c.manifest)
 }
 
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
