@@ -56,16 +56,15 @@ func New(executor Executor) (*Handler, error) {
 	if logStreamExecutor, ok := executor.(LogStreamExecutor); ok {
 		h.logStreamExecutor = logStreamExecutor
 	}
-	h.mux.HandleFunc("GET /api/v1/machine/discovery", h.handleDiscovery)
-	h.mux.HandleFunc("POST /api/v1/machine/executions", h.handleExecute)
-	h.mux.HandleFunc("GET /api/v1/machine/executions/{execution_id}", h.handleExecution)
-	h.mux.HandleFunc("GET /api/v1/machine/executions/{execution_id}/events", h.handleEvents)
-	h.mux.HandleFunc("POST /api/v1/machine/streams/logs", h.handleLogStream)
-	h.mux.HandleFunc("POST /api/v1/machine/streams/exec", h.handleExecStream)
-	h.mux.HandleFunc("POST /api/v1/machine/terminals", h.handleTerminalOpen)
-	h.mux.HandleFunc("GET /api/v1/machine/terminals/{stream_id}/events", h.handleTerminalEvents)
-	h.mux.HandleFunc("POST /api/v1/machine/terminals/{stream_id}/input", h.handleTerminalInput)
-	h.mux.HandleFunc("DELETE /api/v1/machine/terminals/{stream_id}", h.handleTerminalClose)
+	bindings := machine.MachineHTTPBindings()
+	for key, handler := range map[string]http.HandlerFunc{
+		"discovery": h.handleDiscovery, "execute": h.handleExecute, "execution": h.handleExecution, "execution_events": h.handleEvents,
+		"logs": h.handleLogStream, "exec": h.handleExecStream, "terminal_open": h.handleTerminalOpen, "terminal_events": h.handleTerminalEvents,
+		"terminal_input": h.handleTerminalInput, "terminal_close": h.handleTerminalClose,
+	} {
+		binding := bindings[key]
+		h.mux.HandleFunc(binding.Method+" "+binding.Href, handler)
+	}
 	return h, nil
 }
 
@@ -113,6 +112,7 @@ func (h *Handler) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	discovery := machine.MachineDiscovery()
+	discovery.HTTP = machine.MachineHTTPBindings()
 	if _, ok := h.executor.(TerminalExecutor); ok {
 		discovery.Capabilities = append(discovery.Capabilities, "streams.terminal")
 	}

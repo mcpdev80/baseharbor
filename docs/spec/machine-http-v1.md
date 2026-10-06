@@ -40,6 +40,14 @@ Returns the current machine contract, execution contract, semantic operations an
 
 Clients MUST discover operations rather than infer support from CLI spelling.
 
+HTTP discovery also returns an `http` map of named endpoint bindings, each with
+`href`, `method` and optional `protocol`. The same Core registry installs the
+routes and produces these descriptors. Browsers bootstrap only the documented
+discovery endpoint, then use these bindings for execution and streams. Named
+`{execution_id}` and `{stream_id}` placeholders accept validated resource IDs.
+Every resolved destination remains pinned to the configured HTTPS Core origin;
+discovery never authorizes a redirect, credential-bearing URL or foreign origin.
+
 ## Executions
 
 `POST /api/v1/machine/executions`
