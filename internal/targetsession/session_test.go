@@ -42,6 +42,10 @@ func testNode() Node {
 }
 
 func newSessionPair(t *testing.T, denied bool) (*Session, *tls.Conn, *registry) {
+	return newSessionPairWithRegistry(t, denied, nil)
+}
+
+func newSessionPairWithRegistry(t *testing.T, denied bool, wrap func(*registry, *x509.CertPool) targetenrollment.NodeRegistry) (*Session, *tls.Conn, *registry) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
@@ -74,12 +78,16 @@ func newSessionPair(t *testing.T, denied bool) (*Session, *tls.Conn, *registry) 
 	server := tls.Server(right, &tls.Config{MinVersion: tls.VersionTLS13, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: roots, Certificates: []tls.Certificate{serverPair}})
 	r := &registry{scope: node.Scope()}
 	r.denied.Store(denied)
+	var admission targetenrollment.NodeRegistry = r
+	if wrap != nil {
+		admission = wrap(r, roots)
+	}
 	type result struct {
 		session *Session
 		err     error
 	}
 	accepted := make(chan result, 1)
-	go func() { s, e := Accept(ctx, server, r, coreURI.String()); accepted <- result{s, e} }()
+	go func() { s, e := Accept(ctx, server, admission, coreURI.String()); accepted <- result{s, e} }()
 	if err := client.HandshakeContext(ctx); err != nil {
 		t.Fatal(err)
 	}

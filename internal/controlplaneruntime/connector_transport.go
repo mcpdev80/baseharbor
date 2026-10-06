@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
@@ -71,6 +72,16 @@ func startConnectorTransport(ctx context.Context, cfg Config, deps serverDepende
 		}
 		return reloaded, nil
 	}
+	registry, err := targetenrollment.WithLiveTrust(database.NewConnectorEnrollmentStore(deps.pool),
+		func(check context.Context) (*x509.CertPool, error) {
+			if check.Err() != nil {
+				return nil, check.Err()
+			}
+			return loadClientCAPool(cfg.ConnectorTLSCAFile)
+		})
+	if err != nil {
+		return nil, nil, err
+	}
 	listener, err := net.Listen("tcp", cfg.ConnectorListenAddr)
 	if err != nil {
 		return nil, nil, errors.New("Core outbound Connector listener is unavailable")
@@ -80,7 +91,7 @@ func startConnectorTransport(ctx context.Context, cfg Config, deps serverDepende
 	lifetime, cancel := context.WithCancel(ctx)
 	finished := make(chan error, 1)
 	go func() {
-		finished <- pool.Serve(lifetime, listener, configuration, database.NewConnectorEnrollmentStore(deps.pool), identity)
+		finished <- pool.Serve(lifetime, listener, configuration, registry, identity)
 	}()
 	return finished, func() { cancel(); _ = listener.Close() }, nil
 }

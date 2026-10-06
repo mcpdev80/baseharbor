@@ -275,9 +275,12 @@ The interrupted transport is retired; callers reconcile observed state before a
 new mutation. A missing or foreign session never selects a local runtime.
 
 Sessions expire at the earlier of five minutes, peer certificate expiry and
-Core lifetime. Persisted admission is rechecked every five seconds with a
-two-second lookup deadline, including idle and active sessions. Revocation or
-registry unavailability closes the transport within that check bound. New
+Core lifetime. Persisted admission and the current node CA bundle are rechecked
+every five seconds with a two-second lookup deadline, including idle and active
+sessions, and before every dispatch/stream open. The peer chain is verified
+against freshly loaded trust; a cached successful handshake does not preserve
+an authority removed from the overlap bundle. Revocation, trust reload failure,
+retired CA or registry unavailability closes the transport within that bound. New
 handshakes reload server identity material and node CA trust, supporting a
 controlled overlap bundle; changing the selected Core identity requires restart.
 Real OpenBao/rotation/runtime and authenticated private evidence remain required;

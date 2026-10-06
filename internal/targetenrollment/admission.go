@@ -53,6 +53,9 @@ func AdmitTLSNode(ctx context.Context, state tls.ConnectionState, scope Scope, r
 		leaf.NotBefore.After(now) || !leaf.NotAfter.After(now) || leaf.SerialNumber == nil || leaf.SerialNumber.Sign() <= 0 {
 		return ErrDenied
 	}
+	if verifyCurrentNodeTrust(ctx, registry, state.PeerCertificates, now) != nil {
+		return ErrDenied
+	}
 	serial, err := NormalizeCertificateSerial(leaf.SerialNumber.Text(16))
 	if err != nil || registry.AdmitCertificate(ctx, scope, serial, leaf.NotAfter) != nil || ctx.Err() != nil {
 		return ErrDenied
