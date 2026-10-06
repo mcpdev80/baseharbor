@@ -181,4 +181,4 @@ Ein nicht zugeordnetes oder fremdes Target wird abgewiesen.
 Die CA wird an ein ausdrücklich ausgewähltes lokales Core-Target gebunden.
 HTTPS-Einschreibung allein belegt noch keine ausführbare Remote-Verbindung.
 Live-Zulassung, Erneuerung, Widerruf und Docker-/Podman-Qualifizierung bleiben
-offen. Details stehen im [Target-Access-Vertrag](../../spec/target-access-v1.md).
+offen. Details stehen im [Target-Access-Vertrag](../spec/target-access-v1.md).
