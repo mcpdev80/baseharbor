@@ -104,6 +104,9 @@ func newSessionPair(t *testing.T, denied bool) (*Session, *tls.Conn, *registry) 
 	if err := readRecord(client, "request", &request); err != nil {
 		t.Fatal(err)
 	}
+	if string(request.Payload) != "{}" {
+		t.Fatalf("capability negotiation requires a canonical empty object, got %s", request.Payload)
+	}
 	capabilities := Capabilities{contractVersion, protocolVersion, node, []Capability{{Name: "runtime.detect", Available: true}}}
 	data, _ := json.Marshal(capabilities)
 	if err := writeRecord(client, "response", reply(request, data)); err != nil {

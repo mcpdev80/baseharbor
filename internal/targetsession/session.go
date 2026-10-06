@@ -80,7 +80,7 @@ func Accept(ctx context.Context, conn *tls.Conn, registry targetenrollment.NodeR
 	}
 	go s.watchAdmission()
 	now := time.Now().UTC()
-	response, err := s.Dispatch(lifetime, Request{ContractVersion: contractVersion, ProtocolVersion: protocolVersion, RequestID: "admission-capabilities", CorrelationID: "admission-capabilities", TargetID: remote.Node.TargetID, Operation: "connector.capabilities", IssuedAt: now, DeadlineAt: now.Add(10 * time.Second)})
+	response, err := s.Dispatch(lifetime, Request{ContractVersion: contractVersion, ProtocolVersion: protocolVersion, RequestID: "admission-capabilities", CorrelationID: "admission-capabilities", TargetID: remote.Node.TargetID, Operation: "connector.capabilities", IssuedAt: now, DeadlineAt: now.Add(10 * time.Second), Payload: json.RawMessage(`{}`)})
 	if err != nil || !response.Success || contracts.ValidateTargetAccessRecord("capabilities", response.Result) != nil {
 		_ = s.Close()
 		return nil, ErrUnavailable
