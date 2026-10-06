@@ -183,9 +183,65 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 		}
 	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
+		runManagedProviderOnlyReadinessRegression(t, ctx)
 		runManagedReadinessAndBackupRegression(t, ctx)
 		runGeneratedSecretDeliveryRegression(t, ctx)
 	}
+}
+
+func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context) {
+	t.Helper()
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
+	manifest := application.New("provider-only-readiness", "dev", true, false, false)
+	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			t.Errorf("provider-only cleanup: %v", err)
+		}
+	}()
+	var output runtimeAcceptanceOutput
+	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+		t.Fatalf("provider-only apply: %v\n%s", err, output.String())
+	}
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "readiness regression")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	runtime, err := detectRuntimeForApplication(ctx, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, container := range containers {
+		if container.Project == files.Project {
+			t.Fatal("provider-only fixture unexpectedly has application-project containers")
+		}
+	}
+	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
+	if err != nil || !status.Ready {
+		t.Fatalf("provider-only status: %+v %v", status, err)
+	}
+	output.Reset()
+	if err := runWithIO(ctx, []string{"app", "show", "--output", "json"}, &output, &output); err != nil {
+		t.Fatal(err)
+	}
+	var overview applicationOverview
+	if err := json.Unmarshal([]byte(output.String()), &overview); err != nil || !overview.Ready {
+		t.Fatalf("provider-only app show disagrees with READY: %+v %v", overview, err)
+	}
+	output.Reset()
+	if err := runWithIO(ctx, []string{"app", "doctor"}, &output, &output); err != nil {
+		t.Fatalf("provider-only doctor: %v\n%s", err, output.String())
+	}
+	t.Log("Provider-only shared SQL: app show/status/doctor agree without any application-project container")
 }
 
 func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
