@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/creack/pty"
 )
 
@@ -30,7 +31,7 @@ func Start(ctx context.Context, cmd *exec.Cmd, rows, columns int) (Session, erro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(columns)})
+	file, err := startTransportPTY(cmd, rows, columns)
 	if err != nil {
 		return nil, errors.New("runtime terminal could not start")
 	}
@@ -53,6 +54,35 @@ func Start(ctx context.Context, cmd *exec.Cmd, rows, columns int) (Session, erro
 		close(s.done)
 	}()
 	return s, nil
+}
+
+// The outer PTY transports bytes to the runtime CLI. The container's inner
+// terminal owns echo, signals and line editing. Configure the transport before
+// starting the CLI so early input cannot be buffered, translated or erased by
+// the outer terminal while the CLI initializes its own raw mode.
+func startTransportPTY(cmd *exec.Cmd, rows, columns int) (*os.File, error) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer slave.Close()
+	if _, err = term.MakeRaw(slave.Fd()); err == nil {
+		err = pty.Setsize(master, &pty.Winsize{Rows: uint16(rows), Cols: uint16(columns)})
+	}
+	if err != nil {
+		_ = master.Close()
+		return nil, err
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setsid, cmd.SysProcAttr.Setctty = true, true
+	if err := cmd.Start(); err != nil {
+		_ = master.Close()
+		return nil, err
+	}
+	return master, nil
 }
 
 func (s *processSession) Read(data []byte) (int, error) {
