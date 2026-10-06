@@ -56,8 +56,15 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
+	if err := writer.prepareWrite(); err != nil {
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}, stream)
+	if err := http.NewResponseController(w).Flush(); err != nil {
+		return
+	}
+	_, _ = io.Copy(writer, stream)
 }
 
 func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +111,15 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
+	if err := writer.prepareWrite(); err != nil {
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}, stream)
+	if err := http.NewResponseController(w).Flush(); err != nil {
+		return
+	}
+	_, _ = io.Copy(writer, stream)
 }
 
 type streamDeadlineWriter struct {
@@ -113,16 +127,27 @@ type streamDeadlineWriter struct {
 	ctx context.Context
 }
 
-func (w streamDeadlineWriter) Write(data []byte) (int, error) {
+func (w streamDeadlineWriter) prepareWrite() error {
 	if err := w.ctx.Err(); err != nil {
-		return 0, err
+		return err
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	if limit, ok := w.ctx.Deadline(); ok && limit.Before(deadline) {
 		deadline = limit
 	}
 	_ = http.NewResponseController(w.ResponseWriter).SetWriteDeadline(deadline)
-	return w.ResponseWriter.Write(data)
+	return nil
+}
+
+func (w streamDeadlineWriter) Write(data []byte) (int, error) {
+	if err := w.prepareWrite(); err != nil {
+		return 0, err
+	}
+	n, err := w.ResponseWriter.Write(data)
+	if err != nil {
+		return n, err
+	}
+	return n, http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKind) (machine.StreamRequest, operatorauth.AuthorizationDecision, context.Context, error) {

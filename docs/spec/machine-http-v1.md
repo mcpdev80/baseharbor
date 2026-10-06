@@ -169,6 +169,11 @@ When the active runtime implementation does not advertise log streaming, BaseHar
 
 Stream response metadata identifies the stream, actor, Target and runtime resource without embedding credentials.
 
+Successful admission flushes the response headers even when the producer is idle.
+Each output chunk is flushed without waiting for EOF. Client cancellation and
+credential expiry terminate the observation; a follow client MUST NOT silently
+replay the request or treat transport EOF as successful application execution.
+
 ## Runtime exec / terminal boundary
 
 `POST /api/v1/machine/streams/exec`
@@ -212,6 +217,11 @@ required. Local Linux Docker/Podman backends supply a PTY; remote terminal
 qualification remains part of the remote integration requirements.
 
 The creator's verified issuer/subject owns the session, including in `dev`.
+
+`terminal.ready` confirms transport admission, not readiness of the requested
+program. Clients attach input and terminal protocol replies before rendering
+initial output. The transport preserves input bytes; the container's terminal
+owns line editing and signal interpretation.
 Every control request requires bearer authentication and reuses the shared
 operator boundary. There is no terminal cookie, query token, host-command API or
 browser-to-runtime connection.
