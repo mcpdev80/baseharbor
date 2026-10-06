@@ -167,7 +167,21 @@ func newNativeConnectorOIDC(t *testing.T, ctx context.Context, fixture *nativeCo
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &nativeConnectorOIDC{issuer: issuer, client: client, security: security}
+	operator := &nativeConnectorOIDC{issuer: issuer, client: client, security: security}
+	for _, role := range []string{"editor", "viewer"} {
+		principal, err := verifier.Verify(ctx, operator.token(t, ctx, role, "native-core"))
+		if err != nil {
+			t.Fatal("real operator verification failed", err)
+		}
+		tenant, err := database.NewIdentityTenantResolver(pool).ResolveTenant(ctx, principal)
+		if err != nil {
+			t.Fatal("real operator persisted membership resolution failed", err)
+		}
+		if tenant.TenantID != "11111111-1111-4111-8111-111111111111" || len(tenant.Roles) != 1 || tenant.Roles[0] != role {
+			t.Fatal("real operator resolved to wrong persisted scope or role")
+		}
+	}
+	return operator
 }
 
 func (o *nativeConnectorOIDC) qualifyGrantDenials(t *testing.T, ctx context.Context, client *http.Client, endpoint string) {

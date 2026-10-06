@@ -114,9 +114,13 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
+	filtered, environment, err := extractApplicationEnvironment(args, "doctor")
+	if err != nil {
+		return nil, false, err
+	}
 	fix := false
 	nameArgs := make([]string, 0, 1)
-	for _, arg := range args {
+	for _, arg := range filtered {
 		switch arg {
 		case "--fix":
 			if fix {
@@ -132,6 +136,9 @@ func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {
 			}
 			nameArgs = append(nameArgs, arg)
 		}
+	}
+	if environment != "" {
+		nameArgs = append(nameArgs, "--environment", environment)
 	}
 	return nameArgs, fix, nil
 }

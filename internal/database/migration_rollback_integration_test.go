@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -24,6 +25,9 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMembershipContextRollback(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,4 +159,35 @@ SELECT EXISTS (
 	if tenantsExists {
 		t.Fatal("core identity schema still exists after rolling back its owning migration")
 	}
+}
+
+func verifyMembershipContextRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	var safeContext bool
+	query := `SELECT position('NULLIF' in qual)>0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	if !safeContext {
+		return fmt.Errorf("empty tenant context policy correction missing")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	var forcedRLS, identityResolution bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='memberships'::regclass").Scan(&forcedRLS); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_identity_resolution')").Scan(&identityResolution); err != nil {
+		return err
+	}
+	if safeContext || !forcedRLS || !identityResolution {
+		return fmt.Errorf("membership context rollback changed earlier security ownership")
+	}
+	if VerifySchemaReady(ctx, pool) == nil {
+		return fmt.Errorf("missing membership context correction accepted as schema ready")
+	}
+	return nil
 }
