@@ -109,11 +109,14 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 	for _, id := range strings.Fields(string(idOut)) {
 		raw, inspectErr := exec.CommandContext(ctx, runtime, "inspect", id).Output()
 		if inspectErr != nil {
-			continue
+			return "", fmt.Errorf("inspect running Podman container %s: %w", id, inspectErr)
 		}
 		var records []inspectRecord
-		if json.Unmarshal(raw, &records) != nil || len(records) != 1 {
-			continue
+		if err := json.Unmarshal(raw, &records); err != nil {
+			return "", fmt.Errorf("decode running Podman container %s: %w", id, err)
+		}
+		if len(records) != 1 {
+			return "", fmt.Errorf("inspect running Podman container %s returned %d records", id, len(records))
 		}
 		labels := records[0].Config.Labels
 		projectLabel := labels["com.docker.compose.project"]

@@ -100,6 +100,13 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}
 	for _, service := range []string{"postgres", "openbao"} {
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, service, containersecurity.Requirements{ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true}); err != nil {
+			inventory, inventoryErr := runtime.ListRuntimeContainers(ctx)
+			for _, container := range inventory {
+				t.Logf("Runtime resource: project=%s service=%s running=%t", container.Project, container.Service, container.Running)
+			}
+			if inventoryErr != nil {
+				t.Logf("Runtime inventory unavailable: %v", inventoryErr)
+			}
 			t.Fatal(err)
 		}
 	}
