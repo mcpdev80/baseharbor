@@ -180,6 +180,15 @@ func TestConnectorRuntimeTransport(t *testing.T) {
 	if resourceID == "" {
 		t.Fatal("actual runtime fixture was absent from encrypted inventory")
 	}
+	response = dispatch("runtime.metrics", map[string]any{"resource_id": resourceID})
+	var metrics struct {
+		ResourceID  string `json:"resource_id"`
+		CPUPercent  string `json:"cpu_percent"`
+		MemoryUsage string `json:"memory_usage"`
+	}
+	if json.Unmarshal(response.Result, &metrics) != nil || metrics.ResourceID != resourceID || metrics.CPUPercent == "" || metrics.MemoryUsage == "" {
+		t.Fatal("actual remote runtime metrics were absent or identified another resource")
+	}
 	for _, operation := range []string{"runtime.container.stop", "runtime.container.start", "runtime.container.restart"} {
 		dispatch(operation, map[string]any{"resource_id": resourceID})
 	}

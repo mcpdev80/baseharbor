@@ -193,9 +193,19 @@ func (s *Service) Logs(ctx context.Context, request LogRequest) (io.ReadCloser, 
 	return s.backend.ContainerLogs(ctx, request.Resource.ResourceID, request.Since, request.Tail, request.Follow)
 }
 
-func (s *Service) Metrics(_ context.Context, ref ResourceRef) (MetricsHandle, error) {
+func (s *Service) Metrics(ctx context.Context, ref ResourceRef) (MetricsHandle, error) {
 	if err := s.validateRef(ref); err != nil {
 		return MetricsHandle{}, err
+	}
+	if ref.Kind == KindContainer {
+		if backend, ok := s.backend.(interface {
+			ContainerMetrics(context.Context, string) (MetricsHandle, error)
+		}); ok {
+			if _, err := s.Inspect(ctx, ref); err != nil {
+				return MetricsHandle{}, err
+			}
+			return backend.ContainerMetrics(ctx, ref.ResourceID)
+		}
 	}
 	return MetricsHandle{Available: false}, nil
 }

@@ -64,6 +64,9 @@ func (b *ConnectorBackend) RuntimeExplorerCapabilities(ctx context.Context) ([]C
 	if available["runtime.exec"] {
 		result = append(result, CapabilityContainerExec)
 	}
+	if available["runtime.metrics"] {
+		result = append(result, CapabilityResourceMetrics)
+	}
 	if _, ok := b.pool.(connectorStreamTransport); ok {
 		if available["runtime.logs.read"] {
 			result = append(result, CapabilityLogs)

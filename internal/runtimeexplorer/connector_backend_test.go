@@ -15,17 +15,18 @@ import (
 )
 
 type remoteTransport struct {
-	calls  []targetsession.Request
-	failed bool
-	result json.RawMessage
-	scope  targetenrollment.Scope
+	calls   []targetsession.Request
+	failed  bool
+	metrics bool
+	result  json.RawMessage
+	scope   targetenrollment.Scope
 }
 
 func (r *remoteTransport) LiveCapabilities(scope targetenrollment.Scope) (targetsession.Capabilities, error) {
 	if scope != r.scope {
 		return targetsession.Capabilities{}, targetsession.ErrUnavailable
 	}
-	return targetsession.Capabilities{Capabilities: []targetsession.Capability{{Name: "runtime.resource.list", Available: true}, {Name: "runtime.resource.inspect", Available: true}, {Name: "runtime.container.start", Available: true}, {Name: "runtime.container.stop", Available: true}, {Name: "runtime.container.restart", Available: true}, {Name: "runtime.exec", Available: true}}}, nil
+	return targetsession.Capabilities{Capabilities: []targetsession.Capability{{Name: "runtime.resource.list", Available: true}, {Name: "runtime.resource.inspect", Available: true}, {Name: "runtime.container.start", Available: true}, {Name: "runtime.container.stop", Available: true}, {Name: "runtime.container.restart", Available: true}, {Name: "runtime.exec", Available: true}, {Name: "runtime.metrics", Available: r.metrics}}}, nil
 }
 func (r *remoteTransport) Dispatch(_ context.Context, scope targetenrollment.Scope, request targetsession.Request) (targetsession.Response, error) {
 	if scope != r.scope {
