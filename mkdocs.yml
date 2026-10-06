@@ -149,6 +149,7 @@ nav:
       - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md
       - Development guidelines: DEVELOPMENT_GUIDELINES.md
       - Documentation style: STYLE_GUIDE.md
+      - Release requirements: development/v0.4.23-release-requirements.md
       - Architecture decisions: decisions/index.md
       - Specifications:
           - Overview: spec/README.md

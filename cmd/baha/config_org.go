@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -180,7 +181,12 @@ func readOrganizationPreferences(args []string) ([]string, []orgconfig.Preferenc
 		if err != nil {
 			return nil, nil, fmt.Errorf("read organization preferences: %w", err)
 		}
-		decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
+		data, readErr := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+		_ = file.Close()
+		if readErr != nil || len(data) > 1<<20 {
+			return nil, nil, usageError("preference file exceeds limit or cannot be read", "Provide a readable JSON array no larger than 1 MiB.")
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		err = decoder.Decode(&preferences)
 		if err == nil {
@@ -189,7 +195,6 @@ func readOrganizationPreferences(args []string) ([]string, []orgconfig.Preferenc
 				err = fmt.Errorf("preferences require exactly one JSON array")
 			}
 		}
-		_ = file.Close()
 		if err != nil {
 			return nil, nil, usageError("invalid preference file", "Use the versioned organization preference-layer JSON contract without unknown fields or trailing data.")
 		}

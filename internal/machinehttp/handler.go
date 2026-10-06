@@ -121,9 +121,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request ExecuteRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
+	if err := decodeRequest(r.Body, &request); err != nil {
 		writeMachineError(w, http.StatusBadRequest, machine.Wrap(machine.ErrorValidationFailed, err, "Send a valid machine execution request.", false))
 		return
 	}

@@ -100,6 +100,10 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
+            if [ "$tag" = v0.4.23 ]; then
+              python scripts/release-handoff.py validate --candidate "$candidate_sha" --published "$tag_sha" --tag "$tag"
+              return
+            fi
             allowed='^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md)$'
             if [ "$tag" = v0.4.22 ]; then
               # Final dates/status and index/roadmap publication are metadata only.
@@ -253,13 +257,21 @@ jobs:
               exit 1
             }
             tested_sha="${approved_candidate}"
+            required_count=45
+            if [ "$tag" = v0.4.21 ]; then required_count=54; fi
+            if [ "$tag" = v0.4.22 ]; then required_count=55; fi
+            if [ "$tag" = v0.4.23 ]; then
+              python -m pip install --disable-pip-version-check -r requirements-docs.txt
+              required_count="$(python scripts/release-handoff.py count --candidate "$tag_sha" --tag "$tag")"
+            fi
             jq -e \
+              --argjson required_count "$required_count" \
               --arg workflow_sha "${workflow_sha}" \
               --arg tag "${tag}" \
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
-                (.schema == "baseharbor.pre-release.approval/v1" or (.tag == "v0.4.22" and .schema == "baseharbor.pre-release.approval/v2")) and
+                ((.tag != "v0.4.23" and .schema == "baseharbor.pre-release.approval/v1") or ((.tag == "v0.4.22" or .tag == "v0.4.23") and .schema == "baseharbor.pre-release.approval/v2")) and
                 .tag == $tag and
                 (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and
@@ -267,7 +279,7 @@ jobs:
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
                 (.gate_evidence_schema == (if .schema == "baseharbor.pre-release.approval/v2" then "baseharbor.pre-release.coverage/v2" else "baseharbor.pre-release.gate-evidence/v1" end)) and
-                (.gate_count == (if .tag == "v0.4.22" then 55 elif .tag == "v0.4.21" then 54 else 45 end)) and
+                (.gate_count == $required_count) and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
               ' "${approval_json}" >/dev/null || {

@@ -42,6 +42,9 @@ def manifest(key='atomic/static/mcp', run=1, attempt=1):
 
 
 class FakeInputs:
+    def requirements(self, candidate, tag):
+        return resume.local_requirements(tag)
+
     def ensure(self, *args):
         pass
 
@@ -161,7 +164,7 @@ class EvidenceTests(unittest.TestCase):
             proofs.append({'gate': key})
         result = {'schema': 'baseharbor.pre-release.coverage/v2', 'candidate_sha': 'a' * 40,
                   'demo_ref': 'b' * 40, 'tag': 'v0.4.22', 'required': resume.EXPECTED,
-                  'proofs': proofs, 'pending': {}}
+                  'proofs': proofs, 'pending': {}, 'requirements_digest': resume.digest(resume.local_requirements('v0.4.22'))}
         resume.verify_coverage(result, 'a' * 40, 'b' * 40, 'v0.4.22')
         result['proofs'][-1] = result['proofs'][0]
         with self.assertRaises(ValueError):
@@ -173,6 +176,39 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotIn('mcp', matrix['static'])
         self.assertEqual(matrix['journey'], ['docker', 'podman'])
         self.assertEqual(matrix['heavy_docker'], resume.HEAVY)
+
+
+class RequirementTests(unittest.TestCase):
+    def test_new_release_preserves_baseline_and_adds_required_families(self):
+        baseline = {gate['id'] for gate in resume.local_requirements('v0.4.22')}
+        current = {gate['id'] for gate in resume.local_requirements('v0.4.23')}
+        self.assertTrue(baseline < current)
+        self.assertEqual(current - baseline, {
+            'integration/static/public-contracts', 'integration/static/configuration-policy',
+            'integration/static/browser-terminal', 'integration/docker/remote-target',
+            'integration/podman/remote-target', 'integration/static/live-console'})
+        coverage = {'schema': 'baseharbor.pre-release.coverage/v2', 'candidate_sha': 'a' * 40,
+                    'demo_ref': 'b' * 40, 'tag': 'v0.4.23', 'required': sorted(baseline),
+                    'pending': {}, 'proofs': [{'gate': key} for key in baseline]}
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.23')
+
+    def test_duplicate_missing_and_unknown_requirements_fail_closed(self):
+        original = json.loads(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
+        for change in ['duplicate', 'schema', 'empty', 'dependencies']:
+            data = copy.deepcopy(original)
+            if change == 'duplicate':
+                data['gates'].append(data['gates'][0])
+            elif change == 'schema':
+                data['schema'] = 'untrusted'
+            elif change == 'empty':
+                data['gates'] = []
+            else:
+                del data['gates'][0]['dependencies']
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                resume.load_requirements(json.dumps(data), 'v0.4.23')
+        with self.assertRaises(ValueError):
+            resume.load_requirements(json.dumps(original), 'v9.0.0')
 
 
 class GitFingerprintTests(unittest.TestCase):
@@ -232,6 +268,51 @@ class GitFingerprintTests(unittest.TestCase):
         path.write_text(original.replace('ubuntu-latest', 'ubuntu-26.04'))
         runner = self.commit(self.product)
         self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(runner, self.d, key))
+
+    def test_verifier_auth_schema_and_build_changes_invalidate_static_proof(self):
+        key = 'atomic/static/mcp'
+        original = self.fingerprint(self.p, self.d, key)
+        for path in ['scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py',
+                     'contracts/machine/v1/operation.schema.json', 'internal/auth/auth.go',
+                     '.github/workflows/release.yml', '.goreleaser.yaml']:
+            file = self.product / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text('changed execution input\n')
+            changed = self.commit(self.product)
+            with self.subTest(path=path):
+                self.assertNotEqual(original, self.fingerprint(changed, self.d, key))
+
+    def test_static_call_arguments_and_evidence_steps_are_execution_inputs(self):
+        path = self.product / '.github/workflows/pre-release.yml'
+        original = path.read_text()
+        key = 'atomic/static/mcp'
+        for suffix in [
+            '  static_gates:\n    uses: ./.github/workflows/gate.yml\n    with: {auth_profile: strict}\n',
+            '  static_gates:\n    steps:\n      - name: Generate adoption evidence\n        run: rewrite source identity\n',
+        ]:
+            path.write_text(original + suffix)
+            changed = self.commit(self.product)
+            self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(changed, self.d, key))
+
+    def test_missing_new_candidate_inventory_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.inputs.requirements(self.p, 'v0.4.23')
+
+    def test_publication_handoff_allows_prose_and_rejects_workflow_auth_and_inventory(self):
+        spec = importlib.util.spec_from_file_location('handoff', pathlib.Path(resume.__file__).with_name('release-handoff.py'))
+        handoff = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(handoff)
+        (self.product / 'CHANGELOG.md').write_text('final release date\n')
+        prose = self.commit(self.product)
+        self.assertEqual(handoff.validate_handoff(self.product, self.p, prose, 'v0.4.23'), ['CHANGELOG.md'])
+        for path in ['.github/workflows/pre-release.yml', 'internal/auth/verifier.go',
+                     'scripts/release-requirements.json', 'scripts/pre-release-resume.py']:
+            file = self.product / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text('unvalidated execution change\n')
+            changed = self.commit(self.product)
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                handoff.validate_handoff(self.product, self.p, changed, 'v0.4.23')
 
 
 class WorkflowIntegrationTests(unittest.TestCase):

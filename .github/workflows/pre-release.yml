@@ -1041,7 +1041,7 @@ jobs:
       - name: Install evidence parser
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
-      - name: Verify all 55 input-bound proofs and create release approval
+      - name: Verify every required input-bound proof and create release approval
         id: approval
         if: >-
           needs.source.result == 'success' && needs.runtime_candidate.result == 'success' &&

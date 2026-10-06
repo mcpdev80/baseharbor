@@ -89,3 +89,13 @@ func TestOrganizationTargetOverrideCannotBypassManagedConstraint(t *testing.T) {
 		t.Fatalf("explicit target escaped mandatory policy: %v", err)
 	}
 }
+
+func TestOrganizationPreferenceFileRejectsDataBeyondCompleteBodyLimit(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "oversized.json")
+	if err := os.WriteFile(file, []byte("[]"+strings.Repeat(" ", 1<<20)+"{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readOrganizationPreferences([]string{"--preferences", file}); err == nil {
+		t.Fatal("oversized file accepted because first JSON value fit the limit")
+	}
+}

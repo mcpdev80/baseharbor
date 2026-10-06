@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -144,9 +143,7 @@ func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKin
 	}
 
 	var request machine.StreamRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
+	if err := decodeRequest(r.Body, &request); err != nil {
 		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, machine.Wrap(machine.ErrorValidationFailed, err, "Send a valid stream request.", false)
 	}
 	request.Kind = kind
