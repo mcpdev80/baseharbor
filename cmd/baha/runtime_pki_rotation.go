@@ -16,6 +16,33 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+func waitForOpenBaoReplacementCA(ctx context.Context, material serviceaccess.TLSMaterial, endpoint string, activeCA []byte) error {
+	if len(activeCA) == 0 {
+		return errors.New("active OpenBao service CA is empty")
+	}
+	file, err := os.CreateTemp("", "baseharbor-active-openbao-ca-*.pem")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(activeCA); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	material.CA = file.Name()
+	client, err := serviceaccess.NewHTTPClient(material, false)
+	if err != nil {
+		return err
+	}
+	defer client.CloseIdleConnections()
+	verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return serviceaccess.WaitHTTPS(verifyCtx, client, endpoint, "/v1/sys/health")
+}
+
 func rotateControlPlaneServiceCA(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string) error {
 	stateDir := filepath.Dir(files.Compose)
 	oldOpenBaoCA, err := os.ReadFile(filepath.Join(stateDir, "providers", "openbao", "service-access", "pki", "ca.pem"))

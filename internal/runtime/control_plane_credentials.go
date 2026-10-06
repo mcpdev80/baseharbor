@@ -106,7 +106,7 @@ func ReplaceControlPlaneCredentials(files Files, next ControlPlaneCredentials) e
 	if err := rewriteRuntimeEnvironment(files.Env, updates); err != nil {
 		return err
 	}
-	if err := writeOpenBaoRuntimeConfig(filepath.Dir(files.Compose), next.OpenBaoDBUser, next.OpenBaoDBPassword); err != nil {
+	if err := writeOpenBaoRuntimeConfig(filepath.Dir(files.Compose), next.OpenBaoDBUser, next.OpenBaoDBPassword, files.HA); err != nil {
 		return fmt.Errorf("write replacement OpenBao storage configuration: %w", err)
 	}
 	return nil

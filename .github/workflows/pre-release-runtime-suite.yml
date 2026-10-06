@@ -176,6 +176,7 @@ jobs:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
           workdir="${{ steps.demo.outputs.workdir }}"
           export DEMO_ROOT="$workdir"
           export ARTIFACT_DIR
@@ -209,6 +210,7 @@ jobs:
           GATE: ${{ inputs.gate }}
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
           workdir="${{ steps.demo.outputs.workdir }}"
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
@@ -228,6 +230,7 @@ jobs:
           out="$RUNNER_TEMP/demo-runtime-diagnostics"
           rm -rf "$out"
           mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
           echo "::group::Demo runtime diagnostics"
           find "$out" -maxdepth 1 -type f -printf '%f\n' | sort || true
@@ -256,6 +259,7 @@ jobs:
           GATE: ${{ inputs.gate }}
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
           case "$GATE" in
             rabbitmq-runtime)
               BASEHARBOR_RABBITMQ_ACCEPTANCE=1 \
@@ -321,6 +325,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Cleanup runtime state
         id: cleanup
         if: always() && inputs.runtime != 'static'
@@ -347,6 +356,7 @@ jobs:
           Cleanup	${{ steps.cleanup.outcome }}	per-gate runtime cleanup
           EOF
           mkdir -p "$out/demo"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
           bash scripts/ci-evidence.sh             "$out"             "BaseHarbor Atomic Gate Evidence"             "pre-release/gate/${{ inputs.runtime }}/${{ inputs.gate }}"             "${{ inputs.ref }}"             "${{ steps.candidate.outputs.sha || github.sha }}"             "$rows"
 
@@ -368,6 +378,9 @@ jobs:
             --arg candidate_sha "${{ steps.candidate.outputs.sha || github.sha }}" \
             --arg demo_ref "${{ inputs.demo_ref }}" \
             --arg outcome "$gate_outcome" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
             --argjson capabilities "$capabilities" \
             '{
               schema: "baseharbor.pre-release.gate-evidence/v1",
@@ -379,7 +392,10 @@ jobs:
               capabilities: $capabilities,
               candidate_sha: $candidate_sha,
               demo_ref: $demo_ref,
-              outcome: $outcome
+              outcome: $outcome,
+              cleanup_outcome: $cleanup_outcome,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
             }' > "$out/manifest.json"
 
       - name: Upload atomic gate evidence

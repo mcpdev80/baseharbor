@@ -209,6 +209,20 @@ func newMCPServer(store application.Store) *mcp.Server {
 	registerMCPReadTools(server, store)
 	registerMCPRuntimeExplorerMutationTools(server)
 	registerMCPLifecycleTools(server, store)
+	registerMCPWorkspaceMutationTools(server)
+	registerMCPStackTools(server)
+	registerMCPTargetMutationTools(server)
+	registerMCPSecretTools(server, store)
+	registerMCPAdditionalLifecycleTools(server, store)
+	registerMCPTrustTools(server)
+	registerMCPIdentityTLSTools(server, store)
+	registerMCPAdoptionTools(server, store)
+	registerMCPAdditionalReadTools(server, store)
+	registerMCPConnectivityTools(server)
+	registerMCPEnvironmentTools(server, store)
+	registerMCPPlatformTools(server)
+	registerMCPControlPlaneTools(server)
+	registerMCPReleaseTools(server)
 	return server
 }
 
@@ -276,7 +290,7 @@ func authorizeResolvedMCPOperation(ctx context.Context, operationID string, reso
 		operationID,
 		resolved.Target.Name,
 		resolved.Manifest.Environment,
-		resolved.Manifest.Name,
+		resolved.Manifest.ApplicationID,
 		workspace,
 	)
 }

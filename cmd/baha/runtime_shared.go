@@ -16,6 +16,9 @@ import (
 )
 
 func runtimeDown(parent context.Context, out io.Writer) error {
+	if err := authorizeCurrentMCPContext(parent, "control-plane.stop", "", "", ""); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(parent, time.Minute)
 	defer cancel()
 

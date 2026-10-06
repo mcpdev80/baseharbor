@@ -37,17 +37,17 @@ type baseHarborRelease struct {
 }
 
 type selfUpdateCheck struct {
-	Installed    string
-	Channel      string
-	Target       string
-	ReleaseURL   string
-	AssetName    string
-	AssetURL     string
-	AssetDigest  string
-	ChecksumsURL string
-	Relation     string
-	Platform     string
-	Prerelease   bool
+	Installed    string `json:"installed"`
+	Channel      string `json:"channel"`
+	Target       string `json:"target"`
+	ReleaseURL   string `json:"release_url"`
+	AssetName    string `json:"asset_name"`
+	AssetURL     string `json:"asset_url"`
+	AssetDigest  string `json:"asset_digest"`
+	ChecksumsURL string `json:"checksums_url"`
+	Relation     string `json:"relation"`
+	Platform     string `json:"platform"`
+	Prerelease   bool   `json:"prerelease"`
 }
 
 type selfUpdateOptions struct {
@@ -64,6 +64,14 @@ func updateCommand() *cli.Command {
 		Usage:   "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]",
 		Long:    "Checks or installs published BaseHarbor releases. Stable is the default channel; prereleases are considered only when --channel rc or an explicit prerelease --version is supplied. Mutation requires --yes, verifies release checksums and the candidate binary before replacement, retains a recovery binary, and verifies the updated CLI/runtime before reporting success.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "update")
+			if err != nil {
+				return err
+			}
+			args = filtered
+			if format == outputJSON {
+				args = append(args, "--check")
+			}
 			opts, err := parseSelfUpdateOptions(args)
 			if err != nil {
 				return err
@@ -73,6 +81,9 @@ func updateCommand() *cli.Command {
 				return err
 			}
 			if opts.Check {
+				if format == outputJSON {
+					return writeJSON(out, check)
+				}
 				formatSelfUpdateCheck(out, check)
 				return nil
 			}

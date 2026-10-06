@@ -4,6 +4,36 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.22] - 2026-10-06
+
+### Added
+
+- Complete generated CLI/JSON/Core/MCP coverage inventory with typed supported product operations and explicit host/presentation exclusions.
+- Shared semantic operations for repository/workspace adoption, targets, stacks, secrets/TLS, trust, identity, connectivity and control-plane lifecycle; MCP discovery is checked against the registry and documentation.
+- Versioned extension artifact descriptors and separate verification/trust-policy results across six extension families, with digest-bound JWS/in-toto/SBOM/provenance verification through operator-configured keys.
+- Public `conformance/provider/v1` package and discovery profile extending the existing provider harness with drift, faults, recovery, ownership and idempotent destroy checks; an independent external module proves execution without internal imports.
+
+### Changed
+
+- CLI, JSON and MCP use the existing transport-neutral operator authorization boundary and stable application identity; destructive tools require explicit approval.
+- Structured secret/environment/connection results mask unknown secret fields and omit private material; protected file input is authorized before reading.
+- Public automation documentation includes concrete CLI and generic MCP client examples.
+
+### Fixed
+
+- Quick repository adoption writes detected HTTP/HTTPS exposures using the same validation as guided adoption and rejects ambiguous ports before writing.
+- Standalone application preflight includes the shared repository workload contract gate; repository up validates that contract before control-plane startup.
+- Deployment configuration is distinct from applying state, rejected applies record failure, and target teardown reconciles inactive observations without deleting application source, inputs or data.
+- Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
+- Application help registers `new` once.
+- Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
+- Target teardown includes unreferenced shared SQL/cache/identity/gateway resources. Full destruction previews concrete owned resources, reports removal/residue by name, preserves external recovery files explicitly, and returns the same structured inventory through JSON and MCP.
+- Docker/Podman container inventory decodes native JSON state, including absent healthchecks. Destructive container cleanup removes associated anonymous volumes without removing declared external volumes.
+- Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
+- Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
+- Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
+- Full Docker and Podman journeys start alongside bounded atomic lanes. A strict resume plan compares gate inputs and schedules only missing or invalidated proofs; final approval retains all 55 requirements and authenticates each original job, artifact digest, candidate, demo pin, attempt and cleanup. Earlier failures cannot be hidden by older successes. Targeted proof runs are retained; bounded assertions, job/queue timing and recurring failures remain available.
+
 ## [0.4.21] - 2026-10-03
 
 ### Added

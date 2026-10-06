@@ -146,9 +146,8 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
-		{Name: "application workload", Run: func(context.Context) error {
-			return preflightRepositoryWorkload(e.resolved)
-		}},
+		applicationWorkloadContractCheck(e.resolved),
+		applicationSharedBackendTopologyCheck(e.resolved),
 		{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
 			required := []bhruntime.RuntimeCapability{bhruntime.CapabilityWorkloadLifecycle}
 			if m.Services.Secrets || requiresObjectStorageProviderAdmin(m) {

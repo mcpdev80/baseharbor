@@ -96,7 +96,7 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 		if err != nil {
 			return err
 		}
-		members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+		members := files.PostgresMembers()
 		order := make([]string, 0, len(members))
 		for _, member := range members {
 			if member != primary {
@@ -119,7 +119,7 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 			}
 		}
 
-		for _, member := range []string{"openbao-member-1", "openbao-member-2", "openbao-member-3"} {
+		for _, member := range files.OpenBaoMembers() {
 			if err := runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, workdir, environment, []string{member}, files.Compose); err != nil {
 				return fmt.Errorf("roll OpenBao member %s: %w", member, err)
 			}
@@ -141,25 +141,17 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 	}
 
 	if state.Phase == bhruntime.ControlPlaneRotationVerified {
-		retireSQL := fmt.Sprintf(
-			"ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN; ALTER ROLE %s NOLOGIN;",
-			quoteControlPlaneIdent(current.PostgresUser),
-			quoteControlPlaneIdent(current.PostgresInternalUser),
-			quoteControlPlaneIdent(current.PostgresReplicationUser),
-			quoteControlPlaneIdent(current.OpenBaoDBUser),
-		)
+		var retirement strings.Builder
+		for _, identity := range controlPlaneDatabaseIdentities(current, files.HA) {
+			fmt.Fprintf(&retirement, "ALTER ROLE %s NOLOGIN;", quoteControlPlaneIdent(identity.user))
+		}
+		retireSQL := retirement.String()
+
 		if err := execControlPlanePostgresSQL(ctx, runtime, files, next.PostgresUser, next.PostgresPassword, "postgres", retireSQL); err != nil {
 			return fmt.Errorf("retire previous control-plane database credentials: %w", err)
 		}
 
-		for _, old := range []struct {
-			user, password, database string
-		}{
-			{current.PostgresUser, current.PostgresPassword, "postgres"},
-			{current.PostgresInternalUser, current.PostgresInternalPassword, "postgres"},
-			{current.PostgresReplicationUser, current.PostgresReplicationPass, "postgres"},
-			{current.OpenBaoDBUser, current.OpenBaoDBPassword, "openbao"},
-		} {
+		for _, old := range controlPlaneDatabaseIdentities(current, files.HA) {
 			if err := probeControlPlanePostgresCredential(ctx, runtime, files, old.user, old.password, old.database); err == nil {
 				return fmt.Errorf("previous control-plane credential for %s still authenticates after retirement", old.user)
 			}
@@ -185,38 +177,34 @@ func rotateControlPlaneDatabaseCredentials(ctx context.Context, runtime bhruntim
 	return nil
 }
 
+type controlPlaneDatabaseIdentity struct {
+	user, password, database, privilege string
+}
+
+func controlPlaneDatabaseIdentities(credentials bhruntime.ControlPlaneCredentials, ha bool) []controlPlaneDatabaseIdentity {
+	identities := []controlPlaneDatabaseIdentity{
+		{credentials.PostgresUser, credentials.PostgresPassword, "postgres", "SUPERUSER"},
+		{credentials.PostgresInternalUser, credentials.PostgresInternalPassword, "postgres", "SUPERUSER"},
+	}
+	if ha {
+		identities = append(identities, controlPlaneDatabaseIdentity{credentials.PostgresReplicationUser, credentials.PostgresReplicationPass, "postgres", "REPLICATION"})
+	}
+	return append(identities, controlPlaneDatabaseIdentity{credentials.OpenBaoDBUser, credentials.OpenBaoDBPassword, "openbao", ""})
+}
+
 func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, current, next bhruntime.ControlPlaneCredentials) error {
-	prepareSQL := fmt.Sprintf(
-		"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
-			"ALTER ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
-			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
-			"ALTER ROLE %s WITH LOGIN SUPERUSER PASSWORD %s;\n"+
-			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
-			"ALTER ROLE %s WITH LOGIN REPLICATION PASSWORD %s;\n"+
-			"SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n"+
-			"ALTER ROLE %s WITH LOGIN PASSWORD %s;\n"+
-			"GRANT %s TO %s;\n",
-		quoteControlPlaneLiteral(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresUser),
-		quoteControlPlaneIdent(next.PostgresUser), quoteControlPlaneLiteral(next.PostgresPassword),
-		quoteControlPlaneLiteral(next.PostgresInternalUser), quoteControlPlaneLiteral(next.PostgresInternalUser),
-		quoteControlPlaneIdent(next.PostgresInternalUser), quoteControlPlaneLiteral(next.PostgresInternalPassword),
-		quoteControlPlaneLiteral(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationUser),
-		quoteControlPlaneIdent(next.PostgresReplicationUser), quoteControlPlaneLiteral(next.PostgresReplicationPass),
-		quoteControlPlaneLiteral(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBUser),
-		quoteControlPlaneIdent(next.OpenBaoDBUser), quoteControlPlaneLiteral(next.OpenBaoDBPassword),
-		quoteControlPlaneIdent(current.OpenBaoDBUser), quoteControlPlaneIdent(next.OpenBaoDBUser),
-	)
+	var preparation strings.Builder
+	for _, identity := range controlPlaneDatabaseIdentities(next, files.HA) {
+		fmt.Fprintf(&preparation, "SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n", quoteControlPlaneLiteral(identity.user), quoteControlPlaneLiteral(identity.user))
+		fmt.Fprintf(&preparation, "ALTER ROLE %s WITH LOGIN %s PASSWORD %s;\n", quoteControlPlaneIdent(identity.user), identity.privilege, quoteControlPlaneLiteral(identity.password))
+	}
+	fmt.Fprintf(&preparation, "GRANT %s TO %s;\n", quoteControlPlaneIdent(current.OpenBaoDBUser), quoteControlPlaneIdent(next.OpenBaoDBUser))
+	prepareSQL := preparation.String()
+
 	if err := execControlPlanePostgresSQL(ctx, runtime, files, current.PostgresUser, current.PostgresPassword, "postgres", prepareSQL); err != nil {
 		return fmt.Errorf("prepare replacement control-plane database credentials: %w", err)
 	}
-	for _, probe := range []struct {
-		user, password, database string
-	}{
-		{next.PostgresUser, next.PostgresPassword, "postgres"},
-		{next.PostgresInternalUser, next.PostgresInternalPassword, "postgres"},
-		{next.PostgresReplicationUser, next.PostgresReplicationPass, "postgres"},
-		{next.OpenBaoDBUser, next.OpenBaoDBPassword, "openbao"},
-	} {
+	for _, probe := range controlPlaneDatabaseIdentities(next, files.HA) {
 		if err := probeControlPlanePostgresCredential(ctx, runtime, files, probe.user, probe.password, probe.database); err != nil {
 			return fmt.Errorf("verify prepared control-plane database credential for %s: %w", probe.user, err)
 		}
@@ -225,6 +213,12 @@ func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime b
 }
 
 func controlPlanePostgresPrimary(ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) (string, error) {
+	if !files.HA {
+		if err := waitForControlPlanePostgresMemberReady(ctx, runtime, files, "postgres-member-1"); err != nil {
+			return "", err
+		}
+		return "postgres-member-1", nil
+	}
 	const probe = "import urllib.request,sys;\ntry:\n r=urllib.request.urlopen('http://127.0.0.1:8008/primary', timeout=2); sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n sys.exit(1)"
 	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
 		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe); err == nil {
@@ -240,7 +234,11 @@ func waitForControlPlanePostgresMemberReady(ctx context.Context, runtime bhrunti
 	var last error
 	for time.Now().Before(deadline) {
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe)
+		if files.HA {
+			_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "python3", "-c", probe)
+		} else {
+			_, last = runtime.ExecProject(probeCtx, files.Project, files.Compose, files.Env, member, "pg_isready", "-h", "127.0.0.1", "-p", "5432")
+		}
 		cancel()
 		if last == nil {
 			return nil

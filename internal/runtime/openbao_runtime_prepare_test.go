@@ -15,7 +15,7 @@ func TestWriteOpenBaoRuntimeConfigEncodesPostgresCredentialsAsURLUserinfo(t *tes
 		user   = "openbao+runtime@example"
 		secret = "p@ss:word/+with?reserved#chars"
 	)
-	if err := writeOpenBaoRuntimeConfig(dir, user, secret); err != nil {
+	if err := writeOpenBaoRuntimeConfig(dir, user, secret, true); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "providers", "openbao", "runtime", "openbao.hcl"))

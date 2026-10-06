@@ -84,7 +84,9 @@ jobs:
             rest="${payload#*/}"
             gate="${rest%%/*}"
             ref="$GITHUB_SHA"
-            demo_ref_file="docs/releases/v0.4.21.demo-ref"
+            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+            test -n "$version"
+            demo_ref_file="docs/releases/v${version}.demo-ref"
             test -s "$demo_ref_file"
             demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
             [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]

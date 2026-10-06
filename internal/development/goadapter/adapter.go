@@ -264,12 +264,26 @@ func renderGoMod(applicationName string, dependencies map[string]string) string 
 }
 
 func renderMain(caps map[capability.Kind]bool, bindings map[string]struct{}) string {
-	imports := []string{"\"context\"", "\"fmt\"", "\"log\"", "\"net/http\"", "\"os\"", "\"time\""}
+	imports := []string{"\"fmt\"", "\"log\"", "\"net/http\"", "\"os\"", "\"time\""}
+	needsStartup := caps[capability.SQL] || caps[capability.KeyValue] || caps[capability.DurableKeyValue] || caps[capability.DocumentDatabase] || caps[capability.ObjectStorageS3] || caps[capability.TelemetryOTLP]
+	needsTLS := caps[capability.KeyValue] || caps[capability.DurableKeyValue] || caps[capability.DocumentDatabase] || caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream]
+	if needsStartup {
+		imports = append(imports, "\"context\"")
+	}
+	if needsTLS {
+		imports = append(imports, "\"crypto/tls\"", "\"crypto/x509\"")
+	}
+	if caps[capability.DocumentDatabase] {
+		imports = append(imports, "\"go.mongodb.org/mongo-driver/v2/mongo\"", "\"go.mongodb.org/mongo-driver/v2/mongo/options\"")
+	}
+	if caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream] {
+		imports = append(imports, "amqp \"github.com/rabbitmq/amqp091-go\"")
+	}
 	if caps[capability.SQL] {
 		imports = append(imports, "\"github.com/jackc/pgx/v5/pgxpool\"")
 	}
-	if caps[capability.KeyValue] {
-		imports = append(imports, "\"crypto/tls\"", "\"crypto/x509\"", "\"github.com/redis/go-redis/v9\"")
+	if caps[capability.KeyValue] || caps[capability.DurableKeyValue] {
+		imports = append(imports, "\"github.com/redis/go-redis/v9\"")
 	}
 	if caps[capability.ObjectStorageS3] {
 		imports = append(imports, "awsconfig \"github.com/aws/aws-sdk-go-v2/config\"", "\"github.com/aws/aws-sdk-go-v2/service/s3\"")
@@ -287,11 +301,14 @@ func renderMain(caps map[capability.Kind]bool, bindings map[string]struct{}) str
 	b.WriteString(")\n\n")
 	b.WriteString("func requiredEnv(name string) string {\n\tvalue := os.Getenv(name)\n\tif value == \"\" {\n\t\tlog.Fatalf(\"required environment variable %s is not set\", name)\n\t}\n\treturn value\n}\n\n")
 
-	if caps[capability.KeyValue] || caps[capability.DurableKeyValue] || caps[capability.DocumentDatabase] || caps[capability.MessagingQueue] || caps[capability.MessagingPubSub] || caps[capability.MessagingStream] {
+	if needsTLS {
 		b.WriteString("func tlsConfigFromFile(path string) (*tls.Config, error) {\n\tpem, err := os.ReadFile(path)\n\tif err != nil { return nil, err }\n\troots, err := x509.SystemCertPool()\n\tif err != nil { return nil, err }\n\tif !roots.AppendCertsFromPEM(pem) { return nil, fmt.Errorf(\"no certificates found in %s\", path) }\n\treturn &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}, nil\n}\n\n")
 	}
 
-	b.WriteString("func main() {\n\tstartup, cancel := context.WithTimeout(context.Background(), 15*time.Second)\n\tdefer cancel()\n")
+	b.WriteString("func main() {\n")
+	if needsStartup {
+		b.WriteString("\tstartup, cancel := context.WithTimeout(context.Background(), 15*time.Second)\n\tdefer cancel()\n")
+	}
 	if caps[capability.SQL] {
 		b.WriteString("\tdb, err := pgxpool.New(startup, requiredEnv(\"DATABASE_URL\"))\n\tif err != nil { log.Fatal(err) }\n\tdefer db.Close()\n\tif err := db.Ping(startup); err != nil { log.Fatalf(\"database readiness: %v\", err) }\n")
 	}

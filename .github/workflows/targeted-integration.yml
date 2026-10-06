@@ -180,18 +180,19 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   v0421_ha:
-    if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/')) }}
-    name: v0.4.21 HA · ${{ matrix.runtime }}
+    if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
+    name: Targeted runtime · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         runtime: [docker, podman]
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
     steps:
-      - name: Resolve targeted HA failure image
+      - name: Resolve targeted runtime gate
         id: resolve
         shell: bash
         run: |
@@ -200,8 +201,8 @@ jobs:
           payload="${GITHUB_REF_NAME#"$prefix"}"
           gate="${payload%%/*}"
           case "$gate" in
-            control-plane|keycloak|otel|gateway) ;;
-            *) echo "unsupported v0.4.21 HA failure image: $gate" >&2; exit 2 ;;
+            control-plane|control-plane-single|keycloak|otel|gateway|shared-postgres|owned-volumes) ;;
+            *) echo "unsupported targeted runtime gate: $gate" >&2; exit 2 ;;
           esac
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
 
@@ -228,13 +229,22 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
-      - name: Run targeted HA failure image
+      - name: Run targeted runtime gate
         shell: bash
         env:
           GATE: ${{ steps.resolve.outputs.gate }}
         run: |
           set -euo pipefail
           case "$GATE" in
+            owned-volumes)
+              BASEHARBOR_OWNED_VOLUMES_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestOwnedVolumeDestroyPreservesExternalAndSharedData$' -count=1 -timeout 10m -v
+              ;;
+            shared-postgres)
+              BASEHARBOR_SHARED_POSTGRES_INTEGRATION=1 go test -p 1 ./internal/application -run '^TestSharedPostgres' -count=1 -timeout 12m -v
+              ;;
+            control-plane-single)
+              BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestSingleControlPlaneRestartRotationAndCleanup$' -count=1 -timeout 20m -v
+              ;;
             control-plane)
               BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -timeout 20m -v
               ;;

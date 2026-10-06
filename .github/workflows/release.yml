@@ -100,7 +100,13 @@ jobs:
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev '^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md)$' || true)"
+            allowed='^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md)$'
+            if [ "$tag" = v0.4.22 ]; then
+              # Final dates/status and index/roadmap publication are metadata only.
+              # Product, tests, demo pin and runtime execution contracts stay exact.
+              allowed='^(\.github/workflows/(pre-release|release|runtime-image|supplemental-release-validation)\.yml|docs/internal/release-audits/v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\.md|CHANGELOG\.md|docs/roadmap\.md|docs/releases/(index|v0\.4\.22)\.md)$'
+            fi
+            unexpected="$(git diff --name-only "${candidate_sha}" "${tag_sha}" -- | grep -Ev "$allowed" || true)"
             if [ -n "${unexpected}" ]; then
               return 1
             fi
@@ -127,12 +133,13 @@ jobs:
             tested_sha="$(jq -r '.head_sha' <<<"${run_json}")"
             compatible_candidate "${tested_sha}" || {
               echo "Selected Pre-Release content is not compatible with release tag SHA ${tag_sha}." >&2
-              echo "Only these post-validation files may differ:" >&2
+              echo "Only explicitly listed workflow/release-metadata files may differ:" >&2
               echo "  .github/workflows/pre-release.yml" >&2
               echo "  .github/workflows/release.yml" >&2
               echo "  .github/workflows/runtime-image.yml" >&2
               echo "  .github/workflows/supplemental-release-validation.yml" >&2
               echo "  docs/internal/release-audits/vX.Y.Z[.HOTFIX].md" >&2
+              if [ "$tag" = v0.4.22 ]; then echo "  CHANGELOG.md, docs/roadmap.md, docs/releases/index.md and docs/releases/v0.4.22.md" >&2; fi
               echo "Actual changed files:" >&2
               git diff --name-only "${tested_sha}" "${tag_sha}" -- >&2 || true
               exit 1
@@ -165,7 +172,7 @@ jobs:
           fi
 
           if [ "${tested_sha}" != "${tag_sha}" ]; then
-            echo "Using CI-only descendant handoff:"
+            echo "Using validated product with a metadata/workflow handoff:"
             echo "  tested SHA: ${tested_sha}"
             echo "  tag SHA:    ${tag_sha}"
             echo "  allowed post-validation changes:"
@@ -252,21 +259,37 @@ jobs:
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
-                .schema == "baseharbor.pre-release.approval/v1" and
+                (.schema == "baseharbor.pre-release.approval/v1" or (.tag == "v0.4.22" and .schema == "baseharbor.pre-release.approval/v2")) and
                 .tag == $tag and
                 (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and
                 .tested_sha == $tested_sha and
                 .workflow == "pre-release.yml" and
                 .workflow_run_id == $run_id and
-                .gate_evidence_schema == "baseharbor.pre-release.gate-evidence/v1" and
-                (.gate_count == (if .tag == "v0.4.21" then 54 else 45 end)) and
+                (.gate_evidence_schema == (if .schema == "baseharbor.pre-release.approval/v2" then "baseharbor.pre-release.coverage/v2" else "baseharbor.pre-release.gate-evidence/v1" end)) and
+                (.gate_count == (if .tag == "v0.4.22" then 55 elif .tag == "v0.4.21" then 54 else 45 end)) and
                 .result == "success" and
                 (.demo_sha | type == "string" and test("^[0-9a-f]{40}$"))
               ' "${approval_json}" >/dev/null || {
                 echo "Pre-Release approval artifact failed atomic evidence validation." >&2
                 exit 1
               }
+            if [ "$(jq -r '.schema' "$approval_json")" = "baseharbor.pre-release.approval/v2" ]; then
+              python -m pip install --disable-pip-version-check -r requirements-docs.txt
+              coverage_json="$approval_dir/evidence-coverage.json"
+              test -s "$coverage_json"
+              python - "$approval_json" "$coverage_json" <<'PY_DIGEST'
+          import hashlib, json, sys
+          approval, coverage = [json.load(open(path)) for path in sys.argv[1:]]
+          calculated = hashlib.sha256(json.dumps(coverage, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          if approval.get('coverage_digest') != calculated:
+              raise SystemExit('Release coverage digest differs from approval.')
+          PY_DIGEST
+              git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/release-evidence-demo"
+              python scripts/pre-release-resume.py check-approval --candidate "$tested_sha" \
+                --demo "$(jq -r '.demo_sha' "$approval_json")" --tag "$tag" \
+                --demo-repo "$RUNNER_TEMP/release-evidence-demo" --output "$approval_dir"
+            fi
             if [ "${detached_v0421}" = "true" ]; then
               test "${run_id}" = "37345507011"
               jq -e '

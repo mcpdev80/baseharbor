@@ -17,11 +17,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const sharedBackendStateVersion = 2
+const sharedBackendStateVersion = 3
 
 type sharedBackendState struct {
 	Version                       int                              `json:"version"`
 	Environment                   string                           `json:"environment"`
+	PostgresMembers               int                              `json:"postgres_members,omitempty"`
 	PostgresAdminCredential       string                           `json:"postgres_admin_credential,omitempty"`
 	PostgresSuperuserCredential   string                           `json:"postgres_superuser_credential,omitempty"`
 	PostgresReplicationCredential string                           `json:"postgres_replication_credential,omitempty"`
@@ -55,6 +56,8 @@ type SharedPostgresResourceObservation struct {
 	Owner           string `json:"owner"`
 	ProviderScope   string `json:"provider_scope"`
 	CredentialScope string `json:"credential_scope"`
+	Members         int    `json:"members"`
+	HA              bool   `json:"ha"`
 }
 
 type sharedValkeyResource struct {
@@ -134,12 +137,15 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		return false, nil
 	}
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
-	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
-		return false, fmt.Errorf("create shared backend state: %w", err)
-	}
 	state, err := loadSharedBackendState(shared.State, m.Environment)
 	if err != nil {
 		return false, err
+	}
+	if err := selectSharedPostgresTopology(&state, m); err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
+		return false, fmt.Errorf("create shared backend state: %w", err)
 	}
 	values, err := readRuntimeEnv(files.Env)
 	if err != nil {
@@ -173,7 +179,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			}
 			state.PostgresSuperuserCredential = ref
 		}
-		if state.PostgresReplicationCredential == "" {
+		if state.PostgresMembers > 1 && state.PostgresReplicationCredential == "" {
 			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
 			if err != nil {
 				return false, err
@@ -318,6 +324,8 @@ func SharedPostgresResourcesAt(dataDir, namespace string, m Manifest) ([]SharedP
 			Owner:           app.Application + "/" + app.Environment,
 			ProviderScope:   string(capability.ScopeShared),
 			CredentialScope: "application",
+			Members:         sharedPostgresMemberCount(state),
+			HA:              sharedPostgresMemberCount(state) > 1,
 		})
 	}
 	return out, nil

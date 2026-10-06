@@ -16,7 +16,7 @@ func TestEvaluateControlPlaneAvailabilityReportsRuntimeHostGuarantee(t *testing.
 	report := evaluateControlPlaneAvailability(running, []health.Check{
 		{Name: "postgres", OK: true},
 		{Name: "openbao", OK: true},
-	})
+	}, true)
 	if !report.Satisfied {
 		t.Fatalf("full control-plane HA topology reported unsatisfied: %#v", report)
 	}
@@ -42,7 +42,7 @@ func TestEvaluateControlPlaneAvailabilityToleratesOneMemberFailure(t *testing.T)
 	report := evaluateControlPlaneAvailability(running, []health.Check{
 		{Name: "postgres", OK: true},
 		{Name: "openbao", OK: true},
-	})
+	}, true)
 	if !report.Satisfied {
 		t.Fatalf("one member failure should preserve the requested guarantee: %#v", report)
 	}
@@ -75,9 +75,24 @@ func TestEvaluateControlPlaneAvailabilityRejectsLostQuorumOrStableEndpoint(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := evaluateControlPlaneAvailability(tt.running, tt.checks); got.Satisfied {
+			if got := evaluateControlPlaneAvailability(tt.running, tt.checks, true); got.Satisfied {
 				t.Fatalf("unsatisfied control-plane topology reported healthy: %#v", got)
 			}
 		})
+	}
+}
+
+func TestSingleControlPlaneAvailabilityReportsActualTopology(t *testing.T) {
+	checks := []health.Check{{Name: "postgres", OK: true}, {Name: "openbao", OK: true}}
+	running := []string{"postgres-member-1", "openbao-member-1"}
+	report := evaluateControlPlaneAvailability(running, checks, false)
+	if !report.Satisfied || !strings.Contains(report.Detail(), "failover=false") || !strings.Contains(report.Detail(), "etcd:0/0") {
+		t.Fatalf("single availability: %#v %s", report, report.Detail())
+	}
+	if evaluateControlPlaneAvailability(running, checks, true).Satisfied {
+		t.Fatal("single topology must never satisfy HA quorum")
+	}
+	if evaluateControlPlaneAvailability(append(running, "postgres-etcd-1"), checks, false).Satisfied {
+		t.Fatal("hidden etcd must not satisfy single topology")
 	}
 }

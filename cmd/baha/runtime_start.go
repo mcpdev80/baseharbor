@@ -25,11 +25,11 @@ func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
 }
 
-func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports) error {
+func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports, ha bool) error {
 	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
-	compose, files, err := startControlPlaneRuntime(ctx, out, ports)
+	compose, files, err := startControlPlaneRuntime(ctx, out, ports, ha)
 	if err != nil {
 		return err
 	}
@@ -253,6 +253,16 @@ func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.R
 	// Retire previous trust only after both stable service paths have accepted
 	// the replacement leaves. Re-project the new-only CA bundles afterwards
 	// and verify the operator path one more time.
+	// An overlap bundle also accepts the old listener certificate while
+	// OpenBao's automatic TLS reload is still pending. Verify against only
+	// the active issuer before removing that fallback trust.
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve active OpenBao CA before retirement: %w", err)
+	}
+	if err := waitForOpenBaoReplacementCA(ctx, material, endpoint, trust.PEM); err != nil {
+		return fmt.Errorf("verify replacement OpenBao listener before CA retirement: %w", err)
+	}
 	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
 		return err
 	}
@@ -298,7 +308,7 @@ func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeP
 	if err != nil {
 		return fmt.Errorf("resolve PostgreSQL primary before TLS rotation: %w", err)
 	}
-	members := []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"}
+	members := files.PostgresMembers()
 	order := make([]string, 0, len(members))
 	for _, member := range members {
 		if member != primary {
@@ -333,8 +343,8 @@ func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeP
 	return nil
 }
 
-func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
-	target, files, err := ensureTargetRuntimeFiles(ctx, ports)
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports, ha bool) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports, ha)
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}

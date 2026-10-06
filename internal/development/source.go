@@ -114,6 +114,12 @@ func (m SourceModel) Validate() error {
 	}
 	sourceIDs := map[string]SourceDefinition{}
 	for _, source := range m.Sources {
+		if err := validatePublicSourceIdentity(source.Repository); err != nil {
+			return err
+		}
+		if err := validatePublicSourceIdentity(source.Image); err != nil {
+			return err
+		}
 		id := strings.TrimSpace(source.ID)
 		if id == "" {
 			return fmt.Errorf("source id is required")

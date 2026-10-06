@@ -108,7 +108,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
-		{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(e.resolved) }},
+		applicationWorkloadContractCheck(e.resolved),
 	}
 	if composeRequired {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {

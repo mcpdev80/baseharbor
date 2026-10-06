@@ -8,6 +8,13 @@ import (
 
 func boolp(v bool) *bool { return &v }
 
+func TestNonHADefaultResolvesOneInstance(t *testing.T) {
+	result, err := Negotiate(Requirement{Component: "sql"}, "provider", Support{Level: Supported, RecommendedInstances: 3})
+	if err != nil || !result.Satisfied || result.EffectiveInstances != 1 || result.RequiredHA {
+		t.Fatalf("non-HA negotiation = %#v, %v", result, err)
+	}
+}
+
 func TestIntentInheritanceAndExplicitException(t *testing.T) {
 	intent := Intent{HA: true, Overrides: map[string]Override{
 		"sql":  {Instances: 5},

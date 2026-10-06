@@ -21,6 +21,9 @@ func runAppWorkspaceWizard(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := authorizeMCPOperation(ctx, "workspace.init", "", manifest.Environment, manifest.ApplicationID, manifestPath); err != nil {
+		return err
+	}
 	if _, _, err := development.LoadSourceModel(manifestPath); err == nil {
 		return usageError("workspace source model already exists", "Run 'baha app workspace show' to inspect it, or use deterministic workspace commands to update mappings.")
 	} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, development.ErrWorkspaceModelMissing) {

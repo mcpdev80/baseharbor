@@ -201,7 +201,7 @@ func TestSharedValkeyComposeUsesNumericNonRootIdentity(t *testing.T) {
 
 func TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers(t *testing.T) {
 	var b strings.Builder
-	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev", PostgresMembers: 3})
 	got := b.String()
 
 	if strings.Contains(got, "USE_ADMIN:") {
@@ -214,7 +214,7 @@ func TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers(t *testing.T) {
 
 func TestSharedPostgresComposeUsesPreparedTLSRuntime(t *testing.T) {
 	var b strings.Builder
-	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev"})
+	writeSharedPostgresCompose(&b, sharedBackendState{Environment: "dev", PostgresMembers: 3})
 	got := b.String()
 
 	for _, want := range []string{

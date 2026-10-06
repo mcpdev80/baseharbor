@@ -12,7 +12,7 @@ on:
       ref:
         description: Source ref to validate before tagging
         required: true
-        default: release/v0.4.21
+        default: develop
         type: string
       demo_ref:
         description: Exact baseharbor-demo commit SHA to validate
@@ -38,6 +38,24 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
       demo_ref: ${{ steps.release.outputs.demo_ref }}
+      adoption: ${{ steps.resume.outputs.adoption }}
+      adoption_count: ${{ steps.resume.outputs.adoption_count }}
+      static: ${{ steps.resume.outputs.static }}
+      static_count: ${{ steps.resume.outputs.static_count }}
+      light_docker: ${{ steps.resume.outputs.light_docker }}
+      light_docker_count: ${{ steps.resume.outputs.light_docker_count }}
+      light_podman: ${{ steps.resume.outputs.light_podman }}
+      light_podman_count: ${{ steps.resume.outputs.light_podman_count }}
+      heavy_docker: ${{ steps.resume.outputs.heavy_docker }}
+      heavy_docker_count: ${{ steps.resume.outputs.heavy_docker_count }}
+      heavy_podman: ${{ steps.resume.outputs.heavy_podman }}
+      heavy_podman_count: ${{ steps.resume.outputs.heavy_podman_count }}
+      ha_docker: ${{ steps.resume.outputs.ha_docker }}
+      ha_docker_count: ${{ steps.resume.outputs.ha_docker_count }}
+      ha_podman: ${{ steps.resume.outputs.ha_podman }}
+      ha_podman_count: ${{ steps.resume.outputs.ha_podman_count }}
+      journey: ${{ steps.resume.outputs.journey }}
+      journey_count: ${{ steps.resume.outputs.journey_count }}
 
     steps:
       - name: Checkout candidate source
@@ -153,6 +171,15 @@ jobs:
         id: source_readability
         run: bash scripts/source-readability-audit.sh
 
+      - name: Validate partial-rerun evidence selection
+        run: |
+          python scripts/test_select_evidence_attempts.py
+          python scripts/test_verify_journey_evidence.py
+          python scripts/test_verify_attempt_bindings.py
+          python scripts/test_ci_assertion_summary.py
+          python scripts/test_ci_run_metrics.py
+          python scripts/test_pre_release_resume.py
+
       - name: Run release-source tests
         id: source_tests
         shell: bash
@@ -160,7 +187,7 @@ jobs:
           set -euo pipefail
           logs="$RUNNER_TEMP/pre-release-source-logs"
           mkdir -p "$logs"
-          go test ./internal/... ./spec/... 2>&1 | tee "$logs/go-test-internal-spec.log"
+          go test ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
           go vet ./... 2>&1 | tee "$logs/go-vet.log"
 
@@ -234,6 +261,29 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Resolve reusable gate evidence
+        id: resume
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+          DEMO_REF: ${{ steps.release.outputs.demo_ref }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/resume-demo"
+          python scripts/pre-release-resume.py plan --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG" \
+            --demo-repo "$RUNNER_TEMP/resume-demo" --runs "docs/releases/$TAG.evidence-runs" \
+            --output "$RUNNER_TEMP/evidence-plan" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload authenticated evidence plan
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-evidence-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence-plan
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Generate source evidence
         if: always()
@@ -327,6 +377,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   adoption:
+    if: ${{ needs.source.result == 'success' && needs.source.outputs.adoption_count != '0' }}
     name: Adoption · ${{ matrix.gate }}
     needs: source
     runs-on: ubuntu-latest
@@ -335,11 +386,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        gate:
-          - conformance
-          - realworld-compose
-          - realworld-quadlet
-          - realworld-kubernetes
+        gate: ${{ fromJSON(needs.source.outputs.adoption) }}
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
@@ -392,16 +439,25 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/adoption-evidence"
           mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           jq -n \
             --arg schema "baseharbor.pre-release.adoption-evidence/v1" \
             --arg gate "${{ matrix.gate }}" \
             --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
             --arg outcome "${{ steps.adoption_gate.outcome }}" \
+            --arg demo_ref "${{ needs.source.outputs.demo_ref }}" \
+            --arg cleanup_outcome "${{ 'skipped' }}" \
+            --arg workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
             '{
               schema: $schema,
               gate: $gate,
               candidate_sha: $candidate_sha,
-              outcome: $outcome
+              outcome: $outcome,
+              demo_ref: $demo_ref,
+              cleanup_outcome: $cleanup_outcome,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
             }' > "$out/manifest.json"
 
       - name: Upload adoption evidence
@@ -416,16 +472,12 @@ jobs:
   static_gates:
     name: Static · ${{ matrix.gate }}
     needs: source
+    if: ${{ needs.source.result == 'success' && needs.source.outputs.static_count != '0' }}
     strategy:
       fail-fast: false
       max-parallel: 5
       matrix:
-        gate:
-          - config-matrix
-          - init
-          - mcp
-          - agent
-          - shell-ux
+        gate: ${{ fromJSON(needs.source.outputs.static) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -434,22 +486,88 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: pre-release-source-candidate
 
-  runtime_light_gates:
+  runtime_light_gates_docker:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
     needs: [source, runtime_candidate]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 1
       matrix:
-        runtime: [docker, podman]
-        gate:
-          - guided
-          - lifecycle
-          - policy
-          - connectivity
-          - reconciliation
-          - failure
-          - full-destroy
+        runtime: [docker]
+        gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-runtime-candidate
+
+  runtime_light_gates_podman:
+    name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
+    needs: [source, runtime_candidate]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_podman_count != '0' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        runtime: [podman]
+        gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-runtime-candidate
+
+  runtime_light_gates:
+    name: runtime light gates · All runtime results
+    needs: [source, runtime_light_gates_docker, runtime_light_gates_podman]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both runtime matrices
+        env:
+          DOCKER_RESULT: ${{ needs.runtime_light_gates_docker.result }}
+          PODMAN_RESULT: ${{ needs.runtime_light_gates_podman.result }}
+          SOURCE_RESULT: ${{ needs.source.result }}
+          DOCKER_COUNT: ${{ needs.source.outputs.light_docker_count }}
+          PODMAN_COUNT: ${{ needs.source.outputs.light_podman_count }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$DOCKER_RESULT" = success || { test "$DOCKER_RESULT" = skipped && test "$DOCKER_COUNT" = 0; }
+          test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
+
+  runtime_heavy_gates_docker:
+    name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
+    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_docker_count != '0' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker]
+        gate: ${{ fromJSON(needs.source.outputs.heavy_docker) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.source.outputs.candidate_sha }}
+      demo_ref: ${{ needs.source.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pre-release-runtime-candidate
+
+  runtime_heavy_gates_podman:
+    name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
+    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_podman_count != '0' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [podman]
+        gate: ${{ fromJSON(needs.source.outputs.heavy_podman) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.source.outputs.candidate_sha }}
@@ -459,48 +577,35 @@ jobs:
       candidate_artifact: pre-release-runtime-candidate
 
   runtime_heavy_gates:
-    name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runtime: [docker, podman]
-        gate:
-          - data-capabilities
-          - observability
-          - identity
-          - security
-          - backup-restore
-          - rabbitmq-runtime
-          - mongodb-runtime
-          - durable-key-value
-          - control-plane-recovery
-          - loki-runtime
-          - tempo-runtime
-    uses: ./.github/workflows/pre-release-runtime-suite.yml
-    with:
-      ref: ${{ needs.source.outputs.candidate_sha }}
-      demo_ref: ${{ needs.source.outputs.demo_ref }}
-      runtime: ${{ matrix.runtime }}
-      gate: ${{ matrix.gate }}
-      candidate_artifact: pre-release-runtime-candidate
+    name: runtime heavy gates · All runtime results
+    needs: [source, runtime_heavy_gates_docker, runtime_heavy_gates_podman]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both runtime matrices
+        env:
+          DOCKER_RESULT: ${{ needs.runtime_heavy_gates_docker.result }}
+          PODMAN_RESULT: ${{ needs.runtime_heavy_gates_podman.result }}
+          SOURCE_RESULT: ${{ needs.source.result }}
+          DOCKER_COUNT: ${{ needs.source.outputs.heavy_docker_count }}
+          PODMAN_COUNT: ${{ needs.source.outputs.heavy_podman_count }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$DOCKER_RESULT" = success || { test "$DOCKER_RESULT" = skipped && test "$DOCKER_COUNT" = 0; }
+          test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
 
-  v0421_ha_groups:
+  v0421_ha_groups_docker:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: source
+    needs: [source, runtime_heavy_gates]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
-        runtime: [docker, podman]
-        group:
-          - data
-          - identity
-          - observability
-          - routing
+        runtime: [docker]
+        group: ${{ fromJSON(needs.source.outputs.ha_docker) }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
 
@@ -535,7 +640,15 @@ jobs:
       - name: Run grouped HA acceptance
         id: ha
         shell: bash
-        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ matrix.group }}"
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          bash scripts/v0.4.21-ha-acceptance.sh "${{ matrix.group }}"
+
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup runtime after HA group
         id: cleanup
@@ -551,18 +664,27 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/v0421-ha-evidence"
           mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           jq -n \
             --arg schema "baseharbor.pre-release.v0.4.21-ha-evidence/v1" \
             --arg group "${{ matrix.group }}" \
             --arg runtime "${{ matrix.runtime }}" \
             --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
             --arg outcome "${{ steps.ha.outcome }}" \
+            --arg demo_ref "${{ needs.source.outputs.demo_ref }}" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
             '{
               schema: $schema,
               group: $group,
               runtime: $runtime,
               candidate_sha: $candidate_sha,
-              outcome: $outcome
+              outcome: $outcome,
+              demo_ref: $demo_ref,
+              cleanup_outcome: $cleanup_outcome,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
             }' > "$out/manifest.json"
 
       - name: Upload HA evidence
@@ -574,25 +696,190 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  reference_journey:
-    name: Reference Journey · Docker · Full E2E
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups]
+  v0421_ha_groups_podman:
+    name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
+    needs: [source, runtime_heavy_gates]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count != '0' }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [podman]
+        group: ${{ fromJSON(needs.source.outputs.ha_podman) }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+
+    steps:
+      - name: Prepare hosted Podman runtime
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+          podman info
+
+      - name: Checkout exact candidate
+        id: checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset runtime before HA group
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Run grouped HA acceptance
+        id: ha
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          bash scripts/v0.4.21-ha-acceptance.sh "${{ matrix.group }}"
+
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup runtime after HA group
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Generate HA evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/v0421-ha-evidence"
+          mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
+          jq -n \
+            --arg schema "baseharbor.pre-release.v0.4.21-ha-evidence/v1" \
+            --arg group "${{ matrix.group }}" \
+            --arg runtime "${{ matrix.runtime }}" \
+            --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
+            --arg outcome "${{ steps.ha.outcome }}" \
+            --arg demo_ref "${{ needs.source.outputs.demo_ref }}" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              schema: $schema,
+              group: $group,
+              runtime: $runtime,
+              candidate_sha: $candidate_sha,
+              outcome: $outcome,
+              demo_ref: $demo_ref,
+              cleanup_outcome: $cleanup_outcome,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
+            }' > "$out/manifest.json"
+
+      - name: Upload HA evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-v0421-ha-${{ matrix.runtime }}-${{ matrix.group }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v0421-ha-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  v0421_ha_groups:
+    name: v0421 ha groups · All runtime results
+    needs: [source, v0421_ha_groups_docker, v0421_ha_groups_podman]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
+    steps:
+      - name: Require both runtime matrices
+        env:
+          DOCKER_RESULT: ${{ needs.v0421_ha_groups_docker.result }}
+          PODMAN_RESULT: ${{ needs.v0421_ha_groups_podman.result }}
+          SOURCE_RESULT: ${{ needs.source.result }}
+          DOCKER_COUNT: ${{ needs.source.outputs.ha_docker_count }}
+          PODMAN_COUNT: ${{ needs.source.outputs.ha_podman_count }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$DOCKER_RESULT" = success || { test "$DOCKER_RESULT" = skipped && test "$DOCKER_COUNT" = 0; }
+          test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
+
+  reference_journey:
+    if: ${{ needs.source.result == 'success' && needs.source.outputs.journey_count != '0' }}
+    name: Reference Journey · ${{ matrix.runtime }} · Full E2E
+    needs: [source, runtime_candidate]
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ fromJSON(needs.source.outputs.journey) }}
+
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 120
     env:
-      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
 
     steps:
+      - name: Prepare hosted Podman runtime
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+          podman info
+
+      - name: Verify Podman Quadlet runtime
+        id: quadlet
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/atomic-podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          verify_units="$RUNNER_TEMP/atomic-quadlet-verify"
+          rm -rf "$verify_units"
+          mkdir -p "$verify_units"
+          QUADLET_UNIT_DIRS="$verify_units" "$generator" --user --dryrun >/tmp/atomic-podman-quadlet.txt
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in BaseHarbor Podman acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
-      - name: Reset Docker runtime
+      - name: Reset journey runtime
         shell: bash
         timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh docker
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
       - name: Download exact candidate artifacts
         uses: actions/download-artifact@v6
@@ -607,8 +894,8 @@ jobs:
           chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
           archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
           test -s "$archive"
-          docker load -i "$archive"
-          docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          "${{ matrix.runtime }}" load -i "$archive"
+          "${{ matrix.runtime }}" image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
           "$RUNNER_TEMP/pre-release-candidate/baha" version | grep -F "${{ needs.source.outputs.candidate_sha }}"
 
       - name: Checkout exact demo revision
@@ -634,17 +921,24 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
           export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
           export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-reference-artifacts"
           workdir="${{ steps.demo.outputs.workdir }}"
           cd "$workdir"
+          started=$(date +%s)
+          set +e
           BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
           BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
           BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
-          BASEHARBOR_TEST_RUNTIME=docker \
+          BASEHARBOR_TEST_RUNTIME="${{ matrix.runtime }}" \
             bash scripts/acceptance.sh
+          result=$?
+          set -e
+          echo "duration_seconds=$(( $(date +%s) - started ))" >> "$GITHUB_OUTPUT"
+          exit "$result"
 
       - name: Collect reference journey diagnostics
         if: failure()
@@ -654,17 +948,22 @@ jobs:
           export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
           export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
           bash scripts/ci-failure-diagnostics.sh \
-            docker \
+            "${{ matrix.runtime }}" \
             "$RUNNER_TEMP/reference-journey-diagnostics" \
             "${{ steps.demo.outputs.workdir }}" \
             "$RUNNER_TEMP/pre-release-candidate/baha" || true
 
-      - name: Cleanup Docker runtime
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup journey runtime
         id: cleanup
         if: always()
         shell: bash
         timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh docker
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
       - name: Generate reference journey evidence
         if: always()
@@ -673,6 +972,7 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/reference-journey-evidence"
           mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
           cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
           jq -n \
@@ -680,19 +980,48 @@ jobs:
             --arg candidate_sha "${{ needs.source.outputs.candidate_sha }}" \
             --arg demo_ref "${{ needs.source.outputs.demo_ref }}" \
             --arg outcome "${{ steps.journey.outcome }}" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg runtime "${{ matrix.runtime }}" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg duration_seconds "${{ steps.journey.outputs.duration_seconds }}" \
             '{
               schema: $schema,
               candidate_sha: $candidate_sha,
               demo_ref: $demo_ref,
-              runtime: "docker",
+              runtime: $runtime,
+              workflow_run_id: $run_id,
+              workflow_run_attempt: $run_attempt,
+              cleanup_outcome: $cleanup_outcome,
+              duration_seconds: (if $duration_seconds == "" then null else ($duration_seconds | tonumber) end),
               outcome: $outcome
             }' > "$out/manifest.json"
+
+      - name: Summarize journey groups and duration
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY_SUMMARY'
+          import csv, os, pathlib
+          report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'baseharbor-reference-artifacts/groups.tsv'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('### Full journey · ${{ matrix.runtime }}\n\n')
+              output.write('Duration: ${{ steps.journey.outputs.duration_seconds }} seconds. Cleanup: ${{ steps.cleanup.outcome }}.\n\n')
+              output.write('| Group | Result |\n| --- | --- |\n')
+              if report.is_file():
+                  for row in csv.reader(report.open(), delimiter='\t'):
+                      if len(row) >= 2 and row[0].startswith('demo-') and row[1] in ('PASS', 'FAIL', 'ERROR', 'BLOCKED', 'SKIP'):
+                          name = ''.join(c for c in row[0] if c.isalnum() or c == '-')[:80]
+                          output.write(f'| {name} | {row[1]} |\n')
+              else:
+                  output.write('| Setup | No group report; inspect the first failed step |\n')
+          PY_SUMMARY
 
       - name: Upload reference journey evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pre-release-reference-journey-evidence-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/reference-journey-evidence
           if-no-files-found: error
           retention-days: 30
@@ -707,228 +1036,37 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha || github.sha }}
+          fetch-depth: 0
 
-      - name: Download gate evidence
-        uses: actions/download-artifact@v6
-        with:
-          pattern: pre-release-gate-*-evidence-*
-          path: ${{ runner.temp }}/gate-evidence
+      - name: Install evidence parser
+        run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
-      - name: Download adoption evidence
-        uses: actions/download-artifact@v6
-        with:
-          pattern: pre-release-adoption-*-evidence-*
-          path: ${{ runner.temp }}/adoption-evidence
-
-      - name: Download v0.4.21 HA evidence
-        uses: actions/download-artifact@v6
-        with:
-          pattern: pre-release-v0421-ha-*-evidence-*
-          path: ${{ runner.temp }}/v0421-ha-evidence
-
-      - name: Download reference journey evidence
-        uses: actions/download-artifact@v6
-        with:
-          name: pre-release-reference-journey-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/reference-journey-evidence
-
-      - name: Select latest evidence attempt per gate
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import os, pathlib, re, shutil
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          for family in ("gate-evidence", "adoption-evidence", "v0421-ha-evidence"):
-              groups = {}
-              for directory in (root / family).iterdir():
-                  match = re.fullmatch(r"(.+)-([0-9]+)-([0-9]+)", directory.name)
-                  if not match or not directory.is_dir():
-                      raise SystemExit(f"Unexpected evidence directory: {directory}")
-                  key, run, attempt = match.groups()
-                  if run != os.environ.get("EVIDENCE_RUN_ID", os.environ["GITHUB_RUN_ID"]):
-                      raise SystemExit(f"Wrong source run: {directory}")
-                  groups.setdefault(key, []).append((int(attempt), directory))
-              for key, entries in groups.items():
-                  entries.sort()
-                  for attempt, directory in entries[:-1]:
-                      archive = root / "superseded-evidence" / family
-                      archive.mkdir(parents=True, exist_ok=True)
-                      shutil.move(str(directory), archive / directory.name)
-                  print(f"{key}: selected attempt {entries[-1][0]}")
-          PY
-
-      - name: Verify adoption evidence
-        id: adoption_manifest
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
-        run: |
-          set -euo pipefail
-          mapfile -d '' files < <(find "$RUNNER_TEMP/adoption-evidence" -type f -name manifest.json -print0 | sort -z)
-          test "${#files[@]}" -eq 4
-          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/adoption-manifests.json"
-          jq -e \
-            --arg candidate "$CANDIDATE_SHA" \
-            '
-              length == 4 and
-              all(.[];
-                .schema == "baseharbor.pre-release.adoption-evidence/v1" and
-                .candidate_sha == $candidate and
-                .outcome == "success"
-              ) and
-              ([.[].gate] | sort) == ["conformance","realworld-compose","realworld-kubernetes","realworld-quadlet"]
-            ' "$RUNNER_TEMP/adoption-manifests.json" >/dev/null
-
-      - name: Verify v0.4.21 HA evidence
-        id: ha_manifest
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
-        run: |
-          set -euo pipefail
-          mapfile -d '' files < <(find "$RUNNER_TEMP/v0421-ha-evidence" -type f -name manifest.json -print0 | sort -z)
-          test "${#files[@]}" -eq 8
-          jq -s '.' "${files[@]}" > "$RUNNER_TEMP/v0421-ha-manifests.json"
-          jq -e \
-            --arg candidate "$CANDIDATE_SHA" \
-            '
-              length == 8 and
-              all(.[];
-                .schema == "baseharbor.pre-release.v0.4.21-ha-evidence/v1" and
-                .candidate_sha == $candidate and
-                .outcome == "success"
-              ) and
-              ([.[] | [.runtime,.group]] | sort) == [["docker","data"],["docker","identity"],["docker","observability"],["docker","routing"],["podman","data"],["podman","identity"],["podman","observability"],["podman","routing"]]
-            ' "$RUNNER_TEMP/v0421-ha-manifests.json" >/dev/null
-
-      - name: Verify complete reference journey evidence
-        id: reference_manifest
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
-          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
-        run: |
-          set -euo pipefail
-          manifest="$RUNNER_TEMP/reference-journey-evidence/manifest.json"
-          test -s "$manifest"
-          jq -e \
-            --arg candidate "$CANDIDATE_SHA" \
-            --arg demo "$DEMO_REF" \
-            '
-              .schema == "baseharbor.pre-release.reference-journey/v1" and
-              .candidate_sha == $candidate and
-              .demo_ref == $demo and
-              .runtime == "docker" and
-              .outcome == "success"
-            ' "$manifest" >/dev/null
-
-      - name: Verify complete atomic evidence set
-        id: manifest
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
-          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
-        run: |
-          set -euo pipefail
-          expected_ids="$RUNNER_TEMP/expected-gate-ids.txt"
-          actual_ids="$RUNNER_TEMP/actual-gate-ids.txt"
-          manifests="$RUNNER_TEMP/gate-manifests.json"
-
-          {
-            for gate in config-matrix init mcp agent shell-ux; do
-              printf 'static/%s\n' "$gate"
-            done
-            for runtime in docker podman; do
-              for gate in guided lifecycle data-capabilities observability policy identity connectivity security reconciliation failure backup-restore full-destroy rabbitmq-runtime mongodb-runtime durable-key-value control-plane-recovery loki-runtime tempo-runtime; do
-                printf '%s/%s\n' "$runtime" "$gate"
-              done
-            done
-          } | sort > "$expected_ids"
-
-          mapfile -d '' manifest_files < <(find "$RUNNER_TEMP/gate-evidence" -type f -name manifest.json -print0 | sort -z)
-          test "${#manifest_files[@]}" -eq 41
-          jq -s '.' "${manifest_files[@]}" > "$manifests"
-
-          jq -e \
-            --arg candidate "$CANDIDATE_SHA" \
-            --arg demo "$DEMO_REF" \
-            '
-              length == 41 and
-              all(.[];
-                .schema == "baseharbor.pre-release.gate-evidence/v1" and
-                .candidate_sha == $candidate and
-                .demo_ref == $demo and
-                .outcome == "success"
-              ) and
-              ([.[].id] | unique | length) == 41
-            ' "$manifests" >/dev/null
-
-          jq -r '.[].id' "$manifests" | sort > "$actual_ids"
-          diff -u "$expected_ids" "$actual_ids"
-
-          summary_count="$(find "$RUNNER_TEMP/gate-evidence" -type f -name summary.md | wc -l)"
-          test "$summary_count" -eq 41
-
-          mkdir -p "$RUNNER_TEMP/pre-release-final-evidence/gates"
-          cp -a "$RUNNER_TEMP/gate-evidence/." "$RUNNER_TEMP/pre-release-final-evidence/gates/"
-          cp "$manifests" "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json"
-          cp "$actual_ids" "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt"
-          cp "$RUNNER_TEMP/adoption-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json"
-          cp "$RUNNER_TEMP/v0421-ha-manifests.json" "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json"
-          cp "$RUNNER_TEMP/reference-journey-evidence/manifest.json" "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json"
-
-      - name: Generate immutable release approval
+      - name: Verify all 55 input-bound proofs and create release approval
         id: approval
         if: >-
-          steps.manifest.outcome == 'success' &&
-          needs.source.result == 'success' &&
-          needs.runtime_candidate.result == 'success' &&
-          needs.adoption.result == 'success' &&
-          steps.adoption_manifest.outcome == 'success' &&
-          needs.static_gates.result == 'success' &&
-          needs.runtime_light_gates.result == 'success' &&
-          needs.runtime_heavy_gates.result == 'success' &&
+          needs.source.result == 'success' && needs.runtime_candidate.result == 'success' &&
+          (needs.adoption.result == 'success' || (needs.adoption.result == 'skipped' && needs.source.outputs.adoption_count == '0')) &&
+          (needs.static_gates.result == 'success' || (needs.static_gates.result == 'skipped' && needs.source.outputs.static_count == '0')) &&
+          needs.runtime_light_gates.result == 'success' && needs.runtime_heavy_gates.result == 'success' &&
           needs.v0421_ha_groups.result == 'success' &&
-          steps.ha_manifest.outcome == 'success' &&
-          needs.reference_journey.result == 'success' &&
-          steps.reference_manifest.outcome == 'success'
-        shell: bash
+          (needs.reference_journey.result == 'success' || (needs.reference_journey.result == 'skipped' && needs.source.outputs.journey_count == '0'))
         env:
-          TAG: ${{ needs.source.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
-          DEMO_SHA: ${{ needs.source.outputs.demo_ref }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/pre-release-approval"
-          mkdir -p "$out"
-          jq -n \
-            --arg schema "baseharbor.pre-release.approval/v1" \
-            --arg tag "$TAG" \
-            --arg candidate_sha "$CANDIDATE_SHA" \
-            --arg demo_sha "$DEMO_SHA" \
-            --arg workflow "pre-release.yml" \
-            --arg run_id "$GITHUB_RUN_ID" \
-            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg result "success" \
-            --argjson gate_count 54 \
-            '{
-              schema: $schema,
-              tag: $tag,
-              candidate_sha: $candidate_sha,
-              tested_sha: $candidate_sha,
-              demo_sha: $demo_sha,
-              workflow: $workflow,
-              workflow_run_id: ($run_id | tonumber),
-              workflow_run_attempt: ($run_attempt | tonumber),
-              gate_evidence_schema: "baseharbor.pre-release.gate-evidence/v1",
-              gate_count: $gate_count,
-              result: $result
-            }' > "$out/release-approved.json"
-          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-manifests.json" "$out/gate-manifests.json"
-          cp "$RUNNER_TEMP/pre-release-final-evidence/gate-evidence-ids.txt" "$out/gate-evidence-ids.txt"
-          cp "$RUNNER_TEMP/pre-release-final-evidence/adoption-manifests.json" "$out/adoption-manifests.json"
-          cp "$RUNNER_TEMP/pre-release-final-evidence/v0421-ha-manifests.json" "$out/v0421-ha-manifests.json"
-          cp "$RUNNER_TEMP/pre-release-final-evidence/reference-journey-manifest.json" "$out/reference-journey-manifest.json"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/approval-demo"
+          python scripts/pre-release-resume.py approve --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG" \
+            --demo-repo "$RUNNER_TEMP/approval-demo" --runs "docs/releases/$TAG.evidence-runs" \
+            --output "$RUNNER_TEMP/pre-release-approval" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Require complete release approval
+        if: always()
+        env:
+          APPROVAL_RESULT: ${{ steps.approval.outcome }}
+        run: test "$APPROVAL_RESULT" = success
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
@@ -939,26 +1077,22 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Generate final pre-release evidence
+      - name: Record job timing and repeated failure classes
         if: always()
-        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          rows="$RUNNER_TEMP/pre-release-final.tsv"
-          cat >"$rows" <<EOF
-          Source	${{ needs.source.result }}	exact candidate source/contracts/docs
-          Runtime candidate	${{ needs.runtime_candidate.result }}	one runtime image built and shared
-          Static gates	${{ needs.static_gates.result }}	5 independently rerunnable demo/static gates
-          Light runtime gates	${{ needs.runtime_light_gates.result }}	14 independently rerunnable Docker/Podman gates
-          Adoption gates	${{ needs.adoption.result }}	conformance, security/parity and pinned 10/10/10 real-world corpus
-          Heavy runtime gates	${{ needs.runtime_heavy_gates.result }}	22 independently rerunnable Docker/Podman gates
-          v0.4.21 HA groups	${{ needs.v0421_ha_groups.result }}	data, identity, observability and routing failover on Docker/Podman
-          Reference journey	${{ needs.reference_journey.result }}	complete pinned-demo Docker end-to-end journey after atomic gates
-          Adoption evidence	${{ steps.adoption_manifest.outcome }}	4 source-neutral adoption evidence bundles bound to the candidate SHA
-          HA evidence	${{ steps.ha_manifest.outcome }}	8 grouped HA evidence bundles bound to the candidate SHA
-          Reference evidence	${{ steps.reference_manifest.outcome }}	full E2E evidence bound to candidate and demo SHA
-          Evidence manifest	${{ steps.manifest.outcome }}	41 atomic gate evidence bundles bound to the candidate SHA
-          EOF
-          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/pre-release-final-evidence"             "BaseHarbor Final Pre-Release Evidence"             "pre-release/final"             "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"             "${{ needs.source.outputs.candidate_sha || github.sha }}"             "$rows"
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=all&per_page=100" > "$RUNNER_TEMP/run-jobs.json"
+          python scripts/ci-run-metrics.py "$RUNNER_TEMP/run-jobs.json" "$RUNNER_TEMP" "$RUNNER_TEMP/pre-release-final-evidence/run-metrics.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain coverage and origin archives
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/pre-release-final-evidence"
+          if [ -d "$RUNNER_TEMP/pre-release-approval" ]; then
+            cp -a "$RUNNER_TEMP/pre-release-approval/." "$RUNNER_TEMP/pre-release-final-evidence/"
+          fi
 
       - name: Upload final pre-release evidence
         if: always()

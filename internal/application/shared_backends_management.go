@@ -22,8 +22,8 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		}
 		root := filepath.Join(shared.Dir, "postgresql")
 		policy.ServerName = sharedPostgresAlias()
-		memberNames := []string{sharedPostgresAlias(), "127.0.0.1"}
-		for ordinal := 1; ordinal <= 3; ordinal++ {
+		memberNames := []string{sharedPostgresAlias(), sharedPostgresService(m.Environment), "127.0.0.1"}
+		for ordinal := 1; ordinal <= sharedPostgresMemberCount(*state); ordinal++ {
 			memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
 		}
 		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
@@ -33,8 +33,10 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		if err := projectPostgresServerMaterial(root, material); err != nil {
 			return err
 		}
-		if err := writeSharedPostgresHAProxyConfig(root, m.Environment); err != nil {
-			return err
+		if sharedPostgresMemberCount(*state) > 1 {
+			if err := writeSharedPostgresHAProxyConfig(root, m.Environment, sharedPostgresMemberCount(*state)); err != nil {
+				return err
+			}
 		}
 		for _, instance := range SQLInstanceNames(m) {
 			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
@@ -71,7 +73,7 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 	return nil
 }
 
-func writeSharedPostgresHAProxyConfig(root, environment string) error {
+func writeSharedPostgresHAProxyConfig(root, environment string, members int) error {
 	var b strings.Builder
 	b.WriteString(`global
   log stdout format raw local0
@@ -88,11 +90,13 @@ frontend postgres
   default_backend primary
 
 backend primary
-  option httpchk GET /primary
-  http-check expect status 200
-  default-server check port 8008 inter 2s fall 2 rise 2
 `)
-	for ordinal := 1; ordinal <= 3; ordinal++ {
+	if members > 1 {
+		b.WriteString("  option httpchk GET /primary\n  http-check expect status 200\n  default-server check port 8008 inter 2s fall 2 rise 2\n")
+	} else {
+		b.WriteString("  option tcp-check\n  default-server inter 2s fall 2 rise 2\n")
+	}
+	for ordinal := 1; ordinal <= members; ordinal++ {
 		fmt.Fprintf(&b, "  server postgres-%d %s:5432 check\n", ordinal, sharedPostgresMemberService(environment, ordinal))
 	}
 	path := filepath.Join(root, "service-access", "haproxy.cfg")

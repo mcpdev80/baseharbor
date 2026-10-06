@@ -18,6 +18,8 @@ Prefer machine-readable authority where practical:
 
 - [Application Contract v1](application-contract-v1.md)
 - [Provider Contract v1](provider-contract-v1.md)
+- [Public provider conformance v1](provider-conformance-v1.md)
+- [Extension Artifact Trust v1](extension-artifact-trust-v1.md)
 - [Runtime Provider Contract v1](runtime-provider-contract-v1.md)
 - [Runtime Provider Conformance v1](runtime-provider-conformance-v1.md)
 - [Delivery Provider Contract v1](delivery-provider-contract-v1.md)

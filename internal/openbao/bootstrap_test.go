@@ -207,7 +207,7 @@ func TestInspectPrefersUnsealedHAMemberOverReachableSealedMember(t *testing.T) {
 		"openbao-member-1": {Initialized: true, Sealed: true},
 		"openbao-member-2": {Initialized: true, Sealed: false},
 	}}
-	files := bhruntime.Files{Compose: "compose.yaml", Env: "runtime.env"}
+	files := bhruntime.Files{HA: true, Compose: "compose.yaml", Env: "runtime.env"}
 	state, err := Inspect(context.Background(), executor, files)
 	if err != nil {
 		t.Fatal(err)

@@ -41,9 +41,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return err
 	}
 	if err := execution.runPreflight(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
-	pending, err := recordPendingDeployment(ctx, execution.resolved)
+	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")
 	if err != nil {
 		return fmt.Errorf("record deployment before mutation: %w", err)
 	}
