@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,11 +111,11 @@ func (s *coreMemorySampler) sample(ctx context.Context, ready bool) (coreMemoryS
 		return sample, nil
 	}
 	args := append([]string{"stats", "--no-stream", "--format", "{{.ID}}|{{.MemUsage}}"}, ids...)
-	output, err := exec.CommandContext(ctx, s.engine, args...).Output()
+	output, err := bhruntime.NewCLIBackend(s.engine).DirectOutput(ctx, args...)
 	if err != nil {
 		return sample, errors.New("native Core memory statistics unavailable")
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		id, usage, ok := strings.Cut(line, "|")
 		if !ok {
 			return sample, errors.New("invalid native statistics row")
@@ -225,12 +224,12 @@ func (s *coreMemorySampler) metadata(ctx context.Context) ([]map[string]any, err
 			continue
 		}
 		commandCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		output, err := exec.CommandContext(commandCtx, s.engine, "inspect", "--format", "{{json .Config.Image}}|{{json .Image}}|{{json .HostConfig.Memory}}", c.ID).Output()
+		output, err := bhruntime.NewCLIBackend(s.engine).DirectOutput(commandCtx, "container", "inspect", "--format", "{{json .Config.Image}}|{{json .Image}}|{{json .HostConfig.Memory}}", c.ID)
 		cancel()
 		if err != nil {
 			return nil, errors.New("Core image/limit metadata unavailable")
 		}
-		parts := strings.Split(strings.TrimSpace(string(output)), "|")
+		parts := strings.Split(strings.TrimSpace(output), "|")
 		if len(parts) != 3 {
 			return nil, errors.New("invalid Core resource metadata")
 		}
