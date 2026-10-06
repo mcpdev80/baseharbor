@@ -45,6 +45,7 @@ func (h *Handler) handleTerminalOpen(w http.ResponseWriter, r *http.Request) {
 		deadline = *principal.ExpiresAt
 	}
 	ctx, cancel := context.WithDeadline(context.WithoutCancel(streamCtx), deadline)
+	ctx = machine.WithExecutionCorrelation(ctx, descriptor.StreamID)
 	record := &terminalRecord{descriptor: descriptor, request: request, ctx: ctx, cancel: cancel}
 	if err := h.terminals.reserve(record); err != nil {
 		cancel()

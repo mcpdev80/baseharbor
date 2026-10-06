@@ -64,7 +64,14 @@ func (b *ConnectorBackend) RuntimeExplorerCapabilities(ctx context.Context) ([]C
 	if available["runtime.exec"] {
 		result = append(result, CapabilityContainerExec)
 	}
-	// Follow/interactive transport is not advertised until its adapter exists.
+	if _, ok := b.pool.(connectorStreamTransport); ok {
+		if available["runtime.logs.read"] {
+			result = append(result, CapabilityLogs)
+		}
+		if available["runtime.terminal"] {
+			result = append(result, CapabilityContainerTerminal)
+		}
+	}
 	return result, nil
 }
 
@@ -128,7 +135,7 @@ func (b *ConnectorBackend) ListRuntimeContainers(ctx context.Context) ([]runtime
 
 func (b *ConnectorBackend) ContainerLogs(ctx context.Context, id string, since *time.Time, tail int, follow bool) (io.ReadCloser, error) {
 	if follow {
-		return nil, machine.NewError(machine.ErrorCapabilityMissing, "Remote follow stream is not bound.", "Use bounded log retrieval until live stream qualification completes.", false)
+		return b.followLogs(ctx, id, since, tail)
 	}
 	if tail <= 0 {
 		tail = 200

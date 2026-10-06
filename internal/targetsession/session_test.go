@@ -176,6 +176,19 @@ func TestInvalidSelectionCannotWriteAndRevocationClosesSession(t *testing.T) {
 
 func TestInactiveCAIssuedCertificateCannotEnrollSession(t *testing.T) { newSessionPair(t, true) }
 
+func TestIdleSessionRevocationStopsLiveCapabilitiesWithinCheckBound(t *testing.T) {
+	s, _, r := newSessionPair(t, false)
+	r.denied.Store(true)
+	select {
+	case <-s.ctx.Done():
+		if _, err := s.LiveCapabilities(); !errors.Is(err, ErrUnavailable) {
+			t.Fatal("revoked idle session advertised capability", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("idle revocation exceeded admission check bound")
+	}
+}
+
 func TestDisconnectAndForeignResponsesRetireWithoutReplay(t *testing.T) {
 	for _, mode := range []string{"disconnect", "foreign"} {
 		t.Run(mode, func(t *testing.T) {

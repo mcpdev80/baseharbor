@@ -254,8 +254,19 @@ Live capabilities are requested from the authenticated peer and bound to its
 exact Hello identity. Static access descriptors do not prove live support.
 Runtime Explorer projects inventory and bounded container operations through
 that transport; existing Core ownership and tenant decisions remain authoritative.
-Remote lifecycle realization, metrics, follow logs and interactive streams still
+Remote lifecycle realization, metrics and live runtime qualification still
 need complete adapters and exact-source runtime qualification.
+
+Follow logs and interactive terminals exclusively consume one admitted session.
+The canonical stream open and each event carry the exact stream ID and Core
+correlation. Output and terminal input have independent contiguous sequences;
+foreign scope, gaps and malformed frames retire the connection. Output blocks
+are bounded to 16 KiB and use reader backpressure. Terminal argv, size and input
+are typed; ownership and environment are checked by Core before stream open.
+Exit codes are propagated. Slow readers, token/session expiry and disconnect
+close the transport; an interactive process is never transparently reconnected.
+These source-level guarantees still require real Docker/rootless Podman and
+authenticated browser qualification at the final candidate.
 
 One control operation executes per connection. Every invocation rechecks
 certificate admission and preserves Core execution correlation. No operation is

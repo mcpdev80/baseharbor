@@ -37,6 +37,12 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	descriptor, err := newStreamDescriptor(request, decision.Actor)
+	if err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Classify(err))
+		return
+	}
+	streamCtx = machine.WithExecutionCorrelation(streamCtx, descriptor.StreamID)
 	stream, err := h.logStreamExecutor.OpenLogStream(streamCtx, request)
 	if err != nil {
 		writeMachineError(w, machineErrorStatus(err), err)
@@ -46,11 +52,6 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
 	defer stopClose()
 
-	descriptor, err := newStreamDescriptor(request, decision.Actor)
-	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the stream request.", true))
-		return
-	}
 	writeStreamHeaders(w, descriptor)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -84,6 +85,12 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	descriptor, err := newStreamDescriptor(request, decision.Actor)
+	if err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Classify(err))
+		return
+	}
+	streamCtx = machine.WithExecutionCorrelation(streamCtx, descriptor.StreamID)
 	stream, err := executor.OpenExecStream(streamCtx, request)
 	if err != nil {
 		writeMachineError(w, machineErrorStatus(err), err)
@@ -93,11 +100,6 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
 	defer stopClose()
 
-	descriptor, err := newStreamDescriptor(request, decision.Actor)
-	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the stream request.", true))
-		return
-	}
 	writeStreamHeaders(w, descriptor)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
