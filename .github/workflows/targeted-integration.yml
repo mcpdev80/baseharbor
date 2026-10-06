@@ -188,7 +188,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || fromJSON('["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/core-bootstrap"
-          go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m > "$RUNNER_TEMP/core-bootstrap/tests.jsonl" 2>&1
+          go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
         uses: actions/upload-artifact@v6

@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -27,5 +28,8 @@ func TestCoreIdentityExistingDiscoveryRetainsHTTPSPort(t *testing.T) {
 	}
 	if files.Dir != filepath.Join(root, "providers", "keycloak", "shared", "core") {
 		t.Fatalf("Core Identity lost installation placement: %s", files.Dir)
+	}
+	if files.Project == bhruntime.SharedProjectName("local") || files.Project != bhruntime.SharedProjectName("local-core") {
+		t.Fatal("application provider reconciliation can replace Core Identity containers")
 	}
 }
