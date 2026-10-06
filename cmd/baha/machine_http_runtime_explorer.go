@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/runtime/terminal"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 )
 
 func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
+	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
 	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
 	if err != nil {
 		return nil, err
@@ -32,6 +34,7 @@ func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine
 }
 
 func (e *bahaMachineExecutor) OpenExecStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
+	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
 	if request.TTY {
 		return nil, machine.NewError(
 			machine.ErrorUnsupported,
@@ -64,3 +67,20 @@ var _ interface {
 	OpenLogStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
 	OpenExecStream(context.Context, machine.StreamRequest) (io.ReadCloser, error)
 } = (*bahaMachineExecutor)(nil)
+
+func (e *bahaMachineExecutor) OpenTerminal(ctx context.Context, request machine.StreamRequest) (terminal.Session, error) {
+	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
+	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
+	if err != nil {
+		return nil, err
+	}
+	capabilities, err := explorer.Capabilities(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	return explorer.Terminal(ctx, runtimeexplorer.OperationRequest{
+		Resource: runtimeexplorer.ResourceRef{Provider: capabilities.Provider, Target: target,
+			Kind: runtimeexplorer.ResourceKind(request.ResourceKind), ResourceID: request.ResourceID},
+		Operation: runtimeexplorer.OperationExec, Command: append([]string(nil), request.Command...),
+	}, request.Context, request.Rows, request.Columns)
+}

@@ -9,8 +9,8 @@ import subprocess
 
 
 def validate_handoff(repository, candidate, published, tag):
-    if tag != 'v0.4.23' or any(not re.fullmatch('[0-9a-f]{40}', sha) for sha in [candidate, published]):
-        raise ValueError('handoff requires the supported release and exact commit SHAs')
+    if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', tag) or any(not re.fullmatch('[0-9a-f]{40}', sha) for sha in [candidate, published]):
+        raise ValueError('handoff requires a release tag and exact commit SHAs')
     allowed = {'CHANGELOG.md', 'docs/roadmap.md', 'docs/releases/index.md',
                f'docs/releases/{tag}.md', f'docs/internal/release-audits/{tag}.md'}
     # NUL delimiters preserve filenames; renames/deletions do not bypass the list.

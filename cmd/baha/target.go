@@ -87,7 +87,7 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeInvocation,
 			Identity: "target-selection", Defaults: orgconfig.EnvironmentDefaults{Target: explicit}})
 	}
-	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment(), preferences...)
+	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment(ctx), preferences...)
 	if err != nil {
 		return deployment.ResolvedTarget{}, err
 	}
@@ -102,7 +102,7 @@ func organizationDefaultTarget() (string, error) {
 	if err != nil || !ok {
 		return "", err
 	}
-	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment())
+	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment(context.Background()))
 	if err != nil {
 		return "", fmt.Errorf("resolve organization target default: %w", err)
 	}
@@ -112,7 +112,17 @@ func organizationDefaultTarget() (string, error) {
 	return strings.TrimSpace(effective.Target.Value), nil
 }
 
-func organizationEnvironment() string {
+type organizationEnvironmentKey struct{}
+
+func withOrganizationEnvironment(ctx context.Context, environment string) context.Context {
+	return context.WithValue(ctx, organizationEnvironmentKey{}, strings.ToLower(strings.TrimSpace(environment)))
+}
+
+func organizationEnvironment(ctx context.Context) string {
+	if value, ok := ctx.Value(organizationEnvironmentKey{}).(string); ok && value != "" {
+		return value
+	}
+
 	environment := "dev"
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
@@ -497,6 +507,11 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 }
 
 func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
+	if access := strings.TrimSpace(target.AccessProvider); access != "" && access != "local" {
+		return nil, machine.NewError(machine.ErrorCapabilityMissing,
+			"Selected remote Target has no authenticated live runtime binding.",
+			"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
+	}
 	provider, err := runtimeresolver.RuntimeProvider(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
 		return nil, err

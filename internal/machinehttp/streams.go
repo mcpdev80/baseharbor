@@ -158,6 +158,10 @@ func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKin
 		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, err
 	}
 
+	if request.Context.Resource != "" && request.Context.Resource != request.ResourceID {
+		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, machine.NewError(machine.ErrorPolicyDenied, "Stream resource differs from the authorized context.", "Use the same stable resource in context and stream selection.", false)
+	}
+	request.Context.Resource = request.ResourceID
 	ctx := operatorauth.WithVerifiedPrincipal(r.Context(), principal)
 	operation := machine.Operation{
 		ID:              "runtime." + string(kind),

@@ -13,7 +13,6 @@ import stat
 import subprocess
 import zipfile
 
-import yaml
 
 STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
 LIGHT = ['guided', 'lifecycle', 'policy', 'connectivity', 'reconciliation', 'failure', 'full-destroy']
@@ -94,6 +93,7 @@ class GitInputs:
 
     @functools.lru_cache(maxsize=None)
     def workflow(self, commit):
+        import yaml
         raw = command(['git', 'show', commit + ':.github/workflows/pre-release.yml'], self.product)
         return yaml.safe_load(raw)['jobs']
 

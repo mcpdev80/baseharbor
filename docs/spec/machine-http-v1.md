@@ -156,3 +156,43 @@ Implementations MUST NOT:
 Runtime-resource discovery and concrete log/exec implementations are supplied by the provider-neutral Runtime Explorer contract.
 
 Remote execution or observation reaches a Target only through the Target Access Provider boundary selected by Core. Console and HTTP clients MUST NOT connect directly to a Target Access implementation.
+
+## Interactive container terminal
+
+`POST /api/v1/machine/terminals` admits a bounded terminal and returns a
+`StreamDescriptor`. The request uses `StreamRequest` with `tty: true`, explicit
+container kind/stable id, environment, Target, argv and `rows`/`columns` in 1–512.
+The selected Runtime Explorer checks resource ownership and environment before
+calling the typed runtime terminal primitive. A platform or managed resource is
+required. Local Linux Docker/Podman backends supply a PTY; remote terminal
+qualification remains part of the remote integration requirements.
+
+The creator's verified issuer/subject owns the session, including in `dev`.
+Every control request requires bearer authentication and reuses the shared
+operator boundary. There is no terminal cookie, query token, host-command API or
+browser-to-runtime connection.
+
+| Endpoint | Semantics |
+| --- | --- |
+| `GET /api/v1/machine/terminals/{stream_id}/events` | One SSE output attachment; `terminal.ready`, base64 `terminal.output`, `terminal.exit` with exit code. |
+| `POST /api/v1/machine/terminals/{stream_id}/input` | A `TerminalInput` frame containing base64 bytes or resize dimensions. |
+| `DELETE /api/v1/machine/terminals/{stream_id}` | Close the transport and its runtime CLI process. |
+
+Input sequence starts at one and must increment exactly. A sequence is consumed
+before the side effect; an ambiguous write closes the session and is never
+replayed. Output sequence is independent. `Last-Event-ID`, a second attachment
+and foreign actors are rejected. SSE EOF without `terminal.exit` is a transport
+failure, not successful command completion.
+
+Sessions expire at the earlier of the admitted token expiry and five minutes.
+Unattached sessions close after ten seconds. Capacity is bounded to sixteen
+sessions globally and four per actor. Output reads one 16 KiB chunk at a time;
+socket writes are deadline-bound, input writes have a five-second limit. Output
+disconnect or cancellation closes the runtime transport. Runtime-side process
+termination and cleanup still require the real Docker/Podman qualification;
+these source tests alone do not establish that a container command is terminated
+by every runtime's exec disconnect behavior.
+
+Wire schemas are packaged in `contracts/machine/v1/terminal-*.schema.json` and
+resolve through the offline public registry. Terminal bytes and argv are never
+used as audit/log fields; the descriptor supplies safe actor/resource context.

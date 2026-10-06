@@ -95,12 +95,26 @@ jobs:
 
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
+          requirements_release="false"
+          required_count=45
+          if [ "$tag" = v0.4.21 ]; then required_count=54; fi
+          if [ "$tag" = v0.4.22 ]; then required_count=55; fi
+          if git cat-file -e "${tag_sha}:scripts/release-requirements.json" 2>/dev/null; then
+            required_count="$(python scripts/release-handoff.py count --candidate "$tag_sha" --tag "$tag")"
+            requirements_release="true"
+          else
+            case "$tag" in
+              v0.4.20|v0.4.21|v0.4.22) ;; # Immutable historical approval formats.
+              *) echo "Required candidate-owned release inventory is missing." >&2; exit 1 ;;
+            esac
+          fi
+
           compatible_candidate() {
             candidate_sha="$1"
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
-            if [ "$tag" = v0.4.23 ]; then
+            if [ "$requirements_release" = true ]; then
               python scripts/release-handoff.py validate --candidate "$candidate_sha" --published "$tag_sha" --tag "$tag"
               return
             fi
@@ -257,21 +271,15 @@ jobs:
               exit 1
             }
             tested_sha="${approved_candidate}"
-            required_count=45
-            if [ "$tag" = v0.4.21 ]; then required_count=54; fi
-            if [ "$tag" = v0.4.22 ]; then required_count=55; fi
-            if [ "$tag" = v0.4.23 ]; then
-              python -m pip install --disable-pip-version-check -r requirements-docs.txt
-              required_count="$(python scripts/release-handoff.py count --candidate "$tag_sha" --tag "$tag")"
-            fi
             jq -e \
               --argjson required_count "$required_count" \
+              --argjson requirements_release "$requirements_release" \
               --arg workflow_sha "${workflow_sha}" \
               --arg tag "${tag}" \
               --arg tested_sha "${tested_sha}" \
               --argjson run_id "${run_id}" \
               '
-                ((.tag != "v0.4.23" and .schema == "baseharbor.pre-release.approval/v1") or ((.tag == "v0.4.22" or .tag == "v0.4.23") and .schema == "baseharbor.pre-release.approval/v2")) and
+                (($requirements_release == false and .schema == "baseharbor.pre-release.approval/v1") or (($requirements_release == true or .tag == "v0.4.22") and .schema == "baseharbor.pre-release.approval/v2")) and
                 .tag == $tag and
                 (.workflow_sha // .tested_sha) == $workflow_sha and
                 .candidate_sha == $tested_sha and

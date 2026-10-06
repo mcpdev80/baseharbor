@@ -6,6 +6,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/creack/pty v1.1.24
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/rabbitmq/amqp091-go v1.15.0

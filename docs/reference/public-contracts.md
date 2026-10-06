@@ -25,7 +25,7 @@ for namespace governance.
 | Machine operations / JSON / MCP | `internal/machine/contract.go`, [Machine interface](../spec/machine-interface-v1.md) | Machine v1; shared semantic operations and typed failures |
 | HTTP projection | `internal/machinehttp`, [Machine HTTP](../spec/machine-http-v1.md) | `/api/v1/machine`; same actor/policy/safety |
 | Executions / events | `internal/machine/execution.go` | Execution/Event v1; explicit actor, state, sequence |
-| Streams / terminal | `internal/machine/stream.go`, [Machine HTTP](../spec/machine-http-v1.md) | Stream v1; implementation capabilities must be proven |
+| Streams / terminal | `internal/machine/stream.go`, `internal/machine/terminal.go`, `contracts/machine/v1/terminal-*.schema.json`, [Machine HTTP](../spec/machine-http-v1.md) | Stream v1; implementation capabilities must be proven |
 | Runtime Explorer | `internal/runtimeexplorer`, [Explorer](../spec/runtime-explorer-v1.md) | Explorer v1; ownership-safe inventory/operations |
 | Runtime log normalization | [Log source contract](../architecture/runtime-log-source-contract.md) | Existing runtime-neutral log semantics; no new logs model |
 | Target Access | `internal/targetaccess`, [Target Access](../spec/target-access-v1.md) | Access v1; descriptor is not authenticated live negotiation |
@@ -40,6 +40,6 @@ Paths outside `docs/` are repository-relative artifacts. The embedded
 every packaged schema without network access. Human references do not replace
 schemas, Go wire types, OpenAPI or Protobuf definitions.
 
-Coverage pending for v0.4.23: complete configuration scopes, interactive
-terminal transport and real remote/Console integration are tracked in #609,
+Coverage pending for v0.4.23: complete configuration consumers, interactive
+terminal runtime/browser qualification and real remote/Console integration are tracked in #609,
 #806, #807 and #808. Do not treat an entry in this register as live support.

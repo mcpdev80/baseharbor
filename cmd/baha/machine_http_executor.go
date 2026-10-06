@@ -26,6 +26,7 @@ func (e *bahaMachineExecutor) Execute(
 	input json.RawMessage,
 	report machinehttp.ProgressReporter,
 ) (json.RawMessage, error) {
+	ctx = withOrganizationEnvironment(ctx, operationContext.Environment)
 	opts := cli.OutputOptionsFromContext(ctx)
 	opts.NonInteractive = true
 	opts.Quiet = true

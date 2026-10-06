@@ -54,14 +54,14 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 		return decision, machine.NewError(machine.ErrorValidationFailed, decision.Reason, "Use a registered BaseHarbor machine operation.", false)
 	}
 
-	if !ManagedEnvironment(decision.Context.Environment) {
+	principal, ok := PrincipalFromContext(ctx)
+	if !ManagedEnvironment(decision.Context.Environment) && !ok {
 		decision.Allowed = true
 		decision.Actor = MachineActorRef{Mode: "trusted-local", Subject: "trusted-local"}
 		setAuthorizationDecision(ctx, decision)
 		return decision, nil
 	}
 
-	principal, ok := PrincipalFromContext(ctx)
 	if !ok {
 		decision.ReasonCode = "operator_authentication_required"
 		decision.Reason = "Managed-environment machine operations require an authenticated BaseHarbor operator."

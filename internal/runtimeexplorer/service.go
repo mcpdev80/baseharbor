@@ -53,6 +53,15 @@ func (s *Service) Capabilities(context.Context, string) (CapabilitySet, error) {
 		CapabilityContainerLifecycle,
 		CapabilityContainerExec,
 	}
+	if _, ok := s.backend.(TerminalBackend); ok {
+		available := true
+		if backend, ok := s.backend.(interface{ TerminalAvailable() bool }); ok {
+			available = backend.TerminalAvailable()
+		}
+		if available {
+			capabilities = append(capabilities, CapabilityContainerTerminal)
+		}
+	}
 	resourceKinds := []ResourceKind{KindContainer}
 	if inventory, ok := s.backend.(InventoryBackend); ok {
 		for _, kind := range inventory.InventoryResourceKinds() {

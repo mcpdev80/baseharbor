@@ -90,3 +90,12 @@ func TestAuthorizeMachineOperationReturnsSecretSafeStableActor(t *testing.T) {
 		t.Fatalf("authenticated decision was not retained: %#v", stored)
 	}
 }
+
+func TestVerifiedActorIsPreservedForDevelopmentEnvironment(t *testing.T) {
+	operation, _ := machine.OperationByID("apply")
+	ctx := WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a"})
+	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{Operation: operation, Context: OperationContext{Environment: "dev", Target: "local"}})
+	if err != nil || decision.Actor.Mode != "authenticated" || decision.Actor.Subject != "operator-a" {
+		t.Fatal("verified HTTP/MCP actor collapsed into shared trusted-local identity", err)
+	}
+}

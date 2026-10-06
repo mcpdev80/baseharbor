@@ -99,3 +99,10 @@ func TestOrganizationPreferenceFileRejectsDataBeyondCompleteBodyLimit(t *testing
 		t.Fatal("oversized file accepted because first JSON value fit the limit")
 	}
 }
+
+func TestHTTPEnvironmentIsAnExplicitOrganizationResolverInput(t *testing.T) {
+	ctx := withOrganizationEnvironment(context.Background(), "prod")
+	if organizationEnvironment(ctx) != "prod" {
+		t.Fatal("HTTP environment was replaced by ambient repository environment")
+	}
+}

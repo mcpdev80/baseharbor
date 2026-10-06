@@ -40,6 +40,7 @@ type Handler struct {
 	logStreamExecutor LogStreamExecutor
 	executions        *executionStore
 	mux               *http.ServeMux
+	terminals         *terminalStore
 }
 
 func New(executor Executor) (*Handler, error) {
@@ -50,6 +51,7 @@ func New(executor Executor) (*Handler, error) {
 		executor:   executor,
 		executions: newExecutionStore(),
 		mux:        http.NewServeMux(),
+		terminals:  newTerminalStore(),
 	}
 	if logStreamExecutor, ok := executor.(LogStreamExecutor); ok {
 		h.logStreamExecutor = logStreamExecutor
@@ -60,6 +62,10 @@ func New(executor Executor) (*Handler, error) {
 	h.mux.HandleFunc("GET /api/v1/machine/executions/{execution_id}/events", h.handleEvents)
 	h.mux.HandleFunc("POST /api/v1/machine/streams/logs", h.handleLogStream)
 	h.mux.HandleFunc("POST /api/v1/machine/streams/exec", h.handleExecStream)
+	h.mux.HandleFunc("POST /api/v1/machine/terminals", h.handleTerminalOpen)
+	h.mux.HandleFunc("GET /api/v1/machine/terminals/{stream_id}/events", h.handleTerminalEvents)
+	h.mux.HandleFunc("POST /api/v1/machine/terminals/{stream_id}/input", h.handleTerminalInput)
+	h.mux.HandleFunc("DELETE /api/v1/machine/terminals/{stream_id}", h.handleTerminalClose)
 	return h, nil
 }
 
@@ -107,6 +113,9 @@ func (h *Handler) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	discovery := machine.MachineDiscovery()
+	if _, ok := h.executor.(TerminalExecutor); ok {
+		discovery.Capabilities = append(discovery.Capabilities, "streams.terminal")
+	}
 	if h.logStreamExecutor != nil {
 		discovery.Capabilities = append(discovery.Capabilities, "streams.logs")
 	}
