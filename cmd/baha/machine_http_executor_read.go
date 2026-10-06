@@ -18,6 +18,11 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 	raw json.RawMessage,
 ) (any, error) {
 	switch operationID {
+	case "operator.identity":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return inspectOperatorIdentity(withTargetOverride(ctx, operationContext.Target), operationContext.Environment)
 	case "workspace.list":
 		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
 			return nil, err
@@ -178,6 +183,9 @@ func (e *bahaMachineExecutor) executeHTTPApplicationRead(ctx context.Context, op
 func executeHTTPProviderRead(ctx context.Context, operationID string, raw json.RawMessage) (any, error) {
 	switch operationID {
 	case "provider.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return application.ListExternalProviders()
 	case "provider.inspect", "provider.verify":
 		var input machineProviderIDInput
@@ -195,6 +203,9 @@ func executeHTTPProviderRead(ctx context.Context, operationID string, raw json.R
 
 func executeHTTPOrganizationRead(ctx context.Context, operationID string, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {
 	if operationID == "organization.check" {
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		status, available, err := orgconfig.Check(ctx)
 		if err != nil {
 			return nil, err

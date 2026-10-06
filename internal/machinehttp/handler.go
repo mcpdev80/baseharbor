@@ -26,6 +26,7 @@ const (
 type ProgressReporter func(machine.OperationProgress)
 
 type Executor interface {
+	SupportedOperationIDs() []string
 	Execute(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 }
 
@@ -36,6 +37,8 @@ type ExecuteRequest struct {
 }
 
 type Handler struct {
+	operations        []machine.Operation
+	operationByID     map[string]machine.Operation
 	executor          Executor
 	logStreamExecutor LogStreamExecutor
 	executions        *executionStore
@@ -48,10 +51,24 @@ func New(executor Executor) (*Handler, error) {
 		return nil, errors.New("machine HTTP executor is required")
 	}
 	h := &Handler{
-		executor:   executor,
-		executions: newExecutionStore(),
-		mux:        http.NewServeMux(),
-		terminals:  newTerminalStore(),
+		operations:    make([]machine.Operation, 0),
+		operationByID: make(map[string]machine.Operation),
+		executor:      executor,
+		executions:    newExecutionStore(),
+		mux:           http.NewServeMux(),
+		terminals:     newTerminalStore(),
+	}
+	for _, id := range executor.SupportedOperationIDs() {
+		operation, exists := machine.OperationByID(id)
+		if _, duplicate := h.operationByID[id]; !exists || duplicate {
+			return nil, errors.New("invalid machine HTTP operation support registry")
+		}
+		h.operationByID[id] = operation
+	}
+	for _, operation := range machine.Operations() {
+		if _, supported := h.operationByID[operation.ID]; supported {
+			h.operations = append(h.operations, operation)
+		}
 	}
 	if logStreamExecutor, ok := executor.(LogStreamExecutor); ok {
 		h.logStreamExecutor = logStreamExecutor
@@ -112,6 +129,7 @@ func (h *Handler) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	discovery := machine.MachineDiscovery()
+	discovery.Operations = h.operations
 	discovery.HTTP = machine.MachineHTTPBindings()
 	if _, ok := h.executor.(TerminalExecutor); ok {
 		discovery.Capabilities = append(discovery.Capabilities, "streams.terminal")
@@ -140,7 +158,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed, "operation_id and context.environment are required.", "Provide an explicit semantic operation and environment.", false))
 		return
 	}
-	operation, exists := machine.OperationByID(request.OperationID)
+	operation, exists := h.operationByID[request.OperationID]
 	if !exists {
 		writeMachineError(w, http.StatusNotFound, machine.NewError(machine.ErrorUnsupported, "Unknown machine operation.", "Use GET /api/v1/machine/discovery to negotiate supported operations.", false))
 		return

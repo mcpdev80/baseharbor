@@ -51,28 +51,19 @@ func (e *bahaMachineExecutor) Execute(
 		result any
 		err    error
 	)
-	switch operation.ID {
-	case "target", "target.list", "app.list", "workspace.list", "inspect", "workspace.resolve", "workspace.status",
-		"runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics",
-		"plan", "status", "doctor", "observe", "evidence",
-		"provider.list", "provider.inspect", "provider.verify",
-		"organization.inspect", "organization.check", "policy.check", "policy.explain":
+	switch httpOperationKinds[operation.ID] {
+	case httpRead:
 		result, err = e.executeHTTPRead(ctx, operation.ID, operationContext, input)
-	case "runtime.start", "runtime.stop", "runtime.restart":
+	case httpRuntimeMutation:
 		result, err = e.executeHTTPRuntimeMutation(ctx, operation.ID, operationContext, input)
-	case "workspace.update", "app.new", "provider.add", "provider.remove",
-		"organization.set", "organization.update", "runtime.operate":
+	case httpPlatformMutation:
 		result, err = e.executeHTTPPlatformMutation(ctx, operation.ID, operationContext, input, report)
-	case "apply", "update", "repair", "backup", "restore", "destroy":
+	case httpLifecycle:
 		result, err = e.executeHTTPLifecycle(ctx, operation.ID, operationContext, input, report)
 	default:
-		return nil, machine.NewError(
-			machine.ErrorUnsupported,
-			"Machine operation is not implemented by the HTTP semantic executor.",
-			"Use machine discovery and select an implemented operation.",
-			false,
-		)
+		return nil, machine.NewError(machine.ErrorUnsupported, "Machine operation is not implemented by the HTTP semantic executor.", "Use machine discovery and select an implemented operation.", false)
 	}
+
 	if err != nil {
 		return nil, err
 	}

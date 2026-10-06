@@ -49,6 +49,12 @@ Returns the current machine contract, execution contract, semantic operations an
 
 Clients MUST discover operations rather than infer support from CLI spelling.
 
+HTTP discovery lists only the operations implemented by the selected HTTP
+executor. It takes their descriptors and safety metadata from the shared Core
+registry. The same support registry selects execution handlers and rejects
+unimplemented operations before creating an execution. A semantic operation
+available through another projection does not imply HTTP support.
+
 HTTP discovery also returns an `http` map of named endpoint bindings, each with
 `href`, `method` and optional `protocol`. The same Core registry installs the
 routes and produces these descriptors. Browsers bootstrap only the documented

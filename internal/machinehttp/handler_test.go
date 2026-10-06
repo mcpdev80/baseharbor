@@ -19,6 +19,14 @@ import (
 
 type executorFunc func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 
+func (f executorFunc) SupportedOperationIDs() []string {
+	var ids []string
+	for _, operation := range machine.Operations() {
+		ids = append(ids, operation.ID)
+	}
+	return ids
+}
+
 func (f executorFunc) Execute(ctx context.Context, op machine.Operation, opCtx machine.OperationContext, input json.RawMessage, report ProgressReporter) (json.RawMessage, error) {
 	return f(ctx, op, opCtx, input, report)
 }

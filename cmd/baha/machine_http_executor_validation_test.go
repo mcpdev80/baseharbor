@@ -11,7 +11,7 @@ import (
 
 func TestHTTPAdvertisedReadOperationsReachInputValidation(t *testing.T) {
 	executor := &bahaMachineExecutor{}
-	for _, id := range []string{"target.list", "workspace.list", "app.list", "runtime.metrics"} {
+	for _, id := range executor.SupportedOperationIDs() {
 		t.Run(id, func(t *testing.T) {
 			_, err := executor.Execute(context.Background(), machine.Operation{ID: id}, machine.OperationContext{}, json.RawMessage(`{"SECRET-CREDENTIAL":"must-not-echo"}`), nil)
 			if err == nil {
@@ -19,7 +19,7 @@ func TestHTTPAdvertisedReadOperationsReachInputValidation(t *testing.T) {
 			}
 			typed, ok := err.(*machine.Error)
 			if !ok || typed.Code != machine.ErrorValidationFailed {
-				t.Fatalf("advertised read did not reach validation: %v", err)
+				t.Fatalf("advertised HTTP operation did not reach input validation: %v", err)
 			}
 			if strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "must-not-echo") {
 				t.Fatal("input credential echoed")
