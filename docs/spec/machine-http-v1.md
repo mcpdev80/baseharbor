@@ -129,6 +129,12 @@ Returns the structured execution resource.
 
 Returns semantic Server-Sent Events using the Machine Event v1 envelope.
 
+Admission headers are flushed immediately. Every 15 seconds the stream may emit
+an SSE comment (`: keepalive`) to preserve idle HTTPS transport during a long
+provider operation. Comments are not Machine Events: they have no sequence,
+progress or result and MUST NOT trigger application continuation. They neither
+extend the five-minute/token-expiry observation deadline nor replay execution.
+
 The initial event vocabulary includes:
 
 - `operation.started`;

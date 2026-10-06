@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
+- Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.
 - Application overview uses the canonical managed-provider readiness model instead of requiring provider containers in the application Compose project (#811).
 - Backup loads Core runtime context for runtime-permission brokers and attempts bounded runtime recovery even when archive capture is cancelled (#812).
 - Missing required secrets without a terminal return an actionable typed error; `--yes` does not bypass secret availability (#813).

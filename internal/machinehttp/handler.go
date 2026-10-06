@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	maxRequestBytes     = 1 << 20
-	executionMaxRuntime = 30 * time.Minute
-	streamMaxRuntime    = 5 * time.Minute
+	maxRequestBytes        = 1 << 20
+	executionMaxRuntime    = 30 * time.Minute
+	streamMaxRuntime       = 5 * time.Minute
+	eventHeartbeatInterval = 15 * time.Second
 )
 
 type ProgressReporter func(machine.OperationProgress)
@@ -252,7 +253,14 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cancel()
+	heartbeat := time.NewTicker(eventHeartbeatInterval)
+	defer heartbeat.Stop()
+	serveExecutionEvents(w, r, history, events, heartbeat.C)
+}
 
+// SSE comments preserve idle transport without reporting progress, changing
+// sequence numbers or extending the authenticated observation deadline.
+func serveExecutionEvents(w http.ResponseWriter, r *http.Request, history []machine.MachineEvent, events <-chan machine.MachineEvent, heartbeat <-chan time.Time) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeMachineError(w, http.StatusInternalServerError, machine.NewError(machine.ErrorUnsupported, "Streaming is not supported by this HTTP server.", "Use a server that supports streaming responses.", false))
@@ -262,6 +270,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
 	for _, event := range history {
@@ -277,6 +286,11 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeat:
+			if _, err := io.WriteString(writer, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case event, open := <-events:
 			if !open {
 				return
