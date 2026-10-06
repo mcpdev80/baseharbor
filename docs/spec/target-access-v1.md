@@ -280,6 +280,15 @@ retains Core correlation and a bounded deadline, and performs one dispatch.
 A disconnect, substituted receipt or missing runtime exit status fails closed;
 there is no automatic mutation replay or local execution fallback.
 
+Project service observations independently inspect every selected container and
+verify its immutable ID and exact native project/service labels. Names and a
+running state alone never prove application readiness. Backend verification
+uses a bounded command in one unambiguously owned running service, preserving
+the existing SQL/cache TLS checks and container-local credential references.
+Missing exit status, changed ownership or ambiguous replicas deny execution;
+remote diagnostics are not returned as error details. Bundle identifiers follow
+the Node's bounded immutable publication contract.
+
 This project adapter carries already authorized runtime decisions. It does not
 replace Core Application planning, provider placement, secret authority or
 persisted reconciliation. Complete remote Application integration and

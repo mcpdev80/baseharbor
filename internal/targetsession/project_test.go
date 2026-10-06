@@ -25,7 +25,7 @@ func newProjectTestTransport(t *testing.T, runtime string) *projectTestTransport
 	scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "native-pki", NodeID: "node-live", Runtime: runtime}
 	caps := Capabilities{ContractVersion: contractVersion, ProtocolVersion: protocolVersion,
 		Node: Node{TenantID: scope.TenantID, TargetID: scope.TargetID, NodeID: scope.NodeID, Runtime: runtime, Identity: scope.Identity()}}
-	for _, name := range []string{"artifact.bundle.stage", "runtime.compose.apply", "runtime.compose.destroy", "runtime.quadlet.apply", "runtime.quadlet.remove"} {
+	for _, name := range []string{"artifact.bundle.stage", "runtime.compose.apply", "runtime.compose.destroy", "runtime.quadlet.apply", "runtime.quadlet.remove", "runtime.resource.list", "runtime.resource.inspect", "runtime.exec"} {
 		caps.Capabilities = append(caps.Capabilities, Capability{Name: name, Available: true})
 	}
 	return &projectTestTransport{t: t, scope: scope, caps: caps}

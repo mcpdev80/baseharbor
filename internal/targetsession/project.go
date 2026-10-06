@@ -48,7 +48,7 @@ type stagedProjectFile struct {
 	data       []byte
 }
 
-var projectBundleID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,127}$`)
+var projectBundleID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 var projectObjectDirectory = regexp.MustCompile(`^bundles/\.object-[0-9a-f]{32}$`)
 
 func NewProjectRuntime(transport ProjectTransport, scope targetenrollment.Scope) (*ProjectRuntime, error) {

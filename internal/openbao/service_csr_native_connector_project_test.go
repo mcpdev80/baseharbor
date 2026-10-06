@@ -27,7 +27,7 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 	content := "name: " + name + "\nservices:\n  workload:\n    image: " + f.image + "\n    container_name: " + name + "\n    user: '1000:1000'\n    command: ['sleep','300']\n    labels:\n      baseharbor.enrollment-qualification: 'true'\n"
 	if f.engine == "podman" {
 		file = name + ".container"
-		content = "[Unit]\nDescription=BaseHarbor managed project qualification\n[Container]\nImage=" + f.image + "\nContainerName=" + name + "\nUser=1000:1000\nExec=sleep 300\nLabel=baseharbor.enrollment-qualification=true\n[Service]\nTimeoutStartSec=45\n[Install]\nWantedBy=default.target\n"
+		content = "[Unit]\nDescription=BaseHarbor managed project qualification\n[Container]\nImage=" + f.image + "\nContainerName=" + name + "\nUser=1000:1000\nExec=sleep 300\nLabel=baseharbor.enrollment-qualification=true\nLabel=com.docker.compose.project=" + name + "\nLabel=com.docker.compose.service=workload\n[Service]\nTimeoutStartSec=45\n[Install]\nWantedBy=default.target\n"
 	}
 	t.Cleanup(func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -68,6 +68,17 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 		f.projectObserved(t, ctx, pool, scope, name, true)
 	}
 	apply(false)
+	services, err := runtime.ObserveProject(ctx, name)
+	if err != nil || len(services) != 1 || services[0].Service != "workload" || !services[0].Running {
+		t.Fatal("Core project observation did not verify native ownership", err)
+	}
+	output, err := runtime.ExecService(ctx, name, "workload", "id", "-u")
+	if err != nil || strings.TrimSpace(output) != "1000" {
+		t.Fatal("Core project service probe did not execute in actual owned container", err)
+	}
+	if _, err := runtime.ExecService(ctx, name, "foreign", "true"); err == nil {
+		t.Fatal("undeclared project service reached execution")
+	}
 	apply(true)
 	if f.engine == "docker" {
 		err = runtime.DestroyCompose(ctx, staged, []string{file}, "")
@@ -78,6 +89,10 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 		t.Fatal("managed project destroy failed", err)
 	}
 	f.projectObserved(t, ctx, pool, scope, name, false)
+	services, err = runtime.ObserveProject(ctx, name)
+	if err != nil || len(services) != 0 {
+		t.Fatal("destroyed project still observable through Core adapter", err)
+	}
 	if f.inventory(t, ctx, pool, scope) == "" {
 		t.Fatal("project destroy damaged foreign fixture")
 	}
