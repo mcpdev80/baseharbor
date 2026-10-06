@@ -2,6 +2,27 @@
 
 Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, ohne dass du Provider-Interna verstehen oder das Manifest manuell bearbeiten musst.
 
+## Core-Einrichtung
+
+Vor der ersten Application benötigt BaseHarbor seinen Core: **SQL + Secrets + Identity**
+(PostgreSQL, OpenBao und Keycloak). Die Web Console ist optional.
+
+Beim ersten `app init` oder Application-Start bietet BaseHarbor die Einrichtung an,
+fragt nach Development-/Deployment-Maschine und setzt den ursprünglichen Ablauf erst
+nach geprüfter Core-Readiness fort. Die Rolle steuert Defaults; TLS und geschützte
+Zugangsdaten bleiben verpflichtend. Retry verwendet dieselbe eigene Installation.
+
+Core-only ohne Repository/Application verwendet den bestehenden Pfad
+`baha up --control-plane-only`; `baha status` außerhalb eines Application-Repositories zeigt den Zustand.
+Der endgültige CLI-Namensraum bleibt Gegenstand des Pre-Freeze-Reviews.
+Maschinenpfade liefern ohne ausdrücklichen Bootstrap-Auftrag den typisierten
+Fehler `core_required`; sie richten keinen Core stillschweigend ein.
+
+Shared ist der einfache Standard. Pro Application isolierte Provider können
+zusätzliche Instanzen und Ressourcen verbrauchen. Planungsbudgets sind keine
+Messwerte. Core-Idle, Startup-Peak und gleichzeitiger Gesamtverbrauch werden erst
+nach Messung der konkreten Runtime/Topologie als solche ausgewiesen.
+
 ## Konkretes Beispiel: Go-API mit SQL
 
 Voraussetzungen: `baha` ist installiert, Docker oder Podman ist lokal verfügbar und der aktuelle Ordner enthält noch keinen Unterordner `orders-api`. Prüfe zuerst CLI und Target:

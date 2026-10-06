@@ -1146,10 +1146,96 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  integration_core_docker:
+    name: Integration · integration/docker/core-bootstrap
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/core-bootstrap') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_docker: docker
+      BASEHARBOR_docker_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: docker build --pull -t "$BASEHARBOR_docker_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only bootstrap and ownership-safe retry
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/docker/core-bootstrap
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$ubuntu-latest_TEMP/core-bootstrap-docker"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-docker-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap-docker
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_core_podman:
+    name: Integration · integration/podman/core-bootstrap
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/core-bootstrap') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_podman: podman
+      BASEHARBOR_podman_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: podman build --pull -t "$BASEHARBOR_podman_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only bootstrap and ownership-safe retry
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/podman/core-bootstrap
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$ubuntu-26.04_TEMP/core-bootstrap-podman"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-podman-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap-podman
+          if-no-files-found: error
+          retention-days: 90
+
   evidence:
     name: Evidence · Candidate Manifest
     if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling

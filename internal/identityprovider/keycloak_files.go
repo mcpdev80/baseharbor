@@ -88,7 +88,11 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if placement.Scope == capability.ScopeExternal {
 		return KeycloakFiles{}, errors.New("external identity must use the external OIDC provider")
 	}
-	consumer, err := application.IdentityProviderNetworkName(app, namespace)
+	return ensureKeycloakFilesForPlacement(ctx, app, issuer, dataDir, namespace, placement)
+}
+
+func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string, placement capability.ProviderPlacement) (KeycloakFiles, error) {
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(app, namespace, placement)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}

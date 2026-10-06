@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -22,6 +23,23 @@ func (e *bahaMachineExecutor) executeHTTPPlatformMutation(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "control-plane.up":
+		var input machineControlPlaneUpInput
+		if err := decodeHTTPInput(raw, &input); err != nil {
+			return nil, err
+		}
+		target, err := bindHTTPSelector("target", operationContext.Target, input.Target)
+		if err != nil {
+			return nil, err
+		}
+		reportHTTPProgress(report, "core", "Reconciling SQL, Secrets and Identity for the selected installation.", 10)
+		state, err := installCore(machineNoninteractiveContext(withTargetOverride(ctx, target)), strings.NewReader(""), io.Discard, runtimeUpOptions{HA: input.HA, MachineRole: input.MachineRole, Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile})
+		if err != nil {
+			return nil, err
+		}
+		reportHTTPProgress(report, "core", "Core readiness verified.", 100)
+		return state, nil
+
 	case "workspace.update":
 		return executeHTTPWorkspaceUpdate(ctx, operationContext, raw, report)
 	case "app.new":

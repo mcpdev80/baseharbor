@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
 	"strings"
@@ -10,11 +11,12 @@ import (
 )
 
 type machineControlPlaneUpInput struct {
-	HA           bool   `json:"ha,omitempty"`
-	Target       string `json:"target,omitempty"`
-	PostgresPort int    `json:"postgres_port,omitempty"`
-	OpenBaoPort  int    `json:"openbao_port,omitempty"`
-	RecoveryFile string `json:"recovery_file,omitempty"`
+	MachineRole  coreinstallation.MachineRole `json:"machine_role,omitempty"`
+	HA           bool                         `json:"ha,omitempty"`
+	Target       string                       `json:"target,omitempty"`
+	PostgresPort int                          `json:"postgres_port,omitempty"`
+	OpenBaoPort  int                          `json:"openbao_port,omitempty"`
+	RecoveryFile string                       `json:"recovery_file,omitempty"`
 }
 type machineControlPlaneDestroyInput struct {
 	Target   string `json:"target,omitempty"`
@@ -41,7 +43,7 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 	mcp.AddTool(server, machineMCPTool("control-plane.up", "Initialize or converge the selected target control plane through shared lifecycle and memory preflight.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneUpInput) (*mcp.CallToolResult, any, error) {
 		ctx, cancel := context.WithTimeout(machineNoninteractiveContext(withTargetOverride(ctx, input.Target)), 15*time.Minute)
 		defer cancel()
-		opts := runtimeUpOptions{HA: input.HA, Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile}
+		opts := runtimeUpOptions{MachineRole: input.MachineRole, HA: input.HA, Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile}
 		if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, opts); err != nil {
 			return machineMCPFailure(err)
 		}

@@ -179,6 +179,47 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
+  core_bootstrap:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') }}
+    name: Core bootstrap · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+      BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only installation and retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/core-bootstrap"
+          go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m > "$RUNNER_TEMP/core-bootstrap/tests.jsonl" 2>&1
+      - name: Retain runtime qualification logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: core-bootstrap-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap
+          if-no-files-found: warn
+          retention-days: 90
+
   v0421_ha:
     if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}

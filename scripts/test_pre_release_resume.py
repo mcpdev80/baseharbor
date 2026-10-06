@@ -184,7 +184,7 @@ class EvidenceTests(unittest.TestCase):
         matrix = resume.matrices({'required': required, 'pending': missing})
         self.assertEqual(matrix['integration'], [key for key in required
                                                 if key.startswith('integration/') and key in missing])
-        self.assertEqual(len(matrix['integration']), 5)
+        self.assertEqual(len(matrix['integration']), 7)
 
 
 class RequirementTests(unittest.TestCase):
@@ -195,7 +195,8 @@ class RequirementTests(unittest.TestCase):
         self.assertEqual(current - baseline, {
             'integration/static/public-contracts', 'integration/static/configuration-policy',
             'integration/static/browser-terminal', 'integration/docker/remote-target',
-            'integration/podman/remote-target', 'integration/static/live-console'})
+            'integration/podman/remote-target', 'integration/static/live-console',
+            'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap'})
         coverage = {'schema': 'baseharbor.pre-release.coverage/v2', 'candidate_sha': 'a' * 40,
                     'demo_ref': 'b' * 40, 'tag': 'v0.4.23', 'required': sorted(baseline),
                     'pending': {}, 'proofs': [{'gate': key} for key in baseline]}

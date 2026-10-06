@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"testing"
 
@@ -10,6 +12,15 @@ import (
 )
 
 const testDeploymentID = "22222222-2222-4222-8222-222222222222"
+
+// Only source-contract tests use this fixture. Actual Core readiness and
+// bootstrap behavior are exercised separately; no global test bypass exists.
+func assumeVerifiedCoreForSourceTest(t *testing.T) {
+	t.Helper()
+	previous := applicationCorePrerequisite
+	applicationCorePrerequisite = func(context.Context, io.Reader, io.Writer) error { return nil }
+	t.Cleanup(func() { applicationCorePrerequisite = previous })
+}
 
 func configureTestTarget(t *testing.T) deployment.ResolvedTarget {
 	t.Helper()

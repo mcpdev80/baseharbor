@@ -15,6 +15,8 @@ const (
 // descriptors, safety and authorization still come from machine.Operations.
 var httpOperationKinds = map[string]httpOperationKind{
 	"operator.identity":    httpRead,
+	"control-plane.status": httpRead,
+	"control-plane.up":     httpPlatformMutation,
 	"target":               httpRead,
 	"target.list":          httpRead,
 	"app.list":             httpRead,

@@ -130,3 +130,28 @@ func EstimateApplication(m application.Manifest) MemoryEstimate {
 	}
 	return Sum(components)
 }
+
+// EstimateCore preserves existing SQL/Secrets planning estimates. Identity is
+// explicitly UNKNOWN until the complete shipped realization is measured (#549).
+func EstimateCore(ha bool, existing map[string]bool) (MemoryEstimate, error) {
+	base, err := EstimateControlPlane(ha)
+	if err != nil {
+		return MemoryEstimate{}, err
+	}
+	var components []ComponentEstimate
+	if !existing["sql"] || !existing["secrets"] {
+		for _, component := range base.Components {
+			if strings.HasPrefix(component.Name, "postgres") && existing["sql"] {
+				continue
+			}
+			if strings.HasPrefix(component.Name, "openbao") && existing["secrets"] {
+				continue
+			}
+			components = append(components, component)
+		}
+	}
+	if !existing["identity"] {
+		components = append(components, ComponentEstimate{Name: "Core Identity reference realization (Keycloak and its SQL dependencies)", Confidence: ConfidenceUnknown, Source: "#549 Core-specific runtime calibration required; no measured value available"})
+	}
+	return Sum(components), nil
+}

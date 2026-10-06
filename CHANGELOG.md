@@ -4,6 +4,19 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.23] - Unreleased
+
+### Added
+
+- Repository-independent Core bootstrap for mandatory SQL, Secrets and Identity, using PostgreSQL, OpenBao and Keycloak with protected credentials and TLS.
+- Authoritative installation identity, observable bootstrap stages and ownership-safe retry/reconciliation through shared CLI/MCP/protected HTTP semantics.
+- First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
+- Development/deployment machine-role defaults and an optional Console bound to one selected Core in the same installation/security boundary.
+
+### Changed
+
+- Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
+
 ## [0.4.22] - 2026-10-06
 
 ### Added

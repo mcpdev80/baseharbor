@@ -26,6 +26,19 @@ on your own machine, no vendor, no lock-in.
   </a>
 </p>
 
+## BaseHarbor Core
+
+The Core has three mandatory capabilities: **SQL, Secrets and Identity**.
+The reference providers are PostgreSQL, OpenBao and Keycloak. The Web Console is optional.
+TLS and protected credentials also apply to local development.
+
+Core bootstrap does not require an application or repository. The first application
+flow offers setup when needed and continues after verified Core readiness.
+Core capabilities are mandatory; provider placement may be shared or
+application-isolated. Additional isolation can add provider instances and resource use.
+Measured memory figures must distinguish idle/stabilized usage, startup/convergence
+peak and the simultaneous Core total; unavailable measurements are reported explicitly.
+
 ## The problem
 
 You know the drill. You want to build an app — and before the first feature

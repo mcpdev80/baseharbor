@@ -99,6 +99,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 }
 
 func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
+	assumeVerifiedCoreForSourceTest(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -132,6 +133,7 @@ func TestAppInitCreatesCommitFriendlyRepositoryManifest(t *testing.T) {
 }
 
 func TestAppInitSupportsDeterministicWorkloadSelection(t *testing.T) {
+	assumeVerifiedCoreForSourceTest(t)
 	root := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {

@@ -950,6 +950,32 @@
         "connector",
         "demo"
       ]
+    },
+    {
+      "id": "integration/docker/core-bootstrap",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_core_docker"
+      ],
+      "dependencies": [
+        "core"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ]
+    },
+    {
+      "id": "integration/podman/core-bootstrap",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_core_podman"
+      ],
+      "dependencies": [
+        "core"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ]
     }
   ]
 }

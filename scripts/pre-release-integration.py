@@ -13,6 +13,8 @@ import subprocess
 
 
 CHECKS = {
+	'integration/docker/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
+	'integration/podman/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
     'integration/static/public-contracts': [
         ['./contracts/...', './internal/machine', './internal/machinereadmodels']],
     'integration/static/configuration-policy': [
@@ -23,11 +25,11 @@ CHECKS = {
 }
 
 
-def checked_tests(command, output):
+def checked_tests(command, output, timeout=900):
     """Reject empty or skipped selections even when go test exits successfully."""
     with output.open('w') as log:
         completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
-                                   timeout=900, check=False)
+                                   timeout=timeout, check=False)
     passed, skipped = [], []
     for line in output.read_text().splitlines():
         try:
@@ -73,16 +75,20 @@ def main():
     run, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
     if not run.isdigit() or not attempt.isdigit() or min(int(run), int(attempt)) < 1:
         raise ValueError('positive GitHub origin run and attempt are required')
+    runtime_bootstrap = args.gate.endswith('/core-bootstrap')
+    if runtime_bootstrap:
+        os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'
+        os.environ['BASEHARBOR_TEST_RUNTIME'] = args.gate.split('/')[1]
     checks = [checked_tests(['go', 'test', '-race', '-count=1', '-json', *selection],
-                            args.output / f'check-{index}.jsonl')
+                            args.output / f'check-{index}.jsonl', 1800 if runtime_bootstrap else 900)
               for index, selection in enumerate(CHECKS[args.gate])]
     _, runtime, gate = args.gate.split('/')
     manifest = {'schema': requirement['schema'], 'candidate_sha': args.candidate,
                 'demo_ref': args.demo, 'workflow_run_id': run,
                 'workflow_run_attempt': int(attempt), 'requirements_digest': resume.digest(requirements),
                 'id': runtime + '/' + gate, 'runtime': runtime, 'gate': gate,
-                'outcome': 'success', 'cleanup_outcome': 'skipped',
-                'qualification_scope': 'core-source-contracts', 'checks': checks}
+                'outcome': 'success', 'cleanup_outcome': 'success' if runtime_bootstrap else 'skipped',
+                'qualification_scope': 'core-bootstrap-runtime' if runtime_bootstrap else 'core-source-contracts', 'checks': checks}
     resume.validate_manifest(manifest, args.gate, int(run), args.candidate, args.demo, int(attempt))
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 

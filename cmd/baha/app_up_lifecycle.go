@@ -35,6 +35,9 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 	if err != nil {
 		return err
 	}
+	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), runtimeInput, out); err != nil {
+		return err
+	}
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}

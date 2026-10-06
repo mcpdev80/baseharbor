@@ -113,7 +113,7 @@ func appGuidedInitCommand() *cli.Command {
 }
 
 func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer) error {
-	reader := bufio.NewReader(appInitInput)
+	reader := bufio.NewReader(applicationInput(ctx, appInitInput))
 	fmt.Fprintln(out, "Analyzing repository...")
 	printProjectDetection(out, d)
 	fmt.Fprintln(out)

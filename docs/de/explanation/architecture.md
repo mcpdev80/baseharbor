@@ -16,6 +16,28 @@ Runtime- + Fähigkeits- + Auslieferungs-Provider
 Verifiziertes Ergebnis
 ```
 
+## Core-Installation
+
+Der BaseHarbor Core besteht verbindlich aus **SQL + Secrets + Identity**:
+PostgreSQL, OpenBao und Keycloak. Die Web Console bleibt optional und verbindet sich
+mit genau einem ausgewählten Core derselben Installation/Sicherheitsgrenze.
+Same-Origin-HTTPS ist die Standardtopologie.
+
+Der Core kann ohne Application und Repository eingerichtet werden. Eine verbindliche
+Installations-ID, getrennte Capability-Zustände und echte Readiness-Prüfungen machen
+Teilfehler sichtbar. Retry reconciliert eigene Ressourcen; fremde oder mehrdeutige
+Zustände werden weder übernommen noch ersetzt.
+
+Der erste Application-Flow bietet die Einrichtung bei Bedarf an und läuft danach
+weiter. Die Maschinenrolle Development/Deployment steuert Workspace-/Source-Defaults;
+TLS und geschützte Zugangsdaten gelten in beiden Fällen.
+
+Die Core-Capabilities sind verpflichtend; Provider können shared oder pro Application
+isoliert platziert sein. Zusätzliche Isolation kann zusätzliche Instanzen und
+Ressourcenverbrauch erzeugen. Messwerte müssen Topologie/Placement, stabilisierten
+Idle-Verbrauch, Startup-/Konvergenz-Peak und gleichzeitigen Core-Gesamtverbrauch nennen.
+Fehlende Messungen werden ausdrücklich als nicht verfügbar ausgewiesen.
+
 ## Portable Anforderungen
 
 Die Anwendung beschreibt, was sie braucht. Sie schreibt nicht vor, welches Infrastrukturprodukt das umsetzen muss.

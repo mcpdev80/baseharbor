@@ -230,7 +230,7 @@ Follow [machine operation recipes](../how-to/machine-operations.md) for applicat
 
 ## Explicit control-plane availability
 
-`baseharbor.control-plane.up` accepts `ha` (boolean, default `false`) alongside target, ports and the protected recovery-file reference. The same lifecycle selects the standard topology for a fresh target and rejects an incompatible HA request for retained single-server state. `control-plane.status` reports actual running members and availability; single-server mode never claims failover.
+`baseharbor.control-plane.up` bootstraps the mandatory SQL/Secrets/Identity Core without an Application repository. It accepts `machine_role` (`development` or `deployment`) to select defaults, plus `ha` (boolean, default `false`) alongside target, ports and the protected recovery-file reference. The same lifecycle selects the standard topology for a fresh target and rejects an incompatible HA request for retained single-server state. `control-plane.status` reports actual running members and availability; single-server mode never claims failover.
 
 ```json
 {"name":"baseharbor.control-plane.up","arguments":{"target":"local","ha":false}}

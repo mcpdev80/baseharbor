@@ -57,6 +57,34 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
+		if !hasLocalManifest {
+			for _, arg := range forwarded {
+				if arg != "--quick" {
+					continue
+				}
+				if len(forwarded) != 1 || agents || len(injected) > 0 {
+					return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
+				}
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				if _, err := manifestFromDetectedProject(detected, true); err != nil {
+					return err
+				}
+			}
+			for _, arg := range forwarded {
+				if arg == "--yes" || arg == "-y" {
+					ctx = withAssumeYes(ctx, true)
+				}
+			}
+			if readerIsTerminal(appInitInput) {
+				ctx = context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(appInitInput))
+			}
+			if err := applicationCorePrerequisite(ctx, applicationInput(ctx, appInitInput), out); err != nil {
+				return err
+			}
+		}
 		for _, arg := range forwarded {
 			if arg != "--quick" {
 				continue

@@ -18,6 +18,11 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 	raw json.RawMessage,
 ) (any, error) {
 	switch operationID {
+	case "control-plane.status":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return inspectControlPlane(withTargetOverride(ctx, operationContext.Target))
 	case "operator.identity":
 		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
 			return nil, err

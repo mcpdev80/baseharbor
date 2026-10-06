@@ -2,6 +2,34 @@
 
 This tutorial gets an existing application running under BaseHarbor without requiring provider knowledge or manual manifest editing.
 
+## Core setup
+
+BaseHarbor needs its Core before the first application runs: **SQL + Secrets + Identity**
+(PostgreSQL, OpenBao and Keycloak). The Web Console is optional.
+
+When the first `app init` or application startup needs setup, BaseHarbor offers:
+
+```text
+BaseHarbor needs its Core services before the first application can run.
+Set them up now? [Y/n]
+```
+
+The setup asks whether this is a development or deployment machine. This controls
+workspace/source defaults only; TLS and protected credentials remain required.
+The application flow continues after all three Core capabilities reach verified readiness.
+Retries reconcile the same owned installation; they do not create another Core.
+
+To bootstrap only the Core without an application or repository, use the existing
+`baha up --control-plane-only` path. Inspect it with `baha status` outside an application repository.
+The final CLI namespace is still subject to the pre-freeze CLI review.
+Non-interactive application requests return a typed `core_required` outcome unless
+automatic bootstrap was explicitly requested; automation can invoke Core setup first.
+
+Shared placement is the simplest default. Application-isolated providers can add
+instances and resource use. Memory output distinguishes planning estimates from
+measurements; Core idle, startup peak and simultaneous total remain unavailable
+until this exact runtime/topology has been sampled.
+
 ## Try it: a Go order API with SQL
 
 Prerequisites: install the `baha` release binary, make a local Docker or Podman runtime available, and use a parent directory without an `orders-api` folder. Check the CLI and the effective Target first:

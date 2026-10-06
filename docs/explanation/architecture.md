@@ -16,6 +16,28 @@ Runtime + Capability + Delivery Providers
 Verified Result
 ```
 
+## Core installation
+
+BaseHarbor Core consists of **SQL + Secrets + Identity**, currently realized by
+PostgreSQL, OpenBao and Keycloak. These capabilities are mandatory. The Web Console
+is optional and connects to one selected Core in the same installation/security
+boundary; same-origin HTTPS is the default topology.
+
+Core bootstrap is independent of applications and repositories. It verifies the
+three capabilities and persists one authoritative installation identity. A partial
+failure remains observable; retry reconciles the same owned installation. Foreign
+or ambiguous resources fail closed instead of being adopted or replaced.
+
+The first application flow offers Core setup when needed and resumes after verified
+readiness. Development/deployment machine selection changes workspace/source defaults,
+not capabilities or transport security. Local development keeps required TLS and
+protected credentials without requiring an interactive login for ordinary local work.
+
+Core capabilities are mandatory; provider placement may be shared or application-isolated.
+Additional isolation can require extra provider instances. Resource evidence must
+identify topology/placement, stabilized idle memory, startup/convergence peak and
+simultaneous Core total. Unavailable measurements are not presented as measured values.
+
 ## Portable intent
 
 The application describes what it needs, not which infrastructure product must provide it.
