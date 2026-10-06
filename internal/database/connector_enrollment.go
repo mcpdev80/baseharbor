@@ -21,6 +21,28 @@ func (s *ConnectorEnrollmentStore) Create(ctx context.Context, grant targetenrol
 		return targetenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, grant.Scope.TenantID, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO connector_nodes (tenant_id,node_id,target_id,runtime)
+VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, grant.Scope.TenantID, grant.Scope.NodeID, grant.Scope.TargetID, grant.Scope.Runtime); err != nil {
+			return err
+		}
+		var target, runtime string
+		var issued bool
+		if err := tx.QueryRow(ctx, `SELECT target_id,runtime,certificate_serial IS NOT NULL FROM connector_nodes
+WHERE tenant_id=$1 AND node_id=$2 FOR UPDATE`, grant.Scope.TenantID, grant.Scope.NodeID).Scan(&target, &runtime, &issued); err != nil {
+			return err
+		}
+		if issued || target != grant.Scope.TargetID || runtime != grant.Scope.Runtime {
+			return targetenrollment.ErrDenied
+		}
+		var pending bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connector_enrollment_grants
+WHERE tenant_id=$1 AND node_id=$2 AND consumed_at IS NULL AND expires_at > clock_timestamp())`, grant.Scope.TenantID, grant.Scope.NodeID).Scan(&pending); err != nil {
+			return err
+		}
+		if pending {
+			return targetenrollment.ErrDenied
+		}
+
 		_, err := tx.Exec(ctx, `INSERT INTO connector_enrollment_grants
 (token_digest, tenant_id, target_id, node_id, runtime, nonce_digest, expires_at, certificate_ttl_seconds)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, grant.TokenDigest, grant.Scope.TenantID, grant.Scope.TargetID, grant.Scope.NodeID, grant.Scope.Runtime, grant.NonceDigest, grant.ExpiresAt, int64(grant.CertificateTTL/time.Second))
@@ -53,3 +75,24 @@ RETURNING expires_at, certificate_ttl_seconds`, tokenDigest, nonceDigest, scope.
 }
 
 var _ targetenrollment.Store = (*ConnectorEnrollmentStore)(nil)
+
+// RecordIssued commits the exact authenticated node identity before returning
+// certificate material. Renewal is a separate authorized lifecycle operation.
+func (s *ConnectorEnrollmentStore) RecordIssued(ctx context.Context, scope targetenrollment.Scope, tokenDigest, serial string, expires time.Time) error {
+	if s == nil || s.pool == nil || scope.Validate() != nil || serial == "" || !expires.After(time.Now()) {
+		return targetenrollment.ErrDenied
+	}
+	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		command, err := tx.Exec(ctx, `UPDATE connector_nodes SET certificate_serial=$6, certificate_expires_at=$7
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4 AND certificate_serial IS NULL
+AND EXISTS (SELECT 1 FROM connector_enrollment_grants WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3
+AND runtime=$4 AND token_digest=$5 AND consumed_at IS NOT NULL)`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, tokenDigest, serial, expires)
+		if err != nil {
+			return err
+		}
+		if command.RowsAffected() != 1 {
+			return targetenrollment.ErrDenied
+		}
+		return nil
+	})
+}

@@ -52,6 +52,7 @@ type Grant struct {
 type Store interface {
 	Create(context.Context, Grant) error
 	Consume(context.Context, Scope, string, string, string, time.Time) (Grant, error)
+	RecordIssued(context.Context, Scope, string, string, time.Time) error
 }
 
 type Authority struct {
@@ -129,6 +130,12 @@ func (a *Authority) Enroll(ctx context.Context, request Request) (Result, error)
 	}
 	if err := serviceaccess.ValidateSignedCSR(signing, issued, trust, time.Now()); err != nil {
 		return Result{}, errors.New("enrollment authority returned invalid certificate material")
+	}
+	if err := a.store.RecordIssued(ctx, request.Scope, grant.TokenDigest, issued.Serial, issued.ExpiresAt); err != nil {
+		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = a.issuer.Revoke(revokeCtx, issued.Serial)
+		return Result{}, errors.New("enrollment identity persistence failed; certificate admission is unavailable")
 	}
 	return Result{Certificate: issued, Trust: trust}, nil
 }

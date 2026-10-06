@@ -196,7 +196,7 @@ ten minutes. Certificate TTL is bounded to 24 hours. Consumption commits before
 signing, so a failed or interrupted issuance requires a fresh authorization.
 
 This boundary does not yet advertise a usable remote Target. The operator and
-bootstrap endpoints, node registry, renewal/revocation, outbound session binding
+bootstrap endpoints, live node admission, renewal/revocation, outbound session binding
 and real runtime qualification remain required. Explicit non-local access fails
 closed while its execution adapter is unavailable; it never selects the local
 runtime as a transport fallback.

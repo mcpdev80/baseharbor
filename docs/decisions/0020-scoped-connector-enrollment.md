@@ -19,6 +19,13 @@ identifiers are bounded path segments. The scoped token and nonce each contain
 256 random bits. An authorization expires within ten minutes. PostgreSQL stores
 only SHA-256 digests of the token and nonce, not bearer material.
 
+The durable node registry binds a tenant's node identifier to exactly one Target
+and runtime. Pending unconsumed grants cannot be duplicated. After successful
+signing, Core persists the exact admitted certificate serial and expiry before
+returning material; an enrolled identity requires the separate renewal path.
+Certificate persistence failure attempts to revoke the newly issued leaf and
+returns no success. This registry alone is not live TLS/session admission.
+
 The persistent store consumes authorization with one conditional `UPDATE` and
 commits before requesting a signature. Tenant RLS and an explicit tenant predicate
 both apply. Wrong scope, expired authorization and already consumed authorization
@@ -38,7 +45,7 @@ This extends the existing issuer boundary rather than introducing a second CA.
 ## Qualification boundary
 
 The implemented authority/store are not yet a complete operator admission,
-bootstrap HTTP endpoint, durable node registry, renewal/revocation or outbound
+bootstrap HTTP endpoint, live node admission, renewal/revocation or outbound
 session service. Shared authorization/audit wiring, duplicate identity admission,
 authenticated capability negotiation, remote runtime realization and the exact-ref
 consumer gates must pass before remote support is advertised. Source tests do not

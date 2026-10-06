@@ -39,6 +39,23 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	if err := store.Create(ctx, grant); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := store.RecordIssued(ctx, scope, grant.TokenDigest, "abcd", time.Now().Add(time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("certificate recorded before bootstrap consumption")
+	}
+	for _, field := range []string{"pending", "target", "runtime"} {
+		other := grant
+		other.TokenDigest = repeatDigest("c")
+		if field == "target" {
+			other.Scope.TargetID = "foreign"
+		}
+		if field == "runtime" {
+			other.Scope.Runtime = "podman"
+		}
+		if err := store.Create(ctx, other); !errors.Is(err, targetenrollment.ErrDenied) {
+			t.Fatalf("ambiguous node authorization (%s) admitted: %v", field, err)
+		}
+	}
 	// Explicit tenant binding is required even when a privileged DB test account
 	// bypasses RLS. Production RLS is an additional boundary, not the only one.
 	for _, field := range []string{"tenant", "target", "node", "runtime", "nonce"} {
@@ -86,12 +103,28 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	if err := reopened.QueryRow(ctx, "SELECT csr_digest FROM connector_enrollment_grants WHERE token_digest=$1", grant.TokenDigest).Scan(&storedCSR); err != nil || storedCSR != repeatDigest("d") {
 		t.Fatalf("persisted consumed CSR = %q, %v", storedCSR, err)
 	}
+
+	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, repeatDigest("e"), "abcd", time.Now().Add(time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("unrelated token registered node certificate")
+	}
+	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, grant.TokenDigest, "abcd", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, grant.TokenDigest, "ef01", time.Now().Add(time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("duplicate certificate replaced enrolled identity")
+	}
+	duplicate := grant
+	duplicate.TokenDigest = repeatDigest("e")
+	if err := NewConnectorEnrollmentStore(reopened).Create(ctx, duplicate); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("enrolled node accepted fresh bootstrap instead of renewal")
+	}
+	grant.Scope.NodeID = "expired-node"
 	grant.TokenDigest = repeatDigest("f")
 	grant.ExpiresAt = time.Now().Add(-time.Minute)
 	if err := NewConnectorEnrollmentStore(reopened).Create(ctx, grant); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewConnectorEnrollmentStore(reopened).Consume(ctx, scope, grant.TokenDigest, grant.NonceDigest, repeatDigest("d"), time.Now().Add(-time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
+	if _, err := NewConnectorEnrollmentStore(reopened).Consume(ctx, grant.Scope, grant.TokenDigest, grant.NonceDigest, repeatDigest("d"), time.Now().Add(-time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("expired grant accepted through caller clock rollback")
 	}
 }

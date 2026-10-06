@@ -42,6 +42,9 @@ func (s *memoryStore) Consume(_ context.Context, scope Scope, token, nonce, csr 
 	s.consumed[token] = csr
 	return grant, nil
 }
+func (s *memoryStore) RecordIssued(context.Context, Scope, string, string, time.Time) error {
+	return nil
+}
 func testScope() Scope {
 	return Scope{TenantID: "00000000-0000-0000-0000-000000000001", TargetID: "lab", NodeID: "node-a", Runtime: "docker"}
 }
@@ -160,5 +163,33 @@ func TestGrantRejectsUnsupportedScopeAndBounds(t *testing.T) {
 		if _, err := authority.Create(context.Background(), testScope(), lifetime, time.Hour); !errors.Is(err, ErrDenied) {
 			t.Fatal("invalid grant lifetime admitted")
 		}
+	}
+}
+
+type failedRecordingStore struct{ *memoryStore }
+
+func (s failedRecordingStore) RecordIssued(context.Context, Scope, string, string, time.Time) error {
+	return errors.New("SECRET DATABASE ERROR")
+}
+
+type revocationIssuer struct {
+	serviceaccess.CSRIssuer
+	revoked string
+}
+
+func (i *revocationIssuer) Revoke(_ context.Context, serial string) error {
+	i.revoked = serial
+	return nil
+}
+func TestCertificatePersistenceFailureRevokesAndReturnsNoMaterial(t *testing.T) {
+	issuer := &revocationIssuer{CSRIssuer: serviceissuer.New(t)}
+	authority, _ := New(failedRecordingStore{newStore()}, issuer)
+	bootstrap, err := authority.Create(context.Background(), testScope(), time.Minute, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := authority.Enroll(context.Background(), requestFor(t, testScope(), bootstrap))
+	if err == nil || err.Error() != "enrollment identity persistence failed; certificate admission is unavailable" || len(result.Certificate.Certificate) != 0 || issuer.revoked == "" {
+		t.Fatalf("orphan certificate exposed or not revoked: %v", err)
 	}
 }
