@@ -13,6 +13,8 @@ import (
 
 type processSession struct {
 	file      *os.File
+	ctx       context.Context
+	cancel    context.CancelFunc
 	cmd       *exec.Cmd
 	done      chan struct{}
 	closeOnce sync.Once
@@ -39,8 +41,9 @@ func Start(ctx context.Context, cmd *exec.Cmd, rows, columns int) (Session, erro
 		_ = cmd.Wait()
 		return nil, errors.New("runtime terminal cannot support bounded I/O")
 	}
-	s := &processSession{file: file, cmd: cmd, done: make(chan struct{})}
-	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	lifetime, cancel := context.WithCancel(ctx)
+	s := &processSession{file: file, ctx: lifetime, cancel: cancel, cmd: cmd, done: make(chan struct{})}
+	context.AfterFunc(lifetime, func() { _ = s.Close() })
 	go func() {
 		err := cmd.Wait()
 		s.exitCode = 0
@@ -48,14 +51,26 @@ func Start(ctx context.Context, cmd *exec.Cmd, rows, columns int) (Session, erro
 			s.exitCode = cmd.ProcessState.ExitCode()
 		}
 		close(s.done)
-		stop()
 	}()
 	return s, nil
 }
 
-func (s *processSession) Read(data []byte) (int, error)  { return s.file.Read(data) }
-func (s *processSession) Write(data []byte) (int, error) { return s.file.Write(data) }
+func (s *processSession) Read(data []byte) (int, error) {
+	if err := s.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return s.file.Read(data)
+}
+func (s *processSession) Write(data []byte) (int, error) {
+	if err := s.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return s.file.Write(data)
+}
 func (s *processSession) Resize(rows, columns int) error {
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	if err := ValidateSize(rows, columns); err != nil {
 		return err
 	}
@@ -72,6 +87,7 @@ func (s *processSession) Wait(ctx context.Context) (int, error) {
 func (s *processSession) Close() error {
 	var err error
 	s.closeOnce.Do(func() {
+		s.cancel()
 		select {
 		case <-s.done:
 		default:

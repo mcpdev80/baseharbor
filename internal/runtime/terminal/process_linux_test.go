@@ -38,9 +38,16 @@ func TestPTYInputResizeExitAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer idle.Close()
 	blocked := make(chan struct{})
 	go func() { _, _ = idle.Read(make([]byte, 10)); close(blocked) }()
 	stop()
+	if _, err := idle.Write([]byte("immediately after cancellation")); err == nil {
+		t.Fatal("cancelled admission still accepted terminal input")
+	}
+	if err := idle.Resize(30, 100); err == nil {
+		t.Fatal("cancelled admission still accepted terminal resize")
+	}
 	select {
 	case <-blocked:
 	case <-time.After(time.Second):
