@@ -16,11 +16,11 @@ import (
 )
 
 type admittedCertificate struct {
-	scope Scope
-	serial string
+	scope   Scope
+	serial  string
 	expires time.Time
-	denied bool
-	calls int
+	denied  bool
+	calls   int
 }
 
 func (r *admittedCertificate) AdmitCertificate(_ context.Context, scope Scope, serial string, expires time.Time) error {
