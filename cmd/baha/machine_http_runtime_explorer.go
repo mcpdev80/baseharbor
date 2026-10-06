@@ -8,9 +8,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtime/terminal"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
+	ctx = targetsession.WithPool(ctx, e.connectorSessions)
 	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
 	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
 	if err != nil {
@@ -34,6 +36,7 @@ func (e *bahaMachineExecutor) OpenLogStream(ctx context.Context, request machine
 }
 
 func (e *bahaMachineExecutor) OpenExecStream(ctx context.Context, request machine.StreamRequest) (io.ReadCloser, error) {
+	ctx = targetsession.WithPool(ctx, e.connectorSessions)
 	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
 	if request.TTY {
 		return nil, machine.NewError(
@@ -69,6 +72,7 @@ var _ interface {
 } = (*bahaMachineExecutor)(nil)
 
 func (e *bahaMachineExecutor) OpenTerminal(ctx context.Context, request machine.StreamRequest) (terminal.Session, error) {
+	ctx = targetsession.WithPool(ctx, e.connectorSessions)
 	ctx = withOrganizationEnvironment(ctx, request.Context.Environment)
 	explorer, target, err := runtimeExplorerForTarget(ctx, request.Context.Target)
 	if err != nil {

@@ -295,7 +295,11 @@ func startRuntimeDocsServer(cfg Config) (*http.Server, <-chan error) {
 	return server, ch
 }
 
-func serveControlPlaneServers(ctx context.Context, cfg Config, server, docsServer *http.Server, docsErrCh <-chan error) error {
+func serveControlPlaneServers(ctx context.Context, cfg Config, server, docsServer *http.Server, docsErrCh <-chan error, connectorErrors ...<-chan error) error {
+	var connectorErrCh <-chan error
+	if len(connectorErrors) > 0 {
+		connectorErrCh = connectorErrors[0]
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
@@ -316,6 +320,12 @@ func serveControlPlaneServers(ctx context.Context, cfg Config, server, docsServe
 	}
 
 	select {
+	case err := <-connectorErrCh:
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.shutdownTimeout())
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+		_ = shutdownDocs()
+		return err
 	case err := <-errCh:
 		_ = shutdownDocs()
 		return err

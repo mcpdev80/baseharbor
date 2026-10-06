@@ -76,3 +76,11 @@ mutations have their own completion/deadline semantics.
 Private vulnerability reporting was verified enabled through the repository's
 GitHub API on 2026-10-06. The direct private reporting route is
 https://github.com/mcpdev80/baseharbor/security/advisories/new .
+
+Connector transport sessions require TLS 1.3 client-chain verification and the
+exact active PostgreSQL certificate scope. A trusted CA alone does not admit a
+node. Sessions expire after at most five minutes or earlier peer expiry/Core
+shutdown. Each operation rechecks admission; ongoing sessions also recheck every
+five seconds with a two-second registry deadline. Revocation or registry failure
+retires the connection within that bound. Interrupted control operations are not
+automatically replayed; reconcile observed state before issuing another mutation.

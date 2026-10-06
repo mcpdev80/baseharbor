@@ -176,6 +176,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
+	parent = machine.WithExecutionCorrelation(parent, executionID)
 	ctx, cancel := context.WithTimeout(parent, executionMaxRuntime)
 	defer cancel()
 	if err := h.executions.start(executionID); err != nil {

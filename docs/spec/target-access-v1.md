@@ -239,8 +239,35 @@ HTTPS, bounded whole-body JSON and same-origin browser requests, and use
 `Cache-Control: no-store`. Tokens belong in the owner-only bootstrap
 authorization file, never ordinary execution metadata or shell arguments.
 
-This boundary does not yet advertise a usable remote Target. Live node
-admission, renewal/revocation, outbound session binding, real OpenBao/runtime
-qualification and authenticated private evidence remain required. Explicit non-local access fails
-closed while its execution adapter is unavailable; it never selects the local
-runtime as a transport fallback.
+## Outbound session admission
+
+The operator Core may enable its separate outbound-session listener with
+`BASEHARBOR_CONNECTOR_LISTEN_ADDR`, `BASEHARBOR_CONNECTOR_TLS_CERT_FILE`,
+`BASEHARBOR_CONNECTOR_TLS_KEY_FILE` and `BASEHARBOR_CONNECTOR_TLS_CA_FILE`.
+Enrollment, operator OIDC and PostgreSQL remain required. The server certificate
+has one Core SPIFFE URI and server-auth usage; Connector certificates have
+client-auth usage and the exact persisted tenant/Target/node/runtime identity.
+TLS 1.3 verifies the chain before canonical Hello and active certificate admission.
+
+The pool admits at most 64 connections and four sessions per enrolled scope.
+Live capabilities are requested from the authenticated peer and bound to its
+exact Hello identity. Static access descriptors do not prove live support.
+Runtime Explorer projects inventory and bounded container operations through
+that transport; existing Core ownership and tenant decisions remain authoritative.
+Remote lifecycle realization, metrics, follow logs and interactive streams still
+need complete adapters and exact-source runtime qualification.
+
+One control operation executes per connection. Every invocation rechecks
+certificate admission and preserves Core execution correlation. No operation is
+automatically replayed after cancellation, disconnect or ambiguous completion.
+The interrupted transport is retired; callers reconcile observed state before a
+new mutation. A missing or foreign session never selects a local runtime.
+
+Sessions expire at the earlier of five minutes, peer certificate expiry and
+Core lifetime. Persisted admission is rechecked every five seconds with a
+two-second lookup deadline, including idle and active sessions. Revocation or
+registry unavailability closes the transport within that check bound. New
+handshakes reload server identity material and node CA trust, supporting a
+controlled overlap bundle; changing the selected Core identity requires restart.
+Real OpenBao/rotation/runtime and authenticated private evidence remain required;
+these source primitives are not a v0.4.23 release approval.

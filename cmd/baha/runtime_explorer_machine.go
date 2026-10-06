@@ -8,6 +8,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
 type machineRuntimeTargetInput struct {
@@ -47,6 +50,19 @@ func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimee
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return nil, "", err
+	}
+	if target.AccessProvider == "baseharbor-node-connector" {
+		tenant, ok := tenancy.FromContext(ctx)
+		if !ok || tenant.TenantID != target.TenantID {
+			return nil, "", machine.NewError(machine.ErrorPolicyDenied, "Remote Target is outside the authenticated tenant.", "Select a Target enrolled in the current tenant.", false)
+		}
+		scope := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: target.AccessReference, Runtime: target.RuntimeProvider}
+		backend, err := runtimeexplorer.NewConnectorBackend(targetsession.PoolFromContext(ctx), scope)
+		if err != nil {
+			return nil, "", machine.NewError(machine.ErrorCapabilityMissing, "Selected remote Target has no authenticated live runtime binding.", "Reconnect the selected Connector; remote operations never run locally.", true)
+		}
+		explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{})
+		return explorer, target.Name, err
 	}
 	provider, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {

@@ -28,6 +28,10 @@ type Config struct {
 	DatabaseURL                string
 	ConnectorEnrollmentEnabled bool
 	ConnectorAuthorityTarget   string
+	ConnectorListenAddr        string
+	ConnectorTLSCertFile       string
+	ConnectorTLSKeyFile        string
+	ConnectorTLSCAFile         string
 	OIDCIssuer                 string
 	OIDCAudiences              []string
 	TLSCertFile                string
@@ -63,6 +67,9 @@ func (c Config) boundRuntimeEnabled() bool {
 }
 
 func (c Config) Validate() error {
+	if err := validateConnectorTransport(c); err != nil {
+		return err
+	}
 	if c.ConnectorEnrollmentEnabled {
 		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
 			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
@@ -165,6 +172,11 @@ func Run(ctx context.Context, cfg Config, store application.Store, machineExecut
 	if len(machineExecutors) > 0 {
 		machineExecutor = machineExecutors[0]
 	}
+	connectorErrors, stopConnector, err := startConnectorTransport(ctx, cfg, deps, machineExecutor)
+	if err != nil {
+		return err
+	}
+	defer stopConnector()
 	handler, err := buildServerHandler(ctx, cfg, deps, machineExecutor)
 	if err != nil {
 		return err
@@ -174,7 +186,7 @@ func Run(ctx context.Context, cfg Config, store application.Store, machineExecut
 		return err
 	}
 	docsServer, docsErrCh := startRuntimeDocsServer(cfg)
-	return serveControlPlaneServers(ctx, cfg, server, docsServer, docsErrCh)
+	return serveControlPlaneServers(ctx, cfg, server, docsServer, docsErrCh, connectorErrors)
 }
 
 func runtimeTLSConfig(cfg Config) (*tls.Config, error) {

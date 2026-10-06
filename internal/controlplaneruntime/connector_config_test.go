@@ -21,3 +21,20 @@ func TestEnrollmentConfigurationCannotExposeAnUnauthenticatedAuthority(t *testin
 		t.Fatal("disabled enrollment changed the ordinary TLS requirement")
 	}
 }
+
+func TestConnectorSessionsCannotStartWithUnboundAuthorityOrTLS(t *testing.T) {
+	for _, cfg := range []Config{
+		{ConnectorTLSCertFile: "unused"},
+		{ConnectorListenAddr: "127.0.0.1:9443"},
+		{ConnectorListenAddr: "127.0.0.1:9443", ConnectorEnrollmentEnabled: true},
+		{ConnectorListenAddr: "127.0.0.1:9443", ConnectorEnrollmentEnabled: true, DatabaseURL: "postgres://db", OIDCIssuer: "https://issuer.example"},
+		{ConnectorListenAddr: "127.0.0.1:9443", ConnectorEnrollmentEnabled: true, DatabaseURL: "postgres://db", OIDCIssuer: "https://issuer.example", RuntimeAppName: "app"},
+	} {
+		if err := validateConnectorTransport(cfg); err == nil {
+			t.Fatal("incomplete remote authority accepted", cfg.ConnectorListenAddr)
+		}
+	}
+	if err := validateConnectorTransport(Config{}); err != nil {
+		t.Fatal("optional connector changed local startup", err)
+	}
+}

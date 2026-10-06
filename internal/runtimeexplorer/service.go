@@ -46,7 +46,10 @@ func NewService(backend ContainerBackend, target string, resolver OwnershipResol
 	return &Service{backend: backend, target: target, resolver: resolver}, nil
 }
 
-func (s *Service) Capabilities(context.Context, string) (CapabilitySet, error) {
+func (s *Service) Capabilities(ctx context.Context, target string) (CapabilitySet, error) {
+	if target != "" && target != s.target {
+		return CapabilitySet{}, errors.New("runtime capability Target mismatch")
+	}
 	capabilities := []Capability{
 		CapabilityResourceInspect,
 		CapabilityLogs,
@@ -63,6 +66,15 @@ func (s *Service) Capabilities(context.Context, string) (CapabilitySet, error) {
 		}
 	}
 	resourceKinds := []ResourceKind{KindContainer}
+	if negotiated, ok := s.backend.(interface {
+		RuntimeExplorerCapabilities(context.Context) ([]Capability, error)
+	}); ok {
+		var err error
+		capabilities, err = negotiated.RuntimeExplorerCapabilities(ctx)
+		if err != nil {
+			return CapabilitySet{}, err
+		}
+	}
 	if inventory, ok := s.backend.(InventoryBackend); ok {
 		for _, kind := range inventory.InventoryResourceKinds() {
 			if kind == KindContainer || containsResourceKind(resourceKinds, kind) {
