@@ -100,7 +100,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coreRequest := nativeBaoCSR(t, "spiffe://baseharbor/platform/core/native-test")
+	coreRequest := nativeBaoCSR(t, "spiffe://baseharbor/platform/core/native-test", "core.test")
 	scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "native-pki", NodeID: "node-a", Runtime: "docker"}
 	nodeRequest := nativeBaoCSR(t, scope.Identity())
 	authority, registry := nativeBaoEnrollmentAuthority(t, ctx, storageURL, issuer)
@@ -114,6 +114,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		t.Fatal("real managed node CSR signing failed", err)
 	}
 	verifyNativeBaoCertificate(t, oldCore, before.PEM, x509.ExtKeyUsageServerAuth)
+	verifyNativeBaoCoreServerName(t, oldCore, "core.test")
 	verifyNativeBaoCertificate(t, oldNode, before.PEM, x509.ExtKeyUsageClientAuth)
 	if _, err := issuer.SignCoreCSR(ctx, nodeRequest); err == nil {
 		t.Fatal("node identity crossed the Core issuer boundary")
@@ -138,6 +139,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	verifyNativeBaoCertificate(t, newCore, after.PEM, x509.ExtKeyUsageServerAuth)
+	verifyNativeBaoCoreServerName(t, newCore, "core.test")
 	verifyNativeBaoCertificate(t, newNode, after.PEM, x509.ExtKeyUsageClientAuth)
 	if err := registry.AdmitCertificate(ctx, scope, oldNode.Serial, oldNode.ExpiresAt); err != nil {
 		t.Fatal("persisted predecessor not admitted during bounded overlap", err)
@@ -234,7 +236,7 @@ func (nativeBaoCommandExecutor) ExecInput(ctx context.Context, input []byte, arg
 	return output.String(), nil
 }
 
-func nativeBaoCSR(t *testing.T, identity string) serviceaccess.CSRSigningRequest {
+func nativeBaoCSR(t *testing.T, identity string, dnsNames ...string) serviceaccess.CSRSigningRequest {
 	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -244,11 +246,23 @@ func nativeBaoCSR(t *testing.T, identity string) serviceaccess.CSRSigningRequest
 	if err != nil {
 		t.Fatal(err)
 	}
-	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: identity}, URIs: []*url.URL{uri}}, key)
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: identity}, URIs: []*url.URL{uri}, DNSNames: dnsNames}, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return serviceaccess.CSRSigningRequest{CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), Identity: identity, TTL: time.Hour}
+	return serviceaccess.CSRSigningRequest{CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), Identity: identity, TTL: time.Hour, DNSNames: dnsNames}
+}
+
+func verifyNativeBaoCoreServerName(t *testing.T, issued serviceaccess.IssuedCertificate, name string) {
+	t.Helper()
+	block, _ := pem.Decode(issued.Certificate)
+	if block == nil {
+		t.Fatal("managed Core certificate is missing")
+	}
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || leaf.VerifyHostname(name) != nil || leaf.VerifyHostname("foreign.test") == nil {
+		t.Fatal("managed Core certificate does not bind its authorized TLS server name", err)
+	}
 }
 
 func verifyNativeBaoCertificate(t *testing.T, issued serviceaccess.IssuedCertificate, trust []byte, usage x509.ExtKeyUsage) {

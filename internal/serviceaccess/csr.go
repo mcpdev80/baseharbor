@@ -8,7 +8,10 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"net"
 	"net/url"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -31,9 +34,40 @@ type CSRSigningRequest struct {
 	CSRPEM   []byte
 	Identity string
 	TTL      time.Duration
+	// DNSNames is authorized only by the internal Core server signing boundary.
+	// Node enrollment must never grant server-name authority.
+	DNSNames []string
 }
 
 func (r CSRSigningRequest) Validate() (*x509.CertificateRequest, error) {
+	if len(r.DNSNames) != 0 {
+		return nil, errors.New("node CSR cannot authorize TLS server names")
+	}
+	return r.validate(nil)
+}
+
+// ValidateCore binds DNS SANs to an explicit internal server authorization.
+// The CSR itself is never the source of authority for additional names.
+func (r CSRSigningRequest) ValidateCore() (*x509.CertificateRequest, error) {
+	if !regexp.MustCompile(`^spiffe://baseharbor/platform/core/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`).MatchString(r.Identity) || len(r.DNSNames) > 8 {
+		return nil, errors.New("Core CSR identity or server-name count is invalid")
+	}
+	seen := map[string]bool{}
+	for _, name := range r.DNSNames {
+		if len(name) == 0 || len(name) > 253 || strings.ToLower(name) != name || net.ParseIP(name) != nil || seen[name] {
+			return nil, errors.New("Core CSR server name must be canonical and unique")
+		}
+		for _, label := range strings.Split(name, ".") {
+			if len(label) == 0 || len(label) > 63 || !regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`).MatchString(label) {
+				return nil, errors.New("Core CSR server name is invalid")
+			}
+		}
+		seen[name] = true
+	}
+	return r.validate(r.DNSNames)
+}
+
+func (r CSRSigningRequest) validate(authorizedDNS []string) (*x509.CertificateRequest, error) {
 	identity, err := url.Parse(r.Identity)
 	if err != nil || identity.Scheme != "spiffe" || identity.Host == "" || identity.User != nil || identity.RawQuery != "" || identity.Fragment != "" || identity.Path == "" || identity.Opaque != "" {
 		return nil, errors.New("CSR signing requires one scoped URI identity")
@@ -49,7 +83,7 @@ func (r CSRSigningRequest) Validate() (*x509.CertificateRequest, error) {
 	if err != nil || csr.CheckSignature() != nil {
 		return nil, errors.New("CSR signature is invalid")
 	}
-	if (csr.Subject.CommonName != "" && csr.Subject.CommonName != r.Identity) || len(csr.URIs) != 1 || csr.URIs[0].String() != r.Identity || len(csr.DNSNames) != 0 || len(csr.IPAddresses) != 0 || len(csr.EmailAddresses) != 0 {
+	if (csr.Subject.CommonName != "" && csr.Subject.CommonName != r.Identity) || len(csr.URIs) != 1 || csr.URIs[0].String() != r.Identity || !slices.Equal(csr.DNSNames, authorizedDNS) || len(csr.IPAddresses) != 0 || len(csr.EmailAddresses) != 0 {
 		return nil, errors.New("CSR identity differs from the authorized node identity")
 	}
 	for _, extension := range csr.Extensions {

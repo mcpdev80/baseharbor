@@ -311,6 +311,13 @@ Core key, exact URI identity, lifetime and sole server-auth usage. It returns
 public certificate material and never a private key. Node enrollment cannot call
 this boundary to obtain a Core identity.
 
+Core server CSRs can additionally carry up to eight explicitly authorized,
+canonical DNS names selected by the internal Core caller. The request's approved
+names must match its signed CSR, and the returned certificate must preserve
+exactly that set. This allows normal TLS server-name verification alongside the
+Core URI identity. Wildcards, IP SANs, duplicates and additional names are denied;
+node signing still refuses all DNS SANs and cannot grant server-name authority.
+
 This provides an issuance boundary for Core-owned keys. It does not by itself
 install or rotate the listener's configured files, coordinate trust overlap, or
 qualify a production OpenBao rotation. Those deployment and end-to-end checks

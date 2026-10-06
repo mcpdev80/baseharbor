@@ -7,13 +7,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-const corePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-core allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/core/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=false server_flag=true use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
+const corePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-core allow_any_name=true allow_localhost=true allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/core/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=false server_flag=true use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
 const nodePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-nodes allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/connectors/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
@@ -36,6 +37,9 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		return serviceaccess.IssuedCertificate{}, errors.New("OpenBao CSR issuer is not configured")
 	}
 	csr, err := request.Validate()
+	if namespace == "core" {
+		csr, err = request.ValidateCore()
+	}
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, err
 	}
@@ -72,7 +76,7 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		return serviceaccess.IssuedCertificate{}, errors.New("managed CSR signing returned an invalid certificate")
 	}
 	leaf, err := x509.ParseCertificate(block.Bytes)
-	if err != nil || leaf.IsCA || leaf.Subject.CommonName != request.Identity || leaf.NotBefore.After(time.Now()) || !leaf.NotAfter.After(time.Now()) || leaf.NotAfter.After(time.Now().Add(request.TTL+time.Minute)) || len(leaf.URIs) != 1 || leaf.URIs[0].String() != request.Identity || len(leaf.DNSNames) != 0 || len(leaf.IPAddresses) != 0 || len(leaf.EmailAddresses) != 0 {
+	if err != nil || leaf.IsCA || leaf.Subject.CommonName != request.Identity || leaf.NotBefore.After(time.Now()) || !leaf.NotAfter.After(time.Now()) || leaf.NotAfter.After(time.Now().Add(request.TTL+time.Minute)) || len(leaf.URIs) != 1 || leaf.URIs[0].String() != request.Identity || !sameCSRServerNames(leaf.DNSNames, csr.DNSNames) || len(leaf.IPAddresses) != 0 || len(leaf.EmailAddresses) != 0 {
 		return serviceaccess.IssuedCertificate{}, errors.New("signed node certificate differs from authorized scope")
 	}
 	publicKey, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
@@ -87,6 +91,13 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		chain = append(chain, []byte(part))
 	}
 	return serviceaccess.IssuedCertificate{IssuerReference: serviceIssuerReference, Certificate: []byte(reply.Data.Certificate), IssuingCA: []byte(reply.Data.IssuingCA), CAChain: chain, Serial: reply.Data.Serial, ExpiresAt: leaf.NotAfter}, nil
+}
+
+func sameCSRServerNames(left, right []string) bool {
+	left, right = slices.Clone(left), slices.Clone(right)
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(left, right)
 }
 
 var _ serviceaccess.CSRIssuer = (*ServiceIssuer)(nil)
