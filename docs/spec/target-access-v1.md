@@ -185,3 +185,18 @@ access.provider == runtime.provider
 is not a compatibility promise and is removed rather than emulated.
 
 Portable Application Intent remains unchanged.
+
+## Connector enrollment implementation status
+
+The scoped enrollment boundary and PostgreSQL one-use store are implemented;
+see [ADR 0020](../decisions/0020-scoped-connector-enrollment.md). Signatures use
+the existing protected OpenBao authority and client-owned CSR keys. Bootstrap
+authorization binds tenant, Target, node, runtime and nonce and expires within
+ten minutes. Certificate TTL is bounded to 24 hours. Consumption commits before
+signing, so a failed or interrupted issuance requires a fresh authorization.
+
+This boundary does not yet advertise a usable remote Target. The operator and
+bootstrap endpoints, node registry, renewal/revocation, outbound session binding
+and real runtime qualification remain required. Explicit non-local access fails
+closed while its execution adapter is unavailable; it never selects the local
+runtime as a transport fallback.

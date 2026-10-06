@@ -1,0 +1,55 @@
+package database
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+)
+
+type ConnectorEnrollmentStore struct{ pool *pgxpool.Pool }
+
+func NewConnectorEnrollmentStore(pool *pgxpool.Pool) *ConnectorEnrollmentStore {
+	return &ConnectorEnrollmentStore{pool: pool}
+}
+
+func (s *ConnectorEnrollmentStore) Create(ctx context.Context, grant targetenrollment.Grant) error {
+	if s == nil || s.pool == nil || grant.Scope.Validate() != nil {
+		return targetenrollment.ErrDenied
+	}
+	return WithTenantTx(ctx, s.pool, grant.Scope.TenantID, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO connector_enrollment_grants
+(token_digest, tenant_id, target_id, node_id, runtime, nonce_digest, expires_at, certificate_ttl_seconds)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, grant.TokenDigest, grant.Scope.TenantID, grant.Scope.TargetID, grant.Scope.NodeID, grant.Scope.Runtime, grant.NonceDigest, grant.ExpiresAt, int64(grant.CertificateTTL/time.Second))
+		return err
+	})
+}
+
+func (s *ConnectorEnrollmentStore) Consume(ctx context.Context, scope targetenrollment.Scope, tokenDigest, nonceDigest, csrDigest string, now time.Time) (targetenrollment.Grant, error) {
+	grant := targetenrollment.Grant{Scope: scope, TokenDigest: tokenDigest, NonceDigest: nonceDigest}
+	if s == nil || s.pool == nil || scope.Validate() != nil {
+		return grant, targetenrollment.ErrDenied
+	}
+	err := WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var seconds int64
+		err := tx.QueryRow(ctx, `UPDATE connector_enrollment_grants SET consumed_at=clock_timestamp(), csr_digest=$7
+WHERE token_digest=$1 AND nonce_digest=$2 AND target_id=$3 AND node_id=$4 AND runtime=$5
+AND tenant_id=$8
+AND consumed_at IS NULL AND expires_at > GREATEST($6, clock_timestamp())
+RETURNING expires_at, certificate_ttl_seconds`, tokenDigest, nonceDigest, scope.TargetID, scope.NodeID, scope.Runtime, now, csrDigest, scope.TenantID).Scan(&grant.ExpiresAt, &seconds)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return targetenrollment.ErrDenied
+		}
+		grant.CertificateTTL = time.Duration(seconds) * time.Second
+		return err
+	})
+	if err != nil {
+		return targetenrollment.Grant{}, targetenrollment.ErrDenied
+	}
+	return grant, nil
+}
+
+var _ targetenrollment.Store = (*ConnectorEnrollmentStore)(nil)

@@ -46,7 +46,10 @@ fi`
 	var roleErr error
 	for attempt := 0; attempt < 20; attempt++ {
 		if _, roleErr = execWithToken(ctx, executor, files, rootToken, roleCommand); roleErr == nil {
-			return nil
+			_, roleErr = execWithToken(ctx, executor, files, rootToken, nodePKIRoleCommand)
+			if roleErr == nil {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():

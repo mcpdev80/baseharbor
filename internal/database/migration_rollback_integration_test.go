@@ -28,6 +28,20 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback Connector enrollment migration: %v", err)
+	}
+	var enrollmentExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&enrollmentExists); err != nil {
+		t.Fatal(err)
+	}
+	if enrollmentExists {
+		t.Fatal("enrollment schema still exists after rolling back its owning migration")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing enrollment migration was accepted as schema ready")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback identity resolution migration: %v", err)
 	}
 	var identityPolicyExists bool
