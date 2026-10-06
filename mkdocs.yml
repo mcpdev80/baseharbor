@@ -121,6 +121,8 @@ nav:
       - Runtime Explorer v1: spec/runtime-explorer-v1.md
 
   - Reference:
+      - Public contracts: reference/public-contracts.md
+      - Platform support: reference/platform-support.md
       - Complete command index: cli/command-index.md
       - CLI reference: reference/cli.md
       - Global options: cli/global-options.md

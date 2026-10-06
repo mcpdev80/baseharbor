@@ -47,3 +47,26 @@ Security-sensitive areas include, among others:
 - container/runtime isolation and privilege handling.
 
 For normal bugs, feature requests and documentation issues, use the public GitHub issue tracker.
+
+## Session and stream bounds
+
+The OIDC verifier validates issuer, audience, signature and expiry at each new
+protected HTTP request. Tenant/operator policy is evaluated before execution.
+Operator CLI sessions are Target/environment-bound and must have more than
+30 seconds of remaining lifetime before persisted reuse.
+
+Group or role changes at the identity provider do not imply instant revocation
+of an already issued token. Their effect depends on token expiry and the
+authoritative membership/policy resolver. There is no claimed fixed group
+revocation interval in the current contract.
+
+The released v0.4.22 HTTP projection bounds asynchronous execution to 30 minutes
+but does not propagate token expiry into already-open event/log/exec streams.
+Those streams authenticate at admission; disconnect/provider completion ends
+them. Active-stream expiry/revalidation is a required v0.4.23 transport change
+tracked in #806. Do not assume logout alone terminates an admitted stream or
+revokes an already authorized mutation.
+
+Private vulnerability reporting was verified enabled through the repository's
+GitHub API on 2026-10-06. The direct private reporting route is
+https://github.com/mcpdev80/baseharbor/security/advisories/new .

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	StackProfileAPIVersion = "baseharbor.dev/v1"
+	StackProfileAPIVersion = "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/development/v1"
 	StackProfileKind       = "StackProfile"
 )
 

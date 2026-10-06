@@ -8,4 +8,6 @@ Portable contract schemas use JSON Schema 2020-12.
 
 These schemas are not provider product configuration. Provider-specific configuration uses a separate provider schema referenced by the provider descriptor.
 
-Existing shipped v0.4 capability IDs remain compatible until their migration to the standards-first service model is explicitly accepted and tested.
+All v0.4 contracts are pre-freeze versioned drafts. See [compatibility policy](../COMPATIBILITY.md) and [public register](../docs/reference/public-contracts.md).
+
+Schema IDs use the controlled repository namespace in ADR 0018. The embedded `contracts.SchemaRegistry` verifies and resolves all packaged schemas offline; consumers pin the repository commit for external acquisition. No obsolete domain aliases are retained.

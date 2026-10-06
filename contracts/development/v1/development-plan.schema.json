@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.baseharbor.dev/development/v1/development-plan.schema.json",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/development/v1/development-plan.schema.json",
   "title": "BaseHarbor Development Plan v1",
   "type": "object",
   "additionalProperties": false,
