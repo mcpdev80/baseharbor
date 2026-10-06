@@ -3,8 +3,8 @@ package targetenrollment
 import (
 	"bytes"
 	"context"
-	"io"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -167,4 +167,3 @@ func TestEnrollmentHTTPRejectsPlaintextOriginAndAmbiguousCredentials(t *testing.
 func ioReadBody(r *http.Request) ([]byte, error) {
 	return io.ReadAll(r.Body)
 }
-

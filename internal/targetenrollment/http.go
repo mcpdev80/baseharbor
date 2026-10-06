@@ -19,7 +19,7 @@ import (
 
 const (
 	AuthorizationPath = "/api/v1/connectors/authorizations"
-	EnrollmentPath = "/api/v1/connectors/enroll"
+	EnrollmentPath    = "/api/v1/connectors/enroll"
 	enrollmentVersion = "baseharbor.target-access-enrollment/v1"
 )
 
@@ -29,7 +29,7 @@ type ScopeResolver func(context.Context, string, string, string) (Scope, error)
 
 type HTTPHandler struct {
 	authority *Authority
-	resolve ScopeResolver
+	resolve   ScopeResolver
 }
 
 func NewHTTP(authority *Authority, resolve ScopeResolver) (*HTTPHandler, error) {
@@ -78,11 +78,11 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type authorizationInput struct {
-	TargetID string `json:"target_id"`
-	NodeID string `json:"node_id"`
-	Environment string `json:"environment"`
-	LifetimeSeconds int64 `json:"lifetime_seconds"`
-	CertificateTTLSeconds int64 `json:"certificate_ttl_seconds"`
+	TargetID              string `json:"target_id"`
+	NodeID                string `json:"node_id"`
+	Environment           string `json:"environment"`
+	LifetimeSeconds       int64  `json:"lifetime_seconds"`
+	CertificateTTLSeconds int64  `json:"certificate_ttl_seconds"`
 }
 
 func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request) {
@@ -131,12 +131,12 @@ func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request) {
 
 type enrollmentInput struct {
 	ContractVersion string `json:"contract_version"`
-	TenantID string `json:"tenant_id"`
-	NodeID string `json:"node_id"`
-	TargetID string `json:"target_id"`
-	Runtime string `json:"runtime"`
-	CSRPEM string `json:"csr_pem"`
-	Nonce string `json:"nonce"`
+	TenantID        string `json:"tenant_id"`
+	NodeID          string `json:"node_id"`
+	TargetID        string `json:"target_id"`
+	Runtime         string `json:"runtime"`
+	CSRPEM          string `json:"csr_pem"`
+	Nonce           string `json:"nonce"`
 }
 
 func (h *HTTPHandler) enroll(w http.ResponseWriter, r *http.Request) {
@@ -167,17 +167,17 @@ func (h *HTTPHandler) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := struct {
-		ContractVersion string `json:"contract_version"`
-		Node map[string]string `json:"node"`
-		CertificatePEM string `json:"certificate_pem"`
-		TrustBundlePEM string `json:"trust_bundle_pem"`
-		Nonce string `json:"nonce"`
-		NotAfter time.Time `json:"not_after"`
+		ContractVersion string            `json:"contract_version"`
+		Node            map[string]string `json:"node"`
+		CertificatePEM  string            `json:"certificate_pem"`
+		TrustBundlePEM  string            `json:"trust_bundle_pem"`
+		Nonce           string            `json:"nonce"`
+		NotAfter        time.Time         `json:"not_after"`
 	}{
 		ContractVersion: enrollmentVersion,
-		Node: map[string]string{"tenant_id": scope.TenantID, "node_id": scope.NodeID, "target_id": scope.TargetID, "runtime": scope.Runtime, "identity": scope.Identity()},
-		CertificatePEM: string(result.Certificate.Certificate),
-		TrustBundlePEM: string(result.Trust.PEM), Nonce: input.Nonce, NotAfter: result.Certificate.ExpiresAt.UTC(),
+		Node:            map[string]string{"tenant_id": scope.TenantID, "node_id": scope.NodeID, "target_id": scope.TargetID, "runtime": scope.Runtime, "identity": scope.Identity()},
+		CertificatePEM:  string(result.Certificate.Certificate),
+		TrustBundlePEM:  string(result.Trust.PEM), Nonce: input.Nonce, NotAfter: result.Certificate.ExpiresAt.UTC(),
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil || contracts.ValidateTargetAccessRecord("enrollment_response", encoded) != nil {
