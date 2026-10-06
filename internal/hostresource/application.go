@@ -151,7 +151,12 @@ func EstimateCore(ha bool, existing map[string]bool) (MemoryEstimate, error) {
 		}
 	}
 	if !existing["identity"] {
-		components = append(components, ComponentEstimate{Name: "Core Identity reference realization (Keycloak and its SQL dependencies)", Confidence: ConfidenceUnknown, Source: "#549 Core-specific runtime calibration required; no measured value available"})
+		// Largest sampled Identity startup peak across both machine-role runs in
+		// rootless Docker qualification 37492547982, Core b25c4e25f0244648cc6a7641828e238005925933.
+		// The reference contains three Keycloak, three PostgreSQL and three etcd
+		// members plus gateways. It is a planning estimate for another host,
+		// never a universal minimum or a measurement of that selected host.
+		components = append(components, ComponentEstimate{Name: "Core Identity reference realization (Keycloak and its SQL dependencies)", EstimatedBytes: 4_976_065_638, Confidence: ConfidenceEstimated, Source: "measured Docker reference startup sample, run 37492547982; three Identity members and dependencies; host-specific planning estimate, no reliable minimum"})
 	}
 	return Sum(components), nil
 }

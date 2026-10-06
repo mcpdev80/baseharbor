@@ -92,6 +92,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			fmt.Fprintln(out, "BaseHarbor Core: SQL + Secrets + Identity. Console is optional.")
 			fmt.Fprintln(out, "Placement: installation shared realization; application isolation can add provider instances and resource use.")
 			fmt.Fprintln(out, "Measured Core idle/startup memory: unavailable until this runtime is sampled.")
+			fmt.Fprintln(out, "Shared Docker reference: about 2.6 GiB idle; sampled startup peak up to 4.73 GiB. Other hosts/topologies may differ.")
 			if _, err := detectRuntimeForTarget(ctx, target); err != nil {
 				return err
 			}

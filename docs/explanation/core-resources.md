@@ -43,3 +43,10 @@ Podman measurements, isolated placement and further host/topology calibration
 remain pending. Source tests and a provider count cannot supply missing figures.
 Host preflight continues to distinguish planning estimates from unavailable
 measurements for the selected installation.
+
+Core preflight uses the largest observed Identity startup sample (4,976,065,638
+bytes, including its dependencies) as a reference planning estimate on other
+hosts. It adds the existing topology-aware SQL/Secrets startup budgets. This
+estimate is explicitly `ESTIMATED`; it establishes no reliable minimum and does
+not claim that the selected host or Podman was measured. Reused owned capabilities
+are not budgeted as additional instances.

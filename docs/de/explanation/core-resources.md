@@ -43,3 +43,10 @@ können zwischen den Beobachtungen liegen.
 Podman, isolierte Provider und weitere Hosts/Topologien bleiben offen. Source-Tests
 und Containerzahlen ersetzen keine Messungen. Die Host-Prüfung unterscheidet
 weiterhin Planungsbudgets von verfügbaren Messungen der gewählten Installation.
+
+Die Core-Prüfung verwendet die größte beobachtete Identity-Startup-Stichprobe
+(4.976.065.638 Bytes inklusive Abhängigkeiten) als Referenz-Planungsbudget auf
+anderen Hosts und ergänzt die bestehenden SQL-/Secrets-Startup-Budgets. Das
+Ergebnis ist ausdrücklich `ESTIMATED`, ohne verlässlichen Mindestwert oder eine
+behauptete Messung des gewählten Hosts beziehungsweise Podmans. Wiederverwendete
+eigene Capabilities werden nicht als zusätzliche Instanzen eingeplant.

@@ -101,7 +101,7 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		return ids[0], nil
 	}
 
-	idOut, err := exec.CommandContext(ctx, runtime, "container", "ls", "-q").Output()
+	idOut, err := exec.CommandContext(ctx, runtime, "container", "ls", "-aq").Output()
 	if err != nil {
 		return "", fmt.Errorf("list running Podman containers: %w", err)
 	}
@@ -131,7 +131,7 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		if len(observed) < 64 {
 			observed = append(observed, projectLabel+"/"+serviceLabel)
 		}
-		if projectLabel == project && serviceLabel == service {
+		if records[0].State.Running && projectLabel == project && serviceLabel == service {
 			matches = append(matches, id)
 		}
 	}
