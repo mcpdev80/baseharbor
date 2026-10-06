@@ -269,8 +269,21 @@ Live capabilities are requested from the authenticated peer and bound to its
 exact Hello identity. Static access descriptors do not prove live support.
 Runtime Explorer projects inventory and bounded container operations through
 that transport; existing Core ownership and tenant decisions remain authoritative.
-Remote lifecycle realization, metrics and live runtime qualification still
-need complete adapters and exact-source runtime qualification.
+The Core project realization adapter binds every staged project to the exact
+live tenant/Target/node/runtime identity. A staging receipt must preserve the
+bundle ID, each source digest and every relative filename under one confined,
+immutable object directory. Staged bytes are copied before dispatch; caller
+changes cannot alter a later Quadlet realization. Compose apply/repair/destroy
+accept only files from that validated project; Podman uses its owned native
+Quadlet lifecycle. Each operation rechecks negotiated live capabilities,
+retains Core correlation and a bounded deadline, and performs one dispatch.
+A disconnect, substituted receipt or missing runtime exit status fails closed;
+there is no automatic mutation replay or local execution fallback.
+
+This project adapter carries already authorized runtime decisions. It does not
+replace Core Application planning, provider placement, secret authority or
+persisted reconciliation. Complete remote Application integration and
+exact-source native qualification remain required before release approval.
 
 Follow logs and interactive terminals exclusively consume one admitted session.
 The canonical stream open and each event carry the exact stream ID and Core

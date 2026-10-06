@@ -19,8 +19,8 @@ import (
 )
 
 type nativeConnectorFixture struct {
-	engine, binary, dir, name string
-	sequence                  uint64
+	engine, image, binary, dir, name string
+	sequence                         uint64
 }
 
 func newNativeConnectorFixture(t *testing.T, ctx context.Context) *nativeConnectorFixture {
@@ -57,7 +57,7 @@ func newNativeConnectorFixture(t *testing.T, ctx context.Context) *nativeConnect
 			t.Error("owned native fixture remained after cleanup", err)
 		}
 	})
-	return &nativeConnectorFixture{engine: engine, binary: binary, dir: t.TempDir(), name: name}
+	return &nativeConnectorFixture{engine: engine, image: image, binary: binary, dir: t.TempDir(), name: name}
 }
 
 func (f *nativeConnectorFixture) write(t *testing.T, name string, data []byte) {

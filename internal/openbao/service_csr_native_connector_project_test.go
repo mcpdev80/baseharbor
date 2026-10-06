@@ -1,0 +1,114 @@
+package openbao
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
+)
+
+// This proves the Core's production project transport after real operator
+// authorization and managed enrollment. It is not an Application engine proof.
+func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Context, pool *targetsession.Pool, scope targetenrollment.Scope) {
+	t.Helper()
+	runtime, err := targetsession.NewProjectRuntime(pool, scope)
+	if err != nil {
+		t.Fatal("managed project runtime did not bind enrolled node", err)
+	}
+	name := f.name + "-project"
+	file := "compose.yaml"
+	content := "name: " + name + "\nservices:\n  workload:\n    image: " + f.image + "\n    container_name: " + name + "\n    user: '1000:1000'\n    command: ['sleep','300']\n    labels:\n      baseharbor.enrollment-qualification: 'true'\n"
+	if f.engine == "podman" {
+		file = name + ".container"
+		content = "[Unit]\nDescription=BaseHarbor managed project qualification\n[Container]\nImage=" + f.image + "\nContainerName=" + name + "\nUser=1000:1000\nExec=sleep 300\nLabel=baseharbor.enrollment-qualification=true\n[Service]\nTimeoutStartSec=45\n[Install]\nWantedBy=default.target\n"
+	}
+	t.Cleanup(func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if f.engine == "podman" {
+			_ = exec.CommandContext(cleanup, "systemctl", "--user", "stop", name+".service").Run()
+			root := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "containers", "systemd")
+			_ = os.Remove(filepath.Join(root, file))
+			_ = os.RemoveAll(filepath.Join(root, file+".d"))
+			_ = exec.CommandContext(cleanup, "systemctl", "--user", "daemon-reload").Run()
+		}
+		_ = exec.CommandContext(cleanup, f.engine, "rm", "-f", name).Run()
+		if f.engine == "docker" {
+			_ = exec.CommandContext(cleanup, f.engine, "network", "rm", name+"_default").Run()
+		}
+		output, err := exec.CommandContext(cleanup, f.engine, "ps", "-aq", "--filter", "name=^"+name+"$").Output()
+		if err != nil || strings.TrimSpace(string(output)) != "" {
+			t.Error("owned managed project remained after cleanup", err)
+		}
+		// Emergency cleanup only prevents leaking a failed fixture. Success is
+		// asserted through authenticated Core inventory before this callback.
+	})
+	staged, err := runtime.Stage(ctx, name, []targetsession.ProjectFile{{Path: file, Data: []byte(content)}})
+	if err != nil {
+		t.Fatal("managed project staging failed", err)
+	}
+	apply := func(repair bool) {
+		t.Helper()
+		var err error
+		if f.engine == "docker" {
+			err = runtime.ApplyCompose(ctx, staged, []string{file}, "", repair)
+		} else {
+			err = runtime.ApplyQuadlet(ctx, staged, file)
+		}
+		if err != nil {
+			t.Fatal("managed project realization failed", err)
+		}
+		f.projectObserved(t, ctx, pool, scope, name, true)
+	}
+	apply(false)
+	apply(true)
+	if f.engine == "docker" {
+		err = runtime.DestroyCompose(ctx, staged, []string{file}, "")
+	} else {
+		err = runtime.DestroyQuadlet(ctx, staged, file)
+	}
+	if err != nil {
+		t.Fatal("managed project destroy failed", err)
+	}
+	f.projectObserved(t, ctx, pool, scope, name, false)
+	if f.inventory(t, ctx, pool, scope) == "" {
+		t.Fatal("project destroy damaged foreign fixture")
+	}
+	t.Log("managed Core project staging, apply, observed running state, repair and destroy preserved foreign fixture")
+}
+
+func (f *nativeConnectorFixture) projectObserved(t *testing.T, ctx context.Context, pool *targetsession.Pool, scope targetenrollment.Scope, name string, want bool) {
+	t.Helper()
+	response, err := f.dispatch(ctx, pool, scope, "runtime.resource.list", struct{}{})
+	if err != nil || !response.Success {
+		t.Fatal("managed project inventory unavailable", err)
+	}
+	var resources []struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		State string `json:"state"`
+	}
+	if json.Unmarshal(response.Result, &resources) != nil {
+		t.Fatal("invalid managed project inventory")
+	}
+	found := false
+	for _, resource := range resources {
+		if strings.TrimPrefix(resource.Name, "/") != name {
+			continue
+		}
+		if resource.ID == "" || resource.State != "running" {
+			t.Fatal("managed project has not converged")
+		}
+		found = true
+	}
+	if found != want {
+		t.Fatal("managed project runtime presence differs", want, found)
+	}
+}
