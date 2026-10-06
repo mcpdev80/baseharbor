@@ -63,6 +63,7 @@ nav:
 
   - Getting Started:
       - First application: tutorials/getting-started.md
+      - Core resources: explanation/core-resources.md
       - CLI orientation: cli/index.md
 
   - Applications:

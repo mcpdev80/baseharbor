@@ -11,6 +11,10 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 
 [Einstieg](tutorials/getting-started.md)
 
+SQL, Secrets und Identity bilden den verpflichtenden Core; die Console ist optional.
+Die [Core-Ressourcen](explanation/core-resources.md) zeigen gemessene
+Referenz-Topologien und erklären den zusätzlichen Verbrauch durch Provider-Isolation.
+
 ## Verstehen
 
 - [Architektur](explanation/architecture.md)

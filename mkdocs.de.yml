@@ -58,6 +58,7 @@ nav:
   - Einstieg: tutorials/getting-started.md
   - Verstehen:
       - Architektur: explanation/architecture.md
+      - Core-Ressourcen: explanation/core-resources.md
       - Application Contract: explanation/application-contract.md
       - Provider: explanation/providers.md
       - Targets und Deployment-Ziele: explanation/targets.md
