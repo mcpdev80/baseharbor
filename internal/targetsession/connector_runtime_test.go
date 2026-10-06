@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
@@ -102,7 +103,18 @@ func TestConnectorRuntimeTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer logFile.Close()
-	command := exec.CommandContext(ctx, binary, "--runtime", engine, "--core", listener.Addr().String(), "--server-name", "core.test", "--core-identity", coreURI.String(), "--tenant-id", node.TenantID, "--target-id", node.TargetID, "--node-id", node.NodeID, "--state-root", filepath.Join(dir, "state"), "--quadlet-root", filepath.Join(dir, "quadlets"), "--cert", filepath.Join(dir, "node.crt"), "--key", filepath.Join(dir, "node.key"), "--ca", filepath.Join(dir, "ca.pem"))
+	quadletRoot := filepath.Join(dir, "quadlets")
+	if engine == "podman" {
+		runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+		if !filepath.IsAbs(runtimeDir) {
+			t.Fatal("real rootless systemd runtime directory is required")
+		}
+		quadletRoot = filepath.Join(runtimeDir, "containers", "systemd")
+		if err := os.MkdirAll(quadletRoot, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := exec.CommandContext(ctx, binary, "--runtime", engine, "--core", listener.Addr().String(), "--server-name", "core.test", "--core-identity", coreURI.String(), "--tenant-id", node.TenantID, "--target-id", node.TargetID, "--node-id", node.NodeID, "--state-root", filepath.Join(dir, "state"), "--quadlet-root", quadletRoot, "--cert", filepath.Join(dir, "node.crt"), "--key", filepath.Join(dir, "node.key"), "--ca", filepath.Join(dir, "ca.pem"))
 	command.Stdout = logFile
 	command.Stderr = logFile
 	if err := command.Start(); err != nil {
@@ -124,22 +136,33 @@ func TestConnectorRuntimeTransport(t *testing.T) {
 			t.Fatal(ctx.Err())
 		}
 	}
-	dispatch := func(operation string, payload any) Response {
+	var requestSequence uint64
+	rawDispatch := func(operation string, payload any) Response {
 		t.Helper()
 		data, err := json.Marshal(payload)
 		if err != nil {
 			t.Fatal(err)
 		}
-		request := requestNow(hex.EncodeToString(nonce[:]) + "-" + strings.ReplaceAll(operation, ".", "-"))
+		requestSequence++
+		request := requestNow(fmt.Sprintf("%s-%d-%s", hex.EncodeToString(nonce[:]), requestSequence, strings.ReplaceAll(operation, ".", "-")))
 		request.Operation = operation
 		request.Payload = data
 		request.DeadlineAt = time.Now().UTC().Add(30 * time.Second)
 		response, err := pool.Dispatch(ctx, node.Scope(), request)
-		if err != nil || !response.Success {
+		if err != nil {
 			t.Fatalf("real encrypted %s failed: %v, %v", operation, err, response.Error)
 		}
 		return response
 	}
+	dispatch := func(operation string, payload any) Response {
+		t.Helper()
+		response := rawDispatch(operation, payload)
+		if !response.Success {
+			t.Fatalf("real encrypted %s was rejected: %v", operation, response.Error)
+		}
+		return response
+	}
+	qualifyConnectorDeployment(t, engine, image, name, quadletRoot, run, dispatch, rawDispatch)
 	response := dispatch("runtime.resource.list", struct{}{})
 	var resources []struct {
 		ID   string `json:"id"`

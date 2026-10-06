@@ -91,6 +91,9 @@ func TestTargetAccessWireRejectsUnboundedOrForeignPayloads(t *testing.T) {
 		{"artifact.bundle.stage", `{"bundle_id":"safe","files":[{"path":"a/../foreign","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","data":"YQ=="}]}`},
 		{"runtime.exec", `{"resource_id":"owned","argv":[]}`},
 		{"runtime.volume.remove", `{"name":"--all"}`},
+		{"runtime.quadlet.apply", `{"name":"workload","content":"[Container]\\nImage=example/image:fixture"}`},
+		{"runtime.quadlet.remove", `{"name":"../foreign.container"}`},
+		{"runtime.quadlet.enable", `{"name":"foreign.service"}`},
 	} {
 		raw := `{"contract_version":"baseharbor.target-access/v1","protocol_version":"1","request_id":"request-a","correlation_id":"execution-a","target_id":"lab","operation":"` + test.operation + `","issued_at":"2026-10-06T02:00:00Z","deadline_at":"2026-10-06T02:05:00Z","payload":` + test.payload + `}`
 		if err := ValidateTargetAccessRecord("request", []byte(raw)); err == nil {

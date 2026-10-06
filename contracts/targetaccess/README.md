@@ -35,6 +35,14 @@ chunks are at most 16 KiB; complete transport frames are at most 4 MiB.
 - Resolve Compose/artifact references below the protected staging root and check
   traversal, symlinks, digest integrity and interruption cleanup at the filesystem
   boundary. A lexical schema check does not replace that confinement.
+- Publish an immutable bundle only after all members are validated and written.
+  Duplicate bundle IDs must preserve the original publication. Runtime inputs
+  must resolve to committed members of the same bundle and retain their digests;
+  an interrupted transfer or orphaned staging object is never deployment input.
+- Quadlet names include the native `.container`, `.network`, `.volume`, `.pod`,
+  `.image` or `.build` extension. Generated units use the native `[Install]`
+  semantics and require a reachable Linux systemd user manager. A realization
+  receipt must distinguish managed unit artifacts from existing foreign files.
 - Terminal input and output use separate monotonic sequences. Terminal admission
   cannot resume/replay; logs follow the existing Runtime Log Source Contract.
 - Enforce deadlines, cancellation, write/backpressure bounds and identity expiry
