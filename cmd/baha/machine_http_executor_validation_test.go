@@ -2,11 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 )
 
 func TestHTTPAdvertisedReadOperationsReachInputValidation(t *testing.T) {
@@ -40,5 +46,39 @@ func TestHTTPInputRejectsUnknownNullTrailingAndOversizedData(t *testing.T) {
 	var input machineRuntimeTargetInput
 	if err := decodeHTTPInput(json.RawMessage(`{"target":"safe","environment":"dev"}`), &input); err != nil || input.Target != "safe" || input.Environment != "dev" {
 		t.Fatalf("valid input rejected: %+v %v", input, err)
+	}
+}
+
+func TestHTTPActualCoreExecutorStartsAndAdvertisesCanonicalOperations(t *testing.T) {
+	executor := newBahaMachineExecutor(application.Store{Root: t.TempDir()})
+	handler, err := machinehttp.New(executor)
+	if err != nil {
+		t.Fatal("actual Core HTTP executor cannot start", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "https://core.example/api/v1/machine/discovery", nil)
+	request.TLS = &tls.ConnectionState{}
+	request = request.WithContext(identity.WithPrincipal(request.Context(), &identity.Principal{Issuer: "https://issuer.example", Subject: "startup-operator"}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var discovery machine.Discovery
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &discovery) != nil {
+		t.Fatal("actual Core discovery failed", response.Code)
+	}
+	supported := executor.SupportedOperationIDs()
+	if len(discovery.Operations) == 0 || len(discovery.Operations) != len(supported) {
+		t.Fatal("actual Core HTTP support and discovery differ")
+	}
+	seen := map[string]bool{}
+	for _, operation := range discovery.Operations {
+		canonical, exists := machine.OperationByID(operation.ID)
+		if !exists || canonical != operation || seen[operation.ID] {
+			t.Fatal("actual Core HTTP operation differs from canonical metadata", operation.ID)
+		}
+		seen[operation.ID] = true
+	}
+	for _, id := range supported {
+		if !seen[id] {
+			t.Fatal("supported operation missing from real discovery", id)
+		}
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
@@ -311,32 +310,4 @@ func executeRuntimeOperation(ctx context.Context, input machineRuntimeOperateInp
 		Resource:  resource.Ref,
 		Operation: operation,
 	})
-}
-
-func executeHTTPRuntimeOperation(
-	ctx context.Context,
-	operationContext machine.OperationContext,
-	raw json.RawMessage,
-	report machinehttp.ProgressReporter,
-) (any, error) {
-	var input machineRuntimeOperateInput
-	if err := decodeHTTPInput(raw, &input); err != nil {
-		return nil, err
-	}
-	var err error
-	input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
-	if err != nil {
-		return nil, err
-	}
-	input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
-	if err != nil {
-		return nil, err
-	}
-	reportHTTPProgress(report, "runtime", "Executing bounded Runtime Explorer lifecycle action.", 40)
-	result, err := executeRuntimeOperation(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	reportHTTPProgress(report, "runtime", "Runtime Explorer lifecycle action completed.", 100)
-	return result, nil
 }
