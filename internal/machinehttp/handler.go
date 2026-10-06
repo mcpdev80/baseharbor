@@ -97,7 +97,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		parsed, err := url.Parse(origin)
-		if err != nil || parsed.Scheme != "https" || parsed.Host != r.Host || parsed.User != nil ||
+		if err != nil || len(r.Header.Values("Origin")) != 1 || parsed.Scheme != "https" || parsed.Host != r.Host || parsed.User != nil ||
 			parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 			writeMachineError(w, http.StatusForbidden, machine.NewError(machine.ErrorPolicyDenied,
 				"The browser origin does not match the protected Core destination.",

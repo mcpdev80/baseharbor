@@ -41,6 +41,24 @@ revocation of identity-provider group changes within an issued token's lifetime.
 
 Transport authentication and operator authorization are separate requirements. A valid TLS connection does not by itself authorize an operation.
 
+## Console installation topology
+
+The default is one optional Console connected directly to one selected Core in
+one BaseHarbor installation and security boundary. Serve Console and protected
+Core HTTP on the same HTTPS origin. Core remains the authority for lifecycle,
+policy, identities and secrets. The Console owns no parallel authority or
+installation state. Core checks browser Origin against the destination HTTPS
+authority, including its port; forwarding headers cannot authorize a foreign
+Origin, and duplicate Origin headers are rejected.
+
+The v0.4.23 Console rejects a configured foreign Core before authentication and
+pins all discovered destinations to the selected Core. It does not provide a
+central multi-Core backend, Dev-to-Prod forwarding or installation federation.
+Cross-origin operation requires a separate explicit trusted-origin design; it
+is not enabled by CORS headers or redirects in this release. A future client-side
+installation selector must authenticate directly to each newly selected Core
+and discard the previous installation's credentials and streams.
+
 ## Discovery
 
 `GET /api/v1/machine/discovery`

@@ -99,3 +99,30 @@ func TestDeadlineWriterRejectsOutputAfterSessionCancellation(t *testing.T) {
 		t.Fatal("cancelled stream delivered output")
 	}
 }
+
+func TestBrowserOriginCannotBeReboundByForwardingHeaders(t *testing.T) {
+	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
+		t.Error("foreign installation reached executor")
+		return nil, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, origins := range [][]string{
+		{"https://other-installation.example"},
+		{"https://core.example:9443"},
+		{"https://core.example", "https://other-installation.example"},
+	} {
+		request := withTestPrincipal(httptest.NewRequest("GET", "https://core.example/api/v1/machine/discovery", nil))
+		for _, origin := range origins {
+			request.Header.Add("Origin", origin)
+		}
+		request.Header.Set("X-Forwarded-Host", "other-installation.example")
+		request.Header.Set("Forwarded", "host=other-installation.example;proto=https")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatal("forwarding headers or duplicate origins expanded the installation boundary")
+		}
+	}
+}
