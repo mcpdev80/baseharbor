@@ -232,3 +232,15 @@ membership identifiers and unknown safety classes deny. An authenticated
 request in `dev` retains this check; it does not become a trusted local operator.
 This role check supplements effective policy and resource ownership. It does
 not establish tenant isolation for an adapter's inventory or runtime resources.
+
+### Navigation result consumption
+
+`app.list`, `target.list`, `workspace.list` and `runtime.list` use the generated
+[read-model schema](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/read-models.schema.json) and
+[synthetic examples](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/read-models.golden.json). The
+source is Core's semantic Go types, shared across CLI JSON, MCP and HTTP. The
+consumer validates the result only after a correlated successful execution.
+Empty Runtime Explorer inventory can be `null`. Configured Targets do not
+report connection health, and deployment observations do not imply live runtime
+health. Unknown result fields or incompatible versions require a supported
+consumer update; a live error must never select fixture data.

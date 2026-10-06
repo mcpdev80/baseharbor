@@ -17,56 +17,12 @@ type machineApplicationListInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"authorization environment for the listing; defaults from current repository context"`
 }
 
-type machineDeploymentSummary struct {
-	ContractVersion string `json:"contract_version"`
-	DeploymentID    string `json:"deployment_id"`
-	ApplicationID   string `json:"application_id"`
-	Target          string `json:"target"`
-	Application     string `json:"application"`
-	Environment     string `json:"environment"`
-	RuntimeProvider string `json:"runtime_provider,omitempty"`
-	State           string `json:"state,omitempty"`
-	Ready           bool   `json:"ready"`
-	SourceKind      string `json:"source_kind,omitempty"`
-	SourceAvailable bool   `json:"source_available"`
-}
-
-type machineApplicationListResult struct {
-	ContractVersion string                     `json:"contract_version"`
-	Deployments     []machineDeploymentSummary `json:"deployments"`
-	Warnings        []string                   `json:"warnings,omitempty"`
-}
-
-type machineWorkspaceSummary struct {
-	ContractVersion string            `json:"contract_version"`
-	Application     string            `json:"application"`
-	Manifest        string            `json:"manifest"`
-	SourceCount     int               `json:"source_count"`
-	Sources         map[string]string `json:"sources,omitempty"`
-}
-
-type machineWorkspaceListResult struct {
-	ContractVersion string                    `json:"contract_version"`
-	Workspaces      []machineWorkspaceSummary `json:"workspaces"`
-	Warnings        []string                  `json:"warnings,omitempty"`
-}
-
-type machineTargetSummary struct {
-	ContractVersion string `json:"contract_version"`
-	Name            string `json:"name"`
-	RuntimeProvider string `json:"runtime_provider"`
-	AccessReference string `json:"access_reference"`
-	Scope           string `json:"scope,omitempty"`
-	Implicit        bool   `json:"implicit,omitempty"`
-	Default         bool   `json:"default,omitempty"`
-	Active          bool   `json:"active,omitempty"`
-	Effective       bool   `json:"effective,omitempty"`
-}
-
-type machineTargetListResult struct {
-	ContractVersion string                 `json:"contract_version"`
-	Targets         []machineTargetSummary `json:"targets"`
-}
+type machineDeploymentSummary = machine.DeploymentSummary
+type machineApplicationListResult = machine.ApplicationListResult
+type machineWorkspaceSummary = machine.WorkspaceSummary
+type machineWorkspaceListResult = machine.WorkspaceListResult
+type machineTargetSummary = machine.TargetSummary
+type machineTargetListResult = machine.TargetListResult
 
 func collectMachineApplicationList(ctx context.Context, input machineApplicationListInput) (machineApplicationListResult, error) {
 	var (

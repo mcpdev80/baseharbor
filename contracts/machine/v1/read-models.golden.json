@@ -1,0 +1,100 @@
+{
+  "schema": "baseharbor.machine-read-model-fixtures/v1",
+  "synthetic": true,
+  "records": [
+    {
+      "operation": "app.list",
+      "value": {
+        "contract_version": "v1",
+        "deployments": [
+          {
+            "contract_version": "v1",
+            "deployment_id": "synthetic-deployment",
+            "application_id": "synthetic-application",
+            "target": "synthetic-target",
+            "application": "synthetic-demo",
+            "environment": "prod",
+            "runtime_provider": "podman",
+            "state": "running",
+            "ready": true,
+            "source_kind": "repository",
+            "source_available": true
+          }
+        ]
+      }
+    },
+    {
+      "operation": "app.list",
+      "value": {
+        "contract_version": "v1",
+        "deployments": [],
+        "warnings": [
+          "Synthetic partial source observation"
+        ]
+      }
+    },
+    {
+      "operation": "target.list",
+      "value": {
+        "contract_version": "v1",
+        "targets": [
+          {
+            "contract_version": "v1",
+            "name": "synthetic-target",
+            "runtime_provider": "podman",
+            "access_reference": "synthetic-node",
+            "scope": "synthetic-scope",
+            "default": true,
+            "effective": true
+          }
+        ]
+      }
+    },
+    {
+      "operation": "workspace.list",
+      "value": {
+        "contract_version": "v1",
+        "workspaces": [
+          {
+            "contract_version": "v1",
+            "application": "synthetic-demo",
+            "manifest": "/synthetic/baseharbor.yaml",
+            "source_count": 1,
+            "sources": {
+              "app": "/synthetic/app"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": "runtime.list",
+      "value": [
+        {
+          "contract_version": "baseharbor.runtime-explorer/v1",
+          "ref": {
+            "provider": "podman",
+            "target": "synthetic-target",
+            "kind": "container",
+            "resource_id": "synthetic-container"
+          },
+          "display_name": "synthetic-api",
+          "ownership": "managed",
+          "relationship": {
+            "application_id": "synthetic-application",
+            "deployment_id": "synthetic-deployment",
+            "environment": "prod"
+          },
+          "state": {
+            "observed": "running"
+          },
+          "reconciliation": {}
+        }
+      ]
+    },
+    {
+      "operation": "runtime.list",
+      "value": null
+    }
+  ]
+}

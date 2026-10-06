@@ -18,3 +18,11 @@ These schemas are not provider product configuration. Provider-specific configur
 All v0.4 contracts are pre-freeze versioned drafts. See [compatibility policy](../COMPATIBILITY.md) and [public register](../docs/reference/public-contracts.md).
 
 Schema IDs use the controlled repository namespace in ADR 0018. The embedded `contracts.SchemaRegistry` verifies and resolves all packaged schemas offline; consumers pin the repository commit for external acquisition. No obsolete domain aliases are retained.
+
+Navigation and Runtime Explorer result shapes are generated from actual Core
+semantic types in `machine/v1/read-models.schema.json`; synthetic examples are
+in `machine/v1/read-models.golden.json`. Regenerate with
+`go run ./scripts/tools/machine-read-models -schema` and without `-schema` for
+examples. Drift tests compare both packaged artifacts to the actual types.
+`runtime.list` permits `null` for an empty Core inventory. Target configuration
+is not a connectivity/health observation; consumers must not invent these fields.
