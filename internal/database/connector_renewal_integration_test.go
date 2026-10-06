@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -183,5 +185,68 @@ func TestConnectorRenewalPredecessorRevocationKeepsReplacementAndBlocksRevokedGr
 	}
 	if _, err := store.Consume(ctx, scope, pending.TokenDigest, pending.NonceDigest, repeatDigest("f"), time.Now()); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("grant consumed after its authorized current certificate was revoked", err)
+	}
+}
+
+func TestConnectorRenewalConcurrentAuthorizationAndReplacementAreSingleWinner(t *testing.T) {
+	ctx, pool, scope := renewalDatabase(t)
+	store := NewConnectorEnrollmentStore(pool)
+	expires := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+	initial := renewalGrant(scope, "a", "b")
+	if err := store.Create(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	consumeRenewalGrant(t, ctx, store, initial)
+	if err := store.RecordIssued(ctx, scope, initial.TokenDigest, "abcd", expires); err != nil {
+		t.Fatal(err)
+	}
+	const contenders = 8
+	var wait sync.WaitGroup
+	results := make(chan targetenrollment.Grant, contenders)
+	start := make(chan struct{})
+	for index := 0; index < contenders; index++ {
+		grant := renewalGrant(scope, fmt.Sprintf("%x", index+1), "c")
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			if store.CreateRenewal(ctx, grant) == nil {
+				results <- grant
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	if len(results) != 1 {
+		t.Fatalf("concurrent authorizations produced %d winners", len(results))
+	}
+	winner := <-results
+	consumeRenewalGrant(t, ctx, store, winner)
+	issued := make(chan string, contenders)
+	start = make(chan struct{})
+	for index := 0; index < contenders; index++ {
+		serial := fmt.Sprintf("e%d", index)
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			if store.RecordIssued(ctx, scope, winner.TokenDigest, serial, expires) == nil {
+				issued <- serial
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(issued)
+	if len(issued) != 1 {
+		t.Fatalf("concurrent signing receipts produced %d replacements", len(issued))
+	}
+	serial := <-issued
+	if err := store.AdmitCertificate(ctx, scope, serial, expires); err != nil {
+		t.Fatal("winner lost admission", err)
+	}
+	if err := store.AdmitCertificate(ctx, scope, "abcd", expires); err != nil {
+		t.Fatal("single predecessor lost bounded overlap", err)
 	}
 }

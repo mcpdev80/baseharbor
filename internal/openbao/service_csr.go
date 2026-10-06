@@ -12,10 +12,22 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
+const corePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-core allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/core/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=false server_flag=true use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
+
 const nodePKIRoleCommand = `exec bao write baseharbor-pki/roles/baseharbor-nodes allow_any_name=true allow_localhost=false allow_ip_sans=false allowed_uri_sans="spiffe://baseharbor/platform/connectors/*" enforce_hostnames=false key_type=any key_usage=DigitalSignature client_flag=true server_flag=false use_csr_common_name=false use_csr_sans=true ttl=24h max_ttl=24h generate_lease=true`
 
 // SignCSR uses the signing endpoint: the client key never enters Core/OpenBao.
 func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	return i.signScopedCSR(ctx, request, "connectors", "baseharbor-nodes", x509.ExtKeyUsageClientAuth)
+}
+
+// SignCoreCSR signs a Core-owned key with server-only usage. It is deliberately
+// separate from the node enrollment issuer and cannot authorize node identities.
+func (i *ServiceIssuer) SignCoreCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	return i.signScopedCSR(ctx, request, "core", "baseharbor-core", x509.ExtKeyUsageServerAuth)
+}
+
+func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess.CSRSigningRequest, namespace, role string, usage x509.ExtKeyUsage) (serviceaccess.IssuedCertificate, error) {
 	if i == nil || i.executor == nil {
 		return serviceaccess.IssuedCertificate{}, errors.New("OpenBao CSR issuer is not configured")
 	}
@@ -23,7 +35,7 @@ func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSi
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, err
 	}
-	if !strings.HasPrefix(request.Identity, "spiffe://baseharbor/platform/connectors/") {
+	if !strings.HasPrefix(request.Identity, "spiffe://baseharbor/platform/"+namespace+"/") {
 		return serviceaccess.IssuedCertificate{}, errors.New("node CSR is outside the managed connector identity namespace")
 	}
 	token, err := managerToken(ctx, i.executor, i.files)
@@ -34,7 +46,7 @@ func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSi
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, errors.New("cannot encode node CSR")
 	}
-	out, err := execWithTokenPayload(ctx, i.executor, i.files, token, `exec bao write -format=json baseharbor-pki/sign/baseharbor-nodes -`, string(payload))
+	out, err := execWithTokenPayload(ctx, i.executor, i.files, token, `exec bao write -format=json baseharbor-pki/sign/`+role+` -`, string(payload))
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, errors.New("managed authority could not sign the node CSR")
 	}
@@ -63,7 +75,7 @@ func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSi
 	if err != nil || string(publicKey) != string(csr.RawSubjectPublicKeyInfo) {
 		return serviceaccess.IssuedCertificate{}, errors.New("signed certificate does not bind the submitted node key")
 	}
-	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth {
+	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != usage {
 		return serviceaccess.IssuedCertificate{}, errors.New("signed node certificate has unapproved extended key usage")
 	}
 	chain := make([][]byte, 0, len(reply.Data.CAChain))

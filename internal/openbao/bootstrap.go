@@ -771,6 +771,9 @@ path "baseharbor-pki/issue/baseharbor-services" {
   capabilities = ["create", "update"]
 }
 
+path "baseharbor-pki/sign/baseharbor-core" {
+  capabilities = ["create", "update"]
+}
 path "baseharbor-pki/sign/baseharbor-nodes" {
   capabilities = ["create", "update"]
 }

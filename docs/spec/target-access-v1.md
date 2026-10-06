@@ -300,3 +300,18 @@ handshakes reload server identity material and node CA trust, supporting a
 controlled overlap bundle; changing the selected Core identity requires restart.
 Real OpenBao/rotation/runtime and authenticated private evidence remain required;
 these source primitives are not a v0.4.23 release approval.
+
+### Managed Core server signing
+
+The managed OpenBao authority configures a separate `baseharbor-core` CSR role for
+`spiffe://baseharbor/platform/core/*`. It enables server authentication only;
+`baseharbor-nodes` remains client authentication only. The internal
+`ServiceIssuer.SignCoreCSR` boundary checks the signed leaf against the submitted
+Core key, exact URI identity, lifetime and sole server-auth usage. It returns
+public certificate material and never a private key. Node enrollment cannot call
+this boundary to obtain a Core identity.
+
+This provides an issuance boundary for Core-owned keys. It does not by itself
+install or rotate the listener's configured files, coordinate trust overlap, or
+qualify a production OpenBao rotation. Those deployment and end-to-end checks
+remain required before pre-release approval.

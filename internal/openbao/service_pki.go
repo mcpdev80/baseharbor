@@ -48,6 +48,9 @@ fi`
 		if _, roleErr = execWithToken(ctx, executor, files, rootToken, roleCommand); roleErr == nil {
 			_, roleErr = execWithToken(ctx, executor, files, rootToken, nodePKIRoleCommand)
 			if roleErr == nil {
+				_, roleErr = execWithToken(ctx, executor, files, rootToken, corePKIRoleCommand)
+			}
+			if roleErr == nil {
 				return nil
 			}
 		}
