@@ -634,6 +634,9 @@ func repositoryWorkloadStartTimeoutError(ctx context.Context, compose bhruntime.
 	var details []string
 	for _, state := range states {
 		detail := state.Service + "=" + strings.ToLower(strings.TrimSpace(state.State))
+		if health := strings.TrimSpace(state.Health); health != "" {
+			detail += " health=" + strings.ToLower(health)
+		}
 		if state.ExitCode != 0 {
 			detail += fmt.Sprintf(" exit_code=%d", state.ExitCode)
 		}

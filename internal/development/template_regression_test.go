@@ -3,6 +3,7 @@ package development_test
 import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/goadapter"
 	"github.com/mcpdev80/baseharbor/internal/development/nextjsadapter"
@@ -128,6 +129,28 @@ func TestGeneratedTemplatesNativeBuild(t *testing.T) {
 				}
 			})
 			t.Logf("fresh %s SQL + managed-secret image builds without runtime values", adapter.Descriptor().ID)
+		})
+	}
+}
+
+// Exercise the full greenfield writer and normal workload resolver, rather than
+// only testing adapter output. YAML emitter indentation is not a Compose rule.
+func TestCreatedTemplatesResolveManagedWorkload(t *testing.T) {
+	for _, adapter := range []development.Adapter{goadapter.Adapter{}, nextjsadapter.Adapter{}, pythonadapter.Adapter{}, quarkusadapter.Adapter{}} {
+		t.Run(adapter.Descriptor().ID, func(t *testing.T) {
+			registry, err := development.NewRegistry(adapter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(t.TempDir(), "app")
+			created, err := development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-workload", Adapter: adapter.Descriptor().ID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets, capability.ExposureHTTP}, Secrets: []string{"API_TOKEN"}}, registry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			services, _, found, err := application.SelectedWorkloadServices(root, created.Manifest)
+			if err != nil || !found || len(services) != 1 || services[0] != "app" {
+				t.Fatalf("generated application cannot enter normal workload preflight: %v %v", services, err)
+			}
 		})
 	}
 }
