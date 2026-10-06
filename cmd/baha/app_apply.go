@@ -13,6 +13,7 @@ import (
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -40,9 +41,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return err
 	}
 	if err := execution.runPreflight(ctx); err != nil {
-		return err
+		return execution.recordFailedDeployment(err)
 	}
-	pending, err := recordPendingDeployment(ctx, execution.resolved)
+	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")
 	if err != nil {
 		return fmt.Errorf("record deployment before mutation: %w", err)
 	}
@@ -187,6 +188,13 @@ func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.R
 			cli.ReportActivityDetail(out, detail)
 		}, composeFiles...)
 		if err == nil {
+			op := provideroperation.New(compose, files.Project, files.Compose, files.Env)
+			if err := application.ReconcileRabbitMQCredentials(ctx, op, m, files); err != nil {
+				return err
+			}
+			if err := application.ReconcileMongoDBHA(ctx, op, m, files); err != nil {
+				return err
+			}
 			return nil
 		}
 		if !bhruntime.IsPortBindingConflict(err) || attempt == maxAttempts {
@@ -221,14 +229,25 @@ func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.Runtime
 		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
 			return err
 		}
+		if !application.UsesSharedValkey(m) {
+			if err := application.VerifyValkeyHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+				return err
+			}
+		}
 	}
 	if len(application.RabbitMQInstanceNames(m)) > 0 {
 		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
 			return err
 		}
+		if err := application.VerifyRabbitMQHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+			return err
+		}
 	}
 	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
 		if err := application.VerifyMongoDBRuntime(ctx, m, files); err != nil {
+			return err
+		}
+		if err := application.VerifyMongoDBHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
 			return err
 		}
 	}

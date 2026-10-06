@@ -20,12 +20,19 @@ func loadSharedBackendState(path, environment string) (sharedBackendState, error
 	if err != nil {
 		return sharedBackendState{}, err
 	}
+	return decodeSharedBackendState(data)
+}
+
+func decodeSharedBackendState(data []byte) (sharedBackendState, error) {
 	var state sharedBackendState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return sharedBackendState{}, err
 	}
 	if state.Version != sharedBackendStateVersion {
 		return sharedBackendState{}, fmt.Errorf("unsupported shared backend state version %d", state.Version)
+	}
+	if state.PostgresAdminCredential != "" && (state.PostgresMembers < 1 || state.PostgresMembers == 2) {
+		return sharedBackendState{}, fmt.Errorf("shared PostgreSQL topology is missing or invalid; do not rewrite existing provider data")
 	}
 	if state.Applications == nil {
 		state.Applications = map[string]sharedBackendAppState{}
@@ -51,6 +58,14 @@ func sharedPostgresService(environment string) string {
 }
 
 func sharedPostgresAlias() string { return "postgres-access" }
+
+func sharedPostgresMemberService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-member-%d", sharedPostgresService(environment), ordinal)
+}
+
+func sharedPostgresEtcdService(environment string, ordinal int) string {
+	return fmt.Sprintf("%s-etcd-%d", sharedPostgresService(environment), ordinal)
+}
 
 func sharedValkeyService(m Manifest, instance string) string {
 	return sharedValkeyServiceFor(m.Name, m.Environment, instance)
@@ -240,4 +255,22 @@ func quotePostgresLiteral(value string) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func sharedBackendPostgresUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.SQLManagementUI {
+			return true
+		}
+	}
+	return false
+}
+
+func sharedBackendCacheUIRequested(state sharedBackendState) bool {
+	for _, app := range state.Applications {
+		if app.CacheManagementUI {
+			return true
+		}
+	}
+	return false
 }

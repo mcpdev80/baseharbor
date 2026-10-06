@@ -6,6 +6,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/availability"
 )
 
 type ProviderKind string
@@ -58,6 +60,7 @@ type ProviderDescriptor struct {
 	WorkloadSources []string
 	Realization     string
 	Capabilities    ProviderCapabilities
+	Availability    availability.Support
 }
 
 type Provider interface {
@@ -315,7 +318,8 @@ func (r *ProviderRegistry) Resolve(ctx context.Context, kind ProviderKind) (Prov
 		descriptor.ContractVersion != registration.Descriptor.ContractVersion ||
 		descriptor.ProviderVersion != registration.Descriptor.ProviderVersion ||
 		descriptor.Realization != registration.Descriptor.Realization ||
-		descriptor.Capabilities != registration.Descriptor.Capabilities {
+		descriptor.Capabilities != registration.Descriptor.Capabilities ||
+		descriptor.Availability != registration.Descriptor.Availability {
 		return nil, fmt.Errorf("runtime provider %q descriptor does not match registry declaration", normalized)
 	}
 	return provider, nil

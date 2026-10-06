@@ -37,6 +37,15 @@ func appCommand(store application.Store) *cli.Command {
 }
 
 func createTargetManagedApplication(ctx context.Context, m application.Manifest) (string, error) {
+	if err := application.ValidateApplicationID(m.ApplicationID); err != nil {
+		return "", err
+	}
+	if err := m.Validate(); err != nil {
+		return "", err
+	}
+	if err := authorizeMCPOperation(ctx, "app.create", "", m.Environment, m.ApplicationID, ""); err != nil {
+		return "", err
+	}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return "", err
@@ -106,6 +115,11 @@ func appInitCommand() *cli.Command {
 		Usage:   "baha app init [NAME] [-e ENV|--environment ENV] [capability options] [--workload-component NAME]... [--workload-source compose|quadlet|kubernetes:PATH]",
 		Long:    "Creates baseharbor.yaml in the current directory for committing with the application source. The interactive capability picker uses detected defaults and lets you confirm them with a terminal checkbox UI; flags provide the deterministic non-interactive path for scripts and CI.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "app init")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			prepared := append([]string(nil), args...)
 			if !hasCreateName(prepared) {
 				cwd, err := os.Getwd()
@@ -190,31 +204,18 @@ func appInitCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			path := application.RepositoryManifestName
-			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-			if err != nil {
-				if errors.Is(err, os.ErrExist) {
-					return fmt.Errorf("%s already exists; edit the existing application contract instead", path)
-				}
-				return err
-			}
-			if _, err := file.WriteString(m.YAML()); err != nil {
-				_ = file.Close()
-				_ = os.Remove(path)
-				return err
-			}
-			if err := file.Close(); err != nil {
-				return err
-			}
-			var repositoryMetadataPath string
+			var selected *repositoryinspect.WorkloadSourceCandidate
 			if sourceExplicit && persistSourceSelection {
-				repositoryMetadataPath, err = repositoryinspect.WriteRepositoryMetadata(".", sourceSelection)
-				if err != nil {
-					_ = os.Remove(path)
-					return fmt.Errorf("write repository workload source selection: %w", err)
-				}
+				selected = &sourceSelection
 			}
-			absolute, _ := filepath.Abs(path)
+			result, err := persistRepositoryApplication(ctx, ".", m, selected)
+			if err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(out, result)
+			}
+			absolute, repositoryMetadataPath := result.Manifest, result.SourceSelection
 			fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
 			fmt.Fprintf(out, "manifest: %s\n", absolute)
 			if repositoryMetadataPath != "" {

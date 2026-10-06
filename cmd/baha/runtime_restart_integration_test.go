@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,20 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Skip("real control-plane restart acceptance requires BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	runControlPlaneRestartAcceptance(t, true)
+}
+
+func TestSingleControlPlaneRestartRotationAndCleanup(t *testing.T) {
+	if os.Getenv("BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE") != "true" {
+		t.Skip("single control-plane runtime acceptance requires BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE=true")
+	}
+	runControlPlaneRestartAcceptance(t, false)
+}
+
+func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
 
 	runtimeCommand := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
@@ -43,6 +57,14 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Skip("existing global BaseHarbor Compose project detected; restart acceptance requires an isolated host")
 	}
 
+	baselineVolumes, err := exec.CommandContext(ctx, runtimeCommand, "volume", "ls", "-q").Output()
+	if err != nil {
+		t.Fatalf("inventory baseline volumes: %v", err)
+	}
+	baseline := map[string]bool{}
+	for _, name := range strings.Fields(string(baselineVolumes)) {
+		baseline[name] = true
+	}
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 
@@ -59,7 +81,7 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}); err != nil {
+	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, ha); err != nil {
 		t.Fatalf("initial control-plane start: %v\n%s", err, out.String())
 	}
 	runtimeFiles, err := existingTargetRuntimeFiles(ctx)
@@ -79,6 +101,36 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := runtimeFiles
+	if files.HA != ha {
+		t.Fatal("persisted control-plane topology differs from requested profile")
+	}
+	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers := 0
+	for _, name := range running {
+		if strings.HasPrefix(name, "postgres-member-") || strings.HasPrefix(name, "openbao-member-") {
+			servers++
+		}
+		if !ha && (strings.Contains(name, "etcd") || strings.HasSuffix(name, "-2") || strings.HasSuffix(name, "-3")) {
+			t.Fatalf("single control-plane started hidden HA service: %s", name)
+		}
+	}
+	wantedServers := 2
+	if ha {
+		wantedServers = 6
+	}
+	if servers != wantedServers {
+		t.Fatalf("running server count=%d want=%d", servers, wantedServers)
+	}
+	initialCredentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeControlPlanePostgresCredential(ctx, compose, files, initialCredentials.OpenBaoDBUser, initialCredentials.OpenBaoDBPassword, "openbao"); err != nil {
+		t.Fatalf("OpenBao storage credential before bootstrap: %v", err)
+	}
 	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
 	if err := platformopenbao.Bootstrap(ctx, compose, files, recovery); err != nil {
 		t.Fatalf("bootstrap OpenBao: %v", err)
@@ -119,4 +171,174 @@ func TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile(t *testing.T) {
 	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
 		t.Fatalf("manager auth after verified restart: %v", err)
 	}
+
+	oldManager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := platformopenbao.RotateManagerCredentials(ctx, compose, files); err != nil {
+		t.Fatalf("rotate OpenBao manager credential: %v", err)
+	}
+	newManager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newManager.RoleID != oldManager.RoleID || newManager.SecretID == oldManager.SecretID {
+		t.Fatalf("OpenBao manager credential rotation did not preserve role/change SecretID")
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		t.Fatalf("manager auth after credential rotation: %v", err)
+	}
+
+	if err := rotateControlPlaneDatabaseCredentials(ctx, compose, files, recovery); err != nil {
+		t.Fatalf("rotate control-plane database credentials: %v\n%s", err, compose.DiagnosticsProject(ctx, files.Project, files.Compose, files.Env))
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		t.Fatalf("manager auth after database credential rotation: %v", err)
+	}
+	if err := verifyOpenBaoManagementUI(ctx, files); err != nil {
+		t.Fatalf("OpenBao management UI after database credential rotation: %v", err)
+	}
+
+	if err := rotateControlPlaneServiceCA(ctx, compose, files, recovery); err != nil {
+		t.Fatalf("rotate control-plane service CA: %v", err)
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		t.Fatalf("manager auth after service CA rotation: %v", err)
+	}
+
+	if !ha {
+		var destroyOut bytes.Buffer
+		if err := runtimeDestroy(ctx, []string{"--yes"}, &destroyOut); err != nil {
+			t.Fatalf("single control-plane cleanup: %v\n%s", err, destroyOut.String())
+		}
+		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)
+		if err != nil || len(resources) != 0 {
+			t.Fatalf("single control-plane retained owned resources: %v %v", resources, err)
+		}
+		remainingVolumes, err := exec.CommandContext(ctx, runtimeCommand, "volume", "ls", "-q").Output()
+		if err != nil {
+			t.Fatalf("inventory volumes after target cleanup: %v", err)
+		}
+		for _, name := range strings.Fields(string(remainingVolumes)) {
+			if !baseline[name] {
+				t.Fatalf("target cleanup retained newly created named or anonymous volume: %s", name)
+			}
+		}
+		if _, err := os.Stat(recovery); err != nil {
+			t.Fatal("destroy removed external operator recovery file")
+		}
+		return
+	}
+
+	environment := mustRuntimeEnvForHATest(t, files.Env)
+	workdir := filepath.Dir(files.Compose)
+
+	openBaoLeader := mustOpenBaoLeaderService(t, ctx, compose, files)
+	if err := compose.StopProjectFilesSelected(ctx, files.Project, workdir, environment, []string{openBaoLeader}, files.Compose); err != nil {
+		t.Fatalf("stop OpenBao leader %s: %v", openBaoLeader, err)
+	}
+	waitForOpenBaoHAAfterFailure(t, ctx, compose, files, "OpenBao leader failure")
+	if err := compose.UpProjectFilesSelected(ctx, files.Project, workdir, environment, []string{openBaoLeader}, files.Compose); err != nil {
+		t.Fatalf("restart OpenBao leader %s: %v", openBaoLeader, err)
+	}
+	waitForOpenBaoHAAfterFailure(t, ctx, compose, files, "OpenBao member recovery")
+
+	postgresPrimary := mustPostgresPrimaryService(t, ctx, compose, files)
+	if err := compose.StopProjectFilesSelected(ctx, files.Project, workdir, environment, []string{postgresPrimary}, files.Compose); err != nil {
+		t.Fatalf("stop PostgreSQL primary %s: %v", postgresPrimary, err)
+	}
+	waitForPostgresHAAfterFailure(t, ctx, compose, files)
+	waitForOpenBaoHAAfterFailure(t, ctx, compose, files, "PostgreSQL primary failure")
+	if err := compose.UpProjectFilesSelected(ctx, files.Project, workdir, environment, []string{postgresPrimary}, files.Compose); err != nil {
+		t.Fatalf("restart PostgreSQL member %s: %v", postgresPrimary, err)
+	}
+	waitForPostgresHAAfterFailure(t, ctx, compose, files)
+	waitForOpenBaoHAAfterFailure(t, ctx, compose, files, "PostgreSQL member recovery")
+}
+
+func mustRuntimeEnvForHATest(t *testing.T, path string) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			t.Fatalf("invalid runtime env line %q", line)
+		}
+		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return values
+}
+
+func mustOpenBaoLeaderService(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) string {
+	t.Helper()
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		service := fmt.Sprintf("openbao-member-%d", ordinal)
+		out, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service,
+			"sh", "-ec",
+			"BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=/run/baseharbor/openbao/ca.pem bao read -field=is_self sys/leader",
+		)
+		if err == nil && strings.EqualFold(strings.TrimSpace(out), "true") {
+			return service
+		}
+	}
+	t.Fatal("no active OpenBao leader found")
+	return ""
+}
+
+func mustPostgresPrimaryService(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) string {
+	t.Helper()
+	const probe = "import urllib.request,sys;\ntry:\n r=urllib.request.urlopen('http://127.0.0.1:8008/primary', timeout=2); sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n sys.exit(1)"
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		service := fmt.Sprintf("postgres-member-%d", ordinal)
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, "python3", "-c", probe); err == nil {
+			return service
+		}
+	}
+	t.Fatal("no Patroni PostgreSQL primary found")
+	return ""
+}
+
+func waitForOpenBaoHAAfterFailure(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files, phase string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		state, err := platformopenbao.Inspect(ctx, runtime, files)
+		if err == nil && state.Initialized && !state.Sealed {
+			if err = platformopenbao.CheckManager(ctx, runtime, files); err == nil {
+				if err = verifyOpenBaoManagementUI(ctx, files); err == nil {
+					return
+				}
+			}
+		}
+		last = err
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("%s did not preserve OpenBao API/manager continuity: %v", phase, last)
+}
+
+func waitForPostgresHAAfterFailure(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		_, last = runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-admin",
+			"sh", "-ec",
+			"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\"",
+		)
+		if last == nil {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatalf("stable PostgreSQL endpoint did not recover after primary failure: %v\n%s", last, runtime.DiagnosticsProject(ctx, files.Project, files.Compose, files.Env))
 }

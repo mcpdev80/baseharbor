@@ -102,3 +102,16 @@ Those mechanics are implementation details and MUST NOT expand the portable Runt
 A Kubernetes/OpenShift implementation must be able to consume the same portable runtime plan without adding Kubernetes/OpenShift fields to portable Application Intent.
 
 Namespace-scoped operation without cluster-admin, Namespace creation, CRDs or Operators must remain possible for the adoption path. Provider-native enhancements can be added below this boundary later.
+
+
+## Availability negotiation
+
+Runtime Providers declare the availability guarantee their realization can actually satisfy and verify.
+
+The portable application request remains global/sparse availability intent. Runtime-native replica objects, scheduling constraints, failure domains and platform topology remain provider realization state.
+
+A Runtime Provider that cannot satisfy an effective HA request returns a typed actionable UNSUPPORTED result before mutation. It MUST NOT silently downgrade the request.
+
+One logical workload component may be observed as 0..N runtime instances. Observation retains all instances and aggregates readiness against the requested guarantee without changing component identity.
+
+The bundled Docker Compose and Podman Quadlet providers are explicitly UNSUPPORTED for verified HA workload orchestration in v0.4.21. Future Kubernetes/OpenShift providers can implement the same semantics without changing portable Application Intent.

@@ -144,7 +144,8 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 		{Name: "manifest permissions", Run: func(context.Context) error {
 			return checkManifestPermissions(e.resolved.ManifestPath, e.resolved.FromRepository)
 		}},
-		{Name: "application workload", Run: func(context.Context) error { return preflightRepositoryWorkload(e.resolved) }},
+		applicationWorkloadContractCheck(e.resolved),
+		applicationSharedBackendTopologyCheck(e.resolved),
 		{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(e.files) }},
 		{Name: "managed runtime definition", Run: func(context.Context) error { return application.CheckManagedRuntimeDefinition(e.files, m) }},
 		{Name: "runtime provider capabilities", Run: func(ctx context.Context) error {
@@ -157,6 +158,10 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			}
 			var err error
 			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, required...)
+			if err != nil {
+				return err
+			}
+			_, err = application.ResolveAvailability(m, string(e.compose.Kind()), e.compose.Descriptor().Availability)
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {

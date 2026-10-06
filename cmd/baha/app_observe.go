@@ -57,7 +57,7 @@ func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer
 	term.Header(result.Application, result.Environment)
 	term.Section("Application")
 	if result.State == "not_applied" {
-		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed application runtime state exists")
 		fmt.Fprintln(out, "\nNOT APPLIED")
 		fmt.Fprintln(out, "\nNext:")
 		fmt.Fprintln(out, "  baha up")
@@ -270,7 +270,7 @@ func renderCollectedApplicationDoctor(ctx context.Context, out, errOut io.Writer
 		term := cli.NewTerminal(ctx, out, errOut)
 		term.Header(result.Application, result.Environment)
 		term.Section("Application")
-		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed runtime state exists")
+		term.Result("NOT APPLIED", "application", "no BaseHarbor-managed application runtime state exists")
 		fmt.Fprintln(out, "\nNext:")
 		fmt.Fprintln(out, "  baha up")
 		fmt.Fprintln(out, "  baha app apply")

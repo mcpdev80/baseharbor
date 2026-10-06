@@ -13,7 +13,14 @@
       "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
     },
     "family": {
-      "enum": ["provider", "development"]
+      "enum": [
+        "provider",
+        "development",
+        "runtime",
+        "delivery",
+        "workload-source",
+        "target-access"
+      ]
     },
     "version": {
       "type": "string",
@@ -23,10 +30,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "baseharbor": {"type": "string"},
+        "baseharbor": {
+          "type": "string"
+        },
         "contracts": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1},
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         },
         "platforms": {
@@ -35,10 +47,19 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "os": {"type": "string", "minLength": 1},
-              "arch": {"type": "string", "minLength": 1}
+              "os": {
+                "type": "string",
+                "minLength": 1
+              },
+              "arch": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "required": ["os", "arch"]
+            "required": [
+              "os",
+              "arch"
+            ]
           }
         }
       }
@@ -47,14 +68,22 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "oci_reference": {"type": "string", "minLength": 1},
+        "oci_reference": {
+          "type": "string",
+          "minLength": 1
+        },
         "digest": {
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
         },
-        "media_type": {"type": "string", "minLength": 1}
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["oci_reference"]
+      "required": [
+        "oci_reference"
+      ]
     },
     "configuration_schema": {
       "type": "object",
@@ -63,19 +92,42 @@
         "dialect": {
           "const": "https://json-schema.org/draft/2020-12/schema"
         },
-        "uri": {"type": "string", "format": "uri-reference"}
+        "uri": {
+          "type": "string",
+          "format": "uri-reference"
+        }
       },
-      "required": ["dialect"]
+      "required": [
+        "dialect"
+      ]
     },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "signature_ref": {"type": "string", "minLength": 1},
-        "sbom_ref": {"type": "string", "minLength": 1},
-        "attestation_ref": {"type": "string", "minLength": 1}
+        "signature_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sbom_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attestation_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   },
-  "required": ["schema_version", "id", "family", "version"]
+  "required": [
+    "schema_version",
+    "id",
+    "family",
+    "version"
+  ]
 }

@@ -114,6 +114,11 @@ func appTLSCommand(store application.Store) *cli.Command {
 			Usage:   "baha app tls update [--check]",
 			Long:    "For TLS mode 'existing', validates the certificate/key pair in the configured source directory, compares it with the installed certificate and refuses certificate downgrades. Without --check, a newer certificate is copied into protected BaseHarbor state and the repository workload is restarted so the new certificate is actually served.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "app tls update")
+				if err != nil {
+					return err
+				}
+				args = filtered
 				checkOnly := false
 				for _, arg := range args {
 					switch arg {
@@ -127,40 +132,73 @@ func appTLSCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				if !resolved.FromRepository {
-					return errors.New("application TLS lifecycle requires a repository-owned baseharbor.yaml")
+				progress := out
+				if format == outputJSON {
+					progress = io.Discard
 				}
-				status, err := inspectApplicationTLS(resolved)
+				result, err := updateApplicationTLS(ctx, resolved, checkOnly, progress)
 				if err != nil {
 					return err
 				}
-				if status.State.TLSMode == "" {
-					return errors.New("application TLS runtime initialization is missing; run 'baha app init'")
+				if format == outputJSON {
+					return writeJSON(out, result)
 				}
-				printApplicationTLSStatus(out, status)
-				if status.State.TLSMode != "existing" {
-					fmt.Fprintf(out, "TLS mode %s is not updated from an external certificate directory.\n", status.State.TLSMode)
-					return nil
-				}
-				if status.Source == nil {
-					return fmt.Errorf("certificate source is not ready: %s", status.Warning)
-				}
-				if !status.UpdateAvailable {
-					fmt.Fprintln(out, "Certificate is up to date. No changes were made.")
-					return nil
-				}
-				if status.Installed != nil && !status.Source.NotAfter.After(status.Installed.NotAfter) {
-					return fmt.Errorf("refusing TLS certificate downgrade: source expires %s, installed certificate expires %s", formatCertificateTime(status.Source.NotAfter), formatCertificateTime(status.Installed.NotAfter))
-				}
-				if checkOnly {
-					fmt.Fprintln(out, "Certificate update is available. No changes were made.")
-					return nil
-				}
-				return installApplicationTLSUpdate(ctx, out, resolved, status)
+				return nil
 			},
 		},
 	}
 	return cmd
+}
+
+type applicationTLSUpdateResult struct {
+	TLS       applicationTLSObservation `json:"tls"`
+	CheckOnly bool                      `json:"check_only"`
+	Updated   bool                      `json:"updated"`
+}
+
+func updateApplicationTLS(ctx context.Context, resolved resolvedApplication, checkOnly bool, out io.Writer) (applicationTLSUpdateResult, error) {
+	if err := authorizeApplicationOperation(ctx, "tls.update", resolved); err != nil {
+		return applicationTLSUpdateResult{}, err
+	}
+	if !resolved.FromRepository {
+		return applicationTLSUpdateResult{}, errors.New("application TLS lifecycle requires a repository-owned baseharbor.yaml")
+	}
+	status, err := inspectApplicationTLS(resolved)
+	if err != nil {
+		return applicationTLSUpdateResult{}, err
+	}
+	if status.State.TLSMode == "" {
+		return applicationTLSUpdateResult{}, errors.New("application TLS runtime initialization is missing; run 'baha app init'")
+	}
+	result := applicationTLSUpdateResult{TLS: applicationTLSObservationFromStatus(status), CheckOnly: checkOnly}
+	printApplicationTLSStatus(out, status)
+	if status.State.TLSMode != "existing" {
+		fmt.Fprintf(out, "TLS mode %s is not updated from an external certificate directory.\n", status.State.TLSMode)
+		return result, nil
+	}
+	if status.Source == nil {
+		return applicationTLSUpdateResult{}, fmt.Errorf("certificate source is not ready: %s", status.Warning)
+	}
+	if !status.UpdateAvailable {
+		fmt.Fprintln(out, "Certificate is up to date. No changes were made.")
+		return result, nil
+	}
+	if status.Installed != nil && !status.Source.NotAfter.After(status.Installed.NotAfter) {
+		return applicationTLSUpdateResult{}, fmt.Errorf("refusing TLS certificate downgrade: source expires %s, installed certificate expires %s", formatCertificateTime(status.Source.NotAfter), formatCertificateTime(status.Installed.NotAfter))
+	}
+	if checkOnly {
+		fmt.Fprintln(out, "Certificate update is available. No changes were made.")
+		return result, nil
+	}
+	if err := installApplicationTLSUpdate(ctx, out, resolved, status); err != nil {
+		return result, err
+	}
+	result.Updated = true
+	_, observation, err := collectApplicationTLSObservation(resolved)
+	if observation != nil {
+		result.TLS = *observation
+	}
+	return result, err
 }
 
 func installApplicationTLSUpdate(ctx context.Context, out io.Writer, resolved resolvedApplication, status applicationTLSStatus) error {

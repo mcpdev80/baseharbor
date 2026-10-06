@@ -821,7 +821,7 @@ func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, projec
 			}
 			args := []string{kind, "rm", actualName}
 			if kind == "container" {
-				args = []string{"container", "rm", "-f", actualName}
+				args = []string{"container", "rm", "-f", "-v", actualName}
 			}
 			if _, err := p.DirectOutput(ctx, args...); err != nil {
 				if kind == "network" && podmanNetworkHasActiveConsumers(err) {

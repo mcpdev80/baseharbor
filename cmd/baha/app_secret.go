@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,9 +11,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
 )
 
 var appSecretInput io.Reader = os.Stdin
@@ -33,6 +32,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 			Usage:   "baha app secret set [NAME] KEY [--stdin | --file PATH]",
 			Long:    "In an interactive terminal, omitting an input option securely prompts with terminal echo disabled. --stdin and --file remain deterministic automation paths. Secret values are never accepted as command-line arguments or printed.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
 				name, key, err := parseSecretSetArgs(args)
 				if err != nil {
 					return err
@@ -41,17 +45,12 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				service, err := resolvedApplicationSecretService(ctx, resolved)
+				result, err := setApplicationSecret(ctx, resolved, key, func() ([]byte, error) { return readSecretSetValueInteractive(ctx, args, appSecretInput, out, key) })
 				if err != nil {
 					return err
 				}
-				value, err := readSecretSetValueInteractive(ctx, args, appSecretInput, out, key)
-				if err != nil {
-					return err
-				}
-				defer zeroBytes(value)
-				if err := service.Set(ctx, resolved.Manifest.Name, key, value); err != nil {
-					return err
+				if format == outputJSON {
+					return writeJSON(out, result)
 				}
 				term := cli.NewTerminal(ctx, out, errOut)
 				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
@@ -66,6 +65,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 			Usage:   "baha app secret list [NAME]",
 			Long:    "Lists only managed secret key names. Secret values are never returned.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
 				if len(args) > 1 {
 					return usageError("baha app secret list accepts at most one NAME", "Inside an application repository omit NAME.")
 				}
@@ -77,19 +81,12 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				service, err := resolvedApplicationSecretService(ctx, resolved)
+				configured, err := listApplicationSecrets(ctx, resolved)
 				if err != nil {
 					return err
 				}
-				items, err := service.List(ctx, resolved.Manifest.Name)
-				if err != nil {
-					return err
-				}
-				configured := make([]applicationsecret.Metadata, 0, len(items))
-				for _, item := range items {
-					if item.Present {
-						configured = append(configured, item)
-					}
+				if format == outputJSON {
+					return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "secrets": configured})
 				}
 				if len(configured) == 0 {
 					fmt.Fprintln(out, "No application secrets configured.")
@@ -108,6 +105,11 @@ func appSecretCommand(store application.Store) *cli.Command {
 			Usage:   "baha app secret delete [NAME] KEY [--yes]",
 			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. Inside a repository omit NAME.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
 				name, key, yes, err := parseSecretDeleteArgs(args)
 				if err != nil {
 					return err
@@ -116,32 +118,18 @@ func appSecretCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
-				service, err := resolvedApplicationSecretService(ctx, resolved)
+				result, err := deleteApplicationSecret(ctx, resolved, key, yes)
 				if err != nil {
 					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, result)
 				}
 				appName := resolved.Manifest.Name
-				items, err := service.List(ctx, appName)
-				if err != nil {
-					return err
-				}
-				found := false
-				for _, item := range items {
-					if item.Name == key && item.Present {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return openbao.ErrApplicationSecretNotFound
-				}
 				if !yes {
 					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all managed versions.\n", key, appName, resolved.Manifest.Environment)
 					fmt.Fprintln(out, "No changes were made. Re-run with --yes to confirm.")
 					return nil
-				}
-				if err := service.Delete(ctx, appName, key); err != nil {
-					return err
 				}
 				term := cli.NewTerminal(ctx, out, errOut)
 				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
@@ -249,7 +237,18 @@ func readApplicationSecretFromTerminalBuffered(input io.Reader, reader *bufio.Re
 	}
 	if len(value) > 1<<20 {
 		zeroBytes(value)
+		zeroBytes(value)
 		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	confirmation, err := readHiddenTerminalLineBuffered(file, reader, out, key+" value again: ")
+	if err != nil {
+		zeroBytes(value)
+		return nil, err
+	}
+	defer zeroBytes(confirmation)
+	if !bytes.Equal(value, confirmation) {
+		zeroBytes(value)
+		return nil, errors.New("application secret confirmation does not match; no changes were made")
 	}
 	return value, nil
 }
@@ -291,6 +290,7 @@ func parseSecretDeleteArgs(args []string) (string, string, bool, error) {
 func readSecretValue(reader io.Reader) ([]byte, error) {
 	value, err := io.ReadAll(io.LimitReader(reader, (1<<20)+1))
 	if err != nil {
+		zeroBytes(value)
 		return nil, errors.New("read application secret failed")
 	}
 	if len(value) > 1<<20 {

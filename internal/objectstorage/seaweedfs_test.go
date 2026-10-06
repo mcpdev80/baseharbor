@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
@@ -111,13 +112,31 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	composeText := string(compose)
-	for _, want := range []string{"- server", "- -s3", "- -iam=true"} {
+	for _, want := range []string{
+		"- server",
+		"- -s3=true",
+		"- -s3.iam=true",
+		"- -s3.iam.readOnly=false",
+		"- -master.peers=seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333",
+		"- -master.defaultReplication=100",
+		"- -filer.defaultReplicaPlacement=100",
+		"seaweedfs-node-1:",
+		"seaweedfs-node-2:",
+		"seaweedfs-node-3:",
+	} {
 		if !strings.Contains(composeText, want) {
 			t.Fatalf("SeaweedFS IAM compose missing %q:\n%s", want, composeText)
 		}
 	}
 	if strings.Contains(composeText, "AWS_ACCESS_KEY_ID") || strings.Contains(composeText, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("provider compose contains global S3 credentials:\n%s", composeText)
+	}
+	caddyfile, err := os.ReadFile(filepath.Join(files.Dir, "service-access", "config", "Caddyfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(caddyfile), "reverse_proxy http://seaweedfs-node-1:8333 http://seaweedfs-node-2:8333 http://seaweedfs-node-3:8333") {
+		t.Fatalf("SeaweedFS stable frontend is not configured with all HA S3 members:\n%s", string(caddyfile))
 	}
 }
 
@@ -188,5 +207,67 @@ func TestSeaweedFSProviderUsesQualifiedImageReference(t *testing.T) {
 	}
 	if strings.Contains(text, "image: chrislusf/seaweedfs:") {
 		t.Fatalf("SeaweedFS provider compose contains unqualified image reference:\n%s", text)
+	}
+}
+
+func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
+	base := providerComposeYAML()
+	access := serviceaccess.HTTPGatewayFiles{
+		Caddyfile: "/tmp/admin-access/config/Caddyfile",
+		Material: serviceaccess.TLSMaterial{
+			CA:                "/tmp/admin-access/runtime/ca.pem",
+			ServerCertificate: "/tmp/admin-access/runtime/server.pem",
+			ServerKey:         "/tmp/admin-access/runtime/server-key.pem",
+		},
+	}
+	got := providerComposeWithManagementUI(base, access)
+	if count := strings.Count(got, "/tmp:rw,noexec,nosuid,nodev"); count < 5 {
+		t.Fatalf("SeaweedFS HA compose has %d hardened /tmp mounts, want at least 5:\n%s", count, got)
+	}
+	for _, service := range []string{"seaweedfs-admin-1:", "seaweedfs-admin-2:"} {
+		index := strings.Index(got, service)
+		if index < 0 {
+			t.Fatalf("management UI service %s missing", service)
+		}
+		block := got[index:]
+		if end := strings.Index(block, "\n\n"); end >= 0 {
+			block = block[:end]
+		}
+		if !strings.Contains(block, "/tmp:rw,noexec,nosuid,nodev") {
+			t.Fatalf("%s missing hardened writable /tmp:\n%s", service, block)
+		}
+	}
+}
+
+type eventuallyVisibleSeaweedFS struct {
+	lists int
+}
+
+func (f *eventuallyVisibleSeaweedFS) Apply(context.Context) (SeaweedFSInstance, error) {
+	return SeaweedFSInstance{}, nil
+}
+func (f *eventuallyVisibleSeaweedFS) Existing(context.Context) (SeaweedFSInstance, error) {
+	return SeaweedFSInstance{}, nil
+}
+func (f *eventuallyVisibleSeaweedFS) Admin(_ context.Context, command string) (string, error) {
+	if command == "s3.bucket.list" {
+		f.lists++
+		if f.lists < 3 {
+			return "", nil
+		}
+		return "bh-demo-dev-uploads\n", nil
+	}
+	return "", nil
+}
+func (f *eventuallyVisibleSeaweedFS) Destroy(context.Context) error { return nil }
+
+func TestWaitBucketExistsToleratesSeaweedFSReadAfterWriteLag(t *testing.T) {
+	realization := &eventuallyVisibleSeaweedFS{}
+	driver := NewDriverWithRealization(realization, application.Manifest{}, application.RuntimeFiles{})
+	if err := driver.waitBucketExists(context.Background(), "bh-demo-dev-uploads"); err != nil {
+		t.Fatal(err)
+	}
+	if realization.lists < 3 {
+		t.Fatalf("bucket visibility checks = %d, want retries before success", realization.lists)
 	}
 }

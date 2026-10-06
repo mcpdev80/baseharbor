@@ -55,7 +55,8 @@ baha
 ├── openbao
 │   ├── status
 │   ├── bootstrap
-│   └── unseal
+│   ├── unseal
+│   └── rotate
 ├── shell-init bash|zsh|fish
 ├── prompt
 ├── completion bash|zsh|fish

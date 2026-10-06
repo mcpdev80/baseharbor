@@ -12,10 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 var (
@@ -262,6 +264,43 @@ func classifyMachineCLIError(err error) error {
 			Remediation: "map the existing local repository/worktree for the declared source identity",
 			Next:        "Run 'baha app workspace map SOURCE PATH' and retry. BaseHarbor will not clone or mutate Git state in v0.4.18.",
 			Cause:       err,
+		}
+	}
+	if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+		return &machine.Error{
+			Code:      machine.ErrorSourceMissing,
+			CauseCode: "repository_manifest_not_found",
+			Message:   err.Error(),
+			Next:      "Run the workspace operation inside a repository containing baseharbor.yaml, or pass an explicit manifest path.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrNotConfigured) {
+		return &machine.Error{
+			Code:      machine.ErrorValidationFailed,
+			CauseCode: "organization_not_configured",
+			Message:   err.Error(),
+			Next:      "Run 'baha config organization set' and retry.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrUnsupportedSource) {
+		return &machine.Error{
+			Code:      machine.ErrorUnsupported,
+			CauseCode: "organization_source_unsupported",
+			Message:   err.Error(),
+			Next:      "Use one of the supported organization source kinds: oci, git, local or system.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrSourceUnavailable) {
+		return &machine.Error{
+			Code:      machine.ErrorProviderUnavailable,
+			CauseCode: "organization_source_unavailable",
+			Message:   err.Error(),
+			Retryable: true,
+			Next:      "Verify the configured organization source and network/runtime access, then retry.",
+			Cause:     err,
 		}
 	}
 	return machine.Classify(err)

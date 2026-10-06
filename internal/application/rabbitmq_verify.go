@@ -94,7 +94,7 @@ func verifyRabbitMQInstance(ctx context.Context, conn *amqp.Connection, m Manife
 	}
 	for _, name := range MessagingQueueInstanceNames(m) {
 		if name == instance {
-			if err := verifyRabbitMQQueue(ctx, ch); err != nil {
+			if err := verifyRabbitMQQueue(ctx, ch, m, instance); err != nil {
 				return err
 			}
 		}
@@ -108,7 +108,7 @@ func verifyRabbitMQInstance(ctx context.Context, conn *amqp.Connection, m Manife
 	}
 	for _, name := range MessagingStreamInstanceNames(m) {
 		if name == instance {
-			if err := verifyRabbitMQStream(ctx, ch); err != nil {
+			if err := verifyRabbitMQStream(ctx, ch, m); err != nil {
 				return err
 			}
 		}
@@ -116,14 +116,30 @@ func verifyRabbitMQInstance(ctx context.Context, conn *amqp.Connection, m Manife
 	return nil
 }
 
-func verifyRabbitMQQueue(ctx context.Context, ch *amqp.Channel) error {
+func verifyRabbitMQQueue(ctx context.Context, ch *amqp.Channel, m Manifest, instance string) error {
 	name, err := rabbitMQVerificationName("queue")
 	if err != nil {
 		return err
 	}
-	queue, err := ch.QueueDeclare(name, false, true, true, false, nil)
+	durable := false
+	autoDelete := true
+	exclusive := true
+	var args amqp.Table
+	if AvailabilityIntent(m).Resolve("messaging").HA {
+		durable = true
+		autoDelete = false
+		exclusive = false
+		args = amqp.Table{
+			"x-queue-type":                "quorum",
+			"x-quorum-initial-group-size": rabbitmqMemberCount(m),
+		}
+	}
+	queue, err := ch.QueueDeclare(name, durable, autoDelete, exclusive, false, args)
 	if err != nil {
 		return fmt.Errorf("declare verification queue: %w", err)
+	}
+	if durable {
+		defer ch.QueueDelete(queue.Name, false, false, false)
 	}
 	deliveries, err := ch.Consume(queue.Name, "", false, true, false, false, nil)
 	if err != nil {
@@ -184,12 +200,16 @@ func verifyRabbitMQPubSub(ctx context.Context, ch *amqp.Channel) error {
 	return nil
 }
 
-func verifyRabbitMQStream(ctx context.Context, ch *amqp.Channel) error {
+func verifyRabbitMQStream(ctx context.Context, ch *amqp.Channel, m Manifest) error {
 	name, err := rabbitMQVerificationName("stream")
 	if err != nil {
 		return err
 	}
-	queue, err := ch.QueueDeclare(name, true, false, false, false, amqp.Table{"x-queue-type": "stream"})
+	streamArgs := amqp.Table{"x-queue-type": "stream"}
+	if AvailabilityIntent(m).Resolve("messaging").HA {
+		streamArgs["x-initial-cluster-size"] = rabbitmqMemberCount(m)
+	}
+	queue, err := ch.QueueDeclare(name, true, false, false, false, streamArgs)
 	if err != nil {
 		return fmt.Errorf("declare verification stream: %w", err)
 	}
@@ -242,4 +262,37 @@ func rabbitMQVerificationName(kind string) (string, error) {
 		return "", fmt.Errorf("generate RabbitMQ verification resource name: %w", err)
 	}
 	return "baseharbor.verify." + strings.TrimSpace(kind) + "." + hex.EncodeToString(random[:]), nil
+}
+
+type rabbitMQHAProbeRuntime interface {
+	Run(context.Context, string, ...string) (string, error)
+}
+
+func VerifyRabbitMQHACluster(ctx context.Context, runtime rabbitMQHAProbeRuntime, m Manifest, files RuntimeFiles) error {
+	if rabbitmqMemberCount(m) <= 1 || len(RabbitMQInstanceNames(m)) == 0 {
+		return nil
+	}
+	if runtime == nil {
+		return fmt.Errorf("RabbitMQ HA verification requires a runtime provider")
+	}
+	for _, instance := range RabbitMQInstanceNames(m) {
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			service := rabbitmqMemberServiceName(instance, ordinal)
+			if _, err := runtime.Run(ctx, service, "rabbitmq-diagnostics", "-q", "ping"); err != nil {
+				return fmt.Errorf("RabbitMQ HA member %s is not ready: %w", service, err)
+			}
+		}
+		leader := rabbitmqMemberServiceName(instance, 0)
+		status, err := runtime.Run(ctx, leader, "rabbitmqctl", "cluster_status")
+		if err != nil {
+			return fmt.Errorf("inspect RabbitMQ HA cluster %s: %w", instance, err)
+		}
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			node := "rabbit@" + rabbitmqMemberServiceName(instance, ordinal)
+			if !strings.Contains(status, node) {
+				return fmt.Errorf("RabbitMQ HA cluster %s is missing member %s", instance, node)
+			}
+		}
+	}
+	return nil
 }

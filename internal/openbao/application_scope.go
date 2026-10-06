@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -32,6 +33,9 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	if err := validateApplicationIdentity(identity); err != nil {
 		return err
 	}
+	scopeCtx, scopeCancel := context.WithTimeout(ctx, 45*time.Second)
+	defer scopeCancel()
+	ctx = scopeCtx
 	state, err := Inspect(ctx, executor, files)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrApplicationScopeUnavailable, err)
@@ -54,16 +58,19 @@ func EnsureApplicationScope(ctx context.Context, executor Executor, files bhrunt
 	policyName := applicationPolicyName(identity)
 	roleName := applicationRoleName(identity)
 	policy := applicationPolicy(identity)
-	policyScript := fmt.Sprintf(`tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-cat >"$tmp"
-bao policy write %s "$tmp" >/dev/null`, policyName)
-	if _, err := execWithTokenPayload(ctx, executor, files, managerToken, policyScript, policy); err != nil {
+	policyScript := fmt.Sprintf(`exec bao write sys/policies/acl/%s policy=- >/dev/null`, policyName)
+	if err := retryManagerProvisioning(ctx, func(attemptCtx context.Context) error {
+		_, err := execWithTokenPayload(attemptCtx, executor, files, managerToken, policyScript, policy)
+		return err
+	}); err != nil {
 		return errors.New("OpenBao manager cannot provision application policies; bootstrap or reconcile the trust plane with the current BaseHarbor version")
 	}
 
 	roleCommand := fmt.Sprintf(`exec bao write auth/approle/role/%s token_policies=%s token_no_default_policy=true secret_id_ttl=0 secret_id_num_uses=0 token_ttl=15m token_max_ttl=1h`, roleName, policyName)
-	if _, err := execWithToken(ctx, executor, files, managerToken, roleCommand); err != nil {
+	if err := retryManagerProvisioning(ctx, func(attemptCtx context.Context) error {
+		_, err := execWithToken(attemptCtx, executor, files, managerToken, roleCommand)
+		return err
+	}); err != nil {
 		return errors.New("OpenBao manager cannot provision application AppRoles; bootstrap or reconcile the trust plane with the current BaseHarbor version")
 	}
 
@@ -101,6 +108,33 @@ bao policy write %s "$tmp" >/dev/null`, policyName)
 		return err
 	}
 	return nil
+}
+
+func retryManagerProvisioning(ctx context.Context, operation func(context.Context) error) error {
+	retryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		attemptCtx, attemptCancel := context.WithTimeout(retryCtx, 3*time.Second)
+		err := operation(attemptCtx)
+		attemptCancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		select {
+		case <-retryCtx.Done():
+			if lastErr != nil {
+				return lastErr
+			}
+			return retryCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func CheckApplicationScope(ctx context.Context, executor Executor, files bhruntime.Files, identity ApplicationIdentity, credentialsPath string) error {

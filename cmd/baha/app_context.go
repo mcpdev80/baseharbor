@@ -213,9 +213,21 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 			}
 		}
 		if environment == "" {
-			return resolvedApplication{}, fmt.Errorf("application %q has no registered deployment on target %q", name, target.Name)
+			return resolvedApplication{}, &machine.Error{
+				Code:      machine.ErrorNotFound,
+				CauseCode: "application_deployment_not_found",
+				Message:   fmt.Sprintf("application %q has no registered deployment on target %q", name, target.Name),
+				Resource:  target.Name + "/" + name,
+				Next:      "Run 'baha app list' to inspect registered applications, or run the command inside the application repository.",
+			}
 		}
-		return resolvedApplication{}, fmt.Errorf("application %q environment %q has no registered deployment on target %q", name, environment, target.Name)
+		return resolvedApplication{}, &machine.Error{
+			Code:      machine.ErrorNotFound,
+			CauseCode: "application_deployment_not_found",
+			Message:   fmt.Sprintf("application %q environment %q has no registered deployment on target %q", name, environment, target.Name),
+			Resource:  target.Name + "/" + name + "/" + environment,
+			Next:      "Run 'baha app list' to inspect registered applications and environments.",
+		}
 	}
 	if len(matches) > 1 {
 		return resolvedApplication{}, usageError(

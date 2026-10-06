@@ -65,9 +65,13 @@ func appWorkspaceInitCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "init",
 		Summary: "Create versioned source identity metadata for a multi-repository application",
-		Usage:   "baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]...",
+		Usage:   "baha app workspace init [--manifest PATH] --source ID=REPOSITORY [--source ...] [--oci ID=IMAGE] [--component COMPONENT=SOURCE[@SUBPATH]]... [-o json]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			_ = ctx
+			filtered, format, err := parseReadOutputArgs(args, "workspace init")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			manifestArg := "."
 			var sources []development.SourceDefinition
 			var components []development.ComponentSource
@@ -111,20 +115,14 @@ func appWorkspaceInitCommand() *cli.Command {
 					return unknownOptionUsage("baha app workspace init", arg, "--manifest", "--source", "--oci", "--component")
 				}
 			}
-			manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+			result, err := initializeApplicationWorkspace(ctx, machineWorkspaceInitInput{Manifest: manifestArg, Sources: sources, Components: components})
 			if err != nil {
 				return err
 			}
-			model := development.SourceModel{
-				SchemaVersion: development.SourceModelVersion,
-				Application:   manifest.Name,
-				Sources:       sources,
-				Components:    components,
+			if format == outputJSON {
+				return writeJSON(out, result)
 			}
-			path, err := development.WriteSourceModel(manifestPath, model)
-			if err != nil {
-				return err
-			}
+			path := result.SourceModelPath
 			fmt.Fprintf(out, "source model: %s\n", path)
 			fmt.Fprintln(out, "local checkout paths remain separate; map repository sources with 'baha app workspace map SOURCE PATH'")
 			return nil
@@ -136,9 +134,13 @@ func appWorkspaceMapCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "map",
 		Summary: "Map one repository source identity to an existing local checkout/worktree",
-		Usage:   "baha app workspace map SOURCE PATH [--manifest PATH]",
+		Usage:   "baha app workspace map SOURCE PATH [--manifest PATH] [-o json]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			_ = ctx
+			filtered, format, err := parseReadOutputArgs(args, "workspace map")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			manifestArg := "."
 			var positional []string
 			for i := 0; i < len(args); i++ {
@@ -158,46 +160,17 @@ func appWorkspaceMapCommand() *cli.Command {
 			if len(positional) != 2 {
 				return usageError("workspace map requires SOURCE and PATH", "Example: baha app workspace map api-source ~/dev/api")
 			}
-			manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+			result, err := mapApplicationWorkspace(ctx, manifestArg, positional[0], positional[1])
 			if err != nil {
 				return err
 			}
-			model, _, err := development.LoadSourceModel(manifestPath)
-			if err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, result)
 			}
+			path, sourceModelPath := result.MappingPath, result.SourceModelPath
 			sourceID := strings.TrimSpace(positional[0])
-			found := false
-			for _, source := range model.Sources {
-				if source.ID == sourceID {
-					if source.Type != development.SourceRepository {
-						return usageError("OCI sources do not have local workspace mappings", "Map only repository sources.")
-					}
-					found = true
-					break
-				}
-			}
-			if !found {
-				return usageError("unknown source "+sourceID, "Run 'baha app workspace show' to inspect source identities.")
-			}
-			mapping, _, err := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
-			if os.IsNotExist(err) {
-				mapping = development.WorkspaceMapping{
-					SchemaVersion: development.WorkspaceMappingVersion,
-					Application:   manifest.Name,
-					Manifest:      manifestPath,
-					Sources:       map[string]string{},
-				}
-			} else if err != nil {
-				return err
-			}
-			if mapping.Sources == nil {
-				mapping.Sources = map[string]string{}
-			}
-			mapping.Sources[sourceID] = positional[1]
-			path, err := development.SaveWorkspaceMapping(manifestPath, mapping)
-			if err != nil {
-				return err
+			if sourceModelPath != "" {
+				fmt.Fprintf(out, "source model: %s\n", sourceModelPath)
 			}
 			fmt.Fprintf(out, "mapped %s -> %s\n", sourceID, displayUserPath(positional[1]))
 			fmt.Fprintf(out, "workspace state: %s\n", path)
@@ -233,31 +206,16 @@ func appWorkspaceShowCommand() *cli.Command {
 					return unknownOptionUsage("baha app workspace show", args[i], "--manifest", "--output")
 				}
 			}
-			manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+			result, err := inspectApplicationWorkspace(ctx, manifestArg)
 			if err != nil {
 				return err
 			}
-			model, sourcePath, err := development.LoadSourceModel(manifestPath)
-			if err != nil {
-				return err
-			}
-			mapping, mappingPath, mapErr := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
-			if os.IsNotExist(mapErr) {
-				mapping = development.WorkspaceMapping{SchemaVersion: development.WorkspaceMappingVersion, Application: manifest.Name, Manifest: manifestPath, Sources: map[string]string{}}
-				mappingPath, _ = development.WorkspaceMappingPath(manifestPath, manifest.Name)
-			} else if mapErr != nil {
-				return mapErr
-			}
-			result := struct {
-				SourceModelPath string                       `json:"source_model_path"`
-				WorkspacePath   string                       `json:"workspace_path"`
-				Model           development.SourceModel      `json:"source_model"`
-				Workspace       development.WorkspaceMapping `json:"workspace"`
-			}{sourcePath, mappingPath, model, mapping}
+			manifestPath := result.Workspace.Manifest
+			sourcePath, mappingPath, model, mapping := result.SourceModelPath, result.WorkspacePath, result.Model, result.Workspace
 			if format == outputJSON {
 				return writeJSON(out, result)
 			}
-			fmt.Fprintf(out, "application: %s\nmanifest: %s\nsource model: %s\nworkspace: %s\n", manifest.Name, manifestPath, sourcePath, mappingPath)
+			fmt.Fprintf(out, "application: %s\nmanifest: %s\nsource model: %s\nworkspace: %s\n", result.Workspace.Application, manifestPath, sourcePath, mappingPath)
 			for _, source := range model.Sources {
 				local := mapping.Sources[source.ID]
 				if source.Type == development.SourceOCI {
@@ -333,4 +291,33 @@ func appWorkspaceResolveCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+type workspaceInspectionResult struct {
+	SourceModelPath string                       `json:"source_model_path"`
+	WorkspacePath   string                       `json:"workspace_path"`
+	Model           development.SourceModel      `json:"source_model"`
+	Workspace       development.WorkspaceMapping `json:"workspace"`
+}
+
+func inspectApplicationWorkspace(ctx context.Context, manifestArg string) (workspaceInspectionResult, error) {
+	manifestPath, manifest, err := resolveWorkspaceManifest(manifestArg)
+	if err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	if err := authorizeMCPOperation(ctx, "workspace.show", "", manifest.Environment, manifest.ApplicationID, manifestPath); err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	model, sourcePath, err := development.LoadSourceModel(manifestPath)
+	if err != nil {
+		return workspaceInspectionResult{}, err
+	}
+	mapping, mappingPath, mapErr := development.LoadWorkspaceMapping(manifestPath, manifest.Name)
+	if os.IsNotExist(mapErr) {
+		mapping = development.WorkspaceMapping{SchemaVersion: development.WorkspaceMappingVersion, Application: manifest.Name, Manifest: manifestPath, Sources: map[string]string{}}
+		mappingPath, _ = development.WorkspaceMappingPath(manifestPath, manifest.Name)
+	} else if mapErr != nil {
+		return workspaceInspectionResult{}, mapErr
+	}
+	return workspaceInspectionResult{SourceModelPath: sourcePath, WorkspacePath: mappingPath, Model: model, Workspace: mapping}, nil
 }

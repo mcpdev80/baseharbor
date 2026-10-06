@@ -2,43 +2,57 @@
 
 Detailed planning lives in GitHub Issues. This page shows product direction only.
 
-## Current — v0.4.19
+The authoritative high-level planning issue is #155. Release-specific scope and
+acceptance remain in the linked release umbrella and child issues.
 
-v0.4.19 completes the final capability/provider round before the remaining pre-freeze cleanup releases:
+## Current — v0.4.22
 
-- stable application/deployment/provider identity;
-- messaging contracts and RabbitMQ reference provider;
-- durable key-value and Valkey reference provider;
-- document database and MongoDB reference provider;
-- External/BYO provider onboarding and trust/certificate integration;
-- Organization / Platform Configuration and distribution;
-- provider/runtime/delivery boundary consistency.
+Machine Operator Authorization, Extension Trust and release readiness.
+
+- transport-neutral machine-operation authorization;
+- MCP enforcement of the shared authorization boundary;
+- product-neutral extension trust metadata and policy boundary;
+- public versioned provider/extension conformance artifacts;
+- documented CLI/JSON/MCP coverage and practical automation examples;
+- consistent repository init and lifecycle preflight, plus buildable Go starters;
+- single-instance control-plane and PostgreSQL defaults, with explicit HA intent;
+- ownership-safe target/provider cleanup and accurate resource planning;
+- earlier Docker/Podman journeys, actionable failure diagnostics and selective
+  evidence reuse for unchanged gate inputs, without weaker acceptance criteria.
+
+Implementation is complete in PR #790. Full Docker/Podman acceptance and all 55
+required proofs passed in prerelease run 37385682137.
 
 ## Before the v0.5 freeze
 
-### v0.4.20
-
-Source-neutral repository adoption and complete managed workspace/Git lifecycle.
-
-### v0.4.21
-
-Application-to-Application consumption contract.
-
-### v0.4.22
-
-MCP operator authorization and extension trust.
-
 ### v0.4.23
 
-Freeze-readiness policy, public namespace and platform contract.
+Freeze Readiness Policy, Public Namespace and Platform Contract.
+
+- explicit compatibility/freeze policy;
+- public namespace and schema-governance decisions;
+- supported/tested platform classification;
+- remaining runtime-neutral contract boundaries;
+- machine HTTP/streaming and Target Access boundaries required so future Console
+  work does not reopen frozen Core semantics.
 
 ### v0.4.24
 
-Human CLI consolidation plus final documentation/GitHub Pages information architecture.
+Human CLI and Documentation Consolidation.
+
+- compact task-oriented human CLI;
+- progressive disclosure for advanced/operator namespaces;
+- task/category-first documentation information architecture;
+- complete canonical command reference aligned with the final CLI.
 
 ### v0.4.25
 
-Semantic acceptance across the completed v0.4 contract.
+Semantic Acceptance.
+
+- prove CLI/JSON/MCP semantic parity;
+- prove runtime/provider boundaries and ownership;
+- prove provider compatibility is richer than capability-name matching;
+- perform the final architecture and lifecycle acceptance before freeze.
 
 ## v0.5
 
@@ -50,14 +64,22 @@ No new major platform primitive belongs in the v0.5 line.
 
 ### v0.6
 
-Portable availability and guarantee semantics.
+Post-freeze portability/guarantee hardening and preparatory work that does not
+require changing frozen portable Application semantics.
+
+The original portable-availability contract work was pulled forward into v0.4.21
+so v0.6 must not introduce a second availability model.
 
 ### v0.7
 
-Kubernetes Runtime implementation.
+Kubernetes Runtime implementation behind the frozen Runtime Provider boundary.
+
+Namespace-only operation remains the primary authorization profile.
 
 ### v0.8
 
-Kubernetes Complete: lifecycle, capabilities, recovery, observability, agent parity and production hardening.
+Kubernetes Complete: full lifecycle, capability/provider, recovery,
+observability, update/migration, agent/DX and production-hardening parity.
 
-OpenShift, enterprise and cloud/runtime expansion build on the frozen portable contracts.
+OpenShift, enterprise and cloud/runtime expansion build on the frozen portable
+contracts rather than changing them.

@@ -37,25 +37,26 @@ func trustStatusCommand() *cli.Command {
 		Summary: "Show whether the managed-local CA is trusted by this host",
 		Usage:   "baha trust status",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "trust status")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			if len(args) != 0 {
 				return usageError("baha trust status does not accept arguments", "Run 'baha trust status --help' for usage.")
 			}
-			bundle, managed, err := currentManagedTrustBundle(ctx)
+			result, err := inspectManagedTrust(ctx)
 			if err != nil {
 				return err
 			}
-			if !managed {
+			if format == outputJSON {
+				return writeJSON(out, result)
+			}
+			if !result.Managed {
 				fmt.Fprintln(out, "Host trust is operator-owned because the active OpenBao service-access PKI source is not managed-local.")
 				return nil
 			}
-			dataDir, err := bhruntime.DataDir("")
-			if err != nil {
-				return err
-			}
-			status, err := hosttrust.Inspect(dataDir, bundle.PEM)
-			if err != nil {
-				return err
-			}
+			status := result.Status
 			fmt.Fprintln(out, "BaseHarbor managed-local host trust")
 			fmt.Fprintf(out, "CA fingerprint: %s\n", status.Fingerprint)
 			if status.Trusted {
@@ -80,19 +81,21 @@ func trustExportCommand() *cli.Command {
 		Usage:   "baha trust export --output PATH",
 		Long:    "Exports the public CA certificate/bundle for another developer machine or client trust store. Private CA keys and issuer state are never exported.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseTrustJSONOutputArgs(args)
+			if err != nil {
+				return err
+			}
+			args = filtered
 			path, err := parseTrustOutputArg(args)
 			if err != nil {
 				return err
 			}
-			bundle, managed, err := currentManagedTrustBundle(ctx)
+			result, err := exportManagedTrust(ctx, path)
 			if err != nil {
 				return err
 			}
-			if !managed {
-				return errors.New("the active OpenBao service-access PKI source is external-pki/BYOC; BaseHarbor does not export or claim ownership of that trust root")
-			}
-			if err := hosttrust.Export(path, bundle.PEM); err != nil {
-				return err
+			if format == outputJSON {
+				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Exported public BaseHarbor CA: %s\n", path)
 			return nil
@@ -107,6 +110,11 @@ func trustInstallCommand() *cli.Command {
 		Usage:   "baha trust install --yes",
 		Long:    "Installs only the public managed-local CA and records BaseHarbor ownership. This is an explicit host mutation and therefore requires --yes even when invoked directly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "trust install")
+			if err != nil {
+				return err
+			}
+			args = filtered
 			confirmed := false
 			for _, arg := range args {
 				switch arg {
@@ -119,21 +127,14 @@ func trustInstallCommand() *cli.Command {
 			if !confirmed {
 				return usageError("baha trust install requires explicit --yes consent", "Re-run 'baha trust install --yes' to modify the host trust store.")
 			}
-			bundle, managed, err := currentManagedTrustBundle(ctx)
+			result, err := installManagedTrust(ctx, confirmed)
 			if err != nil {
 				return err
 			}
-			if !managed {
-				return errors.New("the active OpenBao service-access PKI source is external-pki/BYOC; BaseHarbor will not install or claim that trust root")
+			if format == outputJSON {
+				return writeJSON(out, result)
 			}
-			dataDir, err := bhruntime.DataDir("")
-			if err != nil {
-				return err
-			}
-			status, err := hosttrust.Install(ctx, dataDir, bundle.PEM, bundle.IssuerReference, nil)
-			if err != nil {
-				return err
-			}
+			status := result.Status
 			if status.Owned {
 				fmt.Fprintf(out, "[OK] host trust         installed BaseHarbor-managed CA via %s\n", status.Backend)
 			} else {
@@ -283,4 +284,17 @@ func maybeOfferManagedHostTrust(ctx context.Context, in io.Reader, out io.Writer
 	}
 	fmt.Fprintln(out, "[OK] host trust         managed-local CA installed")
 	return nil
+}
+
+func parseTrustJSONOutputArgs(args []string) ([]string, cliOutputFormat, error) {
+	filtered := make([]string, 0, len(args))
+	format := outputHuman
+	for _, arg := range args {
+		if arg == "--json" {
+			format = outputJSON
+		} else {
+			filtered = append(filtered, arg)
+		}
+	}
+	return filtered, format, nil
 }

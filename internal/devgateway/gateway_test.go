@@ -37,7 +37,7 @@ func TestRenderCaddyfileUsesCanonicalHostVerifiedTLSAndPathRouting(t *testing.T)
 		"path /swagger /swagger/*",
 		"uri strip_prefix /swagger",
 		"reverse_proxy https://baseharbor-runtime:8081",
-		"tls_trust_pool file /trust/route-000.pem",
+		"tls_trust_pool file /gateway/trust/route-000.pem",
 		"tls_server_name baseharbor-runtime",
 		"reverse_proxy https://bh-dev-demo-api:8443",
 	} {
@@ -147,6 +147,7 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 	}}
 	got := renderCompose(files, routes, nil, 18443)
 	for _, want := range []string{
+		"user: \"${BASEHARBOR_GATEWAY_UID}:${BASEHARBOR_GATEWAY_GID}\"",
 		"cap_drop: [\"ALL\"]",
 		"cap_add: [\"NET_BIND_SERVICE\"]",
 		"security_opt: [\"no-new-privileges:true\"]",
@@ -159,6 +160,36 @@ func TestRenderComposeUsesOnlyBindServiceCapabilityForCanonicalHTTPS(t *testing.
 	}
 	if strings.Contains(got, "privileged: true") {
 		t.Fatalf("gateway Compose became privileged:\n%s", got)
+	}
+}
+
+func TestProjectReadableModeKeepsGatewayPrivateKeyOwnerOnly(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source-key.pem")
+	target := filepath.Join(dir, "runtime", "server-key.pem")
+	if err := os.WriteFile(source, []byte("secret-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := projectReadableMode(source, target, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("gateway private-key projection mode = %o, want 600", got)
+	}
+}
+
+func TestNumericIdentityRejectsNonNumericPlatformIdentifiers(t *testing.T) {
+	if !numericIdentity("1000") {
+		t.Fatal("numeric uid rejected")
+	}
+	for _, value := range []string{"", "S-1-5-21", "1000:1000", "-1"} {
+		if numericIdentity(value) {
+			t.Fatalf("non-numeric identity %q accepted", value)
+		}
 	}
 }
 
@@ -253,7 +284,7 @@ func (r *recordingGatewayRuntime) DestroyProject(context.Context, string, string
 	return nil
 }
 
-func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
+func TestSaveRouteStatePreservesMaterializedGatewayWhenNetworkSetChanges(t *testing.T) {
 	dir := t.TempDir()
 	files := Files{
 		Dir:     dir,
@@ -276,8 +307,8 @@ func TestSaveRouteStateRecreatesMaterializedGatewayWhenNetworkSetChanges(t *test
 	if err := saveRouteStateForReconcile(context.Background(), runtime, files, previous, next); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.destroyCalls != 1 {
-		t.Fatalf("gateway destroy calls = %d, want 1 after route network removal", runtime.destroyCalls)
+	if runtime.destroyCalls != 0 {
+		t.Fatalf("gateway destroy calls = %d, want 0 before validated reconcile", runtime.destroyCalls)
 	}
 	saved, err := loadState(files.State)
 	if err != nil {

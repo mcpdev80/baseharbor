@@ -12,6 +12,10 @@ import (
 )
 
 func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) (deployment.DeploymentRecord, error) {
+	return recordDeploymentBeforeMutation(ctx, resolved, "configured")
+}
+
+func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string) (deployment.DeploymentRecord, error) {
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
 	}
@@ -42,9 +46,8 @@ func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) 
 			LastAppliedRef: revision,
 		},
 		Observed: deployment.ObservedDeployment{
-			State:      "applying",
-			Ready:      false,
-			VerifiedAt: time.Now().UTC(),
+			State: state,
+			Ready: false,
 		},
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
@@ -98,10 +101,9 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 		return nil
 	}
 	record := *resolved.DeploymentRecord
-	record.Observed = deployment.ObservedDeployment{
-		State:      state,
-		Ready:      ready,
-		VerifiedAt: time.Now().UTC(),
+	record.Observed = deployment.ObservedDeployment{State: state, Ready: ready}
+	if ready {
+		record.Observed.VerifiedAt = time.Now().UTC()
 	}
 	return deployment.SaveDeploymentRecord(record)
 }

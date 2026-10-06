@@ -12,6 +12,7 @@ import (
 )
 
 type machineApplicationListInput struct {
+	AllTargets  bool   `json:"all_targets,omitempty"`
 	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor target; defaults to the effective target"`
 	Environment string `json:"environment,omitempty" jsonschema:"authorization environment for the listing; defaults from current repository context"`
 }
@@ -73,15 +74,20 @@ func collectMachineApplicationList(ctx context.Context, input machineApplication
 		warnings []error
 		err      error
 	)
-	targetName := strings.TrimSpace(input.Target)
-	if targetName == "" {
-		target, resolveErr := effectiveTarget(ctx)
-		if resolveErr != nil {
-			return machineApplicationListResult{}, resolveErr
+	if input.AllTargets {
+		items, warnings, err = deployment.ListAllDeploymentsForDisplay()
+	} else {
+		targetName := strings.TrimSpace(input.Target)
+		if targetName == "" {
+			target, resolveErr := effectiveTarget(ctx)
+			if resolveErr != nil {
+				return machineApplicationListResult{}, resolveErr
+			}
+			targetName = target.Name
 		}
-		targetName = target.Name
+		items, warnings, err = deployment.ListDeploymentsForDisplay(targetName)
 	}
-	items, warnings, err = deployment.ListDeploymentsForDisplay(targetName)
+
 	if err != nil {
 		return machineApplicationListResult{}, err
 	}

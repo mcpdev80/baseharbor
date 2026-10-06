@@ -37,7 +37,7 @@ These values are deployment/operator state, not fields in `baseharbor.yaml`.
 - test: TLS and automatable authentication are mandatory.
 - prod and custom managed environments: TLS and authentication are mandatory for management/observability/control surfaces.
 
-A provider with native credentials/ACLs may use them. A service without suitable native authentication may use an mTLS gateway. The authentication mechanism is provider/runtime realization state.
+Human-facing management surfaces additionally follow [Management surface access v1](management-access-v1.md): native OIDC/OAuth2 first, then an existing standards-based adapter, then provider-native credentials, otherwise explicit unsupported. BaseHarbor does not build a proprietary auth proxy for this purpose.
 
 ## Managed network service inventory
 

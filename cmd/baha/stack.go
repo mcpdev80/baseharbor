@@ -50,24 +50,19 @@ func stackListCommand() *cli.Command {
 			if len(rest) != 0 {
 				return usageError("stack list does not accept positional arguments", "Use 'baha stack list'.")
 			}
-			_, catalog, err := stackCatalog()
+			entries, err := listStackProfiles(ctx)
 			if err != nil {
 				return err
 			}
-			names := sortedProfileNames(catalog)
 			if format == outputJSON {
-				entries := make([]development.ProfileEntry, 0, len(names))
-				for _, name := range names {
-					entries = append(entries, catalog[name])
-				}
 				return writeJSON(out, entries)
 			}
-			if len(names) == 0 {
+			if len(entries) == 0 {
 				fmt.Fprintln(out, "No Stack Profiles found.")
 				return nil
 			}
-			for _, name := range names {
-				entry := catalog[name]
+			for _, entry := range entries {
+				name := entry.Profile.Metadata.Name
 				fmt.Fprintf(out, "%-20s %-12s", name, entry.Scope)
 				if entry.Path != "" {
 					fmt.Fprintf(out, " %s", displayUserPath(entry.Path))
@@ -92,33 +87,20 @@ func stackShowCommand() *cli.Command {
 			if len(rest) != 1 {
 				return usageError("stack show requires exactly one NAME", "Use 'baha stack show NAME'.")
 			}
-			_, catalog, err := stackCatalog()
-			if err != nil {
-				return err
-			}
-			entry, ok := catalog[rest[0]]
-			if !ok {
-				return fmt.Errorf("stack profile %q was not found", rest[0])
-			}
-			resolved, err := development.ResolveStackProfile(rest[0], development.ProfileMap(catalog))
+			result, err := inspectStackProfile(ctx, rest[0])
 			if err != nil {
 				return err
 			}
 			if format == outputJSON {
-				return writeJSON(out, map[string]any{
-					"scope":   entry.Scope,
-					"path":    entry.Path,
-					"sources": resolved.Sources,
-					"profile": resolved.Profile,
-				})
+				return writeJSON(out, result)
 			}
-			data, err := yaml.Marshal(resolved.Profile)
+			data, err := yaml.Marshal(result.Profile)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "Scope: %s\n", entry.Scope)
-			if entry.Path != "" {
-				fmt.Fprintf(out, "Path: %s\n", displayUserPath(entry.Path))
+			fmt.Fprintf(out, "Scope: %s\n", result.Scope)
+			if result.Path != "" {
+				fmt.Fprintf(out, "Path: %s\n", displayUserPath(result.Path))
 			}
 			fmt.Fprintln(out, "Resolved profile:")
 			fmt.Fprint(out, string(data))
@@ -148,42 +130,27 @@ func stackCreateCommand() *cli.Command {
 				if selection.RawProfile == nil {
 					return fmt.Errorf("stack creation did not produce a reusable profile")
 				}
-				path, err := development.SaveProfile(*selection.RawProfile, selection.SaveScope, ".")
+				result, err := createStackProfile(ctx, *selection.RawProfile, selection.SaveScope)
 				if err != nil {
 					return err
 				}
 				fmt.Fprintf(out, "Created stack %s (%s)\n", selection.RawProfile.Metadata.Name, selection.SaveScope)
-				fmt.Fprintf(out, "Path: %s\n", displayUserPath(path))
+				fmt.Fprintf(out, "Path: %s\n", displayUserPath(result.Path))
 				return nil
 			}
 			options, err := parseStackCreateOptions(args)
 			if err != nil {
 				return err
 			}
-			if _, exists := catalog[options.Profile.Metadata.Name]; exists {
-				return fmt.Errorf("stack profile %q already exists", options.Profile.Metadata.Name)
-			}
-			temp := development.ProfileCatalog{}
-			for name, entry := range catalog {
-				temp[name] = entry.Profile
-			}
-			temp[options.Profile.Metadata.Name] = options.Profile
-			if _, err := development.ResolveStackProfile(options.Profile.Metadata.Name, temp); err != nil {
-				return err
-			}
-			path, err := development.SaveProfile(options.Profile, options.Scope, ".")
+			result, err := createStackProfile(ctx, options.Profile, options.Scope)
 			if err != nil {
 				return err
 			}
 			if options.Output == outputJSON {
-				return writeJSON(out, map[string]any{
-					"name":  options.Profile.Metadata.Name,
-					"scope": options.Scope,
-					"path":  path,
-				})
+				return writeJSON(out, result)
 			}
 			fmt.Fprintf(out, "Created stack %s (%s)\n", options.Profile.Metadata.Name, options.Scope)
-			fmt.Fprintf(out, "Path: %s\n", displayUserPath(path))
+			fmt.Fprintf(out, "Path: %s\n", displayUserPath(result.Path))
 			return nil
 		},
 	}

@@ -240,8 +240,11 @@ func promptAmbiguousComposeServices(reader *bufio.Reader, out io.Writer, service
 }
 
 func promptServiceInstances(reader *bufio.Reader, out io.Writer, label string, detected []string) ([]string, error) {
+	return promptServiceInstancesDefault(reader, out, label, detected, "default")
+}
+
+func promptServiceInstancesDefault(reader *bufio.Reader, out io.Writer, label string, detected []string, defaultValue string) ([]string, error) {
 	detected = uniqueSorted(detected)
-	defaultValue := "default"
 	if len(detected) > 1 {
 		defaultValue = strings.Join(detected, ",")
 	}
