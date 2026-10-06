@@ -322,3 +322,9 @@ This provides an issuance boundary for Core-owned keys. It does not by itself
 install or rotate the listener's configured files, coordinate trust overlap, or
 qualify a production OpenBao rotation. Those deployment and end-to-end checks
 remain required before pre-release approval.
+
+Managed certificate revocation accepts the positive hexadecimal serial from an
+X.509 leaf as well as the issuer's colon-separated form. Core normalizes it to
+OpenBao's certificate storage key before revocation; malformed, zero or
+oversized serials fail before authenticating to the issuer. A persisted node
+revocation independently denies existing dispatch and fresh session admission.

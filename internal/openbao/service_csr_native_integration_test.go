@@ -179,7 +179,12 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if _, err := authority.CreateRenewal(ctx, scope, time.Minute, time.Hour); err == nil {
 		t.Fatal("revoked real enrollment regained renewal authorization")
 	}
-	if err := issuer.Revoke(ctx, newNode.Serial); err != nil {
+	revokedBlock, _ := pem.Decode(newNode.Certificate)
+	revokedLeaf, err := x509.ParseCertificate(revokedBlock.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := issuer.Revoke(ctx, revokedLeaf.SerialNumber.Text(16)); err != nil {
 		t.Fatal("managed node revocation failed", err)
 	}
 	token, err := managerToken(ctx, executor, files)

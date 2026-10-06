@@ -62,7 +62,8 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	enrollment.TLS = configuration.Clone()
 	enrollment.StartTLS()
 	defer enrollment.Close()
-	live, err := targetenrollment.WithLiveTrust(registry, func(context.Context) (*x509.CertPool, error) { return currentRoots.Load(), nil })
+	observed := &nativeConnectorAdmission{NodeRegistry: registry}
+	live, err := targetenrollment.WithLiveTrust(observed, func(context.Context) (*x509.CertPool, error) { return currentRoots.Load(), nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,14 +162,21 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 		t.Fatal("revoked actual session dispatched inventory")
 	}
 	stop()
+	denials := observed.denied.Load()
 	stop = fixture.start(t, ctx, scope, listener.Addr().String(), enrollment.URL+targetenrollment.EnrollmentPath, coreRequest.Identity, false)
-	until := time.Now().Add(2 * time.Second)
+	until := time.Now().Add(10 * time.Second)
 	for time.Now().Before(until) {
 		response, err := fixture.dispatch(ctx, pool, scope, "runtime.resource.list", struct{}{})
 		if err == nil && response.Success {
 			t.Fatal("revoked actual Connector reconnected")
 		}
+		if observed.denied.Load() > denials {
+			break
+		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if observed.denied.Load() <= denials {
+		t.Fatal("revoked actual Connector did not attempt new persisted admission")
 	}
 	if _, err := authority.CreateRenewal(ctx, scope, time.Minute, time.Hour); err == nil {
 		t.Fatal("revoked actual Connector regained renewal")
@@ -187,4 +195,18 @@ func nativeConnectorLeaf(t *testing.T, data []byte) *x509.Certificate {
 		t.Fatal(err)
 	}
 	return leaf
+}
+
+// Observe a real denial without replacing the persisted production registry.
+type nativeConnectorAdmission struct {
+	targetenrollment.NodeRegistry
+	denied atomic.Uint64
+}
+
+func (r *nativeConnectorAdmission) AdmitCertificate(ctx context.Context, scope targetenrollment.Scope, serial string, expires time.Time) error {
+	err := r.NodeRegistry.AdmitCertificate(ctx, scope, serial, expires)
+	if err != nil {
+		r.denied.Add(1)
+	}
+	return err
 }

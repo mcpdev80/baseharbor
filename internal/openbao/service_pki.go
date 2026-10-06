@@ -289,9 +289,9 @@ func IssueServiceCertificate(ctx context.Context, executor Executor, files bhrun
 }
 
 func RevokeServiceCertificate(ctx context.Context, executor Executor, files bhruntime.Files, serial string) error {
-	serial = strings.TrimSpace(serial)
-	if serial == "" || strings.ContainsAny(serial, "\r\n") {
-		return errors.New("service certificate serial is required")
+	serial, err := canonicalServiceRevocationSerial(serial)
+	if err != nil {
+		return err
 	}
 	token, err := managerToken(ctx, executor, files)
 	if err != nil {
