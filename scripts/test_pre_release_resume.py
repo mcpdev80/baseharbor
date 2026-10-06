@@ -219,6 +219,21 @@ class RequirementTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resume.load_requirements(json.dumps(original), 'v9.0.0')
 
+    def test_requirement_schema_roles_and_list_types_are_not_free_form(self):
+        original = json.loads(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
+        for field, invalid in [('schema', 'baseharbor.pre-release.integration-evidence/v1'),
+                               ('jobs', 'static_gates'), ('jobs', ['static_gates', 'static_gates']),
+                               ('dependencies', ['unknown']), ('dependencies', ['demo']),
+                               ('required_for', ['v9.0.0']), ('id', 'atomic/static/mcp/extra')]:
+            data = copy.deepcopy(original)
+            data['gates'][0][field] = invalid
+            with self.subTest(field=field, invalid=invalid), self.assertRaises(ValueError):
+                resume.load_requirements(json.dumps(data), 'v0.4.23')
+        for invalid in [[], {'schema': 'baseharbor.release-requirements/v1', 'releases': 'v0.4.23'},
+                        dict(original, gates=[None]), dict(original, releases=['v0.4.23', 'v0.4.23'])]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                resume.load_requirements(json.dumps(invalid), 'v0.4.23')
+
 
 class GitFingerprintTests(unittest.TestCase):
     def setUp(self):

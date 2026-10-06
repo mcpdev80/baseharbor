@@ -24,18 +24,43 @@ HA = ['data', 'identity', 'observability', 'routing']
 REQUIREMENTS_PATH = 'scripts/release-requirements.json'
 
 
+SCHEMAS = {'atomic': 'baseharbor.pre-release.gate-evidence/v1',
+           'adoption': 'baseharbor.pre-release.adoption-evidence/v1',
+           'ha': 'baseharbor.pre-release.v0.4.21-ha-evidence/v1',
+           'journey': 'baseharbor.pre-release.reference-journey/v1',
+           'integration': 'baseharbor.pre-release.integration-evidence/v1'}
+
+
 def load_requirements(raw, tag):
     inventory = json.loads(raw)
+    if not isinstance(inventory, dict):
+        raise ValueError('release requirements must be an object')
+    releases = inventory.get('releases')
     if (inventory.get('schema') != 'baseharbor.release-requirements/v1' or
-            tag not in inventory.get('releases', [])):
+            not isinstance(releases, list) or not releases or
+            any(not isinstance(value, str) or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', value)
+                for value in releases) or len(releases) != len(set(releases)) or tag not in releases or
+            not isinstance(inventory.get('gates'), list)):
         raise ValueError('release requirements schema or release differs')
     gates, seen = [], set()
     for gate in inventory.get('gates', []):
+        if not isinstance(gate, dict):
+            raise ValueError('release requirement must be an object')
         key = gate.get('id', '')
-        if (not re.fullmatch(r'(atomic|adoption|ha|journey|integration)/[a-z0-9/-]+', key) or
-                key in seen or not gate.get('jobs') or not gate.get('dependencies') or
-                not gate.get('schema') or not gate.get('required_for')):
+        if (not isinstance(key, str) or
+                not re.fullmatch(r'(?:atomic/(?:static|docker|podman)/[a-z0-9-]+|adoption/[a-z0-9-]+|ha/(?:docker|podman)/[a-z0-9-]+|journey/(?:docker|podman)|integration/(?:static|docker|podman)/[a-z0-9-]+)', key) or
+                key in seen or gate.get('schema') != SCHEMAS[key.split('/')[0]]):
             raise ValueError('invalid or duplicate release requirement')
+        for field in ['jobs', 'dependencies', 'required_for']:
+            values = gate.get(field)
+            if (not isinstance(values, list) or not values or
+                    any(not isinstance(value, str) or not value for value in values) or
+                    len(values) != len(set(values))):
+                raise ValueError('requirement needs unique typed ' + field)
+        if (any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', job) for job in gate['jobs']) or
+                not set(gate['dependencies']) <= {'core', 'demo', 'console', 'connector'} or
+                'core' not in gate['dependencies'] or not set(gate['required_for']) <= set(releases)):
+            raise ValueError('unknown requirement job, consumer or release')
         seen.add(key)
         if tag in gate['required_for']:
             gates.append(gate)
@@ -63,11 +88,7 @@ def metadata_path(path):
                                 path.endswith(('.md', '.evidence-runs')))
 
 
-SCHEMAS = {'atomic': 'baseharbor.pre-release.gate-evidence/v1',
-           'adoption': 'baseharbor.pre-release.adoption-evidence/v1',
-           'ha': 'baseharbor.pre-release.v0.4.21-ha-evidence/v1',
-           'journey': 'baseharbor.pre-release.reference-journey/v1',
-           'integration': 'baseharbor.pre-release.integration-evidence/v1'}
+
 
 
 def command(args, cwd=None):
