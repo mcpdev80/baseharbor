@@ -28,7 +28,7 @@ for namespace governance.
 | Streams / terminal | `internal/machine/stream.go`, `internal/machine/terminal.go`, `contracts/machine/v1/terminal-*.schema.json`, [Machine HTTP](../spec/machine-http-v1.md) | Stream v1; implementation capabilities must be proven |
 | Runtime Explorer | `internal/runtimeexplorer`, [Explorer](../spec/runtime-explorer-v1.md) | Explorer v1; ownership-safe inventory/operations |
 | Runtime log normalization | [Log source contract](../architecture/runtime-log-source-contract.md) | Existing runtime-neutral log semantics; no new logs model |
-| Target Access | `internal/targetaccess`, [Target Access](../spec/target-access-v1.md) | Access v1; descriptor is not authenticated live negotiation |
+| Target Access | `internal/targetaccess`, `contracts/targetaccess/v1/wire.schema.json`, [Wire records](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/targetaccess/README.md), [Target Access](../spec/target-access-v1.md) | Access v1; descriptor is not authenticated live negotiation |
 | Management surfaces / identity | [Management access](../spec/management-access-v1.md), [Application identity](../spec/application-runtime-identity.md) | v1; context/trust boundaries retained |
 | Runtime Resource API | `spec/runtime-api/v1/openapi.yaml` | Runtime API v1; standard OpenAPI authority |
 | Reconciliation / availability / consumption | [Reconciliation](../spec/reconciliation-v1.md), [Availability](../spec/availability-v1.md), [Consumption](../spec/application-consumption-v1.md) | v1; one Core lifecycle |

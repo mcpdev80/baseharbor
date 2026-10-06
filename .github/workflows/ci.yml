@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/... ./spec/...
+          go test ./contracts/... ./internal/... ./spec/...
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
           go vet ./...
 
@@ -289,7 +289,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
@@ -359,7 +359,7 @@ jobs:
           Tooling	${{ steps.tooling.outcome }}	documentation and workflow validation tools
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
-          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
           Unit/package tests	${{ steps.unit_tests.outcome }}	go test ./...
           Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle tests
           Go vet	${{ steps.vet.outcome }}	go vet ./...

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -42,7 +44,7 @@ func (e *bahaMachineExecutor) Execute(
 		err    error
 	)
 	switch operation.ID {
-	case "target", "inspect", "workspace.resolve", "workspace.status",
+	case "target", "target.list", "app.list", "workspace.list", "inspect", "workspace.resolve", "workspace.status",
 		"runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics",
 		"plan", "status", "doctor", "observe", "evidence",
 		"provider.list", "provider.inspect", "provider.verify",
@@ -77,8 +79,19 @@ func decodeHTTPInput(input json.RawMessage, target any) error {
 	if len(input) == 0 {
 		input = json.RawMessage("{}")
 	}
-	if err := json.Unmarshal(input, target); err != nil {
-		return machine.Wrap(machine.ErrorValidationFailed, err, "Send valid JSON input for the selected operation.", false)
+	invalid := func() error {
+		return machine.NewError(machine.ErrorValidationFailed, "Invalid machine operation input.", "Send valid JSON input for the selected operation.", false)
+	}
+	if len(input) > 1<<20 || !json.Valid(input) || bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+		return invalid()
+	}
+	decoder := json.NewDecoder(bytes.NewReader(input))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return invalid()
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return invalid()
 	}
 	return nil
 }

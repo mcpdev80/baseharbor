@@ -160,7 +160,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
@@ -187,7 +187,7 @@ jobs:
           set -euo pipefail
           logs="$RUNNER_TEMP/pre-release-source-logs"
           mkdir -p "$logs"
-          go test ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
+          go test ./contracts/... ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
           go vet ./... 2>&1 | tee "$logs/go-vet.log"
 
@@ -294,7 +294,7 @@ jobs:
           cat >"$rows" <<EOF
           Candidate resolution	${{ steps.release.outcome }}	release metadata, exact candidate SHA and pinned demo SHA
           Workflow policy	${{ steps.workflow_policy.outcome }}	fixed reviewed workflow surface
-          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
           Source readability	${{ steps.source_readability.outcome }}	production source guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests and vet
           Documentation	${{ steps.docs.outcome }}	strict EN/DE docs and audit

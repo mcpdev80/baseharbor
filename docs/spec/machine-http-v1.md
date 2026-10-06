@@ -73,7 +73,9 @@ The execution model exposes:
 - structured result or typed error;
 - start/finish timestamps.
 
-Operation input is not retained in ordinary execution metadata.
+Operation input is not retained in ordinary execution metadata. The semantic
+executor rejects unknown fields, null input and trailing JSON values without
+including submitted field names or values in its validation failure.
 
 ## Execution status and events
 

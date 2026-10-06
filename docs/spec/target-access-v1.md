@@ -186,6 +186,22 @@ is not a compatibility promise and is removed rather than emulated.
 
 Portable Application Intent remains unchanged.
 
+## Canonical Connector wire artifact
+
+The language-neutral transport records are defined in
+[wire.schema.json](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/targetaccess/v1/wire.schema.json), with
+[synthetic golden records](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/targetaccess/v1/wire.golden.json) and
+[session semantics](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/targetaccess/README.md).
+Core packages and resolves them offline. Consumers acquire an immutable Core
+commit, reject duplicate keys and unknown fields, and verify the same fixtures.
+
+Requests carry the Core execution correlation and an absolute UTC deadline.
+Typed payloads do not admit a generic host command. Terminal admission cannot
+resume; binary chunks, argv and staged artifact payloads have explicit bounds.
+A schema match establishes structure only. Exact authenticated peer/scope,
+durable side-effect admission, cancellation and filesystem confinement must
+also be enforced by the live session and runtime implementation.
+
 ## Connector enrollment implementation status
 
 The scoped enrollment boundary and PostgreSQL one-use store are implemented;

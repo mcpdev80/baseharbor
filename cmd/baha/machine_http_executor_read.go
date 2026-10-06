@@ -19,10 +19,16 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 ) (any, error) {
 	switch operationID {
 	case "workspace.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return collectMachineWorkspaceList()
 	case "target":
 		return executeHTTPTarget(ctx, operationContext, raw)
 	case "target.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return collectMachineTargetList(ctx)
 	case "app.list":
 		return executeHTTPApplicationList(ctx, operationContext, raw)
@@ -30,7 +36,7 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 		return executeHTTPInspect(ctx, operationContext, raw)
 	case "workspace.resolve", "workspace.status":
 		return executeHTTPWorkspaceRead(ctx, operationID, operationContext, raw)
-	case "runtime.capabilities", "runtime.list", "runtime.inspect":
+	case "runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics":
 		return executeHTTPRuntimeExplorerRead(ctx, operationID, operationContext, raw)
 	case "plan", "status", "doctor", "observe", "evidence":
 		return e.executeHTTPApplicationRead(ctx, operationID, operationContext, raw)
