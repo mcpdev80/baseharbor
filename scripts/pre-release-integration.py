@@ -13,8 +13,12 @@ import subprocess
 
 
 CHECKS = {
-    'integration/docker/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
-    'integration/podman/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
+    'integration/docker/core-bootstrap': [
+        ['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m'],
+        ['./internal/development', '-run', '^TestGeneratedTemplatesNativeBuild$', '-timeout', '20m']],
+    'integration/podman/core-bootstrap': [
+        ['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m'],
+        ['./internal/development', '-run', '^TestGeneratedTemplatesNativeBuild$', '-timeout', '20m']],
     'integration/static/public-contracts': [
         ['./contracts/...', './internal/machine', './internal/machinereadmodels']],
     'integration/static/configuration-policy': [
@@ -47,6 +51,18 @@ def checked_tests(command, output, timeout=900):
     return {'command': command, 'passed': passed, 'log': output.name}
 
 
+def configure_runtime_environment(gate):
+    if not gate.endswith('/core-bootstrap'):
+        return False
+    expected = gate.split('/')[1]
+    if os.environ.get('BASEHARBOR_TEST_RUNTIME') != expected:
+        raise ValueError('selected runtime differs from the prepared qualification host')
+    os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'
+    os.environ['BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE'] = '1'
+    os.environ['BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE'] = '1'
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gate', required=True, choices=CHECKS)
@@ -75,10 +91,7 @@ def main():
     run, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
     if not run.isdigit() or not attempt.isdigit() or min(int(run), int(attempt)) < 1:
         raise ValueError('positive GitHub origin run and attempt are required')
-    runtime_bootstrap = args.gate.endswith('/core-bootstrap')
-    if runtime_bootstrap:
-        os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'
-        os.environ['BASEHARBOR_TEST_RUNTIME'] = args.gate.split('/')[1]
+    runtime_bootstrap = configure_runtime_environment(args.gate)
     checks = [checked_tests(['go', 'test', '-race', '-count=1', '-json', *selection],
                             args.output / f'check-{index}.jsonl', 1800 if runtime_bootstrap else 900)
               for index, selection in enumerate(CHECKS[args.gate])]

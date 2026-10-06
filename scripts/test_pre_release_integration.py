@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+from unittest.mock import patch
 import pathlib
 import sys
 import tempfile
@@ -18,6 +20,24 @@ class ContractCheckTests(unittest.TestCase):
             output = '\n'.join(json.dumps(event) for event in events)
             command = [sys.executable, '-c', f'import sys; print({output!r}); sys.exit({code})']
             return integration.checked_tests(command, log)
+
+
+    def test_native_gate_rejects_foreign_or_unprepared_runtime(self):
+        for environment in [{}, {'BASEHARBOR_TEST_RUNTIME': 'podman'}]:
+            with patch.dict(os.environ, environment, clear=True):
+                with self.assertRaises(ValueError):
+                    integration.configure_runtime_environment('integration/docker/core-bootstrap')
+
+    def test_native_gate_enables_all_required_runtime_regressions(self):
+        with patch.dict(os.environ, {'BASEHARBOR_TEST_RUNTIME': 'docker'}, clear=True):
+            self.assertTrue(integration.configure_runtime_environment('integration/docker/core-bootstrap'))
+            for key in ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE',
+                        'BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE',
+                        'BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE']:
+                self.assertEqual(os.environ[key], '1')
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(integration.configure_runtime_environment('integration/static/public-contracts'))
+            self.assertEqual(dict(os.environ), {})
 
     def test_zero_exit_without_tests_is_rejected(self):
         with self.assertRaises(ValueError):

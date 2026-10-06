@@ -1153,8 +1153,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      BASEHARBOR_TEST_docker: docker
-      BASEHARBOR_docker_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
@@ -1169,7 +1169,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Build exact Core runtime image
-        run: docker build --pull -t "$BASEHARBOR_docker_IMAGE" -f deploy/control-plane/Dockerfile .
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Verify Core-only bootstrap and ownership-safe retry
         env:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1179,7 +1179,7 @@ jobs:
           python scripts/pre-release-integration.py
           --gate integration/docker/core-bootstrap
           --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
-          --output "$ubuntu-latest_TEMP/core-bootstrap-docker"
+          --output "$RUNNER_TEMP/core-bootstrap-docker"
       - name: Retain original runtime proof and failures
         if: always()
         uses: actions/upload-artifact@v6
@@ -1196,8 +1196,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
-      BASEHARBOR_TEST_podman: podman
-      BASEHARBOR_podman_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
@@ -1212,7 +1212,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Build exact Core runtime image
-        run: podman build --pull -t "$BASEHARBOR_podman_IMAGE" -f deploy/control-plane/Dockerfile .
+        run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
       - name: Verify Core-only bootstrap and ownership-safe retry
         env:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1222,7 +1222,7 @@ jobs:
           python scripts/pre-release-integration.py
           --gate integration/podman/core-bootstrap
           --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
-          --output "$ubuntu-26.04_TEMP/core-bootstrap-podman"
+          --output "$RUNNER_TEMP/core-bootstrap-podman"
       - name: Retain original runtime proof and failures
         if: always()
         uses: actions/upload-artifact@v6
