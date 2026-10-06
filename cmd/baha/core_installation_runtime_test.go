@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +18,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
@@ -177,6 +183,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
 		runManagedReadinessAndBackupRegression(t, ctx)
+		runGeneratedSecretDeliveryRegression(t, ctx)
 	}
 }
 
@@ -283,4 +290,75 @@ func mustEffectiveTestTarget(t *testing.T, ctx context.Context) deployment.Resol
 		t.Fatal(err)
 	}
 	return target
+}
+
+func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "generated")
+	registry, err := development.NewRegistry(pythonadapter.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-secret-regression", Adapter: pythonadapter.AdapterID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets}, Secrets: []string{"API_TOKEN"}}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Validation.Satisfied {
+		t.Fatalf("generated contract: %+v", created.Validation)
+	}
+	t.Chdir(root)
+	var output bytes.Buffer
+	err = runWithIO(ctx, []string{"app", "apply"}, &output, &output)
+	var missing *machine.Error
+	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
+		t.Fatalf("non-TTY first apply must fail closed for missing secret: %v\n%s", err, output.String())
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			t.Errorf("generated fixture cleanup: %v", err)
+		}
+	}()
+	payload := []byte("native-generated-secret-value")
+	secretPath := filepath.Join(t.TempDir(), "secret-input")
+	if err := os.WriteFile(secretPath, payload, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
+		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
+	}
+	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+		t.Fatalf("resume generated application: %v\n%s", err, output.String())
+	}
+	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
+	if err != nil || !status.Ready {
+		t.Fatalf("generated app not ready: %+v %v", status, err)
+	}
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "secret delivery regression")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
+	if err != nil || !found {
+		t.Fatalf("generated workload missing: %v", err)
+	}
+	runtime, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityServiceExec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(payload)
+	program := "import hashlib,os; assert hashlib.sha256(os.environ['API_TOKEN'].encode()).hexdigest() == '" + hex.EncodeToString(sum[:]) + "'; print('managed delivery verified')"
+	result, err := runtime.ExecProjectFiles(ctx, workload.Project, root, "app", []string{workload.Compose, workload.Override}, "python", "-c", program)
+	if err != nil || strings.TrimSpace(result) != "managed delivery verified" {
+		t.Fatalf("generated code did not receive normal managed-secret binding: %v", err)
+	}
+	if strings.Contains(output.String(), string(payload)) {
+		t.Fatal("secret value appeared in CLI output")
+	}
+	t.Log("Generated native Python app receives its named managed secret after actionable non-TTY failure and resumes READY without source edits")
 }

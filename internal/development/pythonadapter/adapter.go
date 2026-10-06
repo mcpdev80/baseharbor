@@ -174,7 +174,15 @@ func renderPython(caps map[capability.Kind]bool, bindings []string) string {
 		imports = append(imports, "from opentelemetry import trace")
 	}
 	sort.Strings(imports)
-	return "import os\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n" + strings.Join(imports, "\n") + "\n\nAPP_SECRET = os.getenv(\"APP_SECRET\")\n\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        if self.path == \"/healthz\":\n            self.send_response(200); self.end_headers(); self.wfile.write(b\"ok\"); return\n        self.send_response(200); self.end_headers(); self.wfile.write(b\"BaseHarbor Python application\")\n\nHTTPServer((\"0.0.0.0\", int(os.getenv(\"PORT\", \"8080\"))), Handler).serve_forever()\n"
+	var runtimeBindings strings.Builder
+	runtimeBindings.WriteString("\n\nRUNTIME_BINDINGS = {\n")
+	for _, name := range bindings {
+		if name != "PORT" {
+			fmt.Fprintf(&runtimeBindings, "    %q: os.environ[%q],\n", name, name)
+		}
+	}
+	runtimeBindings.WriteString("}\n")
+	return "import os\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n" + strings.Join(imports, "\n") + runtimeBindings.String() + "\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        if self.path == \"/healthz\":\n            self.send_response(200); self.end_headers(); self.wfile.write(b\"ok\"); return\n        self.send_response(200); self.end_headers(); self.wfile.write(b\"BaseHarbor Python application\")\n\nHTTPServer((\"0.0.0.0\", int(os.getenv(\"PORT\", \"8080\"))), Handler).serve_forever()\n"
 }
 
 func (Adapter) Validate(root string, contract application.PortableContract, component development.Component) (development.Validation, error) {

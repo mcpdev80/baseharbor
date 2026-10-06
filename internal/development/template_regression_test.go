@@ -19,7 +19,7 @@ import (
 
 func templateFixture(t *testing.T, adapter development.Adapter) map[string]string {
 	t.Helper()
-	manifest := application.Manifest{Version: application.CurrentVersion, Name: "template-probe", Environment: "dev", Services: application.Services{SQL: true, Secrets: true}, Secrets: application.SecretRequirements{Required: []application.SecretRequirement{{Name: "APP_SECRET"}}}, Workload: application.WorkloadConfig{Components: []string{"app"}}, Exposures: []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}}}
+	manifest := application.Manifest{Version: application.CurrentVersion, Name: "template-probe", Environment: "dev", Services: application.Services{SQL: true, Secrets: true}, Secrets: application.SecretRequirements{Required: []application.SecretRequirement{{Name: "API_TOKEN"}}}, Workload: application.WorkloadConfig{Components: []string{"app"}}, Exposures: []application.HTTPExposureRequirement{{Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public"}}}
 	contract, err := application.PortableContractFromManifest(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -57,10 +57,19 @@ func TestGeneratedTemplatesDeliverContractBindings(t *testing.T) {
 			if err := yaml.Unmarshal([]byte(files["compose.yaml"]), &compose); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"APP_SECRET", "DATABASE_URL"} {
+			for _, name := range []string{"API_TOKEN", "DATABASE_URL"} {
 				if compose.Services["app"].Environment[name] != "${"+name+"}" {
 					t.Fatalf("%s contract binding does not reach workload environment", name)
 				}
+			}
+			sourceUsesSecret := false
+			for _, path := range []string{"main.go", "lib/capabilities.ts", "app.py", "src/main/java/dev/baseharbor/AppResource.java"} {
+				if strings.Contains(files[path], "API_TOKEN") {
+					sourceUsesSecret = true
+				}
+			}
+			if !sourceUsesSecret {
+				t.Fatal("generated source ignores the contract's named secret")
 			}
 			if dockerfile := files["Dockerfile"]; strings.Contains(dockerfile, "go mod tidy") {
 				if strings.Index(dockerfile, "COPY . .") > strings.Index(dockerfile, "go mod tidy") {
