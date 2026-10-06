@@ -26,6 +26,8 @@ var (
 type Config struct {
 	ListenAddr               string
 	DatabaseURL              string
+	ConnectorEnrollmentEnabled bool
+	ConnectorAuthorityTarget string
 	OIDCIssuer               string
 	OIDCAudiences            []string
 	TLSCertFile              string
@@ -61,6 +63,14 @@ func (c Config) boundRuntimeEnabled() bool {
 }
 
 func (c Config) Validate() error {
+	if c.ConnectorEnrollmentEnabled {
+		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
+			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
+			return errors.New("Connector enrollment requires the operator API, database and an explicit local authority Target")
+		}
+	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" {
+		return errors.New("Connector authority Target requires enrollment to be enabled")
+	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
 		return ErrMissingTLSFiles
 	}

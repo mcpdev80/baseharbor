@@ -230,3 +230,17 @@ The wizard therefore supports presets as well as:
 - live preview of the exact result.
 
 Production remains unambiguous without relying on color alone by default.
+
+## Tenant binding for Connector enrollment
+
+A Connector Target in the trusted Core configuration requires `tenant-id`
+containing the canonical tenant UUID. Its access definition uses
+`provider: baseharbor-node-connector` with the stable node-id as `reference`.
+Only a resolved Editor membership in that tenant may create an enrollment
+authorization; Core supplies the runtime and ownership binding. Unbound and
+foreign Targets deny.
+
+The CA is pinned to an explicitly selected local Core Target. HTTPS enrollment
+alone does not establish an executable remote connection. Live admission,
+renewal, revocation and Docker/Podman qualification remain pending; see the
+[Target Access contract](../spec/target-access-v1.md).

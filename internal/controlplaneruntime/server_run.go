@@ -28,6 +28,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
 type serverDependencies struct {
@@ -193,6 +194,10 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 	})
 }
 
+type connectorEnrollmentProvider interface {
+	ConnectorEnrollmentHTTP(context.Context, targetenrollment.Store, string) (http.Handler, error)
+}
+
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
 		return nil
@@ -218,6 +223,20 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		return err
 	}
 	operatorMux := http.NewServeMux()
+	if cfg.ConnectorEnrollmentEnabled {
+		provider, ok := machineExecutor.(connectorEnrollmentProvider)
+		if !ok {
+			return errors.New("Connector enrollment requires the Core enrollment provider")
+		}
+		handler, err := provider.ConnectorEnrollmentHTTP(ctx, database.NewConnectorEnrollmentStore(deps.pool), cfg.ConnectorAuthorityTarget)
+		if err != nil {
+			return err
+		}
+		// Only the scoped one-use bootstrap exchange bypasses operator OIDC.
+		// Grant creation remains behind the existing identity/tenant middleware.
+		mux.Handle(targetenrollment.EnrollmentPath, handler)
+		operatorMux.Handle(targetenrollment.AuthorizationPath, handler)
+	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {
 		machineHandler, err := machinehttp.New(machineExecutor)

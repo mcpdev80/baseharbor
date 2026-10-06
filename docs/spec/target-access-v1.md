@@ -211,8 +211,36 @@ authorization binds tenant, Target, node, runtime and nonce and expires within
 ten minutes. Certificate TTL is bounded to 24 hours. Consumption commits before
 signing, so a failed or interrupted issuance requires a fresh authorization.
 
-This boundary does not yet advertise a usable remote Target. The operator and
-bootstrap endpoints, live node admission, renewal/revocation, outbound session binding
-and real runtime qualification remain required. Explicit non-local access fails
+The operator and bootstrap HTTPS handlers use the canonical wire records and
+one-use Authority. Grant creation requires an authenticated Editor membership,
+Core-owned Target configuration and effective Target policy. The bootstrap
+exchange accepts only its scoped bearer authorization and client-owned CSR;
+it does not require operator OIDC or return a private key.
+
+Enrollment is explicitly enabled on the operator Core with
+`BASEHARBOR_CONNECTOR_ENROLLMENT_ENABLED=true` and
+`BASEHARBOR_CONNECTOR_AUTHORITY_TARGET=<local-core-target>`. Startup requires
+operator OIDC, PostgreSQL and the initialized/unsealed protected OpenBao
+authority. The signing Target is fixed at startup and must use canonical local
+access with Docker or Podman. A request cannot choose another signing authority.
+
+| HTTPS endpoint | Authorization and result |
+| --- | --- |
+| `POST /api/v1/connectors/authorizations` | Operator OIDC and resolved tenant `create` permission; returns only the protected `token`, `nonce`, `expires_at` projection. |
+| `POST /api/v1/connectors/enroll` | One scoped `Authorization: Bearer` credential plus canonical enrollment request; returns the signed client certificate and public trust bundle. |
+
+Grant input is `target_id`, `node_id`, `environment`, `lifetime_seconds`
+(1–600) and `certificate_ttl_seconds` (1–86400). The trusted Core Target
+configuration supplies `tenant-id` and runtime; the request supplies neither.
+Its access definition uses `baseharbor-node-connector` and a stable node-id
+`reference` matching the requested node. Unbound Targets, foreign tenants,
+unsupported runtimes and policy denials fail closed. Both endpoints require
+HTTPS, bounded whole-body JSON and same-origin browser requests, and use
+`Cache-Control: no-store`. Tokens belong in the owner-only bootstrap
+authorization file, never ordinary execution metadata or shell arguments.
+
+This boundary does not yet advertise a usable remote Target. Live node
+admission, renewal/revocation, outbound session binding, real OpenBao/runtime
+qualification and authenticated private evidence remain required. Explicit non-local access fails
 closed while its execution adapter is unavailable; it never selects the local
 runtime as a transport fallback.

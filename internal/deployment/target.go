@@ -15,6 +15,8 @@ import (
 
 const ConfigVersion = 1
 
+var targetTenantID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 var targetSlug = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
 
 type AccessDefinition struct {
@@ -44,6 +46,7 @@ type OperatorAuthEnvironmentConfig struct {
 }
 
 type TargetDefinition struct {
+	TenantID string `yaml:"tenant-id,omitempty" json:"tenant_id,omitempty"`
 	Runtime      RuntimeDefinition                        `yaml:"runtime" json:"runtime"`
 	Access       TargetAccess                             `yaml:"access" json:"access"`
 	Scope        string                                   `yaml:"scope,omitempty" json:"scope,omitempty"`
@@ -72,6 +75,7 @@ type Config struct {
 }
 
 type ResolvedTarget struct {
+	TenantID string `json:"tenant_id,omitempty"`
 	Name            string `json:"name"`
 	RuntimeProvider string `json:"runtime_provider"`
 	AccessProvider  string `json:"access_provider"`
@@ -195,6 +199,9 @@ func (c Config) Validate() error {
 		}
 	}
 	for name, target := range c.Targets {
+		if target.TenantID != "" && !targetTenantID.MatchString(target.TenantID) {
+			return fmt.Errorf("target %q tenant-id must be a canonical UUID", name)
+		}
 		if err := ValidateTargetName(name); err != nil {
 			return err
 		}
@@ -290,6 +297,7 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 	access := c.Access[target.Access.Reference]
 	return ResolvedTarget{
 		Name:            name,
+		TenantID:        target.TenantID,
 		RuntimeProvider: target.Runtime.Provider,
 		AccessProvider:  access.Provider,
 		AccessReference: target.Access.Reference,

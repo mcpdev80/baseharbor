@@ -74,7 +74,8 @@ The execution model exposes:
 - start/finish timestamps.
 
 Operation input is not retained in ordinary execution metadata. The semantic
-executor rejects unknown fields, null input and trailing JSON values without
+executor rejects unknown fields, duplicate keys at every depth, non-object input,
+invalid UTF-8, nesting beyond 64 levels and trailing JSON values without
 including submitted field names or values in its validation failure.
 
 ## Execution status and events
@@ -198,3 +199,13 @@ by every runtime's exec disconnect behavior.
 Wire schemas are packaged in `contracts/machine/v1/terminal-*.schema.json` and
 resolve through the offline public registry. Terminal bytes and argv are never
 used as audit/log fields; the descriptor supplies safe actor/resource context.
+
+## Resolved tenant permissions
+
+When the protected API middleware resolves a tenant membership, machine
+authorization uses Core's existing RBAC service: Viewer can perform read-only
+operations, while Editor can also mutate and delete. Unknown roles, missing
+membership identifiers and unknown safety classes deny. An authenticated
+request in `dev` retains this check; it does not become a trusted local operator.
+This role check supplements effective policy and resource ownership. It does
+not establish tenant isolation for an adapter's inventory or runtime resources.

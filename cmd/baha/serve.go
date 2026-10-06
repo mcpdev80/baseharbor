@@ -60,6 +60,8 @@ func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 	return controlplaneruntime.Config{
 		ListenAddr:               os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
 		DatabaseURL:              os.Getenv("BASEHARBOR_API_DATABASE_URL"),
+		ConnectorEnrollmentEnabled: strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTOR_ENROLLMENT_ENABLED")), "true"),
+		ConnectorAuthorityTarget: os.Getenv("BASEHARBOR_CONNECTOR_AUTHORITY_TARGET"),
 		OIDCIssuer:               os.Getenv("BASEHARBOR_API_OIDC_ISSUER"),
 		OIDCAudiences:            audiences,
 		TLSCertFile:              os.Getenv("BASEHARBOR_API_TLS_CERT_FILE"),
