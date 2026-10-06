@@ -34,14 +34,14 @@ func TestTenantRLSIsolation(t *testing.T) {
 
 	const runtimePassword = "baseharbor-ci-runtime"
 	if _, err := admin.Exec(ctx, `
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'baseharbor_runtime_ci') THEN
         CREATE ROLE baseharbor_runtime_ci LOGIN PASSWORD 'baseharbor-ci-runtime'
             NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
     END IF;
 END
-$;
+$$;
 GRANT USAGE ON SCHEMA public TO baseharbor_runtime_ci;
 GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, memberships, application_ownerships, connector_nodes, connector_enrollment_grants TO baseharbor_runtime_ci;
 `); err != nil {
