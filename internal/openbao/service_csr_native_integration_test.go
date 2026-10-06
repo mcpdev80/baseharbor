@@ -34,6 +34,11 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if _, err := exec.LookPath("bao"); err != nil {
 		t.Fatal("requested native OpenBao binary is unavailable")
 	}
+	storageURL := os.Getenv("BASEHARBOR_TEST_OPENBAO_STORAGE_URL")
+	storage, err := url.Parse(storageURL)
+	if err != nil || storage.Scheme != "postgres" || storage.Host != "127.0.0.1:5432" || storage.Path != "/baseharbor_native_pki_fixture" || storage.RawQuery != "sslmode=disable" || storage.User == nil || storage.User.Username() != "baseharbor_fixture" || storage.Fragment != "" {
+		t.Fatal("native qualification requires its isolated loopback PostgreSQL storage fixture")
+	}
 	addresses, err := net.LookupIP("openbao-member-1")
 	if err != nil || len(addresses) == 0 {
 		t.Fatal("isolated fixture hostname is unavailable")
@@ -50,7 +55,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	configuration := fmt.Sprintf("disable_mlock = true\napi_addr = \"https://openbao-member-1:8200\"\nstorage \"file\" { path = %q }\nlistener \"tcp\" {\n address = \"127.0.0.1:8200\"\n tls_cert_file = %q\n tls_key_file = %q\n}\n", filepath.Join(root, "data"), filepath.Join(root, "server.pem"), filepath.Join(root, "server.key"))
+	configuration := fmt.Sprintf("api_addr = \"https://openbao-member-1:8200\"\nstorage \"postgresql\" {\n connection_url = %q\n ha_enabled = \"false\"\n}\nlistener \"tcp\" {\n address = \"127.0.0.1:8200\"\n tls_cert_file = %q\n tls_key_file = %q\n}\n", storageURL, filepath.Join(root, "server.pem"), filepath.Join(root, "server.key"))
 	configPath := filepath.Join(root, "server.hcl")
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
@@ -82,7 +87,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 		if time.Now().After(deadline) {
 			stop()
 			_ = server.Wait()
-			t.Fatal("native OpenBao TLS listener did not become ready", serverLog.String())
+			t.Fatal("native OpenBao TLS listener did not become ready; process log bytes:", serverLog.Len())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
