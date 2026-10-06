@@ -20,6 +20,13 @@ type CSRIssuer interface {
 	SignCSR(context.Context, CSRSigningRequest) (IssuedCertificate, error)
 }
 
+// CoreCSRIssuer is the separate managed server-identity signing boundary.
+// Operator-authorized Core keys cannot be signed through node enrollment.
+type CoreCSRIssuer interface {
+	Issuer
+	SignCoreCSR(context.Context, CSRSigningRequest) (IssuedCertificate, error)
+}
+
 type CSRSigningRequest struct {
 	CSRPEM   []byte
 	Identity string

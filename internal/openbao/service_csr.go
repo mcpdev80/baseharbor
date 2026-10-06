@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,6 +25,9 @@ func (i *ServiceIssuer) SignCSR(ctx context.Context, request serviceaccess.CSRSi
 // SignCoreCSR signs a Core-owned key with server-only usage. It is deliberately
 // separate from the node enrollment issuer and cannot authorize node identities.
 func (i *ServiceIssuer) SignCoreCSR(ctx context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	if !regexp.MustCompile(`^spiffe://baseharbor/platform/core/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`).MatchString(request.Identity) {
+		return serviceaccess.IssuedCertificate{}, errors.New("Core CSR requires one stable authority identity")
+	}
 	return i.signScopedCSR(ctx, request, "core", "baseharbor-core", x509.ExtKeyUsageServerAuth)
 }
 
@@ -68,7 +72,7 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 		return serviceaccess.IssuedCertificate{}, errors.New("managed CSR signing returned an invalid certificate")
 	}
 	leaf, err := x509.ParseCertificate(block.Bytes)
-	if err != nil || leaf.IsCA || leaf.Subject.CommonName != request.Identity || !leaf.NotAfter.After(time.Now()) || leaf.NotAfter.After(time.Now().Add(request.TTL+time.Minute)) || len(leaf.URIs) != 1 || leaf.URIs[0].String() != request.Identity || len(leaf.DNSNames) != 0 || len(leaf.IPAddresses) != 0 || len(leaf.EmailAddresses) != 0 {
+	if err != nil || leaf.IsCA || leaf.Subject.CommonName != request.Identity || leaf.NotBefore.After(time.Now()) || !leaf.NotAfter.After(time.Now()) || leaf.NotAfter.After(time.Now().Add(request.TTL+time.Minute)) || len(leaf.URIs) != 1 || leaf.URIs[0].String() != request.Identity || len(leaf.DNSNames) != 0 || len(leaf.IPAddresses) != 0 || len(leaf.EmailAddresses) != 0 {
 		return serviceaccess.IssuedCertificate{}, errors.New("signed node certificate differs from authorized scope")
 	}
 	publicKey, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
@@ -86,3 +90,5 @@ func (i *ServiceIssuer) signScopedCSR(ctx context.Context, request serviceaccess
 }
 
 var _ serviceaccess.CSRIssuer = (*ServiceIssuer)(nil)
+
+var _ serviceaccess.CoreCSRIssuer = (*ServiceIssuer)(nil)

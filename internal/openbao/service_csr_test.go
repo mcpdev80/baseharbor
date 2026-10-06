@@ -128,6 +128,13 @@ func TestManagedCoreCSRUsesServerOnlyRoleAndKeepsPrivateKeyLocal(t *testing.T) {
 			t.Fatal("Core issuer accepted unapproved certificate usage", usage)
 		}
 	}
+	for _, identity := range []string{"spiffe://baseharbor/platform/core/", "spiffe://baseharbor/platform/core/a/b", "spiffe://baseharbor/platform/core/../node", "spiffe://baseharbor/platform/core/a?x=1"} {
+		invalid := request
+		invalid.Identity = identity
+		if _, err := issuer.SignCoreCSR(context.Background(), invalid); err == nil {
+			t.Fatal("ambiguous Core identity was signed", identity)
+		}
+	}
 	request.Identity = "spiffe://baseharbor/platform/connectors/lab/node-a"
 	if _, err := issuer.SignCoreCSR(context.Background(), request); err == nil {
 		t.Fatal("Core signing accepted a node identity")
