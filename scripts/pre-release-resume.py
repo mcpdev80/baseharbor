@@ -13,6 +13,8 @@ import stat
 import subprocess
 import zipfile
 
+from private_consumer_evidence import PrivateEvidenceVerifier, PrivateGitHub, load_private_pins
+
 
 STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
 LIGHT = ['guided', 'lifecycle', 'policy', 'connectivity', 'reconciliation', 'failure', 'full-destroy']
@@ -269,7 +271,8 @@ class GitHub:
         return command(['gh', 'api', f'repos/{self.repository}/actions/artifacts/{artifact["id"]}/zip'])
 
 
-def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None):
+def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
+            private_verifier=None):
     inputs.ensure(candidate, demo)
     if inputs.pin(candidate, tag) != demo:
         raise ValueError('target demo pin differs')
@@ -322,7 +325,9 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
                 if manifest.get('requirements_digest') != requirements_digest:
                     raise ValueError('integration manifest requirement set differs')
                 if set(requirement['dependencies']) & {'console', 'connector'}:
-                    raise ValueError('authenticated private consumer evidence verifier is not implemented')
+                    if private_verifier is None:
+                        raise ValueError('authenticated private consumer evidence configuration is required')
+                    private_verifier.verify(manifest, requirement, origin_candidate, origin_demo)
             origin = {'repository': api.repository, 'workflow': run['path'], 'run_id': run_id,
                       'attempt': attempt, 'job_id': job['id'], 'artifact_id': artifact['id'],
                       'artifact_name': artifact['name'], 'archive_digest': artifact['digest'],
@@ -385,6 +390,10 @@ def main():
     api = GitHub(args.repository)
     inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo)
     requirements = inputs.requirements(args.candidate, args.tag)
+    private_verifier = None
+    private_path = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_FILE')
+    if private_path:
+        private_verifier = PrivateEvidenceVerifier(load_private_pins(private_path), PrivateGitHub(), read_archive)
     current = int(os.environ['GITHUB_RUN_ID'])
     if args.mode == 'check-approval':
         approved = json.loads((args.output / 'evidence-coverage.json').read_text())
@@ -398,7 +407,7 @@ def main():
         if args.mode == 'approve':
             runs.append(current)
     coverage = collect(api, inputs, args.candidate, args.demo, args.tag, runs,
-                       args.output / 'origins', current_run=current)
+                       args.output / 'origins', current_run=current, private_verifier=private_verifier)
     if args.mode == 'check-approval':
         verify_coverage(coverage, args.candidate, args.demo, args.tag, requirements)
         if coverage != approved:

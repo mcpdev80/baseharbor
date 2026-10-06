@@ -181,6 +181,7 @@ jobs:
           python scripts/test_ci_assertion_summary.py
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
+          python scripts/test_private_consumer_evidence.py
           python scripts/test_pre_release_integration.py
 
       - name: Run release-source tests
