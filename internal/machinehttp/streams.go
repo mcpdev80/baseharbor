@@ -44,6 +44,8 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer stream.Close()
+	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
+	defer stopClose()
 
 	descriptor, err := newStreamDescriptor(request, decision.Actor)
 	if err != nil {
@@ -55,7 +57,7 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, stream)
+	_, _ = io.Copy(streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}, stream)
 }
 
 func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +91,8 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer stream.Close()
+	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
+	defer stopClose()
 
 	descriptor, err := newStreamDescriptor(request, decision.Actor)
 	if err != nil {
@@ -100,7 +104,24 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, stream)
+	_, _ = io.Copy(streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}, stream)
+}
+
+type streamDeadlineWriter struct {
+	http.ResponseWriter
+	ctx context.Context
+}
+
+func (w streamDeadlineWriter) Write(data []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	if limit, ok := w.ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
+	_ = http.NewResponseController(w.ResponseWriter).SetWriteDeadline(deadline)
+	return w.ResponseWriter.Write(data)
 }
 
 func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKind) (machine.StreamRequest, operatorauth.AuthorizationDecision, context.Context, error) {

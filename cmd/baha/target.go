@@ -66,15 +66,33 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-	if explicit != "" || activated != "" {
-		return cfg.ResolveTarget(explicit, activated)
+	state, configured, err := orgconfig.LoadActiveOptional()
+	if err != nil || !configured {
+		if err == nil {
+			return cfg.ResolveTarget(explicit, activated)
+		}
+		return deployment.ResolvedTarget{}, err
 	}
-	organizationTarget, err := organizationDefaultTarget()
+	var preferences []orgconfig.PreferenceLayer
+	userTarget := activated
+	if userTarget == "" {
+		userTarget = strings.TrimSpace(cfg.DefaultTarget)
+	}
+	if userTarget != "" {
+		defaults := orgconfig.EnvironmentDefaults{Target: userTarget}
+		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeUser,
+			Identity: "target-selection", Digest: orgconfig.PreferenceDigest(defaults), Defaults: defaults})
+	}
+	if explicit != "" {
+		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeInvocation,
+			Identity: "target-selection", Defaults: orgconfig.EnvironmentDefaults{Target: explicit}})
+	}
+	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment(), preferences...)
 	if err != nil {
 		return deployment.ResolvedTarget{}, err
 	}
-	if organizationTarget != "" {
-		return cfg.ResolveTarget(organizationTarget, "")
+	if effective.Target != nil {
+		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
 	return cfg.ResolveTarget("", "")
 }
@@ -84,6 +102,17 @@ func organizationDefaultTarget() (string, error) {
 	if err != nil || !ok {
 		return "", err
 	}
+	effective, err := orgconfig.ResolveEffective(state, organizationEnvironment())
+	if err != nil {
+		return "", fmt.Errorf("resolve organization target default: %w", err)
+	}
+	if effective.Target == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(effective.Target.Value), nil
+}
+
+func organizationEnvironment() string {
 	environment := "dev"
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		if selection, selectionErr := application.ResolveRepositoryEnvironment(cwd, applicationEnvironmentOverride); selectionErr == nil {
@@ -92,14 +121,7 @@ func organizationDefaultTarget() (string, error) {
 			}
 		}
 	}
-	effective, err := orgconfig.ResolveEffective(state, environment)
-	if err != nil {
-		return "", fmt.Errorf("resolve organization target default: %w", err)
-	}
-	if effective.Target == nil {
-		return "", nil
-	}
-	return strings.TrimSpace(effective.Target.Value), nil
+	return environment
 }
 
 func targetCommand() *cli.Command {

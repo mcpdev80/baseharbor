@@ -21,7 +21,7 @@ for namespace governance.
 | Workload Source Adapter | `internal/repositoryinspect/workload_source.go`, [Application contract](../spec/application-contract-v1.md) | Normalized source model; source is not runtime |
 | Development Integration / StackProfile | `contracts/development/v1/*.schema.json`, [Development extension](../spec/development-extension-v1.md) | Development v1; ADR 0018 profile URI |
 | Extension descriptor / artifact trust | `contracts/extension/v1/*.schema.json`, [Artifact trust](../spec/extension-artifact-trust-v1.md) | Extension/trust v1; separate signed artifact acceptance |
-| Organization configuration | `internal/orgconfig`, [Organization configuration](../explanation/organization-configuration.md) | Organization v1; distribution distinct from precedence/policy |
+| Organization configuration | `internal/orgconfig`, [Organization configuration](../explanation/organization-configuration.md) | Organization v1; [resolution/policy](../spec/organization-resolution-v1.md) separate from distribution |
 | Machine operations / JSON / MCP | `internal/machine/contract.go`, [Machine interface](../spec/machine-interface-v1.md) | Machine v1; shared semantic operations and typed failures |
 | HTTP projection | `internal/machinehttp`, [Machine HTTP](../spec/machine-http-v1.md) | `/api/v1/machine`; same actor/policy/safety |
 | Executions / events | `internal/machine/execution.go` | Execution/Event v1; explicit actor, state, sequence |

@@ -207,7 +207,7 @@ func executeHTTPOrganizationRead(ctx context.Context, operationID string, operat
 	if err != nil {
 		return nil, err
 	}
-	effective, err := orgconfig.ResolveEffective(state, environment)
+	effective, err := orgconfig.ResolveEffective(state, environment, input.Preferences...)
 	if err != nil {
 		return nil, err
 	}

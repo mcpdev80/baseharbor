@@ -17,6 +17,19 @@ All machine HTTP endpoints:
 - MUST preserve operation safety, policy and confirmation semantics;
 - MUST keep ordinary responses, execution metadata and event metadata secret-safe.
 
+Browser clients use memory-only bearer authentication against the configured
+same-origin HTTPS Core endpoint. Origin-bearing requests from a different
+authority are rejected; Core does not authenticate browser cookies. Console
+transports must reject foreign discovered destinations and redirects before
+forwarding a credential. SSE therefore uses authenticated fetch streaming,
+not a cookie-only EventSource assumption.
+
+Each admitted event/log/exec stream ends at the earlier of verified token expiry
+and five minutes. Provider streams close on request cancellation/deadline; socket
+writes are bounded to 30 seconds, clamped to the session deadline. Reconnection
+requires authentication and authorization again. This does not promise instant
+revocation of identity-provider group changes within an issued token's lifetime.
+
 Transport authentication and operator authorization are separate requirements. A valid TLS connection does not by itself authorize an operation.
 
 ## Discovery

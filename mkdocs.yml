@@ -99,6 +99,7 @@ nav:
 
   - Organization / Platform Configuration:
       - Concepts & distribution: explanation/organization-configuration.md
+      - Resolution & independent policy: spec/organization-resolution-v1.md
       - Organization & policy commands: cli/organization-policy.md
 
   - Security / Trust:

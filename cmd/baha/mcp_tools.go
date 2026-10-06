@@ -274,7 +274,7 @@ func registerMCPPlatformReadTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		effective, err := orgconfig.ResolveEffective(state, input.Environment)
+		effective, err := orgconfig.ResolveEffective(state, input.Environment, input.Preferences...)
 		if err != nil {
 			return machineMCPFailure(err)
 		}

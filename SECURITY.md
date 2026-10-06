@@ -60,12 +60,18 @@ of an already issued token. Their effect depends on token expiry and the
 authoritative membership/policy resolver. There is no claimed fixed group
 revocation interval in the current contract.
 
-The released v0.4.22 HTTP projection bounds asynchronous execution to 30 minutes
-but does not propagate token expiry into already-open event/log/exec streams.
-Those streams authenticate at admission; disconnect/provider completion ends
-them. Active-stream expiry/revalidation is a required v0.4.23 transport change
-tracked in #806. Do not assume logout alone terminates an admitted stream or
-revokes an already authorized mutation.
+The machine HTTP projection bounds asynchronous execution to 30 minutes.
+Event/log/exec streams end at the earlier of verified token expiry and five
+minutes after admission. Request cancellation closes the producer stream, even
+when it is idle. Each socket write has a maximum 30-second backpressure bound
+clamped to the session deadline. A new connection requires fresh authentication
+and policy evaluation. Browser requests with an Origin must match the protected
+HTTPS Core authority; cookie-only requests are not bearer authentication.
+
+This bounds one admitted stream, not token-wide instant group revocation. A
+still-valid token may be accepted for another request until its expiry unless
+the authoritative membership/policy resolver denies it. Already authorized
+mutations have their own completion/deadline semantics.
 
 Private vulnerability reporting was verified enabled through the repository's
 GitHub API on 2026-10-06. The direct private reporting route is

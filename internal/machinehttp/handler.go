@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 const (
 	maxRequestBytes     = 1 << 20
 	executionMaxRuntime = 30 * time.Minute
+	streamMaxRuntime    = 5 * time.Minute
 )
 
 type ProgressReporter func(machine.OperationProgress)
@@ -70,6 +72,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			false,
 		))
 		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "https" || parsed.Host != r.Host || parsed.User != nil ||
+			parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			writeMachineError(w, http.StatusForbidden, machine.NewError(machine.ErrorPolicyDenied,
+				"The browser origin does not match the protected Core destination.",
+				"Use the configured same-origin HTTPS Console/Core endpoint.", false))
+			return
+		}
+	}
+	principal, authenticated := identity.FromContext(r.Context())
+	if authenticated && principal.ExpiresAt != nil && !principal.ExpiresAt.After(time.Now()) {
+		writeMachineError(w, http.StatusUnauthorized, machine.NewError(machine.ErrorAuthenticationFailed,
+			"The authenticated operator session has expired.", "Authenticate again before opening a new request.", false))
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/machine/streams/") || strings.HasSuffix(r.URL.Path, "/events") {
+		deadline := time.Now().Add(streamMaxRuntime)
+		if authenticated && principal.ExpiresAt != nil && principal.ExpiresAt.Before(deadline) {
+			deadline = *principal.ExpiresAt
+		}
+		ctx, cancel := context.WithDeadline(r.Context(), deadline)
+		defer cancel()
+		r = r.WithContext(ctx)
 	}
 	h.mux.ServeHTTP(w, r)
 }
@@ -210,8 +237,9 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
 	for _, event := range history {
-		if err := writeSSEEvent(w, event); err != nil {
+		if err := writeSSEEvent(writer, event); err != nil {
 			return
 		}
 		flusher.Flush()
@@ -227,7 +255,7 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
-			if err := writeSSEEvent(w, event); err != nil {
+			if err := writeSSEEvent(writer, event); err != nil {
 				return
 			}
 			flusher.Flush()

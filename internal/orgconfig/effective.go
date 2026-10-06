@@ -36,13 +36,19 @@ type Effective struct {
 	Trust           map[string]EffectiveValue    `json:"trust,omitempty"`
 	Policies        []EffectivePolicy            `json:"policies,omitempty"`
 	Resolution      Resolution                   `json:"resolution"`
+	Provenance      map[string]ValueProvenance   `json:"provenance,omitempty"`
+	PolicyDecisions []ConstraintDecision         `json:"policy_decisions,omitempty"`
 }
 
-func ResolveEffective(state ActiveState, environment string) (Effective, error) {
+func ResolveEffective(state ActiveState, environment string, preferences ...PreferenceLayer) (Effective, error) {
 	if err := state.Config.Validate(); err != nil {
 		return Effective{}, err
 	}
 	if err := state.Resolution.Validate(); err != nil {
+		return Effective{}, err
+	}
+	layers, err := orderedPreferences(preferences)
+	if err != nil {
 		return Effective{}, err
 	}
 	environment = strings.TrimSpace(environment)
@@ -56,16 +62,42 @@ func ResolveEffective(state ActiveState, environment string) (Effective, error) 
 		Providers:       map[string]EffectiveProvider{},
 		Trust:           map[string]EffectiveValue{},
 		Resolution:      state.Resolution,
+		Provenance:      map[string]ValueProvenance{},
 	}
+	builtin := EnvironmentDefaults{Target: "local"}
+	recordCandidates(&result, builtin, ValueCandidate{Scope: ScopeBuiltin, Identity: "baseharbor",
+		Digest: PreferenceDigest(builtin), Source: "builtin.defaults"})
+	applyDefaults(&result, builtin, "builtin.defaults")
+	candidate := ValueCandidate{Scope: ScopeOrganization, Identity: state.Config.Organization,
+		Digest: state.Resolution.ResolvedDigest, Source: "organization.defaults"}
+	recordCandidates(&result, state.Config.Defaults, candidate)
 	applyDefaults(&result, state.Config.Defaults, "organization.defaults")
 	if env, ok := state.Config.Environments[environment]; ok {
+		candidate.Source = "organization.environment." + environment
+		recordCandidates(&result, env, candidate)
 		applyDefaults(&result, env, "organization.environment."+environment)
+	}
+	if team := state.Config.Team; team != nil {
+		source := "team." + team.Name
+		recordCandidates(&result, team.Defaults, ValueCandidate{Scope: ScopeTeam, Identity: team.Name,
+			Digest: state.Resolution.ResolvedDigest, Source: source})
+		applyDefaults(&result, team.Defaults, source)
+	}
+	for _, layer := range layers {
+		source := string(layer.Scope) + "." + layer.Identity
+		recordCandidates(&result, layer.Defaults, ValueCandidate{Scope: layer.Scope, Identity: layer.Identity,
+			Digest: layer.Digest, Source: source})
+		applyDefaults(&result, layer.Defaults, source)
 	}
 	if result.Target != nil {
 		name := result.Target.Value
 		ref, ok := state.Config.Targets[name]
 		if !ok {
-			return Effective{}, fmt.Errorf("effective target %q is not declared by organization configuration", name)
+			winner := result.Provenance["target"].Winner.Scope
+			if winner != ScopeBuiltin && scopeOrder[winner] < scopeOrder[ScopeUser] {
+				return Effective{}, fmt.Errorf("effective target %q is not declared by organization configuration", name)
+			}
+			ref.Reference = name
 		}
 		result.Target.Name = name
 		result.Target.Value = strings.TrimSpace(ref.Reference)
@@ -94,6 +126,14 @@ func ResolveEffective(state ActiveState, environment string) (Effective, error) 
 		}
 		policy.Reference = strings.TrimSpace(ref.Reference)
 		result.Policies[i] = policy
+	}
+	if err := evaluateConstraints(&result, state.Config, state.Config.Constraints, ScopeOrganization, state.Config.Organization); err != nil {
+		return result, err
+	}
+	if team := state.Config.Team; team != nil {
+		if err := evaluateConstraints(&result, state.Config, team.Constraints, ScopeTeam, team.Name); err != nil {
+			return result, err
+		}
 	}
 	return result, nil
 }
@@ -127,8 +167,21 @@ func applyDefaults(result *Effective, defaults EnvironmentDefaults, source strin
 		result.Trust[name] = EffectiveValue{Value: defaults.Trust[name].Reference, Source: source}
 	}
 	if defaults.Policies != nil {
-		result.Policies = result.Policies[:0]
+		retained := make([]EffectivePolicy, 0, len(result.Policies))
+		for _, policy := range result.Policies {
+			if policy.Mandatory {
+				retained = append(retained, policy)
+			}
+		}
+		result.Policies = retained
 		for _, policy := range defaults.Policies {
+			alreadyMandatory := false
+			for _, retained := range result.Policies {
+				alreadyMandatory = alreadyMandatory || retained.Policy == strings.TrimSpace(policy.Policy)
+			}
+			if alreadyMandatory {
+				continue
+			}
 			result.Policies = append(result.Policies, EffectivePolicy{
 				Policy: strings.TrimSpace(policy.Policy), Mandatory: policy.Mandatory, Source: source,
 			})
