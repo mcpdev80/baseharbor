@@ -97,9 +97,11 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 				return err
 			}
 			if !state.Capabilities["sql"] {
-				if _, _, err := preflightNewTargetRecoveryFile(ctx, opts.RecoveryFile); err != nil {
+				path, _, err := preflightNewTargetRecoveryFile(ctx, opts.RecoveryFile)
+				if err != nil {
 					return err
 				}
+				opts.RecoveryFile = path
 			}
 			return runHostMemoryPreflight(ctx, in, out, bhruntime.ProviderKind(target.RuntimeProvider), estimate, true)
 		},

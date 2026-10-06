@@ -91,11 +91,13 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 		return fmt.Errorf("backup preflight runtime verification: %w", err)
 	}
 	var platformFiles bhruntime.Files
-	if m.Services.Secrets {
+	if m.Services.Secrets || application.RequiresRuntimeBroker(m) {
 		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return err
 		}
+	}
+	if m.Services.Secrets {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 		if err := openbao.CheckApplicationScope(ctx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir)); err != nil {
 			return fmt.Errorf("backup preflight OpenBao verification: %w", err)
@@ -134,7 +136,14 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 
 	captureErr := captureApplicationBackup(ctx, compose, platformFiles, resolved, files, selectionArgs, password, outputPath)
 
-	restartErr := restartAfterBackup(ctx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
+	// Cancellation of archive capture must not cancel recovery of the stopped
+	// runtime. Recovery is bounded and uses the normal application lifecycle.
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	defer recoveryCancel()
+	restartErr := restartAfterBackup(recoveryCtx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
+	if restartErr != nil {
+		restartErr = fmt.Errorf("backup runtime recovery failed; run 'baha app up' for the same target/application/environment before retrying: %w", restartErr)
+	}
 	if captureErr != nil || restartErr != nil {
 		return errors.Join(captureErr, restartErr)
 	}
@@ -192,7 +201,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	var err error
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
-	if requiresManagedServiceIssuer(m) || m.Services.Secrets {
+	if requiresManagedServiceIssuer(m) || m.Services.Secrets || application.RequiresRuntimeBroker(m) {
 		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)

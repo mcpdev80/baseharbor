@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
@@ -19,7 +20,16 @@ import (
 
 var appApplySecretInput io.Reader = os.Stdin
 var appApplySecretReadHidden = readApplicationSecretFromTerminalBuffered
-var appApplySecretIsTerminal = appInitReaderIsTerminal
+var appApplySecretIsTerminal = requiredSecretInputIsTerminal
+
+func requiredSecretInputIsTerminal(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	return ok && term.IsTerminal(file.Fd())
+}
+
+func requiredSecretInputError(name string) error {
+	return &machine.Error{Code: machine.ErrorRequiredSecretMissing, CauseCode: "required_secret_missing", Message: "Required application secret " + name + " is missing.", Resource: name, Remediation: "requires developer input", Next: "Run 'baha app secret set " + name + "' interactively or use --stdin for automation."}
+}
 
 func appApplyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
@@ -121,14 +131,7 @@ func promptAndStoreMissingRequiredSecrets(
 		return nil
 	}
 	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
-		return &machine.Error{
-			Code:        machine.ErrorRequiredSecretMissing,
-			CauseCode:   "required_secret_missing",
-			Message:     "Required application secret " + missing[0].Name + " is missing.",
-			Resource:    missing[0].Name,
-			Remediation: "requires developer input",
-			Next:        "Run 'baha app secret set " + missing[0].Name + "' interactively or use --stdin for automation.",
-		}
+		return requiredSecretInputError(missing[0].Name)
 	}
 
 	fmt.Fprintln(out, "\nMissing required application secrets")
@@ -138,6 +141,9 @@ func promptAndStoreMissingRequiredSecrets(
 	reader := bufio.NewReader(appApplySecretInput)
 	confirmed, err := promptYesNo(reader, out, "Configure now?", true)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return requiredSecretInputError(missing[0].Name)
+		}
 		return err
 	}
 	if !confirmed {
@@ -154,6 +160,9 @@ func promptAndStoreMissingRequiredSecrets(
 	for _, status := range missing {
 		value, err := appApplySecretReadHidden(appApplySecretInput, reader, out, status.Name)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return requiredSecretInputError(status.Name)
+			}
 			return err
 		}
 		if err := service.Set(ctx, applicationName, status.Name, value); err != nil {

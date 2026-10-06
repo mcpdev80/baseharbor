@@ -140,11 +140,15 @@ func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development
 			env += b + "=\n"
 		}
 	}
+	composeSource, err := development.ComposeWithBindings("services:\n  app:\n    build: .\n    expose: [\"8080\"]\n    healthcheck:\n      test: [\"CMD\", \"python\", \"-c\", \"import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2); raise SystemExit(0 if r.status == 200 else 1)\"]\n      interval: 5s\n      timeout: 3s\n      retries: 12\n      start_period: 5s\n", plan, component)
+	if err != nil {
+		return nil, err
+	}
 	return []development.GeneratedFile{
 		{Path: "pyproject.toml", Content: []byte(pyproject.String()), Mode: 0o644},
 		{Path: "app.py", Content: []byte(source), Mode: 0o644},
 		{Path: "Dockerfile", Content: []byte("FROM python:3.14.7-slim\nWORKDIR /app\nCOPY . .\nRUN pip install --no-cache-dir .\nUSER 65532:65532\nEXPOSE 8080\nCMD [\"python\", \"app.py\"]\n"), Mode: 0o644},
-		{Path: "compose.yaml", Content: []byte("services:\n  app:\n    build: .\n    expose: [\"8080\"]\n    healthcheck:\n      test: [\"CMD\", \"python\", \"-c\", \"import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2); raise SystemExit(0 if r.status == 200 else 1)\"]\n      interval: 5s\n      timeout: 3s\n      retries: 12\n      start_period: 5s\n"), Mode: 0o644},
+		{Path: "compose.yaml", Content: composeSource, Mode: 0o644},
 		{Path: ".env.example", Content: []byte(env), Mode: 0o644},
 	}, nil
 }

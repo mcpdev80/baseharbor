@@ -348,3 +348,42 @@ jobs:
               exit 2
               ;;
           esac
+
+  bug_hunt_templates:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/bug-hunt/') }}
+    name: Bug hunt templates · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || fromJSON('["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify source regressions and fresh generated images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bug-hunt"
+          go test -race -json ./cmd/baha -run 'Test(PreflightNewTargetRecoveryFile|TargetRecoveryFile|RequiredSecretNullInput|OverviewUsesCanonical|PromptAndStoreMissingRequiredSecrets)' -count=1 | tee "$RUNNER_TEMP/bug-hunt/source.jsonl"
+          go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
+      - name: Retain focused bug hunt evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bug-hunt-templates-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bug-hunt
+          if-no-files-found: warn
+          retention-days: 90

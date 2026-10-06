@@ -37,6 +37,10 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 	if err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
+	return newResolvedApplicationStatusCollection(ctx, resolved)
+}
+
+func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolvedApplication) (*applicationStatusCollection, bool, error) {
 	m := resolved.Manifest
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return &applicationStatusCollection{}, false, err

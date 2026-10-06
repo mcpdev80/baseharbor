@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -133,5 +134,29 @@ func TestPromptAndStoreMissingRequiredSecretsEOF(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected EOF to fail")
+	}
+}
+
+func TestRequiredSecretNullInputFailsClosedWithoutPrompt(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if requiredSecretInputIsTerminal(f) || requiredSecretInputIsTerminal(strings.NewReader("")) {
+		t.Fatal("non-TTY input treated as terminal")
+	}
+	oldInput, oldTerminal := appApplySecretInput, appApplySecretIsTerminal
+	appApplySecretInput, appApplySecretIsTerminal = f, requiredSecretInputIsTerminal
+	t.Cleanup(func() { appApplySecretInput, appApplySecretIsTerminal = oldInput, oldTerminal })
+	var out bytes.Buffer
+	setter := &fakeApplicationSecretSetter{}
+	err = promptAndStoreMissingRequiredSecrets(context.Background(), setter, "demo", []openbao.RequiredSecretStatus{{Name: "API_TOKEN"}}, &out)
+	var typed *machine.Error
+	if !errors.As(err, &typed) || typed.Code != machine.ErrorRequiredSecretMissing {
+		t.Fatalf("expected actionable typed error, got %v", err)
+	}
+	if out.Len() != 0 || len(setter.values) != 0 {
+		t.Fatal("non-TTY path prompted or wrote a secret")
 	}
 }
