@@ -28,6 +28,23 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate admission migration: %v", err)
+	}
+	var revocationColumn, retainedEnrollment bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&retainedEnrollment); err != nil {
+		t.Fatal(err)
+	}
+	if revocationColumn || !retainedEnrollment {
+		t.Fatal("certificate admission rollback changed earlier enrollment ownership")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing certificate admission migration was accepted as ready")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback Connector enrollment migration: %v", err)
 	}
 	var enrollmentExists bool

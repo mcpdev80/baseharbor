@@ -96,3 +96,50 @@ AND runtime=$4 AND token_digest=$5 AND consumed_at IS NOT NULL)`, scope.TenantID
 		return nil
 	})
 }
+
+// AdmitCertificate checks persisted identity and revocation in a tenant-local
+// transaction. Explicit predicates remain mandatory for privileged DB callers.
+func (s *ConnectorEnrollmentStore) AdmitCertificate(ctx context.Context, scope targetenrollment.Scope, serial string, expires time.Time) error {
+	normalized, err := targetenrollment.NormalizeCertificateSerial(serial)
+	if ctx.Err() != nil || s == nil || s.pool == nil || scope.Validate() != nil || err != nil || !expires.After(time.Now()) {
+		return targetenrollment.ErrDenied
+	}
+	err = WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var admitted bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connector_nodes
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4
+AND ltrim(replace(lower(certificate_serial), ':', ''), '0')=$5
+AND certificate_expires_at=$6 AND certificate_expires_at > clock_timestamp()
+AND NOT certificate_revoked)`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, normalized, expires).Scan(&admitted); err != nil {
+			return err
+		}
+		if !admitted {
+			return targetenrollment.ErrDenied
+		}
+		return nil
+	})
+	if err != nil {
+		return targetenrollment.ErrDenied
+	}
+	return nil
+}
+
+// RevokeCertificate persists the admission denial before provider revocation.
+// A provider outage must never make a retired node identity active again.
+func (s *ConnectorEnrollmentStore) RevokeCertificate(ctx context.Context, scope targetenrollment.Scope, serial string) error {
+	normalized, err := targetenrollment.NormalizeCertificateSerial(serial)
+	if ctx.Err() != nil || s == nil || s.pool == nil || scope.Validate() != nil || err != nil {
+		return targetenrollment.ErrDenied
+	}
+	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		command, err := tx.Exec(ctx, `UPDATE connector_nodes SET certificate_revoked=true
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4
+AND ltrim(replace(lower(certificate_serial), ':', ''), '0')=$5`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, normalized)
+		if err != nil || command.RowsAffected() != 1 {
+			return targetenrollment.ErrDenied
+		}
+		return nil
+	})
+}
+
+var _ targetenrollment.NodeRegistry = (*ConnectorEnrollmentStore)(nil)

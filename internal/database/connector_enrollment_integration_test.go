@@ -107,7 +107,8 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, repeatDigest("e"), "abcd", time.Now().Add(time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("unrelated token registered node certificate")
 	}
-	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, grant.TokenDigest, "abcd", time.Now().Add(time.Hour)); err != nil {
+	expires := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, grant.TokenDigest, "00:AB:CD", expires); err != nil {
 		t.Fatal(err)
 	}
 	if err := NewConnectorEnrollmentStore(reopened).RecordIssued(ctx, scope, grant.TokenDigest, "ef01", time.Now().Add(time.Hour)); !errors.Is(err, targetenrollment.ErrDenied) {
@@ -117,6 +118,48 @@ func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	duplicate.TokenDigest = repeatDigest("e")
 	if err := NewConnectorEnrollmentStore(reopened).Create(ctx, duplicate); !errors.Is(err, targetenrollment.ErrDenied) {
 		t.Fatal("enrolled node accepted fresh bootstrap instead of renewal")
+	}
+	registry := NewConnectorEnrollmentStore(reopened)
+	if err := registry.AdmitCertificate(ctx, scope, "abcd", expires); err != nil {
+		t.Fatal("persisted certificate was not admitted after store restart", err)
+	}
+	for _, field := range []string{"tenant", "target", "node", "runtime", "serial", "expiry"} {
+		other := scope
+		serial, notAfter := "abcd", expires
+		switch field {
+		case "tenant":
+			other.TenantID = "22222222-2222-4222-8222-222222222222"
+		case "target":
+			other.TargetID = "foreign"
+		case "node":
+			other.NodeID = "foreign"
+		case "runtime":
+			other.Runtime = "podman"
+		case "serial":
+			serial = "cafe"
+		case "expiry":
+			notAfter = notAfter.Add(time.Second)
+		}
+		if err := registry.AdmitCertificate(ctx, other, serial, notAfter); !errors.Is(err, targetenrollment.ErrDenied) {
+			t.Fatal("certificate registry admitted scope/material drift", field, err)
+		}
+		if field != "expiry" {
+			if err := registry.RevokeCertificate(ctx, other, serial); !errors.Is(err, targetenrollment.ErrDenied) {
+				t.Fatal("foreign certificate scope revoked a node", field, err)
+			}
+		}
+	}
+	if err := registry.RevokeCertificate(ctx, scope, "00:AB:CD"); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RevokeCertificate(ctx, scope, "abcd"); err != nil {
+		t.Fatal("certificate revocation was not idempotent", err)
+	}
+	if err := NewConnectorEnrollmentStore(reopened).AdmitCertificate(ctx, scope, "abcd", expires); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("persisted revocation admitted a still-unexpired CA-trusted certificate", err)
+	}
+	if err := registry.Create(ctx, duplicate); !errors.Is(err, targetenrollment.ErrDenied) {
+		t.Fatal("revoked node accepted bootstrap reuse", err)
 	}
 	grant.Scope.NodeID = "expired-node"
 	grant.TokenDigest = repeatDigest("f")
