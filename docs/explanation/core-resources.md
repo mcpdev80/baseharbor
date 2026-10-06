@@ -37,10 +37,25 @@ Sampling targets a three-second interval. Each idle window contains eleven
 complete observations spanning at least 30 seconds, with total variation within
 10%. Startup peaks are sampled observations and can miss shorter peaks.
 
+## Measured Podman reference topology
+
+The [rootless Podman bootstrap qualification](https://github.com/mcpdev80/baseharbor/actions/runs/37498498737)
+passed for Core `55f7b1c4c72e57c5858a3476c097ca6e244c8d5d` on 2026-10-06.
+It uses the same installation-shared 17-container reference realization.
+
+| Machine-role default | Stabilized idle total, median | Observed idle range | Sampled startup/convergence peak |
+| --- | ---: | ---: | ---: |
+| Development | 2.51 GiB | 2.51–2.65 GiB | 4.65 GiB |
+| Deployment | 2.56 GiB | 2.55–2.60 GiB | 4.59 GiB |
+
+These figures come from eleven complete native observations per idle window.
+Runtime-specific memory/cache accounting prevents treating differences between
+Docker and Podman as a performance comparison. Original JSON and image identities
+remain in the qualification artifact; application isolation is not measured.
+
 ## Qualification limits
 
-Podman measurements, isolated placement and further host/topology calibration
-remain pending. Source tests and a provider count cannot supply missing figures.
+Isolated placement and further host/topology calibration remain pending. Source tests and a provider count cannot supply missing figures.
 Host preflight continues to distinguish planning estimates from unavailable
 measurements for the selected installation.
 

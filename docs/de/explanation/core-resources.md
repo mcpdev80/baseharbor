@@ -50,3 +50,19 @@ anderen Hosts und ergänzt die bestehenden SQL-/Secrets-Startup-Budgets. Das
 Ergebnis ist ausdrücklich `ESTIMATED`, ohne verlässlichen Mindestwert oder eine
 behauptete Messung des gewählten Hosts beziehungsweise Podmans. Wiederverwendete
 eigene Capabilities werden nicht als zusätzliche Instanzen eingeplant.
+
+## Gemessene Podman-Referenz
+
+[Rootless-Podman-Lauf 37498498737](https://github.com/mcpdev80/baseharbor/actions/runs/37498498737)
+qualifiziert Core `55f7b1c4c72e57c5858a3476c097ca6e244c8d5d` am 06.10.2026
+mit derselben installationsweit gemeinsamen Referenz aus 17 Containern.
+
+| Maschinenrolle | Stabilisiertes Idle, Median | Beobachteter Idle-Bereich | Gemessener Startup-/Konvergenz-Peak |
+| --- | ---: | ---: | ---: |
+| Entwicklung | 2,51 GiB | 2,51–2,65 GiB | 4,65 GiB |
+| Deployment | 2,56 GiB | 2,55–2,60 GiB | 4,59 GiB |
+
+Jedes Idle-Fenster enthält elf vollständige Beobachtungen. Der Peak wird durch
+Stichproben gemessen. Die native Speicher-/Cache-Abrechnung unterscheidet sich
+zwischen Runtimes; daraus folgt kein Docker-/Podman-Leistungsvergleich.
+Application-isolated Placement ist weiterhin nicht vermessen.
