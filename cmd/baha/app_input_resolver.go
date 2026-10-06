@@ -462,6 +462,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		out = io.Discard
 		ctx = machineNoninteractiveContext(ctx)
 	}
+	ctx = withApplicationInput(ctx, runtimeInput)
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -494,11 +495,11 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			}
 		}
 	}
-	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+		if err := maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 			return err
 		}
 		if format == outputJSON {
@@ -519,12 +520,12 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if !found {
-		initialized, err := initializeRepositoryManifestForUp(ctx, runtimeInput, out, errOut, opts)
+		initialized, err := initializeRepositoryManifestForUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts)
 		if err != nil {
 			return err
 		}
 		if !initialized {
-			if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+			if err := maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 				return err
 			}
 			if format == outputJSON {
@@ -537,10 +538,10 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return nil
 		}
 	}
-	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
-	if err := repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts); err != nil {
+	if err := repositoryApplicationUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); err != nil {
 		return err
 	}
 	if format == outputJSON {

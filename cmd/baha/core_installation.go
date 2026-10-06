@@ -42,6 +42,10 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 		return coreinstallation.State{}, err
 	}
 	ctx = withAssumeYes(ctx, opts.Yes)
+	interactive := !opts.Yes && !noInput(ctx) && readerIsTerminal(in)
+	if interactive {
+		in = bufio.NewReader(in)
+	}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return coreinstallation.State{}, err
@@ -66,7 +70,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 		return coreinstallation.State{}, err
 	}
 	if role == "" {
-		if !opts.Yes && !noInput(ctx) && readerIsTerminal(in) {
+		if interactive {
 			role, err = selectInstallationRole(bufio.NewReader(in), out)
 			if err != nil {
 				return coreinstallation.State{}, err
@@ -219,4 +223,11 @@ func applicationInput(ctx context.Context, fallback io.Reader) io.Reader {
 		return in
 	}
 	return fallback
+}
+
+func withApplicationInput(ctx context.Context, in io.Reader) context.Context {
+	if readerIsTerminal(in) {
+		return context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(in))
+	}
+	return ctx
 }

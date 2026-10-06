@@ -134,7 +134,7 @@ func runRepositoryRuntimeInit(ctx context.Context, resolved resolvedApplication,
 	}
 
 	interactive := appInitReaderIsTerminal(appInitInput) && !opts.Yes && !noInput(ctx)
-	reader := bufio.NewReader(appInitInput)
+	reader := bufio.NewReader(applicationInput(ctx, appInitInput))
 	development := devaccess.Enabled(resolved.Manifest.Environment)
 	if development {
 		if strings.TrimSpace(opts.Hostname) != "" {

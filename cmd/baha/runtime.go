@@ -32,6 +32,7 @@ type runtimeUpOptions struct {
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	ctx = withApplicationInput(ctx, runtimeInput)
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -40,13 +41,13 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
-	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+		return maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts)
 	}
-	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
+	return repositoryApplicationUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts)
 }
 
 func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce candidate-owned evidence for Core-only static integration contracts.
+"""Produce candidate-owned evidence for Core contracts and rootless bootstrap.
 
 These checks do not qualify real browser journeys or private runtime consumers.
 """
@@ -13,8 +13,8 @@ import subprocess
 
 
 CHECKS = {
-	'integration/docker/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
-	'integration/podman/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
+    'integration/docker/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
+    'integration/podman/core-bootstrap': [['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m']],
     'integration/static/public-contracts': [
         ['./contracts/...', './internal/machine', './internal/machinereadmodels']],
     'integration/static/configuration-policy': [

@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
@@ -79,6 +80,8 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 			t.Errorf("Core cleanup failed: %v", err)
 		}
 	}()
+	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name))
+	defer sampler.stop()
 	opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
 	first, err := installCore(ctx, strings.NewReader(""), &out, opts)
 	if err != nil {
@@ -132,4 +135,9 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 		t.Fatal(err)
 	}
 	t.Logf("Core-only verified result: %s", public)
+	memory, err := sampler.evidence(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Core resource evidence: %s", memory)
 }

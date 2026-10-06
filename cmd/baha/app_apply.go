@@ -40,7 +40,7 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err != nil {
 		return err
 	}
-	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), runtimeInput, out); err != nil {
+	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.runPreflight(ctx); err != nil {
