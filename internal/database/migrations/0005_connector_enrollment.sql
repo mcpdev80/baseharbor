@@ -11,8 +11,8 @@ CREATE TABLE connector_nodes (
 ALTER TABLE connector_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE connector_nodes FORCE ROW LEVEL SECURITY;
 CREATE POLICY connector_nodes_tenant_isolation ON connector_nodes
-    USING (tenant_id = current_setting('baseharbor.tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('baseharbor.tenant_id', true)::uuid);
+    USING (tenant_id = NULLIF(current_setting('baseharbor.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('baseharbor.tenant_id', true), '')::uuid);
 
 CREATE TABLE connector_enrollment_grants (
     token_digest text PRIMARY KEY CHECK (token_digest ~ '^[0-9a-f]{64}$'),
@@ -32,5 +32,5 @@ CREATE INDEX connector_enrollment_grants_tenant_idx ON connector_enrollment_gran
 ALTER TABLE connector_enrollment_grants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE connector_enrollment_grants FORCE ROW LEVEL SECURITY;
 CREATE POLICY connector_enrollment_grants_tenant_isolation ON connector_enrollment_grants
-    USING (tenant_id = current_setting('baseharbor.tenant_id', true)::uuid)
-    WITH CHECK (tenant_id = current_setting('baseharbor.tenant_id', true)::uuid);
+    USING (tenant_id = NULLIF(current_setting('baseharbor.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('baseharbor.tenant_id', true), '')::uuid);
