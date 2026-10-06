@@ -63,6 +63,8 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	defer cancel()
 	serverCtx, stop := context.WithCancel(ctx)
 	server := exec.CommandContext(serverCtx, "bao", "server", "-config="+configPath)
+	var serverLog bytes.Buffer
+	server.Stdout, server.Stderr = &serverLog, &serverLog
 	if err := server.Start(); err != nil {
 		t.Fatal("native OpenBao server could not start", err)
 	}
@@ -78,7 +80,9 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("native OpenBao TLS listener did not become ready")
+			stop()
+			_ = server.Wait()
+			t.Fatal("native OpenBao TLS listener did not become ready", serverLog.String())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -191,7 +195,7 @@ func (nativeBaoCommandExecutor) ExecInput(ctx context.Context, input []byte, arg
 	}
 	command := exec.CommandContext(ctx, args[0], args[1:]...)
 	// No user token helper, ambient manager token or TLS bypass is inherited.
-	command.Env = []string{"PATH=" + os.Getenv("PATH"), "BAO_ADDR=" + os.Getenv("BAO_ADDR"), "BAO_CACERT=" + os.Getenv("BAO_CACERT"), "BAO_SKIP_VERIFY=false"}
+	command.Env = []string{"PATH=" + os.Getenv("PATH"), "BAO_ADDR=" + os.Getenv("BAO_ADDR"), "BAO_CACERT=" + os.Getenv("BAO_CACERT"), "BAO_SKIP_VERIFY=false", "BAO_TOKEN=isolated-fixture-not-a-credential"}
 	command.Stdin = bytes.NewReader(input)
 	var output bytes.Buffer
 	command.Stdout = &output
