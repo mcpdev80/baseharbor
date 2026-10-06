@@ -40,7 +40,7 @@ können zwischen den Beobachtungen liegen.
 
 ## Offene Kalibrierung
 
-Podman, isolierte Provider und weitere Hosts/Topologien bleiben offen. Source-Tests
+Isolierte Provider und weitere Hosts/Topologien bleiben offen. Source-Tests
 und Containerzahlen ersetzen keine Messungen. Die Host-Prüfung unterscheidet
 weiterhin Planungsbudgets von verfügbaren Messungen der gewählten Installation.
 

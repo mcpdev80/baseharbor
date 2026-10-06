@@ -242,7 +242,7 @@ func operatorKeycloakAdmin(ctx context.Context, files KeycloakFiles) (*keycloakA
 		user:     values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
 		password: values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
 	}
-	if err := admin.login(ctx); err != nil {
+	if err := waitKeycloakAdminLogin(ctx, admin); err != nil {
 		return nil, err
 	}
 	return admin, nil

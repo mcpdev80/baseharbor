@@ -210,6 +210,25 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	}
 	var output bytes.Buffer
 	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
+		if runtimeErr == nil {
+			containers, _ := runtime.ListRuntimeContainers(ctx)
+			backend := bhruntime.NewCLIBackend(os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+			for _, container := range containers {
+				if !strings.HasPrefix(container.Service, "keycloak") {
+					continue
+				}
+				logs, logErr := backend.DirectOutput(ctx, "logs", "--tail", "80", container.ID)
+				if logErr != nil {
+					continue
+				}
+				for _, category := range []string{"SQLState: 28P01", "SQLState: 08006", "password authentication failed", "SSLHandshakeException", "UnknownHostException", "Connection refused", "OutOfMemoryError", "failed to validate certificate", "permission denied"} {
+					if strings.Contains(logs, category) {
+						t.Logf("Identity diagnostic: service=%s category=%s", container.Service, category)
+					}
+				}
+			}
+		}
 		t.Fatalf("managed fixture apply: %v\n%s", err, output.String())
 	}
 	defer func() {
@@ -255,4 +274,13 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 		check()
 	}
 	t.Log("Shared provider app show/status/doctor agree; two encrypted backups restore the runtime-permission broker without application secrets")
+}
+
+func mustEffectiveTestTarget(t *testing.T, ctx context.Context) deployment.ResolvedTarget {
+	t.Helper()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
 }
