@@ -147,6 +147,18 @@ type BackendProbeExecutor interface {
 	ProbeBackend(context.Context, BackendProbe) (string, error)
 }
 
+// The native file/project mechanics remain in the existing local realization
+// adapter; semantic probes also accept independently owned remote services.
+func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files RuntimeFiles) RuntimeBackendProbeExecutor {
+	executor := RuntimeBackendProbeExecutor{files: files}
+	if runtime != nil {
+		executor.local = func(ctx context.Context, service string, argv ...string) (string, error) {
+			return runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, argv...)
+		}
+	}
+	return executor
+}
+
 func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
 	if UsesSharedPostgreSQL(m) {
 		return nil

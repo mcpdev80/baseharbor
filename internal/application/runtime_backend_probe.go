@@ -8,9 +8,9 @@ import (
 )
 
 type RuntimeBackendProbeExecutor struct {
-	runtime RuntimeProjectExecutor
-	remote  ProjectServiceExecutor
-	files   RuntimeFiles
+	local  func(context.Context, string, ...string) (string, error)
+	remote ProjectServiceExecutor
+	files  RuntimeFiles
 }
 
 // RuntimeProjectExecutor keeps the local probe adapter independent of the
@@ -25,10 +25,6 @@ type ProjectServiceExecutor interface {
 	ExecService(context.Context, string, string, ...string) (string, error)
 }
 
-func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files RuntimeFiles) RuntimeBackendProbeExecutor {
-	return RuntimeBackendProbeExecutor{runtime: runtime, files: files}
-}
-
 func NewRemoteBackendProbeExecutor(remote ProjectServiceExecutor, project string) RuntimeBackendProbeExecutor {
 	return RuntimeBackendProbeExecutor{remote: remote, files: RuntimeFiles{Project: project}}
 }
@@ -37,10 +33,10 @@ func (e RuntimeBackendProbeExecutor) execute(ctx context.Context, service string
 	if e.remote != nil {
 		return e.remote.ExecService(ctx, e.files.Project, service, argv...)
 	}
-	if e.runtime == nil {
+	if e.local == nil {
 		return "", errors.New("backend probe runtime is unavailable")
 	}
-	return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, argv...)
+	return e.local(ctx, service, argv...)
 }
 
 func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe BackendProbe) (string, error) {
