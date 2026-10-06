@@ -127,6 +127,11 @@ jobs:
           go test -race -p 2 ./internal/operatorauth ./internal/machinehttp ./internal/targetenrollment ./internal/targetsession ./internal/runtimeexplorer ./internal/runtime/terminal -count=1
           go test -race ./internal/runtime/terminal -run TestPTYInputResizeExitAndCancellation -count=25
 
+      - name: Validate requirements-bound integration evidence
+        run: |
+          python scripts/test_pre_release_resume.py
+          python scripts/test_pre_release_integration.py
+
       - name: Validate documentation
         shell: bash
         run: |

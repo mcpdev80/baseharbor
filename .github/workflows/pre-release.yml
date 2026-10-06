@@ -56,6 +56,8 @@ jobs:
       ha_podman_count: ${{ steps.resume.outputs.ha_podman_count }}
       journey: ${{ steps.resume.outputs.journey }}
       journey_count: ${{ steps.resume.outputs.journey_count }}
+      integration: ${{ steps.resume.outputs.integration }}
+      integration_count: ${{ steps.resume.outputs.integration_count }}
 
     steps:
       - name: Checkout candidate source
@@ -179,6 +181,7 @@ jobs:
           python scripts/test_ci_assertion_summary.py
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
+          python scripts/test_pre_release_integration.py
 
       - name: Run release-source tests
         id: source_tests
@@ -1026,10 +1029,127 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  integration_public_contracts:
+    name: Integration · integration/static/public-contracts
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/public-contracts') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/public-contracts
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-public-contracts"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-public-contracts-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-public-contracts
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_configuration_policy:
+    name: Integration · integration/static/configuration-policy
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/configuration-policy') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/configuration-policy
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-configuration-policy"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-configuration-policy-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-configuration-policy
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_browser_terminal:
+    name: Integration · integration/static/browser-terminal
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/browser-terminal') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/browser-terminal
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-browser-terminal"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-browser-terminal-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-browser-terminal
+          if-no-files-found: error
+          retention-days: 90
+
   evidence:
     name: Evidence · Candidate Manifest
     if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling

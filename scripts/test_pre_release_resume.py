@@ -177,6 +177,15 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(matrix['journey'], ['docker', 'podman'])
         self.assertEqual(matrix['heavy_docker'], resume.HEAVY)
 
+    def test_integration_matrix_preserves_required_order_and_excludes_proven_gates(self):
+        required = [gate['id'] for gate in resume.local_requirements('v0.4.23')]
+        missing = {key: 'unproven' for key in required}
+        del missing['integration/static/public-contracts']
+        matrix = resume.matrices({'required': required, 'pending': missing})
+        self.assertEqual(matrix['integration'], [key for key in required
+                                                if key.startswith('integration/') and key in missing])
+        self.assertEqual(len(matrix['integration']), 5)
+
 
 class RequirementTests(unittest.TestCase):
     def test_new_release_preserves_baseline_and_adds_required_families(self):
@@ -316,6 +325,26 @@ class GitFingerprintTests(unittest.TestCase):
 
 
 class WorkflowIntegrationTests(unittest.TestCase):
+    def test_core_integration_jobs_use_exact_requirements_names_and_retained_origins(self):
+        import yaml
+        jobs = yaml.safe_load(pathlib.Path('.github/workflows/pre-release.yml').read_text())['jobs']
+        for gate in resume.local_requirements('v0.4.23'):
+            if not gate['id'].startswith('integration/') or gate['dependencies'] != ['core']:
+                continue
+            job_id = gate['jobs'][0]
+            job = jobs[job_id]
+            with self.subTest(gate=gate['id']):
+                self.assertEqual(resume.key_from_job(job['name'], [gate['id']]), gate['id'])
+                self.assertIn("contains(fromJSON(needs.source.outputs.integration), '" + gate['id'] + "')", job['if'])
+                checkout = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/checkout@'))
+                self.assertEqual(checkout['with']['ref'], '${{ needs.source.outputs.candidate_sha }}')
+                upload = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/upload-artifact@'))
+                expected = resume.artifact_name(gate['id'], '${{ github.run_id }}', '${{ github.run_attempt }}')
+                self.assertEqual(upload['with']['name'], expected)
+                self.assertEqual(upload['with']['retention-days'], 90)
+                evidence_job = next(j for j in jobs.values() if j.get('name') == 'Evidence · Candidate Manifest')
+                self.assertIn(job_id, evidence_job['needs'])
+
     def test_every_matrix_is_supplied_by_the_authenticated_plan(self):
         import yaml
         jobs = yaml.safe_load(pathlib.Path('.github/workflows/pre-release.yml').read_text())['jobs']

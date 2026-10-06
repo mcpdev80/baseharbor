@@ -326,7 +326,9 @@ def matrices(coverage):
     missing = set(coverage['pending'])
     result = {'adoption': [g for g in ADOPTION if f'adoption/{g}' in missing],
               'static': [g for g in STATIC if f'atomic/static/{g}' in missing],
-              'journey': [r for r in ['docker', 'podman'] if f'journey/{r}' in missing]}
+              'journey': [r for r in ['docker', 'podman'] if f'journey/{r}' in missing],
+              'integration': [key for key in coverage['required']
+                              if key.startswith('integration/') and key in missing]}
     for runtime in ['docker', 'podman']:
         for name, gates in [('light', LIGHT), ('heavy', HEAVY), ('ha', HA)]:
             prefix = 'ha' if name == 'ha' else 'atomic'
@@ -395,7 +397,11 @@ def main():
                     'coverage_digest': digest(coverage)}
         (args.output / 'release-approved.json').write_text(json.dumps(approval, indent=2) + '\n')
     else:
-        unscheduled = [key for key in coverage['pending'] if key.startswith('integration/')]
+        jobs = inputs.workflow(args.candidate)
+        unscheduled = [gate['id'] for gate in requirements
+                       if gate['id'] in coverage['pending'] and gate['id'].startswith('integration/')
+                       and not any(job in jobs and jobs[job].get('name') == 'Integration · ' + gate['id']
+                                   for job in gate['jobs'])]
         if unscheduled:
             raise ValueError('required integration gates are not wired for scheduling: ' + ', '.join(unscheduled))
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
