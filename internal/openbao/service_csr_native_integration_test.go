@@ -100,7 +100,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	coreRequest := nativeBaoCSR(t, "spiffe://baseharbor/platform/core/native-test", "core.test")
+	coreRequest, coreKey := nativeBaoCSRMaterial(t, "spiffe://baseharbor/platform/core/native-test", "core.test")
 	scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "native-pki", NodeID: "node-a", Runtime: "docker"}
 	nodeRequest := nativeBaoCSR(t, scope.Identity())
 	authority, registry := nativeBaoEnrollmentAuthority(t, ctx, storageURL, issuer)
@@ -212,6 +212,9 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	if !found {
 		t.Fatal("revoked node serial is absent from the real managed CRL")
 	}
+	if os.Getenv("BASEHARBOR_NATIVE_CONNECTOR_ENROLLMENT") == "1" {
+		nativeBaoConnectorEnrollment(t, ctx, executor, files, issuer, authority, registry, coreRequest, coreKey, newCore, after.PEM)
+	}
 }
 
 type nativeBaoCommandExecutor struct{}
@@ -238,6 +241,12 @@ func (nativeBaoCommandExecutor) ExecInput(ctx context.Context, input []byte, arg
 
 func nativeBaoCSR(t *testing.T, identity string, dnsNames ...string) serviceaccess.CSRSigningRequest {
 	t.Helper()
+	request, _ := nativeBaoCSRMaterial(t, identity, dnsNames...)
+	return request
+}
+
+func nativeBaoCSRMaterial(t *testing.T, identity string, dnsNames ...string) (serviceaccess.CSRSigningRequest, []byte) {
+	t.Helper()
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +259,11 @@ func nativeBaoCSR(t *testing.T, identity string, dnsNames ...string) serviceacce
 	if err != nil {
 		t.Fatal(err)
 	}
-	return serviceaccess.CSRSigningRequest{CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), Identity: identity, TTL: time.Hour, DNSNames: dnsNames}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serviceaccess.CSRSigningRequest{CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), Identity: identity, TTL: time.Hour, DNSNames: dnsNames}, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }
 
 func verifyNativeBaoCoreServerName(t *testing.T, issued serviceaccess.IssuedCertificate, name string) {
