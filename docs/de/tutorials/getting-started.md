@@ -19,7 +19,8 @@ Maschinenpfade liefern ohne ausdrücklichen Bootstrap-Auftrag den typisierten
 Fehler `core_required`; sie richten keinen Core stillschweigend ein.
 
 Shared ist der einfache Standard. Pro Application isolierte Provider können
-zusätzliche Instanzen und Ressourcen verbrauchen. Planungsbudgets sind keine
+zusätzliche Instanzen und Ressourcen verbrauchen. Die [gemessenen Core-Ressourcen](../explanation/core-resources.md)
+beschreiben die geprüfte Referenz-Topologie. Planungsbudgets sind keine
 Messwerte. Core-Idle, Startup-Peak und gleichzeitiger Gesamtverbrauch werden erst
 nach Messung der konkreten Runtime/Topologie als solche ausgewiesen.
 

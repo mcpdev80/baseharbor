@@ -26,7 +26,8 @@ Non-interactive application requests return a typed `core_required` outcome unle
 automatic bootstrap was explicitly requested; automation can invoke Core setup first.
 
 Shared placement is the simplest default. Application-isolated providers can add
-instances and resource use. Memory output distinguishes planning estimates from
+instances and resource use. [Measured Core resource observations](../explanation/core-resources.md)
+describe the qualified reference topology. Memory output distinguishes planning estimates from
 measurements; Core idle, startup peak and simultaneous total remain unavailable
 until this exact runtime/topology has been sampled.
 

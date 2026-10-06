@@ -33,7 +33,9 @@ func TestCoreOnlyBootstrapRuntimeAcceptance(t *testing.T) {
 		t.Fatal("Core bootstrap acceptance requires a verified rootless runtime host")
 	}
 	for _, role := range []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment} {
-		t.Run(string(role), func(t *testing.T) { runCoreOnlyBootstrapRuntime(t, role) })
+		if !t.Run(string(role), func(t *testing.T) { runCoreOnlyBootstrapRuntime(t, role) }) {
+			return
+		}
 	}
 }
 
@@ -98,7 +100,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, service := range []string{"postgres", "openbao"} {
+	for _, service := range []string{"postgres", "openbao", "postgres-member-1", "openbao-member-1"} {
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, service, containersecurity.Requirements{ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true}); err != nil {
 			inventory, inventoryErr := runtime.ListRuntimeContainers(ctx)
 			for _, container := range inventory {

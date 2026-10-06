@@ -39,7 +39,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 		return err
 	}
 
-	raw, err := exec.CommandContext(ctx, containerRuntime(), "inspect", id).Output()
+	raw, err := exec.CommandContext(ctx, containerRuntime(), "container", "inspect", id).Output()
 	if err != nil {
 		return fmt.Errorf("inspect %s/%s: %w", project, service, err)
 	}
@@ -101,13 +101,14 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		return ids[0], nil
 	}
 
-	idOut, err := exec.CommandContext(ctx, runtime, "ps", "-q").Output()
+	idOut, err := exec.CommandContext(ctx, runtime, "container", "ls", "-q").Output()
 	if err != nil {
 		return "", fmt.Errorf("list running Podman containers: %w", err)
 	}
 	var matches []string
+	var observed []string
 	for _, id := range strings.Fields(string(idOut)) {
-		raw, inspectErr := exec.CommandContext(ctx, runtime, "inspect", id).Output()
+		raw, inspectErr := exec.CommandContext(ctx, runtime, "container", "inspect", id).Output()
 		if inspectErr != nil {
 			return "", fmt.Errorf("inspect running Podman container %s: %w", id, inspectErr)
 		}
@@ -127,12 +128,15 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		if serviceLabel == "" {
 			serviceLabel = labels["io.podman.compose.service"]
 		}
+		if len(observed) < 64 {
+			observed = append(observed, projectLabel+"/"+serviceLabel)
+		}
 		if projectLabel == project && serviceLabel == service {
 			matches = append(matches, id)
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("running container for %s/%s not found", project, service)
+		return "", fmt.Errorf("running container for %s/%s not found; inspected Podman ownership labels: %v", project, service, observed)
 	}
 	if len(matches) != 1 {
 		return "", fmt.Errorf("multiple running containers found for %s/%s", project, service)
