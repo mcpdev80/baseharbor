@@ -181,6 +181,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 func resetTestDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 DROP TABLE IF EXISTS connector_enrollment_grants CASCADE;
+DROP TABLE IF EXISTS connector_certificate_overlap CASCADE;
 DROP TABLE IF EXISTS connector_nodes CASCADE;
 DROP TABLE IF EXISTS application_ownerships CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;

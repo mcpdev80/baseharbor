@@ -228,16 +228,31 @@ access with Docker or Podman. A request cannot choose another signing authority.
 | --- | --- |
 | `POST /api/v1/connectors/authorizations` | Operator OIDC and resolved tenant `create` permission; returns only the protected `token`, `nonce`, `expires_at` projection. |
 | `POST /api/v1/connectors/enroll` | One scoped `Authorization: Bearer` credential plus canonical enrollment request; returns the signed client certificate and public trust bundle. |
+| `POST /api/v1/connectors/renewal-authorizations` | Protected operator identity, tenant membership and update permission; creates a one-use authorization pinned to the node's current active certificate. |
 
 Grant input is `target_id`, `node_id`, `environment`, `lifetime_seconds`
 (1–600) and `certificate_ttl_seconds` (1–86400). The trusted Core Target
 configuration supplies `tenant-id` and runtime; the request supplies neither.
 Its access definition uses `baseharbor-node-connector` and a stable node-id
 `reference` matching the requested node. Unbound Targets, foreign tenants,
-unsupported runtimes and policy denials fail closed. Both endpoints require
+unsupported runtimes and policy denials fail closed. These endpoints require
 HTTPS, bounded whole-body JSON and same-origin browser requests, and use
 `Cache-Control: no-store`. Tokens belong in the owner-only bootstrap
 authorization file, never ordinary execution metadata or shell arguments.
+
+Certificate renewal uses the same authorization input and canonical CSR exchange.
+Initial enrollment never replaces an issued identity. The renewal store locks
+the existing node and binds its grant to the current certificate serial. A
+revoked, expired or concurrently replaced certificate invalidates the grant;
+revocation during signing also prevents new certificate admission. Certificate
+material is returned only after the replacement and one predecessor are committed
+atomically. The predecessor remains admissible for at most five minutes and no
+longer than its original expiry. A subsequent renewal retires any earlier overlap.
+Revoking a predecessor preserves the current replacement; revoking the current
+identity denies both. The renewal tables and guards require migration `0007`;
+rolling it back preserves earlier enrollment/admission and fails schema readiness.
+The source implementation still requires real PostgreSQL/OpenBao and live
+Connector rotation evidence before release qualification.
 
 ## Outbound session admission
 

@@ -43,10 +43,7 @@ WHERE tenant_id=$1 AND node_id=$2 AND consumed_at IS NULL AND expires_at > clock
 			return targetenrollment.ErrDenied
 		}
 
-		_, err := tx.Exec(ctx, `INSERT INTO connector_enrollment_grants
-(token_digest, tenant_id, target_id, node_id, runtime, nonce_digest, expires_at, certificate_ttl_seconds)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, grant.TokenDigest, grant.Scope.TenantID, grant.Scope.TargetID, grant.Scope.NodeID, grant.Scope.Runtime, grant.NonceDigest, grant.ExpiresAt, int64(grant.CertificateTTL/time.Second))
-		return err
+		return insertConnectorGrant(ctx, tx, grant, nil)
 	})
 }
 
@@ -61,6 +58,10 @@ func (s *ConnectorEnrollmentStore) Consume(ctx context.Context, scope targetenro
 WHERE token_digest=$1 AND nonce_digest=$2 AND target_id=$3 AND node_id=$4 AND runtime=$5
 AND tenant_id=$8
 AND consumed_at IS NULL AND expires_at > GREATEST($6, clock_timestamp())
+AND (previous_certificate_serial IS NULL OR EXISTS(SELECT 1 FROM connector_nodes node
+WHERE node.tenant_id=$8 AND node.node_id=$4 AND node.target_id=$3 AND node.runtime=$5
+AND node.certificate_serial=connector_enrollment_grants.previous_certificate_serial
+AND NOT node.certificate_revoked AND node.certificate_expires_at > clock_timestamp()))
 RETURNING expires_at, certificate_ttl_seconds`, tokenDigest, nonceDigest, scope.TargetID, scope.NodeID, scope.Runtime, now, csrDigest, scope.TenantID).Scan(&grant.ExpiresAt, &seconds)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return targetenrollment.ErrDenied
@@ -77,12 +78,24 @@ RETURNING expires_at, certificate_ttl_seconds`, tokenDigest, nonceDigest, scope.
 var _ targetenrollment.Store = (*ConnectorEnrollmentStore)(nil)
 
 // RecordIssued commits the exact authenticated node identity before returning
-// certificate material. Renewal is a separate authorized lifecycle operation.
+// certificate material. Renewal additionally compares its authorized old serial
+// and records one bounded predecessor in the same tenant-local transaction.
 func (s *ConnectorEnrollmentStore) RecordIssued(ctx context.Context, scope targetenrollment.Scope, tokenDigest, serial string, expires time.Time) error {
-	if s == nil || s.pool == nil || scope.Validate() != nil || serial == "" || !expires.After(time.Now()) {
+	serial, err := targetenrollment.NormalizeCertificateSerial(serial)
+	if ctx.Err() != nil || s == nil || s.pool == nil || scope.Validate() != nil || err != nil || !expires.After(time.Now()) {
 		return targetenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var previous *string
+		if err := tx.QueryRow(ctx, `SELECT previous_certificate_serial FROM connector_enrollment_grants
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4 AND token_digest=$5
+AND consumed_at IS NOT NULL FOR UPDATE`, scope.TenantID, scope.NodeID, scope.TargetID,
+			scope.Runtime, tokenDigest).Scan(&previous); err != nil {
+			return targetenrollment.ErrDenied
+		}
+		if previous != nil {
+			return recordConnectorRenewal(ctx, tx, scope, *previous, serial, expires)
+		}
 		command, err := tx.Exec(ctx, `UPDATE connector_nodes SET certificate_serial=$6, certificate_expires_at=$7
 WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4 AND certificate_serial IS NULL
 AND EXISTS (SELECT 1 FROM connector_enrollment_grants WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3
@@ -108,9 +121,14 @@ func (s *ConnectorEnrollmentStore) AdmitCertificate(ctx context.Context, scope t
 		var admitted bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connector_nodes
 WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4
-AND ltrim(replace(lower(certificate_serial), ':', ''), '0')=$5
-AND certificate_expires_at=$6 AND certificate_expires_at > clock_timestamp()
-AND NOT certificate_revoked)`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, normalized, expires).Scan(&admitted); err != nil {
+AND NOT certificate_revoked AND (
+(ltrim(replace(lower(certificate_serial), ':', ''), '0')=$5 AND certificate_expires_at=$6
+AND certificate_expires_at > clock_timestamp()) OR EXISTS(
+SELECT 1 FROM connector_certificate_overlap overlap
+WHERE overlap.tenant_id=connector_nodes.tenant_id AND overlap.node_id=connector_nodes.node_id
+AND overlap.certificate_serial=$5 AND overlap.certificate_expires_at=$6
+AND overlap.admit_until > clock_timestamp() AND NOT overlap.certificate_revoked)))`,
+			scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, normalized, expires).Scan(&admitted); err != nil {
 			return err
 		}
 		if !admitted {
@@ -132,9 +150,26 @@ func (s *ConnectorEnrollmentStore) RevokeCertificate(ctx context.Context, scope 
 		return targetenrollment.ErrDenied
 	}
 	return WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var current string
+		if err := tx.QueryRow(ctx, `SELECT certificate_serial FROM connector_nodes
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4 FOR UPDATE`,
+			scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime).Scan(&current); err != nil {
+			return targetenrollment.ErrDenied
+		}
+		current, err := targetenrollment.NormalizeCertificateSerial(current)
+		if err != nil {
+			return targetenrollment.ErrDenied
+		}
+		if current != normalized {
+			command, err := tx.Exec(ctx, `UPDATE connector_certificate_overlap SET certificate_revoked=true
+WHERE tenant_id=$1 AND node_id=$2 AND certificate_serial=$3`, scope.TenantID, scope.NodeID, normalized)
+			if err != nil || command.RowsAffected() != 1 {
+				return targetenrollment.ErrDenied
+			}
+			return nil
+		}
 		command, err := tx.Exec(ctx, `UPDATE connector_nodes SET certificate_revoked=true
-WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4
-AND ltrim(replace(lower(certificate_serial), ':', ''), '0')=$5`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime, normalized)
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4`, scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime)
 		if err != nil || command.RowsAffected() != 1 {
 			return targetenrollment.ErrDenied
 		}

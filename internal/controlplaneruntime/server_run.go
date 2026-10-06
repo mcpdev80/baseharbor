@@ -236,6 +236,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		// Grant creation remains behind the existing identity/tenant middleware.
 		mux.Handle(targetenrollment.EnrollmentPath, handler)
 		operatorMux.Handle(targetenrollment.AuthorizationPath, handler)
+		operatorMux.Handle(targetenrollment.RenewalAuthorizationPath, handler)
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {

@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	AuthorizationPath = "/api/v1/connectors/authorizations"
-	EnrollmentPath    = "/api/v1/connectors/enroll"
-	enrollmentVersion = "baseharbor.target-access-enrollment/v1"
+	AuthorizationPath        = "/api/v1/connectors/authorizations"
+	RenewalAuthorizationPath = "/api/v1/connectors/renewal-authorizations"
+	EnrollmentPath           = "/api/v1/connectors/enroll"
+	enrollmentVersion        = "baseharbor.target-access-enrollment/v1"
 )
 
 // ScopeResolver must use Core's Target registry, tenant ownership and effective
@@ -69,7 +70,9 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.URL.Path {
 	case AuthorizationPath:
-		h.authorize(w, r)
+		h.authorize(w, r, false)
+	case RenewalAuthorizationPath:
+		h.authorize(w, r, true)
 	case EnrollmentPath:
 		h.enroll(w, r)
 	default:
@@ -85,15 +88,19 @@ type authorizationInput struct {
 	CertificateTTLSeconds int64  `json:"certificate_ttl_seconds"`
 }
 
-func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request, renewal bool) {
 	principal, authenticated := identity.FromContext(r.Context())
 	tenant, scoped := tenancy.FromContext(r.Context())
 	if !authenticated || (principal.ExpiresAt != nil && !principal.ExpiresAt.After(time.Now())) {
 		enrollmentHTTPError(w, http.StatusUnauthorized, machine.ErrorAuthenticationFailed)
 		return
 	}
+	permission := authorization.PermCreate
+	if renewal {
+		permission = authorization.PermUpdate
+	}
 	if !scoped || tenant.TenantID == "" || tenant.ExternalIdentityID == "" ||
-		!authorization.NewService().Allowed(tenant.Roles, authorization.PermCreate) {
+		!authorization.NewService().Allowed(tenant.Roles, permission) {
 		enrollmentHTTPError(w, http.StatusForbidden, machine.ErrorPolicyDenied)
 		return
 	}
@@ -107,10 +114,8 @@ func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request) {
 		enrollmentHTTPError(w, http.StatusBadRequest, machine.ErrorValidationFailed)
 		return
 	}
-	var input authorizationInput
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&input) != nil || input.TargetID == "" || input.NodeID == "" || input.Environment == "" ||
+	input, err := decodeAuthorizationInput(data)
+	if err != nil || input.TargetID == "" || input.NodeID == "" || input.Environment == "" ||
 		input.LifetimeSeconds < 1 || input.LifetimeSeconds > 600 || input.CertificateTTLSeconds < 1 || input.CertificateTTLSeconds > 86400 {
 		enrollmentHTTPError(w, http.StatusBadRequest, machine.ErrorValidationFailed)
 		return
@@ -121,7 +126,11 @@ func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request) {
 		enrollmentHTTPError(w, http.StatusForbidden, machine.ErrorPolicyDenied)
 		return
 	}
-	bootstrap, err := h.authority.Create(r.Context(), scope, time.Duration(input.LifetimeSeconds)*time.Second, time.Duration(input.CertificateTTLSeconds)*time.Second)
+	create := h.authority.Create
+	if renewal {
+		create = h.authority.CreateRenewal
+	}
+	bootstrap, err := create(r.Context(), scope, time.Duration(input.LifetimeSeconds)*time.Second, time.Duration(input.CertificateTTLSeconds)*time.Second)
 	if err != nil {
 		enrollmentHTTPError(w, http.StatusConflict, machine.ErrorConflict)
 		return

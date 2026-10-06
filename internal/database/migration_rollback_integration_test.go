@@ -28,6 +28,25 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate renewal migration: %v", err)
+	}
+	var retainedAdmission, overlapExists, renewalColumn bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&retainedAdmission); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_enrollment_grants' AND column_name='previous_certificate_serial')").Scan(&renewalColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !retainedAdmission || overlapExists || renewalColumn {
+		t.Fatal("renewal rollback changed earlier admission or retained renewal state")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing renewal migration was accepted as schema ready")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback certificate admission migration: %v", err)
 	}
 	var revocationColumn, retainedEnrollment bool

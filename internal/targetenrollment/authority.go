@@ -55,6 +55,12 @@ type Store interface {
 	RecordIssued(context.Context, Scope, string, string, time.Time) error
 }
 
+// RenewalStore explicitly authorizes replacement of an existing node's active
+// certificate. Ordinary initial enrollment cannot replace an issued identity.
+type RenewalStore interface {
+	CreateRenewal(context.Context, Grant) error
+}
+
 type Authority struct {
 	store  Store
 	issuer serviceaccess.CSRIssuer
@@ -74,6 +80,18 @@ type Bootstrap struct {
 }
 
 func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration) (Bootstrap, error) {
+	return a.create(ctx, scope, lifetime, certificateTTL, a.store.Create)
+}
+
+func (a *Authority) CreateRenewal(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration) (Bootstrap, error) {
+	renewal, ok := a.store.(RenewalStore)
+	if !ok {
+		return Bootstrap{}, ErrDenied
+	}
+	return a.create(ctx, scope, lifetime, certificateTTL, renewal.CreateRenewal)
+}
+
+func (a *Authority) create(ctx context.Context, scope Scope, lifetime, certificateTTL time.Duration, persist func(context.Context, Grant) error) (Bootstrap, error) {
 	if ctx.Err() != nil || scope.Validate() != nil || lifetime <= 0 || lifetime > 10*time.Minute || certificateTTL < time.Second || certificateTTL > 24*time.Hour || certificateTTL%time.Second != 0 {
 		return Bootstrap{}, ErrDenied
 	}
@@ -87,7 +105,7 @@ func (a *Authority) Create(ctx context.Context, scope Scope, lifetime, certifica
 	}
 	expires := time.Now().UTC().Add(lifetime)
 	grant := Grant{Scope: scope, TokenDigest: digest(token), NonceDigest: digest(nonce), ExpiresAt: expires, CertificateTTL: certificateTTL}
-	if err := a.store.Create(ctx, grant); err != nil {
+	if err := persist(ctx, grant); err != nil {
 		return Bootstrap{}, errors.New("cannot persist enrollment authorization")
 	}
 	return Bootstrap{Token: token, Nonce: nonce, ExpiresAt: expires}, nil
