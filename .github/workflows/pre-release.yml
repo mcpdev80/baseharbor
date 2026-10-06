@@ -182,6 +182,7 @@ jobs:
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
           python scripts/test_private_consumer_evidence.py
+          python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
 
       - name: Run release-source tests
@@ -271,6 +272,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
           CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
           DEMO_REF: ${{ steps.release.outputs.demo_ref }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -1233,10 +1236,109 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  integration_remote_target_docker:
+    name: Integration · integration/docker/remote-target
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/remote-target') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/docker/remote-target
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-docker-remote-target"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-docker-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-docker-remote-target
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_remote_target_podman:
+    name: Integration · integration/podman/remote-target
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/remote-target') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/podman/remote-target
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-podman-remote-target"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-podman-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-podman-remote-target
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_live_console:
+    name: Integration · integration/static/live-console
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/live-console') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/static/live-console
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-static-live-console"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-live-console-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-static-live-console
+          if-no-files-found: error
+          retention-days: 90
+
   evidence:
     name: Evidence · Candidate Manifest
     if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -1259,6 +1361,8 @@ jobs:
           (needs.reference_journey.result == 'success' || (needs.reference_journey.result == 'skipped' && needs.source.outputs.journey_count == '0'))
         env:
           GH_TOKEN: ${{ github.token }}
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}

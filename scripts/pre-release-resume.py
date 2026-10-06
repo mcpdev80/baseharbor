@@ -13,7 +13,7 @@ import stat
 import subprocess
 import zipfile
 
-from private_consumer_evidence import PrivateEvidenceVerifier, PrivateGitHub, load_private_pins
+from private_consumer_evidence import private_verifier_from_environment
 
 
 STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
@@ -390,10 +390,7 @@ def main():
     api = GitHub(args.repository)
     inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo)
     requirements = inputs.requirements(args.candidate, args.tag)
-    private_verifier = None
-    private_path = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_FILE')
-    if private_path:
-        private_verifier = PrivateEvidenceVerifier(load_private_pins(private_path), PrivateGitHub(), read_archive)
+    private_verifier = private_verifier_from_environment(read_archive)
     current = int(os.environ['GITHUB_RUN_ID'])
     if args.mode == 'check-approval':
         approved = json.loads((args.output / 'evidence-coverage.json').read_text())

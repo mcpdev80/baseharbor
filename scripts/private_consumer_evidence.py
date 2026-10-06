@@ -52,6 +52,32 @@ def load_private_pins(path):
     return value['gates']
 
 
+def private_verifier_from_environment(read_archive):
+    path = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_FILE')
+    raw = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_JSON')
+    if path and raw:
+        raise ValueError('private evidence configuration sources are ambiguous')
+    if path:
+        pins = load_private_pins(path)
+    elif raw:
+        # Actions provides this reviewed source-pin configuration as a secret.
+        # Never write its private identifiers to public artifacts or logs.
+        try:
+            if len(raw.encode()) > 1024 * 1024:
+                raise ValueError()
+            value = json.loads(raw)
+            if (not isinstance(value, dict) or
+                    value.get('schema') != 'baseharbor.private-evidence-pins/v1' or
+                    not isinstance(value.get('gates'), dict)):
+                raise ValueError()
+            pins = value['gates']
+        except (ValueError, TypeError):
+            raise ValueError('private evidence configuration schema differs') from None
+    else:
+        return None
+    return PrivateEvidenceVerifier(pins, PrivateGitHub(), read_archive)
+
+
 class PrivateGitHub:
     def __init__(self):
         token = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_TOKEN')

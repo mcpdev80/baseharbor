@@ -131,6 +131,7 @@ jobs:
         run: |
           python scripts/test_pre_release_resume.py
           python scripts/test_private_consumer_evidence.py
+          python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
           python scripts/test_artifact_gc.py
 
