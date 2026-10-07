@@ -53,6 +53,7 @@ nav:
 - Start: index.md
 - Einstieg:
   - Erste Application: tutorials/getting-started.md
+  - Homelab: tutorials/homelab.md
   - Core-Ressourcen: explanation/core-resources.md
   - CLI-Überblick: cli/index.md
 - Applications:
