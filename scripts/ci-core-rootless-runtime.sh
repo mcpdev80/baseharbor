@@ -21,7 +21,7 @@ case "$runtime" in
       . /etc/os-release
       printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}" "$(dpkg --print-architecture)" | sudo tee /etc/apt/sources.list.d/docker.sources
       sudo apt-get update
-      extras_version="$(apt-cache madison docker-ce-rootless-extras | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 {print $3; exit}')"
+      extras_version="$(apt-cache madison docker-ce-rootless-extras | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 && !found {print $3; found=1}')"
       test -n "$extras_version"
       sudo apt-get install -y "docker-ce-rootless-extras=$extras_version"
     fi

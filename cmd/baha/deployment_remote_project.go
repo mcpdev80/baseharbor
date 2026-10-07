@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
@@ -25,8 +24,8 @@ func retainedRemoteProject(resolved resolvedApplication) (*targetsession.Project
 		return nil, nil
 	}
 	target := resolved.Target
-	expected := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: target.AccessReference, Runtime: target.RuntimeProvider}
-	if target.AccessProvider != "baseharbor-node-connector" || expected.Validate() != nil || project.Scope != expected {
+	expected, err := connectorScopeForTarget(target)
+	if err != nil || project.Scope != expected {
 		return nil, fmt.Errorf("persisted remote project differs from selected Target Access binding")
 	}
 	return project, nil

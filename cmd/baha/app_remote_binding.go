@@ -23,7 +23,10 @@ type applicationRemoteTransport struct {
 
 func remoteApplicationTransport(ctx context.Context, resolved resolvedApplication, base targetsession.ProjectTransport) (targetsession.ProjectTransport, targetenrollment.Scope, error) {
 	target := resolved.Target
-	scope := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: target.AccessReference, Runtime: target.RuntimeProvider}
+	scope, err := connectorScopeForTarget(target)
+	if err != nil {
+		return nil, targetenrollment.Scope{}, err
+	}
 	bound := &applicationRemoteTransport{ctx: withTargetOverride(ctx, target.Name), resolved: resolved, base: base, scope: scope}
 	if err := bound.validate(scope); err != nil {
 		return nil, targetenrollment.Scope{}, err
@@ -75,6 +78,13 @@ func (t *applicationRemoteTransport) validate(scope targetenrollment.Scope) erro
 	if current != t.resolved.Target {
 		return machine.NewError(machine.ErrorPolicyDenied, "Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
 	}
+	currentScope, err := connectorScopeForTarget(current)
+	if err != nil {
+		return err
+	}
+	if currentScope != t.scope {
+		return machine.NewError(machine.ErrorPolicyDenied, "Application node binding changed during execution.", "Resolve the selected Target again before retrying.", false)
+	}
 	if t.access != nil {
 		current, err := t.accessBindings()
 		if err != nil {
@@ -104,4 +114,26 @@ func (t *applicationRemoteTransport) Dispatch(ctx context.Context, scope targete
 		return targetsession.Response{}, err
 	}
 	return t.base.Dispatch(ctx, scope, request)
+}
+
+// AccessReference names a configured access binding. Its Reference identifies
+// the enrolled node, which may deliberately differ from that local alias.
+func connectorScopeForTarget(target deployment.ResolvedTarget) (targetenrollment.Scope, error) {
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return targetenrollment.Scope{}, err
+	}
+	current, err := cfg.ResolveTarget(target.Name, "")
+	if err != nil || current != target {
+		return targetenrollment.Scope{}, machine.NewError(machine.ErrorPolicyDenied, "Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
+	}
+	access, ok := cfg.Access[target.AccessReference]
+	if !ok || target.AccessProvider != "baseharbor-node-connector" || access.Provider != target.AccessProvider {
+		return targetenrollment.Scope{}, targetsession.ErrUnavailable
+	}
+	scope := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: access.Reference, Runtime: target.RuntimeProvider}
+	if err := scope.Validate(); err != nil {
+		return targetenrollment.Scope{}, err
+	}
+	return scope, nil
 }

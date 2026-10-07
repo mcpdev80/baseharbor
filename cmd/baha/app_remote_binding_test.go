@@ -114,3 +114,45 @@ func TestApplicationTransportRejectsScopeSubstitutionAndCanceledDispatch(t *test
 		t.Fatal("denied call reached transport", base)
 	}
 }
+
+func TestApplicationTransportUsesEnrolledNodeRatherThanAccessAlias(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixture(t)
+	base := &applicationBindingTransport{}
+	transport, scope, err := remoteApplicationTransport(withCoreAuthority(ctx, core), resolvedApplication{Target: node}, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.NodeID != "node-owned" || scope.NodeID == node.AccessReference {
+		t.Fatal("access alias replaced enrolled node identity", scope)
+	}
+	if _, err := transport.LiveCapabilities(scope); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestApplicationTransportRechecksNodeBeforeAccessSnapshot(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixture(t)
+	base := &applicationBindingTransport{}
+	transport, scope, err := remoteApplicationTransport(withCoreAuthority(ctx, core), resolvedApplication{Target: node}, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The scope is chosen before the two access definitions are captured.
+	// A configuration change in between must already reject the old node.
+	transport.(*applicationRemoteTransport).access = nil
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	access := cfg.Access[node.AccessReference]
+	access.Reference = "replacement-node"
+	cfg.Access[node.AccessReference] = access
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = transport.LiveCapabilities(scope)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorPolicyDenied || base.capabilities != 0 {
+		t.Fatal("changed node reached transport before access snapshot", err)
+	}
+}

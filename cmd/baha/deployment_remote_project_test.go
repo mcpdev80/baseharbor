@@ -24,7 +24,19 @@ func TestDeploymentTransitionsRetainSelectedRemoteProject(t *testing.T) {
 	}
 	resolved.Target.TenantID = "00000000-0000-0000-0000-000000000001"
 	resolved.Target.AccessProvider = "baseharbor-node-connector"
-	resolved.Target.AccessReference = "node-a"
+	resolved.Target.AccessReference = "connector-alias"
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Access["connector-alias"] = deployment.AccessDefinition{Provider: "baseharbor-node-connector", Reference: "node-a"}
+	definition := cfg.Targets[resolved.Target.Name]
+	definition.TenantID = resolved.Target.TenantID
+	definition.Access.Reference = resolved.Target.AccessReference
+	cfg.Targets[resolved.Target.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	record, err := recordPendingDeployment(context.Background(), resolved)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +72,12 @@ func TestDeploymentTransitionsRetainSelectedRemoteProject(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got.Applied.RemoteProject, project) || got.Observed.State != "ready" {
 		t.Fatal("local absence discarded remote binding/observation", err)
 	}
-	resolved.Target.AccessReference = "node-b"
+	access := cfg.Access["connector-alias"]
+	access.Reference = "node-b"
+	cfg.Access["connector-alias"] = access
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := recordPendingDeployment(context.Background(), resolved); err == nil {
 		t.Fatal("changed Node silently adopted persisted project")
 	}

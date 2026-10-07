@@ -7,7 +7,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
-	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
@@ -55,7 +54,10 @@ func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimee
 		if !ok || tenant.TenantID != target.TenantID {
 			return nil, "", machine.NewError(machine.ErrorPolicyDenied, "Remote Target is outside the authenticated tenant.", "Select a Target enrolled in the current tenant.", false)
 		}
-		scope := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: target.AccessReference, Runtime: target.RuntimeProvider}
+		scope, err := connectorScopeForTarget(target)
+		if err != nil {
+			return nil, "", err
+		}
 		backend, err := runtimeexplorer.NewConnectorBackend(targetsession.PoolFromContext(ctx), scope)
 		if err != nil {
 			return nil, "", machine.NewError(machine.ErrorCapabilityMissing, "Selected remote Target has no authenticated live runtime binding.", "Reconnect the selected Connector; remote operations never run locally.", true)
