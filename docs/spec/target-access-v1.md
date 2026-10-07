@@ -494,3 +494,15 @@ Successful native exit evidence therefore remains observable without target
 activation or automatic reruns. Core still requires the completed process exit,
 current boot and exact-source activation receipt; a mere active/exited state is
 not sufficient. These service settings preserve observation, not start authority.
+
+## Core-selected Compose activation phases
+
+`runtime.compose.apply` can carry a nonempty, unique, bounded `services` list.
+Core checks each name against the immutable selected Compose files. The node
+independently resolves effective names with read-only `compose config --services`
+before any activation. Selected phases use `up --no-deps --no-build` and cannot
+request builds or orphan removal. Core must explicitly converge and verify
+prerequisites before activating a workload phase. Repair recreates only selected
+services; a lost response does not replay the mutation. Ordinary apply without
+`services` retains its existing behavior. This primitive does not qualify the
+complete remote Application engine.

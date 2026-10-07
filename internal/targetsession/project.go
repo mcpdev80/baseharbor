@@ -244,6 +244,10 @@ func (r *ProjectRuntime) composeSelection(project *StagedProject, files []string
 }
 
 func (r *ProjectRuntime) ApplyCompose(ctx context.Context, project *StagedProject, files []string, envFile string, repair bool) error {
+	return r.applyCompose(ctx, project, files, envFile, nil, repair)
+}
+
+func (r *ProjectRuntime) applyCompose(ctx context.Context, project *StagedProject, files []string, envFile string, services []string, repair bool) error {
 	selected, env, err := r.composeSelection(project, files, envFile)
 	if err != nil {
 		return err
@@ -253,8 +257,9 @@ func (r *ProjectRuntime) ApplyCompose(ctx context.Context, project *StagedProjec
 		Files            []string `json:"files"`
 		EnvFile          string   `json:"env_file,omitempty"`
 		ForceRecreate    bool     `json:"force_recreate,omitempty"`
+		Services         []string `json:"services,omitempty"`
 		TimeoutSeconds   int      `json:"timeout_seconds"`
-	}{project.directory, selected, env, repair, 90}
+	}{project.directory, selected, env, repair, services, 90}
 	var result struct {
 		ExitCode *int `json:"exit_code"`
 	}
