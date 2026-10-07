@@ -33,7 +33,7 @@ func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer ser
 	if err = runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		return "", err
 	}
-	if err = runtime.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+	if err = NewKeycloakLifecycle(runtime).Apply(ctx, files); err != nil {
 		return "", err
 	}
 	admin, err := operatorKeycloakAdmin(ctx, files)

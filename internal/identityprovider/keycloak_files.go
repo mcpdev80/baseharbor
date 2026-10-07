@@ -57,7 +57,10 @@ func (l keycloakRuntimeLifecycle) Validate(ctx context.Context, files KeycloakFi
 }
 
 func (l keycloakRuntimeLifecycle) Apply(ctx context.Context, files KeycloakFiles) error {
-	return l.runtime.UpProject(ctx, files.Project, files.Compose, files.Env)
+	return applyKeycloakBootstrap(ctx, l.runtime, files, func(ctx context.Context, files KeycloakFiles) error {
+		_, err := operatorKeycloakAdmin(ctx, files)
+		return err
+	})
 }
 
 func (l keycloakRuntimeLifecycle) Destroy(ctx context.Context, files KeycloakFiles) error {

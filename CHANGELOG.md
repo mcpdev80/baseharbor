@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Keycloak starts one authenticated bootstrap member before additional members join, preventing concurrent initial database migrations.
+
 - Application execution revalidates the selected Core installation and keeps Core-managed secret, PKI and broker operations independent of workload placement; remote bindings never fall back implicitly to local authority.
 - Remote Quadlet project realization publishes every unit before container activation, starts dependencies first and rejects cycles before mutation.
 - Core-managed init dependencies require verified successful native completion before application activation and retain completion evidence without enabling automatic node startup.
