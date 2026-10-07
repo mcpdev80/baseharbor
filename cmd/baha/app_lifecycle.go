@@ -222,9 +222,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		if err := runtime.DestroyApplication(ctx, intent, execution.fullReset); err != nil {
 			return err
 		}
-		if err := runtime.RemoveSnapshot(execution.resolved.stateRoot()); err != nil {
-			return err
-		}
+		// Keep the snapshot available through state cleanup; removing the
+		// deployment record removes it together with the verified binding.
+		execution.manifest = intent
 		if err := execution.removeApplicationState(); err != nil {
 			return err
 		}

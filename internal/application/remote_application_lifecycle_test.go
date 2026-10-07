@@ -19,11 +19,12 @@ import (
 
 type applicationLifecycleTransport struct {
 	managedRuntimeTransport
-	project      string
-	running      map[string]bool
-	units        map[string]string
-	activations  []string
-	probeFailure bool
+	project                   string
+	running                   map[string]bool
+	units                     map[string]string
+	activations               []string
+	probeFailure              bool
+	workloadHealthUnavailable bool
 }
 
 func (f *applicationLifecycleTransport) Dispatch(ctx context.Context, scope targetenrollment.Scope, request targetsession.Request) (targetsession.Response, error) {
@@ -75,8 +76,12 @@ func (f *applicationLifecycleTransport) Dispatch(ctx context.Context, scope targ
 		}
 		_ = json.Unmarshal(request.Payload, &payload)
 		for service := range f.running {
+			health := "healthy"
+			if service == "api" && f.workloadHealthUnavailable {
+				health = ""
+			}
 			if lifecycleContainerID(service) == payload.ID {
-				result = []any{map[string]any{"Id": payload.ID, "Config": map[string]any{"Labels": map[string]string{"com.docker.compose.project": f.project, "com.docker.compose.service": service}}, "State": map[string]any{"Running": f.running[service], "Status": "running", "Health": map[string]string{"Status": "healthy"}}}}
+				result = []any{map[string]any{"Id": payload.ID, "Config": map[string]any{"Labels": map[string]string{"com.docker.compose.project": f.project, "com.docker.compose.service": service}}, "State": map[string]any{"Running": f.running[service], "Status": "running", "Health": map[string]string{"Status": health}}}}
 			}
 		}
 	case "runtime.exec":
@@ -109,7 +114,7 @@ func remoteApplicationFixture(t *testing.T, kind string) (*RemoteManagedRuntime,
 	files, manifest := remoteRuntimeProjectionFixture(t)
 	repository := t.TempDir()
 	compose := filepath.Join(repository, "compose.yaml")
-	if err := os.WriteFile(compose, []byte("services:\n  api:\n    image: docker.io/library/alpine:3.23\n    user: '1000:1000'\n    command: ['sh', '-ec', 'echo $$HOME; sleep 300']\n    networks: [baseharbor-backend]\nnetworks:\n  baseharbor-backend:\n    external: true\n    name: "+ApplicationBackendNetworkNameForProject(files.ResourceProject)+"\n"), 0600); err != nil {
+	if err := os.WriteFile(compose, []byte("services:\n  api:\n    image: docker.io/library/alpine:3.23\n    user: '1000:1000'\n    healthcheck: {test: ['CMD', 'true'], interval: 1s}\n    command: ['sh', '-ec', 'echo $$HOME; sleep 300']\n    networks: [baseharbor-backend]\nnetworks:\n  baseharbor-backend:\n    external: true\n    name: "+ApplicationBackendNetworkNameForProject(files.ResourceProject)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	workload := &WorkloadFiles{RepositoryRoot: repository, Compose: compose, Project: files.Project, Services: []string{"api"}}
@@ -207,7 +212,7 @@ func TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeSta
 			files, manifest := remoteRuntimeProjectionFixture(t)
 			repository := t.TempDir()
 			compose := filepath.Join(repository, "compose.yaml")
-			if err := os.WriteFile(compose, []byte("services:\n  api:\n    image: alpine:3.23\n    user: '1000:1000'\n"+extra), 0600); err != nil {
+			if err := os.WriteFile(compose, []byte("services:\n  api:\n    image: alpine:3.23\n    user: '1000:1000'\n    healthcheck: {test: ['CMD', 'true'], interval: 1s}\n"+extra), 0600); err != nil {
 				t.Fatal(err)
 			}
 			scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "selected", NodeID: "selected-node", Runtime: "docker"}
@@ -275,7 +280,7 @@ func TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes(t *tes
 		t.Run(kind, func(t *testing.T) {
 			files, manifest := remoteRuntimeProjectionFixture(t)
 			repository := t.TempDir()
-			if err := os.WriteFile(filepath.Join(repository, "compose.yaml"), []byte("services:\n  api:\n    image: docker.io/library/alpine:3.23\n    user: '1000:1000'\n    read_only: true\n    command: ['sleep', '300']\n"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(repository, "compose.yaml"), []byte("services:\n  api:\n    image: docker.io/library/alpine:3.23\n    user: '1000:1000'\n    healthcheck: {test: ['CMD', 'true'], interval: 1s}\n    read_only: true\n    command: ['sleep', '300']\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			workload, found, err := MaterializeWorkload(repository, manifest, files)
@@ -309,5 +314,35 @@ func TestRemoteApplicationWorkloadCannotCopyUnreferencedCoreMaterial(t *testing.
 	definition := map[string]any{"volumes": []any{filepath.Join(core, "unreferenced-manager.json") + ":/manager:ro"}}
 	if projectRemoteWorkloadMounts(&projection, definition, core, filepath.Dir(core)) == nil || len(projection.Files) != 0 {
 		t.Fatal("unreferenced Core material entered workload publication")
+	}
+}
+
+func TestRemoteApplicationRunningWorkloadWithoutHealthCannotQualifyReady(t *testing.T) {
+	runtime, transport, manifest := remoteApplicationFixture(t, "docker")
+	if err := runtime.Publish(context.Background(), func(targetsession.ProjectRecord) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.ApplyApplication(context.Background(), manifest, false); err != nil {
+		t.Fatal(err)
+	}
+	transport.workloadHealthUnavailable = true
+	if runtime.VerifyApplication(context.Background(), manifest) == nil {
+		t.Fatal("running workload without positive health qualified readiness")
+	}
+}
+
+func TestRemoteApplicationResourceDefinitionsCannotBypassHostConfinement(t *testing.T) {
+	for _, definition := range []map[string]any{
+		{"driver_opts": map[string]any{"type": "none", "device": "/etc", "o": "bind"}},
+		{"driver": "macvlan"},
+		{"ipam": map[string]any{"driver": "foreign"}},
+		{"labels": map[string]any{"com.docker.compose.project": "foreign"}},
+	} {
+		if validateRemoteWorkloadResource("volumes", definition) == nil {
+			t.Fatal("foreign resource definition bypassed remote confinement", definition)
+		}
+	}
+	if err := validateRemoteWorkloadResource("volumes", map[string]any{"driver": "local"}); err != nil {
+		t.Fatal(err)
 	}
 }

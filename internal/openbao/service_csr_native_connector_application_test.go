@@ -28,7 +28,7 @@ func (f *nativeConnectorFixture) applicationProject(t *testing.T, ctx context.Co
 	if err := os.Mkdir(repository, 0700); err != nil {
 		t.Fatal(err)
 	}
-	source := "services:\n  api:\n    image: " + f.image + "\n    user: '1000:1000'\n    read_only: true\n    command: ['sleep', '300']\n"
+	source := "services:\n  api:\n    image: " + f.image + "\n    user: '1000:1000'\n    read_only: true\n    command: ['sleep', '300']\n    healthcheck:\n      test: ['CMD', 'test', '-r', '/run/baseharbor/service-bindings/postgres/uri']\n      interval: 1s\n      timeout: 1s\n      retries: 20\n"
 	if err := os.WriteFile(filepath.Join(repository, "compose.yaml"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -101,7 +101,7 @@ func waitRemoteApplication(ctx context.Context, verify func(context.Context) err
 }
 
 func (r *RemoteManagedRuntime) verifyApplicationProviders(ctx context.Context, manifest Manifest, providers []string) error {
-	if err := r.verifyServices(ctx, providers); err != nil {
+	if err := r.verifyServices(ctx, providers, false); err != nil {
 		return err
 	}
 	probe := NewRemoteBackendProbeExecutor(r, r.name)
@@ -126,10 +126,10 @@ func (r *RemoteManagedRuntime) VerifyApplication(ctx context.Context, manifest M
 	if err := r.verifyApplicationProviders(ctx, manifest, providers); err != nil {
 		return err
 	}
-	return r.verifyServices(ctx, workloads)
+	return r.verifyServices(ctx, workloads, true)
 }
 
-func (r *RemoteManagedRuntime) verifyServices(ctx context.Context, selected []string) error {
+func (r *RemoteManagedRuntime) verifyServices(ctx context.Context, selected []string, requireHealth bool) error {
 	if len(selected) == 0 {
 		return nil
 	}
@@ -146,7 +146,7 @@ func (r *RemoteManagedRuntime) verifyServices(ctx context.Context, selected []st
 	}
 	for _, name := range selected {
 		service, found := byName[name]
-		if !found || !service.Running || (service.Health != "" && !strings.EqualFold(service.Health, "healthy")) {
+		if !found || !service.Running || !strings.EqualFold(service.State, "running") || (requireHealth && service.Health == "") || (service.Health != "" && !strings.EqualFold(service.Health, "healthy")) {
 			return fmt.Errorf("remote Application service %s is not ready", name)
 		}
 	}

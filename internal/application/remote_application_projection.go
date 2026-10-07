@@ -114,13 +114,18 @@ func appendRemoteWorkload(projection *ManagedRuntimeProjection, document, servic
 		if strings.TrimSpace(image) == "" {
 			return errors.New("remote workload has no prebuilt image")
 		}
+		health, _ := definition["healthcheck"].(map[string]any)
+		checks, _ := health["test"].([]any)
+		if health["disable"] == true || len(checks) < 2 || (checks[0] != "CMD" && checks[0] != "CMD-SHELL") {
+			return errors.New("remote workload requires an explicit positive healthcheck for readiness")
+		}
 		user, _ := definition["user"].(string)
 		uid, _, _ := strings.Cut(user, ":")
 		id, err := strconv.ParseUint(uid, 10, 16)
 		if err != nil || id == 0 || id > 65000 {
 			return errors.New("remote workload requires an explicit non-root UID between 1 and 65000")
 		}
-		for _, field := range []string{"network_mode", "pid", "ipc"} {
+		for _, field := range []string{"network_mode", "pid", "ipc", "uts", "cgroup", "cgroup_parent", "devices", "device_cgroup_rules", "volumes_from", "external_links", "use_api_socket", "ports"} {
 			if definition[field] != nil {
 				return errors.New("remote workload namespace overrides are unsupported")
 			}
@@ -171,6 +176,9 @@ func appendRemoteWorkload(projection *ManagedRuntimeProjection, document, servic
 			document[section] = existing
 		}
 		for name, definition := range incoming {
+			if err := validateRemoteWorkloadResource(section, definition); err != nil {
+				return err
+			}
 			if existing[name] != nil {
 				return errors.New("remote workload resource overlaps protected provider definition")
 			}
@@ -195,6 +203,36 @@ func appendRemoteWorkload(projection *ManagedRuntimeProjection, document, servic
 				}
 			}
 			existing[name] = definition
+		}
+	}
+	return nil
+}
+
+func validateRemoteWorkloadResource(section string, definition any) error {
+	config, ok := definition.(map[string]any)
+	if !ok {
+		if definition == nil {
+			return nil
+		}
+		return errors.New("remote workload resource definition is invalid")
+	}
+	driver, _ := config["driver"].(string)
+	expected := "bridge"
+	if section == "volumes" {
+		expected = "local"
+	}
+	if (driver != "" && driver != expected) || config["driver_opts"] != nil || config["ipam"] != nil {
+		return errors.New("remote workload resource cannot map foreign host devices or network drivers")
+	}
+	if config["labels"] != nil {
+		labels, ok := config["labels"].(map[string]any)
+		if !ok {
+			return errors.New("remote workload resource labels require explicit ownership checks")
+		}
+		for label := range labels {
+			if strings.HasPrefix(label, "com.docker.compose.") || strings.HasPrefix(label, "io.podman.compose.") {
+				return errors.New("remote workload resource cannot substitute ownership labels")
+			}
 		}
 	}
 	return nil
