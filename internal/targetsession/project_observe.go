@@ -159,3 +159,33 @@ func (r *ProjectRuntime) VerifyCompletedService(ctx context.Context, project, se
 	}
 	return nil
 }
+
+// RemoveOwnedService re-resolves ownership immediately before removing one
+// exact native ID. Provider stop time fits the bounded project operation rather
+// than a short probe deadline. A lost response is never replayed.
+func (r *ProjectRuntime) RemoveOwnedService(ctx context.Context, project, service string, force bool) error {
+	if !projectName.MatchString(service) {
+		return errors.New("invalid Core cleanup service selection")
+	}
+	if err := r.requireCapability("runtime.container.remove"); err != nil {
+		return err
+	}
+	observed, err := r.ObserveProject(ctx, project)
+	if err != nil {
+		return err
+	}
+	var selected *ProjectService
+	for i := range observed {
+		if observed[i].Service != service {
+			continue
+		}
+		if selected != nil {
+			return errors.New("remote cleanup service is ambiguous")
+		}
+		selected = &observed[i]
+	}
+	if selected == nil {
+		return errors.New("remote cleanup service is absent")
+	}
+	return r.invoke(ctx, "runtime.container.remove", map[string]any{"resource_id": selected.ID, "force": force}, nil)
+}

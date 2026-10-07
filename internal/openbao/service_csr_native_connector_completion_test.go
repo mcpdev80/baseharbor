@@ -71,8 +71,7 @@ func (f *nativeConnectorFixture) completedServices(t *testing.T, ctx context.Con
 		t.Fatal("completion fixture inventory differs", err)
 	}
 	for _, service := range observed {
-		response, err := f.dispatch(ctx, pool, scope, "runtime.container.remove", map[string]any{"resource_id": service.ID, "force": true})
-		if err != nil || !response.Success {
+		if err := runtime.RemoveOwnedService(ctx, project, service.Service, true); err != nil {
 			t.Fatal("authenticated completion fixture cleanup failed", err)
 		}
 	}
