@@ -295,6 +295,10 @@ request must retain its verified tenant/identity and owned Target. It cannot
 select another Core through application preferences or bootstrap a second Core
 on the node. Live SQL/Secrets/Identity readiness of the bound installation is
 still required; a cached state does not establish readiness.
+The startup-bound API also rejects an application preference for another local
+installation before reading its Core state or attempting bootstrap. Standalone
+local CLI selection remains independent; API requests cannot replace the bound
+installation by selecting a different local Target.
 
 Protected Core deployment state can retain a versioned project receipt containing
 only the exact node Scope, immutable directory, bundle ID and source commitments.

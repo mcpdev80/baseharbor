@@ -24,6 +24,11 @@ func applicationCoreTarget(ctx context.Context) (deployment.ResolvedTarget, bool
 		return deployment.ResolvedTarget{}, false, err
 	}
 	if selected.AccessProvider == "" || selected.AccessProvider == string(targetaccess.ProviderLocal) {
+		if authority, bound := ctx.Value(coreAuthorityContextKey{}).(deployment.ResolvedTarget); bound && selected != authority {
+			return deployment.ResolvedTarget{}, false, machine.NewError(machine.ErrorPolicyDenied,
+				"Application selection differs from this Core installation's local authority.",
+				"Use this installation's local Target or an authorized enrolled execution Target.", false)
+		}
 		return selected, false, nil
 	}
 	if selected.AccessProvider != string(targetaccess.ProviderNodeConnector) {

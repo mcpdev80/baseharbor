@@ -101,3 +101,48 @@ func TestRemoteApplicationRejectsMissingForeignOrRemoteAuthority(t *testing.T) {
 		t.Fatal("local prerequisite changed", selected, err)
 	}
 }
+
+func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *testing.T) {
+	ctx, core, _ := remoteApplicationCoreFixture(t)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Targets["foreign-local"] = cfg.Targets[core.Name]
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := cfg.ResolveTarget("foreign-local", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = withCoreAuthority(withTargetOverride(ctx, foreign.Name), core)
+	previous := applicationCoreBootstrap
+	t.Cleanup(func() { applicationCoreBootstrap = previous })
+	applicationCoreBootstrap = func(context.Context, io.Reader, io.Writer, runtimeUpOptions) (coreinstallation.State, error) {
+		t.Fatal("bound Core API attempted to bootstrap another local installation")
+		return coreinstallation.State{}, nil
+	}
+	err = requireApplicationCore(withAssumeYes(ctx, true), strings.NewReader("y\n1\n"), io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorPolicyDenied {
+		t.Fatal("another local installation escaped the startup authority", err)
+	}
+	selected, err := effectiveTarget(ctx)
+	if err != nil || selected != foreign {
+		t.Fatal("denial silently changed the execution Target", selected, err)
+	}
+	for _, target := range []deployment.ResolvedTarget{core, foreign} {
+		root, err := targetRuntimeStateRoot(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("denied installation selection created Core state", err)
+		}
+	}
+	selected, remote, err := applicationCoreTarget(withTargetOverride(ctx, core.Name))
+	if err != nil || remote || selected != core {
+		t.Fatal("owning local installation was denied", selected, err)
+	}
+}
