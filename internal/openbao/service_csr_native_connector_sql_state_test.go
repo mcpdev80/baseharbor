@@ -51,7 +51,7 @@ func roundTripNativeSQLProject(t *testing.T, manifest application.Manifest, proj
 		Identity: identity,
 		Source:   deployment.DeploymentSource{Kind: "native-provider-qualification"},
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: project.Scope.Runtime, RemoteProject: &project},
-		Observed: deployment.ObservedDeployment{State: "provider_verified"},
+		Observed: deployment.ObservedDeployment{State: "provider_published"},
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal("native SQL project registry persistence failed", err)

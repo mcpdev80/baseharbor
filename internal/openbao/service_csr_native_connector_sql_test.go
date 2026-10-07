@@ -43,7 +43,11 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("fresh authenticated execution-node memory evidence failed", err)
 	}
 	t.Log("fresh execution-node memory evidence obtained over exact enrolled scope; Core-host fallback not used")
-	if err := managed.Publish(ctx); err != nil {
+	var record targetsession.ProjectRecord
+	if err := managed.Publish(ctx, func(project targetsession.ProjectRecord) error {
+		record = persistNativeSQLProject(t, f.dir, m, project)
+		return nil
+	}); err != nil {
 		t.Fatal("SQL project staging failed", err)
 	}
 	if f.engine == "podman" {
@@ -111,7 +115,6 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("generated SQL apply failed", err)
 	}
 	verify()
-	record := persistNativeSQLProject(t, f.dir, m, managed.Record())
 	managed, err = application.NewRemoteManagedRuntime(pool, scope, files, m)
 	if err != nil {
 		t.Fatal(err)

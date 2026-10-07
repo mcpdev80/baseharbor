@@ -459,7 +459,12 @@ tree; it cannot reread changed original Core paths. The temporary tree is remove
 before publication. The node receives immutable native units and their referenced
 files, with exact source commitments and modes.
 
-The same scoped adapter publishes once, restores a protected deployment receipt
+The same scoped adapter publishes once and requires Core to commit the exact
+receipt durably before permitting activation. Missing persistence is rejected
+before publication; a failed or interrupted commit leaves no executable handle
+and cannot automatically replay publication. The native provider fixture stores
+the receipt in the production protected deployment registry before first apply,
+then restores it without staging again. The adapter restores a protected deployment receipt
 without republishing, and applies, observes, probes, repairs and destroys that
 project. Restoration must match its exact project identity, node scope and source;
 a failed restoration clears its executable handle. Ordinary destroy retains

@@ -81,7 +81,7 @@ func TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublicatio
 			if err := os.WriteFile(files.Env, []byte("changed-after-preparation=forbidden\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if err := runtime.Publish(context.Background()); err != nil {
+			if err := runtime.Publish(context.Background(), func(record targetsession.ProjectRecord) error { return record.Validate() }); err != nil {
 				t.Fatal(err)
 			}
 			if strings.Contains(string(transport.calls[0].Payload), "changed-after-preparation") {
@@ -92,7 +92,7 @@ func TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublicatio
 				t.Fatal("missing protected receipt")
 			}
 			before := len(transport.calls)
-			if runtime.Publish(context.Background()) == nil || len(transport.calls) != before {
+			if runtime.Publish(context.Background(), func(record targetsession.ProjectRecord) error { return record.Validate() }) == nil || len(transport.calls) != before {
 				t.Fatal("published snapshot staged twice")
 			}
 			if err := runtime.Apply(context.Background(), false); err != nil {
@@ -150,5 +150,40 @@ func TestRemoteManagedRuntimeRejectsChangedDefinitionBeforeDispatch(t *testing.T
 	transport := &managedRuntimeTransport{t: t, scope: scope}
 	if _, err := NewRemoteManagedRuntime(transport, scope, files, manifest); err == nil || len(transport.calls) != 0 {
 		t.Fatal("modified generated provider definition reached node")
+	}
+}
+
+func TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation(t *testing.T) {
+	for _, kind := range []string{"docker", "podman"} {
+		t.Run(kind, func(t *testing.T) {
+			files, manifest := remoteRuntimeProjectionFixture(t)
+			scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "selected", NodeID: "selected-node", Runtime: kind}
+			transport := &managedRuntimeTransport{t: t, scope: scope}
+			runtime, err := NewRemoteManagedRuntime(transport, scope, files, manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if runtime.Publish(context.Background(), nil) == nil || len(transport.calls) != 0 {
+				t.Fatal("publication without persistence reached Node")
+			}
+			failedCommit := errors.New("protected registry unavailable")
+			var receipt targetsession.ProjectRecord
+			err = runtime.Publish(context.Background(), func(record targetsession.ProjectRecord) error {
+				receipt = record
+				before := len(transport.calls)
+				if record.Validate() != nil || runtime.Apply(context.Background(), false) == nil || len(transport.calls) != before {
+					t.Fatal("activation permitted before durable commit")
+				}
+				return failedCommit
+			})
+			if !errors.Is(err, failedCommit) || receipt.Validate() != nil {
+				t.Fatal("failed commit lost exact receipt or cause", err)
+			}
+			before := len(transport.calls)
+			if runtime.Apply(context.Background(), false) == nil || runtime.Destroy(context.Background()) == nil ||
+				runtime.Publish(context.Background(), func(targetsession.ProjectRecord) error { return nil }) == nil || len(transport.calls) != before {
+				t.Fatal("failed commit permitted activation, teardown or publication replay")
+			}
+		})
 	}
 }

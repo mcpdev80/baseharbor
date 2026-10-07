@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ type RemoteManagedRuntime struct {
 	units     []string
 	initUnits []string
 	project   *targetsession.StagedProject
+	published bool
 }
 
 func NewRemoteManagedRuntime(transport targetsession.ProjectTransport, scope targetenrollment.Scope, files RuntimeFiles, manifest Manifest) (*RemoteManagedRuntime, error) {
@@ -88,15 +90,20 @@ func snapshotManagedQuadlets(projection ManagedRuntimeProjection) (remoteproject
 	return remoteprojection.ProjectRemoteQuadletInitGraph(filepath.Join(root, projection.Compose), filepath.Join(root, projection.Env), projection.Project, members)
 }
 
-// Publish happens once on explicit Core request. Interrupted publication is
-// not automatically retried; reconcile the persisted receipt first.
-func (r *RemoteManagedRuntime) Publish(ctx context.Context) error {
-	if r == nil || r.runtime == nil || r.project != nil {
+// Publish happens once on explicit Core request. The Core must durably commit
+// the exact receipt before this handle permits activation. An interrupted or
+// failed commit cannot trigger automatic publication replay.
+func (r *RemoteManagedRuntime) Publish(ctx context.Context, commit func(targetsession.ProjectRecord) error) error {
+	if r == nil || r.runtime == nil || r.project != nil || r.published || commit == nil {
 		return errors.New("remote managed publication is unavailable")
 	}
+	r.published = true
 	project, err := r.runtime.Stage(ctx, r.name, r.source)
 	if err != nil {
 		return err
+	}
+	if err := commit(project.Record()); err != nil {
+		return fmt.Errorf("persist remote managed publication before activation: %w", err)
 	}
 	r.project = project
 	return nil
