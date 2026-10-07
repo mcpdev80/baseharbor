@@ -9,7 +9,7 @@ Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche m
 
 ## Neu bei BaseHarbor?
 
-[Einstieg](tutorials/getting-started.md)
+[Einstieg](tutorials/getting-started.md) · [Homelab: Core + Console + Remote Podman](tutorials/homelab.md)
 
 SQL, Secrets und Identity bilden den verpflichtenden Core; die Console ist optional.
 Die [Core-Ressourcen](explanation/core-resources.md) zeigen gemessene
