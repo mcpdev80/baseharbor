@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Application execution revalidates the selected Core installation and keeps Core-managed secret, PKI and broker operations independent of workload placement; remote bindings never fall back implicitly to local authority.
 - Remote Quadlet project realization publishes every unit before container activation, starts dependencies first and rejects cycles before mutation.
+- Core-managed init dependencies require verified successful native completion before application activation and retain completion evidence without enabling automatic node startup.
+- Remote provider publication requires durable Core receipt persistence before activation; persistence failures block execution and automatic publication replay.
+- Managed Podman network teardown removes only the exact owned network without force and preserves live consumers. Explicit owned data reset verifies volume absence and supports reconciliation after ordinary teardown.
 - Ordinary Podman destroy/reapply reuses the exact owned provider data volume. Managed unit removal rechecks native ownership and preserves resources replaced with foreign project labels.
 - Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
 - Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
