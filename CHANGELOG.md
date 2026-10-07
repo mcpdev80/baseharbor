@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Public Console and Node Connector repositories are documented as optional Core-contract consumers, with support claims bound to pinned cross-repository evidence rather than repository-local checks alone.
 - Repository-independent Core bootstrap for mandatory SQL, Secrets and Identity, using PostgreSQL, OpenBao and Keycloak with protected credentials and TLS.
 - Authoritative installation identity, observable bootstrap stages and ownership-safe retry/reconciliation through shared CLI/MCP/protected HTTP semantics.
 - First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
