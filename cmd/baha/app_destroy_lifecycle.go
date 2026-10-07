@@ -18,6 +18,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -43,6 +44,7 @@ type applicationDestroyExecution struct {
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	replacedVolumes     []bhruntime.ProjectResource
+	coreRuntime         bhruntime.RuntimeProvider
 	platformFiles       bhruntime.Files
 	destroyOpenBaoScope bool
 }
@@ -98,6 +100,19 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 }
 
 func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
+	// Reject a changed installation before any provider cleanup can begin.
+	selected := withTargetOverride(ctx, e.resolved.Target.Name)
+	if _, _, err := applicationCoreTarget(selected); err != nil {
+		return err
+	}
+	current, err := effectiveTarget(selected)
+	if err != nil {
+		return err
+	}
+	if current != e.resolved.Target {
+		return machine.NewError(machine.ErrorPolicyDenied,
+			"Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
+	}
 	m := e.manifest
 	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
@@ -144,11 +159,11 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 				var err error
-				e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+				e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 				if err != nil {
 					return err
 				}
-				state, err := openbao.Inspect(ctx, e.compose, e.platformFiles)
+				state, err := openbao.Inspect(ctx, e.coreRuntime, e.platformFiles)
 				if err != nil {
 					return err
 				}
@@ -159,7 +174,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 				if !e.destroyOpenBaoScope {
 					return nil
 				}
-				return openbao.CheckApplicationScopeOwnership(ctx, e.compose, e.platformFiles, identity)
+				return openbao.CheckApplicationScopeOwnership(ctx, e.coreRuntime, e.platformFiles, identity)
 			}},
 		)
 	}
@@ -368,7 +383,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 	}
 	if m.Services.Secrets && e.destroyOpenBaoScope {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-		if err := openbao.DestroyVerifiedApplicationScope(ctx, e.compose, e.platformFiles, identity); err != nil {
+		if err := openbao.DestroyVerifiedApplicationScope(ctx, e.coreRuntime, e.platformFiles, identity); err != nil {
 			return fmt.Errorf("destroy OpenBao application scope after runtime removal: %w", err)
 		}
 	}
@@ -434,12 +449,12 @@ func (e *applicationDestroyExecution) cleanupKeycloakIdentity(ctx context.Contex
 	if devaccess.Enabled(e.manifest.Environment) {
 		if e.platformFiles.Compose == "" {
 			var err error
-			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 			if err != nil {
 				return fmt.Errorf("load managed trust plane for identity cleanup: %w", err)
 			}
 		}
-		issuer = openbao.NewServiceIssuer(e.compose, e.platformFiles)
+		issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 	}
 	driver := identityprovider.NewKeycloakDriver(
 		e.compose, e.manifest, e.files, issuer,
@@ -457,12 +472,12 @@ func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {
 	}
 	if e.platformFiles.Compose == "" {
 		var err error
-		e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+		e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 		if err != nil {
 			return fmt.Errorf("load managed trust plane for log collector cleanup: %w", err)
 		}
 	}
-	var issuer serviceaccess.Issuer = openbao.NewServiceIssuer(e.compose, e.platformFiles)
+	var issuer serviceaccess.Issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 	if err := logsprovider.UnregisterApplicationAt(ctx, e.compose, issuer, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 		return fmt.Errorf("remove application log collector registration: %w", err)
 	}
@@ -500,12 +515,12 @@ func (e *applicationDestroyExecution) cleanupMetrics(ctx context.Context) error 
 			return fmt.Errorf("remove application metrics targets: %w", err)
 		}
 		if e.platformFiles.Compose == "" {
-			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 			if err != nil {
 				return fmt.Errorf("load managed trust plane for metrics cleanup: %w", err)
 			}
 		}
-		issuer := openbao.NewServiceIssuer(e.compose, e.platformFiles)
+		issuer := openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 		if err := metricsprovider.UnregisterSharedApplicationAt(ctx, e.compose, issuer, e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest); err != nil {
 			return fmt.Errorf("remove application metrics trust edges: %w", err)
 		}

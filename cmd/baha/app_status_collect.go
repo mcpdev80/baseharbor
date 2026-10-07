@@ -26,6 +26,7 @@ type applicationStatusCollection struct {
 	manifest       application.Manifest
 	files          application.RuntimeFiles
 	compose        bhruntime.RuntimeProvider
+	coreRuntime    bhruntime.RuntimeProvider
 	services       []string
 	result         application.StatusResult
 	workloadStatus repositoryWorkloadStatus
@@ -456,13 +457,14 @@ func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.
 		return
 	}
 
-	platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
+	core, platformFiles, platformErr := resolveApplicationCoreRuntime(ctx, c.resolved, c.compose)
+	c.coreRuntime = core
 	if platformErr != nil {
 		c.result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 	} else {
 		scopeCtx, scopeCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
 		identity := openbao.ApplicationIdentity{Name: c.manifest.Name, Environment: c.manifest.Environment}
-		err := openbao.InspectApplicationScope(scopeCtx, c.compose, platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
+		err := openbao.InspectApplicationScope(scopeCtx, c.coreRuntime, platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
 		scopeCancel()
 		if err != nil {
 			c.result.AddCheck("secrets", false, "isolated OpenBao application scope is not ready")
@@ -487,7 +489,7 @@ func (c *applicationStatusCollection) collectRequiredSecretChecks(ctx context.Co
 		return
 	}
 	secretCtx, secretCancel := context.WithTimeout(ctx, applicationRequiredSecretTimeout)
-	statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, c.compose, platformFiles, c.manifest, c.files)
+	statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, c.coreRuntime, platformFiles, c.manifest, c.files)
 	secretCancel()
 	if statusErr != nil {
 		c.result.AddCheck("required-secrets", false, "readiness inspection failed")
