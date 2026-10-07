@@ -135,6 +135,16 @@ jobs:
           python scripts/test_pre_release_integration.py
           python scripts/test_artifact_gc.py
 
+      - name: Validate private source access preflight
+        run: python scripts/test_private_evidence_access_preflight.py
+
+      - name: Check protected private source and Actions access
+        if: github.ref_name == 'runtime-validation/source-preflight/v0.4.23-private-evidence-access'
+        env:
+          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
+          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+        run: python scripts/private_evidence_access_preflight.py
+
       - name: Validate documentation
         shell: bash
         run: |
