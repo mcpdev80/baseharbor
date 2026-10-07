@@ -305,10 +305,11 @@ func (r *ProjectRuntime) ApplyQuadlet(ctx context.Context, project *StagedProjec
 		return errors.New("unstaged Quadlet unit")
 	}
 	return r.invoke(ctx, "runtime.quadlet.apply", struct {
-		Name    string `json:"name"`
-		Content string `json:"content"`
-		Enable  bool   `json:"enable"`
-	}{file, string(entry.data), true}, nil)
+		Name             string `json:"name"`
+		Content          string `json:"content"`
+		Enable           bool   `json:"enable"`
+		ProjectDirectory string `json:"project_directory"`
+	}{file, string(entry.data), true, project.directory}, nil)
 }
 
 func (r *ProjectRuntime) DestroyQuadlet(ctx context.Context, project *StagedProject, file string) error {

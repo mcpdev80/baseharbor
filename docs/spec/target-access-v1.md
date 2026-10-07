@@ -294,6 +294,21 @@ unprivileged services can read TLS material. Environments remain owner-only;
 readable bind files remain below owner-only staging/object/parent directories.
 The Node's versioned immutable publication records both digests and file modes,
 and revalidates the protected ancestors and exact modes before execution.
+Published Quadlet apply may additionally select `project_directory`, bound to
+one immutable `bundles/.object-<32 lowercase hex>` publication. The selected
+unit's content must match its committed bytes. Explicit
+`@BASEHARBOR_BUNDLE@/` references are permitted only for read-only file volumes
+and owner-only container environment files; the Node resolves them beneath its
+own bundle root. Core host paths and build instructions are not portable inputs.
+Node-native storage/registry process configuration belongs to the Node.
+
+The Core graph adapter validates all selected unit names before mutation,
+publishes network/volume definitions before starting containers and removes
+containers before resource definitions. Native resource name collisions require
+an owned realization receipt and matching project/service labels before repair;
+foreign resources are preserved. Ordinary removal keeps provider data volumes.
+These graph/provider primitives do not qualify the complete Application engine.
+
 Writable, privileged, substituted or changed modes fail closed. Protected Core
 receipts bind restoration to these same source modes. Ordinary Compose destroy
 retains data; volume removal requires an explicit Core-owned reset decision.
