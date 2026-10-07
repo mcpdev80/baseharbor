@@ -46,6 +46,26 @@ Ressourcenverbrauch erzeugen. Messwerte müssen Topologie/Placement, stabilisier
 Idle-Verbrauch, Startup-/Konvergenz-Peak und gleichzeitigen Core-Gesamtverbrauch nennen.
 Fehlende Messungen werden ausdrücklich als nicht verfügbar ausgewiesen.
 
+## Optionale Begleitimplementierungen
+
+Die öffentlichen Repositories [BaseHarbor Console](https://github.com/mcpdev80/baseharbor-console) und [BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) konsumieren vom Core kontrollierte Verträge und erzeugen keine neue Autorität.
+
+```text
+CLI / JSON / MCP / geschütztes HTTP / Console
+                         ↓
+                  BaseHarbor Core
+                         ↓
+                 Runtime-Semantik
+                         ↓
+                Target-Access-Grenze
+                         ↓
+       lokale/native API oder optionaler Connector
+```
+
+Die Console ist reine Client-/Projektionsfläche: kein Console-eigenes RBAC, keine zweite Deployment-Datenbank, kein eigener Secret Store und kein direkter Zugriff auf Runtime oder Connector. Der Node Connector ist ein optionaler, outbound-initiierter und authentifizierter Target-Access-Transport für entfernte Nicht-Kubernetes-Hosts: kein Control Plane, kein Runtime Provider und kein autonomer Agent. Kubernetes/OpenShift verwenden normalerweise ihre nativen authentifizierten APIs.
+
+Eigene Builds und Tests der Begleitrepositories sind notwendig, reichen für einen BaseHarbor-Supportstatus aber nicht aus. Dafür bleibt ein gepinnter End-to-End-Nachweis gegen die exakten Core-/Consumer-Revisionen erforderlich.
+
 ## Portable Anforderungen
 
 Die Anwendung beschreibt, was sie braucht. Sie schreibt nicht vor, welches Infrastrukturprodukt das umsetzen muss.
