@@ -32,32 +32,35 @@ def commitment(value):
     return 'sha256:' + hashlib.sha256(raw).hexdigest()
 
 
-def load_private_pins(path):
+def load_private_pins(path, public=False):
     # This file contains private source identities, never authentication tokens.
     # Reject symlinks and group/world access before opening it.
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or
-                info.st_mode & 0o077 or info.st_size > 1024 * 1024):
+                info.st_mode & (0o022 if public else 0o077) or info.st_size > 1024 * 1024):
             raise ValueError('private evidence configuration protection differs')
         with os.fdopen(fd, 'r', closefd=False) as source:
             value = json.load(source)
     finally:
         os.close(fd)
     if (not isinstance(value, dict) or
-            value.get('schema') != 'baseharbor.private-evidence-pins/v1' or
+            value.get('schema') != ('baseharbor.consumer-evidence-pins/v1' if public else 'baseharbor.private-evidence-pins/v1') or
             not isinstance(value.get('gates'), dict)):
         raise ValueError('private evidence configuration schema differs')
     return value['gates']
 
 
 def private_verifier_from_environment(read_archive):
+    public_path = os.environ.get('BASEHARBOR_PUBLIC_EVIDENCE_FILE')
     path = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_FILE')
     raw = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_JSON')
-    if path and raw:
+    if sum(bool(value) for value in [public_path, path, raw]) > 1:
         raise ValueError('private evidence configuration sources are ambiguous')
-    if path:
+    if public_path:
+        pins = load_private_pins(public_path, public=True)
+    elif path:
         pins = load_private_pins(path)
     elif raw:
         # Actions provides this reviewed source-pin configuration as a secret.
@@ -75,19 +78,32 @@ def private_verifier_from_environment(read_archive):
             raise ValueError('private evidence configuration schema differs') from None
     else:
         return None
-    return PrivateEvidenceVerifier(pins, PrivateGitHub(), read_archive)
+    return PrivateEvidenceVerifier(pins, PrivateGitHub(public=bool(public_path)), read_archive)
 
 
 class PrivateGitHub:
-    def __init__(self):
-        token = os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_TOKEN')
+    def __init__(self, public=False):
+        token = os.environ.get('GH_TOKEN') if public else os.environ.get('BASEHARBOR_PRIVATE_EVIDENCE_TOKEN')
         if not token:
             raise ValueError('authenticated private evidence access is required')
         self.environment = {**os.environ, 'GH_TOKEN': token}
+        self.public = public
+        self.public_repositories = set()
 
     def command(self, repository, path, paginate=False):
         if repository not in REPOSITORIES.values():
             raise ValueError('private evidence repository is not trusted')
+        if self.public and repository not in self.public_repositories:
+            try:
+                metadata = json.loads(subprocess.check_output(
+                    ['gh', 'api', 'repos/' + repository], env=self.environment,
+                    stderr=subprocess.DEVNULL))
+                if (metadata.get('full_name') != repository or metadata.get('private') is not False or
+                        metadata.get('visibility') != 'public'):
+                    raise ValueError()
+            except (OSError, subprocess.CalledProcessError, ValueError, TypeError, AttributeError):
+                raise ValueError('public evidence repository visibility could not be verified') from None
+            self.public_repositories.add(repository)
         args = ['gh', 'api'] + (['--paginate', '--slurp'] if paginate else [])
         args.append('repos/' + repository + '/' + path)
         try:

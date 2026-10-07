@@ -50,6 +50,9 @@ jobs:
 
   release_source_preflight:
     name: Release Source Preflight
+    permissions:
+      contents: read
+      actions: read
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/source-preflight/')
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -131,6 +134,7 @@ jobs:
         run: |
           python scripts/test_pre_release_resume.py
           python scripts/test_private_consumer_evidence.py
+          python scripts/test_public_consumer_evidence.py
           python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
           python scripts/test_artifact_gc.py
@@ -141,8 +145,8 @@ jobs:
       - name: Check protected private source and Actions access
         if: github.ref_name == 'runtime-validation/source-preflight/v0.4.23-private-evidence-access'
         env:
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
         run: python scripts/private_evidence_access_preflight.py
 
       - name: Validate documentation

@@ -115,8 +115,9 @@ class ProducerTests(unittest.TestCase):
         for job in ['source', 'evidence']:
             steps = [step for step in jobs[job]['steps'] if step.get('id') in ['resume', 'approval']]
             self.assertEqual(len(steps), 1)
-            self.assertEqual(steps[0]['env']['BASEHARBOR_PRIVATE_EVIDENCE_TOKEN'],
-                             '${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}')
+            self.assertEqual(steps[0]['env']['GH_TOKEN'], '${{ github.token }}')
+            self.assertEqual(steps[0]['env']['BASEHARBOR_PUBLIC_EVIDENCE_FILE'],
+                             'docs/releases/v0.4.23.consumer-pins.json')
 
 
 if __name__ == '__main__':

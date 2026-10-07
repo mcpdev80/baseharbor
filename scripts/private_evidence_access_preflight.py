@@ -2,6 +2,7 @@
 """Check protected private source/Actions read access without issuing approval."""
 import json
 import re
+import hashlib
 
 from private_consumer_evidence import (QUALIFICATIONS, REPOSITORIES, WORKFLOW,
                                       private_verifier_from_environment)
@@ -31,6 +32,17 @@ def check_access(pins, api):
             runs = json.loads(api.command(repository, 'actions/runs?per_page=1'))
             if not isinstance(runs.get('workflow_runs'), list):
                 raise ValueError()
+            if getattr(api, 'public', False):
+                artifacts = api.pages(repository, 'actions/artifacts?per_page=100', 'artifacts')
+                exact = [item for item in artifacts if item.get('expired') is False and
+                         item.get('workflow_run', {}).get('head_sha') == commit]
+                if not exact:
+                    raise ValueError()
+                artifact = max(exact, key=lambda item: item['id'])
+                archive = api.archive(repository, artifact)
+                if (not archive.startswith(b'PK') or
+                        artifact.get('digest') != 'sha256:' + hashlib.sha256(archive).hexdigest()):
+                    raise ValueError()
     except Exception:
         raise ValueError('private_source_or_actions_access_unavailable') from None
     return {'schema': 'baseharbor.private-access-preflight/v1',

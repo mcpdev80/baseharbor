@@ -182,6 +182,7 @@ jobs:
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
           python scripts/test_private_consumer_evidence.py
+          python scripts/test_public_consumer_evidence.py
           python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
 
@@ -272,8 +273,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
           CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
           DEMO_REF: ${{ steps.release.outputs.demo_ref }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -1250,8 +1250,8 @@ jobs:
           fetch-depth: 0
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
@@ -1283,8 +1283,8 @@ jobs:
           fetch-depth: 0
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
@@ -1316,8 +1316,8 @@ jobs:
           fetch-depth: 0
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
@@ -1361,8 +1361,7 @@ jobs:
           (needs.reference_journey.result == 'success' || (needs.reference_journey.result == 'skipped' && needs.source.outputs.journey_count == '0'))
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}

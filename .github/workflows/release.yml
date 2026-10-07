@@ -50,8 +50,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PRIVATE_EVIDENCE_JSON: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_PINS }}
-          BASEHARBOR_PRIVATE_EVIDENCE_TOKEN: ${{ secrets.BASEHARBOR_PRIVATE_EVIDENCE_TOKEN }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
           MANUAL_TAG: ${{ inputs.tag }}
           MANUAL_RUN_ID: ${{ inputs.pre_release_run_id }}
         run: |
