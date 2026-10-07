@@ -794,4 +794,3 @@ func sortedUnique(values []string) []string {
 	sort.Strings(out)
 	return out
 }
-
