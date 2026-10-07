@@ -241,6 +241,14 @@ authorization; Core supplies the runtime and ownership binding. Unbound and
 foreign Targets deny.
 
 The CA is pinned to an explicitly selected local Core Target. HTTPS enrollment
-alone does not establish an executable remote connection. Live admission,
-renewal, revocation and Docker/Podman qualification remain pending; see the
-[Target Access contract](../spec/target-access-v1.md).
+alone does not establish an executable remote connection. The optional public
+[BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector)
+implements this outbound-initiated Target Access transport for remote non-Kubernetes
+hosts. It is not a control plane or Runtime Provider and exposes no unauthenticated
+inbound management listener.
+
+Connector-local tests and CI do not establish BaseHarbor support by themselves.
+Live admission, renewal, revocation and Docker/Podman support require pinned
+Core -> Connector -> runtime evidence; see the
+[Target Access contract](../spec/target-access-v1.md) and the
+[platform support matrix](../reference/platform-support.md).
