@@ -70,7 +70,7 @@ func (f *projectTestTransport) Dispatch(_ context.Context, scope targetenrollmen
 		}
 		files := make([]map[string]string, 0, len(bundle.Files))
 		for _, file := range bundle.Files {
-			if file.Mode != 0600 {
+			if file.Mode != 0600 && file.Mode != 0644 && file.Mode != 0700 {
 				f.t.Fatal("unprotected remote artifact")
 			}
 			files = append(files, map[string]string{"path": "bundles/.object-" + strings.Repeat("a", 32) + "/" + file.Path, "sha256": file.SHA256})
@@ -113,6 +113,16 @@ func TestProjectRuntimeStagesExactConfinedBytesAndNeverReplays(t *testing.T) {
 	var payload map[string]any
 	if json.Unmarshal(transport.calls[2].Payload, &payload) != nil || payload["force_recreate"] != true {
 		t.Fatal("repair did not use explicit recreation")
+	}
+	payload = map[string]any{}
+	if json.Unmarshal(transport.calls[3].Payload, &payload) != nil || payload["volumes"] != nil {
+		t.Fatal("ordinary destroy requested persistent data removal")
+	}
+	if err := runtime.DestroyComposeOwned(context.Background(), project, []string{"compose.yaml"}, "runtime.env", true); err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(transport.calls[4].Payload, &payload) != nil || payload["volumes"] != true {
+		t.Fatal("explicit owned reset did not request volume cleanup")
 	}
 	transport.fail = true
 	before := len(transport.calls)

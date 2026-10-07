@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
 - Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
 - Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.
 - Application repair preserves the explicitly selected environment through CLI, MCP and protected HTTP.

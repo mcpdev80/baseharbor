@@ -25,6 +25,7 @@ type ProjectRecord struct {
 type ProjectFileRecord struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
+	Mode   uint32 `json:"mode,omitempty"`
 }
 
 func (p *StagedProject) Record() ProjectRecord {
@@ -34,7 +35,7 @@ func (p *StagedProject) Record() ProjectRecord {
 	record := ProjectRecord{Version: 1, Scope: p.scope, BundleID: p.bundleID, Directory: p.directory}
 	for relative, file := range p.files {
 		digest := sha256.Sum256(file.data)
-		record.Files = append(record.Files, ProjectFileRecord{Path: relative, SHA256: hex.EncodeToString(digest[:])})
+		record.Files = append(record.Files, ProjectFileRecord{Path: relative, SHA256: hex.EncodeToString(digest[:]), Mode: file.mode})
 	}
 	sort.Slice(record.Files, func(i, j int) bool { return record.Files[i].Path < record.Files[j].Path })
 	return record
@@ -52,7 +53,7 @@ func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFil
 	if err := r.requireCapability("artifact.bundle.stage"); err != nil {
 		return nil, err
 	}
-	expected := make(map[string]string, len(record.Files))
+	expected := make(map[string]ProjectFileRecord, len(record.Files))
 	for _, entry := range record.Files {
 		if entry.Path == "" || entry.Path == "." || entry.Path == ".." || entry.Path == ".manifest.json" || path.Clean(entry.Path) != entry.Path ||
 			strings.HasPrefix(entry.Path, "/") || strings.HasPrefix(entry.Path, "../") || strings.ContainsAny(entry.Path, "\\\x00\r\n") {
@@ -61,14 +62,19 @@ func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFil
 		if _, duplicate := expected[entry.Path]; duplicate {
 			return nil, errors.New("duplicate persisted project member")
 		}
-		expected[entry.Path] = entry.SHA256
+		if _, err := projectFileMode(entry.Mode); err != nil {
+			return nil, err
+		}
+		expected[entry.Path] = entry
 	}
 	staged := &StagedProject{scope: r.scope, bundleID: record.BundleID, directory: record.Directory, files: make(map[string]stagedProjectFile, len(files))}
 	total := 0
 	for _, file := range files {
 		commitment, exists := expected[file.Path]
 		digest := sha256.Sum256(file.Data)
-		if !exists || commitment != hex.EncodeToString(digest[:]) {
+		mode, err := projectFileMode(file.Mode)
+		persistedMode, _ := projectFileMode(commitment.Mode)
+		if !exists || err != nil || commitment.SHA256 != hex.EncodeToString(digest[:]) || mode != persistedMode {
 			return nil, errors.New("persisted project source differs")
 		}
 		delete(expected, file.Path)
@@ -76,7 +82,7 @@ func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFil
 		if total > 4<<20 {
 			return nil, errors.New("persisted project exceeds byte limit")
 		}
-		staged.files[file.Path] = stagedProjectFile{remotePath: path.Join(record.Directory, file.Path), data: append([]byte{}, file.Data...)}
+		staged.files[file.Path] = stagedProjectFile{remotePath: path.Join(record.Directory, file.Path), data: append([]byte{}, file.Data...), mode: mode}
 	}
 	return staged, nil
 }

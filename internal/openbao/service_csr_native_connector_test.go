@@ -163,6 +163,7 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	resourceID := fixture.inventory(t, ctx, pool, scope)
 	fixture.exec(t, ctx, pool, scope, resourceID)
 	fixture.projectLifecycle(t, ctx, pool, scope)
+	fixture.sqlProject(t, ctx, pool, scope, issuer)
 	roots := currentRoots.Load()
 	if _, err := original.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err == nil {
 		t.Fatal("old node survived root retirement")

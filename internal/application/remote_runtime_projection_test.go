@@ -33,11 +33,13 @@ func TestManagedRuntimeProjectionPreservesSQLTLSAndAuthoritativeName(t *testing.
 		t.Fatal(err)
 	}
 	seen := map[string]string{}
+	modes := map[string]uint32{}
 	for _, file := range projection.Files {
 		if filepath.IsAbs(file.Path) || strings.Contains(string(file.Data), "forbidden-manager-fixture") {
 			t.Fatal("projection copied an unrelated installation file")
 		}
 		seen[file.Path] = string(file.Data)
+		modes[file.Path] = file.Mode
 	}
 	if !strings.HasPrefix(seen["compose.yaml"], "name: "+files.Project+"\n") || !strings.Contains(seen["runtime.env"], "POSTGRES_PASSWORD=") {
 		t.Fatal("projection lost protected provider contract")
@@ -49,6 +51,9 @@ func TestManagedRuntimeProjectionPreservesSQLTLSAndAuthoritativeName(t *testing.
 	}
 	if seen["bindings/postgres/default/ca.pem"] == "" {
 		t.Fatal("projection omitted SQL client CA binding")
+	}
+	if modes["runtime.env"] != 0600 || modes["compose.yaml"] != 0600 || modes["providers/postgresql/default/runtime/server-key.pem"] != 0644 {
+		t.Fatal("protected environment or native readable TLS projection permissions changed", modes)
 	}
 	after, _ := os.ReadFile(files.Compose)
 	if string(before) != string(after) {
@@ -79,10 +84,18 @@ func TestManagedRuntimeProjectionIncludesCacheTLSGateway(t *testing.T) {
 }
 
 func TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks(t *testing.T) {
-	for _, kind := range []string{"definition", "leaf-symlink", "parent-symlink", "selection", "directory-permissions"} {
+	for _, kind := range []string{"definition", "leaf-symlink", "parent-symlink", "selection", "directory-permissions", "environment-permissions", "writable-bind"} {
 		t.Run(kind, func(t *testing.T) {
 			files, m := remoteRuntimeProjectionFixture(t)
 			switch kind {
+			case "environment-permissions":
+				if err := os.Chmod(files.Env, 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "writable-bind":
+				if err := os.Chmod(filepath.Join(files.Dir, "providers/postgresql/default/runtime/server-key.pem"), 0666); err != nil {
+					t.Fatal(err)
+				}
 			case "definition":
 				if err := os.WriteFile(files.Compose, []byte("services: {foreign: {image: alpine}}"), 0600); err != nil {
 					t.Fatal(err)

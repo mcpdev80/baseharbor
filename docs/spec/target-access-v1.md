@@ -289,6 +289,15 @@ Missing exit status, changed ownership or ambiguous replicas deny execution;
 remote diagnostics are not returned as error details. Bundle identifiers follow
 the Node's bounded immutable publication contract.
 
+Generated provider bind files retain their Core-approved permissions so native
+unprivileged services can read TLS material. Environments remain owner-only;
+readable bind files remain below owner-only staging/object/parent directories.
+The Node's versioned immutable publication records both digests and file modes,
+and revalidates the protected ancestors and exact modes before execution.
+Writable, privileged, substituted or changed modes fail closed. Protected Core
+receipts bind restoration to these same source modes. Ordinary Compose destroy
+retains data; volume removal requires an explicit Core-owned reset decision.
+
 Operator API startup binds one local installation even when Connector enrollment
 is disabled. Enrollment and outbound sessions use that same startup selection;
 per-application runtime brokers do not become installation authorities.

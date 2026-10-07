@@ -65,7 +65,7 @@ func TestNativeOpenBaoManagedCoreAndNodeCSRRotation(t *testing.T) {
 	t.Setenv("BAO_CACERT", filepath.Join(root, "ca.pem"))
 	t.Setenv("BAO_TOKEN", "")
 	t.Setenv("BAO_SKIP_VERIFY", "false")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	serverCtx, stop := context.WithCancel(ctx)
 	server := exec.CommandContext(serverCtx, "bao", "server", "-config="+configPath)

@@ -33,6 +33,7 @@ type ProjectRuntime struct {
 type ProjectFile struct {
 	Path string
 	Data []byte
+	Mode uint32
 }
 
 // StagedProject can only be constructed after validating the remote staging
@@ -47,6 +48,7 @@ type StagedProject struct {
 type stagedProjectFile struct {
 	remotePath string
 	data       []byte
+	mode       uint32
 }
 
 var projectBundleID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -155,7 +157,11 @@ func (r *ProjectRuntime) Stage(ctx context.Context, id string, files []ProjectFi
 		}
 		data := append([]byte{}, file.Data...)
 		digest := sha256.Sum256(data)
-		wire := wireFile{Path: file.Path, SHA256: hex.EncodeToString(digest[:]), Data: data, Mode: 0600}
+		mode, err := projectFileMode(file.Mode)
+		if err != nil {
+			return nil, err
+		}
+		wire := wireFile{Path: file.Path, SHA256: hex.EncodeToString(digest[:]), Data: data, Mode: mode}
 		expected[file.Path] = wire
 		payload.Files = append(payload.Files, wire)
 	}
@@ -191,7 +197,7 @@ func (r *ProjectRuntime) Stage(ctx context.Context, id string, files []ProjectFi
 				return nil, errors.New("duplicate remote project receipt file")
 			}
 			staged.directory = directory
-			staged.files[relative] = stagedProjectFile{remotePath: entry.Path, data: file.Data}
+			staged.files[relative] = stagedProjectFile{remotePath: entry.Path, data: file.Data, mode: file.Mode}
 			matched = true
 			break
 		}
@@ -200,6 +206,16 @@ func (r *ProjectRuntime) Stage(ctx context.Context, id string, files []ProjectFi
 		}
 	}
 	return staged, nil
+}
+
+func projectFileMode(mode uint32) (uint32, error) {
+	if mode == 0 {
+		mode = 0600
+	}
+	if mode != 0600 && mode != 0644 && mode != 0700 {
+		return 0, errors.New("invalid Core project file permissions")
+	}
+	return mode, nil
 }
 
 func (r *ProjectRuntime) composeSelection(project *StagedProject, files []string, envFile string) ([]string, string, error) {
@@ -252,6 +268,11 @@ func (r *ProjectRuntime) ApplyCompose(ctx context.Context, project *StagedProjec
 }
 
 func (r *ProjectRuntime) DestroyCompose(ctx context.Context, project *StagedProject, files []string, envFile string) error {
+	return r.DestroyComposeOwned(ctx, project, files, envFile, false)
+}
+
+// Persistent volumes are removed only for an explicit Core-owned reset.
+func (r *ProjectRuntime) DestroyComposeOwned(ctx context.Context, project *StagedProject, files []string, envFile string, volumes bool) error {
 	selected, env, err := r.composeSelection(project, files, envFile)
 	if err != nil {
 		return err
@@ -260,8 +281,9 @@ func (r *ProjectRuntime) DestroyCompose(ctx context.Context, project *StagedProj
 		ProjectDirectory string   `json:"project_directory"`
 		Files            []string `json:"files"`
 		EnvFile          string   `json:"env_file,omitempty"`
+		Volumes          bool     `json:"volumes,omitempty"`
 		TimeoutSeconds   int      `json:"timeout_seconds"`
-	}{project.directory, selected, env, 90}
+	}{project.directory, selected, env, volumes, 90}
 	var result struct {
 		ExitCode *int `json:"exit_code"`
 	}

@@ -17,6 +17,7 @@ import (
 type RuntimeProjectionFile struct {
 	Path string
 	Data []byte
+	Mode uint32
 }
 
 // ManagedRuntimeProjection contains only the Core-generated backend project
@@ -49,7 +50,7 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 		return ManagedRuntimeProjection{}, errors.New("protected Core runtime directory is unavailable")
 	}
 	defer root.Close()
-	compose, err := readRuntimeProjectionFile(root, "compose.yaml")
+	compose, composeMode, err := readRuntimeProjectionFile(root, "compose.yaml")
 	if err != nil {
 		return ManagedRuntimeProjection{}, err
 	}
@@ -64,7 +65,7 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 	if err != nil {
 		return ManagedRuntimeProjection{}, err
 	}
-	if !bytes.Equal(compose, []byte(expected)) {
+	if composeMode != 0600 || !bytes.Equal(compose, []byte(expected)) {
 		return ManagedRuntimeProjection{}, ErrRuntimeDefinitionChanged
 	}
 	var document struct {
@@ -100,7 +101,7 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 	// Native Compose receives the authoritative project identity in generated
 	// data. Its project name must never derive from a random staging directory.
 	compiled := append([]byte("name: "+files.Project+"\n"), compose...)
-	projection.Files = append(projection.Files, RuntimeProjectionFile{Path: "compose.yaml", Data: compiled})
+	projection.Files = append(projection.Files, RuntimeProjectionFile{Path: "compose.yaml", Data: compiled, Mode: 0600})
 	total := len(compiled)
 	names := make([]string, 0, len(references))
 	for name := range references {
@@ -108,40 +109,47 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		data, err := readRuntimeProjectionFile(root, name)
+		data, mode, err := readRuntimeProjectionFile(root, name)
 		if err != nil {
 			return ManagedRuntimeProjection{}, err
+		}
+		if name == "runtime.env" && mode != 0600 {
+			return ManagedRuntimeProjection{}, errors.New("runtime environment must remain owner-only")
 		}
 		total += len(data)
 		if total > 4<<20 {
 			return ManagedRuntimeProjection{}, errors.New("runtime projection exceeds byte limit")
 		}
-		projection.Files = append(projection.Files, RuntimeProjectionFile{Path: name, Data: data})
+		projection.Files = append(projection.Files, RuntimeProjectionFile{Path: name, Data: data, Mode: mode})
 	}
 	return projection, nil
 }
 
-func readRuntimeProjectionFile(root *os.Root, name string) ([]byte, error) {
+func readRuntimeProjectionFile(root *os.Root, name string) ([]byte, uint32, error) {
 	if name == "" || name == "." || path.Clean(name) != name || strings.HasPrefix(name, "/") ||
 		name == ".." || strings.HasPrefix(name, "../") || strings.ContainsAny(name, "\\\x00\r\n") {
-		return nil, errors.New("runtime projection requires confined relative files")
+		return nil, 0, errors.New("runtime projection requires confined relative files")
 	}
 	parts := strings.Split(name, "/")
 	for i := range parts {
 		info, err := root.Lstat(strings.Join(parts[:i+1], "/"))
 		if err != nil || info.Mode()&os.ModeSymlink != 0 || (i < len(parts)-1 && !info.IsDir()) ||
 			(i == len(parts)-1 && !info.Mode().IsRegular()) {
-			return nil, errors.New("runtime projection member is not a protected regular file")
+			return nil, 0, errors.New("runtime projection member is not a protected regular file")
 		}
 	}
 	file, err := root.Open(name)
 	if err != nil {
-		return nil, errors.New("runtime projection member is unavailable")
+		return nil, 0, errors.New("runtime projection member is unavailable")
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || (info.Mode().Perm() != 0600 && info.Mode().Perm() != 0644) || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		return nil, 0, errors.New("runtime projection file permissions are unsupported")
+	}
 	data, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
 	if err != nil || len(data) > 4<<20 {
-		return nil, errors.New("runtime projection member exceeds byte limit")
+		return nil, 0, errors.New("runtime projection member exceeds byte limit")
 	}
-	return data, nil
+	return data, uint32(info.Mode().Perm()), nil
 }
