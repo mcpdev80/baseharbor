@@ -25,7 +25,7 @@ func (f *managedRuntimeTransport) LiveCapabilities(scope targetenrollment.Scope)
 		return targetsession.Capabilities{}, errors.New("foreign scope")
 	}
 	result := targetsession.Capabilities{ContractVersion: "baseharbor.target-access/v1", ProtocolVersion: "1", Node: targetsession.Node{TenantID: scope.TenantID, NodeID: scope.NodeID, TargetID: scope.TargetID, Runtime: scope.Runtime, Identity: scope.Identity()}}
-	for _, name := range []string{"artifact.bundle.stage", "runtime.compose.apply", "runtime.compose.destroy", "runtime.quadlet.apply", "runtime.quadlet.remove", "runtime.quadlet.verify-completion", "runtime.resource.list", "runtime.resource.inspect", "runtime.exec"} {
+	for _, name := range []string{"artifact.bundle.stage", "runtime.compose.apply", "runtime.compose.destroy", "runtime.quadlet.apply", "runtime.quadlet.remove", "runtime.quadlet.verify-completion", "runtime.quadlet.reset-volume", "runtime.resource.list", "runtime.resource.inspect", "runtime.exec"} {
 		result.Capabilities = append(result.Capabilities, targetsession.Capability{Name: name, Available: true})
 	}
 	return result, nil

@@ -25,6 +25,10 @@ func TestRemoteInitProjectionRequiresCompletionAwareApplierAndNoImplicitRerun(t 
 		if len(graph.InitUnits) != 1 || graph.Files[graph.InitUnits[0]] == "" {
 			t.Fatal("init identity lost during unit compaction")
 		}
+		initSource := graph.Files[graph.InitUnits[0]]
+		if !strings.Contains(initSource, "RemainAfterExit=yes") || !strings.Contains(initSource, "Restart=no") {
+			t.Fatal("successful init evidence can disappear or restart implicitly")
+		}
 		unit := strings.TrimSuffix(graph.InitUnits[0], ".container") + ".service"
 		var ordered bool
 		for _, content := range graph.Files {

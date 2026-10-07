@@ -145,8 +145,8 @@ func (r *RemoteManagedRuntime) Destroy(ctx context.Context) error {
 	return r.DestroyOwned(ctx, false)
 }
 
-// Explicit persistent data reset is supported only by the qualified Compose
-// boundary. Podman requires its separate owned-volume reset integration.
+// Explicit persistent data reset carries the same immutable source and exact
+// node binding. Ordinary teardown never calls this reset path.
 func (r *RemoteManagedRuntime) DestroyOwned(ctx context.Context, reset bool) error {
 	if r == nil || r.project == nil {
 		return errors.New("remote managed project has no protected publication")
@@ -155,7 +155,7 @@ func (r *RemoteManagedRuntime) DestroyOwned(ctx context.Context, reset bool) err
 		return r.runtime.DestroyComposeOwned(ctx, r.project, []string{r.compose}, r.env, reset)
 	}
 	if reset {
-		return errors.New("owned Podman data reset is unavailable")
+		return r.runtime.ResetQuadletGraph(ctx, r.project, r.units)
 	}
 	return r.runtime.DestroyQuadletGraph(ctx, r.project, r.units)
 }

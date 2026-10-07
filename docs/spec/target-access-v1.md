@@ -463,6 +463,29 @@ The same scoped adapter publishes once, restores a protected deployment receipt
 without republishing, and applies, observes, probes, repairs and destroys that
 project. Restoration must match its exact project identity, node scope and source;
 a failed restoration clears its executable handle. Ordinary destroy retains
-provider data. Docker's explicit owned reset remains separate; Podman's explicit
-owned-volume reset still requires integration. This provider adapter does not
+provider data. Explicit owned data reset remains a separate decision for either runtime. This provider adapter does not
 open the remote CLI guard or qualify the full Application HTTP lifecycle.
+
+## Explicit published Podman volume reset
+
+`runtime.quadlet.reset-volume` is a mutating, durably admitted capability for
+Linux Podman with a live user systemd manager. It requires one `.volume` name,
+exact unresolved source and immutable `project_directory`. Host paths, generic
+volume selectors and force flags are excluded. The node verifies the published
+source, absent active unit, exact retained realization and current native project
+labels before removal. It never stops a consumer or forces removal of an in-use
+volume, and verifies native absence afterward. An already absent volume is accepted
+only with the same protected realization proof.
+
+Core's explicit graph reset first checks all required capabilities and validates
+the whole graph. It reconciles exact units without starting containers, tears down
+owned units, then resets only published volume members. This supports an explicit
+retry after ordinary teardown or interrupted reset while retaining foreign-resource
+checks. Ordinary graph destroy remains data-preserving. Native qualification at
+the final source pins is required before treating reset as a release gate.
+
+Generated remote init units retain `RemainAfterExit=yes` and `Restart=no`.
+Successful native exit evidence therefore remains observable without target
+activation or automatic reruns. Core still requires the completed process exit,
+current boot and exact-source activation receipt; a mere active/exited state is
+not sufficient. These service settings preserve observation, not start authority.

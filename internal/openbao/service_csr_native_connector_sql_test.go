@@ -145,6 +145,19 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		}
 	} else {
 		f.reapplyRetainedSQL(t, ctx, managed, projection.Project, retainedVolume, verify)
+		if err := managed.DestroyOwned(ctx, true); err != nil {
+			t.Fatal("explicit owned Podman SQL reset failed", err)
+		}
+		if err := managed.DestroyOwned(ctx, true); err != nil {
+			t.Fatal("explicit reset retry failed after verified absence", err)
+		}
+		for _, kind := range []string{"volume", "network"} {
+			output, err := exec.CommandContext(ctx, "podman", kind, "ls", "-q", "--filter", "label=com.docker.compose.project="+projection.Project).Output()
+			if err != nil || strings.TrimSpace(string(output)) != "" {
+				t.Fatal("owned Podman persistent resource survived reset", kind, err)
+			}
+		}
+		t.Log("actual enrolled Podman explicit owned SQL data reset removed exact provider volume, verified absence and reconciled retry without starting containers; foreign fixture preserved")
 	}
 	if f.inventory(t, ctx, pool, scope) == "" {
 		t.Fatal("SQL reset damaged the foreign fixture")

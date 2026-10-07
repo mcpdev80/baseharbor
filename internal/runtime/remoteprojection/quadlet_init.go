@@ -60,6 +60,12 @@ func prepareRemoteInitUnits(graph *podman.QuadletProject) ([]string, error) {
 			}
 			output = append(output, line)
 		}
+		if completed[strings.TrimSuffix(file, ".container")+".service"] {
+			// Without a target reference an inactive successful unit may be
+			// garbage collected before Core verifies its native exit evidence.
+			// Retain its completed state without adding an automatic start edge.
+			output = append(output, "[Service]", "RemainAfterExit=yes", "Restart=no")
+		}
 		graph.Files[file] = strings.Join(output, "\n")
 	}
 	sort.Strings(initUnits)

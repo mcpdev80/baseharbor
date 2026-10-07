@@ -115,7 +115,7 @@ func (f *nativeConnectorFixture) quadletInitGraph(t *testing.T, ctx context.Cont
 						continue
 					}
 					unit := strings.TrimSuffix(file, ".container") + ".service"
-					state, inspectErr := exec.CommandContext(diagnostics, "systemctl", "--user", "show", unit, "--property=ActiveState,SubState,Result,ExecMainStatus,Job").CombinedOutput()
+					state, inspectErr := exec.CommandContext(diagnostics, "systemctl", "--user", "show", unit, "--property=LoadState,ActiveState,SubState,Result,ExecMainStatus,ExecMainCode,ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic,Job").CombinedOutput()
 					t.Logf("native init graph %s state: %s; observation error: %v", unit, strings.TrimSpace(string(state)), inspectErr)
 				}
 				t.Fatal("generated init dependency qualification differs", err)
