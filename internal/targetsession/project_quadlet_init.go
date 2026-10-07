@@ -44,7 +44,7 @@ func (r *ProjectRuntime) ApplyQuadletInitGraph(ctx context.Context, project *Sta
 		if path.Ext(file) != ".container" {
 			continue
 		}
-		if err := r.applyQuadletFile(bounded, project, file, true); err != nil {
+		if err := r.applyQuadletFileManaged(bounded, project, file); err != nil {
 			return err
 		}
 		if init[file] {
@@ -95,4 +95,16 @@ func refuseImplicitInitActivation(project *StagedProject, files []string, init m
 		}
 	}
 	return nil
+}
+
+// Completion-dependent graphs cannot activate automatically on another boot.
+func (r *ProjectRuntime) applyQuadletFileManaged(ctx context.Context, project *StagedProject, file string) error {
+	payload := struct {
+		Name             string `json:"name"`
+		Content          string `json:"content"`
+		Enable           bool   `json:"enable"`
+		Autostart        bool   `json:"autostart"`
+		ProjectDirectory string `json:"project_directory"`
+	}{file, string(project.files[file].data), true, false, project.directory}
+	return r.invoke(ctx, "runtime.quadlet.apply", payload, nil)
 }

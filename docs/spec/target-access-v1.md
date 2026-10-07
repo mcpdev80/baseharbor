@@ -441,3 +441,13 @@ in dependency order. Each init unit must pass the source-bound observation befor
 its dependent starts. Waiting is bounded by the caller and a two-minute graph
 limit; only observations repeat. Failed or interrupted mutations are never
 replayed. These project mechanics do not establish full Application qualification.
+
+For a completion-dependent Quadlet graph, Core sends published `runtime.quadlet.apply`
+requests with `enable: true` and `autostart: false`. The node starts the exact owned
+unit explicitly but clears its automatic target activation. After a node boot,
+Core must reapply the graph and verify successful init completion on that boot
+before starting the dependent. No automatic node start substitutes for this
+verification. `autostart` is optional for ordinary apply, and requires an immutable
+`project_directory` when present. Native evidence checks target membership; it
+does not claim that a machine reboot was performed. Full Application engine
+qualification remains separate.

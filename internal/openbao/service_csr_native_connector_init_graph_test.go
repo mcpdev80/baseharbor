@@ -119,6 +119,20 @@ func (f *nativeConnectorFixture) quadletInitGraph(t *testing.T, ctx context.Cont
 			if appRunning != (scenario == "success") {
 				t.Fatal("failed init released dependent or successful init did not release it")
 			}
+			wants, wantsErr := exec.CommandContext(ctx, "systemctl", "--user", "show", "default.target", "--property=Wants", "--value").Output()
+			if wantsErr != nil {
+				t.Fatal("native automatic activation observation unavailable", wantsErr)
+			}
+			for _, file := range graph.Units {
+				if strings.HasSuffix(file, ".container") {
+					unit := strings.TrimSuffix(file, ".container") + ".service"
+					for _, wanted := range strings.Fields(string(wants)) {
+						if wanted == unit {
+							t.Fatal("init graph autoactivates without current Core verification", unit)
+						}
+					}
+				}
+			}
 			if scenario == "success" {
 				if len(transport.start) != 1 {
 					t.Fatal("dependent started without exact init observation")

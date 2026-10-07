@@ -44,13 +44,17 @@ func TestInitGraphNeverActivatesDependentBeforeCurrentSuccessfulCompletion(t *te
 					completed = scenario == "success"
 				} else {
 					var payload struct {
-						Name   string `json:"name"`
-						Enable bool   `json:"enable"`
+						Name      string `json:"name"`
+						Enable    bool   `json:"enable"`
+						Autostart *bool  `json:"autostart"`
 					}
 					if json.Unmarshal(call.Payload, &payload) != nil {
 						t.Fatal("invalid publication")
 					}
 					if payload.Enable {
+						if payload.Autostart == nil || *payload.Autostart {
+							t.Fatal("init graph permits automatic activation without Core completion")
+						}
 						if payload.Name == "a-app.container" && !completed {
 							t.Fatal("dependent activated before source-bound completion")
 						}
