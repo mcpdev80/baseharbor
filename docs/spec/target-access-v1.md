@@ -451,3 +451,18 @@ verification. `autostart` is optional for ordinary apply, and requires an immuta
 `project_directory` when present. Native evidence checks target membership; it
 does not claim that a machine reboot was performed. Full Application engine
 qualification remains separate.
+
+Core's internal managed-provider execution adapter now prepares one protected
+snapshot of its generated Compose definition, environment and referenced TLS
+files. Podman compilation consumes only that snapshot in an owner-only temporary
+tree; it cannot reread changed original Core paths. The temporary tree is removed
+before publication. The node receives immutable native units and their referenced
+files, with exact source commitments and modes.
+
+The same scoped adapter publishes once, restores a protected deployment receipt
+without republishing, and applies, observes, probes, repairs and destroys that
+project. Restoration must match its exact project identity, node scope and source;
+a failed restoration clears its executable handle. Ordinary destroy retains
+provider data. Docker's explicit owned reset remains separate; Podman's explicit
+owned-volume reset still requires integration. This provider adapter does not
+open the remote CLI guard or qualify the full Application HTTP lifecycle.

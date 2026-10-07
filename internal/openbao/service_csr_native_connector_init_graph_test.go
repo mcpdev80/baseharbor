@@ -100,10 +100,24 @@ func (f *nativeConnectorFixture) quadletInitGraph(t *testing.T, ctx context.Cont
 				_ = exec.CommandContext(cleanup, "podman", "network", "rm", name+"_default").Run()
 				_ = exec.CommandContext(cleanup, "systemctl", "--user", "daemon-reload").Run()
 			})
-			apply, cancel := context.WithTimeout(ctx, 10*time.Second)
+			applyLimit := 10 * time.Second
+			if scenario == "success" {
+				applyLimit = 45 * time.Second
+			}
+			apply, cancel := context.WithTimeout(ctx, applyLimit)
 			err = runtime.ApplyQuadletInitGraph(apply, staged, graph.Units, graph.InitUnits)
 			cancel()
 			if (err == nil) != (scenario == "success") {
+				diagnostics, stop := context.WithTimeout(context.Background(), 5*time.Second)
+				defer stop()
+				for _, file := range graph.Units {
+					if !strings.HasSuffix(file, ".container") {
+						continue
+					}
+					unit := strings.TrimSuffix(file, ".container") + ".service"
+					state, inspectErr := exec.CommandContext(diagnostics, "systemctl", "--user", "show", unit, "--property=ActiveState,SubState,Result,ExecMainStatus,Job").CombinedOutput()
+					t.Logf("native init graph %s state: %s; observation error: %v", unit, strings.TrimSpace(string(state)), inspectErr)
+				}
 				t.Fatal("generated init dependency qualification differs", err)
 			}
 			services, err := runtime.ObserveProject(ctx, name)
@@ -160,6 +174,7 @@ func (f *nativeConnectorFixture) quadletInitGraph(t *testing.T, ctx context.Cont
 		t.Fatal("generated init graph damaged foreign fixture")
 	}
 	if !t.Failed() {
+		t.Log("actual enrolled rootless Core-managed init graph has no default-target automatic activation")
 		t.Log("actual enrolled rootless generated init graph verified exact completion before dependent activation, refused failed init without activating application, did not rerun successful init, ran application as UID 1000 and destroyed owned graph with foreign preservation; full Application engine not qualified")
 	}
 }

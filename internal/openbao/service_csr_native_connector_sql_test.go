@@ -5,14 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/runtime/remoteprojection"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
@@ -31,30 +29,11 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	if err != nil {
 		t.Fatal("protected SQL projection failed", err)
 	}
-	var source []targetsession.ProjectFile
-	for _, file := range projection.Files {
-		source = append(source, targetsession.ProjectFile{Path: file.Path, Data: file.Data, Mode: file.Mode})
+	managed, err := application.NewRemoteManagedRuntime(pool, scope, files, m)
+	if err != nil {
+		t.Fatal("Core managed provider compilation failed", err)
 	}
 	var quadletUnits []string
-	if f.engine == "podman" {
-		var members []string
-		for _, file := range projection.Files {
-			members = append(members, file.Path)
-		}
-		graph, err := remoteprojection.ProjectRemoteQuadletGraph(files.Compose, files.Env, projection.Project, members)
-		if err != nil {
-			t.Fatal("Core SQL Quadlet graph projection failed", err)
-		}
-		quadletUnits = graph.Units
-		var names []string
-		for name := range graph.Files {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			source = append(source, targetsession.ProjectFile{Path: name, Data: []byte(graph.Files[name]), Mode: 0600})
-		}
-	}
 	runtime, err := targetsession.NewProjectRuntime(pool, scope)
 	if err != nil {
 		t.Fatal(err)
@@ -64,9 +43,16 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("fresh authenticated execution-node memory evidence failed", err)
 	}
 	t.Log("fresh execution-node memory evidence obtained over exact enrolled scope; Core-host fallback not used")
-	staged, err := runtime.Stage(ctx, projection.Project, source)
-	if err != nil {
+	if err := managed.Publish(ctx); err != nil {
 		t.Fatal("SQL project staging failed", err)
+	}
+	if f.engine == "podman" {
+		for _, file := range managed.Record().Files {
+			ext := filepath.Ext(file.Path)
+			if ext == ".container" || ext == ".network" || ext == ".volume" {
+				quadletUnits = append(quadletUnits, file.Path)
+			}
+		}
 	}
 	t.Cleanup(func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -104,7 +90,7 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	verify := func() {
 		t.Helper()
 		deadline := time.Now().Add(45 * time.Second)
-		probe := application.NewRemoteBackendProbeExecutor(runtime, projection.Project)
+		probe := application.NewRemoteBackendProbeExecutor(managed, projection.Project)
 		for {
 			err = application.VerifyPostgresProvider(ctx, probe, m)
 			if err == nil {
@@ -115,28 +101,22 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 			}
 			time.Sleep(250 * time.Millisecond)
 		}
-		out, err := runtime.ExecService(ctx, projection.Project, "postgres", "id", "-u")
+		out, err := managed.ExecService(ctx, projection.Project, "postgres", "id", "-u")
 		if err != nil || strings.TrimSpace(out) != "70" {
 			t.Fatal("generated SQL did not run as its unprivileged native user", err)
 		}
 	}
-	apply := func(repair bool) error {
-		if f.engine == "podman" {
-			return runtime.ApplyQuadletGraph(ctx, staged, quadletUnits)
-		}
-		return runtime.ApplyCompose(ctx, staged, []string{projection.Compose}, projection.Env, repair)
-	}
+	apply := func(repair bool) error { return managed.Apply(ctx, repair) }
 	if err := apply(false); err != nil {
 		t.Fatal("generated SQL apply failed", err)
 	}
 	verify()
-	record := persistNativeSQLProject(t, f.dir, m, staged.Record())
-	runtime, err = targetsession.NewProjectRuntime(pool, scope)
+	record := persistNativeSQLProject(t, f.dir, m, managed.Record())
+	managed, err = application.NewRemoteManagedRuntime(pool, scope, files, m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	staged, err = runtime.RestoreProject(record, source)
-	if err != nil {
+	if err := managed.Restore(record); err != nil {
 		t.Fatal("SQL protected receipt restoration failed", err)
 	}
 	if err := apply(true); err != nil {
@@ -148,15 +128,11 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	if f.engine == "podman" {
 		retainedVolume = f.sqlVolumeIdentity(t, ctx, projection.Project)
 	}
-	if f.engine == "podman" {
-		err = runtime.DestroyQuadletGraph(ctx, staged, quadletUnits)
-	} else {
-		err = runtime.DestroyComposeOwned(ctx, staged, []string{projection.Compose}, projection.Env, true)
-	}
+	err = managed.DestroyOwned(ctx, f.engine == "docker")
 	if err != nil {
 		t.Fatal("owned SQL reset failed", err)
 	}
-	services, err := runtime.ObserveProject(ctx, projection.Project)
+	services, err := managed.Observe(ctx)
 	if err != nil || len(services) != 0 {
 		t.Fatal("owned SQL containers survived destroy", err)
 	}
@@ -168,10 +144,11 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 			}
 		}
 	} else {
-		f.reapplyRetainedSQL(t, ctx, runtime, staged, quadletUnits, projection.Project, retainedVolume, verify)
+		f.reapplyRetainedSQL(t, ctx, managed, projection.Project, retainedVolume, verify)
 	}
 	if f.inventory(t, ctx, pool, scope) == "" {
 		t.Fatal("SQL reset damaged the foreign fixture")
 	}
+	t.Log("actual enrolled Core-managed provider snapshot publish-restore-apply-repair-destroy preserved immutable TLS source; full Application engine not qualified")
 	t.Log("managed generated SQL project preserved protected TLS material, native UID 70, verified TLS SELECT 1 and immutable repair; owned containers destroyed and foreign fixture preserved; Application lifecycle not qualified")
 }

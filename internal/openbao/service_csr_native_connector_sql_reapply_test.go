@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mcpdev80/baseharbor/internal/targetsession"
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func (f *nativeConnectorFixture) sqlVolumeIdentity(t *testing.T, ctx context.Context, project string) string {
@@ -24,22 +24,22 @@ func (f *nativeConnectorFixture) sqlVolumeIdentity(t *testing.T, ctx context.Con
 	return identity
 }
 
-func (f *nativeConnectorFixture) reapplyRetainedSQL(t *testing.T, ctx context.Context, runtime *targetsession.ProjectRuntime, staged *targetsession.StagedProject, units []string, project, identity string, verify func()) {
+func (f *nativeConnectorFixture) reapplyRetainedSQL(t *testing.T, ctx context.Context, managed *application.RemoteManagedRuntime, project, identity string, verify func()) {
 	t.Helper()
 	if identity == "" || f.sqlVolumeIdentity(t, ctx, project) != identity {
 		t.Fatal("ordinary SQL destroy replaced or removed provider data")
 	}
-	if err := runtime.ApplyQuadletGraph(ctx, staged, units); err != nil {
+	if err := managed.Apply(ctx, true); err != nil {
 		t.Fatal("owned SQL reapply after ordinary destroy failed", err)
 	}
 	verify()
 	if f.sqlVolumeIdentity(t, ctx, project) != identity {
 		t.Fatal("SQL reapply created a second provider volume")
 	}
-	if err := runtime.DestroyQuadletGraph(ctx, staged, units); err != nil {
+	if err := managed.Destroy(ctx); err != nil {
 		t.Fatal("reapplied owned SQL teardown failed", err)
 	}
-	services, err := runtime.ObserveProject(ctx, project)
+	services, err := managed.Observe(ctx)
 	if err != nil || len(services) != 0 || f.sqlVolumeIdentity(t, ctx, project) != identity {
 		t.Fatal("reapplied SQL teardown changed owned provider data", err)
 	}
