@@ -303,6 +303,14 @@ foreign, changed or incomplete state fails before dispatch. Restoration itself
 does not stage another bundle or replay a mutation. It is not an operator input
 and does not establish full Application reconciliation or backend readiness.
 
+The managed backend file projection checks the exact Core-generated definition
+before compiling a native project name. It copies the runtime environment and
+referenced file mounts/secret files from one protected directory; unrelated
+installation files are excluded. Modified definitions, symbolic links and
+unconfined paths fail closed. This preparation preserves SQL/cache TLS material;
+workload delivery, remote placement and the complete Application engine require
+their separate integration proof.
+
 This project adapter carries already authorized runtime decisions. It does not
 replace Core Application planning, provider placement, secret authority or
 persisted reconciliation. Complete remote Application integration and
