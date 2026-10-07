@@ -14,8 +14,8 @@ is pending its exact-candidate evidence.
 | Native macOS | Any | Unsupported release binary/runtime | Unsupported | Linux VM/remote target is a different host context |
 | Linux | Kubernetes / K3s | Architecture/adoption proof only | Unproven | Kubernetes source/adoption tests do not deliver a supported Runtime Provider |
 | Linux | OpenShift / OKD | Planned | Unproven | Later runtime implementation; no support from namespace design alone |
-| Linux remote node | Connector -> Docker / Podman | Integration pending | Unproven | Descriptor and private connector unit tests do not prove end-to-end Core lifecycle |
-| Browser | Console -> HTTPS Core | Live integration pending | Host-independent UI; live integration pending | Preview fixtures are not a live browser workflow |
+| Linux remote node | [Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) -> Docker / Podman | Integration pending | Unproven | Public package tests/CI prove Connector-local boundaries; full pinned Core -> Connector -> remote runtime lifecycle evidence is still required |
+| Browser | [Console](https://github.com/mcpdev80/baseharbor-console) -> HTTPS Core | Partial live qualification | Host-independent UI; architecture-specific browser evidence | Native evidence proves authenticated admission, runtime list/inspect/metrics, terminal and log streaming; complete application mutation/rotation/final release pinning remains pending |
 
 Linux amd64/arm64 release artifacts are configured by `.goreleaser.yaml`;
 [v0.4.22 publication](https://github.com/mcpdev80/baseharbor/actions/runs/37394723884)
@@ -23,3 +23,6 @@ proves publication. Runtime acceptance must retain its original runner/host
 identity and input references. New architectures and hosts become supported
 only after their own lifecycle, security, ownership, recovery and cleanup
 evidence passes. Browser versions require separate UI/authentication coverage.
+
+
+Companion repositories are public, but they remain optional implementations behind Core-owned contracts. The Console never talks directly to a runtime or Node Connector. The Node Connector transports bounded operations selected and authorized by Core; it does not own desired state, authorization, placement or reconciliation. Their own CI is necessary but not sufficient for BaseHarbor release support: v0.4.23 requires exact-ref cross-repository evidence through the release requirements.
