@@ -289,6 +289,13 @@ Missing exit status, changed ownership or ambiguous replicas deny execution;
 remote diagnostics are not returned as error details. Bundle identifiers follow
 the Node's bounded immutable publication contract.
 
+Remote application prerequisites select the local installation authority bound
+at protected enrollment startup, independently of the execution node. The
+request must retain its verified tenant/identity and owned Target. It cannot
+select another Core through application preferences or bootstrap a second Core
+on the node. Live SQL/Secrets/Identity readiness of the bound installation is
+still required; a cached state does not establish readiness.
+
 This project adapter carries already authorized runtime decisions. It does not
 replace Core Application planning, provider placement, secret authority or
 persisted reconciliation. Complete remote Application integration and

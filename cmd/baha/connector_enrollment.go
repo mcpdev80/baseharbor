@@ -50,6 +50,9 @@ func (e *bahaMachineExecutor) ConnectorEnrollmentHTTP(ctx context.Context, store
 	if err != nil {
 		return nil, err
 	}
+	// Pin the same installation that owns enrollment. Machine input may select
+	// an execution node, but never a different SQL/Secrets/Identity authority.
+	e.coreAuthority = &target
 	return targetenrollment.NewHTTP(authority, resolveConnectorEnrollmentScope)
 }
 

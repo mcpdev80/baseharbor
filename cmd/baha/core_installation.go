@@ -147,11 +147,11 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 }
 
 func coreRequired() error {
-	return &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "core_required", Message: "BaseHarbor needs its Core services before the first application can run.", Next: "Request the shared Core bootstrap operation explicitly, then continue the original application operation.", Retryable: true}
+	return &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "core_required", Message: "BaseHarbor needs its Core services before the first application can run.", Next: "Request the installation's Core bootstrap operation explicitly, then continue the original application operation.", Retryable: true}
 }
 
 func requireApplicationCore(ctx context.Context, in io.Reader, out io.Writer) error {
-	target, err := effectiveTarget(ctx)
+	target, remote, err := applicationCoreTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func requireApplicationCore(ctx context.Context, in io.Reader, out io.Writer) er
 		if state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 			return machine.NewError(machine.ErrorOwnershipAmbiguous, "Core belongs to a different installation selection.", "Select the owning installation.", false)
 		}
-		files, err := existingTargetRuntimeFiles(ctx)
+		files, err := bhruntime.ExistingFilesForProject(root, targetRuntimeProjectName(target))
 		if err != nil {
 			return err
 		}
@@ -180,6 +180,9 @@ func requireApplicationCore(ctx context.Context, in io.Reader, out io.Writer) er
 		}
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	if remote {
+		return coreRequired()
 	}
 	if noInput(ctx) || (!readerIsTerminal(in) && !isBufferedCoreInput(in)) {
 		if !assumeYes(ctx) {

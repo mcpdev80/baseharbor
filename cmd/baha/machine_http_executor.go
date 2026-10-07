@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
@@ -17,6 +18,7 @@ import (
 type bahaMachineExecutor struct {
 	store             application.Store
 	connectorSessions *targetsession.Pool
+	coreAuthority     *deployment.ResolvedTarget
 }
 
 // Bound once during Core startup, before accepting any machine request.
@@ -36,6 +38,9 @@ func (e *bahaMachineExecutor) Execute(
 	report machinehttp.ProgressReporter,
 ) (json.RawMessage, error) {
 	ctx = targetsession.WithPool(ctx, e.connectorSessions)
+	if e.coreAuthority != nil {
+		ctx = withCoreAuthority(ctx, *e.coreAuthority)
+	}
 	ctx = withOrganizationEnvironment(ctx, operationContext.Environment)
 	opts := cli.OutputOptionsFromContext(ctx)
 	opts.NonInteractive = true
