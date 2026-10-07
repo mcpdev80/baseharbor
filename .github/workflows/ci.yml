@@ -133,6 +133,7 @@ jobs:
       - name: Validate requirements-bound integration evidence
         run: |
           python scripts/test_pre_release_resume.py
+          python scripts/test_targeted_atomic_plan.py
           python scripts/test_private_consumer_evidence.py
           python scripts/test_public_consumer_evidence.py
           python scripts/test_private_integration_producer.py

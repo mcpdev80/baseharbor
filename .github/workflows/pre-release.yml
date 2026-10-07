@@ -181,6 +181,7 @@ jobs:
           python scripts/test_ci_assertion_summary.py
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
+          python scripts/test_targeted_atomic_plan.py
           python scripts/test_private_consumer_evidence.py
           python scripts/test_public_consumer_evidence.py
           python scripts/test_private_integration_producer.py
@@ -499,7 +500,7 @@ jobs:
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [docker]
         gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
@@ -517,7 +518,7 @@ jobs:
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [podman]
         gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
@@ -549,7 +550,7 @@ jobs:
 
   runtime_heavy_gates_docker:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates_docker]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
@@ -567,7 +568,7 @@ jobs:
 
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
@@ -603,7 +604,7 @@ jobs:
 
   v0421_ha_groups_docker:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates]
+    needs: [source, runtime_heavy_gates_docker]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
@@ -705,7 +706,7 @@ jobs:
 
   v0421_ha_groups_podman:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates]
+    needs: [source, runtime_heavy_gates_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
