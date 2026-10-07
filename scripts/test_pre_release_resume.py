@@ -88,6 +88,26 @@ class FakeAPI:
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_selection_limits_execution_without_approving_deferred_requirements(self):
+        original = {'required': ['atomic/static/mcp', 'integration/docker/remote-target'],
+                    'pending': {'atomic/static/mcp': 'missing', 'integration/docker/remote-target': 'failed'},
+                    'proofs': []}
+        before = copy.deepcopy(original)
+        selected = resume.selected_schedule(original, 'integration/docker/remote-target')
+        self.assertEqual(original, before)
+        self.assertEqual(list(selected['pending']), ['integration/docker/remote-target'])
+        self.assertEqual(selected['required'], original['required'])
+        self.assertEqual(selected['proofs'], [])
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(original, 'a' * 40, 'b' * 40, 'v0.4.23')
+
+    def test_selection_rejects_unknown_duplicate_or_inexact_ids(self):
+        coverage = {'required': ['atomic/static/mcp'], 'pending': {'atomic/static/mcp': 'missing'}}
+        for requested in ['unknown', 'atomic/static/mcp,atomic/static/mcp', ' atomic/static/mcp', 'atomic/static/mcp,']:
+            with self.subTest(requested=requested), self.assertRaises(ValueError):
+                resume.selected_schedule(coverage, requested)
+        self.assertIs(resume.selected_schedule(coverage, ''), coverage)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

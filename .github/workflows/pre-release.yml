@@ -18,6 +18,11 @@ on:
         description: Exact baseharbor-demo commit SHA to validate
         required: true
         type: string
+      only_gates:
+        description: Optional comma-separated exact gate IDs to execute; complete approval still requires all proofs
+        required: false
+        default: ''
+        type: string
   push:
     branches:
       - 'release-candidate/**'
@@ -278,12 +283,17 @@ jobs:
           CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
           DEMO_REF: ${{ steps.release.outputs.demo_ref }}
           TAG: ${{ steps.release.outputs.tag }}
+          ONLY_GATES: ${{ inputs.only_gates }}
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
+            ONLY_GATES="$(python -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
+            test -n "$ONLY_GATES"
+          fi
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/resume-demo"
           python scripts/pre-release-resume.py plan --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG" \
             --demo-repo "$RUNNER_TEMP/resume-demo" --runs "docs/releases/$TAG.evidence-runs" \
-            --output "$RUNNER_TEMP/evidence-plan" | tee -a "$GITHUB_STEP_SUMMARY"
+            --output "$RUNNER_TEMP/evidence-plan" --only-gates "$ONLY_GATES" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload authenticated evidence plan
         uses: actions/upload-artifact@v6
@@ -330,6 +340,9 @@ jobs:
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
+    if: >-
+      needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' ||
+      needs.source.outputs.heavy_docker_count != '0' || needs.source.outputs.heavy_podman_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

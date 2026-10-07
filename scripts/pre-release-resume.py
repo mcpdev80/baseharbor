@@ -348,6 +348,18 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
             'pending': {key: pending.get(key, 'no compatible completed proof') for key in missing}}
 
 
+def selected_schedule(coverage, requested):
+    """Limit execution only; never discard pending requirements or create proof."""
+    if not requested:
+        return coverage
+    gates = requested.split(',')
+    if (any(not gate or gate != gate.strip() for gate in gates) or
+            len(gates) != len(set(gates)) or not set(gates) <= set(coverage['required'])):
+        raise ValueError('selected gates must be unique exact required gate IDs')
+    return {**coverage, 'pending': {key: reason for key, reason in coverage['pending'].items()
+                                   if key in gates}}
+
+
 def matrices(coverage):
     missing = set(coverage['pending'])
     result = {'adoption': [g for g in ADOPTION if f'adoption/{g}' in missing],
@@ -385,8 +397,11 @@ def main():
     parser.add_argument('--demo-repo', required=True, type=pathlib.Path)
     parser.add_argument('--output', required=True, type=pathlib.Path)
     parser.add_argument('--runs')
+    parser.add_argument('--only-gates', default='', help='Comma-separated execution selection; approval still requires every gate')
     parser.add_argument('--repository', default=os.getenv('GITHUB_REPOSITORY', 'mcpdev80/baseharbor'))
     args = parser.parse_args()
+    if args.only_gates and args.mode != 'plan':
+        raise ValueError('gate selection is permitted only when planning execution')
     api = GitHub(args.repository)
     inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo)
     requirements = inputs.requirements(args.candidate, args.tag)
@@ -432,7 +447,13 @@ def main():
         if unscheduled:
             raise ValueError('required integration gates are not wired for scheduling: ' + ', '.join(unscheduled))
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            for name, gates in matrices(coverage).items():
+            scheduled = selected_schedule(coverage, args.only_gates)
+            (args.output / 'scheduling-selection.json').write_text(json.dumps({
+                'requested': args.only_gates.split(',') if args.only_gates else [],
+                'scheduled': list(scheduled['pending']),
+                'deferred': [key for key in coverage['pending'] if key not in scheduled['pending']],
+                'release_approved': False}, indent=2) + '\n')
+            for name, gates in matrices(scheduled).items():
                 stream.write(f'{name}={json.dumps(gates, separators=(",", ":"))}\n{name}_count={len(gates)}\n')
     print(f'{len(coverage["proofs"])} authenticated proofs; {len(coverage["pending"])} gates pending.')
 
