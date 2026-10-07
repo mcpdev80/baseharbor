@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Loki HA rotates storage credentials one ready member at a time with stable ring identities. Access PKI reconciliation restarts only the gateway and collector, preserving healthy Loki capacity.
+
 - Core realm reconciliation reads back state and rechecks ownership before resuming after transient server failures.
 
 - OIDC discovery retries transient server failures within a bounded identity convergence window; access denials remain blocking.
