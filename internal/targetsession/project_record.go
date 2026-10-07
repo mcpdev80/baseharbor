@@ -46,8 +46,7 @@ func (p *StagedProject) Record() ProjectRecord {
 // retries a mutation. Compose revalidates the immutable Node manifest before
 // execution; Quadlet realization uses these exact revalidated source bytes.
 func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFile) (*StagedProject, error) {
-	if r == nil || record.Version != 1 || record.Scope != r.scope || !projectBundleID.MatchString(record.BundleID) ||
-		!projectObjectDirectory.MatchString(record.Directory) || len(record.Files) == 0 || len(record.Files) > 128 || len(files) != len(record.Files) {
+	if r == nil || record.Validate() != nil || record.Scope != r.scope || len(files) != len(record.Files) {
 		return nil, errors.New("invalid persisted Core project binding")
 	}
 	if err := r.requireCapability("artifact.bundle.stage"); err != nil {
@@ -55,16 +54,6 @@ func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFil
 	}
 	expected := make(map[string]ProjectFileRecord, len(record.Files))
 	for _, entry := range record.Files {
-		if entry.Path == "" || entry.Path == "." || entry.Path == ".." || entry.Path == ".manifest.json" || path.Clean(entry.Path) != entry.Path ||
-			strings.HasPrefix(entry.Path, "/") || strings.HasPrefix(entry.Path, "../") || strings.ContainsAny(entry.Path, "\\\x00\r\n") {
-			return nil, errors.New("invalid persisted project member")
-		}
-		if _, duplicate := expected[entry.Path]; duplicate {
-			return nil, errors.New("duplicate persisted project member")
-		}
-		if _, err := projectFileMode(entry.Mode); err != nil {
-			return nil, err
-		}
 		expected[entry.Path] = entry
 	}
 	staged := &StagedProject{scope: r.scope, bundleID: record.BundleID, directory: record.Directory, files: make(map[string]stagedProjectFile, len(files))}
@@ -85,4 +74,29 @@ func (r *ProjectRuntime) RestoreProject(record ProjectRecord, files []ProjectFil
 		staged.files[file.Path] = stagedProjectFile{remotePath: path.Join(record.Directory, file.Path), data: append([]byte{}, file.Data...), mode: mode}
 	}
 	return staged, nil
+}
+
+// Validate checks a durable commitment without granting execution authority.
+// Execution still requires the current authorized Scope and exact source bytes.
+func (record ProjectRecord) Validate() error {
+	if record.Version != 1 || record.Scope.Validate() != nil || !projectBundleID.MatchString(record.BundleID) ||
+		!projectObjectDirectory.MatchString(record.Directory) || len(record.Files) == 0 || len(record.Files) > 128 {
+		return errors.New("invalid persisted Core project binding")
+	}
+	seen := make(map[string]bool, len(record.Files))
+	for _, entry := range record.Files {
+		if entry.Path == "" || entry.Path == "." || entry.Path == ".." || entry.Path == ".manifest.json" || path.Clean(entry.Path) != entry.Path ||
+			strings.HasPrefix(entry.Path, "/") || strings.HasPrefix(entry.Path, "../") || strings.ContainsAny(entry.Path, "\\\x00\r\n") || seen[entry.Path] {
+			return errors.New("invalid persisted project member")
+		}
+		digest, err := hex.DecodeString(entry.SHA256)
+		if err != nil || len(digest) != sha256.Size || hex.EncodeToString(digest) != entry.SHA256 {
+			return errors.New("invalid persisted project digest")
+		}
+		if _, err := projectFileMode(entry.Mode); err != nil {
+			return err
+		}
+		seen[entry.Path] = true
+	}
+	return nil
 }
