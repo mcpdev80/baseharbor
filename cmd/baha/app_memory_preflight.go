@@ -95,6 +95,10 @@ func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, pr
 			Cause:       err,
 		}
 	}
+	return runMemoryEvidencePreflight(ctx, in, out, evidence, estimate, mutating)
+}
+
+func runMemoryEvidencePreflight(ctx context.Context, in io.Reader, out io.Writer, evidence hostresource.MemoryEvidence, estimate hostresource.MemoryEstimate, mutating bool) error {
 	result := hostresource.Evaluate(evidence, estimate, hostresource.DefaultPolicy())
 	renderHostMemoryPreflight(out, result)
 

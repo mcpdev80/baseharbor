@@ -59,6 +59,11 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	if err != nil {
 		t.Fatal(err)
 	}
+	capacity, err := runtime.NodeMemory(ctx)
+	if err != nil || capacity.TotalBytes == 0 || capacity.AvailableBytes > capacity.TotalBytes {
+		t.Fatal("fresh authenticated execution-node memory evidence failed", err)
+	}
+	t.Log("fresh execution-node memory evidence obtained over exact enrolled scope; Core-host fallback not used")
 	staged, err := runtime.Stage(ctx, projection.Project, source)
 	if err != nil {
 		t.Fatal("SQL project staging failed", err)

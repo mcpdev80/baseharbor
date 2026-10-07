@@ -140,7 +140,7 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 	return []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "host memory", Run: func(ctx context.Context) error {
-			return runHostMemoryPreflight(ctx, appApplySecretInput, e.out, bhruntime.ProviderKind(e.resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), true)
+			return runApplicationMemoryPreflight(ctx, appApplySecretInput, e.out, e.resolved, hostresource.EstimateApplication(m), true)
 		}},
 		{Name: "supported services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {

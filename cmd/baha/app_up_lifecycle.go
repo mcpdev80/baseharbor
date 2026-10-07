@@ -141,7 +141,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 	return []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "host memory", Run: func(ctx context.Context) error {
-			return runHostMemoryPreflight(ctx, runtimeInput, e.out, bhruntime.ProviderKind(e.resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), true)
+			return runApplicationMemoryPreflight(ctx, runtimeInput, e.out, e.resolved, hostresource.EstimateApplication(m), true)
 		}},
 		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
