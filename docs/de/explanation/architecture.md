@@ -31,6 +31,14 @@ Zustände werden weder übernommen noch ersetzt.
 Der erste Application-Flow bietet die Einrichtung bei Bedarf an und läuft danach
 weiter. Die Maschinenrolle Development/Deployment steuert Workspace-/Source-Defaults;
 TLS und geschützte Zugangsdaten gelten in beiden Fällen.
+Gewöhnliche lokale Entwicklungsarbeit erfordert keinen interaktiven Login.
+
+Die ausgewählte Installation bleibt für Core-verwaltete Zugangsdaten, Service-PKI
+und Runtime-Berechtigungsbroker zuständig. Application-Workloads haben eine eigene
+Runtime-Grenze. Vor der Ausführung wird die ausgewählte Core-Konfiguration erneut
+geprüft. Veränderte oder nicht verfügbare Bindungen blockieren bereits vor nativer
+Workload-Inspektion oder Mutation. Ein ausgewählter Remote-Core wird niemals
+implizit durch einen lokalen Core ersetzt.
 
 Die Core-Capabilities sind verpflichtend; Provider können shared oder pro Application
 isoliert platziert sein. Zusätzliche Isolation kann zusätzliche Instanzen und
@@ -42,9 +50,21 @@ Fehlende Messungen werden ausdrücklich als nicht verfügbar ausgewiesen.
 
 Die Anwendung beschreibt, was sie braucht. Sie schreibt nicht vor, welches Infrastrukturprodukt das umsetzen muss.
 
-## Drei Provider-Achsen
+Beispiele sind SQL, Cache, Object Storage, Secrets, Identity, HTTP-Exposition und
+Telemetrie.
 
-Repository-Syntax wird vor Application Intent über einen Workload Source Adapter interpretiert. Compose, Repository-Quadlet und Raw Kubernetes YAML liefern normalisierte Evidenz; ihre Source-Identität bleibt Herkunft, logische Workload-Komponenten bilden den portablen Vertrag. Helm und Kustomize folgen später. Siehe [Workload-Quellen](workload-sources.md).
+## Repository-Workload-Quellen
+
+Repository-Syntax wird vor Application Intent über einen Workload Source Adapter
+interpretiert und ist keine eigene Provider-Achse. Compose, Repository-Quadlet und
+Raw Kubernetes YAML liefern normalisierte Evidenz für Inspektion und Adoption.
+Ihre Source-Identität bleibt Herkunft; logische Workload-Komponenten bilden den
+portablen Vertrag. Diese Grenze wurde in v0.4.20 nachgewiesen.
+
+Helm und Kustomize folgen als spätere Source Adapter. Kubernetes und OpenShift
+bleiben spätere Runtime Provider. Siehe [Workload-Quellen](workload-sources.md).
+
+## Drei Provider-Achsen
 
 ```text
 runtime != capability != delivery

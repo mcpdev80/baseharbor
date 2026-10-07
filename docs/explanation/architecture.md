@@ -33,6 +33,12 @@ readiness. Development/deployment machine selection changes workspace/source def
 not capabilities or transport security. Local development keeps required TLS and
 protected credentials without requiring an interactive login for ordinary local work.
 
+The selected installation remains the authority for Core-managed credentials,
+service PKI and runtime-permission brokers. Application workload placement has its
+own runtime boundary. Execution revalidates the selected Core configuration;
+changed or unavailable bindings fail closed before native workload inspection or
+mutation. A selected remote Core is never replaced implicitly with a local one.
+
 Core capabilities are mandatory; provider placement may be shared or application-isolated.
 Additional isolation can require extra provider instances. Resource evidence must
 identify topology/placement, stabilized idle memory, startup/convergence peak and
