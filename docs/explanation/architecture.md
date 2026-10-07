@@ -44,6 +44,26 @@ Additional isolation can require extra provider instances. Resource evidence mus
 identify topology/placement, stabilized idle memory, startup/convergence peak and
 simultaneous Core total. Unavailable measurements are not presented as measured values.
 
+## Optional companion implementations
+
+The public [BaseHarbor Console](https://github.com/mcpdev80/baseharbor-console) and [BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) consume Core-owned contracts; they do not introduce new authority.
+
+```text
+CLI / JSON / MCP / protected HTTP / Console
+                    ↓
+             BaseHarbor Core
+                    ↓
+           runtime semantics
+                    ↓
+          Target Access boundary
+                    ↓
+   local/native API or optional Connector
+```
+
+The Console is a projection/client surface: no Console-local RBAC, deployment database, secret store or direct runtime/Connector path. The Node Connector is an optional outbound-initiated authenticated Target Access transport for remote non-Kubernetes hosts: not a control plane, not a Runtime Provider and not an autonomous agent. Kubernetes/OpenShift normally use native authenticated APIs.
+
+A companion repository may prove its own build/tests independently. BaseHarbor support still requires pinned end-to-end evidence against the exact Core/consumer revisions.
+
 ## Portable intent
 
 The application describes what it needs, not which infrastructure product must provide it.
