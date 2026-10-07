@@ -499,7 +499,7 @@ jobs:
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         runtime: [docker]
         gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
@@ -517,7 +517,7 @@ jobs:
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         runtime: [podman]
         gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
@@ -549,7 +549,7 @@ jobs:
 
   runtime_heavy_gates_docker:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
@@ -567,7 +567,7 @@ jobs:
 
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false

@@ -118,7 +118,7 @@ Pre-release must pin and record both:
 - the exact BaseHarbor candidate SHA;
 - the exact `baseharbor-demo` SHA used as the external consumer contract.
 
-Both complete journeys start immediately after source validation and candidate construction, alongside one light-gate lane per runtime. Heavy gates and HA groups subsequently use two lanes per runtime. The workflow stays within two Docker and two Podman runtime jobs; static/adoption checks do not consume provider lanes. A failed earlier phase does not suppress later independent gates.
+Both complete journeys start immediately after source validation and candidate construction, alongside two light-gate lanes per runtime. Heavy gates start after the light matrices complete, without waiting for the independent reference journeys. Heavy gates and subsequent HA groups each use two lanes per runtime. A reference journey can overlap those lanes, so these runtime matrices and journeys can use up to three Docker and three Podman jobs concurrently. Each job uses an isolated GitHub-hosted runner; the integration, static and adoption jobs have separate scheduling. A failed earlier phase does not suppress later independent gates.
 
 Static contract/DX gates run without provider containers. Docker and Podman gates run independently with the smallest declared resource profile for the behavior under test, including dedicated provider-semantic gates for durable key-value, MongoDB document storage and RabbitMQ queue/pubsub/stream semantics. A failed gate is debugged and repeated independently; successful unrelated gates are not rerun during diagnosis.
 
