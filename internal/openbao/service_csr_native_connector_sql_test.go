@@ -44,7 +44,14 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	}
 	t.Log("fresh execution-node memory evidence obtained over exact enrolled scope; Core-host fallback not used")
 	var record targetsession.ProjectRecord
+	snapshotState := filepath.Join(f.dir, "sql-publication-state")
+	if err := os.Mkdir(snapshotState, 0700); err != nil {
+		t.Fatal("protected SQL publication state creation failed", err)
+	}
 	if err := managed.Publish(ctx, func(project targetsession.ProjectRecord) error {
+		if err := managed.SaveSnapshot(snapshotState, project); err != nil {
+			return err
+		}
 		record = persistNativeSQLProject(t, f.dir, m, project)
 		return nil
 	}); err != nil {
@@ -115,18 +122,27 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("generated SQL apply failed", err)
 	}
 	verify()
-	managed, err = application.NewRemoteManagedRuntime(pool, scope, files, m)
-	if err != nil {
-		t.Fatal(err)
+	// Change the original Core files to prove that repair restores private
+	// publication bytes, rather than regenerating from today's mutable source.
+	for _, file := range []string{files.Compose, files.Env} {
+		original, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, append(original, []byte("\n# changed-after-publication\n")...), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := managed.Restore(record); err != nil {
-		t.Fatal("SQL protected receipt restoration failed", err)
+	managed, err = application.RestoreRemoteManagedSnapshot(pool, scope, snapshotState, record)
+	if err != nil {
+		t.Fatal("SQL protected publication snapshot restoration failed", err)
 	}
 	if err := apply(true); err != nil {
 		t.Fatal("generated SQL repair failed", err)
 	}
 	verify()
 	t.Log("protected deployment registry round-trip restored the same immutable SQL project without restaging; Application lifecycle not qualified")
+	t.Log("private Core publication snapshot restored SQL repair and owned teardown after original Core source changed; exact registry receipt retained; full Application engine not qualified")
 	retainedVolume := ""
 	if f.engine == "podman" {
 		retainedVolume = f.sqlVolumeIdentity(t, ctx, projection.Project)

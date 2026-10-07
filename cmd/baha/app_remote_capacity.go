@@ -7,27 +7,15 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 func remoteApplicationProjectRuntime(ctx context.Context, resolved resolvedApplication) (*targetsession.ProjectRuntime, error) {
-	selected := withTargetOverride(ctx, resolved.Target.Name)
-	if _, remote, err := applicationCoreTarget(selected); err != nil {
-		return nil, err
-	} else if !remote {
-		return nil, targetsession.ErrUnavailable
-	}
-	current, err := effectiveTarget(selected)
+	transport, scope, err := remoteApplicationTransport(ctx, resolved, targetsession.PoolFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	if current != resolved.Target {
-		return nil, machine.NewError(machine.ErrorPolicyDenied, "Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
-	}
-	target := resolved.Target
-	scope := targetenrollment.Scope{TenantID: target.TenantID, TargetID: target.Name, NodeID: target.AccessReference, Runtime: target.RuntimeProvider}
-	return targetsession.NewProjectRuntime(targetsession.PoolFromContext(ctx), scope)
+	return targetsession.NewProjectRuntime(transport, scope)
 }
 
 func runApplicationMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, resolved resolvedApplication, estimate hostresource.MemoryEstimate, mutating bool) error {
