@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
@@ -210,5 +211,87 @@ func TestInstallationExecutorPinsStartupWithoutConnectorEnrollment(t *testing.T)
 	}
 	if *actual.coreAuthority != core {
 		t.Fatal("changed request preferences replaced the startup snapshot")
+	}
+}
+
+func TestRemoteApplicationRejectsChangedCoreConfiguration(t *testing.T) {
+	for _, change := range []string{"runtime", "access", "deleted"} {
+		t.Run(change, func(t *testing.T) {
+			ctx, core, node := remoteApplicationCoreFixture(t)
+			ctx = withCoreAuthority(ctx, core)
+			cfg, err := deployment.LoadConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			definition := cfg.Targets[core.Name]
+			switch change {
+			case "runtime":
+				definition.Runtime.Provider = "podman"
+				cfg.Targets[core.Name] = definition
+			case "access":
+				definition.Access.Reference = "connector"
+				cfg.Targets[core.Name] = definition
+			case "deleted":
+				delete(cfg.Targets, core.Name)
+				cfg.DefaultTarget = node.Name
+			}
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := applicationCoreTarget(ctx); err == nil {
+				t.Fatal("changed startup-bound Core was accepted")
+			}
+			provider, files, err := resolveApplicationCoreRuntime(ctx, resolvedApplication{Target: node}, nil)
+			if err == nil || provider != nil || files != (bhruntime.Files{}) {
+				t.Fatal("changed Core yielded an execution binding", err)
+			}
+			selected, err := effectiveTarget(ctx)
+			if err != nil || selected != node {
+				t.Fatal("Core rejection changed execution node", err)
+			}
+		})
+	}
+}
+
+func TestApplicationCoreRuntimeKeepsLocalProviderAndCoreFiles(t *testing.T) {
+	core := configureTestTarget(t)
+	ctx := withCoreAuthority(withTargetOverride(context.Background(), core.Name), core)
+	root, err := targetRuntimeStateRoot(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := bhruntime.EnsureFilesForProject(root, targetRuntimeProjectName(core), bhruntime.Ports{Postgres: 15432, OpenBao: 18200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Existing source fixture only identifies the selected provider. This does
+	// not claim native Core readiness or execute any provider method.
+	workload := &credentialProfileRuntime{}
+	provider, got, err := resolveApplicationCoreRuntime(ctx, resolvedApplication{Target: core}, workload)
+	if err != nil || provider != workload || got.Project != files.Project || got.Compose != files.Compose || got.Env != files.Env {
+		t.Fatal("local Core binding changed its provider or files", err)
+	}
+	if provider, _, err := resolveApplicationCoreRuntime(ctx, resolvedApplication{Target: core}, nil); err == nil || provider != nil {
+		t.Fatal("missing runtime silently selected a fallback")
+	}
+}
+
+func TestApplicationCoreRuntimeRejectsChangedExecutionTarget(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixture(t)
+	ctx = withCoreAuthority(ctx, core)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := cfg.Targets[node.Name]
+	definition.Runtime.Provider = "docker"
+	cfg.Targets[node.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	provider, _, err := resolveApplicationCoreRuntime(ctx, resolvedApplication{Target: node}, nil)
+	var failure *machine.Error
+	if provider != nil || !errors.As(err, &failure) || failure.Code != machine.ErrorPolicyDenied {
+		t.Fatal("changed execution Target acquired Core credentials", err)
 	}
 }

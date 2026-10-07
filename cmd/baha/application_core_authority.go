@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
@@ -69,5 +70,50 @@ func applicationCoreTarget(ctx context.Context) (deployment.ResolvedTarget, bool
 		return deployment.ResolvedTarget{}, true, machine.NewError(machine.ErrorCapabilityMissing,
 			"Remote application requires the startup-bound Core installation.", "Connect through the selected installation's protected Core API.", true)
 	}
+	current, err := effectiveTarget(withTargetOverride(ctx, authority.Name))
+	if err != nil {
+		return deployment.ResolvedTarget{}, true, err
+	}
+	if err := checkBoundCoreTarget(ctx, current); err != nil {
+		return deployment.ResolvedTarget{}, true, err
+	}
 	return authority, true, nil
+}
+
+// Core management and Application workload execution are independent bindings.
+// A remote workload never turns its Connector into an installation authority.
+func resolveApplicationCoreRuntime(ctx context.Context, resolved resolvedApplication, workload bhruntime.RuntimeProvider) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+	selected := withTargetOverride(ctx, resolved.Target.Name)
+	core, remote, err := applicationCoreTarget(selected)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	current, err := effectiveTarget(selected)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	if current != resolved.Target {
+		return nil, bhruntime.Files{}, machine.NewError(machine.ErrorPolicyDenied,
+			"Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
+	}
+	files, err := existingTargetRuntimeFiles(withTargetOverride(ctx, core.Name))
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	if remote {
+		provider, err := detectRuntimeForTarget(withTargetOverride(ctx, core.Name), core)
+		if err != nil {
+			return nil, bhruntime.Files{}, err
+		}
+		return provider, files, nil
+	}
+	if workload == nil {
+		return nil, bhruntime.Files{}, unavailableApplicationCoreRuntime()
+	}
+	return workload, files, nil
+}
+
+func unavailableApplicationCoreRuntime() error {
+	return machine.NewError(machine.ErrorRuntimeUnavailable,
+		"Bound Core runtime is unavailable.", "Verify this installation's Core runtime before retrying.", true)
 }

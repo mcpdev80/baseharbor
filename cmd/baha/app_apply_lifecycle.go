@@ -27,6 +27,7 @@ type applicationApplyExecution struct {
 	errOut           io.Writer
 	secretService    *applicationsecret.Service
 	compose          bhruntime.RuntimeProvider
+	coreRuntime      bhruntime.RuntimeProvider
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
 	providers        *managedProviderPreflightState
@@ -80,16 +81,19 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 	if needsServiceIssuer || application.RequiresRuntimeBroker(e.manifest) {
 		checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 			var err error
-			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 			if err != nil {
-				return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+				return fmt.Errorf("BaseHarbor control-plane runtime is unavailable: %w", err)
 			}
 			return nil
 		}})
 	}
 	if needsServiceIssuer {
 		checks = append(checks, preflight.Check{Name: "managed service PKI", Run: func(ctx context.Context) error {
-			e.issuer = openbao.NewServiceIssuer(e.compose, e.platformFiles)
+			if e.coreRuntime == nil {
+				return unavailableApplicationCoreRuntime()
+			}
+			e.issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 			status, err := e.issuer.Status(ctx)
 			if err != nil {
 				return fmt.Errorf("managed service PKI is not ready: %w", err)
@@ -103,7 +107,10 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 	if application.RequiresRuntimeBroker(e.manifest) {
 		identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
 		checks = append(checks, preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
-			return openbao.CheckApplicationProvisioning(ctx, e.compose, e.platformFiles, identity)
+			if e.coreRuntime == nil {
+				return unavailableApplicationCoreRuntime()
+			}
+			return openbao.CheckApplicationProvisioning(ctx, e.coreRuntime, e.platformFiles, identity)
 		}})
 	}
 
@@ -274,22 +281,22 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 	identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
 	credentialsPath := openbao.ApplicationCredentialsPath(e.files.Dir)
 	if err := activity(ctx, e.term, "Preparing application secret scope", func(io.Writer) error {
-		return openbao.EnsureApplicationScope(ctx, e.compose, e.platformFiles, identity, credentialsPath)
+		return openbao.EnsureApplicationScope(ctx, e.coreRuntime, e.platformFiles, identity, credentialsPath)
 	}); err != nil {
 		return err
 	}
-	generated, err := reconcileGeneratedApplicationSecrets(ctx, e.compose, e.platformFiles, e.manifest, e.files)
+	generated, err := reconcileGeneratedApplicationSecrets(ctx, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 	if err != nil {
 		return fmt.Errorf("generated secrets reconciliation failed: %w", err)
 	}
 	for _, name := range generated {
 		fmt.Fprintf(e.out, "[OK] generated-secret  %s materialized in managed secret storage\n", name)
 	}
-	e.secretService = applicationsecret.NewForApplicationRuntime(e.resolved.Store, e.compose, e.platformFiles, e.manifest, e.files)
-	if err := resolveMissingRequiredSecretsInteractive(ctx, e.secretService, e.compose, e.platformFiles, e.manifest, e.files, e.out); err != nil {
+	e.secretService = applicationsecret.NewForApplicationRuntime(e.resolved.Store, e.coreRuntime, e.platformFiles, e.manifest, e.files)
+	if err := resolveMissingRequiredSecretsInteractive(ctx, e.secretService, e.coreRuntime, e.platformFiles, e.manifest, e.files, e.out); err != nil {
 		return err
 	}
-	if err := checkRequiredApplicationSecrets(ctx, e.compose, e.platformFiles, e.manifest, e.files); err != nil {
+	if err := checkRequiredApplicationSecrets(ctx, e.coreRuntime, e.platformFiles, e.manifest, e.files); err != nil {
 		return fmt.Errorf("required secrets check failed: %w", err)
 	}
 	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.SecretsManagementUI {
@@ -297,7 +304,7 @@ func (e *applicationApplyExecution) prepareApplicationSecrets(ctx context.Contex
 		if err != nil {
 			return fmt.Errorf("load developer access for OpenBao: %w", err)
 		}
-		if err := openbao.EnsureDevelopmentUserpass(ctx, e.compose, e.platformFiles, credentials.Username, credentials.Password); err != nil {
+		if err := openbao.EnsureDevelopmentUserpass(ctx, e.coreRuntime, e.platformFiles, credentials.Username, credentials.Password); err != nil {
 			return fmt.Errorf("reconcile OpenBao developer access: %w", err)
 		}
 	}
@@ -324,9 +331,9 @@ func (e *applicationApplyExecution) verifyManagedRuntime(ctx context.Context) er
 			}
 			if verifyErr == nil && e.manifest.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
-				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.compose, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
+				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.coreRuntime, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
 				if verifyErr == nil {
-					verifyErr = checkRequiredApplicationSecrets(verifyCtx, e.compose, e.platformFiles, e.manifest, e.files)
+					verifyErr = checkRequiredApplicationSecrets(verifyCtx, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 				}
 			}
 			if verifyErr == nil {
@@ -363,7 +370,7 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}
 	if application.RequiresRuntimeBroker(e.manifest) {
 		if err := activity(ctx, e.term, "Starting secure runtime broker", func(progress io.Writer) error {
-			return ensureAndStartRuntimeBroker(ctx, progress, e.compose, e.platformFiles, e.manifest, e.files)
+			return ensureAndStartRuntimeBrokerWithCore(ctx, progress, e.compose, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 		}); err != nil {
 			return err
 		}
