@@ -39,6 +39,7 @@ type ProjectFile struct {
 // receipt. Its scope, paths and bytes cannot be substituted by a caller.
 type StagedProject struct {
 	scope     targetenrollment.Scope
+	bundleID  string
 	directory string
 	files     map[string]stagedProjectFile
 }
@@ -171,7 +172,7 @@ func (r *ProjectRuntime) Stage(ctx context.Context, id string, files []ProjectFi
 	if receipt.BundleID != id || len(receipt.Files) != len(expected) {
 		return nil, errors.New("remote project staging receipt differs")
 	}
-	staged := &StagedProject{scope: r.scope, files: make(map[string]stagedProjectFile, len(expected))}
+	staged := &StagedProject{scope: r.scope, bundleID: id, files: make(map[string]stagedProjectFile, len(expected))}
 	// Match every exact source-relative suffix under the one confined immutable
 	// object directory. A digest alone cannot authorize a foreign path.
 	for _, entry := range receipt.Files {

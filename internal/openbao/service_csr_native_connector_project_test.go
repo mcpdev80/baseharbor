@@ -79,6 +79,29 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 	if _, err := runtime.ExecService(ctx, name, "foreign", "true"); err == nil {
 		t.Fatal("undeclared project service reached execution")
 	}
+	// Lose all in-memory staged handles. The protected Core receipt and exact
+	// original source must reconcile the same immutable publication on retry.
+	recordPath := filepath.Join(f.dir, "owned-project-receipt.json")
+	data, err := json.Marshal(staged.Record())
+	if err != nil || os.WriteFile(recordPath, data, 0600) != nil {
+		t.Fatal("Core project receipt could not be persisted", err)
+	}
+	data, err = os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatal("Core project receipt could not be loaded", err)
+	}
+	var record targetsession.ProjectRecord
+	if json.Unmarshal(data, &record) != nil {
+		t.Fatal("persisted Core project receipt is invalid")
+	}
+	runtime, err = targetsession.NewProjectRuntime(pool, scope)
+	if err != nil {
+		t.Fatal("Core project runtime did not rebind after handle loss", err)
+	}
+	staged, err = runtime.RestoreProject(record, []targetsession.ProjectFile{{Path: file, Data: []byte(content)}})
+	if err != nil {
+		t.Fatal("Core project retry did not restore exact immutable publication", err)
+	}
 	apply(true)
 	if f.engine == "docker" {
 		err = runtime.DestroyCompose(ctx, staged, []string{file}, "")

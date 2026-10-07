@@ -296,6 +296,13 @@ select another Core through application preferences or bootstrap a second Core
 on the node. Live SQL/Secrets/Identity readiness of the bound installation is
 still required; a cached state does not establish readiness.
 
+Protected Core deployment state can retain a versioned project receipt containing
+only the exact node Scope, immutable directory, bundle ID and source commitments.
+Restoration requires the original protected source bytes and live scope binding;
+foreign, changed or incomplete state fails before dispatch. Restoration itself
+does not stage another bundle or replay a mutation. It is not an operator input
+and does not establish full Application reconciliation or backend readiness.
+
 This project adapter carries already authorized runtime decisions. It does not
 replace Core Application planning, provider placement, secret authority or
 persisted reconciliation. Complete remote Application integration and
