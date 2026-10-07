@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- OIDC discovery retries transient server failures within a bounded identity convergence window; access denials remain blocking.
+
 - Keycloak bootstrap uses the active administrator after credential rotation. MongoDB treats credentials beginning with a dash as values in health checks, HA probes and rotation.
 - Core Identity read-only reconciliation tolerates the bounded native Keycloak JDBC reconnection window after HA database convergence; mutations and authentication failures remain fail-closed.
 - Remote application status and overview use the protected Node project binding and live owned inventory instead of inferring absence from local files. Provider observations remain insufficient for complete application readiness.
