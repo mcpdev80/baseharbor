@@ -7,7 +7,7 @@ BaseHarbor documentation is organized around the CLI and the domain concepts it 
 
 ## New to BaseHarbor?
 
-Start with [Getting started](tutorials/getting-started.md).
+Start with [Getting started](tutorials/getting-started.md). For a minimal remote setup, use [Homelab: Core + Console + remote Podman](tutorials/homelab.md).
 Core requires SQL, Secrets and Identity; the Console is optional. See
 [Core resource observations](explanation/core-resources.md) for measured reference
 topologies and the resource implications of additional provider isolation.
