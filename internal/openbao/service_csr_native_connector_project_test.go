@@ -122,6 +122,7 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 	t.Log("managed Core project staging, apply, observed running state, repair and destroy preserved foreign fixture")
 	if f.engine == "podman" {
 		f.quadletDependencyGraph(t, ctx, pool, scope)
+		f.quadletCompletion(t, ctx, pool, scope)
 	}
 }
 
