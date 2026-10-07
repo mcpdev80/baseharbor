@@ -604,13 +604,13 @@ jobs:
 
   v0421_ha_groups_docker:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates_docker]
+    needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [docker]
         group: ${{ fromJSON(needs.source.outputs.ha_docker) }}
@@ -706,13 +706,13 @@ jobs:
 
   v0421_ha_groups_podman:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates_podman]
+    needs: source
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         runtime: [podman]
         group: ${{ fromJSON(needs.source.outputs.ha_podman) }}

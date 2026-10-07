@@ -236,11 +236,15 @@ func operatorKeycloakAdmin(ctx context.Context, files KeycloakFiles) (*keycloakA
 	if err != nil {
 		return nil, err
 	}
+	username, password, err := activeKeycloakAdminCredential(files.Dir, values)
+	if err != nil {
+		return nil, err
+	}
 	admin := &keycloakAdmin{
 		endpoint: files.AdminURL,
 		client:   client,
-		user:     values["BASEHARBOR_KEYCLOAK_ADMIN_USER"],
-		password: values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"],
+		user:     username,
+		password: password,
 	}
 	if err := waitKeycloakAdminLogin(ctx, admin); err != nil {
 		return nil, err

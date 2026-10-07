@@ -45,6 +45,16 @@ func TestMongoDBManagementUIRuntimeAcceptanceInCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Exercise a valid credential that must never be parsed as a mongosh option.
+	initialEnv, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := mongodbRuntimeKey(defaultServiceInstance, "ADMIN_PASSWORD")
+	initialEnv[key] = "-" + initialEnv[key]
+	if err := writeRuntimeEnv(files.Env, m, initialEnv); err != nil {
+		t.Fatal(err)
+	}
 	if err := runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		t.Fatal(err)
 	}
