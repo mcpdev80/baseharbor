@@ -7,10 +7,25 @@ Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, oh
 Vor der ersten Application benötigt BaseHarbor seinen Core: **SQL + Secrets + Identity**
 (PostgreSQL, OpenBao und Keycloak). Die Web Console ist optional.
 
-Beim ersten `app init` oder Application-Start bietet BaseHarbor die Einrichtung an,
-fragt nach Development-/Deployment-Maschine und setzt den ursprünglichen Ablauf erst
-nach geprüfter Core-Readiness fort. Die Rolle steuert Defaults; TLS und geschützte
-Zugangsdaten bleiben verpflichtend. Retry verwendet dieselbe eigene Installation.
+Beim ersten `app init` oder Application-Start bietet BaseHarbor die Einrichtung an:
+
+```text
+BaseHarbor needs its Core services before the first application can run.
+Set them up now? [Y/n]
+```
+
+Danach fragt der Wizard nach der Maschinenrolle:
+
+```text
+Is this installation running on a machine where you write code?
+  1. Yes, this is a development machine
+  2. No, this is a deployment machine
+```
+
+Die Rolle steuert nur Workspace-/Source-Defaults; TLS und geschützte Zugangsdaten
+bleiben verpflichtend. Nach geprüfter Readiness aller drei Core-Capabilities setzt
+derselbe Application-Ablauf fort. Retry verwendet dieselbe eigene Installation
+und erzeugt keinen zweiten Core.
 
 Core-only ohne Repository/Application verwendet den bestehenden Pfad
 `baha up --control-plane-only`; `baha status` außerhalb eines Application-Repositories zeigt den Zustand.

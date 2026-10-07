@@ -18,9 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
+- Remote application memory preflight requests fresh evidence from the authenticated execution node; Core-host RAM and runtime-info total RAM cannot replace available node capacity. Exhausted RAM is rejected even when a workload estimate is unavailable.
 
 ### Fixed
 
+- Ordinary Podman destroy/reapply reuses the exact owned provider data volume. Managed unit removal rechecks native ownership and preserves resources replaced with foreign project labels.
 - Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
 - Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
 - Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.

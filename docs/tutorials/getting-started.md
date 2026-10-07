@@ -16,6 +16,13 @@ Set them up now? [Y/n]
 
 The setup asks whether this is a development or deployment machine. This controls
 workspace/source defaults only; TLS and protected credentials remain required.
+
+```text
+Is this installation running on a machine where you write code?
+  1. Yes, this is a development machine
+  2. No, this is a deployment machine
+```
+
 The application flow continues after all three Core capabilities reach verified readiness.
 Retries reconcile the same owned installation; they do not create another Core.
 

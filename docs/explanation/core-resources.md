@@ -55,6 +55,14 @@ remain in the qualification artifact; application isolation is not measured.
 
 ## Qualification limits
 
+Remote execution-node memory evidence is separate from installation Core totals.
+The Connector reports current available RAM and swap from the selected node;
+runtime-info total RAM is not treated as available capacity. Missing, stale or
+inconsistent evidence is refused, as is exhausted RAM even without a reliable
+workload estimate. Core-host RAM is not a substitute for node evidence.
+This projection does not measure memory PSI, VM or cgroup limits and does not
+qualify the complete remote Application lifecycle.
+
 Isolated placement and further host/topology calibration remain pending. Source tests and a provider count cannot supply missing figures.
 Host preflight continues to distinguish planning estimates from unavailable
 measurements for the selected installation.

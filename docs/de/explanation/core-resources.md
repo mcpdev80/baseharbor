@@ -40,6 +40,15 @@ können zwischen den Beobachtungen liegen.
 
 ## Offene Kalibrierung
 
+Speicherdaten eines entfernten Ausführungs-Nodes sind von den Core-Gesamtwerten
+der Installation getrennt. Der Connector meldet aktuell verfügbaren RAM und Swap
+des ausgewählten Nodes; Gesamt-RAM aus Runtime-Informationen gilt nicht als freie
+Kapazität. Fehlende, veraltete oder widersprüchliche Daten werden abgelehnt,
+ebenso vollständig erschöpfter RAM ohne verlässliche Workload-Schätzung.
+RAM des Core-Hosts ersetzt keine Node-Messung. Diese Projektion misst weder
+Memory-PSI noch VM-/cgroup-Limits und qualifiziert nicht den vollständigen
+entfernten Application-Lifecycle.
+
 Isolierte Provider und weitere Hosts/Topologien bleiben offen. Source-Tests
 und Containerzahlen ersetzen keine Messungen. Die Host-Prüfung unterscheidet
 weiterhin Planungsbudgets von verfügbaren Messungen der gewählten Installation.
