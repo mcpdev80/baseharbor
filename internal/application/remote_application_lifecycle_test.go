@@ -234,7 +234,7 @@ func TestRemoteApplicationDirectoryBindingsAreConfinedFileMounts(t *testing.T) {
 	}
 	projection := ManagedRuntimeProjection{}
 	definition := map[string]any{"volumes": []any{directory + ":/bindings:ro"}}
-	if err := projectRemoteWorkloadMounts(&projection, definition, root, root); err != nil {
+	if err := projectRemoteWorkloadMounts(&projection, definition, filepath.Join(root, "core"), root); err != nil {
 		t.Fatal(err)
 	}
 	mounts := definition["volumes"].([]any)
@@ -267,5 +267,47 @@ func TestRemoteApplicationBackendNetworkUsesManagedDefaultIdentity(t *testing.T)
 		if !reflect.DeepEqual(service["networks"], []any{"default"}) {
 			t.Fatal("workload disconnected from managed default network", service)
 		}
+	}
+}
+
+func TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes(t *testing.T) {
+	for _, kind := range []string{"docker", "podman"} {
+		t.Run(kind, func(t *testing.T) {
+			files, manifest := remoteRuntimeProjectionFixture(t)
+			repository := t.TempDir()
+			if err := os.WriteFile(filepath.Join(repository, "compose.yaml"), []byte("services:\n  api:\n    image: docker.io/library/alpine:3.23\n    user: '1000:1000'\n    read_only: true\n    command: ['sleep', '300']\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			workload, found, err := MaterializeWorkload(repository, manifest, files)
+			if err != nil || !found {
+				t.Fatal("materialize generated bindings", err)
+			}
+			environment, err := RuntimeEnvironment(files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := targetenrollment.Scope{TenantID: "11111111-1111-4111-8111-111111111111", TargetID: "selected", NodeID: "selected-node", Runtime: kind}
+			transport := &managedRuntimeTransport{t: t, scope: scope}
+			runtime, err := NewRemoteApplicationRuntime(transport, scope, files, manifest, &workload, environment)
+			if err != nil {
+				t.Fatal("compile generated workload", err)
+			}
+			providers, workloads, err := runtime.ApplicationPhases(manifest)
+			if err != nil || len(providers) != 1 || !reflect.DeepEqual(workloads, []string{"api"}) {
+				t.Fatal("generated phases lost source", providers, workloads, err)
+			}
+		})
+	}
+}
+
+func TestRemoteApplicationWorkloadCannotCopyUnreferencedCoreMaterial(t *testing.T) {
+	core := t.TempDir()
+	if err := os.WriteFile(filepath.Join(core, "unreferenced-manager.json"), []byte("private installation material"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	projection := ManagedRuntimeProjection{}
+	definition := map[string]any{"volumes": []any{filepath.Join(core, "unreferenced-manager.json") + ":/manager:ro"}}
+	if projectRemoteWorkloadMounts(&projection, definition, core, filepath.Dir(core)) == nil || len(projection.Files) != 0 {
+		t.Fatal("unreferenced Core material entered workload publication")
 	}
 }

@@ -86,7 +86,7 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 			return fmt.Errorf("safe application repair could not restore the BaseHarbor control plane: %w", err)
 		}
 	}
-	if err := executeApplicationApplyLifecycle(ctx, store, nameArgs, out, errOut); err != nil {
+	if err := executeApplicationApplyForRepair(ctx, store, nameArgs, out, errOut); err != nil {
 		return fmt.Errorf("safe application repair failed: %w", err)
 	}
 
@@ -111,6 +111,19 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 		return err
 	}
 	return recordApplicationAudit(ctx, resolved, "repair", "success", "doctor verified", "safe repair completed and doctor returned healthy")
+}
+
+// Remote repair uses the protected applied intent even when repository source
+// is unavailable. It cannot regenerate or replace the retained publication.
+func executeApplicationApplyForRepair(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	resolved, err := resolveApplication(ctx, store, args, "repair")
+	if err != nil {
+		return err
+	}
+	if isRemoteApplication(resolved) {
+		return executeRemoteApplicationApply(ctx, resolved, out)
+	}
+	return executeApplicationApplyLifecycle(ctx, store, args, out, errOut)
 }
 
 func parseAppDoctorRepairArgs(args []string) ([]string, bool, error) {

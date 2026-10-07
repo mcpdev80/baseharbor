@@ -126,6 +126,10 @@ func ProjectManagedRuntime(files RuntimeFiles, m Manifest) (ManagedRuntimeProjec
 }
 
 func readRuntimeProjectionFile(root *os.Root, name string) ([]byte, uint32, error) {
+	return readRuntimeProjectionFileMode(root, name, false)
+}
+
+func readRuntimeProjectionFileMode(root *os.Root, name string, readonlyBinding bool) ([]byte, uint32, error) {
 	if name == "" || name == "." || path.Clean(name) != name || strings.HasPrefix(name, "/") ||
 		name == ".." || strings.HasPrefix(name, "../") || strings.ContainsAny(name, "\\\x00\r\n") {
 		return nil, 0, errors.New("runtime projection requires confined relative files")
@@ -144,12 +148,20 @@ func readRuntimeProjectionFile(root *os.Root, name string) ([]byte, uint32, erro
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || (info.Mode().Perm() != 0600 && info.Mode().Perm() != 0644) || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+	if err != nil || !info.Mode().IsRegular() || (info.Mode().Perm() != 0600 && info.Mode().Perm() != 0644 && !(readonlyBinding && (info.Mode().Perm() == 0400 || info.Mode().Perm() == 0444))) || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
 		return nil, 0, errors.New("runtime projection file permissions are unsupported")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
 	if err != nil || len(data) > 4<<20 {
 		return nil, 0, errors.New("runtime projection member exceeds byte limit")
 	}
-	return data, uint32(info.Mode().Perm()), nil
+	mode := uint32(info.Mode().Perm())
+	// Bundle wire modes stay canonical; all projected binding mounts are read-only.
+	if readonlyBinding && mode == 0400 {
+		mode = 0600
+	}
+	if readonlyBinding && mode == 0444 {
+		mode = 0644
+	}
+	return data, mode, nil
 }

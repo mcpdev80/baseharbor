@@ -247,6 +247,9 @@ func projectRemoteWorkloadMounts(projection *ManagedRuntimeProjection, definitio
 				break
 			}
 		}
+		if selectedRoot == coreRoot && !remoteCoreWorkloadBindingAllowed(projection, relative) {
+			return errors.New("remote workload binding is not an authorized Core workload projection")
+		}
 		if selectedRoot == "" {
 			return errors.New("remote workload binding escapes protected Application source")
 		}
@@ -278,6 +281,21 @@ func projectRemoteWorkloadMounts(projection *ManagedRuntimeProjection, definitio
 	return nil
 }
 
+func remoteCoreWorkloadBindingAllowed(projection *ManagedRuntimeProjection, relative string) bool {
+	if relative == workloadServiceBindingDirName || strings.HasPrefix(relative, workloadServiceBindingDirName+"/") {
+		return true
+	}
+	if !strings.HasPrefix(relative, "bindings/") || !strings.HasSuffix(relative, "/ca.pem") {
+		return false
+	}
+	for _, file := range projection.Files {
+		if file.Path == relative {
+			return true
+		}
+	}
+	return false
+}
+
 // Directory bindings become individual file mounts. This preserves native
 // readable file modes without exposing a Node-owned 0700 staging directory to
 // the workload UID or broadening its permissions.
@@ -292,7 +310,7 @@ func readRemoteWorkloadBinding(root, relative string) ([]RuntimeProjectionFile, 
 		return nil, err
 	}
 	if !info.IsDir() {
-		data, mode, err := readRuntimeProjectionFile(directory, relative)
+		data, mode, err := readRuntimeProjectionFileMode(directory, relative, true)
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +331,7 @@ func readRemoteWorkloadBinding(root, relative string) ([]RuntimeProjectionFile, 
 			return errors.New("remote workload binding contains a symbolic link")
 		}
 		if !info.IsDir() {
-			data, mode, err := readRuntimeProjectionFile(directory, name)
+			data, mode, err := readRuntimeProjectionFileMode(directory, name, true)
 			if err != nil {
 				return err
 			}
