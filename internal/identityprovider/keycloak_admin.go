@@ -734,7 +734,10 @@ func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any
 		return resp.StatusCode, strings.TrimSpace(string(data)), nil
 	}
 
-	retryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	// Native Keycloak can retain a closed pooled JDBC connection while its HA
+	// PostgreSQL cluster finishes the initial leader transition. Keep retries
+	// bounded and read-only, but cover the complete provider convergence window.
+	retryCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

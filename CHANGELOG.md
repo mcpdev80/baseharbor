@@ -1,1046 +1,1 @@
-# Changelog
-
-All notable changes to BaseHarbor are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
-
-## [0.4.23] - Unreleased
-
-### Added
-
-- Public Console and Node Connector repositories are documented as optional Core-contract consumers, with support claims bound to pinned cross-repository evidence rather than repository-local checks alone.
-- Repository-independent Core bootstrap for mandatory SQL, Secrets and Identity, using PostgreSQL, OpenBao and Keycloak with protected credentials and TLS.
-- Authoritative installation identity, observable bootstrap stages and ownership-safe retry/reconciliation through shared CLI/MCP/protected HTTP semantics.
-- First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
-- Development/deployment machine-role defaults and an optional Console bound to one selected Core in the same installation/security boundary.
-
-- Protected HTTP managed-trust rotation reuses Core credential/CA semantics, requires explicit installation approval and keeps recovery material out of browser input/results.
-
-### Changed
-
-- Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
-- Remote application memory preflight requests fresh evidence from the authenticated execution node; Core-host RAM and runtime-info total RAM cannot replace available node capacity. Exhausted RAM is rejected even when a workload estimate is unavailable.
-
-### Fixed
-- Remote application status and overview use the protected Node project binding and live owned inventory instead of inferring absence from local files. Provider observations remain insufficient for complete application readiness.
-- Core Identity readiness retries the specific native Keycloak server-exception response after database convergence; invalid credentials and other client denials still fail closed.
-
-- Keycloak starts one authenticated bootstrap member before additional members join, preventing concurrent initial database migrations.
-
-- Application execution revalidates the selected Core installation and keeps Core-managed secret, PKI and broker operations independent of workload placement; remote bindings never fall back implicitly to local authority.
-- Remote Quadlet project realization publishes every unit before container activation, starts dependencies first and rejects cycles before mutation.
-- Core-managed init dependencies require verified successful native completion before application activation and retain completion evidence without enabling automatic node startup.
-- Remote provider publication requires durable Core receipt persistence before activation; persistence failures block execution and automatic publication replay.
-- Managed Podman network teardown removes only the exact owned network without force and preserves live consumers. Explicit owned data reset verifies volume absence and supports reconciliation after ordinary teardown.
-- Ordinary Podman destroy/reapply reuses the exact owned provider data volume. Managed unit removal rechecks native ownership and preserves resources replaced with foreign project labels.
-- Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
-- Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
-- Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.
-- Application repair preserves the explicitly selected environment through CLI, MCP and protected HTTP.
-- Repeated authenticated requests resolve tenant membership correctly after a scoped database transaction resets its connection context; row-level isolation and denied unscoped writes remain enforced.
-- Application overview uses the canonical managed-provider readiness model instead of requiring provider containers in the application Compose project (#811).
-- Backup loads Core runtime context for runtime-permission brokers and attempts bounded runtime recovery even when archive capture is cancelled (#812).
-- Missing required secrets without a terminal return an actionable typed error; `--yes` does not bypass secret availability (#813).
-- Generated Compose delivers the same runtime environment bindings required by generated source (#814).
-- Fresh Go image builds retain tidied module state; Next.js validates runtime bindings at request time; Quarkus packaging executes through the Maven lifecycle. Generated Compose workloads are recognized independently of YAML indentation (#815).
-- Fresh Core bootstrap allocates a new default recovery output when old recovery material remains, preserving previous files and explicit/persisted path protection (#526).
-
-## [0.4.22] - 2026-10-06
-
-### Added
-
-- Complete generated CLI/JSON/Core/MCP coverage inventory with typed supported product operations and explicit host/presentation exclusions.
-- Shared semantic operations for repository/workspace adoption, targets, stacks, secrets/TLS, trust, identity, connectivity and control-plane lifecycle; MCP discovery is checked against the registry and documentation.
-- Versioned extension artifact descriptors and separate verification/trust-policy results across six extension families, with digest-bound JWS/in-toto/SBOM/provenance verification through operator-configured keys.
-- Public `conformance/provider/v1` package and discovery profile extending the existing provider harness with drift, faults, recovery, ownership and idempotent destroy checks; an independent external module proves execution without internal imports.
-
-### Changed
-
-- CLI, JSON and MCP use the existing transport-neutral operator authorization boundary and stable application identity; destructive tools require explicit approval.
-- Structured secret/environment/connection results mask unknown secret fields and omit private material; protected file input is authorized before reading.
-- Public automation documentation includes concrete CLI and generic MCP client examples.
-
-### Fixed
-
-- Quick repository adoption writes detected HTTP/HTTPS exposures using the same validation as guided adoption and rejects ambiguous ports before writing.
-- Standalone application preflight includes the shared repository workload contract gate; repository up validates that contract before control-plane startup.
-- Deployment configuration is distinct from applying state, rejected applies record failure, and target teardown reconciles inactive observations without deleting application source, inputs or data.
-- Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
-- Application help registers `new` once.
-- Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
-- Target teardown includes unreferenced shared SQL/cache/identity/gateway resources. Full destruction previews concrete owned resources, reports removal/residue by name, preserves external recovery files explicitly, and returns the same structured inventory through JSON and MCP.
-- Docker/Podman container inventory decodes native JSON state, including absent healthchecks. Destructive container cleanup removes associated anonymous volumes without removing declared external volumes.
-- Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
-- Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
-- Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
-- Full Docker and Podman journeys start alongside bounded atomic lanes. A strict resume plan compares gate inputs and schedules only missing or invalidated proofs; final approval retains all 55 requirements and authenticates each original job, artifact digest, candidate, demo pin, attempt and cleanup. Earlier failures cannot be hidden by older successes. Targeted proof runs are retained; bounded assertions, job/queue timing and recurring failures remain available.
-
-## [0.4.21] - 2026-10-03
-
-### Added
-
-- Versioned credential/access ownership semantics separating human management identity, application-service credentials and BaseHarbor-internal machine identity.
-- Standards-first management-surface authentication classes and provider-neutral infrastructure-role mapping with explicit limited/unsupported semantics.
-- Logical Application/Component consumption intent whose identity remains independent from runtime addressing, placement, replica count and instance topology.
-- Portable global HA intent with sparse per-component/capability overrides, fixed-cardinality input, provider/runtime negotiation and 0..N instance observation.
-- Typed availability results shared by lifecycle preflight, status, doctor and evidence.
-- Provider-native HA realizations and stable logical endpoints for Valkey/Sentinel, MongoDB replica sets, RabbitMQ clusters/quorum messaging, SeaweedFS, managed Keycloak and the shipped observability stack.
-- Managed Keycloak HA with stable issuer/discovery/JWKS/Admin surfaces, HA PostgreSQL backing and client-secret, signing-key and administrative-credential rotation continuity.
-- HA observability realization and runtime continuity for OpenTelemetry Collector, Prometheus, Loki and Tempo.
-- Stable local exposure/management routing through backend replacement and supported configuration/TLS hot reload without claiming redundant single-host ingress.
-
-### Changed
-
-- Managed secret semantics now distinguish one authoritative durable secret source from runtime projections; canonical secret-bearing files remain protected while separate read-only runtime projections are used where necessary.
-- Interactive application-secret replacement requires two matching hidden entries before mutation; deterministic stdin/file automation remains single-input.
-- Docker, Podman and every bundled capability-provider realization carry an explicit HA classification; unsupported requested guarantees fail before mutation instead of silently downgrading.
-- Availability is part of the existing Application, Runtime Provider and Capability Provider contracts rather than a second HA lifecycle.
-- Logical consumption relationships remain stable across scaling, failover, rescheduling and rolling replacement; runtime-native member identities never become portable application identity.
-- Single-host Docker/Podman availability evidence now reports member/process continuity separately from runtime-host failure tolerance.
-- Credential, certificate, trust and configuration changes use explicit prepare/reconcile/verify/retire semantics where continuity-preserving rotation is supported.
-- Availability, credential and management-surface semantics are documented as additive-friendly pre-freeze contracts for the v0.5 compatibility review.
-
-### Fixed
-
-- Bootstrap PostgreSQL private-key material is owner-only instead of inheriting generic public certificate permissions.
-- Application file-secret projection no longer weakens the authoritative host-side secret file to world-readable mode.
-- Keycloak HA client-secret verification and retirement now converge across active members, and master-admin credential rotation uses the correct master-realm administration model.
-- Loki HA ingestion now preserves the internal gateway alias and sends acceptance probes over the configured syslog transport.
-- Tempo HA startup now waits for the replicated ingestion topic, preserves Compose shell variables and supplies writable runtime state for Tempo roles.
-- SeaweedFS platform bucket administration tolerates transient HA convergence instead of failing on an early member race.
-
-## [0.4.20] - 2026-10-02
-
-### Added
-
-- Source-neutral Workload Source Adapter and normalized Workload Evidence contracts for Compose, repository-authored Podman Quadlet and raw Kubernetes YAML, including deterministic fingerprints, provenance and logical workload-component identity.
-- Safe-to-commit `baseharbor.repository.yaml` selection metadata for genuinely ambiguous repositories.
-- Developer workspace Git status and fast-forward-only synchronization across mapped repositories, with CLI/JSON/MCP parity and preview-only checks.
-- Pinned 30-example real-world repository corpus with 10 Compose, 10 repository-authored Podman Quadlet and 10 raw Kubernetes YAML cases, plus mixed-source ambiguity evidence.
-
-### Changed
-
-- Portable workload identity now uses logical components instead of treating Compose service names as the canonical application model.
-- Repository understanding is separated from Runtime Provider realization; Kubernetes/Quadlet sources can be inspected and adopted while unsupported runtime realization fails later with a typed actionable preflight result.
-- Mixed workload-source families fail closed instead of silently preferring a product/source format.
-- Helm and Kustomize are deferred to later Workload Source Adapters and are not claimed as v0.4.20 support.
-
-
-## [0.4.19] - 2026-10-01
-
-### Added
-
-- Provider-neutral durable key-value, document-database and messaging contracts with Valkey, MongoDB and RabbitMQ reference providers.
-- First-class External/BYO provider onboarding and verification with ownership-safe removal and provider-neutral TLS/trust/certificate references.
-- Organization/platform configuration distributed through local/system, Git or OCI sources with immutable resolution and provenance.
-- Optional management surfaces for RabbitMQ, durable Valkey and MongoDB using the existing secure developer-access model.
-- Versioned Runtime and Delivery provider contracts that keep future Kubernetes/OpenShift and GitOps realizations outside portable Application Intent.
-
-### Changed
-
-- Provider descriptors, SDK/scaffolding, service schemas, Development Adapters, repository inspection, CLI, JSON and MCP now cover the complete v0.4.19 capability set.
-- Durable `database.key-value` semantics are explicitly separated from reconstructable `cache.key-value` semantics.
-- Source/build resolution ends before the portable Runtime boundary; Runtime providers consume resolved OCI workload artifacts.
-- Pre-release validation now uses independently rerunnable, SHA-bound atomic gates with explicit resource profiles on GitHub-hosted runners; static checks avoid provider containers, Docker and Podman gates remain isolated, and the release run assembles one complete candidate-bound evidence manifest.
-
-### Fixed
-
-- First-run repository deployment initialization now records ownership evidence before persisting deployment-local inputs, preventing a valid first `baha up` from being misclassified as incomplete deployment state.
-- Atomic `shell-ux` acceptance now runs as a zero-container static gate instead of bootstrapping a runtime stack.
-
-- Guided and deterministic application initialization now expose the full v0.4.19 capability catalog, including durable key-value, document database and queue/pub-sub/stream messaging, with matching optional management-UI intent.
-- Recovery discovery now makes durable key-value, document-database and messaging state classes explicitly addressable; unsupported scoped recovery fails closed instead of silently omitting those durable contributors.
-- Capability/provider conformance tests now derive coverage from the shipped specification catalog and include Keycloak, external OIDC, RabbitMQ and MongoDB reference integrations.
-
-- Non-interactive lifecycle flags and host-memory approvals now propagate consistently across top-level CLI, application lifecycle and MCP; TIGHT memory remains an explicit approval decision while unsafe memory conditions still fail closed.
-- Required-secret prompting preserves buffered PTY input across confirmation and hidden entry, preventing remotely driven terminals from losing secret values between prompts.
-- Workload startup failures retain bounded, secret-redacted runtime diagnostics for verbose troubleshooting, and failed rebuilt candidates invalidate their verified source fingerprint so later retries cannot reuse a failed mutable image as `source unchanged`.
-- Repository adoption fails fast when an HTTPS workload is missing the required `exposure.http` contract, and nested `app init --quick` is rooted in the current directory instead of inheriting an ancestor application's manifest.
-- The generated Go greenfield scaffold materializes and verifies its pinned module graph during container build, so a fresh `app new --stack go` no longer requires a manual `go mod tidy`.
-- Application destroy removes deployment roots without empty residue and shared-backend consumer state cannot resurrect removed Valkey resources during a later surviving-app reconcile.
-- Workspace commands report an actionable not-initialized error instead of leaking a raw missing `sources.yaml` filesystem error.
-- Generated Python workloads provide a positive health signal, keeping `up`, `status` and `doctor` readiness semantics aligned.
-- Restore reconstructs missing development exposure initialization after destroy before verifying the restored application.
-- Development management access is discoverable as one Target/environment-scoped credential, with `developer` as a configurable default rather than a fixed username.
-
-## [0.4.18] - 2026-09-30
-
-### Added
-
-- First-class greenfield `baha app new` creation with guided and deterministic paths, ecosystem-native Go, Next.js, Python and Quarkus Development Adapters, reusable/composable Stack Profiles, deterministic Development Plans and JSON/MCP parity.
-- Versioned common extension, provider-descriptor and development-extension contracts using JSON Schema 2020-12, with provider/development conformance foundations and standards-first OCI distribution metadata.
-- First-class multi-repository applications: one canonical version-controlled Application Contract can resolve components across monorepos, multiple existing local worktrees and OCI images while keeping developer-local paths in XDG workspace state.
-- Guided `baha app workspace` plus deterministic `workspace init|map|show|resolve`; component/application identity no longer depends on one current working directory or local checkout path.
-- Optional Backstage `catalog-info.yaml` emission from the greenfield flow with explicit owner/lifecycle input and no Backstage SDK, Catalog API client or template interpreter in Core.
-- Local Docker/Podman host-resource preflight using MemAvailable, swap and memory PSI with delta-aware SAFE/TIGHT/UNSAFE decisions before mutation.
-
-### Changed
-
-- Release acceptance now keeps small gates individually runnable while the full pre-release reuses long-lived environments across four symmetric runtime lanes: Docker/Podman Ã— Core Journey/Operations.
-- Capability-subset demo acceptance validates workload-only and mixed capability contracts without starting unrelated providers; the full demo remains the full-stack integration proof.
-- YAML v3 usage moved to the maintained `go.yaml.in/yaml/v3` module.
-- Targeted runtime workflow names describe the tested behavior, for example `Docker Â· Capability Matrix`, instead of internal branch/gate terminology.
-- Go 1.25 remains the v0.4.18 support floor; the x/crypto v0.56/v0.57 / Go 1.26 toolchain transition is explicitly deferred.
-
-### Fixed
-
-- Application stop/destroy tears down observed owned workload containers/networks even from partially converged state instead of depending on successful apply-time materialization.
-- Repository workload startup fails fast on terminal runtime failures and persisted host-port fallback is applied consistently across lifecycle paths.
-- Canonical identity/developer-gateway URLs preserve the effective persisted gateway port.
-- Management UI readiness validates browser redirect chains.
-- Reduced capability-matrix cases avoid requiring unrelated managed HTTPS/TLS infrastructure.
-
-## [0.4.17] - 2026-09-29
-
-### Added
-
-- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, managed/private issuer trust projection through `OIDC_CA_FILE`, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
-- Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
-- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
-- Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
-- Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
-- First-class resource-efficient `shared` placement for the bundled PostgreSQL and Valkey providers while retaining explicit `application` placement; shared provider lifecycle is Target-owned while databases, cache resources, credentials and Service Bindings remain application-isolated.
-- Versioned `baseharbor.runtime/v1` Runtime Provider descriptors and an extensible registry with provider identity, provider version, adopted standards, workload-source compatibility, realization metadata and fail-closed capability negotiation; reusable conformance tests and an AST architecture guard protect the provider-neutral Core boundary.
-
-### Changed
-
-- Status, Doctor, JSON/MCP evidence and application lifecycle now observe and verify managed identity state, operator-authentication context and selected management surfaces.
-- Identity recovery explicitly separates portable application identity intent from provider-held users, MFA and passkey state instead of claiming unsupported provider-global snapshots.
-- Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
-- Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
-- `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
-- Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
-- Repository workloads can explicitly declare `io.baseharbor.workload.protocol=http|https`; HTTPS canonical routes verify the BaseHarbor-projected workload CA and service-name SNI, while invalid declared protocol values fail closed.
-- The v0.4.17 reference demo is HTTPS-only and intentionally has no plaintext HTTP fallback.
-- The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
-- Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
-- Runtime selection now uses explicit `docker` / `podman` provider identity. Compose remains repository workload-source compatibility rather than Runtime Provider identity; new local state defaults to Docker. Podman realization is native Quadlet + `systemd --user` and fails closed without that environment instead of falling back to `podman compose`.
-- Target-owned shared PostgreSQL/Valkey provider state now survives destruction of the final application consumer; application destroy removes only application-owned resources and credentials, while provider/Target destroy owns provider teardown.
-- Development gateway HTTPS ports are preflighted and persisted per Target; occupied preferred ports fall back deterministically from 18443 and all canonical URLs reuse that persisted port.
-- Managed service access follows a native-TLS-first topology: OpenBao, PostgreSQL, Keycloak, SeaweedFS S3, Prometheus and OTLP terminate TLS natively; the Target developer gateway owns canonical browser routing, while dedicated adapters remain only where they add protocol/security semantics.
-- Managed OIDC now uses `github.com/coreos/go-oidc/v3` 3.21.0; Renovate also tracks registry-qualified provider image constants embedded in Go source.
-
-### Fixed
-
-- Development OIDC workload bindings now use the same canonical issuer reported to developers and trust the Target development gateway; provider-internal Keycloak endpoints remain lifecycle/admin-only, including rootless Podman on deterministic HTTPS port 8443.
-- Runtime Executor observer mTLS identity is projected independently of OTLP tracing so logs/metrics observability probes remain valid when tracing is not selected.
-- Podman CI/runtime validation isolates Quadlet generator preflight state and removes stale BaseHarbor user units from the effective user configuration, preventing unrelated worker state from poisoning validation.
-- Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
-- Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
-- Fresh repository `baha up` now rejects an existing/stale OpenBao recovery output path before creating or mutating control-plane resources and gives an explicit `--recovery-file` remediation.
-- Workload readiness no longer equates a running container with READY: health checks, HTTP/TLS probes or TCP listener probes provide positive readiness evidence, while workers without a readiness signal are reported RUNNING/UNVERIFIED.
-- Rootless Podman Quadlet networking now uses native `NetworkAlias=` semantics for managed and external networks, preserving managed `.network` references and restoring DNS for runtime-executor, metrics and workload routes.
-- Podman shared-network teardown now preserves networks with active consumers instead of forcibly deleting sibling connectivity.
-- Podman candidate-image build/verification and Quadlet execution now share the same rootless storage context.
-- Podman service-state observation reads published port bindings from the running container so workload HTTP/TLS readiness can be positively verified instead of remaining RUNNING/UNVERIFIED.
-
-### Security
-
-- Shared PostgreSQL now separates one BaseHarbor-internal `baseharbor_admin` provider identity from per-application database roles and credentials. Provider-admin credentials never enter workload bindings, environment contracts, status, doctor or evidence.
-- Shared PostgreSQL reconciliation hardens database/schema/public privileges, verifies application-role ownership and denies cross-application database access; destroy fails closed unless protected provider state and live PostgreSQL ownership agree.
-- Shared PostgreSQL application roles are `NOINHERIT`, receive no provider-role memberships, cannot connect to provider administration databases, and restores authenticate with the protected application credential rather than a provider-admin or local-trust shortcut.
-- Shared PostgreSQL backup/restore remains application-scoped and derives the exact database set from protected application registrations; sibling databases, roles and credentials are never part of another application's recovery operation.
-- Shared Valkey uses isolated per-application services and credentials inside the Target-owned provider lifecycle, preserving normal Redis/Valkey client compatibility without cross-application key visibility.
-- Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
-- Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
-- Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
-- The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
-- Native certificate rollout is provider-aware: Keycloak polls replacement certificates, Prometheus re-reads web TLS material per request, SeaweedFS uses its reloading certificate provider, OTLP reloads TLS material on a bounded interval, and OpenBao 2.7 uses native `tls_auto_reload`.
-- The v0.4.17 dependency audit adopts OpenBao 2.7 with dedicated PostgreSQL storage, `verify-full`, native TLS reload and hybrid-PQC-first TLS; it keeps the Go 1.25 support floor by deferring x/crypto/x/sys updates that require Go 1.26 and tracks the yaml.v3 replacement separately in #533.
-
-## [0.4.16] - 2026-09-26
-
-### Added
-
-- Selectable typed application recovery units cover application metadata, managed SQL, the application-owned OpenBao secret scope, managed S3 contents, BaseHarbor-owned repository workload volumes and selectable application log history.
-- Guided backup and automation share the same recovery state classes through interactive selection and `--include-state` / `--exclude-state`.
-- Restore validates the typed recovery manifest before mutation, restores selected state and reports success only after the application boundary is verified READY.
-- `baha app evidence [-o json]` and read-only `baseharbor.evidence` expose one secret-safe v1 evidence bundle spanning desired state, enforced policy, observed state, verified results, recovery evidence, explicit exceptions and unsupported controls.
-- Meaningful completed lifecycle operations persist bounded Target-local audit events with actor interface, target/application/environment, operation, outcome and verification metadata.
-- Evidence bundles are deterministically ordered and include SHA-256 tamper evidence over the exported bundle.
-
-### Changed
-
-- Managed S3 resources no longer force backup/restore to fail closed merely because object storage is present; bucket contents are captured and restored through the existing standards-based S3 provider path.
-- BaseHarbor-owned repository workload named volumes participate in recovery while bind mounts and external named volumes remain explicitly external and outside BaseHarbor ownership.
-- Recovery discovery accepts both normalized Compose volume objects and short-syntax mounts, preserving the same workload-storage semantics on Docker Compose and Podman/Quadlet.
-- Application log history is selectable operational recovery state and is excluded by default unless the operator explicitly includes `observability.logs`.
-- Metrics and trace history remain explicitly unsupported recovery contributors until BaseHarbor has safe application-scoped restore semantics for those histories.
-- Successful backup/restore metadata records typed recovery contributors and per-contributor verification without storing secret values.
-- CLI and MCP evidence use the same collector and machine contract instead of maintaining separate reporting semantics.
-
-### Fixed
-
-- Deterministic repository initialization now fails closed when repository workload evidence exists but no workload was explicitly selected, preventing a partial contract that silently drops an existing workload.
-- Workload convergence fingerprints the effective rendered Compose service configuration, so interpolation changes such as repository `.env` updates recreate only affected services and cannot leave stale containers reported READY.
-- Managed SQL/cache workloads receive a portable Service Binding 1.1 projection with workload-native endpoints and TLS trust material; status and Doctor verify the consumer-facing binding instead of treating provider health alone as application readiness.
-- Failed application convergence persists an addressable `applying` / `failed` deployment record. Legacy incomplete deployments can be recovered by application name from protected BaseHarbor state instead of crashing `status`, `down` or `destroy` on a missing `deployment.json`.
-- Secondary PostgreSQL/Redis connection aliases that still reference a repository service replaced by a managed capability are rewired to the managed workload endpoint when the mapping is unambiguous. Unsupported or ambiguous references fail closed before mutation.
-- `baha app destroy` selectively reclaims named Compose volumes that belong exclusively to repository PostgreSQL/Redis/Valkey services replaced by managed capabilities, while preserving shared, external and unrecognized workload volumes.
-
-### Security
-
-- Recovery never broadens ownership to external volumes, bind mounts, external data stores or provider-private state; unsupported/external contributors remain explicit in the recovery/evidence model.
-- Application/runtime leaf identities and trust edges are reconstructed from desired state instead of copying Target-wide OpenBao PKI private keys into application archives.
-- Audit persistence is owner-only, bounded and secret-safe; prompts, model reasoning, tokens, access keys, private keys and credential-bearing URLs are excluded.
-- Evidence integrity is explicitly tamper evidence, not a digital signature, remote attestation or compliance certification.
-
-### Compatibility
-
-- Manifest v1 and provider-neutral application contracts remain unchanged.
-- Existing encrypted recovery archives remain supported through the legacy recovery-manifest fallback; v0.4.16 archives carry the typed recovery manifest.
-- Docker Compose and Podman/Quadlet continue to share the same application recovery semantics; physical runtime volume names remain deployment detail and are not portable recovery identity.
-- JSON stdout remains the generic evidence integration boundary; no SIEM- or compliance-vendor-specific backend is introduced.
-
-
-## [0.4.15.1] - 2026-09-26
-
-### Fixed
-
-- Runtime Broker compatibility now uses the versioned runtime contract instead of requiring an exact CLI/runtime Git commit match; deterministic version incompatibility fails immediately instead of waiting through the readiness retry window.
-- Repository workload builds no longer inherit interactive TTY stdin, preventing a Compose/BuildKit rebuild from hanging indefinitely under the human progress UI.
-- `baha app down` persists the observed stopped state so `baha app list` does not continue to report READY after a verified stop.
-- Deployment listings tolerate incomplete/orphaned state directories and warn instead of making the complete application registry unusable.
-- Out-of-repository restore resolves and validates the registered repository source before mutating durable state, preventing destructive partial success followed by deployment-record failure.
-- Deterministic `baha app init NAME ...` requires explicit capability/workload intent instead of silently resolving repository ambiguity into a default SQL contract.
-- Repository Compose inspection now decodes YAML merge keys/anchors. Unsupported `include`/`extends` inheritance fails explicitly rather than silently dropping services.
-- Fixed Compose host-port bindings can use a deployment-local automatic fallback without rewriting the source repository; Docker Compose and Podman/Quadlet share the same override semantics.
-- The implicit `local` Target is visible in `baha target list`; target naming failures explain the lowercase slug rules; creating a Target does not change the effective/default Target unless `--default` is supplied.
-- Global `baha status` renders BaseHarbor Target/control-plane/application semantics instead of exposing the raw Compose `ps` table.
-- Managed SQL adoption fails before mutation when replacing a repository database would discard `docker-entrypoint-initdb.d` bootstrap behavior.
-- Accepted mutating MCP lifecycle operations are no longer truncated by client-request cancellation; client timeout guidance and safe permission defaults are documented.
-- Application/full destroy removes BaseHarbor-owned Runtime Broker volumes while continuing to preserve application-owned workload data volumes.
-- Operator-visible Compose projects now follow provider placement: target-wide shared components use one `bh-<target>-shared` stack, while application runtime/workload and application-scoped providers use `bh-<target>-<application>-<environment>`; external providers remain outside BaseHarbor ownership.
-- Top-level `baha init` no longer writes the legacy global `deployment: single-node` configuration into `baseharbor.yaml`; repository application intent remains owned by `baha app init`, while deployment destination/runtime selection remains Target configuration.
-- OpenBao recovery-file location is now Target-scoped under `target.openbao.recovery-file`. Successful bootstrap persists only the path reference, never recovery material, and later `baha up` can automatically unseal the shared OpenBao provider when that referenced file is present.
-- Docker Runtime Broker observability keeps the stable Compose service identity `broker`, restoring reliable Docker syslog forwarding into Alloy/Loki without changing the application contract or the consolidated application stack boundary.
-
-### Security
-
-- Restore and repository-adoption corrections move destructive or ambiguous failures into preflight/fail-closed paths.
-- MCP mutation approval semantics remain unchanged; lifecycle convergence is detached only after the mutating request has already been accepted.
-- Full destroy still removes only BaseHarbor-owned runtime resources and preserves application-owned data.
-- Target-scoped OpenBao recovery handling stores only an operator-held file path reference; recovery material remains outside normal BaseHarbor state and startup fails closed when an explicitly persisted reference is unavailable or invalid.
-
-### Compatibility
-
-- Manifest v1 and provider-neutral application contracts are unchanged.
-- Manifest/provider ownership semantics remain unchanged. Compose project identity is now separated from physical resource identity so project consolidation does not silently broaden ownership or rename managed backend resources.
-- Git commit identity remains visible as provenance but is no longer treated as the Runtime Broker compatibility boundary.
-- `baha init` remains as a compatibility entrypoint but no longer creates a legacy global `baseharbor.yaml`; use `baha app init` for portable application intent and `baha target create` for deployment Target/runtime configuration.
-- Runtime Broker service identity remains an internal runtime detail; restoring the short `broker` service name does not change Manifest v1, provider contracts, workload bindings or runtime API URLs.
-
-
-## [0.4.15] - 2026-09-25
-
-### Added
-
-- First-class deployment Targets separate deployment destination from Application and Environment; concrete deployment identity is now `target + application + environment`.
-- Target configuration lives in XDG user config while mutable runtime/deployment state is isolated below `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
-- `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective Target identity across human and machine interfaces.
-- Complete agent-native lifecycle operations over the shared machine/MCP core, including apply, update, repair, backup, restore and destroy with typed safety metadata and approval requirements.
-- Generic provider/runtime observability declarations and registration for metrics, logs and traces, including Runtime Broker and Runtime Executor observability.
-- Standards-first service-contract schemas based on JSON Schema 2020-12 for SQL, cache, object storage, secrets, messaging, vector, observability and identity service families.
-- Provider descriptor/catalog metadata separates service contract, provider protocol, provider version, product/engine version, OCI artifact identity, digest and provenance.
-- Repository inspection now classifies supported backend services as replaceable infrastructure, keeps application workloads separate, and carries strong evidence into guided capability adoption.
-- Guided repository adoption now supports interactive capability selection, per-secret accept/skip/rename/required/generate/prompt/later choices and secure `baha app secret set KEY` prompting.
-- Deterministic workload selection and runtime-resource detection cover ambiguous multi-service repositories and Runtime API S3 creation without silently inventing application intent.
-- Explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
-
-### Changed
-
-- Portable application service intent is provider-neutral: canonical manifest/CLI service families are `sql` and `cache` instead of product-named PostgreSQL/Redis intent; provider-specific implementation names remain implementation detail.
-- Service connection outputs align with Service Binding Specification 1.1 well-known names while `secure-binding/v1` remains a separate BaseHarbor security/lifecycle extension.
-- Runtime Broker readiness now verifies build compatibility and Runtime Docs HTTPS readiness; runtime status exposes runtime artifact identity.
-- Repository `build:` workloads persist verified build fingerprints and rebuild only affected services after relevant source changes; stale source/build state is not reported READY.
-- Repository detection normalizes product evidence into generic service families, keeps suggested capabilities opt-in and makes `--quick` fail closed on ambiguous Compose roles, metrics targets, OTLP signals and runtime-permission workload scope.
-- Guided init now renders a human-readable adoption summary by default, keeps generated YAML behind `--verbose`, uses `baha up` as the normal next step and preflights fixed workload host ports before first start.
-- Missing required application secrets can be resolved interactively during apply without restarting the lifecycle; non-interactive paths remain deterministic and return actionable remediation.
-- Runtime failures use stable typed error/cause/resource/remediation metadata shared by human and machine output while normal output suppresses raw Docker/Podman/provider noise unless `--verbose` is requested.
-- Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
-- `baha app list` reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
-- Managed service access now follows the provider-neutral TLS/PKI and environment-aware access baseline, including external/BYOC PKI and protected trust/auth material.
-- Observability collection uses the shared source/ownership/placement model instead of product-specific registration branches; runtime component metrics/logs/traces participate in the same semantic registry.
-- Podman runtime execution uses native rootless Quadlets managed through `systemd --user` instead of the external `podman-compose` provider; Docker continues to use Docker Compose.
-- Podman lifecycle/container-state inspection and runner cleanup use batched runtime operations instead of N+1 inspection paths where ownership/readiness semantics allow it.
-- Managed Podman network/volume resources are reconciled against physical runtime state before container start so stale active Quadlet units cannot hide missing resources.
-- Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
-- Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
-- Pre-Release validation pins one exact external demo revision, proves the complete guided/deterministic acceptance suite on both Docker and Podman and hands immutable candidate/demo evidence into publish instead of rerunning the same expensive acceptance matrix.
-
-### Security
-
-- TLS remains mandatory for managed network service access, with environment-aware developer/test/production access semantics and fail-closed ownership/authentication behavior.
-- Standards-first repository adoption treats weak or ambiguous evidence as non-authoritative; infrastructure-shaped unknown Compose services and unresolved workload scope fail closed instead of being silently adopted.
-- Generated/application secrets remain distinct from provider/runtime credentials; secure terminal prompting hides secret input and optional application secrets do not accidentally become startup requirements.
-- MCP mutation paths reuse the same policy, ownership, preflight, reconciliation and verification semantics as CLI/JSON; no generic shell, Docker, Compose or Podman execution primitive is exposed.
-- Observability registration preserves application/environment/sharing-boundary isolation and secret-safe metadata.
-- Full installation cleanup never broadens ownership assumptions to foreign resources and preserves application source repositories and external application-owned data.
-
-### Compatibility
-
-- Manifest v1 remains the compatibility contract, but product-named portable service intent has converged on canonical provider-neutral `sql` and `cache` service families; legacy product-named manifest/CLI aliases removed during the v0.4.15 development line are no longer the canonical interface.
-- Existing v0.4 capability IDs remain valid compatibility surfaces while repository detection and provider metadata map them to broader standards-first service families.
-- Docker remains Docker Compose based; supported Podman execution is now native Quadlet/systemd-user based.
-- Kubernetes/OpenShift Target definitions remain contract-only and fail closed at execution until those runtime providers are implemented.
-
-## [0.4.14]
-
-### Added
-
-- Shared runtime-neutral reconciliation domain with typed desired, observed, diff and ownership state.
-- Typed reconciliation states for `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` and `degraded`.
-- Typed reconciliation actions for `create`, `noop`, `repair`, `destroy`, `observe` and `blocked`.
-- Optional provider-native reconciliation observation integrated into the existing capability lifecycle without creating a second lifecycle engine.
-
-### Changed
-
-- Semantic providers are observed after preflight and before mutation; blocked ownership/conflict/unsupported/degraded states fail closed before `Provision`.
-- Stable resources can resolve to a core-level NOOP without calling provider mutation hooks.
-- BaseHarbor-owned drift resolves to minimal repair and is observed again after provider verification.
-- Provider conformance now validates typed reconciliation results and verified convergence in addition to existing lifecycle/fault-injection coverage.
-
-### Security
-
-- Foreign ownership and competing reconciliation ownership block mutation.
-- External ownership remains observe-only.
-- Post-verification observation prevents successful lifecycle completion when BaseHarbor-owned desired state did not actually converge.
-- No Kubernetes/OpenShift implementation, product-specific delivery mechanism or portable-contract expansion is introduced.
-
-## [0.4.13] - 2026-09-21
-
-### Added
-
-- Deterministic repository environment resolution for root `baseharbor.yaml` and complete `envs/<environment>/baseharbor.yaml` contracts without hidden overlay inheritance.
-- Environment-scoped protected deployment state under `.baseharbor/environments/<environment>/` for multi-environment deployments while preserving the existing single-environment state path.
-- Typed policy result contract with `allow`, `warn` and `deny` decisions.
-- `baha policy check` and `baha policy explain` with human and JSON output.
-- Read-only MCP tools `baseharbor.policy.check` and `baseharbor.policy.explain`.
-
-### Changed
-
-- Repository lifecycle resolution now separates repository root, selected manifest path and environment-scoped deployment state.
-- `-e/--environment` selection is handled by the common application resolver for repository-aware lifecycle/read operations.
-- Backup, restore, update and destroy preserve the selected environment identity and state boundary.
-- Existing Compose workload-isolation findings feed the shared policy model instead of forming a separate policy surface.
-- Agent discovery now advertises six read-only semantic operations/tools.
-
-### Security
-
-- Managed environments cannot be downgraded to the development workload-security profile through `BASEHARBOR_WORKLOAD_SECURITY_MODE`.
-- Operator policy exceptions are bounded: the existing development host-device acknowledgement remains explicit, while privileged containers and the other isolation-bypass classes are not overridable.
-- Environment-specific state prevents deployment inputs, TLS material and generated runtime state from colliding across environments.
-- Environment remains separate from runtime, topology, availability and future Kubernetes namespace details.
-
-
-## [0.4.12] - 2026-09-21
-
-### Added
-
-- Versioned BaseHarbor machine contract `v1` for inspect, plan, status and doctor structured results.
-- `baha agent describe` / `baha agent describe -o json` semantic discovery with operation safety metadata and supported capability specifications.
-- Local stdio-only `baha mcp serve` built on the official Model Context Protocol Go SDK v1.8.0, targeting MCP `2026-07-28` with negotiated `2025-11-25` compatibility.
-- Four read-only MCP tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` and `baseharbor.doctor`.
-- Stable structured machine error categories and JSON error envelopes.
-- Generic MCP-client acceptance covering discovery, read-only annotations, inspect/plan/status/doctor execution and secret-leak protection.
-- English/German agent-machine-interface documentation.
-
-### Changed
-
-- Status+TLS and Doctor now expose shared typed result paths consumed directly by CLI, TUI and MCP instead of routing machine adapters through rendered CLI JSON.
-- Inspect/plan/status/doctor machine results include additive `contract_version: "v1"` metadata.
-- Bounded `AGENTS.md` guidance now directs coding agents toward structured BaseHarbor/MCP interfaces and away from shell/Docker/Compose bypasses.
-- Repository development now integrates normal feature/fix/chore/dependency work through `develop`; `main` remains the released source line.
-- Pre-release validation defaults to candidates contained in `develop`, while the release workflow continues to require tags contained in `main`.
-
-### Security
-
-- MCP exposes no generic shell, exec, Docker or Compose execution primitive.
-- The initial MCP surface is read-only and local-only over stdio; no remote listener/auth surface is introduced.
-- Machine output and MCP responses remain secret-safe and are covered by marker-secret acceptance.
-- MCP annotations are descriptive hints only; BaseHarbor safety remains enforced by explicit semantic operations and the existing ownership/isolation/verification paths.
-
-## [0.4.11] - 2026-09-21
-
-### Final acceptance and lifecycle hardening
-
-- `baha app destroy` now recovers safely from incomplete generated runtime state instead of refusing managed-secret applications. It derives canonical runtime paths, verifies exact Compose ownership, removes only ownership-verified expected runtime resources when generated Compose files are missing, and verifies OpenBao policy/AppRole ownership directly without depending on the application credential file.
-- Repository workload/log-registration cleanup and full-reset state removal remain available during partial-runtime recovery; ambiguous resource ownership still fails closed.
-
-- Ctrl-C handling is now reliable across long-running lifecycle operations and raw terminal prompts: the first interrupt cancels work immediately, a second interrupt exits immediately, and a single interrupt is force-bounded to two seconds if a child/cleanup path ignores cancellation.
-- Linux path completion and hidden backup-password prompts now handle Ctrl-C locally while restoring terminal settings, and user cancellation exits with code 130 instead of being presented as a normal runtime failure.
-- Best-effort workload cleanup after cancellation is capped at two seconds instead of waiting up to thirty seconds.
-
-- Provider preflight/status visibility now follows explicit application capability intent: undeclared object storage, traces, telemetry, metrics, logs and exposure providers are absent from normal output instead of appearing as meaningless OK checks. Obsolete logs/metrics state can still be discovered internally for cleanup.
-- Fixed the Manifest v1 logs validation insertion regression that broke compilation after the explicit-logs change.
-
-- Capability-intent audit completed: metrics, telemetry, traces, exposure, object storage, secrets and runtime broker already gate provider lifecycle behind explicit application intent. Logs now also participate in the central PortableContract/capability-binding model, and regression tests enforce that deployment/environment policy cannot invent undeclared provider capabilities.
-
-- Application log collection is now explicit Manifest v1 intent via `logs.collect`; `environment: dev` no longer silently provisions Loki/Alloy. Without declared logs intent, BaseHarbor removes stale workload log overrides/registrations and skips log-ingestion verification.
-- `BASEHARBOR_LOGS_ENABLED` may disable declared logging but can no longer create undeclared application capability intent.
-
-- Repeated `baha up` is now a true bounded no-op when both the existing control plane and repository application are already READY and the successfully applied desired-state fingerprint still matches; STOPPED applications use the existing start path, while drift/degraded state falls back to full reconciliation.
-- Repository convergence records a protected desired-state SHA-256 fingerprint only after successful verification. The fingerprint covers repository source inputs plus deployment realization state, so READY alone can never suppress a real source/Compose/manifest/deployment change.
-- Apply output now labels static plan entries as `desired actions` rather than incorrectly calling them detected `changes`.
-
-- Shell-style interactive path prompts now keep the displayed current working directory static while editing; relative/absolute path input and completion only affect the text to the right of `$`.
-
-- Interactive Linux path prompts now use literal shell-style `label:path$` syntax, with `~` under the user's home directory; OpenBao bootstrap/unseal prompts use `OpenBao-recovery-key` / `OpenBao-decrypt-key` labels.
-
-- Interactive Linux path prompts now use a shell-like current-directory prefix (`~/.../` or `/.../`) directly on the input line, replacing the separate path-base/browsing blocks.
-
-- Interactive Linux path prompts now show a live `Browsing` directory that follows the currently typed relative, absolute or `~/...` path while preserving the original process working directory.
-
-- Interactive path prompts now always show their current path base even when the input reader cannot provide a raw terminal file descriptor; tab completion remains optional while path orientation is guaranteed.
-
-- Repository-aware first `baha up` once again resolves configurable Compose host ports before the first workload start, persists BaseHarbor-selected values in protected deployment state and reuses the existing post-start bind-conflict retry only as a race-condition fallback.
-
-- Compose-backed lifecycle activities now stream secret-safe live detail such as image pulls, builds, container creation/start and readiness phases into the current CLI activity instead of hiding runtime progress until completion.
-
-- Long-running CLI lifecycle activities now expose elapsed time while running and include actual duration on completion, so slow fresh-start phases can be identified without verbose/debug mode or guessed ETAs.
-
-- Interactive file and directory prompts now show the current path base and explain where relative paths resolve, so recovery, TLS/certificate and future path selection remain orienting and predictable.
-
-- Interactive `baha up` now reprompts in-place when a fresh OpenBao recovery output path already exists or an unseal recovery path is invalid, instead of aborting the guided setup; explicit/non-interactive paths remain deterministic and fail closed.
-
-- Repository applications that were intentionally destroyed or have never been applied now report `NOT APPLIED` in status/doctor instead of synthetic downstream service failures and `DEGRADED`; the next action is normal `baha up` / `baha app apply`.
-
-- Repository workload stop/down/destroy no longer resolve required secret payloads merely to render and stop existing Compose services; start/apply paths continue to require real secret resolution.
-
-- `baha app destroy` now remains ownership-safe but recovery-capable: managed-runtime template drift no longer blocks deletion, and an uninitialized OpenBao control plane is treated as having no application scope to delete; sealed or ambiguous OpenBao still fails closed.
-
-- `baha app doctor --fix` now fails closed when the existing OpenBao control plane is uninitialized or sealed instead of continuing into application reconciliation.
-
-- Real MailFlow acceptance verified clean repository adoption, fresh startup, no-op `baha up`, STOPPED -> READY recovery, encrypted backup/restore, strict fast-forward application update, TLS readiness, required/generated secrets and ownership-safe destroy behavior.
-- OpenBao required-secret reads are batched per observation instead of repeating full scope/login/list/read work per key, substantially reducing normal `status` and `doctor` latency.
-- Fresh OpenBao recovery prompts now render their question and path input reliably before blocking for input.
-- `baha app update --check` now reports the exact dirty working-tree paths and change classes that block automatic update while preserving the fail-closed no-reset/no-stash policy.
-- Provider-registry helper call regressions found during fresh acceptance were corrected before release.
-
-### Added
-
-- Repository adoption workflow with remote HTTPS/SSH Git inspection through normal Git authentication.
-- Repository-aware root shortcuts for `plan`, `status` and `doctor`.
-- Secret-safe `-o json` / `--output json` result paths for inspect, plan, status and doctor.
-- Optional idempotent bounded BaseHarbor guidance in `AGENTS.md` through `baha app init --agents`.
-- Five-minute onboarding and first-class local Compose Playground documentation.
-- Bash, Zsh and Fish shell completion generated by `baha completion`, including fixed-value environment completion.
-- Shared terminal UX renderer with semantic result states, delayed progress feedback and stable non-TTY output.
-- Read-only `baha tui` dashboard with Overview, Status and Doctor views backed by the same structured health models as the CLI.
-- Global `--plain`, `--no-input`/ `--non-interactive` and root `--version` controls.
-- Read-only configured-application completion and typo suggestions for commands/high-frequency flags.
-- Bash completion now honors the active cursor word through `COMP_CWORD` and correctly splits value/description records on tabs, including completion immediately after a subcommand space.
-
-### Changed
-
-- `baha up -e ENV` / `--environment ENV` selects deployment context without rewriting the portable repository manifest.
-- `baha app init -e ENV` accepts the same short environment alias.
-- Human and JSON application status use the same readiness result model.
-- Doctor JSON is produced directly from shared preflight results rather than terminal rendering.
-- `baha app inspect --json` remains a compatibility alias while `-o json` is the canonical structured-output form.
-- Human status and doctor views are grouped into scan-friendly sections with one final overall state and actionable next commands.
-- Successful mutations use precise result states such as `CREATED`, `UPDATED`, `DELETED`, `REMOVED`, `STARTED`, `STOPPED`, `READY` and `VERIFIED` instead of generic `OK`.
-- `--quiet`/`--silent`, `--verbose` and `--no-color` are handled consistently as global human-output controls.
-- Potentially slow lifecycle operations show delayed contextual progress; fast operations do not flash activity indicators and CI/non-TTY output remains line-oriented.
-- Human result details and help text wrap to terminal width; long help may use `$PAGER` only on a real TTY.
-- `-v` is reserved consistently for `--verbose`; version remains available through `baha version` and `baha --version`.
-- Broken-pipe/EPIPE termination is silent for normal Unix pipelines.
-- Application status is now a bounded fast snapshot rather than a readiness wait loop; broker and subsystem checks no longer make `baha status` appear hung.
-- Normal status hides low-level Compose/curl/OpenBao diagnostics behind `--verbose`, and repository TLS renders inside the same status hierarchy before the final READY/DEGRADED state.
-- Application doctor now follows the same concise human-output policy: raw Compose/OpenBao/curl diagnostics stay behind `--verbose`, duplicate workload problems and empty workload-service sections are suppressed, TLS is integrated before the final health state, and repair guidance is presented through the normal Next actions.
-- TUI Status and Doctor views use the same concise human-detail mapping as the CLI, so raw Compose/OpenBao/curl diagnostics never leak into the interactive dashboard.
-- `baha app doctor --fix` now classifies repairability from structured doctor results instead of rendered terminal text, so human-output changes cannot silently disable safe repair.
-- Safe doctor repair can restore an existing stopped BaseHarbor control plane before application convergence and then uses the normal application apply path. BaseHarbor-declared required secrets no longer block read-only Compose security rendering, and every repository workload start is security-checked again immediately before start.
-
-- Cross-command lifecycle audit aligned workload-security behavior across preflight, apply, up, restore, backup restart and TLS reload paths.
-- Human, JSON and TUI application health now include the same repository TLS observation.
-- Repository manifest discovery now uses a typed not-found sentinel rather than parsing error-message strings.
-### Security
-
-- Remote Git URLs containing embedded userinfo/credentials are rejected; authentication is delegated to normal Git mechanisms.
-- Structured status/doctor output excludes secret values and reports only readiness metadata for required secrets.
-- Structured doctor output is read-only and cannot be combined with `--fix`.
-- BaseHarbor edits only its own bounded `AGENTS.md` section and fails closed on malformed or ambiguous markers.
-- Weak or ambiguous repository evidence remains non-authoritative and never silently grants runtime permissions or replaces infrastructure.
-- `NO_COLOR`, `TERM=dumb` and reduced-motion mode suppress visual effects without changing command semantics.
-- Progress output never invents percentages or ETAs, and quiet mode preserves failure diagnostics.
-- Structured JSON paths remain isolated from ANSI/color/progress rendering.
-- `--no-input` guarantees guided flows never prompt and fail closed with actionable explicit-input instructions.
-- The TUI is read-only and refuses non-interactive, plain, piped and CI execution.
-
-
-## [0.4.10] - 2026-09-20
-
-### Added
-
-- Generic provider observability declarations in Provider Integration Contract v1 for provider-owned metrics/log/trace signals without product-specific collector branches.
-- Protected provider metrics source registry with placement, sharing-boundary and application-authorization filtering.
-- Versioned `traces/v1` platform contract and Tempo 3.0.2 as the first managed shared Compose trace-storage reference provider.
-- Managed OpenTelemetry Collector to Tempo routing with real end-to-end verification: the BaseHarbor verification trace must be queryable from Tempo before trace storage is READY.
-- Provider metrics auto-registration for the managed OpenTelemetry Collector, Loki and Tempo when metrics collection policy allows provider signal classes.
-- Real Prometheus `up=1` verification for registered provider metrics.
-
-### Changed
-
-- Metrics collection defaults include safe metrics advertised by managed application/platform providers when the metrics facility is enabled.
-- Prometheus provider state now reconciles generic provider targets and attaches only the provider networks required by authorized registrations.
-- Loki's internal provider network has a stable BaseHarbor-owned name so an authorized metrics collector can join it without broadening application connectivity.
-- OTLP transport and trace retention remain separate: requesting `telemetry.otlp/v1` alone still does not start Tempo.
-- Tempo is deliberately limited to the default shared Compose placement in v0.4.10; unsupported application/external/named-boundary placement fails before mutation.
-
-### Security
-
-- Shared Prometheus filters application-scoped provider signals by the exact applications registered in that Prometheus sharing boundary.
-- Provider observability reachability is a dedicated BaseHarbor-managed collector path and does not grant applications access to shared provider networks.
-- Tempo runs non-root with a read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, explicit writable storage/tmpfs and a loopback-only host API.
-- Provider observability state contains endpoint identity/labels only and no credentials or secret-bearing URLs.
-
-
-## [0.4.9] - 2026-09-20
-
-### Added
-
-- Versioned `logs/v1` lifecycle semantics and Loki 3.7.8 as the first Compose log platform provider.
-- Grafana Alloy 1.19.2 forwarding from selected repository workload services into Loki without a Docker/Podman socket.
-- Shared/default, named shared-boundary and application-scoped Loki placement through the existing provider-placement model.
-- Real Loki readiness and query-based ingestion verification before the logs path is READY.
-- Repository Compose workload security preflight with machine-readable allow/warn/deny findings.
-- Reusable executable Provider Integration Contract conformance harness and deterministic fake provider.
-- Fault-injection coverage for CREATE/NOOP, drift/repair, provider outages, malformed bindings, verify failure, retry convergence and ownership-safe destroy.
-
-### Changed
-
-- Logical log resources and Loki placement are reconciled through the protected provider registry.
-- The application provider registry now consumes the canonical Provider Integration Contract descriptor mapping instead of maintaining a duplicate provider switch.
-- Development log collection defaults on; test/staging/production remain opt-in platform policy.
-- `app apply`, `app up`, `status`, `doctor`, `down` and `destroy` now reconcile the managed log lifecycle where enabled.
-
-### Security
-
-- Repository workloads that request privileged mode, host network/PID/IPC, runtime sockets, dangerous capabilities or critical host mounts fail closed in managed environments before workload mutation.
-- Development-only exceptions require explicit acknowledgement; host devices are warnings by default in development and denies in managed environments.
-- Loki and Alloy run read-only, drop Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
-- Log registration state and provider files are owner-only and contain no credentials.
-
-
-## [0.4.8] - 2026-09-20
-
-### Added
-
-- Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
-- Repository inspection detection for S3-compatible usage/runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export.
-- Real `object-storage.s3/v1` application-time create/get/delete execution through a shared mTLS Runtime Provider Executor.
-- Persistent asynchronous runtime-resource operations with idempotent mutation keys and restart/resume reconciliation.
-- Real runtime S3 bindings with bucket-scoped IAM credentials and authenticated native S3 Put/Get consumption.
-- Versioned `metrics/v1` capability specification for application-provided OpenMetrics-compatible HTTP sources.
-- Provider-neutral Manifest v1 metrics source declarations with logical source name, workload service, target port and path.
-- Prometheus 3.14.0 as the first lazy shared Compose metrics provider with automatic file-based target discovery.
-- Real scrape/ingestion verification and manual-only two-application shared-provider acceptance coverage.
-- Minimal platform-level cross-application connectivity commands: `baha connect SOURCE TARGET`, `baha disconnect SOURCE TARGET` and `baha connections`.
-- Directed Compose connectivity realized through a hardened BaseHarbor Runtime relay instead of a shared source/target bridge network.
-
-### Changed
-
-- Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
-- Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
-- Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
-- Added the versioned OpenAPI 3.1 Runtime Resource API v1 contract for provider-neutral application-time resources, including idempotency, asynchronous operation state and secure binding boundaries.
-- Interactive API documentation policy is now explicit: development on by default; test/staging and production off by default unless platform/operator policy enables it.
-- The per-application runtime component is generalized as the **Application Runtime Broker**: managed OpenBao secrets remain a runtime module, canonical application-bound secret routes move under `/runtime/v1/secrets`, and existing app-qualified routes remain compatibility aliases.
-- Development brokers now serve embedded Swagger/OpenAPI documentation on a stable automatically allocated host-loopback port; no public CDN or public bind is required.
-- The canonical broker DNS endpoint is `baseharbor-runtime`; the legacy `baseharbor-secrets` alias remains available for compatibility.
-- `baha app apply` and `baha app up` now lazily start/reuse the shared Runtime Provider Executor whenever an explicit runtime resource permission requires it.
-- Runtime-only applications receive a deterministic broker backend network without requiring artificial PostgreSQL/Valkey services; S3 provider-network access is attached only to workload services explicitly authorized for `object-storage.s3/v1`.
-- Global `baha destroy --yes` removes the BaseHarbor-owned shared Runtime Provider Executor before the shared object-storage provider.
-- Metrics collection is deployment policy rather than application product intent: development defaults on; test/staging/production require explicit opt-in unless overridden with `BASEHARBOR_METRICS_ENABLED`.
-- Each participating application gets an isolated metrics network; only declared/authorized metrics-source services join it, while the selected Prometheus instance is attached only to explicitly registered application networks.
-- Prometheus placement now uses the generic provider-placement model: safe shared default, optional named sharing boundaries and application-scoped placement, with unsupported placement failing before mutation.
-- Provider placement semantics are explicit: `application` means a dedicated provider instance for one application/environment; `shared` means lazy BaseHarbor Platform/Core Runtime infrastructure; `external` remains externally lifecycle-owned.
-- Cross-application connectivity is independent from provider sharing; `app down` suspends relay runtime while preserving policy and `app up`/`apply` reconcile it.
-- Application destroy removes only its metrics target/trust-edge state or dedicated provider according to placement; global destroy removes every BaseHarbor-owned shared Prometheus default/sharing-boundary instance and data volume.
-
-### Security
-
-- Missing repository evidence never authorizes capability removal.
-- Detected runtime operations such as S3 bucket creation are evidence only and never grant runtime authorization or provision infrastructure.
-- Applications and per-app brokers never receive provider-global S3 administrator credentials; those remain at the Runtime Provider Executor boundary.
-- Broker and executor run without Docker/Podman sockets; the executor has no host-published port and accepts only BaseHarbor SPIFFE/mTLS workload identities.
-- Runtime resource ownership is application/environment scoped; resource IDs cannot be used to read, bind or delete another application's resource.
-- Runtime S3 credentials are excluded from asynchronous operation state, normal resource metadata, logs and manifests and are returned only by the authenticated binding endpoint.
-- Prometheus target state contains endpoint identity and attribution labels only; it does not contain application credentials, provider-global credentials or portable product configuration.
-- Metrics collection does not implicitly provision Grafana, Loki or Tempo.
-- Cross-application connectivity is deny-by-default and directional; target services never join source link networks, and connectivity relays have no host-published port or Docker/Podman socket and run hardened non-root/read-only.
-
-## [0.4.7] - 2026-09-19
-
-### Added
-
-- Versioned `telemetry.otlp/v1` capability specification for explicit OTLP export semantics independent of any observability backend product.
-- Typed provider-neutral OTLP workload binding in the shared capability lifecycle and Provider Protocol v1.
-- OpenTelemetry Collector 0.161.0 as the first lazy shared Compose reference provider.
-- External OTLP endpoint binding through deployment-owned state without BaseHarbor taking provider lifecycle ownership.
-- Standard OpenTelemetry workload configuration through `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`.
-- Real OTLP HTTP/protobuf verification using an exported trace accepted by the selected OTLP endpoint.
-- Manual-only Docker/Compose acceptance coverage for the managed Collector path.
-
-### Changed
-
-- Canonical telemetry terminology is now `telemetry.otlp/v1`; OpenTelemetry is treated as the ecosystem/instrumentation model and the Collector as one replaceable provider implementation.
-- Shared provider registry records managed Collector placement as BaseHarbor-owned/shared and external OTLP destinations as externally owned.
-- Repository workloads using managed OTLP attach to a dedicated BaseHarbor telemetry integration network; external OTLP bindings do not create that network.
-- Global `baha destroy --yes` removes the shared BaseHarbor-owned Collector after application bindings are released.
-- Common telemetry resource identity uses OpenTelemetry service/environment semantic attributes plus BaseHarbor application/resource/provider attribution.
-- Shared provider lifecycle operations expose secret-safe metadata-only instrumentation hooks for preflight/apply/bind/verify so later observability providers can instrument the same core lifecycle.
-
-### Security
-
-- OTLP endpoints and provider topology remain deployment/provider state rather than portable application identity.
-- Optional external OTLP authorization headers are accepted only from deployment/runtime state and injected at the trusted workload/provider boundary.
-- Authorization headers and other credential material are not written to `baseharbor.yaml`, provider-registry state or normal diagnostics.
-- Invalid, missing or ambiguous OTLP bindings fail before provider mutation.
-
-### Compatibility
-
-- Manifest version remains `1`; `telemetry.otlp` is additive and opt-in.
-- Existing PostgreSQL, Valkey, OpenBao, secure-binding, managed exposure and S3 behavior remains compatible.
-- Requesting OTLP transport does not provision Prometheus, Loki, Tempo or Grafana.
-- Kubernetes/OpenShift collector realization, metrics/logs/traces storage providers and broader observability policy remain later roadmap work.
-
-
-## [0.4.6] - 2026-09-19
-
-### Added
-
-- Versioned `object-storage.s3/v1` capability specification with logical bucket identity, S3-compatible application semantics and provider-neutral secure bindings.
-- SeaweedFS 4.47 as the first lazy shared Compose reference provider for S3-compatible object storage.
-- Manifest v1 `services.object_storage` bucket declarations plus deterministic `--s3` and `--s3-bucket` CLI paths.
-- Standard host/workload S3 bindings and AWS-compatible environment variables without requiring a BaseHarbor SDK.
-- Authenticated SigV4 Put/Get readiness verification in apply, up, status and doctor.
-- Real Docker/Compose acceptance coverage for S3 provisioning, binding, restart, masking, isolation and destroy behavior.
-
-### Changed
-
-- Shared provider registry now records SeaweedFS as a BaseHarbor-owned shared provider while logical buckets remain application-owned resources.
-- Repository workloads requesting S3 attach to a dedicated BaseHarbor object-storage integration network while provider-native topology remains deployment state.
-- Global `baha destroy --yes` removes the shared BaseHarbor-owned SeaweedFS provider only after application bindings have been released.
-
-### Security
-
-- Every managed logical bucket receives separate access credentials and bucket-scoped SeaweedFS IAM authorization.
-- SeaweedFS is explicitly started with IAM enabled; BaseHarbor does not persist a global S3 superuser credential.
-- S3 access-key and secret-key values are owner-only and masked by default in `baha app env`.
-- SeaweedFS IAM administration receives per-bucket credential commands through stdin rather than process arguments, keeping credentials out of runtime command lines and command-error rendering.
-- Capability metadata and provider-registry state contain references/identity only, never plaintext S3 credentials.
-
-### Recovery
-
-- Application backup and restore fail closed for manifests containing managed object storage until object contents are part of the BaseHarbor recovery unit. BaseHarbor does not claim an incomplete S3 recovery as successful backup/restore.
-
-### Compatibility
-
-- Manifest version remains `1`; `services.object_storage` is an additive optional capability.
-- Existing PostgreSQL, Valkey, OpenBao, secure-binding and managed-exposure behavior remains compatible.
-- SeaweedFS is a reference provider, not application identity. Ceph RGW, AWS S3 and other conforming S3 providers can implement the same `object-storage.s3/v1` contract; dynamic external-provider loading/provider-selection UI remains future work.
-
-
-## [0.4.5] - 2026-09-19
-
-### Added
-
-- Shared `secure-binding/v1` model for provider-neutral workload identity, credential references, trust material, authorization metadata, secret references, security lifecycle declarations and machine-readable diagnostics.
-- Secure binding support in the shared capability lifecycle and `baseharbor.provider/v1` workload binding protocol.
-- SPIFFE-based identity mapping for the existing managed-secrets/runtime-broker path.
-
-### Changed
-
-- Managed `secrets/v1` bindings now expose existing security semantics through provider-neutral references while preserving OpenBao as the current reference provider.
-- Secure binding metadata is validated during plan construction before provider preflight or mutation.
-- Secure binding references are restricted to opaque `baseharbor://` references.
-
-### Security
-
-- Plaintext credentials, credential-bearing URLs, tokens, private keys and secret values are rejected from the shared secure-binding reference boundary.
-- Application/environment identity and credential references remain isolated across bindings.
-- Provider-specific OpenBao AppRole, policy, KV and PKI internals remain protected provider state.
-
-### Compatibility
-
-- Manifest v1 and existing Compose/OpenBao/runtime-broker behavior remain compatible.
-- No new application-facing security configuration is required.
-- Human OIDC/RBAC/MFA/JIT/breakglass, full cross-provider rotation completion and managed public certificate issuance remain intentionally deferred.
-
-## [0.4.4] - 2026-09-19
-
-### Added
-
-- Shared machine-readable endpoint/exposure core with stable logical workload-service identity and HTTP/HTTPS readiness semantics reusable outside the CLI.
-- Versioned `exposure.http/v1` Capability Specification with provider-neutral logical route, target service/port, transport and `public|internal` visibility intent.
-- Caddy as the first application-scoped Compose reference provider for explicit managed HTTP/HTTPS exposure behind the existing Provider Integration Contract and provider registry.
-- Stable BaseHarbor exposure network attached only to explicitly exposed workload services through generated Compose override state, without rewriting application Compose source.
-- End-to-end managed exposure lifecycle across apply/up, status/doctor, down/destroy, backup/restore and existing/BYOC TLS update.
-
-### Changed
-
-- Existing application-owned HTTP/HTTPS publishers now use the shared endpoint probing core while remaining application-owned observation/readiness state rather than managed exposure.
-- The shared capability lifecycle supports staged prepare/preflight, provision/bind and verify phases so traffic providers can be coordinated around workload convergence without introducing a second lifecycle engine.
-- Managed public exposure binds through the host-facing provider port; managed internal exposure is loopback-only in the Compose reference implementation.
-- Managed HTTPS reuses existing/BYOC deployment TLS state and restarts/reconciles the Caddy provider when protected certificate material changes.
-
-### Security
-
-- Managed exposure preflight completes before traffic-provider mutation and fails closed on invalid provider/TLS prerequisites.
-- Caddy provider convergence snapshots and rolls back BaseHarbor-owned state on failed new/changed realization.
-- Destroy removes only BaseHarbor-owned routing/provider state; application Compose source and application-owned volumes remain untouched.
-- FQDNs, host-published ports, certificate source paths, generated network names and Caddy configuration remain deployment/provider state rather than portable application intent.
-
-### Compatibility
-
-- Manifest version remains `1`; `exposure.http` is an additive optional contract extension. Existing manifests and app-owned publishers continue to work unchanged.
-- Compose remains the complete current runtime provider.
-- Managed ACME, OpenBao PKI issuance, automatic certificate renewal, Traefik, Kubernetes Gateway API/OpenShift Routes, cloud load balancers, service mesh and air-gap/private-registry work remain intentionally deferred.
-
-### Fixed
-
-- Repository inspection now treats an existing `baseharbor.yaml` as authoritative for application identity, declared capabilities, required secrets and workload selection while keeping heuristic evidence visible as supplemental signals.
-- `app init --quick` no longer promotes heuristic credential-like names from env examples into mandatory managed secrets.
-- Global and application status now distinguish an intentionally stopped runtime from a running-but-unready failure state.
-- Provider-registry validation now happens during preflight before workload/runtime mutation.
-- Failed repository workload starts/readiness attempts clean up resources created by that failed attempt without deleting application-owned persistent data or pre-existing workload state.
-- Repeated reconciliation reuses valid runtime mTLS identities; actual identity rotation recreates the broker so bind mounts cannot retain stale certificate/key inodes.
-- `app destroy` now shows preserved repository deployment/TLS state and supports explicit `--full-reset` for BaseHarbor-owned repository deployment state without touching external certificate sources.
-- Added ownership-aware `baha destroy --yes` for explicit global control-plane/runtime-state removal after application bindings have been released.
-- Fresh OpenBao bootstrap clearly asks for a new recovery output file, reuses filesystem completion, refuses an existing target and preserves the non-interactive `--recovery-file` path.
-
-
-## [0.4.3] - 2026-09-18
-
-### Added
-
-- Read-only repository inspection core with extensible detectors and structured Detected/Suggested/Possible evidence.
-- `baha app inspect [PATH]` with human-readable and `--json` machine-readable output.
-- Detection evidence for Compose/Dockerfile, dependency manifests, env variable names, source imports, configuration endpoint patterns, ports and health checks.
-- Secret-safe repository snapshots that discard env values and skip symlinked/generated/vendor trees.
-
-- Provider Integration Contract v1 with versioned capability specifications and a shared semantic boundary for built-in and future external providers.
-- Initial capability specifications for `database.sql/v1`, `cache.key-value/v1` and `secrets/v1`.
-- Versioned Protocol Buffers schema for the future language-neutral external provider API.
-- Static provider contract conformance foundation and reference integration descriptors for PostgreSQL, Valkey and OpenBao.
-
-### Changed
-
-- Guided `app init` now consumes the shared repository inspection engine instead of owning a separate CLI-only detector.
-- Workload-only repositories no longer receive an invented PostgreSQL default when the workload itself is sufficient application intent.
-- Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
-- `app init --quick` now fails closed when only Suggested/Possible evidence exists and no explicit workload is detected, instead of inventing a backend requirement.
-
-### Architecture
-
-- Provider protocol hardening now defines asynchronous operations, explicit unbind, idempotent mutations, deadline/cancellation rules, gRPC health/security expectations and safe protobuf evolution.
-- Provider configuration uses JSON Schema 2020-12; GraphQL is explicitly reserved for possible future control-plane/query use rather than provider lifecycle.
-- Future external provider transport is based on gRPC/Protocol Buffers and future package distribution on OCI standards, without introducing a dynamic plugin loader yet.
-- Future provider distribution is digest-first, multi-platform through OCI Image Index, and uses OCI subject/referrers plus standard signature/SBOM/provenance mechanisms instead of proprietary BaseHarbor formats.
-- All subsequent capability/provider integrations must use the shared lifecycle/registry contract and add capability-specific conformance rather than product-specific lifecycle paths.
-
-## [0.4.2] - 2026-09-18
-
-### Added
-
-- Persistent provider registry for shared, application-scoped and external/BYO provider instances.
-- Explicit provider ownership and lifecycle semantics for update, backup and destroy planning.
-- Deterministic shared-provider reuse and fail-closed duplicate shared-provider detection.
-- External provider bindings without BaseHarbor taking ownership of provider lifecycle.
-
-### Changed
-
-- PostgreSQL and Valkey are registered as BaseHarbor-owned application-scoped providers.
-- Control-plane OpenBao is registered once as a BaseHarbor-owned shared provider reusable by multiple applications.
-- Successful `app apply` and `app up` reconcile provider registry state; successful `app destroy` releases application bindings and application-owned provider records.
-
-### Security
-
-- Application-scoped providers cannot be bound across application ownership boundaries.
-- Corrupt, duplicate or ambiguous provider registry state fails closed.
-- Registry updates are serialized and persisted atomically with owner-only permissions.
-- External provider records contain non-secret references only.
-
-### Compatibility
-
-- Manifest v1 is unchanged; provider placement remains deployment/operator state.
-- Existing v0.4.1 applications are adopted on their next successful `baha app apply` or `baha app up`.
-
-## [0.4.1] - 2026-09-18
-
-### Added
-
-- A reusable capability-provider domain core with typed capability requirements, provider descriptors, logical resources and workload bindings.
-- Machine-readable capability lifecycle results for `plan -> preflight -> apply -> bind -> verify`, including structured diagnostics suitable for CLI, future Web UI/API and future Operator consumers.
-- Reference capability descriptors for PostgreSQL (`database.sql`), Valkey (`cache.key-value`) and OpenBao (`secrets`).
-- Protected runtime binding metadata now records resolved logical capability/provider/workload bindings alongside the existing standard connection bindings.
-
-### Changed
-
-- Existing Manifest v1 capability types now reuse the shared capability domain while remaining source-compatible inside the application package.
-- Application planning resolves current PostgreSQL, Valkey and OpenBao requirements through fail-closed capability/provider negotiation before runtime mutation begins.
-- Capability preflight completes for all planned resources before the reusable lifecycle permits provisioning mutation.
-
-### Security
-
-- Unsupported capability/provider combinations fail before mutation.
-- Capability diagnostics and runtime metadata contain logical identities and provider names only; secret values and credential-bearing provider configuration remain outside the shared domain model.
-
-### Compatibility
-
-- Manifest v1, the current Compose developer workflow and existing v0.4 runtime behavior remain compatible.
-- Provider registry/ownership policy, additional capability providers and Kubernetes/OpenShift/cloud implementations remain intentionally deferred to later v0.4.x issues.
-
-## [0.4.0] - 2026-09-18
-
-### Added
-
-- A provider-neutral `PortableContract` seam that translates supported Manifest v1 application intent into logical capabilities without exposing Compose project names, host ports, deployment FQDN/TLS source paths or other provider implementation details.
-- Runtime provider identity and capability negotiation with Compose as the current implementation and explicit extension points for future Kubernetes and OpenShift providers.
-- Protected deployment-owned runtime-provider state through `BASEHARBOR_RUNTIME_PROVIDER`; legacy v0.3 state without the key safely resolves to Compose.
-- A central fail-closed runtime-provider guard for remaining application runtime commands, including preflight, backup/restore, workload logs/shell/exec, update, TLS reload, status/doctor, down and destroy.
-- A reusable declarative application input resolver supporting safe defaults, generated values, external/operator values and conditional `required-if` dependencies.
-- Automation-safe `baha app init --input NAME=VALUE` injection for declared non-secret deployment inputs while preserving the existing dedicated flags.
-- Resolver-driven repository deployment initialization for `hostname`, `tls_mode` and conditionally required `cert_dir`, shared by `baha app init` and the repository-aware `baha up` path.
-- Architecture decisions documenting portable contract/provider boundaries, runtime-provider selection and contract evolution/versioning rules.
-
-### Changed
-
-- Manifest v1 is now explicitly treated as the supported compatibility surface and translated one-way into portable application intent rather than being treated as the permanent provider-neutral schema itself.
-- Application requirements, runtime-provider selection and capability-provider/product selection are formally separate concerns; an application requests logical capabilities while deployment/platform policy chooses how they are realized.
-- Contract evolution is fail-closed for unknown required versions or semantics; additive evolution remains preferred and provider-specific escape hatches, when eventually required, must remain optional and namespaced.
-- Repository runtime operations now resolve the deployment-selected runtime provider and required runtime capabilities before entering the current Compose-backed implementation, preventing future providers from silently falling through into Docker/Compose code.
-- `baha app init` and `baha up` ask only for unresolved deployment values when interactive. Complete protected state causes no additional questions; non-interactive operation uses only safe defaults/derivations and never invents an external certificate path.
-- Compose remains the complete and first-class runtime implementation for v0.4. Kubernetes and OpenShift are intentionally not implemented in this release; the new seams are the compatibility boundary they will consume later.
-
-### Security
-
-- Unsupported or unavailable runtime providers fail explicitly instead of silently degrading to Compose or weakening requested runtime guarantees.
-- Secret input values are represented explicitly, render redacted, and are excluded from generic persistable non-secret resolver output by construction.
-- Runtime-provider capability negotiation fails closed when an operation requires behavior the selected provider cannot satisfy.
-- Existing protected deployment state, certificate validation, secret storage and provider-specific security controls remain separate from the portable application contract and are not copied into committed manifests.
-
-### Deprecated
-
-- No public `baha` command or Manifest v1 field is deprecated in v0.4.0. Compose-specific Manifest v1 fields remain supported compatibility inputs, but they are no longer treated as the long-term provider-neutral application model.
-
-### Removed
-
-- Nothing from the supported v0.3 CLI or Manifest v1 workflow is removed in v0.4.0.
-
-## [0.3.0] - 2026-09-17
-
-### Added
-
-- Trusted-local developer access workflows: `baha app psql`, `redis`/`valkey`, masked/reveal-on-demand credentials, workload logs, shell and exec using logical application/resource identities.
-- Health-aware, service-level Compose workload truth shared by `baha app status`, `doctor` and `show`, including HTTP/HTTPS exposure readiness for conventional app-owned web publishers.
-- `baha app show` as a read-only application overview with backend, workload, secret, backup and recovery readiness metadata without exposing secret values or credential-bearing URLs.
-- Guided application backup and restore with secure no-echo password entry, explicit impact previews, verified recovery metadata and `Status: READY` only after successful post-restore verification.
-- Safe Git-backed `baha app update --check` and strict fast-forward application updates, with dirty/diverged history protection, optional encrypted pre-update recovery points and protected update metadata.
-- Guarded BaseHarbor self-update through `baha update --check` and explicit mutation, including release-asset/checksum verification, atomic replacement, retained recovery binary and rollback on failed post-update verification.
-- Workload-only repository applications for explicit Compose workloads that do not require artificial PostgreSQL or Valkey dependencies.
-- Automatic published-port fallback for configurable Compose bindings when host ports are already allocated, including IPv4 and IPv6 loopback/wildcard Docker error forms.
-- Repository deployment runtime initialization for public FQDN and TLS mode while keeping deployment/runtime details outside the portable `baseharbor.yaml` application contract.
-- Existing/BYOC TLS certificate lifecycle with `baha app tls update --check` and `baha app tls update`, including certificate/key/FQDN validation, downgrade protection, protected installation, restart and readiness verification.
-- Linux terminal directory completion for interactive existing-certificate source selection without adding a new readline dependency.
-
-### Changed
-
-- Compose readiness now distinguishes running, starting, unhealthy, exited and missing services instead of treating every running container as READY.
-- HTTP/TLS exposure failures now make the associated workload and whole application NOT READY; redirects are accepted as reachable exposure while 5xx/unreachable endpoints fail readiness.
-- HTTPS readiness continues to probe the local published socket while using the configured public FQDN for HTTP Host and TLS ServerName, allowing hostname-bound application-owned TLS endpoints to be verified locally.
-- Backup/restore interactive UX now retries short or mismatched passwords and shows reliable indeterminate progress without inventing percentage estimates.
-- Restore workload verification now allows a bounded readiness window for real applications to reach service and HTTP/TLS readiness while remaining fail-closed.
-- Application updates reuse the existing plan/preflight/apply/verify lifecycle after source fast-forward; durable applications require either an encrypted recovery point or explicit `--no-backup` acknowledgement before mutation.
-- Self-update keeps stable as the default release channel, refuses downgrades, never invokes `sudo` automatically and reconciles the current repository application through the normal lifecycle when applicable.
-- Repository workload port fallback preserves explicit operator environment overrides and persists BaseHarbor-selected fallback values in protected runtime state for later lifecycle commands.
-
-### Security
-
-- Guided backup/restore passwords are never accepted as command-line values and are passed to the existing hardened recovery path through owner-only in-memory file descriptors on Linux.
-- Update metadata records non-secret state only; raw runtime errors, credentials and secret values are not persisted.
-- TLS updates fail closed on invalid key pairs, FQDN mismatch, downgrade attempts or failed workload recovery and restore the previous protected certificate state on failure.
-- Workload-only applications do not receive invented backend credentials, backend networks or services that they did not request.
-
-## [0.2.0] - 2026-09-10
-
-### Added
-
-- End-to-end developer-journey acceptance that validates a clean MailFlow checkout against the exact BaseHarbor CLI/runtime under test.
-- Release-facing CI coverage for occupied default control-plane ports, fail-closed missing application secrets, workload startup, health checks and restart behavior.
-- Developer-journey documentation defining the product-level acceptance promise for future reference applications.
-- Project-aware guided `baha app init` that detects common Compose files, PostgreSQL, Redis/Valkey, workload services and likely required secret names before asking setup questions.
-- `baha app init --quick` for non-interactive manifest generation from unambiguous detections and safe defaults.
-- Guided PostgreSQL and Redis/Valkey instance selection, including automatic proposals when multiple backend services are visible in the repository.
-- Actionable required-secret readiness output with exact safe `baha app secret set <NAME> --stdin` remediation commands.
-- Explicit generated application secrets in `secrets.required`, with bounded cryptographically secure `random` and `hex` generators persisted directly to managed OpenBao storage.
-- Repository-aware `baha up` happy path that can start/reuse the control plane, prepare OpenBao, converge declared application backends, start the repository workload and verify readiness from one command.
-- Explicit `baha up --control-plane-only` advanced mode for operators and CI flows that intentionally want to skip repository application convergence.
-
-### Changed
-
-- Interactive application initialization now follows the rule "detect first, ask only what is unclear" while the existing explicit flags remain the deterministic CI/automation path.
-- Application initialization previews the generated manifest and never copies detected secret values into `baseharbor.yaml`.
-- `baha app init --quick` now preserves multiple detected logical PostgreSQL and Redis/Valkey instances instead of collapsing them into one default service.
-- Required-secret checks now distinguish configured, missing and unusable values and explicitly report when no application secrets have been configured yet.
-- `baha app apply` now generates only explicitly declared missing generated secrets before the normal required-secret gate; existing values are never automatically overwritten or rotated, and external secrets remain fail-closed user input.
-- A fresh managed-secret repository startup through `baha up` now asks for an operator-held recovery path interactively or requires `--recovery-file PATH` in non-interactive mode instead of requiring a separate OpenBao bootstrap command.
-- `baha up` now routes detected application projects without `baseharbor.yaml` into the existing guided app-init flow; `--yes` uses only unambiguous detections and safe `app init --quick` defaults, while ambiguous projects remain fail-closed.
-- `app.environment` is explicitly defined as deployment context rather than intrinsic application identity, preserving a path for the same logical application to run in multiple future environments/providers.
-- Compose remains the complete v0.x runtime target while provider-specific details stay outside portable application requirements.
-- MailFlow acceptance now validates the real MailFlow `main` branch instead of the temporary v0.2 compatibility branch used during pre-release integration.
-
-### Removed
-
-- Temporary MailFlow v0.2 validation-sync marker accidentally merged with the validation-only compatibility PR.
-
-## [0.1.0-rc.1] - 2026-09-09
-
-### Added
-
-- Formal Semantic Versioning and GitHub Release process for the `baha` CLI.
-- Reproducible release archives for Linux amd64 and arm64.
-- SHA-256 checksums and GitHub build-provenance attestations for release artifacts.
-- Versioned runtime container tags aligned with CLI releases.
-- Verified release installer for released `baha` binaries.
-- Bilingual GitHub Pages documentation with English as the default and German under `/de/`.
-
-### Changed
-
-- The moving development container tag is `edge`; `latest` is reserved for stable releases.
-- Control-plane runtime state is user-global by default instead of repository-relative.
-- Renovate automation is restricted to low-risk updates; platform, major and security-sensitive changes require review.
-- Application runtime startup now retries transient loopback host-port bind races without changing credentials, database names, or persisted volumes.
-
-### Release candidate scope
-
-- This release candidate validates the real GitHub publishing path before `v0.1.0`.
-- It is intentionally not marked as the latest stable release.
-
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...HEAD
-[0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
-[0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
-[0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
-[0.4.16]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15.1...v0.4.16
-[0.4.15.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15...v0.4.15.1
-[0.4.15]: https://github.com/mcpdev80/baseharbor/compare/v0.4.14...v0.4.15
-[0.4.14]: https://github.com/mcpdev80/baseharbor/compare/v0.4.13...v0.4.14
-[0.4.13]: https://github.com/mcpdev80/baseharbor/compare/v0.4.12...v0.4.13
-[0.4.12]: https://github.com/mcpdev80/baseharbor/compare/v0.4.11...v0.4.12
-[0.4.11]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...v0.4.11
-[0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
-[0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
-[0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
-[0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
-[0.4.6]: https://github.com/mcpdev80/baseharbor/compare/v0.4.5...v0.4.6
-[0.4.5]: https://github.com/mcpdev80/baseharbor/compare/v0.4.4...v0.4.5
-[0.4.4]: https://github.com/mcpdev80/baseharbor/compare/v0.4.3...v0.4.4
-[0.4.3]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...v0.4.3
-[0.4.2]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0
-[0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíß·é:-jZ.¶›­–)Ş³R26†ævVÆöp ¤ÆÂæ÷F&ÆR6†ævW2Fò&6T†&&÷"&RFö7VÖVçFVB–âF†—2f–ÆRà ¥F†Rf÷&ÖB—2&6VBöâ´¶VW6†ævVÆöuÒ†‡GG3¢òö¶VW6†ævVÆöræ6öÒöVâóããò’âæ÷&ÖÂ&VÆV6W2föÆÆ÷rµ6VÖçF–2fW'6–öæ–æuÒ†‡GG3¢ò÷6V×fW"æ÷&r÷7V2÷c"ããæ‡FÖÂ“²GW&–ærF†RcãBÆ–æRÂVÖW&vVæ7’†÷Ff—†W2W6RF†RFö7VÖVçFVBf÷W"×'BÔ¤õ"äÔ”äõ"åD4‚ä„õDd•†W‡FVç6–öâà ¢22³ãBã#5ÒÒVç&VÆV6V@ ¢222FFV@ ¢ÒV&Æ–26öç6öÆRæBæöFR6öææV7F÷"&W÷6—F÷&–W2&RFö7VÖVçFVB2÷F–öæÂ6÷&RÖ6öçG&7B6öç7VÖW'2Âv—F‚7W÷'B6Æ–×2&÷VæBFò–ææVB7&÷72×&W÷6—F÷'’Wf–FVæ6R&F†W"F†â&W÷6—F÷'’ÖÆö6Â6†V6·2ÆöæRà¢Ò&W÷6—F÷'’Ö–æFWVæFVçB6÷&R&ö÷G7G&f÷"ÖæFF÷'’5ÂÂ6V7&WG2æB–FVçF—G’ÂW6–ær÷7Fw&U5ÂÂ÷Vä&òæB¶W–6Æö²v—F‚&÷FV7FVB7&VFVçF–Ç2æBDÅ2à¢ÒWF†÷&—FF—fR–ç7FÆÆF–öâ–FVçF—G’Âö'6W'f&ÆR&ö÷G7G&7FvW2æB÷væW'6†—×6fR&WG'’÷&V6öæ6–Æ–F–öâF‡&÷Vv‚6†&VB4Ä’ôÔ5÷&÷FV7FVB…EE6VÖçF–72à¢Òf—'7BÆ–6F–öâ6WGWöffW'26÷&R&ö÷G7G&v†VâæVVFVBæB6öçF–çVW2gFW"fW&–f–VB&VF–æW73²æöâÖ–çFW&7F—fR&WVW7G2W‡÷6RâW‡Æ–6—B&ö÷G7G&&WV—&VÖVçBà¢ÒFWfVÆ÷ÖVçBöFWÆ÷–ÖVçBÖ6†–æR×&öÆRFVfVÇG2æBâ÷F–öæÂ6öç6öÆR&÷VæBFòöæR6VÆV7FVB6÷&R–âF†R6ÖR–ç7FÆÆF–öâ÷6V7W&—G’&÷VæF'’à ¢Ò&÷FV7FVB…EEÖævVB×G'W7B&÷FF–öâ&WW6W26÷&R7&VFVçF–Âô46VÖçF–72Â&WV—&W2W‡Æ–6—B–ç7FÆÆF–öâ&÷fÂæB¶VW2&V6÷fW'’ÖFW&–Â÷WBöb'&÷w6W"–çWB÷&W7VÇG2à ¢2226†ævV@ ¢Ò6÷&R6&–Æ—G’&WV—&VÖVçG2&R–æFWVæFVçBöb6†&VB÷"Æ–6F–öâÖ—6öÆFVB&÷f–FW"Æ6VÖVçBâ&W6÷W&6R&W÷'F–ærF—7F–æwV—6†W2Æææ–ærW7F–ÖFW2g&öÒVæf–Æ&ÆR6÷&RÖV7W&VÖVçG2æBW‡Æ–ç2FF—F–öæÂ—6öÆF–öâ6÷7Bà¢Ò&VÖ÷FRÆ–6F–öâÖVÖ÷'’&VfÆ–v‡B&WVW7G2g&W6‚Wf–FVæ6Rg&öÒF†RWF†VçF–6FVBW†V7WF–öâæöFS²6÷&RÖ†÷7B$ÒæB'VçF–ÖRÖ–æfòF÷FÂ$Ò6ææ÷B&WÆ6Rf–Æ&ÆRæöFR66—G’âW††W7FVB$Ò—2&V¦V7FVBWfVâv†Vâv÷&¶ÆöBW7F–ÖFR—2Væf–Æ&ÆRà ¢222f—†V@¢Ò6÷&R–FVçF—G’&VBÖöæÇ’&V6öæ6–Æ–F–öâFöÆW&FW2F†R&÷VæFVBæF—fR¶W–6Æö²¤D$2&V6öææV7F–öâv–æF÷rgFW"„FF&6R6öçfW&vVæ6S²×WFF–öç2æBWF†VçF–6F–öâf–ÇW&W2&VÖ–âf–ÂÖ6Æ÷6VBà¢Ò&VÖ÷FRÆ–6F–öâ7FGW2æB÷fW'f–WrW6RF†R&÷FV7FVBæöFR&ö¦V7B&–æF–æræBÆ—fR÷væVB–çfVçF÷'’–ç7FVBöb–æfW'&–ær'6Væ6Rg&öÒÆö6Âf–ÆW2â&÷f–FW"ö'6W'fF–öç2&VÖ–â–ç7Vff–6–VçBf÷"6ö×ÆWFRÆ–6F–öâ&VF–æW72à¢Ò6÷&R–FVçF—G’&VF–æW72&WG&–W2F†R7V6–f–2æF—fR¶W–6Æö²6W'fW"ÖW†6WF–öâ&W7öç6RgFW"FF&6R6öçfW&vVæ6S²–çfÆ–B7&VFVçF–Ç2æB÷F†W"6Æ–VçBFVæ–Ç27F–ÆÂf–Â6Æ÷6VBà ¢Ò¶W–6Æö²7F'G2öæRWF†VçF–6FVB&ö÷G7G&ÖVÖ&W"&Vf÷&RFF—F–öæÂÖVÖ&W'2¦ö–âÂ&WfVçF–ær6öæ7W'&VçB–æ—F–ÂFF&6RÖ–w&F–öç2à ¢ÒÆ–6F–öâW†V7WF–öâ&WfÆ–FFW2F†R6VÆV7FVB6÷&R–ç7FÆÆF–öâæB¶VW26÷&RÖÖævVB6V7&WBÂ´’æB'&ö¶W"÷W&F–öç2–æFWVæFVçBöbv÷&¶ÆöBÆ6VÖVçC²&VÖ÷FR&–æF–æw2æWfW"fÆÂ&6²–×Æ–6—FÇ’FòÆö6ÂWF†÷&—G’à¢Ò&VÖ÷FRVFÆWB&ö¦V7B&VÆ—¦F–öâV&Æ—6†W2WfW'’Væ—B&Vf÷&R6öçF–æW"7F—fF–öâÂ7F'G2FWVæFVæ6–W2f—'7BæB&V¦V7G27–6ÆW2&Vf÷&R×WFF–öâà¢Ò6÷&RÖÖævVB–æ—BFWVæFVæ6–W2&WV—&RfW&–f–VB7V66W76gVÂæF—fR6ö×ÆWF–öâ&Vf÷&RÆ–6F–öâ7F—fF–öâæB&WF–â6ö×ÆWF–öâWf–FVæ6Rv—F†÷WBVæ&Æ–ærWFöÖF–2æöFR7F'GWà¢Ò&VÖ÷FR&÷f–FW"V&Æ–6F–öâ&WV—&W2GW&&ÆR6÷&R&V6V—BW'6—7FVæ6R&Vf÷&R7F—fF–öã²W'6—7FVæ6Rf–ÇW&W2&Æö6²W†V7WF–öâæBWFöÖF–2V&Æ–6F–öâ&WÆ’à¢ÒÖævVBöFÖâæWGv÷&²FV&F÷vâ&VÖ÷fW2öæÇ’F†RW†7B÷væVBæWGv÷&²v—F†÷WBf÷&6RæB&W6W'fW2Æ—fR6öç7VÖW'2âW‡Æ–6—B÷væVBFF&W6WBfW&–f–W2föÇVÖR'6Væ6RæB7W÷'G2&V6öæ6–Æ–F–öâgFW"÷&F–æ'’FV&F÷vâà¢Ò÷&F–æ'’öFÖâFW7G&÷’÷&VÇ’&WW6W2F†RW†7B÷væVB&÷f–FW"FFföÇVÖRâÖævVBVæ—B&VÖ÷fÂ&V6†V6·2æF—fR÷væW'6†—æB&W6W'fW2&W6÷W&6W2&WÆ6VBv—F‚f÷&V–vâ&ö¦V7BÆ&VÇ2à¢Ò&VÖ÷FRvVæW&FVB&÷f–FW"'VæFÆW2&W6W'fRæF—fRDÅ2&–æBÖf–ÆR&VF&–Æ—G’&VæVF‚&÷FV7FVBF—&V7F÷&–W3²'VçF–ÖRVçf—&öæÖVçG2&VÖ–â÷væW"ÖöæÇ’æBÇFW&VBf–ÆRW&Ö—76–öç2f–Â–Ö×WF&ÆRV&Æ–6F–öâfÆ–FF–öâà¢Ò–çFW&7F—fRFW&Ö–æÇ2&W6W'fRV&Ç’–çWBæBFW&Ö–æÂ&÷Fö6öÂ&WÆ–W3²Æör7G&V×2FVÆ—fW"FÖ—76–öâ†VFW'2æB6ÖÆÂ÷WGWB6‡Væ·2v—F†÷WBv—F–ærf÷"F†R&öGV6W"Fòf–æ—6‚à¢Ò'&÷w6W"W†V7WF–öâ7G&V×2¶VW–FÆR…EE26öææV7F–öç27F—fRGW&–ær&÷f–FW"6WGWv—F†÷WB–çfVçF–ær&öw&W72÷"W‡FVæF–ærWF†VçF–6F–öâFVFÆ–æW2à¢ÒÆ–6F–öâ&W—"&W6W'fW2F†RW‡Æ–6—FÇ’6VÆV7FVBVçf—&öæÖVçBF‡&÷Vv‚4Ä’ÂÔ5æB&÷FV7FVB…EEà¢Ò&WVFVBWF†VçF–6FVB&WVW7G2&W6öÇfRFVæçBÖVÖ&W'6†—6÷'&V7FÇ’gFW"66÷VBFF&6RG&ç67F–öâ&W6WG2—G26öææV7F–öâ6öçFW‡C²&÷rÖÆWfVÂ—6öÆF–öâæBFVæ–VBVç66÷VBw&—FW2&VÖ–âVæf÷&6VBà¢ÒÆ–6F–öâ÷fW'f–WrW6W2F†R6æöæ–6ÂÖævVB×&÷f–FW"&VF–æW72ÖöFVÂ–ç7FVBöb&WV—&–ær&÷f–FW"6öçF–æW'2–âF†RÆ–6F–öâ6ö×÷6R&ö¦V7B‚3ƒ’à¢Ò&6·WÆöG26÷&R'VçF–ÖR6öçFW‡Bf÷"'VçF–ÖR×W&Ö—76–öâ'&ö¶W'2æBGFV×G2&÷VæFVB'VçF–ÖR&V6÷fW'’WfVâv†Vâ&6†—fR6GW&R—26æ6VÆÆVB‚3ƒ"’à¢ÒÖ—76–ær&WV—&VB6V7&WG2v—F†÷WBFW&Ö–æÂ&WGW&ââ7F–öæ&ÆRG—VBW'&÷#²Ò×–W6FöW2æ÷B'—726V7&WBf–Æ&–Æ—G’‚3ƒ2’à¢ÒvVæW&FVB6ö×÷6RFVÆ—fW'2F†R6ÖR'VçF–ÖRVçf—&öæÖVçB&–æF–æw2&WV—&VB'’vVæW&FVB6÷W&6R‚3ƒB’à¢Òg&W6‚vò–ÖvR'V–ÆG2&WF–âF–F–VBÖöGVÆR7FFS²æW‡Bæ§2fÆ–FFW2'VçF–ÖR&–æF–æw2B&WVW7BF–ÖS²V&·W26¶v–ærW†V7WFW2F‡&÷Vv‚F†RÖfVâÆ–fV7–6ÆRâvVæW&FVB6ö×÷6Rv÷&¶ÆöG2&R&V6övæ—¦VB–æFWVæFVçFÇ’öb”ÔÂ–æFVçFF–öâ‚3ƒR’à¢Òg&W6‚6÷&R&ö÷G7G&ÆÆö6FW2æWrFVfVÇB&V6÷fW'’÷WGWBv†VâöÆB&V6÷fW'’ÖFW&–Â&VÖ–ç2Â&W6W'f–ær&Wf–÷W2f–ÆW2æBW‡Æ–6—B÷W'6—7FVBF‚&÷FV7F–öâ‚3S#b’à ¢22³ãBã#%ÒÒ##bÓÓ` ¢222FFV@ ¢Ò6ö×ÆWFRvVæW&FVB4Ä’ô¥4ôâô6÷&RôÔ56÷fW&vR–çfVçF÷'’v—F‚G—VB7W÷'FVB&öGV7B÷W&F–öç2æBW‡Æ–6—B†÷7B÷&W6VçFF–öâW†6ÇW6–öç2à¢Ò6†&VB6VÖçF–2÷W&F–öç2f÷"&W÷6—F÷'’÷v÷&·76RF÷F–öâÂF&vWG2Â7F6·2Â6V7&WG2õDÅ2ÂG'W7BÂ–FVçF—G’Â6öææV7F—f—G’æB6öçG&öÂ×ÆæRÆ–fV7–6ÆS²Ô5F—66÷fW'’—26†V6¶VBv–ç7BF†R&Vv—7G'’æBFö7VÖVçFF–öâà¢ÒfW'6–öæVBW‡FVç6–öâ'F–f7BFW67&—F÷'2æB6W&FRfW&–f–6F–öâ÷G'W7B×öÆ–7’&W7VÇG27&÷726—‚W‡FVç6–öâfÖ–Æ–W2Âv—F‚F–vW7BÖ&÷VæB¥u2ö–â×F÷Fòõ4$ôÒ÷&÷fVææ6RfW&–f–6F–öâF‡&÷Vv‚÷W&F÷"Ö6öæf–wW&VB¶W—2à¢ÒV&Æ–26öæf÷&Öæ6R÷&÷f–FW"÷c6¶vRæBF—66÷fW'’&öf–ÆRW‡FVæF–ærF†RW†—7F–ær&÷f–FW"†&æW72v—F‚G&–gBÂfVÇG2Â&V6÷fW'’Â÷væW'6†—æB–FV×÷FVçBFW7G&÷’6†V6·3²â–æFWVæFVçBW‡FW&æÂÖöGVÆR&÷fW2W†V7WF–öâv—F†÷WB–çFW&æÂ–×÷'G2à ¢2226†ævV@ ¢Ò4Ä’Â¥4ôâæBÔ5W6RF†RW†—7F–ærG&ç7÷'BÖæWWG&Â÷W&F÷"WF†÷&—¦F–öâ&÷VæF'’æB7F&ÆRÆ–6F–öâ–FVçF—G“²FW7G'V7F—fRFööÇ2&WV—&RW‡Æ–6—B&÷fÂà¢Ò7G'V7GW&VB6V7&WBöVçf—&öæÖVçBö6öææV7F–öâ&W7VÇG2Ö6²Væ¶æ÷vâ6V7&WBf–VÆG2æBöÖ—B&—fFRÖFW&–Ã²&÷FV7FVBf–ÆR–çWB—2WF†÷&—¦VB&Vf÷&R&VF–ærà¢ÒV&Æ–2WFöÖF–öâFö7VÖVçFF–öâ–æ6ÇVFW26öæ7&WFR4Ä’æBvVæW&–2Ô56Æ–VçBW†×ÆW2à ¢222f—†V@ ¢ÒV–6²&W÷6—F÷'’F÷F–öâw&—FW2FWFV7FVB…EEô…EE2W‡÷7W&W2W6–ærF†R6ÖRfÆ–FF–öâ2wV–FVBF÷F–öâæB&V¦V7G2Ö&–wV÷W2÷'G2&Vf÷&Rw&—F–ærà¢Ò7FæFÆöæRÆ–6F–öâ&VfÆ–v‡B–æ6ÇVFW2F†R6†&VB&W÷6—F÷'’v÷&¶ÆöB6öçG&7BvFS²&W÷6—F÷'’WfÆ–FFW2F†B6öçG&7B&Vf÷&R6öçG&öÂ×ÆæR7F'GWà¢ÒFWÆ÷–ÖVçB6öæf–wW&F–öâ—2F—7F–æ7Bg&öÒÇ––ær7FFRÂ&V¦V7FVBÆ–W2&V6÷&Bf–ÇW&RÂæBF&vWBFV&F÷vâ&V6öæ6–ÆW2–æ7F—fRö'6W'fF–öç2v—F†÷WBFVÆWF–ærÆ–6F–öâ6÷W&6RÂ–çWG2÷"FFà¢Ò&WVFVBV–6²–æ—B&WGW&ç26ÆV"Væ6†ævVBW†—7F–ærÖ6öçG&7B&W7VÇBÂ–æ6ÇVF–ær¥4ôâöæöâÖ–çFW&7F—fRW6Rà¢ÒÆ–6F–öâ†VÇ&Vv—7FW'2æWvöæ6Rà¢ÒvVæW&FVBvò&ö¦V7G2–æ6ÇVFRæF—fRÖW76v–æröFö7VÖVçBöGW&&ÆRÖ¶W’×fÇVR6Æ–VçB–×÷'G2æB6†&VBDÅ2†VÇW'3²7&VF–öâF—7F–æwV—6†W2&W÷6—F÷'’fÆ–FF–öâg&öÒ6ö×–ÆW"fW&–f–6F–öâà¢ÒF&vWBFV&F÷vâ–æ6ÇVFW2Vç&VfW&Væ6VB6†&VB5Âö66†Rö–FVçF—G’övFWv’&W6÷W&6W2âgVÆÂFW7G'V7F–öâ&Wf–Ww26öæ7&WFR÷væVB&W6÷W&6W2Â&W÷'G2&VÖ÷fÂ÷&W6–GVR'’æÖRÂ&W6W'fW2W‡FW&æÂ&V6÷fW'’f–ÆW2W‡Æ–6—FÇ’ÂæB&WGW&ç2F†R6ÖR7G'V7GW&VB–çfVçF÷'’F‡&÷Vv‚¥4ôâæBÔ5à¢ÒFö6¶W"õöFÖâ6öçF–æW"–çfVçF÷'’FV6öFW2æF—fR¥4ôâ7FFRÂ–æ6ÇVF–ær'6VçB†VÇF†6†V6·2âFW7G'V7F—fR6öçF–æW"6ÆVçW&VÖ÷fW276ö6–FVBæöç–Ö÷W2föÇVÖW2v—F†÷WB&VÖ÷f–ærFV6Æ&VBW‡FW&æÂföÇVÖW2à¢Ò&W&VÆV6RWf–FVæ6R6VÆV7G2F†RÆFW7B¦÷W&æW’GFV×BÆöæw6–FRFöÖ–2vFW2Â&WF–æ–æröÆFW"GFV×G2æB66WF–ær7V66W76gVÂV&Æ–W"¦÷W&æW’GW&–ærâWf–FVæ6RÖöæÇ’&W'Vâà¢Òg&W6‚7FæF&B6öçG&öÂÆæW2W6RæF—fR6–ævÆR÷7Fw&U5Â6W'fW"æBöæR÷Vä&ò6W'fW#²W‡Æ–6—B„&WF–ç2F†RF‡&VRÖÖVÖ&W"F÷öÆöw’âW'6—7FVçBF÷öÆöw’&V¦V7G2–æ6ö×F–&ÆR&WVW7G2v—F†÷WBÖ–w&F–öâ÷"ÆVv7’7W÷'Bà¢Ò6öçG&öÂ×ÆæRÖVÖ÷'’Æææ–ær–æ6ÇVFW2WfW'’6W'f–6R–âF†R6VÆV7FVB7F'GWF÷öÆöw’Â–æ6ÇVF–ærFÖ–âö&ö÷G7G&6W'f–6W2ÂæB&W÷'G2VæÖV7W&VB'VFvWG22W7F–ÖFW2à¢ÒgVÆÂFö6¶W"æBöFÖâ¦÷W&æW—27F'BÆöæw6–FR&÷VæFVBFöÖ–2ÆæW2â7G&–7B&W7VÖRÆâ6ö×&W2vFR–çWG2æB66†VGVÆW2öæÇ’Ö—76–ær÷"–çfÆ–FFVB&öög3²f–æÂ&÷fÂ&WF–ç2ÆÂSR&WV—&VÖVçG2æBWF†VçF–6FW2V6‚÷&–v–æÂ¦ö"Â'F–f7BF–vW7BÂ6æF–FFRÂFVÖò–âÂGFV×BæB6ÆVçWâV&Æ–W"f–ÇW&W26ææ÷B&R†–FFVâ'’öÆFW"7V66W76W2âF&vWFVB&ööb'Vç2&R&WF–æVC²&÷VæFVB76W'F–öç2Â¦ö"÷VWVRF–Ö–æræB&V7W'&–ærf–ÇW&W2&VÖ–âf–Æ&ÆRà ¢22³ãBã#ÒÒ##bÓÓ0 ¢222FFV@ ¢ÒfW'6–öæVB7&VFVçF–Âö66W72÷væW'6†—6VÖçF–726W&F–ær‡VÖâÖævVÖVçB–FVçF—G’ÂÆ–6F–öâ×6W'f–6R7&VFVçF–Ç2æB&6T†&&÷"Ö–çFW&æÂÖ6†–æR–FVçF—G’à¢Ò7FæF&G2Öf—'7BÖævVÖVçB×7W&f6RWF†VçF–6F–öâ6Æ76W2æB&÷f–FW"ÖæWWG&Â–æg&7G'V7GW&R×&öÆRÖ–ærv—F‚W‡Æ–6—BÆ–Ö—FVB÷Vç7W÷'FVB6VÖçF–72à¢ÒÆöv–6ÂÆ–6F–öâô6ö×öæVçB6öç7V×F–öâ–çFVçBv†÷6R–FVçF—G’&VÖ–ç2–æFWVæFVçBg&öÒ'VçF–ÖRFG&W76–ærÂÆ6VÖVçBÂ&WÆ–66÷VçBæB–ç7Fæ6RF÷öÆöw’à¢Ò÷'F&ÆRvÆö&Â„–çFVçBv—F‚7'6RW"Ö6ö×öæVçBö6&–Æ—G’÷fW'&–FW2Âf—†VBÖ6&F–æÆ—G’–çWBÂ&÷f–FW"÷'VçF–ÖRæVv÷F–F–öâæBâäâ–ç7Fæ6Rö'6W'fF–öâà¢ÒG—VBf–Æ&–Æ—G’&W7VÇG26†&VB'’Æ–fV7–6ÆR&VfÆ–v‡BÂ7FGW2ÂFö7F÷"æBWf–FVæ6Rà¢Ò&÷f–FW"ÖæF—fR„&VÆ—¦F–öç2æB7F&ÆRÆöv–6ÂVæGö–çG2f÷"fÆ¶W’õ6VçF–æVÂÂÖöævôD"&WÆ–66WG2Â&&&—DÕ6ÇW7FW'2÷V÷'VÒÖW76v–ærÂ6VvVVDe2ÂÖævVB¶W–6Æö²æBF†R6†—VBö'6W'f&–Æ—G’7F6²à¢ÒÖævVB¶W–6Æö²„v—F‚7F&ÆR—77VW"öF—66÷fW'’ô¥tµ2ôFÖ–â7W&f6W2Â„÷7Fw&U5Â&6¶–æræB6Æ–VçB×6V7&WBÂ6–væ–ærÖ¶W’æBFÖ–æ—7G&F—fRÖ7&VFVçF–Â&÷FF–öâ6öçF–çV—G’à¢Ò„ö'6W'f&–Æ—G’&VÆ—¦F–öâæB'VçF–ÖR6öçF–çV—G’f÷"÷VåFVÆVÖWG'’6öÆÆV7F÷"Â&öÖWF†WW2ÂÆö¶’æBFV×òà¢Ò7F&ÆRÆö6ÂW‡÷7W&RöÖævVÖVçB&÷WF–ærF‡&÷Vv‚&6¶VæB&WÆ6VÖVçBæB7W÷'FVB6öæf–wW&F–öâõDÅ2†÷B&VÆöBv—F†÷WB6Æ–Ö–ær&VGVæFçB6–ævÆRÖ†÷7B–æw&W72à ¢2226†ævV@ ¢ÒÖævVB6V7&WB6VÖçF–72æ÷rF—7F–æwV—6‚öæRWF†÷&—FF—fRGW&&ÆR6V7&WB6÷W&6Rg&öÒ'VçF–ÖR&ö¦V7F–öç3²6æöæ–6Â6V7&WBÖ&V&–ærf–ÆW2&VÖ–â&÷FV7FVBv†–ÆR6W&FR&VBÖöæÇ’'VçF–ÖR&ö¦V7F–öç2&RW6VBv†W&RæV6W76'’à¢Ò–çFW&7F—fRÆ–6F–öâ×6V7&WB&WÆ6VÖVçB&WV—&W2GvòÖF6†–ær†–FFVâVçG&–W2&Vf÷&R×WFF–öã²FWFW&Ö–æ—7F–27FF–âöf–ÆRWFöÖF–öâ&VÖ–ç26–ævÆRÖ–çWBà¢ÒFö6¶W"ÂöFÖâæBWfW'’'VæFÆVB6&–Æ—G’×&÷f–FW"&VÆ—¦F–öâ6''’âW‡Æ–6—B„6Æ76–f–6F–öã²Vç7W÷'FVB&WVW7FVBwV&çFVW2f–Â&Vf÷&R×WFF–öâ–ç7FVBöb6–ÆVçFÇ’F÷væw&F–ærà¢Òf–Æ&–Æ—G’—2'BöbF†RW†—7F–ærÆ–6F–öâÂ'VçF–ÖR&÷f–FW"æB6&–Æ—G’&÷f–FW"6öçG&7G2&F†W"F†â6V6öæB„Æ–fV7–6ÆRà¢ÒÆöv–6Â6öç7V×F–öâ&VÆF–öç6†—2&VÖ–â7F&ÆR7&÷7266Æ–ærÂf–Æ÷fW"Â&W66†VGVÆ–æræB&öÆÆ–ær&WÆ6VÖVçC²'VçF–ÖRÖæF—fRÖVÖ&W"–FVçF—F–W2æWfW"&V6öÖR÷'F&ÆRÆ–6F–öâ–FVçF—G’à¢Ò6–ævÆRÖ†÷7BFö6¶W"õöFÖâf–Æ&–Æ—G’Wf–FVæ6Ræ÷r&W÷'G2ÖVÖ&W"÷&ö6W726öçF–çV—G’6W&FVÇ’g&öÒ'VçF–ÖRÖ†÷7Bf–ÇW&RFöÆW&æ6Rà¢Ò7&VFVçF–ÂÂ6W'F–f–6FRÂG'W7BæB6öæf–wW&F–öâ6†ævW2W6RW‡Æ–6—B&W&R÷&V6öæ6–ÆR÷fW&–g’÷&WF—&R6VÖçF–72v†W&R6öçF–çV—G’×&W6W'f–ær&÷FF–öâ—27W÷'FVBà¢Òf–Æ&–Æ—G’Â7&VFVçF–ÂæBÖævVÖVçB×7W&f6R6VÖçF–72&RFö7VÖVçFVB2FF—F—fRÖg&–VæFÇ’&RÖg&VW¦R6öçG&7G2f÷"F†RcãR6ö×F–&–Æ—G’&Wf–Wrà ¢222f—†V@ ¢Ò&ö÷G7G&÷7Fw&U5Â&—fFRÖ¶W’ÖFW&–Â—2÷væW"ÖöæÇ’–ç7FVBöb–æ†W&—F–ærvVæW&–2V&Æ–26W'F–f–6FRW&Ö—76–öç2à¢ÒÆ–6F–öâf–ÆR×6V7&WB&ö¦V7F–öâæòÆöævW"vV¶Vç2F†RWF†÷&—FF—fR†÷7B×6–FR6V7&WBf–ÆRFòv÷&ÆB×&VF&ÆRÖöFRà¢Ò¶W–6Æö²„6Æ–VçB×6V7&WBfW&–f–6F–öâæB&WF—&VÖVçBæ÷r6öçfW&vR7&÷727F—fRÖVÖ&W'2ÂæBÖ7FW"ÖFÖ–â7&VFVçF–Â&÷FF–öâW6W2F†R6÷'&V7BÖ7FW"×&VÆÒFÖ–æ—7G&F–öâÖöFVÂà¢ÒÆö¶’„–ævW7F–öâæ÷r&W6W'fW2F†R–çFW&æÂvFWv’Æ–2æB6VæG266WFæ6R&ö&W2÷fW"F†R6öæf–wW&VB7—6ÆörG&ç7÷'Bà¢ÒFV×ò„7F'GWæ÷rv—G2f÷"F†R&WÆ–6FVB–ævW7F–öâF÷–2Â&W6W'fW26ö×÷6R6†VÆÂf&–&ÆW2æB7WÆ–W2w&—F&ÆR'VçF–ÖR7FFRf÷"FV×ò&öÆW2à¢Ò6VvVVDe2ÆFf÷&Ò'V6¶WBFÖ–æ—7G&F–öâFöÆW&FW2G&ç6–VçB„6öçfW&vVæ6R–ç7FVBöbf–Æ–æröââV&Ç’ÖVÖ&W"&6Rà ¢22³ãBã#ÒÒ##bÓÓ  ¢222FFV@ ¢Ò6÷W&6RÖæWWG&Âv÷&¶ÆöB6÷W&6RFFW"æBæ÷&ÖÆ—¦VBv÷&¶ÆöBWf–FVæ6R6öçG&7G2f÷"6ö×÷6RÂ&W÷6—F÷'’ÖWF†÷&VBöFÖâVFÆWBæB&r·V&W&æWFW2”ÔÂÂ–æ6ÇVF–ærFWFW&Ö–æ—7F–2f–ævW'&–çG2Â&÷fVææ6RæBÆöv–6Âv÷&¶ÆöBÖ6ö×öæVçB–FVçF—G’à¢Ò6fR×FòÖ6öÖÖ—B&6V†&&÷"ç&W÷6—F÷'’ç–ÖÆ6VÆV7F–öâÖWFFFf÷"vVçV–æVÇ’Ö&–wV÷W2&W÷6—F÷&–W2à¢ÒFWfVÆ÷W"v÷&·76Rv—B7FGW2æBf7BÖf÷'v&BÖöæÇ’7–æ6‡&öæ—¦F–öâ7&÷72ÖVB&W÷6—F÷&–W2Âv—F‚4Ä’ô¥4ôâôÔ5&—G’æB&Wf–WrÖöæÇ’6†V6·2à¢Ò–ææVB3ÖW†×ÆR&VÂ×v÷&ÆB&W÷6—F÷'’6÷'W2v—F‚6ö×÷6RÂ&W÷6—F÷'’ÖWF†÷&VBöFÖâVFÆWBæB&r·V&W&æWFW2”ÔÂ66W2ÂÇW2Ö—†VB×6÷W&6RÖ&–wV—G’Wf–FVæ6Rà ¢2226†ævV@ ¢Ò÷'F&ÆRv÷&¶ÆöB–FVçF—G’æ÷rW6W2Æöv–6Â6ö×öæVçG2–ç7FVBöbG&VF–ær6ö×÷6R6W'f–6RæÖW22F†R6æöæ–6ÂÆ–6F–öâÖöFVÂà¢Ò&W÷6—F÷'’VæFW'7FæF–ær—26W&FVBg&öÒ'VçF–ÖR&÷f–FW"&VÆ—¦F–öã²·V&W&æWFW2õVFÆWB6÷W&6W26â&R–ç7V7FVBæBF÷FVBv†–ÆRVç7W÷'FVB'VçF–ÖR&VÆ—¦F–öâf–Ç2ÆFW"v—F‚G—VB7F–öæ&ÆR&VfÆ–v‡B&W7VÇBà¢ÒÖ—†VBv÷&¶ÆöB×6÷W&6RfÖ–Æ–W2f–Â6Æ÷6VB–ç7FVBöb6–ÆVçFÇ’&VfW'&–ær&öGV7B÷6÷W&6Rf÷&ÖBà¢Ò†VÆÒæB·W7FöÖ—¦R&RFVfW'&VBFòÆFW"v÷&¶ÆöB6÷W&6RFFW'2æB&Ræ÷B6Æ–ÖVB2cãBã#7W÷'Bà  ¢22³ãBã•ÒÒ##bÓÓ ¢222FFV@ ¢Ò&÷f–FW"ÖæWWG&ÂGW&&ÆR¶W’×fÇVRÂFö7VÖVçBÖFF&6RæBÖW76v–ær6öçG&7G2v—F‚fÆ¶W’ÂÖöævôD"æB&&&—DÕ&VfW&Væ6R&÷f–FW'2à¢Òf—'7BÖ6Æ72W‡FW&æÂô%”ò&÷f–FW"öæ&ö&F–æræBfW&–f–6F–öâv—F‚÷væW'6†—×6fR&VÖ÷fÂæB&÷f–FW"ÖæWWG&ÂDÅ2÷G'W7Bö6W'F–f–6FR&VfW&Væ6W2à¢Ò÷&væ—¦F–öâ÷ÆFf÷&Ò6öæf–wW&F–öâF—7G&–'WFVBF‡&÷Vv‚Æö6Â÷7—7FVÒÂv—B÷"ô4’6÷W&6W2v—F‚–Ö×WF&ÆR&W6öÇWF–öâæB&÷fVææ6Rà¢Ò÷F–öæÂÖævVÖVçB7W&f6W2f÷"&&&—DÕÂGW&&ÆRfÆ¶W’æBÖöævôD"W6–ærF†RW†—7F–ær6V7W&RFWfVÆ÷W"Ö66W72ÖöFVÂà¢ÒfW'6–öæVB'VçF–ÖRæBFVÆ—fW'’&÷f–FW"6öçG&7G2F†B¶VWgWGW&R·V&W&æWFW2ô÷Vå6†–gBæBv—D÷2&VÆ—¦F–öç2÷WG6–FR÷'F&ÆRÆ–6F–öâ–çFVçBà ¢2226†ævV@ ¢Ò&÷f–FW"FW67&—F÷'2Â4D²÷66fföÆF–ærÂ6W'f–6R66†VÖ2ÂFWfVÆ÷ÖVçBFFW'2Â&W÷6—F÷'’–ç7V7F–öâÂ4Ä’Â¥4ôâæBÔ5æ÷r6÷fW"F†R6ö×ÆWFRcãBã’6&–Æ—G’6WBà¢ÒGW&&ÆRFF&6Ræ¶W’×fÇVV6VÖçF–72&RW‡Æ–6—FÇ’6W&FVBg&öÒ&V6öç7G'V7F&ÆR66†Ræ¶W’×fÇVV6VÖçF–72à¢Ò6÷W&6Rö'V–ÆB&W6öÇWF–öâVæG2&Vf÷&RF†R÷'F&ÆR'VçF–ÖR&÷VæF'“²'VçF–ÖR&÷f–FW'26öç7VÖR&W6öÇfVBô4’v÷&¶ÆöB'F–f7G2à¢Ò&R×&VÆV6RfÆ–FF–öâæ÷rW6W2–æFWVæFVçFÇ’&W'Vææ&ÆRÂ4„Ö&÷VæBFöÖ–2vFW2v—F‚W‡Æ–6—B&W6÷W&6R&öf–ÆW2öâv—D‡V"Ö†÷7FVB'VææW'3²7FF–26†V6·2fö–B&÷f–FW"6öçF–æW'2ÂFö6¶W"æBöFÖâvFW2&VÖ–â—6öÆFVBÂæBF†R&VÆV6R'Vâ76VÖ&ÆW2öæR6ö×ÆWFR6æF–FFRÖ&÷VæBWf–FVæ6RÖæ–fW7Bà ¢222f—†V@ ¢Òf—'7B×'Vâ&W÷6—F÷'’FWÆ÷–ÖVçB–æ—F–Æ—¦F–öâæ÷r&V6÷&G2÷væW'6†—Wf–FVæ6R&Vf÷&RW'6—7F–ærFWÆ÷–ÖVçBÖÆö6Â–çWG2Â&WfVçF–ærfÆ–Bf—'7B&†Wg&öÒ&V–ærÖ—66Æ76–f–VB2–æ6ö×ÆWFRFWÆ÷–ÖVçB7FFRà¢ÒFöÖ–26†VÆÂ×W†66WFæ6Ræ÷r'Vç22¦W&òÖ6öçF–æW"7FF–2vFR–ç7FVBöb&ö÷G7G&–ær'VçF–ÖR7F6²à ¢ÒwV–FVBæBFWFW&Ö–æ—7F–2Æ–6F–öâ–æ—F–Æ—¦F–öâæ÷rW‡÷6RF†RgVÆÂcãBã’6&–Æ—G’6FÆörÂ–æ6ÇVF–ærGW&&ÆR¶W’×fÇVRÂFö7VÖVçBFF&6RæBVWVR÷V"×7V"÷7G&VÒÖW76v–ærÂv—F‚ÖF6†–ær÷F–öæÂÖævVÖVçBÕT’–çFVçBà¢Ò&V6÷fW'’F—66÷fW'’æ÷rÖ¶W2GW&&ÆR¶W’×fÇVRÂFö7VÖVçBÖFF&6RæBÖW76v–ær7FFR6Æ76W2W‡Æ–6—FÇ’FG&W76&ÆS²Vç7W÷'FVB66÷VB&V6÷fW'’f–Ç26Æ÷6VB–ç7FVBöb6–ÆVçFÇ’öÖ—GF–ærF†÷6RGW&&ÆR6öçG&–'WF÷'2à¢Ò6&–Æ—G’÷&÷f–FW"6öæf÷&Öæ6RFW7G2æ÷rFW&—fR6÷fW&vRg&öÒF†R6†—VB7V6–f–6F–öâ6FÆöræB–æ6ÇVFR¶W–6Æö²ÂW‡FW&æÂô”D2Â&&&—DÕæBÖöævôD"&VfW&Væ6R–çFVw&F–öç2à ¢ÒæöâÖ–çFW&7F—fRÆ–fV7–6ÆRfÆw2æB†÷7BÖÖVÖ÷'’&÷fÇ2æ÷r&÷vFR6öç6—7FVçFÇ’7&÷72F÷ÖÆWfVÂ4Ä’ÂÆ–6F–öâÆ–fV7–6ÆRæBÔ5²D”t…BÖVÖ÷'’&VÖ–ç2âW‡Æ–6—B&÷fÂFV6—6–öâv†–ÆRVç6fRÖVÖ÷'’6öæF—F–öç27F–ÆÂf–Â6Æ÷6VBà¢Ò&WV—&VB×6V7&WB&ö×F–ær&W6W'fW2'VffW&VBE’–çWB7&÷726öæf—&ÖF–öâæB†–FFVâVçG'’Â&WfVçF–ær&VÖ÷FVÇ’G&—fVâFW&Ö–æÇ2g&öÒÆ÷6–ær6V7&WBfÇVW2&WGvVVâ&ö×G2à¢Òv÷&¶ÆöB7F'GWf–ÇW&W2&WF–â&÷VæFVBÂ6V7&WB×&VF7FVB'VçF–ÖRF–væ÷7F–72f÷"fW&&÷6RG&÷V&ÆW6†ö÷F–ærÂæBf–ÆVB&V'V–ÇB6æF–FFW2–çfÆ–FFRF†V—"fW&–f–VB6÷W&6Rf–ævW'&–çB6òÆFW"&WG&–W26ææ÷B&WW6Rf–ÆVB×WF&ÆR–ÖvR26÷W&6RVæ6†ævVFà¢Ò&W÷6—F÷'’F÷F–öâf–Ç2f7Bv†Vââ…EE2v÷&¶ÆöB—2Ö—76–ærF†R&WV—&VBW‡÷7W&Ræ‡GG6öçG&7BÂæBæW7FVB–æ—BÒ×V–6¶—2&ö÷FVB–âF†R7W'&VçBF—&V7F÷'’–ç7FVBöb–æ†W&—F–ærâæ6W7F÷"Æ–6F–öâw2Öæ–fW7Bà¢ÒF†RvVæW&FVBvòw&VVæf–VÆB66fföÆBÖFW&–Æ—¦W2æBfW&–f–W2—G2–ææVBÖöGVÆRw&‚GW&–ær6öçF–æW"'V–ÆBÂ6òg&W6‚æWrÒ×7F6²vöæòÆöævW"&WV—&W2ÖçVÂvòÖöBF–G–à¢ÒÆ–6F–öâFW7G&÷’&VÖ÷fW2FWÆ÷–ÖVçB&ö÷G2v—F†÷WBV×G’&W6–GVRæB6†&VBÖ&6¶VæB6öç7VÖW"7FFR6ææ÷B&W7W'&V7B&VÖ÷fVBfÆ¶W’&W6÷W&6W2GW&–ærÆFW"7W'f—f–ærÖ&V6öæ6–ÆRà¢Òv÷&·76R6öÖÖæG2&W÷'Bâ7F–öæ&ÆRæ÷BÖ–æ—F–Æ—¦VBW'&÷"–ç7FVBöbÆV¶–ær&rÖ—76–ær6÷W&6W2ç–ÖÆf–ÆW7—7FVÒW'&÷"à¢ÒvVæW&FVB—F†öâv÷&¶ÆöG2&÷f–FR÷6—F—fR†VÇF‚6–væÂÂ¶VW–ærWÂ7FGW6æBFö7F÷&&VF–æW726VÖçF–72Æ–væVBà¢Ò&W7F÷&R&V6öç7G'V7G2Ö—76–ærFWfVÆ÷ÖVçBW‡÷7W&R–æ—F–Æ—¦F–öâgFW"FW7G&÷’&Vf÷&RfW&–g––ærF†R&W7F÷&VBÆ–6F–öâà¢ÒFWfVÆ÷ÖVçBÖævVÖVçB66W72—2F—66÷fW&&ÆR2öæRF&vWBöVçf—&öæÖVçB×66÷VB7&VFVçF–ÂÂv—F‚FWfVÆ÷W&26öæf–wW&&ÆRFVfVÇB&F†W"F†âf—†VBW6W&æÖRà ¢22³ãBã…ÒÒ##bÓ’Ó3  ¢222FFV@ ¢Òf—'7BÖ6Æ72w&VVæf–VÆB&†æWv7&VF–öâv—F‚wV–FVBæBFWFW&Ö–æ—7F–2F‡2ÂV6÷7—7FVÒÖæF—fRvòÂæW‡Bæ§2Â—F†öâæBV&·W2FWfVÆ÷ÖVçBFFW'2Â&WW6&ÆRö6ö×÷6&ÆR7F6²&öf–ÆW2ÂFWFW&Ö–æ—7F–2FWfVÆ÷ÖVçBÆç2æB¥4ôâôÔ5&—G’à¢ÒfW'6–öæVB6öÖÖöâW‡FVç6–öâÂ&÷f–FW"ÖFW67&—F÷"æBFWfVÆ÷ÖVçBÖW‡FVç6–öâ6öçG&7G2W6–ær¥4ôâ66†VÖ##Ó"Âv—F‚&÷f–FW"öFWfVÆ÷ÖVçB6öæf÷&Öæ6Rf÷VæFF–öç2æB7FæF&G2Öf—'7Bô4’F—7G&–'WF–öâÖWFFFà¢Òf—'7BÖ6Æ72×VÇF’×&W÷6—F÷'’Æ–6F–öç3¢öæR6æöæ–6ÂfW'6–öâÖ6öçG&öÆÆVBÆ–6F–öâ6öçG&7B6â&W6öÇfR6ö×öæVçG27&÷72Ööæ÷&W÷2Â×VÇF—ÆRW†—7F–ærÆö6Âv÷&·G&VW2æBô4’–ÖvW2v†–ÆR¶VW–ærFWfVÆ÷W"ÖÆö6ÂF‡2–â„Drv÷&·76R7FFRà¢ÒwV–FVB&†v÷&·76VÇW2FWFW&Ö–æ—7F–2v÷&·76R–æ—GÆÖÇ6†÷wÇ&W6öÇfV²6ö×öæVçBöÆ–6F–öâ–FVçF—G’æòÆöævW"FWVæG2öâöæR7W'&VçBv÷&¶–ærF—&V7F÷'’÷"Æö6Â6†V6¶÷WBF‚à¢Ò÷F–öæÂ&6·7FvR6FÆörÖ–æfòç–ÖÆVÖ—76–öâg&öÒF†Rw&VVæf–VÆBfÆ÷rv—F‚W‡Æ–6—B÷væW"öÆ–fV7–6ÆR–çWBæBæò&6·7FvR4D²Â6FÆör’6Æ–VçB÷"FV×ÆFR–çFW'&WFW"–â6÷&Rà¢ÒÆö6ÂFö6¶W"õöFÖâ†÷7B×&W6÷W&6R&VfÆ–v‡BW6–ærÖVÔf–Æ&ÆRÂ7væBÖVÖ÷'’4’v—F‚FVÇFÖv&R4dRõD”t…BõTå4dRFV6—6–öç2&Vf÷&R×WFF–öâà ¢2226†ævV@ ¢Ò&VÆV6R66WFæ6Ræ÷r¶VW26ÖÆÂvFW2–æF—f–GVÆÇ’'Vææ&ÆRv†–ÆRF†RgVÆÂ&R×&VÆV6R&WW6W2ÆöærÖÆ—fVBVçf—&öæÖVçG27&÷72f÷W"7–ÖÖWG&–2'VçF–ÖRÆæW3¢Fö6¶W"õöFÖâ9r6÷&R¦÷W&æW’ô÷W&F–öç2à¢Ò6&–Æ—G’×7V'6WBFVÖò66WFæ6RfÆ–FFW2v÷&¶ÆöBÖöæÇ’æBÖ—†VB6&–Æ—G’6öçG&7G2v—F†÷WB7F'F–ærVç&VÆFVB&÷f–FW'3²F†RgVÆÂFVÖò&VÖ–ç2F†RgVÆÂ×7F6²–çFVw&F–öâ&ööbà¢Ò”ÔÂc2W6vRÖ÷fVBFòF†RÖ–çF–æVBvòç–ÖÂæ–â÷–ÖÂ÷c6ÖöGVÆRà¢ÒF&vWFVB'VçF–ÖRv÷&¶fÆ÷ræÖW2FW67&–&RF†RFW7FVB&V†f–÷"Âf÷"W†×ÆRFö6¶W"+r6&–Æ—G’ÖG&—†Â–ç7FVBöb–çFW&æÂ'&æ6‚övFRFW&Ö–æöÆöw’à¢Òvòã#R&VÖ–ç2F†RcãBã‚7W÷'BfÆö÷#²F†R‚ö7'—FòcãSb÷cãSròvòã#bFööÆ6†–âG&ç6—F–öâ—2W‡Æ–6—FÇ’FVfW'&VBà ¢222f—†V@ ¢ÒÆ–6F–öâ7F÷öFW7G&÷’FV'2F÷vâö'6W'fVB÷væVBv÷&¶ÆöB6öçF–æW'2öæWGv÷&·2WfVâg&öÒ'F–ÆÇ’6öçfW&vVB7FFR–ç7FVBöbFWVæF–æröâ7V66W76gVÂÇ’×F–ÖRÖFW&–Æ—¦F–öâà¢Ò&W÷6—F÷'’v÷&¶ÆöB7F'GWf–Ç2f7BöâFW&Ö–æÂ'VçF–ÖRf–ÇW&W2æBW'6—7FVB†÷7B×÷'BfÆÆ&6²—2Æ–VB6öç6—7FVçFÇ’7&÷72Æ–fV7–6ÆRF‡2à¢Ò6æöæ–6Â–FVçF—G’öFWfVÆ÷W"ÖvFWv’U$Ç2&W6W'fRF†RVffV7F—fRW'6—7FVBvFWv’÷'Bà¢ÒÖævVÖVçBT’&VF–æW72fÆ–FFW2'&÷w6W"&VF—&V7B6†–ç2à¢Ò&VGV6VB6&–Æ—G’ÖÖG&—‚66W2fö–B&WV—&–ærVç&VÆFVBÖævVB…EE2õDÅ2–æg&7G'V7GW&Rà ¢22³ãBãuÒÒ##bÓ’Ó# ¢222FFV@ ¢Ò&÷f–FW"ÖæWWG&ÂÖævVBÆ–6F–öâ–FVçF—G’v—F‚ÖævVB¶W–6Æö²æBW‡FW&æÂô”D2&VÆ—¦F–öç2Â7FæF&BF—66÷fW'’ô¥tµ2ÂW‡÷7W&RÖFW&—fVB&VF—&V7BöÆöv÷WBU$—2Â6W'f–6R&–æF–ær÷WGWBÂÖævVB÷&—fFR—77VW"G'W7B&ö¦V7F–öâF‡&÷Vv‚ô”D5ô4ôd”ÄVÂ66÷W2ö6Æ–×2æB÷'F&ÆRÔdõvV$WF†â÷76¶W’÷77v÷&FÆW72öÆ–7’à¢ÒF&vWBôVçf—&öæÖVçB×66÷VB÷W&F÷"ô”D2WF†VçF–6F–öâf÷"FW7B÷&öBv—F‚WF†÷&—¦F–öâ6öFR²´4RÂ6†÷'BÖÆ—fVB÷væW"ÖöæÇ’6W76–öç2æBW‡Æ–6—BÆöv–æÂÆöv÷WFæBv†öÖ–6öÖÖæG3²G'W7FVBÆö6ÂFWfVÆ÷ÖVçB&VÖ–ç2Æöv–âÖg&VRà¢Ò÷F–öæÂ&÷f–FW"ÖævVÖVçB7W&f6W2f÷"÷7Fw&U5ÂÂ66†RÂö&¦V7B7F÷&vRÂ÷Vä&òÂÖævVB–FVçF—G’æB&öÖWF†WW2ö'6W'f&–Æ—G’Âv—F‚6VÖçF–2–çFW&f6R6Æ76–f–6F–öâæB6V7W&RÆö6ÂDÅ266W72à¢ÒFWfVÆ÷ÖVçB&W÷6—F÷'’6öçfW&vVæ6Ræ÷rF—7F–æwV—6†W2Æ–6F–öâv÷&¶–ær×G&VR6†ævW2g&öÒ&6T†&&÷"6öçG&7BöFWÆ÷–ÖVçBÖ6öçG&öÂ6†ævW2ÂVæ&Æ–ær&†WFò&V'V–ÆB÷&V7&VFRöæÇ’ffV7FVBv÷&¶ÆöB6W'f–6W2v—F†÷WB&WV—&–ær6öÖÖ—B÷W6‚÷"v—BWFFR÷W&F–öâà¢ÒF&vWB×66÷VBFWfVÆ÷ÖVçB66W72v—F‚öæR6öæf–wW&&ÆRFöÖ–â†FVfVÇB&†æÆö6Æ†÷7F’ÂFWFW&Ö–æ—7F–26æöæ–6Â…EE2†÷7G2Â6–ævÆRÆö6ÂFWfVÆ÷ÖVçBÖævVÖVçBÆöv–âæBW‡Æ–6—B&†FWbFöÖ–æò&†FWb7&VFVçF–Ç66öÖÖæG2à¢Òf—'7BÖ6Æ72&W6÷W&6RÖVff–6–VçB6†&VFÆ6VÖVçBf÷"F†R'VæFÆVB÷7Fw&U5ÂæBfÆ¶W’&÷f–FW'2v†–ÆR&WF–æ–ærW‡Æ–6—BÆ–6F–öæÆ6VÖVçC²6†&VB&÷f–FW"Æ–fV7–6ÆR—2F&vWBÖ÷væVBv†–ÆRFF&6W2Â66†R&W6÷W&6W2Â7&VFVçF–Ç2æB6W'f–6R&–æF–æw2&VÖ–âÆ–6F–öâÖ—6öÆFVBà¢ÒfW'6–öæVB&6V†&&÷"ç'VçF–ÖR÷c'VçF–ÖR&÷f–FW"FW67&—F÷'2æBâW‡FVç6–&ÆR&Vv—7G'’v—F‚&÷f–FW"–FVçF—G’Â&÷f–FW"fW'6–öâÂF÷FVB7FæF&G2Âv÷&¶ÆöB×6÷W&6R6ö×F–&–Æ—G’Â&VÆ—¦F–öâÖWFFFæBf–ÂÖ6Æ÷6VB6&–Æ—G’æVv÷F–F–öã²&WW6&ÆR6öæf÷&Öæ6RFW7G2æBâ5B&6†—FV7GW&RwV&B&÷FV7BF†R&÷f–FW"ÖæWWG&Â6÷&R&÷VæF'’à ¢2226†ævV@ ¢Ò7FGW2ÂFö7F÷"Â¥4ôâôÔ5Wf–FVæ6RæBÆ–6F–öâÆ–fV7–6ÆRæ÷rö'6W'fRæBfW&–g’ÖævVB–FVçF—G’7FFRÂ÷W&F÷"ÖWF†VçF–6F–öâ6öçFW‡BæB6VÆV7FVBÖævVÖVçB7W&f6W2à¢Ò–FVçF—G’&V6÷fW'’W‡Æ–6—FÇ’6W&FW2÷'F&ÆRÆ–6F–öâ–FVçF—G’–çFVçBg&öÒ&÷f–FW"Ö†VÆBW6W'2ÂÔdæB76¶W’7FFR–ç7FVBöb6Æ–Ö–ærVç7W÷'FVB&÷f–FW"ÖvÆö&Â6æ6†÷G2à¢Ò&÷f–FW"×&Vv—7G'’&–æF–æw2&R66÷VB'’Æ–6F–öâæBVçf—&öæÖVçBFWÆ÷–ÖVçB–FVçF—G“²W†—7F–ærVçf—&öæÖVçFÆW72cVçG&–W2&VÖ–â&VF&ÆRæBÖ–w&FRGW&–ær&V6öæ6–Æ–F–öâà¢Ò&VBÖöæÇ’&W÷6—F÷'’öÆ–7’öWf–FVæ6RæÇ—6—26âW6Rf–ÂÖ6Æ÷6VB7FF–26ö×÷6R6V7W&—G’–ç7V7F–öâv†Vâ6öçF–æW"×'VçF–ÖR÷&6†W7G&F–öâ—2Væf–Æ&ÆRà¢Ò&†WFFV&VÖ–ç2F†R7G&–7B6ÆVâ×G&VRf7BÖf÷'v&BF‚f÷"Gfæ6–ærv—B6÷W&6Rg&öÒW7G&VÓ²Æö6ÂFWfVÆ÷ÖVçB6†ævW2&R–çFVçF–öæÆÇ’6öçfW&vVBg&öÒF†R7W'&VçBv÷&¶–ærG&VR'’&†Wà¢Ò'&÷w6W"Öf6–ærFWfVÆ÷ÖVçBÆ–6F–öâVæGö–çG2æB6VÆV7FVB&÷f–FW"T—2æ÷rW6R6æöæ–6ÂF&vWBÖFW&—fVBU$Ç2–ç7FVBöbW‡÷6–ær&æFöÒ#rããã£Ç÷'CæFG&W76W22æ÷&ÖÂFWfVÆ÷W"Uƒ²&÷WFR÷væW'6†—föÆÆ÷w2Æ–6F–öâ÷6†&VBöW‡FW&æÂ&÷f–FW"Æ6VÖVçBà¢Ò&W÷6—F÷'’v÷&¶ÆöG26âW‡Æ–6—FÇ’FV6Æ&R–òæ&6V†&&÷"çv÷&¶ÆöBç&÷Fö6öÃÖ‡GGÆ‡GG6²…EE26æöæ–6Â&÷WFW2fW&–g’F†R&6T†&&÷"×&ö¦V7FVBv÷&¶ÆöB4æB6W'f–6RÖæÖR4ä’Âv†–ÆR–çfÆ–BFV6Æ&VB&÷Fö6öÂfÇVW2f–Â6Æ÷6VBà¢ÒF†RcãBãr&VfW&Væ6RFVÖò—2…EE2ÖöæÇ’æB–çFVçF–öæÆÇ’†2æòÆ–çFW‡B…EEfÆÆ&6²à¢ÒF†RcãBãr&VfW&Væ6RFVÖò¶VW2öæÇ’F†RÆ–6F–öâv÷&¶ÆöBÆ–6F–öâ×66÷VBæBW6W26†&VB÷7Fw&U5ÂÂfÆ¶W’Âö&¦V7B7F÷&vRÂ6V7&WG2Â–FVçF—G’æBö'6W'f&–Æ—G’&÷f–FW'2v—F‚6†÷'B6æöæ–6Â†÷7G27V6‚2FVÖòæ&†æÆö6Æ†÷7FÂWF‚æ&†æÆö6Æ†÷7FæBÖWG&–72æ&†æÆö6Æ†÷7Fà¢Ò6æöæ–6ÂFWfVÆ÷ÖVçB&÷WF–ærW6W2…EE2÷'BCC2öâFö6¶W"æBFWFW&Ö–æ—7F–2Vç&—f–ÆVvVB÷'BƒCC2öâ&ö÷FÆW72öFÖâÂfö–F–ær†÷7B×v–FR&—f–ÆVvVB×÷'B7—67FÂ&WV—&VÖVçG2v†–ÆR¶VW–ær7F&ÆRF&vWBÖFW&—fVB†÷7FæÖW2à¢Ò'VçF–ÖR6VÆV7F–öâæ÷rW6W2W‡Æ–6—BFö6¶W&òöFÖæ&÷f–FW"–FVçF—G’â6ö×÷6R&VÖ–ç2&W÷6—F÷'’v÷&¶ÆöB×6÷W&6R6ö×F–&–Æ—G’&F†W"F†â'VçF–ÖR&÷f–FW"–FVçF—G“²æWrÆö6Â7FFRFVfVÇG2FòFö6¶W"âöFÖâ&VÆ—¦F–öâ—2æF—fRVFÆWB²7—7FVÖBÒ×W6W&æBf–Ç26Æ÷6VBv—F†÷WBF†BVçf—&öæÖVçB–ç7FVBöbfÆÆ–ær&6²FòöFÖâ6ö×÷6Và¢ÒF&vWBÖ÷væVB6†&VB÷7Fw&U5ÂõfÆ¶W’&÷f–FW"7FFRæ÷r7W'f—fW2FW7G'V7F–öâöbF†Rf–æÂÆ–6F–öâ6öç7VÖW#²Æ–6F–öâFW7G&÷’&VÖ÷fW2öæÇ’Æ–6F–öâÖ÷væVB&W6÷W&6W2æB7&VFVçF–Ç2Âv†–ÆR&÷f–FW"õF&vWBFW7G&÷’÷vç2&÷f–FW"FV&F÷vâà¢ÒFWfVÆ÷ÖVçBvFWv’…EE2÷'G2&R&VfÆ–v‡FVBæBW'6—7FVBW"F&vWC²ö67W–VB&VfW'&VB÷'G2fÆÂ&6²FWFW&Ö–æ—7F–6ÆÇ’g&öÒƒCC2æBÆÂ6æöæ–6ÂU$Ç2&WW6RF†BW'6—7FVB÷'Bà¢ÒÖævVB6W'f–6R66W72föÆÆ÷w2æF—fRÕDÅ2Öf—'7BF÷öÆöw“¢÷Vä&òÂ÷7Fw&U5ÂÂ¶W–6Æö²Â6VvVVDe232Â&öÖWF†WW2æBõDÅFW&Ö–æFRDÅ2æF—fVÇ“²F†RF&vWBFWfVÆ÷W"vFWv’÷vç26æöæ–6Â'&÷w6W"&÷WF–ærÂv†–ÆRFVF–6FVBFFW'2&VÖ–âöæÇ’v†W&RF†W’FB&÷Fö6öÂ÷6V7W&—G’6VÖçF–72à¢ÒÖævVBô”D2æ÷rW6W2v—F‡V"æ6öÒö6÷&V÷2övòÖö–F2÷c62ã#ã²&Væ÷fFRÇ6òG&6·2&Vv—7G'’×VÆ–f–VB&÷f–FW"–ÖvR6öç7FçG2VÖ&VFFVB–âvò6÷W&6Rà ¢222f—†V@ ¢ÒFWfVÆ÷ÖVçBô”D2v÷&¶ÆöB&–æF–æw2æ÷rW6RF†R6ÖR6æöæ–6Â—77VW"&W÷'FVBFòFWfVÆ÷W'2æBG'W7BF†RF&vWBFWfVÆ÷ÖVçBvFWv“²&÷f–FW"Ö–çFW&æÂ¶W–6Æö²VæGö–çG2&VÖ–âÆ–fV7–6ÆRöFÖ–âÖöæÇ’Â–æ6ÇVF–ær&ö÷FÆW72öFÖâöâFWFW&Ö–æ—7F–2…EE2÷'BƒCC2à¢Ò'VçF–ÖRW†V7WF÷"ö'6W'fW"ÕDÅ2–FVçF—G’—2&ö¦V7FVB–æFWVæFVçFÇ’öbõDÅG&6–ær6òÆöw2öÖWG&–72ö'6W'f&–Æ—G’&ö&W2&VÖ–âfÆ–Bv†VâG&6–ær—2æ÷B6VÆV7FVBà¢ÒöFÖâ4’÷'VçF–ÖRfÆ–FF–öâ—6öÆFW2VFÆWBvVæW&F÷"&VfÆ–v‡B7FFRæB&VÖ÷fW27FÆR&6T†&&÷"W6W"Væ—G2g&öÒF†RVffV7F—fRW6W"6öæf–wW&F–öâÂ&WfVçF–ærVç&VÆFVBv÷&¶W"7FFRg&öÒö—6öæ–ærfÆ–FF–öâà¢ÒÆ–6F–öâFW7G&÷’æ÷r&VÖ÷fW2öæÇ’F†R÷væVBÖævVBÖ–FVçF—G’66÷RæB&W6W'fW26†&VB–E–æg&7G'V7GW&S²×66÷VB¶W–6Æö²—2FW7G&÷–VBöæÇ’gFW"÷væW'6†—fW&–f–6F–öâæBW‡FW&æÂô”D2&VÖ–ç2VçF÷V6†VBà¢Ò×VÇF—ÆRVçf—&öæÖVçG2öbF†R6ÖRÆ–6F–öâöâöæRF&vWBæòÆöævW"&WÆ6RV6‚÷F†W"w2&÷f–FW"×&Vv—7G'’&–æF–æw2÷"Æ–6F–öâ×66÷VB&÷f–FW"÷væW'6†—7FFRà¢Òg&W6‚&W÷6—F÷'’&†Wæ÷r&V¦V7G2âW†—7F–ær÷7FÆR÷Vä&ò&V6÷fW'’÷WGWBF‚&Vf÷&R7&VF–ær÷"×WFF–ær6öçG&öÂ×ÆæR&W6÷W&6W2æBv—fW2âW‡Æ–6—BÒ×&V6÷fW'’Öf–ÆV&VÖVF–F–öâà¢Òv÷&¶ÆöB&VF–æW72æòÆöævW"WVFW2'Vææ–ær6öçF–æW"v—F‚$TE“¢†VÇF‚6†V6·2Â…EEõDÅ2&ö&W2÷"D5Æ—7FVæW"&ö&W2&÷f–FR÷6—F—fR&VF–æW72Wf–FVæ6RÂv†–ÆRv÷&¶W'2v—F†÷WB&VF–æW726–væÂ&R&W÷'FVB%Tää”ärõTådU$”d”TBà¢Ò&ö÷FÆW72öFÖâVFÆWBæWGv÷&¶–æræ÷rW6W2æF—fRæWGv÷&´Æ–3Ö6VÖçF–72f÷"ÖævVBæBW‡FW&æÂæWGv÷&·2Â&W6W'f–ærÖævVBææWGv÷&¶&VfW&Væ6W2æB&W7F÷&–ærDå2f÷"'VçF–ÖRÖW†V7WF÷"ÂÖWG&–72æBv÷&¶ÆöB&÷WFW2à¢ÒöFÖâ6†&VBÖæWGv÷&²FV&F÷vâæ÷r&W6W'fW2æWGv÷&·2v—F‚7F—fR6öç7VÖW'2–ç7FVBöbf÷&6–&Ç’FVÆWF–ær6–&Æ–ær6öææV7F—f—G’à¢ÒöFÖâ6æF–FFRÖ–ÖvR'V–ÆB÷fW&–f–6F–öâæBVFÆWBW†V7WF–öâæ÷r6†&RF†R6ÖR&ö÷FÆW727F÷&vR6öçFW‡Bà¢ÒöFÖâ6W'f–6R×7FFRö'6W'fF–öâ&VG2V&Æ—6†VB÷'B&–æF–æw2g&öÒF†R'Vææ–ær6öçF–æW"6òv÷&¶ÆöB…EEõDÅ2&VF–æW726â&R÷6—F—fVÇ’fW&–f–VB–ç7FVBöb&VÖ–æ–ær%Tää”ärõTådU$”d”TBà ¢2226V7W&—G ¢Ò6†&VB÷7Fw&U5Âæ÷r6W&FW2öæR&6T†&&÷"Ö–çFW&æÂ&6V†&&÷%öFÖ–æ&÷f–FW"–FVçF—G’g&öÒW"ÖÆ–6F–öâFF&6R&öÆW2æB7&VFVçF–Ç2â&÷f–FW"ÖFÖ–â7&VFVçF–Ç2æWfW"VçFW"v÷&¶ÆöB&–æF–æw2ÂVçf—&öæÖVçB6öçG&7G2Â7FGW2ÂFö7F÷"÷"Wf–FVæ6Rà¢Ò6†&VB÷7Fw&U5Â&V6öæ6–Æ–F–öâ†&FVç2FF&6R÷66†VÖ÷V&Æ–2&—f–ÆVvW2ÂfW&–f–W2Æ–6F–öâ×&öÆR÷væW'6†—æBFVæ–W27&÷72ÖÆ–6F–öâFF&6R66W73²FW7G&÷’f–Ç26Æ÷6VBVæÆW72&÷FV7FVB&÷f–FW"7FFRæBÆ—fR÷7Fw&U5Â÷væW'6†—w&VRà¢Ò6†&VB÷7Fw&U5ÂÆ–6F–öâ&öÆW2&Räô”ä„U$•FÂ&V6V—fRæò&÷f–FW"×&öÆRÖVÖ&W'6†—2Â6ææ÷B6öææV7BFò&÷f–FW"FÖ–æ—7G&F–öâFF&6W2ÂæB&W7F÷&W2WF†VçF–6FRv—F‚F†R&÷FV7FVBÆ–6F–öâ7&VFVçF–Â&F†W"F†â&÷f–FW"ÖFÖ–â÷"Æö6Â×G'W7B6†÷'F7WBà¢Ò6†&VB÷7Fw&U5Â&6·W÷&W7F÷&R&VÖ–ç2Æ–6F–öâ×66÷VBæBFW&—fW2F†RW†7BFF&6R6WBg&öÒ&÷FV7FVBÆ–6F–öâ&Vv—7G&F–öç3²6–&Æ–ærFF&6W2Â&öÆW2æB7&VFVçF–Ç2&RæWfW"'Böbæ÷F†W"Æ–6F–öâw2&V6÷fW'’÷W&F–öâà¢Ò6†&VBfÆ¶W’W6W2—6öÆFVBW"ÖÆ–6F–öâ6W'f–6W2æB7&VFVçF–Ç2–ç6–FRF†RF&vWBÖ÷væVB&÷f–FW"Æ–fV7–6ÆRÂ&W6W'f–æræ÷&ÖÂ&VF—2õfÆ¶W’6Æ–VçB6ö×F–&–Æ—G’v—F†÷WB7&÷72ÖÆ–6F–öâ¶W’f—6–&–Æ—G’à¢ÒÆ–6F–öâ–FVçF—F–W2Â&6T†&&÷"÷W&F÷"–FVçF—F–W2æB&÷f–FW"ÖFÖ–æ—7G&F÷"7&VFVçF–Ç2&VÖ–âF—7F–æ7B&÷VæF&–W2à¢ÒFW7B÷&öBÆ–6F–öâ÷W&F–öç2f–Â6Æ÷6VBv†VâF†RF&vWBôVçf—&öæÖVçB÷W&F÷"&÷VæF'’—2Ö—76–ær÷"VæWF†VçF–6FVC²FWb&VÖ–ç2G'W7FVBÖÆö6Âà¢Ò&÷f–FW"Ö†VÆBW6W"77v÷&G2ÂDõE6VVG2ÂvV$WF†â÷76¶W’7&VFVçF–Ç2æB&÷f–FW"ÖFÖ–â7&VFVçF–Ç2&RæWfW"&ö¦V7FVB–çFòÆ–6F–öâ&–æF–æw2ÂVF—B÷"æ÷&ÖÂ7FGW2÷WGWBà¢ÒF†R6†&VBFWfVÆ÷ÖVçBÖævVÖVçB77v÷&B&VÖ–ç2÷væW"ÖöæÇ’F&vWB7FFRæB—2&WfVÆVBöæÇ’'’F†RW‡Æ–6—B7&VFVçF–Ç26öÖÖæC²4’F–væ÷7F–72Â7FGW2ÂFö7F÷"ÂÆâæBWf–FVæ6R7F’6V7&WB×6fRà¢ÒæF—fR6W'F–f–6FR&öÆÆ÷WB—2&÷f–FW"Öv&S¢¶W–6Æö²öÆÇ2&WÆ6VÖVçB6W'F–f–6FW2Â&öÖWF†WW2&R×&VG2vV"DÅ2ÖFW&–ÂW"&WVW7BÂ6VvVVDe2W6W2—G2&VÆöF–ær6W'F–f–6FR&÷f–FW"ÂõDÅ&VÆöG2DÅ2ÖFW&–Âöâ&÷VæFVB–çFW'fÂÂæB÷Vä&ò"ãrW6W2æF—fRFÇ5öWFõ÷&VÆöFà¢ÒF†RcãBãrFWVæFVæ7’VF—BF÷G2÷Vä&ò"ãrv—F‚FVF–6FVB÷7Fw&U5Â7F÷&vRÂfW&–g’ÖgVÆÆÂæF—fRDÅ2&VÆöBæB‡–'&–BÕ2Öf—'7BDÅ3²—B¶VW2F†Rvòã#R7W÷'BfÆö÷"'’FVfW'&–ær‚ö7'—Fò÷‚÷7—2WFFW2F†B&WV—&Rvòã#bæBG&6·2F†R–ÖÂçc2&WÆ6VÖVçB6W&FVÇ’–â3S32à ¢22³ãBãeÒÒ##bÓ’Ó#` ¢222FFV@ ¢Ò6VÆV7F&ÆRG—VBÆ–6F–öâ&V6÷fW'’Væ—G26÷fW"Æ–6F–öâÖWFFFÂÖævVB5ÂÂF†RÆ–6F–öâÖ÷væVB÷Vä&ò6V7&WB66÷RÂÖævVB326öçFVçG2Â&6T†&&÷"Ö÷væVB&W÷6—F÷'’v÷&¶ÆöBföÇVÖW2æB6VÆV7F&ÆRÆ–6F–öâÆör†—7F÷'’à¢ÒwV–FVB&6·WæBWFöÖF–öâ6†&RF†R6ÖR&V6÷fW'’7FFR6Æ76W2F‡&÷Vv‚–çFW&7F—fR6VÆV7F–öâæBÒÖ–æ6ÇVFR×7FFVòÒÖW†6ÇVFR×7FFVà¢Ò&W7F÷&RfÆ–FFW2F†RG—VB&V6÷fW'’Öæ–fW7B&Vf÷&R×WFF–öâÂ&W7F÷&W26VÆV7FVB7FFRæB&W÷'G27V66W72öæÇ’gFW"F†RÆ–6F–öâ&÷VæF'’—2fW&–f–VB$TE’à¢Ò&†Wf–FVæ6R²Öò§6öåÖæB&VBÖöæÇ’&6V†&&÷"æWf–FVæ6VW‡÷6RöæR6V7&WB×6fRcWf–FVæ6R'VæFÆR7ææ–ærFW6—&VB7FFRÂVæf÷&6VBöÆ–7’Âö'6W'fVB7FFRÂfW&–f–VB&W7VÇG2Â&V6÷fW'’Wf–FVæ6RÂW‡Æ–6—BW†6WF–öç2æBVç7W÷'FVB6öçG&öÇ2à¢ÒÖVæ–ævgVÂ6ö×ÆWFVBÆ–fV7–6ÆR÷W&F–öç2W'6—7B&÷VæFVBF&vWBÖÆö6ÂVF—BWfVçG2v—F‚7F÷"–çFW&f6RÂF&vWBöÆ–6F–öâöVçf—&öæÖVçBÂ÷W&F–öâÂ÷WF6öÖRæBfW&–f–6F–öâÖWFFFà¢ÒWf–FVæ6R'VæFÆW2&RFWFW&Ö–æ—7F–6ÆÇ’÷&FW&VBæB–æ6ÇVFR4„Ó#SbF×W"Wf–FVæ6R÷fW"F†RW‡÷'FVB'VæFÆRà ¢2226†ævV@ ¢ÒÖævVB32&W6÷W&6W2æòÆöævW"f÷&6R&6·W÷&W7F÷&RFòf–Â6Æ÷6VBÖW&VÇ’&V6W6Rö&¦V7B7F÷&vR—2&W6VçC²'V6¶WB6öçFVçG2&R6GW&VBæB&W7F÷&VBF‡&÷Vv‚F†RW†—7F–ær7FæF&G2Ö&6VB32&÷f–FW"F‚à¢Ò&6T†&&÷"Ö÷væVB&W÷6—F÷'’v÷&¶ÆöBæÖVBföÇVÖW2'F–6—FR–â&V6÷fW'’v†–ÆR&–æBÖ÷VçG2æBW‡FW&æÂæÖVBföÇVÖW2&VÖ–âW‡Æ–6—FÇ’W‡FW&æÂæB÷WG6–FR&6T†&&÷"÷væW'6†—à¢Ò&V6÷fW'’F—66÷fW'’66WG2&÷F‚æ÷&ÖÆ—¦VB6ö×÷6RföÇVÖRö&¦V7G2æB6†÷'B×7–çF‚Ö÷VçG2Â&W6W'f–ærF†R6ÖRv÷&¶ÆöB×7F÷&vR6VÖçF–72öâFö6¶W"6ö×÷6RæBöFÖâõVFÆWBà¢ÒÆ–6F–öâÆör†—7F÷'’—26VÆV7F&ÆR÷W&F–öæÂ&V6÷fW'’7FFRæB—2W†6ÇVFVB'’FVfVÇBVæÆW72F†R÷W&F÷"W‡Æ–6—FÇ’–æ6ÇVFW2ö'6W'f&–Æ—G’æÆöw6à¢ÒÖWG&–72æBG&6R†—7F÷'’&VÖ–âW‡Æ–6—FÇ’Vç7W÷'FVB&V6÷fW'’6öçG&–'WF÷'2VçF–Â&6T†&&÷"†26fRÆ–6F–öâ×66÷VB&W7F÷&R6VÖçF–72f÷"F†÷6R†—7F÷&–W2à¢Ò7V66W76gVÂ&6·W÷&W7F÷&RÖWFFF&V6÷&G2G—VB&V6÷fW'’6öçG&–'WF÷'2æBW"Ö6öçG&–'WF÷"fW&–f–6F–öâv—F†÷WB7F÷&–ær6V7&WBfÇVW2à¢Ò4Ä’æBÔ5Wf–FVæ6RW6RF†R6ÖR6öÆÆV7F÷"æBÖ6†–æR6öçG&7B–ç7FVBöbÖ–çF–æ–ær6W&FR&W÷'F–ær6VÖçF–72à ¢222f—†V@ ¢ÒFWFW&Ö–æ—7F–2&W÷6—F÷'’–æ—F–Æ—¦F–öâæ÷rf–Ç26Æ÷6VBv†Vâ&W÷6—F÷'’v÷&¶ÆöBWf–FVæ6RW†—7G2'WBæòv÷&¶ÆöBv2W‡Æ–6—FÇ’6VÆV7FVBÂ&WfVçF–ær'F–Â6öçG&7BF†B6–ÆVçFÇ’G&÷2âW†—7F–ærv÷&¶ÆöBà¢Òv÷&¶ÆöB6öçfW&vVæ6Rf–ævW'&–çG2F†RVffV7F—fR&VæFW&VB6ö×÷6R6W'f–6R6öæf–wW&F–öâÂ6ò–çFW'öÆF–öâ6†ævW27V6‚2&W÷6—F÷'’æVçfWFFW2&V7&VFRöæÇ’ffV7FVB6W'f–6W2æB6ææ÷BÆVfR7FÆR6öçF–æW'2&W÷'FVB$TE’à¢ÒÖævVB5Âö66†Rv÷&¶ÆöG2&V6V—fR÷'F&ÆR6W'f–6R&–æF–ærã&ö¦V7F–öâv—F‚v÷&¶ÆöBÖæF—fRVæGö–çG2æBDÅ2G'W7BÖFW&–Ã²7FGW2æBFö7F÷"fW&–g’F†R6öç7VÖW"Öf6–ær&–æF–ær–ç7FVBöbG&VF–ær&÷f–FW"†VÇF‚ÆöæR2Æ–6F–öâ&VF–æW72à¢Òf–ÆVBÆ–6F–öâ6öçfW&vVæ6RW'6—7G2âFG&W76&ÆRÇ––ævòf–ÆVFFWÆ÷–ÖVçB&V6÷&BâÆVv7’–æ6ö×ÆWFRFWÆ÷–ÖVçG26â&R&V6÷fW&VB'’Æ–6F–öâæÖRg&öÒ&÷FV7FVB&6T†&&÷"7FFR–ç7FVBöb7&6†–ær7FGW6ÂF÷væ÷"FW7G&÷–öâÖ—76–ærFWÆ÷–ÖVçBæ§6öæà¢Ò6V6öæF'’÷7Fw&U5Âõ&VF—26öææV7F–öâÆ–6W2F†B7F–ÆÂ&VfW&Væ6R&W÷6—F÷'’6W'f–6R&WÆ6VB'’ÖævVB6&–Æ—G’&R&Wv—&VBFòF†RÖævVBv÷&¶ÆöBVæGö–çBv†VâF†RÖ–ær—2VæÖ&–wV÷W2âVç7W÷'FVB÷"Ö&–wV÷W2&VfW&Væ6W2f–Â6Æ÷6VB&Vf÷&R×WFF–öâà¢Ò&†FW7G&÷–6VÆV7F—fVÇ’&V6Æ–×2æÖVB6ö×÷6RföÇVÖW2F†B&VÆöærW†6ÇW6—fVÇ’Fò&W÷6—F÷'’÷7Fw&U5Âõ&VF—2õfÆ¶W’6W'f–6W2&WÆ6VB'’ÖævVB6&–Æ—F–W2Âv†–ÆR&W6W'f–ær6†&VBÂW‡FW&æÂæBVç&V6övæ—¦VBv÷&¶ÆöBföÇVÖW2à ¢2226V7W&—G ¢Ò&V6÷fW'’æWfW"'&öFVç2÷væW'6†—FòW‡FW&æÂföÇVÖW2Â&–æBÖ÷VçG2ÂW‡FW&æÂFF7F÷&W2÷"&÷f–FW"×&—fFR7FFS²Vç7W÷'FVBöW‡FW&æÂ6öçG&–'WF÷'2&VÖ–âW‡Æ–6—B–âF†R&V6÷fW'’öWf–FVæ6RÖöFVÂà¢ÒÆ–6F–öâ÷'VçF–ÖRÆVb–FVçF—F–W2æBG'W7BVFvW2&R&V6öç7G'V7FVBg&öÒFW6—&VB7FFR–ç7FVBöb6÷––ærF&vWB×v–FR÷Vä&ò´’&—fFR¶W—2–çFòÆ–6F–öâ&6†—fW2à¢ÒVF—BW'6—7FVæ6R—2÷væW"ÖöæÇ’Â&÷VæFVBæB6V7&WB×6fS²&ö×G2ÂÖöFVÂ&V6öæ–ærÂFö¶Vç2Â66W72¶W—2Â&—fFR¶W—2æB7&VFVçF–ÂÖ&V&–ærU$Ç2&RW†6ÇVFVBà¢ÒWf–FVæ6R–çFVw&—G’—2W‡Æ–6—FÇ’F×W"Wf–FVæ6RÂæ÷BF–v—FÂ6–væGW&RÂ&VÖ÷FRGFW7FF–öâ÷"6ö×Æ–æ6R6W'F–f–6F–öâà ¢2226ö×F–&–Æ—G ¢ÒÖæ–fW7BcæB&÷f–FW"ÖæWWG&ÂÆ–6F–öâ6öçG&7G2&VÖ–âVæ6†ævVBà¢ÒW†—7F–ærVæ7'—FVB&V6÷fW'’&6†—fW2&VÖ–â7W÷'FVBF‡&÷Vv‚F†RÆVv7’&V6÷fW'’ÖÖæ–fW7BfÆÆ&6³²cãBãb&6†—fW26''’F†RG—VB&V6÷fW'’Öæ–fW7Bà¢ÒFö6¶W"6ö×÷6RæBöFÖâõVFÆWB6öçF–çVRFò6†&RF†R6ÖRÆ–6F–öâ&V6÷fW'’6VÖçF–73²‡—6–6Â'VçF–ÖRföÇVÖRæÖW2&VÖ–âFWÆ÷–ÖVçBFWF–ÂæB&Ræ÷B÷'F&ÆR&V6÷fW'’–FVçF—G’à¢Ò¥4ôâ7FF÷WB&VÖ–ç2F†RvVæW&–2Wf–FVæ6R–çFVw&F–öâ&÷VæF'“²æò4”TÒÒ÷"6ö×Æ–æ6R×fVæF÷"×7V6–f–2&6¶VæB—2–çG&öGV6VBà  ¢22³ãBãRãÒÒ##bÓ’Ó#` ¢222f—†V@ ¢Ò'VçF–ÖR'&ö¶W"6ö×F–&–Æ—G’æ÷rW6W2F†RfW'6–öæVB'VçF–ÖR6öçG&7B–ç7FVBöb&WV—&–ærâW†7B4Ä’÷'VçF–ÖRv—B6öÖÖ—BÖF6ƒ²FWFW&Ö–æ—7F–2fW'6–öâ–æ6ö×F–&–Æ—G’f–Ç2–ÖÖVF–FVÇ’–ç7FVBöbv—F–ærF‡&÷Vv‚F†R&VF–æW72&WG'’v–æF÷rà¢Ò&W÷6—F÷'’v÷&¶ÆöB'V–ÆG2æòÆöævW"–æ†W&—B–çFW&7F—fREE’7FF–âÂ&WfVçF–ær6ö×÷6Rô'V–ÆD¶—B&V'V–ÆBg&öÒ†æv–ær–æFVf–æ—FVÇ’VæFW"F†R‡VÖâ&öw&W72T’à¢Ò&†F÷væW'6—7G2F†Rö'6W'fVB7F÷VB7FFR6ò&†Æ—7FFöW2æ÷B6öçF–çVRFò&W÷'B$TE’gFW"fW&–f–VB7F÷à¢ÒFWÆ÷–ÖVçBÆ—7F–æw2FöÆW&FR–æ6ö×ÆWFRö÷'†æVB7FFRF—&V7F÷&–W2æBv&â–ç7FVBöbÖ¶–ærF†R6ö×ÆWFRÆ–6F–öâ&Vv—7G'’VçW6&ÆRà¢Ò÷WBÖöb×&W÷6—F÷'’&W7F÷&R&W6öÇfW2æBfÆ–FFW2F†R&Vv—7FW&VB&W÷6—F÷'’6÷W&6R&Vf÷&R×WFF–ærGW&&ÆR7FFRÂ&WfVçF–ærFW7G'V7F—fR'F–Â7V66W72föÆÆ÷vVB'’FWÆ÷–ÖVçB×&V6÷&Bf–ÇW&Rà¢ÒFWFW&Ö–æ—7F–2&†–æ—BäÔRââæ&WV—&W2W‡Æ–6—B6&–Æ—G’÷v÷&¶ÆöB–çFVçB–ç7FVBöb6–ÆVçFÇ’&W6öÇf–ær&W÷6—F÷'’Ö&–wV—G’–çFòFVfVÇB5Â6öçG&7Bà¢Ò&W÷6—F÷'’6ö×÷6R–ç7V7F–öâæ÷rFV6öFW2”ÔÂÖW&vR¶W—2öæ6†÷'2âVç7W÷'FVB–æ6ÇVFVöW‡FVæG6–æ†W&—Fæ6Rf–Ç2W‡Æ–6—FÇ’&F†W"F†â6–ÆVçFÇ’G&÷–ær6W'f–6W2à¢Òf—†VB6ö×÷6R†÷7B×÷'B&–æF–æw26âW6RFWÆ÷–ÖVçBÖÆö6ÂWFöÖF–2fÆÆ&6²v—F†÷WB&Ww&—F–ærF†R6÷W&6R&W÷6—F÷'“²Fö6¶W"6ö×÷6RæBöFÖâõVFÆWB6†&RF†R6ÖR÷fW'&–FR6VÖçF–72à¢ÒF†R–×Æ–6—BÆö6ÆF&vWB—2f—6–&ÆR–â&†F&vWBÆ—7F²F&vWBæÖ–ærf–ÇW&W2W‡Æ–âF†RÆ÷vW&66R6ÇVr'VÆW3²7&VF–ærF&vWBFöW2æ÷B6†ævRF†RVffV7F—fRöFVfVÇBF&vWBVæÆW72ÒÖFVfVÇF—27WÆ–VBà¢ÒvÆö&Â&†7FGW6&VæFW'2&6T†&&÷"F&vWBö6öçG&öÂ×ÆæRöÆ–6F–öâ6VÖçF–72–ç7FVBöbW‡÷6–ærF†R&r6ö×÷6R6F&ÆRà¢ÒÖævVB5ÂF÷F–öâf–Ç2&Vf÷&R×WFF–öâv†Vâ&WÆ6–ær&W÷6—F÷'’FF&6Rv÷VÆBF—66&BFö6¶W"ÖVçG'—ö–çBÖ–æ—FF"æF&ö÷G7G&&V†f–÷"à¢Ò66WFVB×WFF–ærÔ5Æ–fV7–6ÆR÷W&F–öç2&RæòÆöævW"G'Væ6FVB'’6Æ–VçB×&WVW7B6æ6VÆÆF–öã²6Æ–VçBF–ÖV÷WBwV–Fæ6RæB6fRW&Ö—76–öâFVfVÇG2&RFö7VÖVçFVBà¢ÒÆ–6F–öâögVÆÂFW7G&÷’&VÖ÷fW2&6T†&&÷"Ö÷væVB'VçF–ÖR'&ö¶W"föÇVÖW2v†–ÆR6öçF–çV–ærFò&W6W'fRÆ–6F–öâÖ÷væVBv÷&¶ÆöBFFföÇVÖW2à¢Ò÷W&F÷"×f—6–&ÆR6ö×÷6R&ö¦V7G2æ÷rföÆÆ÷r&÷f–FW"Æ6VÖVçC¢F&vWB×v–FR6†&VB6ö×öæVçG2W6RöæR&‚ÓÇF&vWCâ×6†&VF7F6²Âv†–ÆRÆ–6F–öâ'VçF–ÖR÷v÷&¶ÆöBæBÆ–6F–öâ×66÷VB&÷f–FW'2W6R&‚ÓÇF&vWCâÓÆÆ–6F–öãâÓÆVçf—&öæÖVçCæ²W‡FW&æÂ&÷f–FW'2&VÖ–â÷WG6–FR&6T†&&÷"÷væW'6†—à¢ÒF÷ÖÆWfVÂ&†–æ—FæòÆöævW"w&—FW2F†RÆVv7’vÆö&ÂFWÆ÷–ÖVçC¢6–ævÆRÖæöFV6öæf–wW&F–öâ–çFò&6V†&&÷"ç–ÖÆ²&W÷6—F÷'’Æ–6F–öâ–çFVçB&VÖ–ç2÷væVB'’&†–æ—FÂv†–ÆRFWÆ÷–ÖVçBFW7F–æF–öâ÷'VçF–ÖR6VÆV7F–öâ&VÖ–ç2F&vWB6öæf–wW&F–öâà¢Ò÷Vä&ò&V6÷fW'’Öf–ÆRÆö6F–öâ—2æ÷rF&vWB×66÷VBVæFW"F&vWBæ÷Væ&òç&V6÷fW'’Öf–ÆVâ7V66W76gVÂ&ö÷G7G&W'6—7G2öæÇ’F†RF‚&VfW&Væ6RÂæWfW"&V6÷fW'’ÖFW&–ÂÂæBÆFW"&†W6âWFöÖF–6ÆÇ’Vç6VÂF†R6†&VB÷Vä&ò&÷f–FW"v†VâF†B&VfW&Væ6VBf–ÆR—2&W6VçBà¢ÒFö6¶W"'VçF–ÖR'&ö¶W"ö'6W'f&–Æ—G’¶VW2F†R7F&ÆR6ö×÷6R6W'f–6R–FVçF—G’'&ö¶W&Â&W7F÷&–ær&VÆ–&ÆRFö6¶W"7—6Æörf÷'v&F–ær–çFòÆÆ÷’ôÆö¶’v—F†÷WB6†æv–ærF†RÆ–6F–öâ6öçG&7B÷"F†R6öç6öÆ–FFVBÆ–6F–öâ7F6²&÷VæF'’à ¢2226V7W&—G ¢Ò&W7F÷&RæB&W÷6—F÷'’ÖF÷F–öâ6÷'&V7F–öç2Ö÷fRFW7G'V7F—fR÷"Ö&–wV÷W2f–ÇW&W2–çFò&VfÆ–v‡Böf–ÂÖ6Æ÷6VBF‡2à¢ÒÔ5×WFF–öâ&÷fÂ6VÖçF–72&VÖ–âVæ6†ævVC²Æ–fV7–6ÆR6öçfW&vVæ6R—2FWF6†VBöæÇ’gFW"F†R×WFF–ær&WVW7B†2Ç&VG’&VVâ66WFVBà¢ÒgVÆÂFW7G&÷’7F–ÆÂ&VÖ÷fW2öæÇ’&6T†&&÷"Ö÷væVB'VçF–ÖR&W6÷W&6W2æB&W6W'fW2Æ–6F–öâÖ÷væVBFFà¢ÒF&vWB×66÷VB÷Vä&ò&V6÷fW'’†æFÆ–ær7F÷&W2öæÇ’â÷W&F÷"Ö†VÆBf–ÆRF‚&VfW&Væ6S²&V6÷fW'’ÖFW&–Â&VÖ–ç2÷WG6–FRæ÷&ÖÂ&6T†&&÷"7FFRæB7F'GWf–Ç26Æ÷6VBv†VââW‡Æ–6—FÇ’W'6—7FVB&VfW&Væ6R—2Væf–Æ&ÆR÷"–çfÆ–Bà ¢2226ö×F–&–Æ—G ¢ÒÖæ–fW7BcæB&÷f–FW"ÖæWWG&ÂÆ–6F–öâ6öçG&7G2&RVæ6†ævVBà¢ÒÖæ–fW7B÷&÷f–FW"÷væW'6†—6VÖçF–72&VÖ–âVæ6†ævVBâ6ö×÷6R&ö¦V7B–FVçF—G’—2æ÷r6W&FVBg&öÒ‡—6–6Â&W6÷W&6R–FVçF—G’6ò&ö¦V7B6öç6öÆ–FF–öâFöW2æ÷B6–ÆVçFÇ’'&öFVâ÷væW'6†—÷"&VæÖRÖævVB&6¶VæB&W6÷W&6W2à¢Òv—B6öÖÖ—B–FVçF—G’&VÖ–ç2f—6–&ÆR2&÷fVææ6R'WB—2æòÆöævW"G&VFVB2F†R'VçF–ÖR'&ö¶W"6ö×F–&–Æ—G’&÷VæF'’à¢Ò&†–æ—F&VÖ–ç226ö×F–&–Æ—G’VçG'—ö–çB'WBæòÆöævW"7&VFW2ÆVv7’vÆö&Â&6V†&&÷"ç–ÖÆ²W6R&†–æ—Ff÷"÷'F&ÆRÆ–6F–öâ–çFVçBæB&†F&vWB7&VFVf÷"FWÆ÷–ÖVçBF&vWB÷'VçF–ÖR6öæf–wW&F–öâà¢Ò'VçF–ÖR'&ö¶W"6W'f–6R–FVçF—G’&VÖ–ç2â–çFW&æÂ'VçF–ÖRFWF–Ã²&W7F÷&–ærF†R6†÷'B'&ö¶W&6W'f–6RæÖRFöW2æ÷B6†ævRÖæ–fW7BcÂ&÷f–FW"6öçG&7G2Âv÷&¶ÆöB&–æF–æw2÷"'VçF–ÖR’U$Ç2à  ¢22³ãBãUÒÒ##bÓ’Ó#P ¢222FFV@ ¢Òf—'7BÖ6Æ72FWÆ÷–ÖVçBF&vWG26W&FRFWÆ÷–ÖVçBFW7F–æF–öâg&öÒÆ–6F–öâæBVçf—&öæÖVçC²6öæ7&WFRFWÆ÷–ÖVçB–FVçF—G’—2æ÷rF&vWB²Æ–6F–öâ²Vçf—&öæÖVçFà¢ÒF&vWB6öæf–wW&F–öâÆ—fW2–â„DrW6W"6öæf–rv†–ÆR×WF&ÆR'VçF–ÖRöFWÆ÷–ÖVçB7FFR—2—6öÆFVB&VÆ÷rE„DuôDDô„ôÔRö&6V†&&÷"÷F&vWG2óÇF&vWCâöà¢Ò&†F&vWF–ç7V7F–öâæBÖævVÖVçBÂ6†VÆÂÖÆö6ÂF&vWB7F—fF–öâÂ÷F–öæÂ6†VÆÂ&ö×B–çFVw&F–öâÂæB&6V†&&÷"çF&vWFÔ5–ç7V7F–öâW‡÷6RF†R6ÖRVffV7F—fRF&vWB–FVçF—G’7&÷72‡VÖâæBÖ6†–æR–çFW&f6W2à¢Ò6ö×ÆWFRvVçBÖæF—fRÆ–fV7–6ÆR÷W&F–öç2÷fW"F†R6†&VBÖ6†–æRôÔ56÷&RÂ–æ6ÇVF–ærÇ’ÂWFFRÂ&W—"Â&6·WÂ&W7F÷&RæBFW7G&÷’v—F‚G—VB6fWG’ÖWFFFæB&÷fÂ&WV—&VÖVçG2à¢ÒvVæW&–2&÷f–FW"÷'VçF–ÖRö'6W'f&–Æ—G’FV6Æ&F–öç2æB&Vv—7G&F–öâf÷"ÖWG&–72ÂÆöw2æBG&6W2Â–æ6ÇVF–ær'VçF–ÖR'&ö¶W"æB'VçF–ÖRW†V7WF÷"ö'6W'f&–Æ—G’à¢Ò7FæF&G2Öf—'7B6W'f–6RÖ6öçG&7B66†VÖ2&6VBöâ¥4ôâ66†VÖ##Ó"f÷"5ÂÂ66†RÂö&¦V7B7F÷&vRÂ6V7&WG2ÂÖW76v–ærÂfV7F÷"Âö'6W'f&–Æ—G’æB–FVçF—G’6W'f–6RfÖ–Æ–W2à¢Ò&÷f–FW"FW67&—F÷"ö6FÆörÖWFFF6W&FW26W'f–6R6öçG&7BÂ&÷f–FW"&÷Fö6öÂÂ&÷f–FW"fW'6–öâÂ&öGV7BöVæv–æRfW'6–öâÂô4’'F–f7B–FVçF—G’ÂF–vW7BæB&÷fVææ6Rà¢Ò&W÷6—F÷'’–ç7V7F–öâæ÷r6Æ76–f–W27W÷'FVB&6¶VæB6W'f–6W22&WÆ6V&ÆR–æg&7G'V7GW&RÂ¶VW2Æ–6F–öâv÷&¶ÆöG26W&FRÂæB6'&–W27G&öærWf–FVæ6R–çFòwV–FVB6&–Æ—G’F÷F–öâà¢ÒwV–FVB&W÷6—F÷'’F÷F–öâæ÷r7W÷'G2–çFW&7F—fR6&–Æ—G’6VÆV7F–öâÂW"×6V7&WB66WB÷6¶—÷&VæÖR÷&WV—&VBövVæW&FR÷&ö×BöÆFW"6†ö–6W2æB6V7W&R&†6V7&WB6WB´U–&ö×F–ærà¢ÒFWFW&Ö–æ—7F–2v÷&¶ÆöB6VÆV7F–öâæB'VçF–ÖR×&W6÷W&6RFWFV7F–öâ6÷fW"Ö&–wV÷W2×VÇF’×6W'f–6R&W÷6—F÷&–W2æB'VçF–ÖR’327&VF–öâv—F†÷WB6–ÆVçFÇ’–çfVçF–ærÆ–6F–öâ–çFVçBà¢ÒW‡Æ–6—B&†FW7G&÷’ÒÖÆÂ²Ò×–W5Ö–ç7FÆÆF–öâ6ÆVçW7&÷72ÆÂ&6T†&&÷"F&vWG2Â&W6W'f–ærÆ–6F–öâ6÷W&6R&W÷6—F÷&–W2æB&VgW6–ærFòwVW72÷væW'6†—öbf÷&V–vâ&W6÷W&6W2à ¢2226†ævV@ ¢Ò÷'F&ÆRÆ–6F–öâ6W'f–6R–çFVçB—2&÷f–FW"ÖæWWG&Ã¢6æöæ–6ÂÖæ–fW7Bô4Ä’6W'f–6RfÖ–Æ–W2&R7ÆæB66†V–ç7FVBöb&öGV7BÖæÖVB÷7Fw&U5Âõ&VF—2–çFVçC²&÷f–FW"×7V6–f–2–×ÆVÖVçFF–öâæÖW2&VÖ–â–×ÆVÖVçFF–öâFWF–Âà¢Ò6W'f–6R6öææV7F–öâ÷WGWG2Æ–vâv—F‚6W'f–6R&–æF–ær7V6–f–6F–öâãvVÆÂÖ¶æ÷vâæÖW2v†–ÆR6V7W&RÖ&–æF–ær÷c&VÖ–ç26W&FR&6T†&&÷"6V7W&—G’öÆ–fV7–6ÆRW‡FVç6–öâà¢Ò'VçF–ÖR'&ö¶W"&VF–æW72æ÷rfW&–f–W2'V–ÆB6ö×F–&–Æ—G’æB'VçF–ÖRFö72…EE2&VF–æW73²'VçF–ÖR7FGW2W‡÷6W2'VçF–ÖR'F–f7B–FVçF—G’à¢Ò&W÷6—F÷'’'V–ÆC¦v÷&¶ÆöG2W'6—7BfW&–f–VB'V–ÆBf–ævW'&–çG2æB&V'V–ÆBöæÇ’ffV7FVB6W'f–6W2gFW"&VÆWfçB6÷W&6R6†ævW3²7FÆR6÷W&6Rö'V–ÆB7FFR—2æ÷B&W÷'FVB$TE’à¢Ò&W÷6—F÷'’FWFV7F–öâæ÷&ÖÆ—¦W2&öGV7BWf–FVæ6R–çFòvVæW&–26W'f–6RfÖ–Æ–W2Â¶VW27VvvW7FVB6&–Æ—F–W2÷BÖ–âæBÖ¶W2Ò×V–6¶f–Â6Æ÷6VBöâÖ&–wV÷W26ö×÷6R&öÆW2ÂÖWG&–72F&vWG2ÂõDÅ6–væÇ2æB'VçF–ÖR×W&Ö—76–öâv÷&¶ÆöB66÷Rà¢ÒwV–FVB–æ—Bæ÷r&VæFW'2‡VÖâ×&VF&ÆRF÷F–öâ7VÖÖ'’'’FVfVÇBÂ¶VW2vVæW&FVB”ÔÂ&V†–æBÒ×fW&&÷6VÂW6W2&†W2F†Ræ÷&ÖÂæW‡B7FWæB&VfÆ–v‡G2f—†VBv÷&¶ÆöB†÷7B÷'G2&Vf÷&Rf—'7B7F'Bà¢ÒÖ—76–ær&WV—&VBÆ–6F–öâ6V7&WG26â&R&W6öÇfVB–çFW&7F—fVÇ’GW&–ærÇ’v—F†÷WB&W7F'F–ærF†RÆ–fV7–6ÆS²æöâÖ–çFW&7F—fRF‡2&VÖ–âFWFW&Ö–æ—7F–2æB&WGW&â7F–öæ&ÆR&VÖVF–F–öâà¢Ò'VçF–ÖRf–ÇW&W2W6R7F&ÆRG—VBW'&÷"ö6W6R÷&W6÷W&6R÷&VÖVF–F–öâÖWFFF6†&VB'’‡VÖâæBÖ6†–æR÷WGWBv†–ÆRæ÷&ÖÂ÷WGWB7W&W76W2&rFö6¶W"õöFÖâ÷&÷f–FW"æö—6RVæÆW72Ò×fW&&÷6V—2&WVW7FVBà¢ÒFö6¶W"õöFÖâ6öçG&öÂ×ÆæRÂÆ–6F–öâÂ&÷f–FW"ÂæWGv÷&²ÂföÇVÖRÂ'&ö¶W"æB'VçF–ÖRÖW†V7WF÷"7FFR—2æÖW76VB'’F&vWB6ò×VÇF—ÆRÆö6ÂFW7F–æF–öç26â6öW†—7Bv—F†÷WB6†&–ær÷væW'6†—7FFRà¢Ò&†Æ—7F&VG2F†RFWÆ÷–ÖVçB&Vv—7G'’–æFWVæFVçFÇ’öbF†R7W'&VçBv÷&¶–ærF—&V7F÷'’æBÒÖÆÂ×F&vWG6&÷f–FW2F†R–ç7FÆÆF–öâ×v–FRf–Wrà¢ÒÖævVB6W'f–6R66W72æ÷rföÆÆ÷w2F†R&÷f–FW"ÖæWWG&ÂDÅ2õ´’æBVçf—&öæÖVçBÖv&R66W72&6VÆ–æRÂ–æ6ÇVF–ærW‡FW&æÂô%”ô2´’æB&÷FV7FVBG'W7BöWF‚ÖFW&–Âà¢Òö'6W'f&–Æ—G’6öÆÆV7F–öâW6W2F†R6†&VB6÷W&6Rö÷væW'6†—÷Æ6VÖVçBÖöFVÂ–ç7FVBöb&öGV7B×7V6–f–>zß«h‘éì¶»§q«^uÑ¡•ÈÑ¡…¸Ñ•Éµ¥¹…°É•¹‘•É¥¹œ¸(´‰…¡„…ÁÀ¥¹ÍÁ•Ğ€´µ©Í½¹€É•µ…¥¹Ì„½µÁ…Ñ¥‰¥±¥Ñä…±¥…Ìİ¡¥±”€µ¼©Í½¹€¥ÌÑ¡”…¹½¹¥…°ÍÑÉÕÑÕÉ•µ½ÕÑÁÕĞ™½É´¸(´!Õµ…¸ÍÑ…ÑÕÌ…¹‘½Ñ½ÈÙ¥•İÌ…É”É½ÕÁ•¥¹Ñ¼Í…¸µ™É¥•¹‘±äÍ•Ñ¥½¹Ìİ¥Ñ ½¹”™¥¹…°½Ù•É…±°ÍÑ…Ñ”…¹…Ñ¥½¹…‰±”¹•áĞ½µµ…¹‘Ì¸(´MÕ•ÍÍ™Õ°µÕÑ…Ñ¥½¹ÌÕÍ”ÁÉ•¥Í”É•ÍÕ±ĞÍÑ…Ñ•ÌÍÕ …ÌIQ€°UAQ€°1Q€°I5=Y€°MQIQ€°MQ=AA€°Ie€…¹YI%%€¥¹ÍÑ•…½˜•¹•É¥Œ=-€¸(´€´µÅÕ¥•Ñ€½€´µÍ¥±•¹Ñ€°€´µÙ•É‰½Í•€…¹€´µ¹¼µ½±½É€…É”¡…¹‘±•½¹Í¥ÍÑ•¹Ñ±ä…Ì±½‰…°¡Õµ…¸µ½ÕÑÁÕĞ½¹ÑÉ½±Ì¸(´A½Ñ•¹Ñ¥…±±äÍ±½Ü±¥™•å±”½Á•É…Ñ¥½¹ÌÍ¡½Ü‘•±…å•½¹Ñ•áÑÕ…°ÁÉ½É•ÍÌì™…ÍĞ½Á•É…Ñ¥½¹Ì‘¼¹½Ğ™±…Í …Ñ¥Ù¥Ñä¥¹‘¥…Ñ½ÉÌ…¹$½¹½¸µQQd½ÕÑÁÕĞÉ•µ…¥¹Ì±¥¹”µ½É¥•¹Ñ•¸(´!Õµ…¸É•ÍÕ±Ğ‘•Ñ…¥±Ì…¹¡•±ÀÑ•áĞİÉ…ÀÑ¼Ñ•Éµ¥¹…°İ¥‘Ñ ì±½¹œ¡•±Àµ…äÕÍ”€‘AI€½¹±ä½¸„É•…°QQd¸(´€µÙ€¥ÌÉ•Í•ÉÙ•½¹Í¥ÍÑ•¹Ñ±ä™½È€´µÙ•É‰½Í•€ìÙ•ÉÍ¥½¸É•µ…¥¹Ì…Ù…¥±…‰±”Ñ¡É½Õ ‰…¡„Ù•ÉÍ¥½¹€…¹‰…¡„€´µÙ•ÉÍ¥½¹€¸(´	É½­•¸µÁ¥Á”½A%AÑ•Éµ¥¹…Ñ¥½¸¥ÌÍ¥±•¹Ğ™½È¹½Éµ…°U¹¥àÁ¥Á•±¥¹•Ì¸(´ÁÁ±¥…Ñ¥½¸ÍÑ…ÑÕÌ¥Ì¹½Ü„‰½Õ¹‘•™…ÍĞÍ¹…ÁÍ¡½ĞÉ…Ñ¡•ÈÑ¡…¸„É•…‘¥¹•ÍÌİ…¥Ğ±½½Àì‰É½­•È…¹ÍÕ‰ÍåÍÑ•´¡•­Ì¹¼±½¹•Èµ…­”‰…¡„ÍÑ…ÑÕÍ€…ÁÁ•…È¡Õ¹œ¸(´9½Éµ…°ÍÑ…ÑÕÌ¡¥‘•Ì±½Üµ±•Ù•°½µÁ½Í”½ÕÉ°½=Á•¹	…¼‘¥…¹½ÍÑ¥Ì‰•¡¥¹€´µÙ•É‰½Í•€°…¹É•Á½Í¥Ñ½ÉäQ1LÉ•¹‘•ÉÌ¥¹Í¥‘”Ñ¡”Í…µ”ÍÑ…ÑÕÌ¡¥•É…É¡ä‰•™½É”Ñ¡”™¥¹…°Id½IÍÑ…Ñ”¸(´ÁÁ±¥…Ñ¥½¸‘½Ñ½È¹½Ü™½±±½İÌÑ¡”Í…µ”½¹¥Í”¡Õµ…¸µ½ÕÑÁÕĞÁ½±¥äèÉ…Ü½µÁ½Í”½=Á•¹	…¼½ÕÉ°‘¥…¹½ÍÑ¥ÌÍÑ…ä‰•¡¥¹€´µÙ•É‰½Í•€°‘ÕÁ±¥…Ñ”İ½É­±½…ÁÉ½‰±•µÌ…¹•µÁÑäİ½É­±½…µÍ•ÉÙ¥”Í•Ñ¥½¹Ì…É”ÍÕÁÁÉ•ÍÍ•°Q1L¥Ì¥¹Ñ•É…Ñ•‰•™½É”Ñ¡”™¥¹…°¡•…±Ñ ÍÑ…Ñ”°…¹É•Á…¥ÈÕ¥‘…¹”¥ÌÁÉ•Í•¹Ñ•Ñ¡É½Õ Ñ¡”¹½Éµ…°9•áĞ…Ñ¥½¹Ì¸(´QU$MÑ…ÑÕÌ…¹½Ñ½ÈÙ¥•İÌÕÍ”Ñ¡”Í…µ”½¹¥Í”¡Õµ…¸µ‘•Ñ…¥°µ…ÁÁ¥¹œ…ÌÑ¡”1$°Í¼É…Ü½µÁ½Í”½=Á•¹	…¼½ÕÉ°‘¥…¹½ÍÑ¥Ì¹•Ù•È±•…¬¥¹Ñ¼Ñ¡”¥¹Ñ•É…Ñ¥Ù”‘…Í¡‰½…É¸(´‰…¡„…ÁÀ‘½Ñ½È€´µ™¥á€¹½Ü±…ÍÍ¥™¥•ÌÉ•Á…¥É…‰¥±¥Ñä™É½´ÍÑÉÕÑÕÉ•‘½Ñ½ÈÉ•ÍÕ±ÑÌ¥¹ÍÑ•…½˜É•¹‘•É•Ñ•Éµ¥¹…°Ñ•áĞ°Í¼¡Õµ…¸µ½ÕÑÁÕĞ¡…¹•Ì…¹¹½ĞÍ¥±•¹Ñ±ä‘¥Í…‰±”Í…™”É•Á…¥È¸(´M…™”‘½Ñ½ÈÉ•Á…¥È…¸É•ÍÑ½É”…¸•á¥ÍÑ¥¹œÍÑ½ÁÁ•	…Í•!…É‰½È½¹ÑÉ½°Á±…¹”‰•™½É”…ÁÁ±¥…Ñ¥½¸½¹Ù•É•¹”…¹Ñ¡•¸ÕÍ•ÌÑ¡”¹½Éµ…°…ÁÁ±¥…Ñ¥½¸…ÁÁ±äÁ…Ñ ¸	…Í•!…É‰½Èµ‘•±…É•É•ÅÕ¥É•Í•É•ÑÌ¹¼±½¹•È‰±½¬É•…µ½¹±ä½µÁ½Í”Í•ÕÉ¥ÑäÉ•¹‘•É¥¹œ°…¹•Ù•ÉäÉ•Á½Í¥Ñ½Éäİ½É­±½…ÍÑ…ÉĞ¥ÌÍ•ÕÉ¥Ñäµ¡•­•……¥¸¥µµ•‘¥…Ñ•±ä‰•™½É”ÍÑ…ÉĞ¸((´É½ÍÌµ½µµ…¹±¥™•å±”…Õ‘¥Ğ…±¥¹•İ½É­±½…µÍ•ÕÉ¥Ñä‰•¡…Ù¥½È…É½ÍÌÁÉ•™±¥¡Ğ°…ÁÁ±ä°ÕÀ°É•ÍÑ½É”°‰…­ÕÀÉ•ÍÑ…ÉĞ…¹Q1LÉ•±½…Á…Ñ¡Ì¸(´!Õµ…¸°)M=8…¹QU$…ÁÁ±¥…Ñ¥½¸¡•…±Ñ ¹½Ü¥¹±Õ‘”Ñ¡”Í…µ”É•Á½Í¥Ñ½ÉäQ1L½‰Í•ÉÙ…Ñ¥½¸¸(´I•Á½Í¥Ñ½Éäµ…¹¥™•ÍĞ‘¥Í½Ù•Éä¹½ÜÕÍ•Ì„ÑåÁ•¹½Ğµ™½Õ¹Í•¹Ñ¥¹•°É…Ñ¡•ÈÑ¡…¸Á…ÉÍ¥¹œ•ÉÉ½Èµµ•ÍÍ…”ÍÑÉ¥¹Ì¸(ŒŒŒM•ÕÉ¥Ñä((´I•µ½Ñ”¥ĞUI1Ì½¹Ñ…¥¹¥¹œ•µ‰•‘‘•ÕÍ•É¥¹™¼½É•‘•¹Ñ¥…±Ì…É”É•©•Ñ•ì…ÕÑ¡•¹Ñ¥…Ñ¥½¸¥Ì‘•±•…Ñ•Ñ¼¹½Éµ…°¥Ğµ•¡…¹¥ÍµÌ¸(´MÑÉÕÑÕÉ•ÍÑ…ÑÕÌ½‘½Ñ½È½ÕÑÁÕĞ•á±Õ‘•ÌÍ•É•ĞÙ…±Õ•Ì…¹É•Á½ÉÑÌ½¹±äÉ•…‘¥¹•ÍÌµ•Ñ…‘…Ñ„™½ÈÉ•ÅÕ¥É•Í•É•ÑÌ¸(´MÑÉÕÑÕÉ•‘½Ñ½È½ÕÑÁÕĞ¥ÌÉ•…µ½¹±ä…¹…¹¹½Ğ‰”½µ‰¥¹•İ¥Ñ €´µ™¥á€¸(´	…Í•!…É‰½È•‘¥ÑÌ½¹±ä¥ÑÌ½İ¸‰½Õ¹‘•9QL¹µ‘€Í•Ñ¥½¸…¹™…¥±Ì±½Í•½¸µ…±™½Éµ•½È…µ‰¥Õ½ÕÌµ…É­•ÉÌ¸(´]•…¬½È…µ‰¥Õ½ÕÌÉ•Á½Í¥Ñ½Éä•Ù¥‘•¹”É•µ…¥¹Ì¹½¸µ…ÕÑ¡½É¥Ñ…Ñ¥Ù”…¹¹•Ù•ÈÍ¥±•¹Ñ±äÉ…¹ÑÌÉÕ¹Ñ¥µ”Á•Éµ¥ÍÍ¥½¹Ì½ÈÉ•Á±…•Ì¥¹™É…ÍÑÉÕÑÕÉ”¸(´9=}=1=I€°QI4õ‘Õµ‰€…¹É•‘Õ•µµ½Ñ¥½¸µ½‘”ÍÕÁÁÉ•ÍÌÙ¥ÍÕ…°•™™•ÑÌİ¥Ñ¡½ÕĞ¡…¹¥¹œ½µµ…¹Í•µ…¹Ñ¥Ì¸(´AÉ½É•ÍÌ½ÕÑÁÕĞ¹•Ù•È¥¹Ù•¹ÑÌÁ•É•¹Ñ…•Ì½ÈQÌ°…¹ÅÕ¥•Ğµ½‘”ÁÉ•Í•ÉÙ•Ì™…¥±ÕÉ”‘¥…¹½ÍÑ¥Ì¸(´MÑÉÕÑÕÉ•)M=8Á…Ñ¡ÌÉ•µ…¥¸¥Í½±…Ñ•™É½´9M$½½±½È½ÁÉ½É•ÍÌÉ•¹‘•É¥¹œ¸(´€´µ¹¼µ¥¹ÁÕÑ€Õ…É…¹Ñ••ÌÕ¥‘•™±½İÌ¹•Ù•ÈÁÉ½µÁĞ…¹™…¥°±½Í•İ¥Ñ …Ñ¥½¹…‰±”•áÁ±¥¥Ğµ¥¹ÁÕĞ¥¹ÍÑÉÕÑ¥½¹Ì¸(´Q¡”QU$¥ÌÉ•…µ½¹±ä…¹É•™ÕÍ•Ì¹½¸µ¥¹Ñ•É…Ñ¥Ù”°Á±…¥¸°Á¥Á•…¹$•á•ÕÑ¥½¸¸(((ŒŒlÀ¸Ğ¸ÄÁt€´€ÈÀÈØ´Àä´ÈÀ((ŒŒŒ‘‘•((´•¹•É¥ŒÁÉ½Ù¥‘•È½‰Í•ÉÙ…‰¥±¥Ñä‘•±…É…Ñ¥½¹Ì¥¸AÉ½Ù¥‘•È%¹Ñ•É…Ñ¥½¸½¹ÑÉ…ĞØÄ™½ÈÁÉ½Ù¥‘•Èµ½İ¹•µ•ÑÉ¥Ì½±½œ½ÑÉ…”Í¥¹…±Ìİ¥Ñ¡½ÕĞÁÉ½‘ÕĞµÍÁ•¥™¥Œ½±±•Ñ½È‰É…¹¡•Ì¸(´AÉ½Ñ•Ñ•ÁÉ½Ù¥‘•Èµ•ÑÉ¥ÌÍ½ÕÉ”É•¥ÍÑÉäİ¥Ñ Á±…•µ•¹Ğ°Í¡…É¥¹œµ‰½Õ¹‘…Éä…¹…ÁÁ±¥…Ñ¥½¸µ…ÕÑ¡½É¥é…Ñ¥½¸™¥±Ñ•É¥¹œ¸(´Y•ÉÍ¥½¹•ÑÉ…•Ì½ØÅ€Á±…Ñ™½É´½¹ÑÉ…Ğ…¹Q•µÁ¼€Ì¸À¸È…ÌÑ¡”™¥ÉÍĞµ…¹…•Í¡…É•½µÁ½Í”ÑÉ…”µÍÑ½É…”É•™•É•¹”ÁÉ½Ù¥‘•È¸(´5…¹…•=Á•¹Q•±•µ•ÑÉä½±±•Ñ½ÈÑ¼Q•µÁ¼É½ÕÑ¥¹œİ¥Ñ É•…°•¹µÑ¼µ•¹Ù•É¥™¥…Ñ¥½¸èÑ¡”	…Í•!…É‰½ÈÙ•É¥™¥…Ñ¥½¸ÑÉ…”µÕÍĞ‰”ÅÕ•Éå…‰±”™É½´Q•µÁ¼‰•™½É”ÑÉ…”ÍÑ½É…”¥ÌId¸(´AÉ½Ù¥‘•Èµ•ÑÉ¥Ì…ÕÑ¼µÉ•¥ÍÑÉ…Ñ¥½¸™½ÈÑ¡”µ…¹…•=Á•¹Q•±•µ•ÑÉä½±±•Ñ½È°1½­¤…¹Q•µÁ¼İ¡•¸µ•ÑÉ¥Ì½±±•Ñ¥½¸Á½±¥ä…±±½İÌÁÉ½Ù¥‘•ÈÍ¥¹…°±…ÍÍ•Ì¸(´I•…°AÉ½µ•Ñ¡•ÕÌÕÀôÅ€Ù•É¥™¥…Ñ¥½¸™½ÈÉ•¥ÍÑ•É•ÁÉ½Ù¥‘•Èµ•ÑÉ¥Ì¸((ŒŒŒ¡…¹•((´5•ÑÉ¥Ì½±±•Ñ¥½¸‘•™…Õ±ÑÌ¥¹±Õ‘”Í…™”µ•ÑÉ¥Ì…‘Ù•ÉÑ¥Í•‰äµ…¹…•…ÁÁ±¥…Ñ¥½¸½Á±…Ñ™½É´ÁÉ½Ù¥‘•ÉÌİ¡•¸Ñ¡”µ•ÑÉ¥Ì™…¥±¥Ñä¥Ì•¹…‰±•¸(´AÉ½µ•Ñ¡•ÕÌÁÉ½Ù¥‘•ÈÍÑ…Ñ”¹½ÜÉ•½¹¥±•Ì•¹•É¥ŒÁÉ½Ù¥‘•ÈÑ…É•ÑÌ…¹…ÑÑ…¡•Ì½¹±äÑ¡”ÁÉ½Ù¥‘•È¹•Ñİ½É­ÌÉ•ÅÕ¥É•‰ä…ÕÑ¡½É¥é•É•¥ÍÑÉ…Ñ¥½¹Ì¸(´1½­¤Ì¥¹Ñ•É¹…°ÁÉ½Ù¥‘•È¹•Ñİ½É¬¡…Ì„ÍÑ…‰±”	…Í•!…É‰½Èµ½İ¹•¹…µ”Í¼…¸…ÕÑ¡½É¥é•µ•ÑÉ¥Ì½±±•Ñ½È…¸©½¥¸¥Ğİ¥Ñ¡½ÕĞ‰É½…‘•¹¥¹œ…ÁÁ±¥…Ñ¥½¸½¹¹•Ñ¥Ù¥Ñä¸(´=Q1@ÑÉ…¹ÍÁ½ÉĞ…¹ÑÉ…”É•Ñ•¹Ñ¥½¸É•µ…¥¸Í•Á…É…Ñ”èÉ•ÅÕ•ÍÑ¥¹œÑ•±•µ•ÑÉä¹½Ñ±À½ØÅ€…±½¹”ÍÑ¥±°‘½•Ì¹½ĞÍÑ…ÉĞQ•µÁ¼¸(´Q•µÁ¼¥Ì‘•±¥‰•É…Ñ•±ä±¥µ¥Ñ•Ñ¼Ñ¡”‘•™…Õ±ĞÍ¡…É•½µÁ½Í”Á±…•µ•¹Ğ¥¸ØÀ¸Ğ¸ÄÀìÕ¹ÍÕÁÁ½ÉÑ•…ÁÁ±¥…Ñ¥½¸½•áÑ•É¹…°½¹…µ•µ‰½Õ¹‘…ÉäÁ±…•µ•¹Ğ™…¥±Ì‰•™½É”µÕÑ…Ñ¥½¸¸((ŒŒŒM•ÕÉ¥Ñä((´M¡…É•AÉ½µ•Ñ¡•ÕÌ™¥±Ñ•ÉÌ…ÁÁ±¥…Ñ¥½¸µÍ½Á•ÁÉ½Ù¥‘•ÈÍ¥¹…±Ì‰äÑ¡”•á…Ğ…ÁÁ±¥…Ñ¥½¹ÌÉ•¥ÍÑ•É•¥¸Ñ¡…ĞAÉ½µ•Ñ¡•ÕÌÍ¡…É¥¹œ‰½Õ¹‘…Éä¸(´AÉ½Ù¥‘•È½‰Í•ÉÙ…‰¥±¥ÑäÉ•…¡…‰¥±¥Ñä¥Ì„‘•‘¥…Ñ•	…Í•!…É‰½Èµµ…¹…•½±±•Ñ½ÈÁ…Ñ …¹‘½•Ì¹½ĞÉ…¹Ğ…ÁÁ±¥…Ñ¥½¹Ì…•ÍÌÑ¼Í¡…É•ÁÉ½Ù¥‘•È¹•Ñİ½É­Ì¸(´Q•µÁ¼ÉÕ¹Ì¹½¸µÉ½½Ğİ¥Ñ „É•…µ½¹±äÉ½½Ğ™¥±•ÍåÍÑ•´°…±°1¥¹Õà…Á…‰¥±¥Ñ¥•Ì‘É½ÁÁ•°¹¼µ¹•ÜµÁÉ¥Ù¥±••Í€°•áÁ±¥¥ĞİÉ¥Ñ…‰±”ÍÑ½É…”½ÑµÁ™Ì…¹„±½½Á‰…¬µ½¹±ä¡½ÍĞA$¸(´AÉ½Ù¥‘•È½‰Í•ÉÙ…‰¥±¥ÑäÍÑ…Ñ”½¹Ñ…¥¹Ì•¹‘Á½¥¹Ğ¥‘•¹Ñ¥Ñä½±…‰•±Ì½¹±ä…¹¹¼É•‘•¹Ñ¥…±Ì½ÈÍ•É•Ğµ‰•…É¥¹œUI1Ì¸(((ŒŒlÀ¸Ğ¸åt€´€ÈÀÈØ´Àä´ÈÀ((ŒŒŒ‘‘•((´Y•ÉÍ¥½¹•±½Ì½ØÅ€±¥™•å±”Í•µ…¹Ñ¥Ì…¹1½­¤€Ì¸Ü¸à…ÌÑ¡”™¥ÉÍĞ½µÁ½Í”±½œÁ±…Ñ™½É´ÁÉ½Ù¥‘•È¸(´É…™…¹„±±½ä€Ä¸Ää¸È™½Éİ…É‘¥¹œ™É½´Í•±•Ñ•É•Á½Í¥Ñ½Éäİ½É­±½…Í•ÉÙ¥•Ì¥¹Ñ¼1½­¤İ¥Ñ¡½ÕĞ„½­•È½A½‘µ…¸Í½­•Ğ¸(´M¡…É•½‘•™…Õ±Ğ°¹…µ•Í¡…É•µ‰½Õ¹‘…Éä…¹…ÁÁ±¥…Ñ¥½¸µÍ½Á•1½­¤Á±…•µ•¹ĞÑ¡É½Õ Ñ¡”•á¥ÍÑ¥¹œÁÉ½Ù¥‘•ÈµÁ±…•µ•¹Ğµ½‘•°¸(´I•…°1½­¤É•…‘¥¹•ÍÌ…¹ÅÕ•Éäµ‰…Í•¥¹•ÍÑ¥½¸Ù•É¥™¥…Ñ¥½¸‰•™½É”Ñ¡”±½ÌÁ…Ñ ¥ÌId¸(´I•Á½Í¥Ñ½Éä½µÁ½Í”İ½É­±½…Í•ÕÉ¥ÑäÁÉ•™±¥¡Ğİ¥Ñ µ…¡¥¹”µÉ•…‘…‰±”…±±½Ü½İ…É¸½‘•¹ä™¥¹‘¥¹Ì¸(´I•ÕÍ…‰±”•á•ÕÑ…‰±”AÉ½Ù¥‘•È%¹Ñ•É…Ñ¥½¸½¹ÑÉ…Ğ½¹™½Éµ…¹”¡…É¹•ÍÌ…¹‘•Ñ•Éµ¥¹¥ÍÑ¥Œ™…­”ÁÉ½Ù¥‘•È¸(´…Õ±Ğµ¥¹©•Ñ¥½¸½Ù•É…”™½ÈIQ½9==@°‘É¥™Ğ½É•Á…¥È°ÁÉ½Ù¥‘•È½ÕÑ…•Ì°µ…±™½Éµ•‰¥¹‘¥¹Ì°Ù•É¥™ä™…¥±ÕÉ”°É•ÑÉä½¹Ù•É•¹”…¹½İ¹•ÉÍ¡¥ÀµÍ…™”‘•ÍÑÉ½ä¸((ŒŒŒ¡…¹•((´1½¥…°±½œÉ•Í½ÕÉ•Ì…¹1½­¤Á±…•µ•¹Ğ…É”É•½¹¥±•Ñ¡É½Õ Ñ¡”ÁÉ½Ñ•Ñ•ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉä¸(´Q¡”…ÁÁ±¥…Ñ¥½¸ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉä¹½Ü½¹ÍÕµ•ÌÑ¡”…¹½¹¥…°AÉ½Ù¥‘•È%¹Ñ•É…Ñ¥½¸½¹ÑÉ…Ğ‘•ÍÉ¥ÁÑ½Èµ…ÁÁ¥¹œ¥¹ÍÑ•…½˜µ…¥¹Ñ…¥¹¥¹œ„‘ÕÁ±¥…Ñ”ÁÉ½Ù¥‘•ÈÍİ¥Ñ ¸(´•Ù•±½Áµ•¹Ğ±½œ½±±•Ñ¥½¸‘•™…Õ±ÑÌ½¸ìÑ•ÍĞ½ÍÑ…¥¹œ½ÁÉ½‘ÕÑ¥½¸É•µ…¥¸½ÁĞµ¥¸Á±…Ñ™½É´Á½±¥ä¸(´…ÁÀ…ÁÁ±å€°…ÁÀÕÁ€°ÍÑ…ÑÕÍ€°‘½Ñ½É€°‘½İ¹€…¹‘•ÍÑÉ½å€¹½ÜÉ•½¹¥±”Ñ¡”µ…¹…•±½œ±¥™•å±”İ¡•É”•¹…‰±•¸((ŒŒŒM•ÕÉ¥Ñä((´I•Á½Í¥Ñ½Éäİ½É­±½…‘ÌÑ¡…ĞÉ•ÅÕ•ÍĞÁÉ¥Ù¥±••µ½‘”°¡½ÍĞ¹•Ñİ½É¬½A%½%A°ÉÕ¹Ñ¥µ”Í½­•ÑÌ°‘…¹•É½ÕÌ…Á…‰¥±¥Ñ¥•Ì½ÈÉ¥Ñ¥…°¡½ÍĞµ½Õ¹ÑÌ™…¥°±½Í•¥¸µ…¹…••¹Ù¥É½¹µ•¹ÑÌ‰•™½É”İ½É­±½…µÕÑ…Ñ¥½¸¸(´•Ù•±½Áµ•¹Ğµ½¹±ä•á•ÁÑ¥½¹ÌÉ•ÅÕ¥É”•áÁ±¥¥Ğ…­¹½İ±•‘•µ•¹Ğì¡½ÍĞ‘•Ù¥•Ì…É”İ…É¹¥¹Ì‰ä‘•™…Õ±Ğ¥¸‘•Ù•±½Áµ•¹Ğ…¹‘•¹¥•Ì¥¸µ…¹…••¹Ù¥É½¹µ•¹ÑÌ¸(´1½­¤…¹±±½äÉÕ¸É•…µ½¹±ä°‘É½À1¥¹Õà…Á…‰¥±¥Ñ¥•Ì°ÕÍ”¹¼µ¹•ÜµÁÉ¥Ù¥±••Í€°É••¥Ù”¹¼½¹Ñ…¥¹•ÈµÉÕ¹Ñ¥µ”Í½­•Ğ…¹•áÁ½Í”¡½ÍĞµ™…¥¹œÁ½ÉÑÌ½¸±½½Á‰…¬½¹±ä¸(´1½œÉ•¥ÍÑÉ…Ñ¥½¸ÍÑ…Ñ”…¹ÁÉ½Ù¥‘•È™¥±•Ì…É”½İ¹•Èµ½¹±ä…¹½¹Ñ…¥¸¹¼É•‘•¹Ñ¥…±Ì¸(((ŒŒlÀ¸Ğ¸át€´€ÈÀÈØ´Àä´ÈÀ((ŒŒŒ‘‘•((´½¹Ñ¥¹Õ½ÕÌÉ•Á½Í¥Ñ½ÉäµÑ¼µ½¹ÑÉ…ĞÉ•½¹¥±¥…Ñ¥½¸™½È•Ù½±Ù¥¹œ…ÁÁ±¥…Ñ¥½¹Ì°¥¹±Õ‘¥¹œÑåÁ•…Á…‰¥±¥Ñä‘¥É•Ñ¥½¸…¹ÉÕ¹Ñ¥µ”µ½Á•É…Ñ¥½¸•Ù¥‘•¹”¸(´I•Á½Í¥Ñ½Éä¥¹ÍÁ•Ñ¥½¸‘•Ñ•Ñ¥½¸™½ÈLÌµ½µÁ…Ñ¥‰±”ÕÍ…”½ÉÕ¹Ñ¥µ”‰Õ­•ĞÉ•…Ñ¥½¸°=Á•¹5•ÑÉ¥Ì€½µ•ÑÉ¥Í€•¹‘Á½¥¹ÑÌ…¹=Q1@•áÁ½ÉĞ¸(´I•…°½‰©•ĞµÍÑ½É…”¹ÌÌ½ØÅ€…ÁÁ±¥…Ñ¥½¸µÑ¥µ”É•…Ñ”½•Ğ½‘•±•Ñ”•á•ÕÑ¥½¸Ñ¡É½Õ „Í¡…É•µQ1LIÕ¹Ñ¥µ”AÉ½Ù¥‘•Èá•ÕÑ½È¸(´A•ÉÍ¥ÍÑ•¹Ğ…Íå¹¡É½¹½ÕÌÉÕ¹Ñ¥µ”µÉ•Í½ÕÉ”½Á•É…Ñ¥½¹Ìİ¥Ñ ¥‘•µÁ½Ñ•¹ĞµÕÑ…Ñ¥½¸­•åÌ…¹É•ÍÑ…ÉĞ½É•ÍÕµ”É•½¹¥±¥…Ñ¥½¸¸(´I•…°ÉÕ¹Ñ¥µ”LÌ‰¥¹‘¥¹Ìİ¥Ñ ‰Õ­•ĞµÍ½Á•%4É•‘•¹Ñ¥…±Ì…¹…ÕÑ¡•¹Ñ¥…Ñ•¹…Ñ¥Ù”LÌAÕĞ½•Ğ½¹ÍÕµÁÑ¥½¸¸(´Y•ÉÍ¥½¹•µ•ÑÉ¥Ì½ØÅ€…Á…‰¥±¥ÑäÍÁ•¥™¥…Ñ¥½¸™½È…ÁÁ±¥…Ñ¥½¸µÁÉ½Ù¥‘•=Á•¹5•ÑÉ¥Ìµ½µÁ…Ñ¥‰±”!QQ@Í½ÕÉ•Ì¸(´AÉ½Ù¥‘•Èµ¹•ÕÑÉ…°5…¹¥™•ÍĞØÄµ•ÑÉ¥ÌÍ½ÕÉ”‘•±…É…Ñ¥½¹Ìİ¥Ñ ±½¥…°Í½ÕÉ”¹…µ”°İ½É­±½…Í•ÉÙ¥”°Ñ…É•ĞÁ½ÉĞ…¹Á…Ñ ¸(´AÉ½µ•Ñ¡•ÕÌ€Ì¸ÄĞ¸À…ÌÑ¡”™¥ÉÍĞ±…éäÍ¡…É•½µÁ½Í”µ•ÑÉ¥ÌÁÉ½Ù¥‘•Èİ¥Ñ …ÕÑ½µ…Ñ¥Œ™¥±”µ‰…Í•Ñ…É•Ğ‘¥Í½Ù•Éä¸(´I•…°ÍÉ…Á”½¥¹•ÍÑ¥½¸Ù•É¥™¥…Ñ¥½¸…¹µ…¹Õ…°µ½¹±äÑİ¼µ…ÁÁ±¥…Ñ¥½¸Í¡…É•µÁÉ½Ù¥‘•È…•ÁÑ…¹”½Ù•É…”¸(´5¥¹¥µ…°Á±…Ñ™½É´µ±•Ù•°É½ÍÌµ…ÁÁ±¥…Ñ¥½¸½¹¹•Ñ¥Ù¥Ñä½µµ…¹‘Ìè‰…¡„½¹¹•ĞM=UIQIQ€°‰…¡„‘¥Í½¹¹•ĞM=UIQIQ€…¹‰…¡„½¹¹•Ñ¥½¹Í€¸(´¥É•Ñ•½µÁ½Í”½¹¹•Ñ¥Ù¥ÑäÉ•…±¥é•Ñ¡É½Õ „¡…É‘•¹•	…Í•!…É‰½ÈIÕ¹Ñ¥µ”É•±…ä¥¹ÍÑ•…½˜„Í¡…É•Í½ÕÉ”½Ñ…É•Ğ‰É¥‘”¹•Ñİ½É¬¸((ŒŒŒ¡…¹•((´…¹½¹¥…°5…¹¥™•ÍĞØÄ½ÕÑÁÕĞ¥ÌÍÁ…ÉÍ”…¹½µ¥ÑÌ‘¥Í…‰±•½ÁÑ¥½¹…°…Á…‰¥±¥Ñ¥•Ìİ¡¥±”É•µ…¥¹¥¹œ‰…­İ…É½µÁ…Ñ¥‰±”İ¥Ñ •á¥ÍÑ¥¹œ•áÁ±¥¥Ğ•¹…‰±•è™…±Í•€¥¹ÁÕĞ¸(´I•Á•…Ñ•É•Á½Í¥Ñ½Éä¥¹ÍÁ•Ñ¥½¸É•Á½ÉÑÌÍ…Ñ¥Í™¥•½¹•Ü½…µ‰¥Õ½ÕÌ½ÍÑ…±”ÍÑ…Ñ”İ¥Ñ¡½ÕĞ‘•ÍÑÉÕÑ¥Ù•±äÉ•İÉ¥Ñ¥¹œ•áÁ±¥¥Ğ…ÁÁ±¥…Ñ¥½¸¥¹Ñ•¹Ğ¸(´I•Á½Í¥Ñ½Éäµ™¥ÉÍĞ‰…¡„ÕÁ€¹½ÜÉ•Á½ÉÑÌ¹•Ü½…µ‰¥Õ½ÕÌ…Á…‰¥±¥Ñä‘É¥™Ğ…¹ÉÕ¹Ñ¥µ”µ½Á•É…Ñ¥½¸¡¥¹ÑÌ‰•™½É”½¹Ù•É•¹”İ¡¥±”±•…Ù¥¹œÑ¡”½¹ÑÉ…ĞÕ¹¡…¹•¸(´‘‘•Ñ¡”Ù•ÉÍ¥½¹•=Á•¹A$€Ì¸ÄIÕ¹Ñ¥µ”I•Í½ÕÉ”A$ØÄ½¹ÑÉ…Ğ™½ÈÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°…ÁÁ±¥…Ñ¥½¸µÑ¥µ”É•Í½ÕÉ•Ì°¥¹±Õ‘¥¹œ¥‘•µÁ½Ñ•¹ä°…Íå¹¡É½¹½ÕÌ½Á•É…Ñ¥½¸ÍÑ…Ñ”…¹Í•ÕÉ”‰¥¹‘¥¹œ‰½Õ¹‘…É¥•Ì¸(´%¹Ñ•É…Ñ¥Ù”A$‘½Õµ•¹Ñ…Ñ¥½¸Á½±¥ä¥Ì¹½Ü•áÁ±¥¥Ğè‘•Ù•±½Áµ•¹Ğ½¸‰ä‘•™…Õ±ĞìÑ•ÍĞ½ÍÑ…¥¹œ…¹ÁÉ½‘ÕÑ¥½¸½™˜‰ä‘•™…Õ±ĞÕ¹±•ÍÌÁ±…Ñ™½É´½½Á•É…Ñ½ÈÁ½±¥ä•¹…‰±•Ì¥Ğ¸(´Q¡”Á•Èµ…ÁÁ±¥…Ñ¥½¸ÉÕ¹Ñ¥µ”½µÁ½¹•¹Ğ¥Ì•¹•É…±¥é•…ÌÑ¡”€¨©ÁÁ±¥…Ñ¥½¸IÕ¹Ñ¥µ”	É½­•È¨¨èµ…¹…•=Á•¹	…¼Í•É•ÑÌÉ•µ…¥¸„ÉÕ¹Ñ¥µ”µ½‘Õ±”°…¹½¹¥…°…ÁÁ±¥…Ñ¥½¸µ‰½Õ¹Í•É•ĞÉ½ÕÑ•Ìµ½Ù”Õ¹‘•È€½ÉÕ¹Ñ¥µ”½ØÄ½Í•É•ÑÍ€°…¹•á¥ÍÑ¥¹œ…ÁÀµÅÕ…±¥™¥•É½ÕÑ•ÌÉ•µ…¥¸½µÁ…Ñ¥‰¥±¥Ñä…±¥…Í•Ì¸(´•Ù•±½Áµ•¹Ğ‰É½­•ÉÌ¹½ÜÍ•ÉÙ”•µ‰•‘‘•Mİ…•È½=Á•¹A$‘½Õµ•¹Ñ…Ñ¥½¸½¸„ÍÑ…‰±”…ÕÑ½µ…Ñ¥…±±ä…±±½…Ñ•¡½ÍĞµ±½½Á‰…¬Á½ÉĞì¹¼ÁÕ‰±¥Œ8½ÈÁÕ‰±¥Œ‰¥¹¥ÌÉ•ÅÕ¥É•¸(´Q¡”…¹½¹¥…°‰É½­•È9L•¹‘Á½¥¹Ğ¥Ì‰…Í•¡…É‰½ÈµÉÕ¹Ñ¥µ•€ìÑ¡”±•…ä‰…Í•¡…É‰½ÈµÍ•É•ÑÍ€…±¥…ÌÉ•µ…¥¹Ì…Ù…¥±…‰±”™½È½µÁ…Ñ¥‰¥±¥Ñä¸(´‰…¡„…ÁÀ…ÁÁ±å€…¹‰…¡„…ÁÀÕÁ€¹½Ü±…é¥±äÍÑ…ÉĞ½É•ÕÍ”Ñ¡”Í¡…É•IÕ¹Ñ¥µ”AÉ½Ù¥‘•Èá•ÕÑ½Èİ¡•¹•Ù•È…¸•áÁ±¥¥ĞÉÕ¹Ñ¥µ”É•Í½ÕÉ”Á•Éµ¥ÍÍ¥½¸É•ÅÕ¥É•Ì¥Ğ¸(´IÕ¹Ñ¥µ”µ½¹±ä…ÁÁ±¥…Ñ¥½¹ÌÉ••¥Ù”„‘•Ñ•Éµ¥¹¥ÍÑ¥Œ‰É½­•È‰…­•¹¹•Ñİ½É¬İ¥Ñ¡½ÕĞÉ•ÅÕ¥É¥¹œ…ÉÑ¥™¥¥…°A½ÍÑÉ•ME0½Y…±­•äÍ•ÉÙ¥•ÌìLÌÁÉ½Ù¥‘•Èµ¹•Ñİ½É¬…•ÍÌ¥Ì…ÑÑ…¡•½¹±äÑ¼İ½É­±½…Í•ÉÙ¥•Ì•áÁ±¥¥Ñ±ä…ÕÑ¡½É¥é•™½È½‰©•ĞµÍÑ½É…”¹ÌÌ½ØÅ€¸(´±½‰…°‰…¡„‘•ÍÑÉ½ä€´µå•Í€É•µ½Ù•ÌÑ¡”	…Í•!…É‰½Èµ½İ¹•Í¡…É•IÕ¹Ñ¥µ”AÉ½Ù¥‘•Èá•ÕÑ½È‰•™½É”Ñ¡”Í¡…É•½‰©•ĞµÍÑ½É…”ÁÉ½Ù¥‘•È¸(´5•ÑÉ¥Ì½±±•Ñ¥½¸¥Ì‘•Á±½åµ•¹ĞÁ½±¥äÉ…Ñ¡•ÈÑ¡…¸…ÁÁ±¥…Ñ¥½¸ÁÉ½‘ÕĞ¥¹Ñ•¹Ğè‘•Ù•±½Áµ•¹Ğ‘•™…Õ±ÑÌ½¸ìÑ•ÍĞ½ÍÑ…¥¹œ½ÁÉ½‘ÕÑ¥½¸É•ÅÕ¥É”•áÁ±¥¥Ğ½ÁĞµ¥¸Õ¹±•ÍÌ½Ù•ÉÉ¥‘‘•¸İ¥Ñ 	M!I	=I}5QI%M}9	1€¸(´… Á…ÉÑ¥¥Á…Ñ¥¹œ…ÁÁ±¥…Ñ¥½¸•ÑÌ…¸¥Í½±…Ñ•µ•ÑÉ¥Ì¹•Ñİ½É¬ì½¹±ä‘•±…É•½…ÕÑ¡½É¥é•µ•ÑÉ¥ÌµÍ½ÕÉ”Í•ÉÙ¥•Ì©½¥¸¥Ğ°İ¡¥±”Ñ¡”Í•±•Ñ•AÉ½µ•Ñ¡•ÕÌ¥¹ÍÑ…¹”¥Ì…ÑÑ…¡•½¹±äÑ¼•áÁ±¥¥Ñ±äÉ•¥ÍÑ•É•…ÁÁ±¥…Ñ¥½¸¹•Ñİ½É­Ì¸(´AÉ½µ•Ñ¡•ÕÌÁ±…•µ•¹Ğ¹½ÜÕÍ•ÌÑ¡”•¹•É¥ŒÁÉ½Ù¥‘•ÈµÁ±…•µ•¹Ğµ½‘•°èÍ…™”Í¡…É•‘•™…Õ±Ğ°½ÁÑ¥½¹…°¹…µ•Í¡…É¥¹œ‰½Õ¹‘…É¥•Ì…¹…ÁÁ±¥…Ñ¥½¸µÍ½Á•Á±…•µ•¹Ğ°İ¥Ñ Õ¹ÍÕÁÁ½ÉÑ•Á±…•µ•¹Ğ™…¥±¥¹œ‰•™½É”µÕÑ…Ñ¥½¸¸(´AÉ½Ù¥‘•ÈÁ±…•µ•¹ĞÍ•µ…¹Ñ¥Ì…É”•áÁ±¥¥Ğè…ÁÁ±¥…Ñ¥½¹€µ•…¹Ì„‘•‘¥…Ñ•ÁÉ½Ù¥‘•È¥¹ÍÑ…¹”™½È½¹”…ÁÁ±¥…Ñ¥½¸½•¹Ù¥É½¹µ•¹ĞìÍ¡…É•‘€µ•…¹Ì±…éä	…Í•!…É‰½ÈA±…Ñ™½É´½½É”IÕ¹Ñ¥µ”¥¹™É…ÍÑÉÕÑÕÉ”ì•áÑ•É¹…±€É•µ…¥¹Ì•áÑ•É¹…±±ä±¥™•å±”µ½İ¹•¸(´É½ÍÌµ…ÁÁ±¥…Ñ¥½¸½¹¹•Ñ¥Ù¥Ñä¥Ì¥¹‘•Á•¹‘•¹Ğ™É½´ÁÉ½Ù¥‘•ÈÍ¡…É¥¹œì…ÁÀ‘½İ¹€ÍÕÍÁ•¹‘ÌÉ•±…äÉÕ¹Ñ¥µ”İ¡¥±”ÁÉ•Í•ÉÙ¥¹œÁ½±¥ä…¹…ÁÀÕÁ€½…ÁÁ±å€É•½¹¥±”¥Ğ¸(´ÁÁ±¥…Ñ¥½¸‘•ÍÑÉ½äÉ•µ½Ù•Ì½¹±ä¥ÑÌµ•ÑÉ¥ÌÑ…É•Ğ½ÑÉÕÍĞµ•‘”ÍÑ…Ñ”½È‘•‘¥…Ñ•ÁÉ½Ù¥‘•È…½É‘¥¹œÑ¼Á±…•µ•¹Ğì±½‰…°‘•ÍÑÉ½äÉ•µ½Ù•Ì•Ù•Éä	…Í•!…É‰½Èµ½İ¹•Í¡…É•AÉ½µ•Ñ¡•ÕÌ‘•™…Õ±Ğ½Í¡…É¥¹œµ‰½Õ¹‘…Éä¥¹ÍÑ…¹”…¹‘…Ñ„Ù½±Õµ”¸((ŒŒŒM•ÕÉ¥Ñä((´5¥ÍÍ¥¹œÉ•Á½Í¥Ñ½Éä•Ù¥‘•¹”¹•Ù•È…ÕÑ¡½É¥é•Ì…Á…‰¥±¥ÑäÉ•µ½Ù…°¸(´•Ñ•Ñ•ÉÕ¹Ñ¥µ”½Á•É…Ñ¥½¹ÌÍÕ …ÌLÌ‰Õ­•ĞÉ•…Ñ¥½¸…É”•Ù¥‘•¹”½¹±ä…¹¹•Ù•ÈÉ…¹ĞÉÕ¹Ñ¥µ”…ÕÑ¡½É¥é…Ñ¥½¸½ÈÁÉ½Ù¥Í¥½¸¥¹™É…ÍÑÉÕÑÕÉ”¸(´ÁÁ±¥…Ñ¥½¹Ì…¹Á•Èµ…ÁÀ‰É½­•ÉÌ¹•Ù•ÈÉ••¥Ù”ÁÉ½Ù¥‘•Èµ±½‰…°LÌ…‘µ¥¹¥ÍÑÉ…Ñ½ÈÉ•‘•¹Ñ¥…±ÌìÑ¡½Í”É•µ…¥¸…ĞÑ¡”IÕ¹Ñ¥µ”AÉ½Ù¥‘•Èá•ÕÑ½È‰½Õ¹‘…Éä¸(´	É½­•È…¹•á•ÕÑ½ÈÉÕ¸İ¥Ñ¡½ÕĞ½­•È½A½‘µ…¸Í½­•ÑÌìÑ¡”•á•ÕÑ½È¡…Ì¹¼¡½ÍĞµÁÕ‰±¥Í¡•Á½ÉĞ…¹…•ÁÑÌ½¹±ä	…Í•!…É‰½ÈMA%½µQ1Lİ½É­±½…¥‘•¹Ñ¥Ñ¥•Ì¸(´IÕ¹Ñ¥µ”É•Í½ÕÉ”½İ¹•ÉÍ¡¥À¥Ì…ÁÁ±¥…Ñ¥½¸½•¹Ù¥É½¹µ•¹ĞÍ½Á•ìÉ•Í½ÕÉ”%Ì…¹¹½Ğ‰”ÕÍ•Ñ¼É•…°‰¥¹½È‘•±•Ñ”…¹½Ñ¡•È…ÁÁ±¥…Ñ¥½¸ÌÉ•Í½ÕÉ”¸(´IÕ¹Ñ¥µ”LÌÉ•‘•¹Ñ¥…±Ì…É”•á±Õ‘•™É½´…Íå¹¡É½¹½ÕÌ½Á•É…Ñ¥½¸ÍÑ…Ñ”°¹½Éµ…°É•Í½ÕÉ”µ•Ñ…‘…Ñ„°±½Ì…¹µ…¹¥™•ÍÑÌ…¹…É”É•ÑÕÉ¹•½¹±ä‰äÑ¡”…ÕÑ¡•¹Ñ¥…Ñ•‰¥¹‘¥¹œ•¹‘Á½¥¹Ğ¸(´AÉ½µ•Ñ¡•ÕÌÑ…É•ĞÍÑ…Ñ”½¹Ñ…¥¹Ì•¹‘Á½¥¹Ğ¥‘•¹Ñ¥Ñä…¹…ÑÑÉ¥‰ÕÑ¥½¸±…‰•±Ì½¹±äì¥Ğ‘½•Ì¹½Ğ½¹Ñ…¥¸…ÁÁ±¥…Ñ¥½¸É•‘•¹Ñ¥…±Ì°ÁÉ½Ù¥‘•Èµ±½‰…°É•‘•¹Ñ¥…±Ì½ÈÁ½ÉÑ…‰±”ÁÉ½‘ÕĞ½¹™¥ÕÉ…Ñ¥½¸¸(´5•ÑÉ¥Ì½±±•Ñ¥½¸‘½•Ì¹½Ğ¥µÁ±¥¥Ñ±äÁÉ½Ù¥Í¥½¸É…™…¹„°1½­¤½ÈQ•µÁ¼¸(´É½ÍÌµ…ÁÁ±¥…Ñ¥½¸½¹¹•Ñ¥Ù¥Ñä¥Ì‘•¹äµ‰äµ‘•™…Õ±Ğ…¹‘¥É•Ñ¥½¹…°ìÑ…É•ĞÍ•ÉÙ¥•Ì¹•Ù•È©½¥¸Í½ÕÉ”±¥¹¬¹•Ñİ½É­Ì°…¹½¹¹•Ñ¥Ù¥ÑäÉ•±…åÌ¡…Ù”¹¼¡½ÍĞµÁÕ‰±¥Í¡•Á½ÉĞ½È½­•È½A½‘µ…¸Í½­•Ğ…¹ÉÕ¸¡…É‘•¹•¹½¸µÉ½½Ğ½É•…µ½¹±ä¸((ŒŒlÀ¸Ğ¸İt€´€ÈÀÈØ´Àä´Ää((ŒŒŒ‘‘•((´Y•ÉÍ¥½¹•Ñ•±•µ•ÑÉä¹½Ñ±À½ØÅ€…Á…‰¥±¥ÑäÍÁ•¥™¥…Ñ¥½¸™½È•áÁ±¥¥Ğ=Q1@•áÁ½ÉĞÍ•µ…¹Ñ¥Ì¥¹‘•Á•¹‘•¹Ğ½˜…¹ä½‰Í•ÉÙ…‰¥±¥Ñä‰…­•¹ÁÉ½‘ÕĞ¸(´QåÁ•ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°=Q1@İ½É­±½…‰¥¹‘¥¹œ¥¸Ñ¡”Í¡…É•…Á…‰¥±¥Ñä±¥™•å±”…¹AÉ½Ù¥‘•ÈAÉ½Ñ½½°ØÄ¸(´=Á•¹Q•±•µ•ÑÉä½±±•Ñ½È€À¸ÄØÄ¸À…ÌÑ¡”™¥ÉÍĞ±…éäÍ¡…É•½µÁ½Í”É•™•É•¹”ÁÉ½Ù¥‘•È¸(´áÑ•É¹…°=Q1@•¹‘Á½¥¹Ğ‰¥¹‘¥¹œÑ¡É½Õ ‘•Á±½åµ•¹Ğµ½İ¹•ÍÑ…Ñ”İ¥Ñ¡½ÕĞ	…Í•!…É‰½ÈÑ…­¥¹œÁÉ½Ù¥‘•È±¥™•å±”½İ¹•ÉÍ¡¥À¸(´MÑ…¹‘…É=Á•¹Q•±•µ•ÑÉäİ½É­±½…½¹™¥ÕÉ…Ñ¥½¸Ñ¡É½Õ =Q1}aA=IQI}=Q1A}9A=%9Q€°=Q1}aA=IQI}=Q1A}AI=Q==1€°=Q1}MIY%}95€…¹=Q1}IM=UI}QQI%	UQM€¸(´I•…°=Q1@!QQ@½ÁÉ½Ñ½‰Õ˜Ù•É¥™¥…Ñ¥½¸ÕÍ¥¹œ…¸•áÁ½ÉÑ•ÑÉ…”…•ÁÑ•‰äÑ¡”Í•±•Ñ•=Q1@•¹‘Á½¥¹Ğ¸(´5…¹Õ…°µ½¹±ä½­•È½½µÁ½Í”…•ÁÑ…¹”½Ù•É…”™½ÈÑ¡”µ…¹…•½±±•Ñ½ÈÁ…Ñ ¸((ŒŒŒ¡…¹•((´…¹½¹¥…°Ñ•±•µ•ÑÉäÑ•Éµ¥¹½±½ä¥Ì¹½ÜÑ•±•µ•ÑÉä¹½Ñ±À½ØÅ€ì=Á•¹Q•±•µ•ÑÉä¥ÌÑÉ•…Ñ•…ÌÑ¡”•½ÍåÍÑ•´½¥¹ÍÑÉÕµ•¹Ñ…Ñ¥½¸µ½‘•°…¹Ñ¡”½±±•Ñ½È…Ì½¹”É•Á±…•…‰±”ÁÉ½Ù¥‘•È¥µÁ±•µ•¹Ñ…Ñ¥½¸¸(´M¡…É•ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉäÉ•½É‘Ìµ…¹…•½±±•Ñ½ÈÁ±…•µ•¹Ğ…Ì	…Í•!…É‰½Èµ½İ¹•½Í¡…É•…¹•áÑ•É¹…°=Q1@‘•ÍÑ¥¹…Ñ¥½¹Ì…Ì•áÑ•É¹…±±ä½İ¹•¸(´I•Á½Í¥Ñ½Éäİ½É­±½…‘ÌÕÍ¥¹œµ…¹…•=Q1@…ÑÑ… Ñ¼„‘•‘¥…Ñ•	…Í•!…É‰½ÈÑ•±•µ•ÑÉä¥¹Ñ•É…Ñ¥½¸¹•Ñİ½É¬ì•áÑ•É¹…°=Q1@‰¥¹‘¥¹Ì‘¼¹½ĞÉ•…Ñ”Ñ¡…Ğ¹•Ñİ½É¬¸(´±½‰…°‰…¡„‘•ÍÑÉ½ä€´µå•Í€É•µ½Ù•ÌÑ¡”Í¡…É•	…Í•!…É‰½Èµ½İ¹•½±±•Ñ½È…™Ñ•È…ÁÁ±¥…Ñ¥½¸‰¥¹‘¥¹Ì…É”É•±•…Í•¸(´½µµ½¸Ñ•±•µ•ÑÉäÉ•Í½ÕÉ”¥‘•¹Ñ¥ÑäÕÍ•Ì=Á•¹Q•±•µ•ÑÉäÍ•ÉÙ¥”½•¹Ù¥É½¹µ•¹ĞÍ•µ…¹Ñ¥Œ…ÑÑÉ¥‰ÕÑ•ÌÁ±ÕÌ	…Í•!…É‰½È…ÁÁ±¥…Ñ¥½¸½É•Í½ÕÉ”½ÁÉ½Ù¥‘•È…ÑÑÉ¥‰ÕÑ¥½¸¸(´M¡…É•ÁÉ½Ù¥‘•È±¥™•å±”½Á•É…Ñ¥½¹Ì•áÁ½Í”Í•É•ĞµÍ…™”µ•Ñ…‘…Ñ„µ½¹±ä¥¹ÍÑÉÕµ•¹Ñ…Ñ¥½¸¡½½­Ì™½ÈÁÉ•™±¥¡Ğ½…ÁÁ±ä½‰¥¹½Ù•É¥™äÍ¼±…Ñ•È½‰Í•ÉÙ…‰¥±¥ÑäÁÉ½Ù¥‘•ÉÌ…¸¥¹ÍÑÉÕµ•¹ĞÑ¡”Í…µ”½É”±¥™•å±”¸((ŒŒŒM•ÕÉ¥Ñä((´=Q1@•¹‘Á½¥¹ÑÌ…¹ÁÉ½Ù¥‘•ÈÑ½Á½±½äÉ•µ…¥¸‘•Á±½åµ•¹Ğ½ÁÉ½Ù¥‘•ÈÍÑ…Ñ”É…Ñ¡•ÈÑ¡…¸Á½ÉÑ…‰±”…ÁÁ±¥…Ñ¥½¸¥‘•¹Ñ¥Ñä¸(´=ÁÑ¥½¹…°•áÑ•É¹…°=Q1@…ÕÑ¡½É¥é…Ñ¥½¸¡•…‘•ÉÌ…É”…•ÁÑ•½¹±ä™É½´‘•Á±½åµ•¹Ğ½ÉÕ¹Ñ¥µ”ÍÑ…Ñ”…¹¥¹©•Ñ•…ĞÑ¡”ÑÉÕÍÑ•İ½É­±½…½ÁÉ½Ù¥‘•È‰½Õ¹‘…Éä¸(´ÕÑ¡½É¥é…Ñ¥½¸¡•…‘•ÉÌ…¹½Ñ¡•ÈÉ•‘•¹Ñ¥…°µ…Ñ•É¥…°…É”¹½ĞİÉ¥ÑÑ•¸Ñ¼‰…Í•¡…É‰½È¹å…µ±€°ÁÉ½Ù¥‘•ÈµÉ•¥ÍÑÉäÍÑ…Ñ”½È¹½Éµ…°‘¥…¹½ÍÑ¥Ì¸(´%¹Ù…±¥°µ¥ÍÍ¥¹œ½È…µ‰¥Õ½ÕÌ=Q1@‰¥¹‘¥¹Ì™…¥°‰•™½É”ÁÉ½Ù¥‘•ÈµÕÑ…Ñ¥½¸¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞÙ•ÉÍ¥½¸É•µ…¥¹Ì€Å€ìÑ•±•µ•ÑÉä¹½Ñ±Á€¥Ì…‘‘¥Ñ¥Ù”…¹½ÁĞµ¥¸¸(´á¥ÍÑ¥¹œA½ÍÑÉ•ME0°Y…±­•ä°=Á•¹	…¼°Í•ÕÉ”µ‰¥¹‘¥¹œ°µ…¹…••áÁ½ÍÕÉ”…¹LÌ‰•¡…Ù¥½ÈÉ•µ…¥¹Ì½µÁ…Ñ¥‰±”¸(´I•ÅÕ•ÍÑ¥¹œ=Q1@ÑÉ…¹ÍÁ½ÉĞ‘½•Ì¹½ĞÁÉ½Ù¥Í¥½¸AÉ½µ•Ñ¡•ÕÌ°1½­¤°Q•µÁ¼½ÈÉ…™…¹„¸(´-Õ‰•É¹•Ñ•Ì½=Á•¹M¡¥™Ğ½±±•Ñ½ÈÉ•…±¥é…Ñ¥½¸°µ•ÑÉ¥Ì½±½Ì½ÑÉ…•ÌÍÑ½É…”ÁÉ½Ù¥‘•ÉÌ…¹‰É½…‘•È½‰Í•ÉÙ…‰¥±¥ÑäÁ½±¥äÉ•µ…¥¸±…Ñ•ÈÉ½…‘µ…Àİ½É¬¸(((ŒŒlÀ¸Ğ¸Ùt€´€ÈÀÈØ´Àä´Ää((ŒŒŒ‘‘•((´Y•ÉÍ¥½¹•½‰©•ĞµÍÑ½É…”¹ÌÌ½ØÅ€…Á…‰¥±¥ÑäÍÁ•¥™¥…Ñ¥½¸İ¥Ñ ±½¥…°‰Õ­•Ğ¥‘•¹Ñ¥Ñä°LÌµ½µÁ…Ñ¥‰±”…ÁÁ±¥…Ñ¥½¸Í•µ…¹Ñ¥Ì…¹ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°Í•ÕÉ”‰¥¹‘¥¹Ì¸(´M•…İ••‘L€Ğ¸ĞÜ…ÌÑ¡”™¥ÉÍĞ±…éäÍ¡…É•½µÁ½Í”É•™•É•¹”ÁÉ½Ù¥‘•È™½ÈLÌµ½µÁ…Ñ¥‰±”½‰©•ĞÍÑ½É…”¸(´5…¹¥™•ÍĞØÄÍ•ÉÙ¥•Ì¹½‰©•Ñ}ÍÑ½É…•€‰Õ­•Ğ‘•±…É…Ñ¥½¹ÌÁ±ÕÌ‘•Ñ•Éµ¥¹¥ÍÑ¥Œ€´µÌÍ€…¹€´µÌÌµ‰Õ­•Ñ€1$Á…Ñ¡Ì¸(´MÑ…¹‘…É¡½ÍĞ½İ½É­±½…LÌ‰¥¹‘¥¹Ì…¹]Lµ½µÁ…Ñ¥‰±”•¹Ù¥É½¹µ•¹ĞÙ…É¥…‰±•Ìİ¥Ñ¡½ÕĞÉ•ÅÕ¥É¥¹œ„	…Í•!…É‰½ÈM,¸(´ÕÑ¡•¹Ñ¥…Ñ•M¥XĞAÕĞ½•ĞÉ•…‘¥¹•ÍÌÙ•É¥™¥…Ñ¥½¸¥¸…ÁÁ±ä°ÕÀ°ÍÑ…ÑÕÌ…¹‘½Ñ½È¸(´I•…°½­•È½½µÁ½Í”…•ÁÑ…¹”½Ù•É…”™½ÈLÌÁÉ½Ù¥Í¥½¹¥¹œ°‰¥¹‘¥¹œ°É•ÍÑ…ÉĞ°µ…Í­¥¹œ°¥Í½±…Ñ¥½¸…¹‘•ÍÑÉ½ä‰•¡…Ù¥½È¸((ŒŒŒ¡…¹•((´M¡…É•ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉä¹½ÜÉ•½É‘ÌM•…İ••‘L…Ì„	…Í•!…É‰½Èµ½İ¹•Í¡…É•ÁÉ½Ù¥‘•Èİ¡¥±”±½¥…°‰Õ­•ÑÌÉ•µ…¥¸…ÁÁ±¥…Ñ¥½¸µ½İ¹•É•Í½ÕÉ•Ì¸(´I•Á½Í¥Ñ½Éäİ½É­±½…‘ÌÉ•ÅÕ•ÍÑ¥¹œLÌ…ÑÑ… Ñ¼„‘•‘¥…Ñ•	…Í•!…É‰½È½‰©•ĞµÍÑ½É…”¥¹Ñ•É…Ñ¥½¸¹•Ñİ½É¬İ¡¥±”ÁÉ½Ù¥‘•Èµ¹…Ñ¥Ù”Ñ½Á½±½äÉ•µ…¥¹Ì‘•Á±½åµ•¹ĞÍÑ…Ñ”¸(´±½‰…°‰…¡„‘•ÍÑÉ½ä€´µå•Í€É•µ½Ù•ÌÑ¡”Í¡…É•	…Í•!…É‰½Èµ½İ¹•M•…İ••‘LÁÉ½Ù¥‘•È½¹±ä…™Ñ•È…ÁÁ±¥…Ñ¥½¸‰¥¹‘¥¹Ì¡…Ù”‰••¸É•±•…Í•¸((ŒŒŒM•ÕÉ¥Ñä((´Ù•Éäµ…¹…•±½¥…°‰Õ­•ĞÉ••¥Ù•ÌÍ•Á…É…Ñ”…•ÍÌÉ•‘•¹Ñ¥…±Ì…¹‰Õ­•ĞµÍ½Á•M•…İ••‘L%4…ÕÑ¡½É¥é…Ñ¥½¸¸(´M•…İ••‘L¥Ì•áÁ±¥¥Ñ±äÍÑ…ÉÑ•İ¥Ñ %4•¹…‰±•ì	…Í•!…É‰½È‘½•Ì¹½ĞÁ•ÉÍ¥ÍĞ„±½‰…°LÌÍÕÁ•ÉÕÍ•ÈÉ•‘•¹Ñ¥…°¸(´LÌ…•ÍÌµ­•ä…¹Í•É•Ğµ­•äÙ…±Õ•Ì…É”½İ¹•Èµ½¹±ä…¹µ…Í­•‰ä‘•™…Õ±Ğ¥¸‰…¡„…ÁÀ•¹Ù€¸(´M•…İ••‘L%4…‘µ¥¹¥ÍÑÉ…Ñ¥½¸É••¥Ù•ÌÁ•Èµ‰Õ­•ĞÉ•‘•¹Ñ¥…°½µµ…¹‘ÌÑ¡É½Õ ÍÑ‘¥¸É…Ñ¡•ÈÑ¡…¸ÁÉ½•ÍÌ…ÉÕµ•¹ÑÌ°­••Á¥¹œÉ•‘•¹Ñ¥…±Ì½ÕĞ½˜ÉÕ¹Ñ¥µ”½µµ…¹±¥¹•Ì…¹½µµ…¹µ•ÉÉ½ÈÉ•¹‘•É¥¹œ¸(´…Á…‰¥±¥Ñäµ•Ñ…‘…Ñ„…¹ÁÉ½Ù¥‘•ÈµÉ•¥ÍÑÉäÍÑ…Ñ”½¹Ñ…¥¸É•™•É•¹•Ì½¥‘•¹Ñ¥Ñä½¹±ä°¹•Ù•ÈÁ±…¥¹Ñ•áĞLÌÉ•‘•¹Ñ¥…±Ì¸((ŒŒŒI•½Ù•Éä((´ÁÁ±¥…Ñ¥½¸‰…­ÕÀ…¹É•ÍÑ½É”™…¥°±½Í•™½Èµ…¹¥™•ÍÑÌ½¹Ñ…¥¹¥¹œµ…¹…•½‰©•ĞÍÑ½É…”Õ¹Ñ¥°½‰©•Ğ½¹Ñ•¹ÑÌ…É”Á…ÉĞ½˜Ñ¡”	…Í•!…É‰½ÈÉ•½Ù•ÉäÕ¹¥Ğ¸	…Í•!…É‰½È‘½•Ì¹½Ğ±…¥´…¸¥¹½µÁ±•Ñ”LÌÉ•½Ù•Éä…ÌÍÕ•ÍÍ™Õ°‰…­ÕÀ½É•ÍÑ½É”¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞÙ•ÉÍ¥½¸É•µ…¥¹Ì€Å€ìÍ•ÉÙ¥•Ì¹½‰©•Ñ}ÍÑ½É…•€¥Ì…¸…‘‘¥Ñ¥Ù”½ÁÑ¥½¹…°…Á…‰¥±¥Ñä¸(´á¥ÍÑ¥¹œA½ÍÑÉ•ME0°Y…±­•ä°=Á•¹	…¼°Í•ÕÉ”µ‰¥¹‘¥¹œ…¹µ…¹…•µ•áÁ½ÍÕÉ”‰•¡…Ù¥½ÈÉ•µ…¥¹Ì½µÁ…Ñ¥‰±”¸(´M•…İ••‘L¥Ì„É•™•É•¹”ÁÉ½Ù¥‘•È°¹½Ğ…ÁÁ±¥…Ñ¥½¸¥‘•¹Ñ¥Ñä¸•Á I\°]LLÌ…¹½Ñ¡•È½¹™½Éµ¥¹œLÌÁÉ½Ù¥‘•ÉÌ…¸¥µÁ±•µ•¹ĞÑ¡”Í…µ”½‰©•ĞµÍÑ½É…”¹ÌÌ½ØÅ€½¹ÑÉ…Ğì‘å¹…µ¥Œ•áÑ•É¹…°µÁÉ½Ù¥‘•È±½…‘¥¹œ½ÁÉ½Ù¥‘•ÈµÍ•±•Ñ¥½¸U$É•µ…¥¹Ì™ÕÑÕÉ”İ½É¬¸(((ŒŒlÀ¸Ğ¸Õt€´€ÈÀÈØ´Àä´Ää((ŒŒŒ‘‘•((´M¡…É•Í•ÕÉ”µ‰¥¹‘¥¹œ½ØÅ€µ½‘•°™½ÈÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°İ½É­±½…¥‘•¹Ñ¥Ñä°É•‘•¹Ñ¥…°É•™•É•¹•Ì°ÑÉÕÍĞµ…Ñ•É¥…°°…ÕÑ¡½É¥é…Ñ¥½¸µ•Ñ…‘…Ñ„°Í•É•ĞÉ•™•É•¹•Ì°Í•ÕÉ¥Ñä±¥™•å±”‘•±…É…Ñ¥½¹Ì…¹µ…¡¥¹”µÉ•…‘…‰±”‘¥…¹½ÍÑ¥Ì¸(´M•ÕÉ”‰¥¹‘¥¹œÍÕÁÁ½ÉĞ¥¸Ñ¡”Í¡…É•…Á…‰¥±¥Ñä±¥™•å±”…¹‰…Í•¡…É‰½È¹ÁÉ½Ù¥‘•È½ØÅ€İ½É­±½…‰¥¹‘¥¹œÁÉ½Ñ½½°¸(´MA%µ‰…Í•¥‘•¹Ñ¥Ñäµ…ÁÁ¥¹œ™½ÈÑ¡”•á¥ÍÑ¥¹œµ…¹…•µÍ•É•ÑÌ½ÉÕ¹Ñ¥µ”µ‰É½­•ÈÁ…Ñ ¸((ŒŒŒ¡…¹•((´5…¹…•Í•É•ÑÌ½ØÅ€‰¥¹‘¥¹Ì¹½Ü•áÁ½Í”•á¥ÍÑ¥¹œÍ•ÕÉ¥ÑäÍ•µ…¹Ñ¥ÌÑ¡É½Õ ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°É•™•É•¹•Ìİ¡¥±”ÁÉ•Í•ÉÙ¥¹œ=Á•¹	…¼…ÌÑ¡”ÕÉÉ•¹ĞÉ•™•É•¹”ÁÉ½Ù¥‘•È¸(´M•ÕÉ”‰¥¹‘¥¹œµ•Ñ…‘…Ñ„¥ÌÙ…±¥‘…Ñ•‘ÕÉ¥¹œÁ±…¸½¹ÍÑÉÕÑ¥½¸‰•™½É”ÁÉ½Ù¥‘•ÈÁÉ•™±¥¡Ğ½ÈµÕÑ…Ñ¥½¸¸(´M•ÕÉ”‰¥¹‘¥¹œÉ•™•É•¹•Ì…É”É•ÍÑÉ¥Ñ•Ñ¼½Á…ÅÕ”‰…Í•¡…É‰½Èè¼½€É•™•É•¹•Ì¸((ŒŒŒM•ÕÉ¥Ñä((´A±…¥¹Ñ•áĞÉ•‘•¹Ñ¥…±Ì°É•‘•¹Ñ¥…°µ‰•…É¥¹œUI1Ì°Ñ½­•¹Ì°ÁÉ¥Ù…Ñ”­•åÌ…¹Í•É•ĞÙ…±Õ•Ì…É”É•©•Ñ•™É½´Ñ¡”Í¡…É•Í•ÕÉ”µ‰¥¹‘¥¹œÉ•™•É•¹”‰½Õ¹‘…Éä¸(´ÁÁ±¥…Ñ¥½¸½•¹Ù¥É½¹µ•¹Ğ¥‘•¹Ñ¥Ñä…¹É•‘•¹Ñ¥…°É•™•É•¹•ÌÉ•µ…¥¸¥Í½±…Ñ•…É½ÍÌ‰¥¹‘¥¹Ì¸(´AÉ½Ù¥‘•ÈµÍÁ•¥™¥Œ=Á•¹	…¼ÁÁI½±”°Á½±¥ä°-X…¹A-$¥¹Ñ•É¹…±ÌÉ•µ…¥¸ÁÉ½Ñ•Ñ•ÁÉ½Ù¥‘•ÈÍÑ…Ñ”¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞØÄ…¹•á¥ÍÑ¥¹œ½µÁ½Í”½=Á•¹	…¼½ÉÕ¹Ñ¥µ”µ‰É½­•È‰•¡…Ù¥½ÈÉ•µ…¥¸½µÁ…Ñ¥‰±”¸(´9¼¹•Ü…ÁÁ±¥…Ñ¥½¸µ™…¥¹œÍ•ÕÉ¥Ñä½¹™¥ÕÉ…Ñ¥½¸¥ÌÉ•ÅÕ¥É•¸(´!Õµ…¸=%½I	½5½)%P½‰É•…­±…ÍÌ°™Õ±°É½ÍÌµÁÉ½Ù¥‘•ÈÉ½Ñ…Ñ¥½¸½µÁ±•Ñ¥½¸…¹µ…¹…•ÁÕ‰±¥Œ•ÉÑ¥™¥…Ñ”¥ÍÍÕ…¹”É•µ…¥¸¥¹Ñ•¹Ñ¥½¹…±±ä‘•™•ÉÉ•¸((ŒŒlÀ¸Ğ¸Ñt€´€ÈÀÈØ´Àä´Ää((ŒŒŒ‘‘•((´M¡…É•µ…¡¥¹”µÉ•…‘…‰±”•¹‘Á½¥¹Ğ½•áÁ½ÍÕÉ”½É”İ¥Ñ ÍÑ…‰±”±½¥…°İ½É­±½…µÍ•ÉÙ¥”¥‘•¹Ñ¥Ñä…¹!QQ@½!QQALÉ•…‘¥¹•ÍÌÍ•µ…¹Ñ¥ÌÉ•ÕÍ…‰±”½ÕÑÍ¥‘”Ñ¡”1$¸(´Y•ÉÍ¥½¹••áÁ½ÍÕÉ”¹¡ÑÑÀ½ØÅ€…Á…‰¥±¥ÑäMÁ•¥™¥…Ñ¥½¸İ¥Ñ ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°±½¥…°É½ÕÑ”°Ñ…É•ĞÍ•ÉÙ¥”½Á½ÉĞ°ÑÉ…¹ÍÁ½ÉĞ…¹ÁÕ‰±¥ñ¥¹Ñ•É¹…±€Ù¥Í¥‰¥±¥Ñä¥¹Ñ•¹Ğ¸(´…‘‘ä…ÌÑ¡”™¥ÉÍĞ…ÁÁ±¥…Ñ¥½¸µÍ½Á•½µÁ½Í”É•™•É•¹”ÁÉ½Ù¥‘•È™½È•áÁ±¥¥Ğµ…¹…•!QQ@½!QQAL•áÁ½ÍÕÉ”‰•¡¥¹Ñ¡”•á¥ÍÑ¥¹œAÉ½Ù¥‘•È%¹Ñ•É…Ñ¥½¸½¹ÑÉ…Ğ…¹ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉä¸(´MÑ…‰±”	…Í•!…É‰½È•áÁ½ÍÕÉ”¹•Ñİ½É¬…ÑÑ…¡•½¹±äÑ¼•áÁ±¥¥Ñ±ä•áÁ½Í•İ½É­±½…Í•ÉÙ¥•ÌÑ¡É½Õ •¹•É…Ñ•½µÁ½Í”½Ù•ÉÉ¥‘”ÍÑ…Ñ”°İ¥Ñ¡½ÕĞÉ•İÉ¥Ñ¥¹œ…ÁÁ±¥…Ñ¥½¸½µÁ½Í”Í½ÕÉ”¸(´¹µÑ¼µ•¹µ…¹…••áÁ½ÍÕÉ”±¥™•å±”…É½ÍÌ…ÁÁ±ä½ÕÀ°ÍÑ…ÑÕÌ½‘½Ñ½È°‘½İ¸½‘•ÍÑÉ½ä°‰…­ÕÀ½É•ÍÑ½É”…¹•á¥ÍÑ¥¹œ½	e=Q1LÕÁ‘…Ñ”¸((ŒŒŒ¡…¹•((´á¥ÍÑ¥¹œ…ÁÁ±¥…Ñ¥½¸µ½İ¹•!QQ@½!QQALÁÕ‰±¥Í¡•ÉÌ¹½ÜÕÍ”Ñ¡”Í¡…É••¹‘Á½¥¹ĞÁÉ½‰¥¹œ½É”İ¡¥±”É•µ…¥¹¥¹œ…ÁÁ±¥…Ñ¥½¸µ½İ¹•½‰Í•ÉÙ…Ñ¥½¸½É•…‘¥¹•ÍÌÍÑ…Ñ”É…Ñ¡•ÈÑ¡…¸µ…¹…••áÁ½ÍÕÉ”¸(´Q¡”Í¡…É•…Á…‰¥±¥Ñä±¥™•å±”ÍÕÁÁ½ÉÑÌÍÑ…•ÁÉ•Á…É”½ÁÉ•™±¥¡Ğ°ÁÉ½Ù¥Í¥½¸½‰¥¹…¹Ù•É¥™äÁ¡…Í•ÌÍ¼ÑÉ…™™¥ŒÁÉ½Ù¥‘•ÉÌ…¸‰”½½É‘¥¹…Ñ•…É½Õ¹İ½É­±½…½¹Ù•É•¹”İ¥Ñ¡½ÕĞ¥¹ÑÉ½‘Õ¥¹œ„Í•½¹±¥™•å±”•¹¥¹”¸(´5…¹…•ÁÕ‰±¥Œ•áÁ½ÍÕÉ”‰¥¹‘ÌÑ¡É½Õ Ñ¡”¡½ÍĞµ™…¥¹œÁÉ½Ù¥‘•ÈÁ½ÉĞìµ…¹…•¥¹Ñ•É¹…°•áÁ½ÍÕÉ”¥Ì±½½Á‰…¬µ½¹±ä¥¸Ñ¡”½µÁ½Í”É•™•É•¹”¥µÁ±•µ•¹Ñ…Ñ¥½¸¸(´5…¹…•!QQALÉ•ÕÍ•Ì•á¥ÍÑ¥¹œ½	e=‘•Á±½åµ•¹ĞQ1LÍÑ…Ñ”…¹É•ÍÑ…ÉÑÌ½É•½¹¥±•ÌÑ¡”…‘‘äÁÉ½Ù¥‘•Èİ¡•¸ÁÉ½Ñ•Ñ••ÉÑ¥™¥…Ñ”µ…Ñ•É¥…°¡…¹•Ì¸((ŒŒŒM•ÕÉ¥Ñä((´5…¹…••áÁ½ÍÕÉ”ÁÉ•™±¥¡Ğ½µÁ±•Ñ•Ì‰•™½É”ÑÉ…™™¥ŒµÁÉ½Ù¥‘•ÈµÕÑ…Ñ¥½¸…¹™…¥±Ì±½Í•½¸¥¹Ù…±¥ÁÉ½Ù¥‘•È½Q1LÁÉ•É•ÅÕ¥Í¥Ñ•Ì¸(´…‘‘äÁÉ½Ù¥‘•È½¹Ù•É•¹”Í¹…ÁÍ¡½ÑÌ…¹É½±±Ì‰…¬	…Í•!…É‰½Èµ½İ¹•ÍÑ…Ñ”½¸™…¥±•¹•Ü½¡…¹•É•…±¥é…Ñ¥½¸¸(´•ÍÑÉ½äÉ•µ½Ù•Ì½¹±ä	…Í•!…É‰½Èµ½İ¹•É½ÕÑ¥¹œ½ÁÉ½Ù¥‘•ÈÍÑ…Ñ”ì…ÁÁ±¥…Ñ¥½¸½µÁ½Í”Í½ÕÉ”…¹…ÁÁ±¥…Ñ¥½¸µ½İ¹•Ù½±Õµ•ÌÉ•µ…¥¸Õ¹Ñ½Õ¡•¸(´E9Ì°¡½ÍĞµÁÕ‰±¥Í¡•Á½ÉÑÌ°•ÉÑ¥™¥…Ñ”Í½ÕÉ”Á…Ñ¡Ì°•¹•É…Ñ•¹•Ñİ½É¬¹…µ•Ì…¹…‘‘ä½¹™¥ÕÉ…Ñ¥½¸É•µ…¥¸‘•Á±½åµ•¹Ğ½ÁÉ½Ù¥‘•ÈÍÑ…Ñ”É…Ñ¡•ÈÑ¡…¸Á½ÉÑ…‰±”…ÁÁ±¥…Ñ¥½¸¥¹Ñ•¹Ğ¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞÙ•ÉÍ¥½¸É•µ…¥¹Ì€Å€ì•áÁ½ÍÕÉ”¹¡ÑÑÁ€¥Ì…¸…‘‘¥Ñ¥Ù”½ÁÑ¥½¹…°½¹ÑÉ…Ğ•áÑ•¹Í¥½¸¸á¥ÍÑ¥¹œµ…¹¥™•ÍÑÌ…¹…ÁÀµ½İ¹•ÁÕ‰±¥Í¡•ÉÌ½¹Ñ¥¹Õ”Ñ¼İ½É¬Õ¹¡…¹•¸(´½µÁ½Í”É•µ…¥¹ÌÑ¡”½µÁ±•Ñ”ÕÉÉ•¹ĞÉÕ¹Ñ¥µ”ÁÉ½Ù¥‘•È¸(´5…¹…•5°=Á•¹	…¼A-$¥ÍÍÕ…¹”°…ÕÑ½µ…Ñ¥Œ•ÉÑ¥™¥…Ñ”É•¹•İ…°°QÉ…•™¥¬°-Õ‰•É¹•Ñ•Ì…Ñ•İ…äA$½=Á•¹M¡¥™ĞI½ÕÑ•Ì°±½Õ±½…‰…±…¹•ÉÌ°Í•ÉÙ¥”µ•Í …¹…¥Èµ…À½ÁÉ¥Ù…Ñ”µÉ•¥ÍÑÉäİ½É¬É•µ…¥¸¥¹Ñ•¹Ñ¥½¹…±±ä‘•™•ÉÉ•¸((ŒŒŒ¥á•((´I•Á½Í¥Ñ½Éä¥¹ÍÁ•Ñ¥½¸¹½ÜÑÉ•…ÑÌ…¸•á¥ÍÑ¥¹œ‰…Í•¡…É‰½È¹å…µ±€…Ì…ÕÑ¡½É¥Ñ…Ñ¥Ù”™½È…ÁÁ±¥…Ñ¥½¸¥‘•¹Ñ¥Ñä°‘•±…É•…Á…‰¥±¥Ñ¥•Ì°É•ÅÕ¥É•Í•É•ÑÌ…¹İ½É­±½…Í•±•Ñ¥½¸İ¡¥±”­••Á¥¹œ¡•ÕÉ¥ÍÑ¥Œ•Ù¥‘•¹”Ù¥Í¥‰±”…ÌÍÕÁÁ±•µ•¹Ñ…°Í¥¹…±Ì¸(´…ÁÀ¥¹¥Ğ€´µÅÕ¥­€¹¼±½¹•ÈÁÉ½µ½Ñ•Ì¡•ÕÉ¥ÍÑ¥ŒÉ•‘•¹Ñ¥…°µ±¥­”¹…µ•Ì™É½´•¹Ø•á…µÁ±•Ì¥¹Ñ¼µ…¹‘…Ñ½Éäµ…¹…•Í•É•ÑÌ¸(´±½‰…°…¹…ÁÁ±¥…Ñ¥½¸ÍÑ…ÑÕÌ¹½Ü‘¥ÍÑ¥¹Õ¥Í …¸¥¹Ñ•¹Ñ¥½¹…±±äÍÑ½ÁÁ•ÉÕ¹Ñ¥µ”™É½´„ÉÕ¹¹¥¹œµ‰ÕĞµÕ¹É•…‘ä™…¥±ÕÉ”ÍÑ…Ñ”¸(´AÉ½Ù¥‘•ÈµÉ•¥ÍÑÉäÙ…±¥‘…Ñ¥½¸¹½Ü¡…ÁÁ•¹Ì‘ÕÉ¥¹œÁÉ•™±¥¡Ğ‰•™½É”İ½É­±½…½ÉÕ¹Ñ¥µ”µÕÑ…Ñ¥½¸¸(´…¥±•É•Á½Í¥Ñ½Éäİ½É­±½…ÍÑ…ÉÑÌ½É•…‘¥¹•ÍÌ…ÑÑ•µÁÑÌ±•…¸ÕÀÉ•Í½ÕÉ•ÌÉ•…Ñ•‰äÑ¡…Ğ™…¥±•…ÑÑ•µÁĞİ¥Ñ¡½ÕĞ‘•±•Ñ¥¹œ…ÁÁ±¥…Ñ¥½¸µ½İ¹•Á•ÉÍ¥ÍÑ•¹Ğ‘…Ñ„½ÈÁÉ”µ•á¥ÍÑ¥¹œİ½É­±½…ÍÑ…Ñ”¸(´I•Á•…Ñ•É•½¹¥±¥…Ñ¥½¸É•ÕÍ•ÌÙ…±¥ÉÕ¹Ñ¥µ”µQ1L¥‘•¹Ñ¥Ñ¥•Ìì…ÑÕ…°¥‘•¹Ñ¥ÑäÉ½Ñ…Ñ¥½¸É•É•…Ñ•ÌÑ¡”‰É½­•ÈÍ¼‰¥¹µ½Õ¹ÑÌ…¹¹½ĞÉ•Ñ…¥¸ÍÑ…±”•ÉÑ¥™¥…Ñ”½­•ä¥¹½‘•Ì¸(´…ÁÀ‘•ÍÑÉ½å€¹½ÜÍ¡½İÌÁÉ•Í•ÉÙ•É•Á½Í¥Ñ½Éä‘•Á±½åµ•¹Ğ½Q1LÍÑ…Ñ”…¹ÍÕÁÁ½ÉÑÌ•áÁ±¥¥Ğ€´µ™Õ±°µÉ•Í•Ñ€™½È	…Í•!…É‰½Èµ½İ¹•É•Á½Í¥Ñ½Éä‘•Á±½åµ•¹ĞÍÑ…Ñ”İ¥Ñ¡½ÕĞÑ½Õ¡¥¹œ•áÑ•É¹…°•ÉÑ¥™¥…Ñ”Í½ÕÉ•Ì¸(´‘‘•½İ¹•ÉÍ¡¥Àµ…İ…É”‰…¡„‘•ÍÑÉ½ä€´µå•Í€™½È•áÁ±¥¥Ğ±½‰…°½¹ÑÉ½°µÁ±…¹”½ÉÕ¹Ñ¥µ”µÍÑ…Ñ”É•µ½Ù…°…™Ñ•È…ÁÁ±¥…Ñ¥½¸‰¥¹‘¥¹Ì¡…Ù”‰••¸É•±•…Í•¸(´É•Í =Á•¹	…¼‰½½ÑÍÑÉ…À±•…É±ä…Í­Ì™½È„¹•ÜÉ•½Ù•Éä½ÕÑÁÕĞ™¥±”°É•ÕÍ•Ì™¥±•ÍåÍÑ•´½µÁ±•Ñ¥½¸°É•™ÕÍ•Ì…¸•á¥ÍÑ¥¹œÑ…É•Ğ…¹ÁÉ•Í•ÉÙ•ÌÑ¡”¹½¸µ¥¹Ñ•É…Ñ¥Ù”€´µÉ•½Ù•Éäµ™¥±•€Á…Ñ ¸(((ŒŒlÀ¸Ğ¸Ít€´€ÈÀÈØ´Àä´Äà((ŒŒŒ‘‘•((´I•…µ½¹±äÉ•Á½Í¥Ñ½Éä¥¹ÍÁ•Ñ¥½¸½É”İ¥Ñ •áÑ•¹Í¥‰±”‘•Ñ•Ñ½ÉÌ…¹ÍÑÉÕÑÕÉ••Ñ•Ñ•½MÕ•ÍÑ•½A½ÍÍ¥‰±”•Ù¥‘•¹”¸(´‰…¡„…ÁÀ¥¹ÍÁ•ĞmAQ!u€İ¥Ñ ¡Õµ…¸µÉ•…‘…‰±”…¹€´µ©Í½¹€µ…¡¥¹”µÉ•…‘…‰±”½ÕÑÁÕĞ¸(´•Ñ•Ñ¥½¸•Ù¥‘•¹”™½È½µÁ½Í”½½­•É™¥±”°‘•Á•¹‘•¹äµ…¹¥™•ÍÑÌ°•¹ØÙ…É¥…‰±”¹…µ•Ì°Í½ÕÉ”¥µÁ½ÉÑÌ°½¹™¥ÕÉ…Ñ¥½¸•¹‘Á½¥¹ĞÁ…ÑÑ•É¹Ì°Á½ÉÑÌ…¹¡•…±Ñ ¡•­Ì¸(´M•É•ĞµÍ…™”É•Á½Í¥Ñ½ÉäÍ¹…ÁÍ¡½ÑÌÑ¡…Ğ‘¥Í…É•¹ØÙ…±Õ•Ì…¹Í­¥ÀÍåµ±¥¹­•½•¹•É…Ñ•½Ù•¹‘½ÈÑÉ••Ì¸((´AÉ½Ù¥‘•È%¹Ñ•É…Ñ¥½¸½¹ÑÉ…ĞØÄİ¥Ñ Ù•ÉÍ¥½¹•…Á…‰¥±¥ÑäÍÁ•¥™¥…Ñ¥½¹Ì…¹„Í¡…É•Í•µ…¹Ñ¥Œ‰½Õ¹‘…Éä™½È‰Õ¥±Ğµ¥¸…¹™ÕÑÕÉ”•áÑ•É¹…°ÁÉ½Ù¥‘•ÉÌ¸(´%¹¥Ñ¥…°…Á…‰¥±¥ÑäÍÁ•¥™¥…Ñ¥½¹Ì™½È‘…Ñ…‰…Í”¹ÍÅ°½ØÅ€°…¡”¹­•äµÙ…±Õ”½ØÅ€…¹Í•É•ÑÌ½ØÅ€¸(´Y•ÉÍ¥½¹•AÉ½Ñ½½°	Õ™™•ÉÌÍ¡•µ„™½ÈÑ¡”™ÕÑÕÉ”±…¹Õ…”µ¹•ÕÑÉ…°•áÑ•É¹…°ÁÉ½Ù¥‘•ÈA$¸(´MÑ…Ñ¥ŒÁÉ½Ù¥‘•È½¹ÑÉ…Ğ½¹™½Éµ…¹”™½Õ¹‘…Ñ¥½¸…¹É•™•É•¹”¥¹Ñ•É…Ñ¥½¸‘•ÍÉ¥ÁÑ½ÉÌ™½ÈA½ÍÑÉ•ME0°Y…±­•ä…¹=Á•¹	…¼¸((ŒŒŒ¡…¹•((´Õ¥‘•…ÁÀ¥¹¥Ñ€¹½Ü½¹ÍÕµ•ÌÑ¡”Í¡…É•É•Á½Í¥Ñ½Éä¥¹ÍÁ•Ñ¥½¸•¹¥¹”¥¹ÍÑ•…½˜½İ¹¥¹œ„Í•Á…É…Ñ”1$µ½¹±ä‘•Ñ•Ñ½È¸(´]½É­±½…µ½¹±äÉ•Á½Í¥Ñ½É¥•Ì¹¼±½¹•ÈÉ••¥Ù”…¸¥¹Ù•¹Ñ•A½ÍÑÉ•ME0‘•™…Õ±Ğİ¡•¸Ñ¡”İ½É­±½…¥ÑÍ•±˜¥ÌÍÕ™™¥¥•¹Ğ…ÁÁ±¥…Ñ¥½¸¥¹Ñ•¹Ğ¸(´½µÁ½Í”…Á…‰¥±¥Ñä‘•Ñ•Ñ¥½¸¥ÌÍ•ÉÙ¥”½¥µ…”Í½Á•Ñ¼É•‘Õ”™…±Í”Á½Í¥Ñ¥Ù•Ì™É½´…ÁÁ±¥…Ñ¥½¸•¹Ù¥É½¹µ•¹Ğ½¹™¥ÕÉ…Ñ¥½¸¸(´…ÁÀ¥¹¥Ğ€´µÅÕ¥­€¹½Ü™…¥±Ì±½Í•İ¡•¸½¹±äMÕ•ÍÑ•½A½ÍÍ¥‰±”•Ù¥‘•¹”•á¥ÍÑÌ…¹¹¼•áÁ±¥¥Ğİ½É­±½…¥Ì‘•Ñ•Ñ•°¥¹ÍÑ•…½˜¥¹Ù•¹Ñ¥¹œ„‰…­•¹É•ÅÕ¥É•µ•¹Ğ¸((ŒŒŒÉ¡¥Ñ•ÑÕÉ”((´AÉ½Ù¥‘•ÈÁÉ½Ñ½½°¡…É‘•¹¥¹œ¹½Ü‘•™¥¹•Ì…Íå¹¡É½¹½ÕÌ½Á•É…Ñ¥½¹Ì°•áÁ±¥¥ĞÕ¹‰¥¹°¥‘•µÁ½Ñ•¹ĞµÕÑ…Ñ¥½¹Ì°‘•…‘±¥¹”½…¹•±±…Ñ¥½¸ÉÕ±•Ì°IA¡•…±Ñ ½Í•ÕÉ¥Ñä•áÁ•Ñ…Ñ¥½¹Ì…¹Í…™”ÁÉ½Ñ½‰Õ˜•Ù½±ÕÑ¥½¸¸(´AÉ½Ù¥‘•È½¹™¥ÕÉ…Ñ¥½¸ÕÍ•Ì)M=8M¡•µ„€ÈÀÈÀ´ÄÈìÉ…Á¡E0¥Ì•áÁ±¥¥Ñ±äÉ•Í•ÉÙ•™½ÈÁ½ÍÍ¥‰±”™ÕÑÕÉ”½¹ÑÉ½°µÁ±…¹”½ÅÕ•ÉäÕÍ”É…Ñ¡•ÈÑ¡…¸ÁÉ½Ù¥‘•È±¥™•å±”¸(´ÕÑÕÉ”•áÑ•É¹…°ÁÉ½Ù¥‘•ÈÑÉ…¹ÍÁ½ÉĞ¥Ì‰…Í•½¸IA½AÉ½Ñ½½°	Õ™™•ÉÌ…¹™ÕÑÕÉ”Á…­…”‘¥ÍÑÉ¥‰ÕÑ¥½¸½¸=$ÍÑ…¹‘…É‘Ì°İ¥Ñ¡½ÕĞ¥¹ÑÉ½‘Õ¥¹œ„‘å¹…µ¥ŒÁ±Õ¥¸±½…‘•Èå•Ğ¸(´ÕÑÕÉ”ÁÉ½Ù¥‘•È‘¥ÍÑÉ¥‰ÕÑ¥½¸¥Ì‘¥•ÍĞµ™¥ÉÍĞ°µÕ±Ñ¤µÁ±…Ñ™½É´Ñ¡É½Õ =$%µ…”%¹‘•à°…¹ÕÍ•Ì=$ÍÕ‰©•Ğ½É•™•ÉÉ•ÉÌÁ±ÕÌÍÑ…¹‘…ÉÍ¥¹…ÑÕÉ”½M	=4½ÁÉ½Ù•¹…¹”µ•¡…¹¥ÍµÌ¥¹ÍÑ•…½˜ÁÉ½ÁÉ¥•Ñ…Éä	…Í•!…É‰½È™½Éµ…ÑÌ¸(´±°ÍÕ‰Í•ÅÕ•¹Ğ…Á…‰¥±¥Ñä½ÁÉ½Ù¥‘•È¥¹Ñ•É…Ñ¥½¹ÌµÕÍĞÕÍ”Ñ¡”Í¡…É•±¥™•å±”½É•¥ÍÑÉä½¹ÑÉ…Ğ…¹…‘…Á…‰¥±¥ÑäµÍÁ•¥™¥Œ½¹™½Éµ…¹”É…Ñ¡•ÈÑ¡…¸ÁÉ½‘ÕĞµÍÁ•¥™¥Œ±¥™•å±”Á…Ñ¡Ì¸((ŒŒlÀ¸Ğ¸Ét€´€ÈÀÈØ´Àä´Äà((ŒŒŒ‘‘•((´A•ÉÍ¥ÍÑ•¹ĞÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉä™½ÈÍ¡…É•°…ÁÁ±¥…Ñ¥½¸µÍ½Á•…¹•áÑ•É¹…°½	e<ÁÉ½Ù¥‘•È¥¹ÍÑ…¹•Ì¸(´áÁ±¥¥ĞÁÉ½Ù¥‘•È½İ¹•ÉÍ¡¥À…¹±¥™•å±”Í•µ…¹Ñ¥Ì™½ÈÕÁ‘…Ñ”°‰…­ÕÀ…¹‘•ÍÑÉ½äÁ±…¹¹¥¹œ¸(´•Ñ•Éµ¥¹¥ÍÑ¥ŒÍ¡…É•µÁÉ½Ù¥‘•ÈÉ•ÕÍ”…¹™…¥°µ±½Í•‘ÕÁ±¥…Ñ”Í¡…É•µÁÉ½Ù¥‘•È‘•Ñ•Ñ¥½¸¸(´áÑ•É¹…°ÁÉ½Ù¥‘•È‰¥¹‘¥¹Ìİ¥Ñ¡½ÕĞ	…Í•!…É‰½ÈÑ…­¥¹œ½İ¹•ÉÍ¡¥À½˜ÁÉ½Ù¥‘•È±¥™•å±”¸((ŒŒŒ¡…¹•((´A½ÍÑÉ•ME0…¹Y…±­•ä…É”É•¥ÍÑ•É•…Ì	…Í•!…É‰½Èµ½İ¹•…ÁÁ±¥…Ñ¥½¸µÍ½Á•ÁÉ½Ù¥‘•ÉÌ¸(´½¹ÑÉ½°µÁ±…¹”=Á•¹	…¼¥ÌÉ•¥ÍÑ•É•½¹”…Ì„	…Í•!…É‰½Èµ½İ¹•Í¡…É•ÁÉ½Ù¥‘•ÈÉ•ÕÍ…‰±”‰äµÕ±Ñ¥Á±”…ÁÁ±¥…Ñ¥½¹Ì¸(´MÕ•ÍÍ™Õ°…ÁÀ…ÁÁ±å€…¹…ÁÀÕÁ€É•½¹¥±”ÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉäÍÑ…Ñ”ìÍÕ•ÍÍ™Õ°…ÁÀ‘•ÍÑÉ½å€É•±•…Í•Ì…ÁÁ±¥…Ñ¥½¸‰¥¹‘¥¹Ì…¹…ÁÁ±¥…Ñ¥½¸µ½İ¹•ÁÉ½Ù¥‘•ÈÉ•½É‘Ì¸((ŒŒŒM•ÕÉ¥Ñä((´ÁÁ±¥…Ñ¥½¸µÍ½Á•ÁÉ½Ù¥‘•ÉÌ…¹¹½Ğ‰”‰½Õ¹…É½ÍÌ…ÁÁ±¥…Ñ¥½¸½İ¹•ÉÍ¡¥À‰½Õ¹‘…É¥•Ì¸(´½ÉÉÕÁĞ°‘ÕÁ±¥…Ñ”½È…µ‰¥Õ½ÕÌÁÉ½Ù¥‘•ÈÉ•¥ÍÑÉäÍÑ…Ñ”™…¥±Ì±½Í•¸(´I•¥ÍÑÉäÕÁ‘…Ñ•Ì…É”Í•É¥…±¥é•…¹Á•ÉÍ¥ÍÑ•…Ñ½µ¥…±±äİ¥Ñ ½İ¹•Èµ½¹±äÁ•Éµ¥ÍÍ¥½¹Ì¸(´áÑ•É¹…°ÁÉ½Ù¥‘•ÈÉ•½É‘Ì½¹Ñ…¥¸¹½¸µÍ•É•ĞÉ•™•É•¹•Ì½¹±ä¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞØÄ¥ÌÕ¹¡…¹•ìÁÉ½Ù¥‘•ÈÁ±…•µ•¹ĞÉ•µ…¥¹Ì‘•Á±½åµ•¹Ğ½½Á•É…Ñ½ÈÍÑ…Ñ”¸(´á¥ÍÑ¥¹œØÀ¸Ğ¸Ä…ÁÁ±¥…Ñ¥½¹Ì…É”…‘½ÁÑ•½¸Ñ¡•¥È¹•áĞÍÕ•ÍÍ™Õ°‰…¡„…ÁÀ…ÁÁ±å€½È‰…¡„…ÁÀÕÁ€¸((ŒŒlÀ¸Ğ¸Åt€´€ÈÀÈØ´Àä´Äà((ŒŒŒ‘‘•((´É•ÕÍ…‰±”…Á…‰¥±¥ÑäµÁÉ½Ù¥‘•È‘½µ…¥¸½É”İ¥Ñ ÑåÁ•…Á…‰¥±¥ÑäÉ•ÅÕ¥É•µ•¹ÑÌ°ÁÉ½Ù¥‘•È‘•ÍÉ¥ÁÑ½ÉÌ°±½¥…°É•Í½ÕÉ•Ì…¹İ½É­±½…‰¥¹‘¥¹Ì¸(´5…¡¥¹”µÉ•…‘…‰±”…Á…‰¥±¥Ñä±¥™•å±”É•ÍÕ±ÑÌ™½ÈÁ±…¸€´øÁÉ•™±¥¡Ğ€´ø…ÁÁ±ä€´ø‰¥¹€´øÙ•É¥™å€°¥¹±Õ‘¥¹œÍÑÉÕÑÕÉ•‘¥…¹½ÍÑ¥ÌÍÕ¥Ñ…‰±”™½È1$°™ÕÑÕÉ”]•ˆU$½A$…¹™ÕÑÕÉ”=Á•É…Ñ½È½¹ÍÕµ•ÉÌ¸(´I•™•É•¹”…Á…‰¥±¥Ñä‘•ÍÉ¥ÁÑ½ÉÌ™½ÈA½ÍÑÉ•ME0€¡‘…Ñ…‰…Í”¹ÍÅ±€¤°Y…±­•ä€¡…¡”¹­•äµÙ…±Õ•€¤…¹=Á•¹	…¼€¡Í•É•ÑÍ€¤¸(´AÉ½Ñ•Ñ•ÉÕ¹Ñ¥µ”‰¥¹‘¥¹œµ•Ñ…‘…Ñ„¹½ÜÉ•½É‘ÌÉ•Í½±Ù•±½¥…°…Á…‰¥±¥Ñä½ÁÉ½Ù¥‘•È½İ½É­±½…‰¥¹‘¥¹Ì…±½¹Í¥‘”Ñ¡”•á¥ÍÑ¥¹œÍÑ…¹‘…É½¹¹•Ñ¥½¸‰¥¹‘¥¹Ì¸((ŒŒŒ¡…¹•((´á¥ÍÑ¥¹œ5…¹¥™•ÍĞØÄ…Á…‰¥±¥ÑäÑåÁ•Ì¹½ÜÉ•ÕÍ”Ñ¡”Í¡…É•…Á…‰¥±¥Ñä‘½µ…¥¸İ¡¥±”É•µ…¥¹¥¹œÍ½ÕÉ”µ½µÁ…Ñ¥‰±”¥¹Í¥‘”Ñ¡”…ÁÁ±¥…Ñ¥½¸Á…­…”¸(´ÁÁ±¥…Ñ¥½¸Á±…¹¹¥¹œÉ•Í½±Ù•ÌÕÉÉ•¹ĞA½ÍÑÉ•ME0°Y…±­•ä…¹=Á•¹	…¼É•ÅÕ¥É•µ•¹ÑÌÑ¡É½Õ ™…¥°µ±½Í•…Á…‰¥±¥Ñä½ÁÉ½Ù¥‘•È¹•½Ñ¥…Ñ¥½¸‰•™½É”ÉÕ¹Ñ¥µ”µÕÑ…Ñ¥½¸‰•¥¹Ì¸(´…Á…‰¥±¥ÑäÁÉ•™±¥¡Ğ½µÁ±•Ñ•Ì™½È…±°Á±…¹¹•É•Í½ÕÉ•Ì‰•™½É”Ñ¡”É•ÕÍ…‰±”±¥™•å±”Á•Éµ¥ÑÌÁÉ½Ù¥Í¥½¹¥¹œµÕÑ…Ñ¥½¸¸((ŒŒŒM•ÕÉ¥Ñä((´U¹ÍÕÁÁ½ÉÑ•…Á…‰¥±¥Ñä½ÁÉ½Ù¥‘•È½µ‰¥¹…Ñ¥½¹Ì™…¥°‰•™½É”µÕÑ…Ñ¥½¸¸(´…Á…‰¥±¥Ñä‘¥…¹½ÍÑ¥Ì…¹ÉÕ¹Ñ¥µ”µ•Ñ…‘…Ñ„½¹Ñ…¥¸±½¥…°¥‘•¹Ñ¥Ñ¥•Ì…¹ÁÉ½Ù¥‘•È¹…µ•Ì½¹±äìÍ•É•ĞÙ…±Õ•Ì…¹É•‘•¹Ñ¥…°µ‰•…É¥¹œÁÉ½Ù¥‘•È½¹™¥ÕÉ…Ñ¥½¸É•µ…¥¸½ÕÑÍ¥‘”Ñ¡”Í¡…É•‘½µ…¥¸µ½‘•°¸((ŒŒŒ½µÁ…Ñ¥‰¥±¥Ñä((´5…¹¥™•ÍĞØÄ°Ñ¡”ÕÉÉ•¹Ğ½µÁ½Í”‘•Ù•±½Á•Èİ½É­™±½Ü…¹•á¥ÍÑ¥¹œØÀ¸ĞÉÕ¹Ñ¥µ”‰•¡…Ù¥½ÈÉ•µ…¥¸½µÁ…Ñ¥‰±”¸(´AÉ½Ù¥‘•ÈÉ•¥ÍÑÉä½½İ¹•ÉÍ¡¥ÀÁ½±¥ä°…‘‘¥Ñ¥½¹…°…Á…‰¥±¥ÑäÁÉ½Ù¥‘•ÉÌ…¹-Õ‰•É¹•Ñ•Ì½=Á•¹M¡¥™Ğ½±½Õ¥µÁ±•µ•¹Ñ…Ñ¥½¹ÌÉ•µ…¥¸¥¹Ñ•¹Ñ¥½¹…±±ä‘•™•ÉÉ•Ñ¼±…Ñ•ÈØÀ¸Ğ¹à¥ÍÍÕ•Ì¸((ŒŒlÀ¸Ğ¸Át€´€ÈÀÈØ´Àä´Äà((ŒŒŒ‘‘•((´ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°A½ÉÑ…‰±•½¹ÑÉ…Ñ€Í•…´Ñ¡…ĞÑÉ…¹Í±…Ñ•ÌÍÕÁÁ½ÉÑ•5…¹¥™•ÍĞØÄ…ÁÁ±¥…Ñ¥½¸¥¹Ñ•¹Ğ¥¹Ñ¼±½¥…°…Á…‰¥±¥Ñ¥•Ìİ¥Ñ¡½ÕĞ•áÁ½Í¥¹œ½µÁ½Í”ÁÉ½©•Ğ¹…µ•Ì°¡½ÍĞÁ½ÉÑÌ°‘•Á±½åµ•¹ĞE8½Q1LÍ½ÕÉ”Á…Ñ¡Ì½È½Ñ¡•ÈÁÉ½Ù¥‘•È¥µÁ±•µ•¹Ñ…Ñ¥½¸‘•Ñ…¥±Ì¸(´IÕ¹Ñ¥µ”ÁÉ½Ù¥‘•È¥‘•¹Ñ¥Ñä…¹…Á…‰¥±¥Ñä¹•½Ñ¥…Ñ¥½¸İ¥Ñ ½µÁ½Í”…ÌÑ¡”ÕÉÉ•¹Ğ¥µÁ±•µ•¹Ñ…Ñ¥½¸…¹•áÁ±¥¥Ğ•áÑ•¹Í¥½¸Á½¥¹ÑÌ™½È™ÕÑÕÉ”-Õ‰•É¹•Ñ•Ì…¹=Á•¹M¡¥™ĞÁÉ½Ù¥‘•ÉÌ¸(´AÉ½Ñ•Ñ•‘•Á±½åµ•¹Ğµ½İ¹•ÉÕ¹Ñ¥µ”µÁÉ½Ù¥‘•ÈÍÑ…Ñ”Ñ¡É½Õ 	M!I	=I}IU9Q%5}AI=Y%I€ì±•…äØÀ¸ÌÍÑ…Ñ”İ¥Ñ¡½ÕĞÑ¡”­•äÍ…™•±äÉ•Í½±Ù•ÌÑ¼½µÁ½Í”¸(´•¹ÑÉ…°™…¥°µ±½Í•ÉÕ¹Ñ¥µ”µÁÉ½Ù¥‘•ÈÕ…É™½ÈÉ•µ…¥¹¥¹œ…ÁÁ±¥…Ñ¥½¸ÉÕ¹Ñ¥µ”½µµ…¹‘Ì°¥¹±Õ‘¥¹œÁÉ•™±¥¡Ğ°‰…­ÕÀ½É•ÍÑ½É”°İ½É­±½…±½Ì½Í¡•±°½•á•Œ°ÕÁ‘…Ñ”°Q1LÉ•±½…°ÍÑ…ÑÕÌ½‘½Ñ½È°‘½İ¸…¹‘•ÍÑÉ½ä¸(´É•ÕÍ…‰±”‘•±…É…Ñ¥Ù”…ÁÁ±¥…Ñ¥½¸¥¹ÁÕĞÉ•Í½±Ù•ÈÍÕÁÁ½ÉÑ¥¹œÍ…™”‘•™…Õ±ÑÌ°•¹•É…Ñ•Ù…±Õ•Ì°•áÑ•É¹…°½½Á•É…Ñ½ÈÙ…±Õ•Ì…¹½¹‘¥Ñ¥½¹…°É•ÅÕ¥É•µ¥™€‘•Á•¹‘•¹¥•Ì¸(´ÕÑ½µ…Ñ¥½¸µÍ…™”‰…¡„…ÁÀ¥¹¥Ğ€´µ¥¹ÁÕĞ95õY1U€¥¹©•Ñ¥½¸™½È‘•±…É•¹½¸µÍ•É•Ğ‘•Á±½åµ•¹Ğ¥¹ÁÕÑÌİ¡¥±”ÁÉ•Í•ÉÙ¥¹œÑ¡”•á¥ÍÑ¥¹œ‘•‘¥…Ñ•™±…Ì¸(´I•Í½±Ù•Èµ‘É¥Ù•¸É•Á½Í¥Ñ½Éä‘•Á±½åµ•¹Ğ¥¹¥Ñ¥…±¥é…Ñ¥½¸™½È¡½ÍÑ¹…µ•€°Ñ±Í}µ½‘•€…¹½¹‘¥Ñ¥½¹…±±äÉ•ÅÕ¥É••ÉÑ}‘¥É€°Í¡…É•‰ä‰…¡„…ÁÀ¥¹¥Ñ€…¹Ñ¡”É•Á½Í¥Ñ½Éäµ…İ…É”‰…¡„ÕÁ€Á…Ñ ¸(´É¡¥Ñ•ÑÕÉ”‘•¥Í¥½¹Ì‘½Õµ•¹Ñ¥¹œÁ½ÉÑ…‰±”½¹ÑÉ…Ğ½ÁÉ½Ù¥‘•È‰½Õ¹‘…É¥•Ì°ÉÕ¹Ñ¥µ”µÁÉ½Ù¥‘•ÈÍ•±•Ñ¥½¸…¹½¹ÑÉ…Ğ•Ù½±ÕÑ¥½¸½Ù•ÉÍ¥½¹¥¹œÉÕ±•Ì¸((ŒŒŒ¡…¹•((´5…¹¥™•ÍĞØÄ¥Ì¹½Ü•áÁ±¥¥Ñ±äÑÉ•…Ñ•…ÌÑ¡”ÍÕÁÁ½ÉÑ•½µÁ…Ñ¥‰¥±¥ÑäÍÕÉ™…”…¹ÑÉ…¹Í±…Ñ•½¹”µİ…ä¥¹Ñ¼Á½ÉÑ…‰±”…ÁÁ±¥…Ñ¥½¸¥¹Ñ•¹ĞÉ…Ñ¡•ÈÑ¡…¸‰•¥¹œÑÉ•…Ñ•…ÌÑ¡”Á•Éµ…¹•¹ĞÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°Í¡•µ„¥ÑÍ•±˜¸(´ÁÁ±¥…Ñ¥½¸É•ÅÕ¥É•µ•¹ÑÌ°ÉÕ¹Ñ¥µ”µÁÉ½Ù¥‘•ÈÍ•±•Ñ¥½¸…¹…Á…‰¥±¥ÑäµÁÉ½Ù¥‘•È½ÁÉ½‘ÕĞÍ•±•Ñ¥½¸…É”™½Éµ…±±äÍ•Á…É…Ñ”½¹•É¹Ìì…¸…ÁÁ±¥…Ñ¥½¸É•ÅÕ•ÍÑÌ±½¥…°…Á…‰¥±¥Ñ¥•Ìİ¡¥±”‘•Á±½åµ•¹Ğ½Á±…Ñ™½É´Á½±¥ä¡½½Í•Ì¡½ÜÑ¡•ä…É”É•…±¥é•¸(´½¹ÑÉ…Ğ•Ù½±ÕÑ¥½¸¥Ì™…¥°µ±½Í•™½ÈÕ¹­¹½İ¸É•ÅÕ¥É•Ù•ÉÍ¥½¹Ì½ÈÍ•µ…¹Ñ¥Ìì…‘‘¥Ñ¥Ù”•Ù½±ÕÑ¥½¸É•µ…¥¹ÌÁÉ•™•ÉÉ•…¹ÁÉ½Ù¥‘•ÈµÍÁ•¥™¥Œ•Í…Á”¡…Ñ¡•Ì°İ¡•¸•Ù•¹ÑÕ…±±äÉ•ÅÕ¥É•°µÕÍĞÉ•µ…¥¸½ÁÑ¥½¹…°…¹¹…µ•ÍÁ…•¸(´I•Á½Í¥Ñ½ÉäÉÕ¹Ñ¥µ”½Á•É…Ñ¥½¹Ì¹½ÜÉ•Í½±Ù”Ñ¡”‘•Á±½åµ•¹ĞµÍ•±•Ñ•ÉÕ¹Ñ¥µ”ÁÉ½Ù¥‘•È…¹É•ÅÕ¥É•ÉÕ¹Ñ¥µ”…Á…‰¥±¥Ñ¥•Ì‰•™½É”•¹Ñ•É¥¹œÑ¡”ÕÉÉ•¹Ğ½µÁ½Í”µ‰…­•¥µÁ±•µ•¹Ñ…Ñ¥½¸°ÁÉ•Ù•¹Ñ¥¹œ™ÕÑÕÉ”ÁÉ½Ù¥‘•ÉÌ™É½´Í¥±•¹Ñ±ä™…±±¥¹œÑ¡É½Õ ¥¹Ñ¼½­•È½½µÁ½Í”½‘”¸(´‰…¡„…ÁÀ¥¹¥Ñ€…¹‰…¡„ÕÁ€…Í¬½¹±ä™½ÈÕ¹É•Í½±Ù•‘•Á±½åµ•¹ĞÙ…±Õ•Ìİ¡•¸¥¹Ñ•É…Ñ¥Ù”¸½µÁ±•Ñ”ÁÉ½Ñ•Ñ•ÍÑ…Ñ”…ÕÍ•Ì¹¼…‘‘¥Ñ¥½¹…°ÅÕ•ÍÑ¥½¹Ìì¹½¸µ¥¹Ñ•É…Ñ¥Ù”½Á•É…Ñ¥½¸ÕÍ•Ì½¹±äÍ…™”‘•™…Õ±ÑÌ½‘•É¥Ù…Ñ¥½¹Ì…¹¹•Ù•È¥¹Ù•¹ÑÌ…¸•áÑ•É¹…°•ÉÑ¥™¥…Ñ”Á…Ñ ¸(´½µÁ½Í”É•µ…¥¹ÌÑ¡”½µÁ±•Ñ”…¹™¥ÉÍĞµ±…ÍÌÉÕ¹Ñ¥µ”¥µÁ±•µ•¹Ñ…Ñ¥½¸™½ÈØÀ¸Ğ¸-Õ‰•É¹•Ñ•Ì…¹=Á•¹M¡¥™Ğ…É”¥¹Ñ•¹Ñ¥½¹…±±ä¹½Ğ¥µÁ±•µ•¹Ñ•¥¸Ñ¡¥ÌÉ•±•…Í”ìÑ¡”¹•ÜÍ•…µÌ…É”Ñ¡”½µÁ…Ñ¥‰¥±¥Ñä‰½Õ¹‘…ÉäÑ¡•äİ¥±°½¹ÍÕµ”±…Ñ•È¸((ŒŒŒM•ÕÉ¥Ñä((´U¹ÍÕÁÁ½ÉÑ•½ÈÕ¹…Ù…¥±…‰±”ÉÕ¹Ñ¥µ”ÁÉ½Ù¥‘•ÉÌ™…¥°•áÁ±¥¥Ñ±ä¥¹ÍÑ•…½˜Í¥±•¹Ñ±ä‘•É…‘¥¹œÑ¼½µÁ½Í”½Èİ•…­•¹¥¹œÉ•ÅÕ•ÍÑ•ÉÕ¹Ñ¥µ”Õ…É…¹Ñ••Ì¸(´M•É•Ğ¥¹ÁÕĞÙ…±Õ•Ì…É”É•ÁÉ•Í•¹Ñ••áÁ±¥¥Ñ±ä°É•¹‘•ÈÉ•‘…Ñ•°…¹…É”•á±Õ‘•™É½´•¹•É¥ŒÁ•ÉÍ¥ÍÑ…‰±”¹½¸µÍ•É•ĞÉ•Í½±Ù•È½ÕÑÁÕĞ‰ä½¹ÍÑÉÕÑ¥½¸¸(´IÕ¹Ñ¥µ”µÁÉ½Ù¥‘•È…Á…‰¥±¥Ñä¹•½Ñ¥…Ñ¥½¸™…¥±Ì±½Í•İ¡•¸…¸½Á•É…Ñ¥½¸É•ÅÕ¥É•Ì‰•¡…Ù¥½ÈÑ¡”Í•±•Ñ•ÁÉ½Ù¥‘•È…¹¹½ĞÍ…Ñ¥Í™ä¸(´á¥ÍÑ¥¹œÁÉ½Ñ•Ñ•‘•Á±½åµ•¹ĞÍÑ…Ñ”°•ÉÑ¥™¥…Ñ”Ù…±¥‘…Ñ¥½¸°Í•É•ĞÍÑ½É…”…¹ÁÉ½Ù¥‘•ÈµÍÁ•¥™¥ŒÍ•ÕÉ¥Ñä½¹ÑÉ½±ÌÉ•µ…¥¸Í•Á…É…Ñ”™É½´Ñ¡”Á½ÉÑ…‰±”…ÁÁ±¥…Ñ¥½¸½¹ÑÉ…Ğ…¹…É”¹½Ğ½Á¥•¥¹Ñ¼½µµ¥ÑÑ•µ…¹¥™•ÍÑÌ¸((ŒŒŒ•ÁÉ•…Ñ•((´9¼ÁÕ‰±¥Œ‰…¡…€½µµ…¹½È5…¹¥™•ÍĞØÄ™¥•±¥Ì‘•ÁÉ•…Ñ•¥¸ØÀ¸Ğ¸À¸½µÁ½Í”µÍÁ•¥™¥Œ5…¹¥™•ÍĞØÄ™¥•±‘ÌÉ•µ…¥¸ÍÕÁÁ½ÉÑ•½µÁ…Ñ¥‰¥±¥Ñä¥¹ÁÕÑÌ°‰ÕĞÑ¡•ä…É”¹¼±½¹•ÈÑÉ•…Ñ•…ÌÑ¡”±½¹œµÑ•É´ÁÉ½Ù¥‘•Èµ¹•ÕÑÉ…°…ÁÁ±¥…Ñ¥½¸µ½‘•°¸((ŒŒŒI•µ½Ù•((´9½Ñ¡¥¹œ™É½´Ñ¡”ÍÕÁÁ½ÉÑ•ØÀ¸Ì1$½È5…¹¥™•ÍĞØÄİ½É­™±½Ü¥ÌÉ•µ½Ù•¥¸ØÀ¸Ğ¸À¸((ŒŒlÀ¸Ì¸Át€´€ÈÀÈØ´Àä´ÄÜ((ŒŒŒ‘‘•((´QÉÕÍÑ•µ±½…°‘•Ù•±½Á•È…•ÍÌİ½É­™±½İÌè‰…¡„…ÁÀÁÍÅ±€°É•‘¥Í€½Ù…±­•å€°µ…Í­•½É•Ù•…°µ½¸µ‘•µ…¹É•‘•¹Ñ¥…±Ì°İ½É­±½…±½Ì°Í¡•±°…¹•á•ŒÕÍ¥¹œ±½¥…°…ÁÁ±¥…Ñ¥½¸½É•Í½ÕÉ”¥‘•¹Ñ¥Ñ¥•Ì¸(´!•…±Ñ µ…İ…É”°Í•ÉÙ¥”µ±•Ù•°½µÁ½Í”İ½É­±½…ÑÉÕÑ Í¡…É•‰ä‰…¡„…ÁÀÍÑ…ÑÕÍ€°‘½Ñ½É€…¹Í¡½İ€°¥¹±Õ‘¥¹œ!QQ@½!QQAL•áÁ½ÍÕÉ”É•…‘¥¹•ÍÌ™½È½¹Ù•¹Ñ¥½¹…°…ÁÀµ½İ¹•İ•ˆÁÕ‰±¥Í¡•ÉÌ¸(´‰…¡„…ÁÀÍ¡½İ€…Ì„É•…µ½¹±ä…ÁÁ±¥…Ñ¥½¸½Ù•ÉÙ¥•Üİ¥Ñ ‰…­•¹°İ½É­±½…°Í•É•Ğ°‰…­ÕÀ…¹É•½Ù•ÉäÉ•…‘¥¹•ÍÌµ•Ñ…‘…Ñ„İ¥Ñ¡½ÕĞ•áÁ½Í¥¹œÍ•É•ĞÙ…±Õ•Ì½ÈÉ•‘•¹Ñ¥…°µ‰•…É¥¹œUI1Ì¸(´Õ¥‘•…ÁÁ±¥…Ñ¥½¸‰…­ÕÀ…¹É•ÍÑ½É”İ¥Ñ Í•ÕÉ”¹¼µ•¡¼Á…ÍÍİ½É•¹ÑÉä°•áÁ±¥¥Ğ¥µÁ…ĞÁÉ•Ù¥•İÌ°Ù•É¥™¥•É•½Ù•Éäµ•Ñ…‘…Ñ„…¹MÑ…ÑÕÌèIe€½¹±ä…™Ñ•ÈÍÕ•ÍÍ™Õ°Á½ÍĞµÉ•ÍÑ½É”Ù•É¥™¥…Ñ¥½¸¸(´M…™”¥Ğµ‰…­•‰…¡„…ÁÀÕÁ‘…Ñ”€´µ¡•­€…¹ÍÑÉ¥Ğ™…ÍĞµ™½Éİ…É…ÁÁ±¥…Ñ¥½¸ÕÁ‘…Ñ•Ì°İ¥Ñ ‘¥ÉÑä½‘¥Ù•É•¡¥ÍÑ½ÉäÁÉ½Ñ•Ñ¥½¸°½ÁÑ¥½¹…°•¹ÉåÁÑ•ÁÉ”µÕÁ‘…Ñ”É•½Ù•ÉäÁ½¥¹ÑÌ…¹ÁÉ½Ñ•Ñ•ÕÁ‘…Ñ”µ•Ñ…‘…Ñ„¸(´Õ…É‘•	…Í•!…É‰½ÈÍ•±˜µÕÁ‘…Ñ”Ñ¡É½Õ ‰…¡„ÕÁ‘…Ñ”€´µ¡•­€…¹•áÁ±¥¥ĞµÕÑ…Ñ¥½¸°¥¹±Õ‘¥¹œÉ•±•…Í”µ…ÍÍ•Ğ½¡•­ÍÕ´Ù•É¥™¥…Ñ¥½¸°…Ñ½µ¥ŒÉ•Á±…•µ•¹Ğ°É•Ñ…¥¹•É•½Ù•Éä‰¥¹…Éä…¹É½±±‰…¬½¸™…¥±•Á½ÍĞµÕÁ‘…Ñ”Ù•É¥™¥…Ñ¥½¸¸(´]½É­±½…µ½¹±äÉ•Á½Í¥Ñ½Éä…ÁÁ±¥…Ñ¥½¹Ì™½È•áÁ±¥¥Ğ½µÁ½Í”İ½É­±½…‘ÌÑ¡…Ğ‘¼¹½ĞÉ•ÅÕ¥É”…ÉÑ¥™¥¥…°A½ÍÑÉ•ME0½ÈY…±­•ä‘•Á•¹‘•¹¥•Ì¸(´ÕÑ½µ…Ñ¥ŒÁÕ‰±¥Í¡•µÁ½ÉĞ™…±±‰…¬™½È½¹™¥ÕÉ…‰±”½µÁ½Í”‰¥¹‘¥¹Ìİ¡•¸¡½ÍĞÁ½ÉÑÌ…É”…±É•…‘ä…±±½…Ñ•°¥¹±Õ‘¥¹œ%AØĞ…¹%AØØ±½½Á‰…¬½İ¥±‘…É½­•È•ÉÉ½È™½ÉµÌ¸(´I•Á½Í¥Ñ½Éä‘•Á±½åµ•¹ĞÉÕ¹Ñ¥µ”¥¹¥Ñ¥…±¥é…Ñ¥½¸™½ÈÁÕ‰±¥ŒE8…¹Q1Lµ½‘”İ¡¥±”­••Á¥¹œ‘•Á±½åµ•¹Ğ½ÉÕ¹Ñ¥µ”‘•Ñ…¥±Ì½ÕÑÍ¥‘”Ñ¡”Á½ÉÑ…‰±”‰…Í•¡…É‰½È¹å…µ±€…ÁÁ±¥…Ñ¥½¸½¹ÑÉ…Ğ¸(´á¥ÍÑ¥¹œ½	e=Q1L•ÉÑ¥™¥…Ñ”±¥™•å±”İ¥Ñ ‰…¡„…ÁÀÑ±ÌÕÁ‘…Ñ”€´µ¡•­€…¹‰…¡„…ÁÀÑ±ÌÕÁ‘…Ñ•€°¥¹±Õ‘¥¹œ•ÉÑ¥™¥…Ñ”½­•ä½E8Ù…±¥‘…Ñ¥½¸°‘½İ¹É…‘”ÁÉ½Ñ•Ñ¥½¸°ÁÉ½Ñ•Ñ•¥¹ÍÑ…±±…Ñ¥½¸°É•ÍÑ…ÉĞ…¹É•…‘¥¹•ÍÌÙ•É¥™¥…Ñ¥½¸¸(´1¥¹ÕàÑ•Éµ¥¹…°‘¥É•Ñ½Éä½µÁ±•Ñ¥½¸™½È¥¹Ñ•É…Ñ¥Ù”•á¥ÍÑ¥¹œµ•ÉÑ¥™¥…Ñ”Í½ÕÉ”Í•±•Ñ¥½¸İ¥Ñ¡½ÕĞ…‘‘¥¹œ„¹•ÜÉ•…‘±¥¹”‘•Á•¹‘•¹ä¸((ŒŒŒ¡…¹•((´½µÁ½Í”É•…‘¥¹•ÍÌ¹½Ü‘¥ÍÑ¥¹Õ¥Í¡•ÌÉÕ¹¹¥¹œ°ÍÑ…ÉÑ¥¹œ°Õ¹¡•…±Ñ¡ä°•á¥Ñ•…¹µ¥ÍÍ¥¹œÍ•ÉÙ¥•Ì¥¹ÍÑ•…½˜ÑÉ•…Ñ¥¹œ•Ù•ÉäÉÕ¹¹¥¹œ½¹Ñ…¥¹•È…ÌId¸(´!QQ@½Q1L•áÁ½ÍÕÉ”™…¥±ÕÉ•Ì¹½Üµ…­”Ñ¡”…ÍÍ½¥…Ñ•İ½É­±½……¹İ¡½±”…ÁÁ±¥…Ñ¥½¸9=PIdìÉ•‘¥É•ÑÌ…É”…•ÁÑ•…ÌÉ•…¡…‰±”•áÁ½ÍÕÉ”İ¡¥±”€Õáà½Õ¹É•…¡…‰±”•¹‘Á½¥¹ÑÌ™…¥°É•…‘¥¹•ÍÌ¸(´!QQALÉ•…‘¥¹•ÍÌ½¹Ñ¥¹Õ•ÌÑ¼ÁÉ½‰”Ñ¡”±½…°ÁÕ‰±¥Í¡•Í½­•Ğİ¡¥±”ÕÍ¥¹œÑ¡”½¹™¥ÕÉ•ÁÕ‰±¥ŒE8™½È!QQ@!½ÍĞ…¹Q1LM•ÉÙ•É9…µ”°…±±½İ¥¹œ¡½ÍÑ¹…µ”µ‰½Õ¹…ÁÁ±¥…Ñ¥½¸µ½İ¹•Q1L•¹‘Á½¥¹ÑÌÑ¼‰”Ù•É¥™¥•±½…±±ä¸(´	…­ÕÀ½É•ÍÑ½É”¥¹Ñ•É…Ñ¥Ù”U`¹½ÜÉ•ÑÉ¥•ÌÍ¡½ÉĞ½Èµ¥Íµ…Ñ¡•Á…ÍÍİ½É‘Ì…¹Í¡½İÌÉ•±¥…‰±”¥¹‘•Ñ•Éµ¥¹…Ñ”ÁÉ½É•ÍÌİ¥Ñ¡½ÕĞ¥¹Ù•¹Ñ¥¹œÁ•É•¹Ñ…”•ÍÑ¥µ…Ñ•Ì¸(´I•ÍÑ½É”İ½É­±½…Ù•É¥™¥…Ñ¥½¸¹½Ü…±±½İÌ„‰½Õ¹‘•É•…‘¥¹•ÍÌİ¥¹‘½Ü™½ÈÉ•…°…ÁÁ±¥…Ñ¥½¹ÌÑ¼É•… Í•ÉÙ¥”…¹!QQ@½Q1LÉ•…‘¥¹•ÍÌİ¡¥±”É•µ…¥¹¥¹œ™…¥°µ±½Í•¸(´ÁÁ±¥…Ñ¥½¸ÕÁ‘…Ñ•ÌÉ•ÕÍ”Ñ¡”•á¥ÍÑ¥¹œÁ±…¸½ÁÉ•™±¥¡Ğ½…ÁÁ±ä½Ù•É¥™ä±¥™•å±”…™Ñ•ÈÍ½ÕÉ”™…ÍĞµ™½Éİ…Éì‘ÕÉ…‰±”…ÁÁ±¥…Ñ¥½¹ÌÉ•ÅÕ¥É”•¥Ñ¡•È…¸•¹ÉåÁÑ•É•½Ù•ÉäÁ½¥¹Ğ½È•áÁ±¥¥Ğ€´µ¹¼µ‰…­ÕÁ€…­¹½İ±•‘•µ•¹Ğ‰•™½É”µÕÑ…Ñ¥½¸¸(´M•±˜µÕÁ‘…Ñ”­••ÁÌÍÑ…‰±”…ÌÑ¡”‘•™…Õ±ĞÉ•±•…Í”¡…¹¹•°°É•™ÕÍ•Ì‘½İ¹É…‘•Ì°¹•Ù•È¥¹Ù½­•ÌÍÕ‘½€…ÕÑ½µ…Ñ¥…±±ä…¹É•½¹¥±•ÌÑ¡”ÕÉÉ•¹ĞÉ•Á½Í¥Ñ½Éä…ÁÁ±¥…Ñ¥½¸Ñ¡É½Õ Ñ¡”¹½Éµ…°±¥™•å±”İ¡•¸…ÁÁ±¥…‰±”¸(´I•Á½Í¥Ñ½Éäİ½É­±½…Á½ÉĞ™…±±‰…¬ÁÉ•Í•ÉÙ•Ì•áÁ±¥¥Ğ½Á•É…Ñ½È•¹Ù¥É½¹µ•¹Ğ½Ù•ÉÉ¥‘•Ì…¹Á•ÉÍ¥ÍÑÌ	…Í•!…É‰½ÈµÍ•±•Ñ•™…±±‰…¬Ù…±Õ•Ì¥¸ÁÉ½Ñ•Ñ•ÉÕ¹Ñ¥µ”ÍÑ…Ñ”™½È±…Ñ•È±¥™•å±”½µµ…¹‘Ì¸((ŒŒŒM•ÕÉ¥Ñä((´Õ¥‘•‰…­ÕÀ½É•ÍÑ½É”Á…ÍÍİ½É‘Ì…É”¹•Ù•È…•ÁÑ•…Ì½µµ…¹µ±¥¹”Ù…±Õ•Ì…¹…É”Á…ÍÍ•Ñ¼Ñ¡”•á¥ÍÑ¥¹œ¡…É‘•¹•É•½Ù•ÉäÁ…Ñ Ñ¡É½Õ ½İ¹•Èµ½¹±ä¥¸µµ•µ½Éä™¥±”‘•ÍÉ¥ÁÑ½ÉÌ½¸1¥¹Õà¸(´UÁ‘…Ñ”µ•Ñ…‘…Ñ„É•½É‘Ì¹½¸µÍ•É•ĞÍÑ…Ñ”½¹±äìÉ…ÜÉÕ¹Ñ¥µ”•ÉÉ½ÉÌ°É•‘•¹Ñ¥…±Ì…¹Í•É•ĞÙ…±Õ•Ì…É”¹½ĞÁ•ÉÍ¥ÍÑ•¸(´Q1LÕÁ‘…Ñ•Ì™…¥°±½Í•½¸¥¹Ù…±¥­•äÁ…¥ÉÌ°E8µ¥Íµ…Ñ °‘½İ¹É…‘”…ÑÑ•µÁÑÌ½È™…¥±•İ½É­±½…É•½Ù•Éä…¹É•ÍÑ½É”Ñ¡”ÁÉ•Ù¥½ÕÌÁÉ½Ñ•Ñ••ÉÑ¥™¥…Ñ”ÍÑ…Ñ”½¸™…¥±ÕÉ”¸(´]½É­±½…µ½¹±ä…ÁÁ±¥…Ñ¥½¹Ì‘¼¹½ĞÉ••¥Ù”¥¹Ù•¹Ñ•‰…­•¹É•‘•¹Ñ¥…±Ì°‰…­•¹¹•Ñİ½É­Ì½ÈÍ•ÉÙ¥•ÌÑ¡…ĞÑ¡•ä‘¥¹½ĞÉ•ÅÕ•ÍĞ¸((ŒŒlÀ¸È¸Át€´€ÈÀÈØ´Àä´ÄÀ((ŒŒŒ‘‘•((´¹µÑ¼µ•¹‘•Ù•±½Á•Èµ©½ÕÉ¹•ä…•ÁÑ…¹”Ñ¡…ĞÙ…±¥‘…Ñ•Ì„±•…¸5…¥±±½Ü¡•­½ÕĞ……¥¹ÍĞÑ¡”•á…Ğ	…Í•!…É‰½È1$½ÉÕ¹Ñ¥µ”Õ¹‘•ÈÑ•ÍĞ¸(´I•±•…Í”µ™…¥¹œ$½Ù•É…”™½È½ÕÁ¥•‘•™…Õ±Ğ½¹ÑÉ½°µÁ±…¹”Á½ÉÑÌ°™…¥°µ±½Í•µ¥ÍÍ¥¹œ…ÁÁ±¥…Ñ¥½¸Í•É•ÑÌ°İ½É­±½…ÍÑ…ÉÑÕÀ°¡•…±Ñ ¡•­Ì…¹É•ÍÑ…ÉĞ‰•¡…Ù¥½È¸(´•Ù•±½Á•Èµ©½ÕÉ¹•ä‘½Õµ•¹Ñ…Ñ¥½¸‘•™¥¹¥¹œÑ¡”ÁÉ½‘ÕĞµ±•Ù•°…•ÁÑ…¹”ÁÉ½µ¥Í”™½È™ÕÑÕÉ”É•™•É•¹”…ÁÁ±¥…Ñ¥½¹Ì¸(´AÉ½©•Ğµ…İ…É”Õ¥‘•‰…¡„…ÁÀ¥¹¥Ñ€Ñ¡…Ğ‘•Ñ•ÑÌ½µµ½¸½µÁ½Í”™¥±•Ì°A½ÍÑÉ•ME0°I•‘¥Ì½Y…±­•ä°İ½É­±½…Í•ÉÙ¥•Ì…¹±¥­•±äÉ•ÅÕ¥É•Í•É•Ğ¹…µ•Ì‰•™½É”…Í­¥¹œÍ•ÑÕÀÅÕ•ÍÑ¥½¹Ì¸(´‰…¡„…ÁÀ¥¹¥Ğ€´µÅÕ¥­€™½È¹½¸µ¥¹Ñ•É…Ñ¥Ù”µ…¹¥™•ÍĞ•¹•É…Ñ¥½¸™É½´Õ¹…µ‰¥Õ½ÕÌ‘•Ñ•Ñ¥½¹Ì…¹Í…™”‘•™…Õ±ÑÌ¸(´Õ¥‘•A½ÍÑÉ•ME0…¹I•‘¥Ì½Y…±­•ä¥¹ÍÑ…¹”Í•±•Ñ¥½¸°¥¹±Õ‘¥¹œ…ÕÑ½µ…Ñ¥ŒÁÉ½Á½Í…±Ìİ¡•¸µÕ±Ñ¥Á±”‰…­•¹Í•ÉÙ¥•Ì…É”Ù¥Í¥‰±”¥¸Ñ¡”É•Á½Í¥Ñ½Éä¸(´Ñ¥½¹…‰±”É•ÅÕ¥É•µÍ•É•ĞÉ•…‘¥¹•ÍÌ½ÕÑÁÕĞİ¥Ñ •á…ĞÍ…™”‰…¡„…ÁÀÍ•É•ĞÍ•Ğ€ñ95ø€´µÍÑ‘¥¹€É•µ•‘¥…Ñ¥½¸½µµ…¹‘Ì¸(´áÁ±¥¥Ğ•¹•É…Ñ•…ÁÁ±¥…Ñ¥½¸Í•É•ÑÌ¥¸Í•É•ÑÌ¹É•ÅÕ¥É•‘€°İ¥Ñ ‰½Õ¹‘•ÉåÁÑ½É…Á¡¥…±±äÍ•ÕÉ”É…¹‘½µ€…¹¡•á€•¹•É…Ñ½ÉÌÁ•ÉÍ¥ÍÑ•‘¥É•Ñ±äÑ¼µ…¹…•=Á•¹	…¼ÍÑ½É…”¸(´I•Á½Í¥Ñ½Éäµ…İ…É”‰…¡„ÕÁ€¡…ÁÁäÁ…Ñ Ñ¡…Ğ…¸ÍÑ…ÉĞ½É•ÕÍ”Ñ¡”½¹ÑÉ½°Á±…¹”°ÁÉ•Á…É”=Á•¹	…¼°½¹Ù•É”‘•±…É•…ÁÁ±¥…Ñ¥½¸‰…­•¹‘Ì°ÍÑ…ÉĞÑ¡”É•Á½Í¥Ñ½Éäİ½É­±½……¹Ù•É¥™äÉ•…‘¥¹•ÍÌ™É½´½¹”½µµ…¹¸(´áÁ±¥¥Ğ‰…¡„ÕÀ€´µ½¹ÑÉ½°µÁ±…¹”µ½¹±å€…‘Ù…¹•µ½‘”™½È½Á•É…Ñ½ÉÌ…¹$™±½İÌÑ¡…Ğ¥¹Ñ•¹Ñ¥½¹…±±äİ…¹ĞÑ¼Í­¥ÀÉ•Á½Í¥Ñ½Éä…ÁÁ±¥…Ñ¥½¸½¹Ù•É•¹”¸((ŒŒŒ¡…¹•((´%¹Ñ•É…Ñ¥Ù”…ÁÁ±¥…Ñ¥½¸¥¹¥Ñ¥…±¥é…Ñ¥½¸¹½Ü™½±±½İÌÑ¡”ÉÕ±”€‰‘•Ñ•Ğ™¥ÉÍĞ°…Í¬½¹±äİ¡…Ğ¥ÌÕ¹±•…Èˆİ¡¥±”Ñ¡”•á¥ÍÑ¥¹œ•áÁ±¥¥Ğ™±…ÌÉ•µ…¥¸Ñ¡”‘•Ñ•Éµ¥¹¥ÍÑ¥Œ$½…ÕÑ½µ…Ñ¥½¸Á…Ñ ¸(´ÁÁ±¥…Ñ¥½¸¥¹¥Ñ¥…±¥é…Ñ¥½¸ÁÉ•Ù¥•İÌÑ¡”•¹•É…Ñ•µ…¹¥™•ÍĞ…¹¹•Ù•È½Á¥•Ì‘•Ñ•Ñ•Í•É•ĞÙ…±Õ•Ì¥¹Ñ¼‰…Í•¡…É‰½È¹å…µ±€¸(´‰…¡„…ÁÀ¥¹¥Ğ€´µÅÕ¥­€¹½ÜÁÉ•Í•ÉÙ•ÌµÕ±Ñ¥Á±”‘•Ñ•Ñ•±½¥…°A½ÍÑÉ•ME0…¹I•‘¥Ì½Y…±­•ä¥¹ÍÑ…¹•Ì¥¹ÍÑ•…½˜½±±…ÁÍ¥¹œÑ¡•´¥¹Ñ¼½¹”‘•™…Õ±ĞÍ•ÉÙ¥”¸(´I•ÅÕ¥É•µÍ•É•Ğ¡•­Ì¹½Ü‘¥ÍÑ¥¹Õ¥Í ½¹™¥ÕÉ•°µ¥ÍÍ¥¹œ…¹Õ¹ÕÍ…‰±”Ù…±Õ•Ì…¹•áÁ±¥¥Ñ±äÉ•Á½ÉĞİ¡•¸¹¼…ÁÁ±¥…Ñ¥½¸Í•É•ÑÌ¡…Ù”‰••¸½¹™¥ÕÉ•å•Ğ¸(´‰…¡„…ÁÀ…ÁÁ±å€¹½Ü•¹•É…Ñ•Ì½¹±ä•áÁ±¥¥Ñ±ä‘•±…É•µ¥ÍÍ¥¹œ•¹•É…Ñ•Í•É•ÑÌ‰•™½É”Ñ¡”¹½Éµ…°É•ÅÕ¥É•µÍ•É•Ğ…Ñ”ì•á¥ÍÑ¥¹œÙ…±Õ•Ì…É”¹•Ù•È…ÕÑ½µ…Ñ¥…±±ä½Ù•ÉİÉ¥ÑÑ•¸½ÈÉ½Ñ…Ñ•°…¹•áÑ•É¹…°Í•É•ÑÌÉ•µ…¥¸™…¥°µ±½Í•ÕÍ•È¥¹ÁÕĞ¸(´™É•Í µ…¹…•µÍ•É•ĞÉ•Á½Í¥Ñ½ÉäÍÑ…ÉÑÕÀÑ¡É½Õ ‰…¡„ÕÁ€¹½Ü…Í­Ì™½È…¸½Á•É…Ñ½Èµ¡•±É•½Ù•ÉäÁ…Ñ ¥¹Ñ•É…Ñ¥Ù•±ä½ÈÉ•ÅÕ¥É•Ì€´µÉ•½Ù•Éäµ™¥±”AQ!€¥¸¹½¸µ¥¹Ñ•É…Ñ¥Ù”µ½‘”¥¹ÍÑ•…½˜É•ÅÕ¥É¥¹œ„Í•Á…É…Ñ”=Á•¹	…¼‰½½ÑÍÑÉ…À½µµ…¹¸(´‰…¡„ÕÁ€¹½ÜÉ½ÕÑ•Ì‘•Ñ•Ñ•…ÁÁ±¥…Ñ¥½¸ÁÉ½©•ÑÌİ¥Ñ¡½ÕĞ‰…Í•¡…É‰½È¹å…µ±€¥¹Ñ¼Ñ¡”•á¥ÍÑ¥¹œÕ¥‘•…ÁÀµ¥¹¥Ğ™±½Üì€´µå•Í€ÕÍ•Ì½¹±äÕ¹…µ‰¥Õ½ÕÌ‘•Ñ•Ñ¥½¹Ì…¹Í…™”…ÁÀ¥¹¥Ğ€´µÅÕ¥­€‘•™…Õ±ÑÌ°İ¡¥±”…µ‰¥Õ½ÕÌÁÉ½©•ÑÌÉ•µ…¥¸™…¥°µ±½Í•¸(´…ÁÀ¹•¹Ù¥É½¹µ•¹Ñ€¥Ì•áÁ±¥¥Ñ±ä‘•™¥¹•…Ì‘•Á±½åµ•¹Ğ½¹Ñ•áĞÉ…Ñ¡•ÈÑ¡…¸¥¹ÑÉ¥¹Í¥Œ…ÁÁ±¥…Ñ¥½¸¥‘•¹Ñ¥Ñä°ÁÉ•Í•ÉÙ¥¹œ„Á…Ñ ™½ÈÑ¡”Í…µ”±½¥…°…ÁÁ±¥…Ñ¥½¸Ñ¼ÉÕ¸¥¸µÕ±Ñ¥Á±”™ÕÑÕÉ”•¹Ù¥É½¹µ•¹ÑÌ½ÁÉ½Ù¥‘•ÉÌ¸(´½µÁ½Í”É•µ…¥¹ÌÑ¡”½µÁ±•Ñ”ØÀ¹àÉÕ¹Ñ¥µ”Ñ…É•Ğİ¡¥±”ÁÉ½Ù¥‘•ÈµÍÁ•¥™¥Œ‘•Ñ…¥±ÌÍÑ…ä½ÕÑÍ¥‘”Á½ÉÑ…‰±”…ÁÁ±¥…Ñ¥½¸É•ÅÕ¥É•µ•¹ÑÌ¸(´5…¥±±½Ü…•ÁÑ…¹”¹½ÜÙ…±¥‘…Ñ•ÌÑ¡”É•…°5…¥±±½Üµ…¥¹€‰É…¹ ¥¹ÍÑ•…½˜Ñ¡”Ñ•µÁ½É…ÉäØÀ¸È½µÁ…Ñ¥‰¥±¥Ñä‰É…¹ ÕÍ•‘ÕÉ¥¹œÁÉ”µÉ•±•…Í”¥¹Ñ•É…Ñ¥½¸¸((ŒŒŒI•µ½Ù•((´Q•µÁ½É…Éä5…¥±±½ÜØÀ¸ÈÙ…±¥‘…Ñ¥½¸µÍå¹Œµ…É­•È…¥‘•¹Ñ…±±äµ•É•İ¥Ñ Ñ¡”Ù…±¥‘…Ñ¥½¸µ½¹±ä½µÁ…Ñ¥‰¥±¥ÑäAH¸((ŒŒlÀ¸Ä¸ÀµÉŒ¸Åt€´€ÈÀÈØ´Àä´Àä((ŒŒŒ‘‘•((´½Éµ…°M•µ…¹Ñ¥ŒY•ÉÍ¥½¹¥¹œ…¹¥Ñ!ÕˆI•±•…Í”ÁÉ½•ÍÌ™½ÈÑ¡”‰…¡…€1$¸(´I•ÁÉ½‘Õ¥‰±”É•±•…Í”…É¡¥Ù•Ì™½È1¥¹Õà…µØĞ…¹…É´ØĞ¸(´M!´ÈÔØ¡•­ÍÕµÌ…¹¥Ñ!Õˆ‰Õ¥±µÁÉ½Ù•¹…¹”…ÑÑ•ÍÑ…Ñ¥½¹Ì™½ÈÉ•±•…Í”…ÉÑ¥™…ÑÌ¸(´Y•ÉÍ¥½¹•ÉÕ¹Ñ¥µ”½¹Ñ…¥¹•ÈÑ…Ì…±¥¹•İ¥Ñ 1$É•±•…Í•Ì¸(´Y•É¥™¥•É•±•…Í”¥¹ÍÑ…±±•È™½ÈÉ•±•…Í•‰…¡…€‰¥¹…É¥•Ì¸(´	¥±¥¹Õ…°¥Ñ!ÕˆA…•Ì‘½Õµ•¹Ñ…Ñ¥½¸İ¥Ñ ¹±¥Í …ÌÑ¡”‘•™…Õ±Ğ…¹•Éµ…¸Õ¹‘•È€½‘”½€¸((ŒŒŒ¡…¹•((´Q¡”µ½Ù¥¹œ‘•Ù•±½Áµ•¹Ğ½¹Ñ…¥¹•ÈÑ…œ¥Ì•‘•€ì±…Ñ•ÍÑ€¥ÌÉ•Í•ÉÙ•™½ÈÍÑ…‰±”É•±•…Í•Ì¸(´½¹ÑÉ½°µÁ±…¹”ÉÕ¹Ñ¥µ”ÍÑ…Ñ”¥ÌÕÍ•Èµ±½‰…°‰ä‘•™…Õ±Ğ¥¹ÍÑ•…½˜É•Á½Í¥Ñ½ÉäµÉ•±…Ñ¥Ù”¸(´I•¹½Ù…Ñ”…ÕÑ½µ…Ñ¥½¸¥ÌÉ•ÍÑÉ¥Ñ•Ñ¼±½ÜµÉ¥Í¬ÕÁ‘…Ñ•ÌìÁ±…Ñ™½É´°µ…©½È…¹Í•ÕÉ¥ÑäµÍ•¹Í¥Ñ¥Ù”¡…¹•ÌÉ•ÅÕ¥É”É•Ù¥•Ü¸(´ÁÁ±¥…Ñ¥½¸ÉÕ¹Ñ¥µ”ÍÑ…ÉÑÕÀ¹½ÜÉ•ÑÉ¥•ÌÑÉ…¹Í¥•¹Ğ±½½Á‰…¬¡½ÍĞµÁ½ÉĞ‰¥¹É…•Ìİ¥Ñ¡½ÕĞ¡…¹¥¹œÉ•‘•¹Ñ¥…±Ì°‘…Ñ…‰…Í”¹…µ•Ì°½ÈÁ•ÉÍ¥ÍÑ•Ù½±Õµ•Ì¸((ŒŒŒI•±•…Í”…¹‘¥‘…Ñ”Í½Á”((´Q¡¥ÌÉ•±•…Í”…¹‘¥‘…Ñ”Ù…±¥‘…Ñ•ÌÑ¡”É•…°¥Ñ!ÕˆÁÕ‰±¥Í¡¥¹œÁ…Ñ ‰•™½É”ØÀ¸Ä¸Á€¸(´%Ğ¥Ì¥¹Ñ•¹Ñ¥½¹…±±ä¹½Ğµ…É­•…ÌÑ¡”±…Ñ•ÍĞÍÑ…‰±”É•±•…Í”¸()mU¹É•±•…Í•‘tè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ää¸¸¹!)lÀ¸Ğ¸Äåtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Äà¸¸¹ØÀ¸Ğ¸Ää)lÀ¸Ğ¸Äátè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÜ¸¸¹ØÀ¸Ğ¸Äà)lÀ¸Ğ¸Äİtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄØ¸¸¹ØÀ¸Ğ¸ÄÜ)lÀ¸Ğ¸ÄÙtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÔ¸Ä¸¸¹ØÀ¸Ğ¸ÄØ)lÀ¸Ğ¸ÄÔ¸Åtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÔ¸¸¹ØÀ¸Ğ¸ÄÔ¸Ä)lÀ¸Ğ¸ÄÕtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄĞ¸¸¹ØÀ¸Ğ¸ÄÔ)lÀ¸Ğ¸ÄÑtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÌ¸¸¹ØÀ¸Ğ¸ÄĞ)lÀ¸Ğ¸ÄÍtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÈ¸¸¹ØÀ¸Ğ¸ÄÌ)lÀ¸Ğ¸ÄÉtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÄ¸¸¹ØÀ¸Ğ¸ÄÈ)lÀ¸Ğ¸ÄÅtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ÄÀ¸¸¹ØÀ¸Ğ¸ÄÄ)lÀ¸Ğ¸ÄÁtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸ä¸¸¹ØÀ¸Ğ¸ÄÀ)lÀ¸Ğ¸åtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸à¸¸¹ØÀ¸Ğ¸ä)lÀ¸Ğ¸átè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ü¸¸¹ØÀ¸Ğ¸à)lÀ¸Ğ¸İtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ø¸¸¹ØÀ¸Ğ¸Ü)lÀ¸Ğ¸Ùtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ô¸¸¹ØÀ¸Ğ¸Ø)lÀ¸Ğ¸Õtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ğ¸¸¹ØÀ¸Ğ¸Ô)lÀ¸Ğ¸Ñtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ì¸¸¹ØÀ¸Ğ¸Ğ)lÀ¸Ğ¸Ítè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸È¸¸¹ØÀ¸Ğ¸Ì)lÀ¸Ğ¸Étè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸Ä¸¸¹ØÀ¸Ğ¸È)lÀ¸Ğ¸Åtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ğ¸À¸¸¹ØÀ¸Ğ¸Ä)lÀ¸Ğ¸Átè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ì¸À¸¸¹ØÀ¸Ğ¸À)lÀ¸Ì¸Átè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸È¸À¸¸¹ØÀ¸Ì¸À)lÀ¸È¸Átè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½½µÁ…É”½ØÀ¸Ä¸ÀµÉŒ¸Ä¸¸¹ØÀ¸È¸À)lÀ¸Ä¸ÀµÉŒ¸Åtè¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½µÁ‘•ØàÀ½‰…Í•¡…É‰½È½É•±•…Í•Ì½Ñ…œ½ØÀ¸Ä¸ÀµÉŒ¸Ä(
