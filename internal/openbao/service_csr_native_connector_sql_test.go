@@ -125,7 +125,7 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("generated SQL apply failed", err)
 	}
 	verify()
-	record := staged.Record()
+	record := persistNativeSQLProject(t, f.dir, m, staged.Record())
 	runtime, err = targetsession.NewProjectRuntime(pool, scope)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +138,7 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 		t.Fatal("generated SQL repair failed", err)
 	}
 	verify()
+	t.Log("protected deployment registry round-trip restored the same immutable SQL project without restaging; Application lifecycle not qualified")
 	if f.engine == "podman" {
 		err = runtime.DestroyQuadletGraph(ctx, staged, quadletUnits)
 	} else {
