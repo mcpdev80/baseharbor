@@ -139,6 +139,10 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 	}
 	verify()
 	t.Log("protected deployment registry round-trip restored the same immutable SQL project without restaging; Application lifecycle not qualified")
+	retainedVolume := ""
+	if f.engine == "podman" {
+		retainedVolume = f.sqlVolumeIdentity(t, ctx, projection.Project)
+	}
 	if f.engine == "podman" {
 		err = runtime.DestroyQuadletGraph(ctx, staged, quadletUnits)
 	} else {
@@ -159,11 +163,7 @@ func (f *nativeConnectorFixture) sqlProject(t *testing.T, ctx context.Context, p
 			}
 		}
 	} else {
-		out, err := exec.CommandContext(ctx, "podman", "volume", "ls", "-q", "--filter", "label=com.docker.compose.project="+projection.Project).Output()
-		if err != nil || len(strings.Fields(string(out))) != 1 {
-			t.Fatal("ordinary SQL destroy did not preserve its owned data volume", err)
-		}
-		t.Log("ordinary generated SQL Quadlet destroy preserved its owned provider data; explicit owned reset not qualified")
+		f.reapplyRetainedSQL(t, ctx, runtime, staged, quadletUnits, projection.Project, retainedVolume, verify)
 	}
 	if f.inventory(t, ctx, pool, scope) == "" {
 		t.Fatal("SQL reset damaged the foreign fixture")
