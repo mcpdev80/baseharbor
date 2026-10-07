@@ -31,6 +31,9 @@ func ProjectRemoteQuadletGraph(compose, env, project string, members []string) (
 	if err != nil {
 		return ProjectedQuadletGraph{}, err
 	}
+	if len(graph.CompletedServices) != 0 {
+		return ProjectedQuadletGraph{}, errors.New("remote Quadlet completion dependencies require a qualified init-workload adapter")
+	}
 	root, err := filepath.Abs(filepath.Dir(compose))
 	if err != nil {
 		return ProjectedQuadletGraph{}, err
@@ -83,5 +86,5 @@ func ProjectRemoteQuadletGraph(compose, env, project string, members []string) (
 		}
 	}
 	sort.Strings(result.Units)
-	return result, nil
+	return compactGraphUnitNames(result)
 }
