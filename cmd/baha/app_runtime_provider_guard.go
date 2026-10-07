@@ -94,7 +94,7 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 			// cannot confidently identify an application target.
 			return baseRun(ctx, args, out, errOut)
 		}
-		if label == "app status" && hasRemoteApplicationTarget(resolved) {
+		if hasRemoteApplicationTarget(resolved) && (label == "app status" || label == "app doctor" || label == "app destroy") {
 			if _, err := remoteApplicationProjectRuntime(ctx, resolved); err != nil {
 				return err
 			}

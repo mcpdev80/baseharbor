@@ -61,6 +61,21 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, m.Environment),
 		manifest:        m,
 	}
+	if isRemoteApplication(resolved) {
+		status, err := collectRemoteApplicationStatus(ctx, resolved)
+		if err != nil {
+			return &applicationDoctorCollector{result: result}, true, err
+		}
+		result.State, result.Healthy = status.State, status.Ready
+		for _, check := range status.Checks {
+			var failure error
+			if !check.OK {
+				failure = errors.New(check.Detail)
+			}
+			result.Checks = append(result.Checks, preflight.Result{Name: "running services", OK: check.OK, Detail: check.Detail, Err: failure})
+		}
+		return &applicationDoctorCollector{resolved: resolved, manifest: m, result: result}, true, nil
+	}
 
 	files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 	if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {

@@ -50,6 +50,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if err != nil {
 		return err
 	}
+	if isRemoteApplication(execution.resolved) {
+		return executeRemoteApplicationApply(ctx, execution.resolved, out)
+	}
 	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return execution.recordFailedDeployment(err)
 	}

@@ -36,6 +36,9 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 	if err != nil {
 		return err
 	}
+	if isRemoteApplication(execution.resolved) {
+		return executeRemoteApplicationApply(ctx, execution.resolved, out)
+	}
 	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return err
 	}
@@ -74,6 +77,9 @@ func newApplicationUpExecution(ctx context.Context, store application.Store, arg
 	}
 	if err := printResolvedLogsPlacement(out, resolved); err != nil {
 		return nil, err
+	}
+	if isRemoteApplication(resolved) {
+		return &applicationUpExecution{resolved: resolved, manifest: m, term: term, out: out, providers: &managedProviderPreflightState{}}, nil
 	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {

@@ -42,13 +42,13 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 }
 
 func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolvedApplication) (*applicationStatusCollection, bool, error) {
+	if isRemoteApplication(resolved) {
+		result, err := collectRemoteApplicationStatus(ctx, resolved)
+		return &applicationStatusCollection{resolved: resolved, manifest: resolved.Manifest, result: result}, true, err
+	}
 	m := resolved.Manifest
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return &applicationStatusCollection{}, false, err
-	}
-	if hasRemoteApplicationTarget(resolved) {
-		result, err := collectRemoteApplicationStatus(ctx, resolved)
-		return &applicationStatusCollection{resolved: resolved, manifest: m, result: result}, true, err
 	}
 
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)

@@ -210,6 +210,26 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if err != nil {
 		return err
 	}
+	if isRemoteApplication(execution.resolved) {
+		runtime, intent, err := restoreRemoteApplication(ctx, execution.resolved)
+		if err != nil {
+			return err
+		}
+		if !execution.confirmed {
+			fmt.Fprintln(out, "No changes were made. Re-run with --yes to delete the owned remote Application runtime.")
+			return nil
+		}
+		if err := runtime.DestroyApplication(ctx, intent, execution.fullReset); err != nil {
+			return err
+		}
+		if err := runtime.RemoveSnapshot(execution.resolved.stateRoot()); err != nil {
+			return err
+		}
+		if err := execution.removeApplicationState(); err != nil {
+			return err
+		}
+		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "ownership verified", "retained remote Application publication destroyed with owned cleanup verified")
+	}
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}

@@ -164,6 +164,7 @@ func nativeBaoConnectorEnrollment(t *testing.T, ctx context.Context, executor Ex
 	fixture.exec(t, ctx, pool, scope, resourceID)
 	fixture.projectLifecycle(t, ctx, pool, scope)
 	fixture.sqlProject(t, ctx, pool, scope, issuer)
+	fixture.applicationProject(t, ctx, pool, scope, issuer)
 	fixture.completedServices(t, ctx, pool, scope)
 	roots := currentRoots.Load()
 	if _, err := original.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err == nil {

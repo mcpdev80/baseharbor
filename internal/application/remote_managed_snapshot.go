@@ -96,6 +96,35 @@ func syncRemoteSnapshot(root *os.Root) error {
 	return directory.Sync()
 }
 
+// RemoveSnapshot is only called after authenticated owned teardown. The exact
+// publication must match the retained deployment before removal.
+func (r *RemoteManagedRuntime) RemoveSnapshot(stateDir string) error {
+	if r == nil || r.project == nil {
+		return errors.New("remote publication is unavailable")
+	}
+	root, err := openRemoteSnapshotRoot(stateDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	snapshot, err := readRemoteSnapshot(root)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(snapshot.Record, r.Record()) {
+		return errors.New("remote publication changed before snapshot cleanup")
+	}
+	if err := root.Remove(remoteManagedSnapshotFile); err != nil {
+		return err
+	}
+	directory, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}
+
 // RestoreRemoteManagedSnapshot does not regenerate material, build sources or
 // stage another bundle. The caller supplies the protected registry receipt and
 // the current authorized Node scope; the snapshot supplies only original bytes.

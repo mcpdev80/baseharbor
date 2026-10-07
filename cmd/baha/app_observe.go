@@ -39,6 +39,10 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 }
 
 func collectResolvedApplicationStatus(ctx context.Context, resolved resolvedApplication) (application.StatusResult, repositoryWorkloadStatus, error) {
+	if isRemoteApplication(resolved) {
+		result, err := collectRemoteApplicationStatus(ctx, resolved)
+		return result, repositoryWorkloadStatus{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, applicationStatusTimeout)
 	defer cancel()
 	collection, done, err := newResolvedApplicationStatusCollection(ctx, resolved)

@@ -71,6 +71,9 @@ func newApplicationDestroyExecution(ctx context.Context, store application.Store
 		return nil, err
 	}
 
+	if isRemoteApplication(resolved) {
+		return &applicationDestroyExecution{resolved: resolved, manifest: m, out: out, confirmed: confirmed, fullReset: fullReset}, nil
+	}
 	files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
 	partialRuntime := false
 	if errors.Is(runtimeErr, application.ErrRuntimeNotApplied) {

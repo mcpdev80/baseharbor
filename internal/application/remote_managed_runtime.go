@@ -30,11 +30,15 @@ type RemoteManagedRuntime struct {
 }
 
 func NewRemoteManagedRuntime(transport targetsession.ProjectTransport, scope targetenrollment.Scope, files RuntimeFiles, manifest Manifest) (*RemoteManagedRuntime, error) {
-	runtime, err := targetsession.NewProjectRuntime(transport, scope)
+	projection, err := ProjectManagedRuntime(files, manifest)
 	if err != nil {
 		return nil, err
 	}
-	projection, err := ProjectManagedRuntime(files, manifest)
+	return newRemoteProjectedRuntime(transport, scope, projection)
+}
+
+func newRemoteProjectedRuntime(transport targetsession.ProjectTransport, scope targetenrollment.Scope, projection ManagedRuntimeProjection) (*RemoteManagedRuntime, error) {
+	runtime, err := targetsession.NewProjectRuntime(transport, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +70,25 @@ func NewRemoteManagedRuntime(transport targetsession.ProjectTransport, scope tar
 		}
 	}
 	return result, nil
+}
+
+// ApplyServices converges an explicit phase of the same protected publication.
+// Provider and workload phases therefore cannot accidentally start each other.
+func (r *RemoteManagedRuntime) ApplyServices(ctx context.Context, services []string, repair bool) error {
+	if r == nil || r.project == nil || len(services) == 0 {
+		return errors.New("remote application phase has no protected publication")
+	}
+	if r.kind == "docker" {
+		return r.runtime.ApplyComposeSelected(ctx, r.project, []string{r.compose}, r.env, services, repair)
+	}
+	selected, init, err := r.quadletServices(services)
+	if err != nil {
+		return err
+	}
+	if len(init) != 0 {
+		return r.runtime.ApplyQuadletInitGraph(ctx, r.project, selected, init)
+	}
+	return r.runtime.ApplyQuadletGraph(ctx, r.project, selected)
 }
 
 // Compile only the protected snapshot, not mutable original Core paths. The

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -13,28 +15,22 @@ func hasRemoteApplicationTarget(resolved resolvedApplication) bool {
 	return resolved.Target.AccessProvider != "" && resolved.Target.AccessProvider != "local"
 }
 
-// Local file absence cannot establish remote absence. Read the protected
-// deployment binding and fresh, independently owned Node inventory instead.
-// A provider observation does not qualify the complete Application lifecycle.
 func collectRemoteApplicationStatus(ctx context.Context, resolved resolvedApplication) (application.StatusResult, error) {
-	runtime, err := remoteApplicationProjectRuntime(ctx, resolved)
+	result := application.StatusResult{ContractVersion: "v1", Target: resolved.Target.Name, Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, Manifest: resolved.ManifestPath, State: "incomplete", Checks: []application.StatusCheck{}}
+	runtime, manifest, err := restoreRemoteApplication(ctx, resolved)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, application.ErrRuntimeNotApplied) {
+		return result, machine.NewError(machine.ErrorRuntimeUnavailable, "Remote application has no retained Application publication.", "Inspect protected deployment state; local file absence cannot establish remote absence.", false)
+	}
 	if err != nil {
-		return application.StatusResult{}, err
+		return result, err
 	}
-	record, err := retainedRemoteProject(resolved)
+	result.Project, result.State, result.Ready = runtime.Record().BundleID, "running", true
+	err = runtime.VerifyApplication(ctx, manifest)
+	result.AddCheck("remote Application readiness", err == nil, "owned service state and authenticated backend protocol readiness")
 	if err != nil {
-		return application.StatusResult{}, err
+		result.State = "degraded"
 	}
-	if record == nil {
-		return application.StatusResult{}, machine.NewError(machine.ErrorRuntimeUnavailable,
-			"Remote application has no protected publication binding.",
-			"Inspect this installation's deployment state before retrying; local file absence cannot establish remote absence.", false)
-	}
-	observed, err := runtime.ObserveProject(ctx, record.BundleID)
-	if err != nil {
-		return application.StatusResult{}, err
-	}
-	return remoteApplicationStatusObservation(resolved, record.BundleID, observed), nil
+	return result, nil
 }
 
 func remoteApplicationStatusObservation(resolved resolvedApplication, project string, observed []targetsession.ProjectService) application.StatusResult {
