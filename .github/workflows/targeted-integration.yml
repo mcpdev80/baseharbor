@@ -222,7 +222,7 @@ jobs:
           retention-days: 90
 
   v0421_ha:
-    if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
+    if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 25
@@ -230,7 +230,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || fromJSON('["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
     steps:
@@ -243,7 +243,7 @@ jobs:
           payload="${GITHUB_REF_NAME#"$prefix"}"
           gate="${payload%%/*}"
           case "$gate" in
-            control-plane|control-plane-single|keycloak|otel|gateway|shared-postgres|owned-volumes) ;;
+            control-plane|control-plane-single|keycloak|loki|otel|gateway|shared-postgres|owned-volumes) ;;
             *) echo "unsupported targeted runtime gate: $gate" >&2; exit 2 ;;
           esac
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
@@ -292,6 +292,9 @@ jobs:
               ;;
             keycloak)
               BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1 go test -p 1 ./internal/identityprovider -run '^TestKeycloakHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 18m -v
+              ;;
+            loki)
+              BASEHARBOR_LOKI_HA_ACCEPTANCE=1 go test -p 1 ./internal/logs -run '^TestLokiHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v
               ;;
             otel)
               BASEHARBOR_OTEL_HA_ACCEPTANCE=1 go test -p 1 ./internal/telemetry -run '^TestOTelHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v
