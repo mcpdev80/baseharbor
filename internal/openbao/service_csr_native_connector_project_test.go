@@ -123,6 +123,7 @@ func (f *nativeConnectorFixture) projectLifecycle(t *testing.T, ctx context.Cont
 	if f.engine == "podman" {
 		f.quadletDependencyGraph(t, ctx, pool, scope)
 		f.quadletCompletion(t, ctx, pool, scope)
+		f.quadletInitGraph(t, ctx, pool, scope)
 	}
 }
 

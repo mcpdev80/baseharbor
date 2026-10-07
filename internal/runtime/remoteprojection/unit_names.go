@@ -72,6 +72,14 @@ func compactGraphUnitNames(graph ProjectedQuadletGraph) (ProjectedQuadletGraph, 
 		result.Units = append(result.Units, bounded)
 	}
 	sort.Strings(result.Units)
+	for _, name := range graph.InitUnits {
+		bounded, ok := files[name]
+		if !ok || filepath.Ext(name) != ".container" {
+			return ProjectedQuadletGraph{}, errors.New("init unit is outside projected graph")
+		}
+		result.InitUnits = append(result.InitUnits, bounded)
+	}
+	sort.Strings(result.InitUnits)
 	return result, nil
 }
 

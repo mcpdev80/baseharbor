@@ -11,14 +11,26 @@ import (
 )
 
 type ProjectedQuadletGraph struct {
-	Files map[string]string
-	Units []string
+	Files     map[string]string
+	Units     []string
+	InitUnits []string
 }
 
 // ProjectRemoteQuadletGraph realizes an already Core-validated Compose project.
 // File references must resolve to approved bundle members, not a Core checkout.
 // The node resolves explicit markers beneath its own immutable bundle root.
 func ProjectRemoteQuadletGraph(compose, env, project string, members []string) (ProjectedQuadletGraph, error) {
+	return projectRemoteQuadletGraph(compose, env, project, members, false)
+}
+
+// ProjectRemoteQuadletInitGraph requires Core's completion-aware applier. It
+// removes native implicit init activation and delegates completion to the
+// authenticated, exact-source observation rather than a shell state heuristic.
+func ProjectRemoteQuadletInitGraph(compose, env, project string, members []string) (ProjectedQuadletGraph, error) {
+	return projectRemoteQuadletGraph(compose, env, project, members, true)
+}
+
+func projectRemoteQuadletGraph(compose, env, project string, members []string, completion bool) (ProjectedQuadletGraph, error) {
 	allowed := map[string]bool{}
 	for _, member := range members {
 		if member == "" || member == "." || member == ".." || path.Clean(member) != member ||
@@ -31,14 +43,18 @@ func ProjectRemoteQuadletGraph(compose, env, project string, members []string) (
 	if err != nil {
 		return ProjectedQuadletGraph{}, err
 	}
-	if len(graph.CompletedServices) != 0 {
+	if len(graph.CompletedServices) != 0 && !completion {
 		return ProjectedQuadletGraph{}, errors.New("remote Quadlet completion dependencies require a qualified init-workload adapter")
+	}
+	initUnits, err := prepareRemoteInitUnits(&graph)
+	if err != nil {
+		return ProjectedQuadletGraph{}, err
 	}
 	root, err := filepath.Abs(filepath.Dir(compose))
 	if err != nil {
 		return ProjectedQuadletGraph{}, err
 	}
-	result := ProjectedQuadletGraph{Files: map[string]string{}}
+	result := ProjectedQuadletGraph{Files: map[string]string{}, InitUnits: initUnits}
 	for name := range graph.Files {
 		if filepath.Ext(name) == ".env" {
 			allowed[name] = true

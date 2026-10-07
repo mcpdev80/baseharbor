@@ -427,3 +427,17 @@ unresolved request content) and `completed: true`. Core revalidates all four
 fields against its scoped immutable project before accepting the observation.
 This primitive does not itself qualify the complete remote Application lifecycle
 or authorize enabling unqualified completion-dependency realization.
+
+## Completion-aware remote graph sequencing
+
+Core's explicit completion-aware projector marks the generated init units and
+keeps dependency ordering while removing native implicit activation of those
+units. It also removes the generated `ExecStartPre` shell state heuristic.
+The ordinary projector continues to refuse completion dependencies.
+
+The completion-aware applier validates the whole graph and capability set before
+publication, publishes all units without starting containers, and activates them
+in dependency order. Each init unit must pass the source-bound observation before
+its dependent starts. Waiting is bounded by the caller and a two-minute graph
+limit; only observations repeat. Failed or interrupted mutations are never
+replayed. These project mechanics do not establish full Application qualification.
