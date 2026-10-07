@@ -53,7 +53,6 @@ nav:
 - Start: index.md
 - Einstieg:
   - Erste Application: tutorials/getting-started.md
-  - Homelab: tutorials/homelab.md
   - Core-Ressourcen: explanation/core-resources.md
   - CLI-Überblick: cli/index.md
 - Applications:
@@ -152,5 +151,5 @@ nav:
     - Standards matrix (EN): https://mcpdev80.github.io/baseharbor/spec/standards-matrix/
 - Projekt:
   - Roadmap (EN): https://mcpdev80.github.io/baseharbor/roadmap/
-  - Release Notes (EN): https://mcpdev80.github.io/baseharbor/releases/
+  - Release Notes: releases/index.md
   - Release-Referenz (EN): https://mcpdev80.github.io/baseharbor/reference/releases/
