@@ -289,8 +289,11 @@ Missing exit status, changed ownership or ambiguous replicas deny execution;
 remote diagnostics are not returned as error details. Bundle identifiers follow
 the Node's bounded immutable publication contract.
 
-Remote application prerequisites select the local installation authority bound
-at protected enrollment startup, independently of the execution node. The
+Operator API startup binds one local installation even when Connector enrollment
+is disabled. Enrollment and outbound sessions use that same startup selection;
+per-application runtime brokers do not become installation authorities.
+Remote application prerequisites select that bound local installation authority,
+independently of the execution node. The
 request must retain its verified tenant/identity and owned Target. It cannot
 select another Core through application preferences or bootstrap a second Core
 on the node. Live SQL/Secrets/Identity readiness of the bound installation is

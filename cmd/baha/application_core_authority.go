@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
@@ -16,6 +18,20 @@ type coreAuthorityContextKey struct{}
 // cannot choose another installation or cause a remote node to bootstrap one.
 func withCoreAuthority(ctx context.Context, authority deployment.ResolvedTarget) context.Context {
 	return context.WithValue(ctx, coreAuthorityContextKey{}, authority)
+}
+
+// Operator API startup pins its installation even when Connector enrollment
+// is disabled. Per-application runtime brokers do not use this constructor.
+func newInstallationMachineExecutor(ctx context.Context, store application.Store) (machinehttp.Executor, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if target.AccessProvider != "" && target.AccessProvider != string(targetaccess.ProviderLocal) {
+		return nil, machine.NewError(machine.ErrorCapabilityMissing,
+			"Core API startup requires its local installation Target.", "Select the local Core installation before starting the API.", false)
+	}
+	return &bahaMachineExecutor{store: store, coreAuthority: &target}, nil
 }
 
 func checkBoundCoreTarget(ctx context.Context, selected deployment.ResolvedTarget) error {

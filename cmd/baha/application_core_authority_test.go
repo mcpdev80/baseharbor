@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identity"
@@ -162,7 +163,11 @@ func TestCoreSetupHTTPRejectsExecutionNodeWithoutInstallationState(t *testing.T)
 	for _, bound := range []bool{false, true} {
 		executor := &bahaMachineExecutor{}
 		if bound {
-			executor.coreAuthority = &core
+			created, err := newInstallationMachineExecutor(withTargetOverride(ctx, core.Name), application.Store{Root: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			executor = created.(*bahaMachineExecutor)
 		}
 		_, err := executor.Execute(ctx, machine.Operation{ID: "control-plane.up"},
 			machine.OperationContext{Target: node.Name, Environment: "dev"}, json.RawMessage(`{"target":"remote"}`), nil)
@@ -179,5 +184,31 @@ func TestCoreSetupHTTPRejectsExecutionNodeWithoutInstallationState(t *testing.T)
 				t.Fatal("denied HTTP Core setup created installation state", bound, err)
 			}
 		}
+	}
+}
+
+func TestInstallationExecutorPinsStartupWithoutConnectorEnrollment(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixture(t)
+	executor, err := newInstallationMachineExecutor(withTargetOverride(ctx, core.Name), application.Store{Root: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := executor.(*bahaMachineExecutor)
+	if actual.coreAuthority == nil || *actual.coreAuthority != core || actual.connectorSessions != nil {
+		t.Fatal("local operator API did not independently bind its installation")
+	}
+	if _, err := newInstallationMachineExecutor(withTargetOverride(ctx, node.Name), application.Store{}); err == nil {
+		t.Fatal("operator API startup selected a remote execution node as its Core")
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.DefaultTarget = node.Name
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if *actual.coreAuthority != core {
+		t.Fatal("changed request preferences replaced the startup snapshot")
 	}
 }

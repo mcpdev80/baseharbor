@@ -37,7 +37,18 @@ func serveCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return controlplaneruntime.Run(ctx, cfg, store, newBahaMachineExecutor(store))
+			executor := newBahaMachineExecutor(store)
+			if cfg.RuntimeAppName == "" {
+				startup := ctx
+				if cfg.ConnectorEnrollmentEnabled {
+					startup = withTargetOverride(startup, cfg.ConnectorAuthorityTarget)
+				}
+				executor, err = newInstallationMachineExecutor(startup, store)
+				if err != nil {
+					return err
+				}
+			}
+			return controlplaneruntime.Run(ctx, cfg, store, executor)
 		},
 	}
 }
