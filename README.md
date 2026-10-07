@@ -39,6 +39,15 @@ application-isolated. Additional isolation can add provider instances and resour
 Measured memory figures must distinguish idle/stabilized usage, startup/convergence
 peak and the simultaneous Core total; unavailable measurements are reported explicitly.
 
+## Public companion implementations
+
+BaseHarbor keeps optional user-facing and remote-access implementations in separate public repositories while Core remains authoritative:
+
+- [BaseHarbor Console](https://github.com/mcpdev80/baseharbor-console) — optional visual client over the protected Core machine/HTTP contracts. It has no separate deployment state, RBAC, secret store or direct runtime/Connector control path.
+- [BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) — optional Target Access implementation for remote Docker/Podman-style hosts. It is not a control plane or Runtime Provider and exposes no unauthenticated inbound management listener.
+
+Kubernetes/OpenShift normally use their native authenticated APIs and do not require the Node Connector. Support claims for Console or Connector require pinned cross-repository evidence; repository presence or contract shape alone is not support evidence.
+
 ## The problem
 
 You know the drill. You want to build an app — and before the first feature
