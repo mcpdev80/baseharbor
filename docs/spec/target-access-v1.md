@@ -299,6 +299,9 @@ The startup-bound API also rejects an application preference for another local
 installation before reading its Core state or attempting bootstrap. Standalone
 local CLI selection remains independent; API requests cannot replace the bound
 installation by selecting a different local Target.
+Explicit Core bootstrap uses the same startup binding and refuses an execution
+node before creating installation state. An enrolled node cannot become another
+Core through the machine setup operation.
 
 Protected Core deployment state can retain a versioned project receipt containing
 only the exact node Scope, immutable directory, bundle ID and source commitments.

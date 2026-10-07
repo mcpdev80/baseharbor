@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 )
 
 func selectInstallationRole(reader *bufio.Reader, out io.Writer) (coreinstallation.MachineRole, error) {
@@ -49,6 +50,13 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return coreinstallation.State{}, err
+	}
+	if err := checkBoundCoreTarget(ctx, target); err != nil {
+		return coreinstallation.State{}, err
+	}
+	if target.AccessProvider != "" && target.AccessProvider != string(targetaccess.ProviderLocal) {
+		return coreinstallation.State{}, machine.NewError(machine.ErrorCapabilityMissing,
+			"Core bootstrap requires a local installation Target.", "Select the installation's local Core Target.", false)
 	}
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {

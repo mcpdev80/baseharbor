@@ -18,16 +18,23 @@ func withCoreAuthority(ctx context.Context, authority deployment.ResolvedTarget)
 	return context.WithValue(ctx, coreAuthorityContextKey{}, authority)
 }
 
+func checkBoundCoreTarget(ctx context.Context, selected deployment.ResolvedTarget) error {
+	if authority, bound := ctx.Value(coreAuthorityContextKey{}).(deployment.ResolvedTarget); bound && selected != authority {
+		return machine.NewError(machine.ErrorPolicyDenied,
+			"Core selection differs from this installation's startup-bound authority.",
+			"Use this installation's local Core Target.", false)
+	}
+	return nil
+}
+
 func applicationCoreTarget(ctx context.Context) (deployment.ResolvedTarget, bool, error) {
 	selected, err := effectiveTarget(ctx)
 	if err != nil {
 		return deployment.ResolvedTarget{}, false, err
 	}
 	if selected.AccessProvider == "" || selected.AccessProvider == string(targetaccess.ProviderLocal) {
-		if authority, bound := ctx.Value(coreAuthorityContextKey{}).(deployment.ResolvedTarget); bound && selected != authority {
-			return deployment.ResolvedTarget{}, false, machine.NewError(machine.ErrorPolicyDenied,
-				"Application selection differs from this Core installation's local authority.",
-				"Use this installation's local Target or an authorized enrolled execution Target.", false)
+		if err := checkBoundCoreTarget(ctx, selected); err != nil {
+			return deployment.ResolvedTarget{}, false, err
 		}
 		return selected, false, nil
 	}

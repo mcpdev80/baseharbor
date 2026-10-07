@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
@@ -31,7 +34,10 @@ func remoteApplicationCoreFixture(t *testing.T) (context.Context, deployment.Res
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := tenancy.WithContext(context.Background(), &tenancy.Context{TenantID: owner, ExternalIdentityID: "verified-subject"})
+	// Unit boundary fixture: production OIDC/enrollment qualification remains
+	// the separate native test, rather than a claim made by this context.
+	ctx := operatorauth.WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "verified-subject"})
+	ctx = tenancy.WithContext(ctx, &tenancy.Context{TenantID: owner, ExternalIdentityID: "verified-subject", Roles: []string{"editor"}})
 	return withTargetOverride(ctx, "remote"), core, node
 }
 
@@ -128,6 +134,10 @@ func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *t
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorPolicyDenied {
 		t.Fatal("another local installation escaped the startup authority", err)
 	}
+	_, err = installCore(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true, ControlPlaneOnly: true})
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorPolicyDenied {
+		t.Fatal("explicit bootstrap escaped the owning local installation", err)
+	}
 	selected, err := effectiveTarget(ctx)
 	if err != nil || selected != foreign {
 		t.Fatal("denial silently changed the execution Target", selected, err)
@@ -144,5 +154,30 @@ func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *t
 	selected, remote, err := applicationCoreTarget(withTargetOverride(ctx, core.Name))
 	if err != nil || remote || selected != core {
 		t.Fatal("owning local installation was denied", selected, err)
+	}
+}
+
+func TestCoreSetupHTTPRejectsExecutionNodeWithoutInstallationState(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixture(t)
+	for _, bound := range []bool{false, true} {
+		executor := &bahaMachineExecutor{}
+		if bound {
+			executor.coreAuthority = &core
+		}
+		_, err := executor.Execute(ctx, machine.Operation{ID: "control-plane.up"},
+			machine.OperationContext{Target: node.Name, Environment: "dev"}, json.RawMessage(`{"target":"remote"}`), nil)
+		var failure *machine.Error
+		if !errors.As(err, &failure) || (failure.Code != machine.ErrorPolicyDenied && failure.Code != machine.ErrorCapabilityMissing) {
+			t.Fatal("HTTP Core setup admitted an execution node", bound, err)
+		}
+		for _, target := range []deployment.ResolvedTarget{core, node} {
+			root, err := targetRuntimeStateRoot(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("denied HTTP Core setup created installation state", bound, err)
+			}
+		}
 	}
 }
