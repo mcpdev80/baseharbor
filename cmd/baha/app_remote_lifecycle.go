@@ -28,7 +28,7 @@ func checkRemoteApplicationLifecycle(manifest application.Manifest) error {
 	remaining := manifest.Services
 	remaining.SQL, remaining.Cache, remaining.KeyValue = false, false, false
 	remaining.SQLInstances, remaining.CacheInstances, remaining.KeyValueInstances = nil, nil, nil
-	if !reflect.DeepEqual(remaining, application.Services{}) || application.HasSharedBackends(manifest) ||
+	if manifest.HA || !reflect.DeepEqual(remaining, application.Services{}) || application.HasSharedBackends(manifest) ||
 		len(manifest.Exposures) != 0 || len(manifest.Secrets.Required) != 0 || len(manifest.Secrets.Optional) != 0 ||
 		len(manifest.Runtime.Permissions) != 0 || len(manifest.Logs.Collect) != 0 || len(manifest.Metrics.Sources) != 0 || manifest.Telemetry.OTLP != nil {
 		return machine.NewError(machine.ErrorCapabilityMissing, "Selected remote Application requires provider lifecycle adapters that are not yet qualified.", "Keep this deployment pending until its complete remote provider and workload contracts are supported.", false)

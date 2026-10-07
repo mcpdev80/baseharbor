@@ -18,10 +18,12 @@ func TestRemoteApplicationLifecycleNeverSilentlyDropsUnqualifiedIntent(t *testin
 	if err := checkRemoteApplicationLifecycle(m); err != nil {
 		t.Fatal(err)
 	}
-	for _, feature := range []string{"shared", "secrets", "identity", "object-storage", "logs", "messaging", "management-ui", "runtime-permissions"} {
+	for _, feature := range []string{"ha", "shared", "secrets", "identity", "object-storage", "logs", "messaging", "management-ui", "runtime-permissions"} {
 		t.Run(feature, func(t *testing.T) {
 			requested := m
 			switch feature {
+			case "ha":
+				requested.HA = true
 			case "shared":
 				t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
 			case "secrets":
