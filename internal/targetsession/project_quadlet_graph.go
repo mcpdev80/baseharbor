@@ -33,7 +33,7 @@ func (r *ProjectRuntime) quadletGraph(project *StagedProject, files []string) ([
 		}
 		return selected[i] < selected[j]
 	})
-	return selected, nil
+	return orderQuadletContainers(project, selected)
 }
 
 func (r *ProjectRuntime) ApplyQuadletGraph(ctx context.Context, project *StagedProject, files []string) error {
@@ -44,18 +44,33 @@ func (r *ProjectRuntime) ApplyQuadletGraph(ctx context.Context, project *StagedP
 	if err := r.requireCapability("runtime.quadlet.apply"); err != nil {
 		return err
 	}
+	// Publish the whole graph before activating any container. A container
+	// may depend on a later-sorted container, whose unit must already exist
+	// when systemd resolves Requires/After. Failed publication leaves no new
+	// container activation and is never silently resumed or replayed.
 	for _, file := range selected {
-		payload := struct {
-			Name             string `json:"name"`
-			Content          string `json:"content"`
-			Enable           bool   `json:"enable"`
-			ProjectDirectory string `json:"project_directory"`
-		}{file, string(project.files[file].data), path.Ext(file) == ".container", project.directory}
-		if err := r.invoke(ctx, "runtime.quadlet.apply", payload, nil); err != nil {
+		if err := r.applyQuadletFile(ctx, project, file, false); err != nil {
 			return err
 		}
 	}
+	for _, file := range selected {
+		if path.Ext(file) == ".container" {
+			if err := r.applyQuadletFile(ctx, project, file, true); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (r *ProjectRuntime) applyQuadletFile(ctx context.Context, project *StagedProject, file string, enable bool) error {
+	payload := struct {
+		Name             string `json:"name"`
+		Content          string `json:"content"`
+		Enable           bool   `json:"enable"`
+		ProjectDirectory string `json:"project_directory"`
+	}{file, string(project.files[file].data), enable, project.directory}
+	return r.invoke(ctx, "runtime.quadlet.apply", payload, nil)
 }
 
 // DestroyQuadletGraph removes only the selected, receipt-bound units. Provider

@@ -21,14 +21,14 @@ func TestQuadletGraphPublishesDependenciesBeforeContainersAndRemovesInReverse(t 
 	if err := runtime.ApplyQuadletGraph(context.Background(), project, files); err != nil {
 		t.Fatal(err)
 	}
-	for i, expected := range []string{"owned.network", "owned.volume", "owned.container"} {
+	for i, expected := range []string{"owned.network", "owned.volume", "owned.container", "owned.container"} {
 		var payload struct {
 			Name      string `json:"name"`
 			Enable    bool   `json:"enable"`
 			Directory string `json:"project_directory"`
 		}
 		if json.Unmarshal(transport.calls[i+1].Payload, &payload) != nil || payload.Name != expected ||
-			payload.Enable != (i == 2) || payload.Directory != project.directory {
+			payload.Enable != (i == 3) || payload.Directory != project.directory {
 			t.Fatal("wrong dependency order, activation or bundle binding", payload)
 		}
 	}
@@ -39,7 +39,7 @@ func TestQuadletGraphPublishesDependenciesBeforeContainersAndRemovesInReverse(t 
 		var payload struct {
 			Name string `json:"name"`
 		}
-		if json.Unmarshal(transport.calls[i+4].Payload, &payload) != nil || payload.Name != expected {
+		if json.Unmarshal(transport.calls[i+5].Payload, &payload) != nil || payload.Name != expected {
 			t.Fatal("wrong removal order")
 		}
 	}
