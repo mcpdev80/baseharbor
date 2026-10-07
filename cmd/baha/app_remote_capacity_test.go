@@ -44,7 +44,7 @@ func TestSelectedMemoryEvidenceFailsClosedEvenWithApproval(t *testing.T) {
 	ctx, _, _ := remoteApplicationCoreFixture(t)
 	var out bytes.Buffer
 	err := runMemoryEvidencePreflight(withMemoryPreflightOverride(withAssumeYes(ctx, true), true), strings.NewReader("y\n"), &out,
-		hostresource.MemoryEvidence{TotalBytes: 1024, AvailableBytes: 0}, hostresource.MemoryEstimate{MinimumBytes: 512}, true)
+		hostresource.MemoryEvidence{TotalBytes: 1024, AvailableBytes: 0}, hostresource.MemoryEstimate{Confidence: hostresource.ConfidenceUnknown}, true)
 	var failure *machine.Error
 	if !errors.As(err, &failure) || failure.Code != machine.ErrorHostResourceInsufficient {
 		t.Fatal("exhausted selected node capacity was approved", err)
