@@ -180,5 +180,15 @@ Ein nicht zugeordnetes oder fremdes Target wird abgewiesen.
 
 Die CA wird an ein ausdrücklich ausgewähltes lokales Core-Target gebunden.
 HTTPS-Einschreibung allein belegt noch keine ausführbare Remote-Verbindung.
-Live-Zulassung, Erneuerung, Widerruf und Docker-/Podman-Qualifizierung bleiben
-offen. Details stehen im [Target-Access-Vertrag](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/spec/target-access-v1.md).
+Der optionale öffentliche
+[BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector)
+implementiert diesen outbound-initiierten Target-Access-Transport für entfernte
+Nicht-Kubernetes-Hosts. Er ist weder Control Plane noch Runtime Provider und
+öffnet keinen unauthentifizierten eingehenden Management-Port.
+
+Connector-eigene Tests und CI begründen allein noch keinen BaseHarbor-Supportstatus.
+Live-Zulassung, Erneuerung, Widerruf und Docker-/Podman-Support erfordern gepinnte
+Core -> Connector -> Runtime-Evidenz. Details stehen im
+[Target-Access-Vertrag](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/spec/target-access-v1.md)
+und in der englischen
+[Plattform-Supportmatrix](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/reference/platform-support.md).
