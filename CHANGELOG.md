@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Remote application memory preflight requests fresh evidence from the authenticated execution node; Core-host RAM and runtime-info total RAM cannot replace available node capacity. Exhausted RAM is rejected even when a workload estimate is unavailable.
 
 ### Fixed
+- Remote application status and overview use the protected Node project binding and live owned inventory instead of inferring absence from local files. Provider observations remain insufficient for complete application readiness.
 - Core Identity readiness retries the specific native Keycloak server-exception response after database convergence; invalid credentials and other client denials still fail closed.
 
 - Keycloak starts one authenticated bootstrap member before additional members join, preventing concurrent initial database migrations.

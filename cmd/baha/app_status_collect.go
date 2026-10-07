@@ -46,6 +46,10 @@ func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolv
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
+	if hasRemoteApplicationTarget(resolved) {
+		result, err := collectRemoteApplicationStatus(ctx, resolved)
+		return &applicationStatusCollection{resolved: resolved, manifest: m, result: result}, true, err
+	}
 
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if errors.Is(err, application.ErrRuntimeNotApplied) {

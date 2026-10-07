@@ -94,6 +94,12 @@ func guardApplicationRuntimeCommand(store application.Store, command *cli.Comman
 			// cannot confidently identify an application target.
 			return baseRun(ctx, args, out, errOut)
 		}
+		if label == "app status" && hasRemoteApplicationTarget(resolved) {
+			if _, err := remoteApplicationProjectRuntime(ctx, resolved); err != nil {
+				return err
+			}
+			return baseRun(ctx, args, out, errOut)
+		}
 		if _, err := detectRuntimeForApplication(ctx, resolved, required...); err != nil {
 			return fmt.Errorf("%s runtime provider preflight: %w", label, err)
 		}

@@ -4,26 +4,26 @@
     "integration/docker/remote-target": {
       "connector": {
         "repository": "mcpdev80/baseharbor-node-connector",
-        "commit": "790dc33a18f2f58a78a08ea17e82ed27e61d9d18",
+        "commit": "ae7f32388eec1a851c214d565e6036e0a4d6c7ba",
         "workflow": ".github/workflows/release-integration.yml"
       }
     },
     "integration/podman/remote-target": {
       "connector": {
         "repository": "mcpdev80/baseharbor-node-connector",
-        "commit": "790dc33a18f2f58a78a08ea17e82ed27e61d9d18",
+        "commit": "ae7f32388eec1a851c214d565e6036e0a4d6c7ba",
         "workflow": ".github/workflows/release-integration.yml"
       }
     },
     "integration/static/live-console": {
       "connector": {
         "repository": "mcpdev80/baseharbor-node-connector",
-        "commit": "790dc33a18f2f58a78a08ea17e82ed27e61d9d18",
+        "commit": "ae7f32388eec1a851c214d565e6036e0a4d6c7ba",
         "workflow": ".github/workflows/release-integration.yml"
       },
       "console": {
         "repository": "mcpdev80/baseharbor-console",
-        "commit": "ef2498140729dc11a3b7a0a838dfc921d19289b1",
+        "commit": "bd715c82e00daf4e0e9e4db91f94c3fd418143df",
         "workflow": ".github/workflows/release-integration.yml"
       }
     }
