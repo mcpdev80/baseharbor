@@ -113,12 +113,20 @@ func TestExplicitImplicitLocalSelectionPersists(t *testing.T) {
 }
 
 func TestDeleteTargetClearsPersistedSelection(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- t.Setenv("XDG_DATA_HOME",t.TempDir())
- cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{"docker-test":{Runtime:deployment.RuntimeDefinition{Provider:"docker"},Access:deployment.TargetAccess{Reference:"local"}}},Access:map[string]deployment.AccessDefinition{"local":{Provider:"local",Reference:"local"}}}
- if err:=cfg.Save();err!=nil{t.Fatal(err)}
- if err:=writePersistedTarget("docker-test");err!=nil{t.Fatal(err)}
- if _,err:=deleteTargetDefinition(context.Background(),"docker-test");err!=nil{t.Fatal(err)}
- selected,err:=readPersistedTarget()
- if err!=nil||selected!=""{t.Fatalf("deleted selection remains %q: %v",selected,err)}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	cfg := deployment.Config{Version: deployment.ConfigVersion, Targets: map[string]deployment.TargetDefinition{"docker-test": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}}}, Access: map[string]deployment.AccessDefinition{"local": {Provider: "local", Reference: "local"}}}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePersistedTarget("docker-test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deleteTargetDefinition(context.Background(), "docker-test"); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := readPersistedTarget()
+	if err != nil || selected != "" {
+		t.Fatalf("deleted selection remains %q: %v", selected, err)
+	}
 }
