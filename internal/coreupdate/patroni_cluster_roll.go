@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // PatroniSwitchoverGate supplies the one missing native transition after all
@@ -94,12 +95,8 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 		default:
 			return fmt.Errorf("unsupported Patroni journal state %s", state)
 		}
-		current, _, err := verifiedPatroniSnapshot(ctx, gate, maxLag)
-		if err != nil {
+		if err := WaitForPatroniQuorum(ctx, gate, leader, maxLag, 30*time.Second); err != nil {
 			return err
-		}
-		if current != leader {
-			return errors.New("Patroni leadership changed during replica rolling")
 		}
 	}
 	candidate := replicas[0]
@@ -126,12 +123,8 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 	} else if state != "applying" && state != "apply_failed" && state != "verify_failed" {
 		return fmt.Errorf("unsupported old-primary journal state %q", state)
 	}
-	current, _, err := verifiedPatroniSnapshot(ctx, gate, maxLag)
-	if err != nil {
-		return err
-	}
-	if current != candidate {
-		return errors.New("Patroni switchover not proven; refusing old primary mutation")
+	if err := WaitForPatroniQuorum(ctx, gate, candidate, maxLag, 30*time.Second); err != nil {
+		return fmt.Errorf("Patroni switchover not proven; refusing old primary mutation: %w", err)
 	}
 	if state != "" {
 		if err := gate.RecoverInterrupted(ctx, leader, state); err != nil {
@@ -145,12 +138,8 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 	if err := gate.VerifyMemberImage(ctx, leader); err != nil {
 		return err
 	}
-	current, _, err = verifiedPatroniSnapshot(ctx, gate, maxLag)
-	if err != nil {
-		return err
-	}
-	if current != candidate {
-		return errors.New("Patroni leader drift after old primary reconciliation")
+	if err := WaitForPatroniQuorum(ctx, gate, candidate, maxLag, 30*time.Second); err != nil {
+		return fmt.Errorf("Patroni leader drift after old primary reconciliation: %w",err)
 	}
 	return gate.Record(ctx, leader, "verified")
 }
