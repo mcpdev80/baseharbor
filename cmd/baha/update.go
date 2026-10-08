@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
  "github.com/mcpdev80/baseharbor/internal/coreupdate"
 )
 
@@ -52,6 +53,9 @@ type selfUpdateCheck struct {
 	CoreReconciliation string `json:"core_reconciliation"`
  CoreExpected []coreupdate.Desired `json:"core_expected,omitempty"`
  CoreBacking []coreupdate.BackingPin `json:"core_backing,omitempty"`
+ CoreInstallationID string `json:"core_installation_id,omitempty"`
+ CoreInstallReady bool `json:"core_install_ready,omitempty"`
+ CoreInstallPhase string `json:"core_install_phase,omitempty"`
 }
 
 type selfUpdateOptions struct {
@@ -184,8 +188,17 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	coreReconciliation := "not_required"
 	var coreExpected []coreupdate.Desired
 	var coreBacking []coreupdate.BackingPin
+ var coreState coreinstallation.State
 	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
 		coreReconciliation = "unavailable"
+        targetInfo, targetErr := effectiveTarget(ctx)
+        if targetErr == nil {
+          root, rootErr := targetRuntimeStateRoot(targetInfo)
+          if rootErr == nil {
+            state, stateErr := coreinstallation.Load(root)
+            if stateErr == nil { coreState = state }
+          }
+        }
 		if manifest, err := coreupdate.LoadRelease(target); err == nil {
 			coreExpected, coreBacking = manifest.Providers, manifest.Backing
 		} else {
@@ -194,6 +207,9 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	}
 	return selfUpdateCheck{
 		CoreReconciliation: coreReconciliation,
+        CoreInstallationID: coreState.ID,
+        CoreInstallReady: coreState.Ready,
+        CoreInstallPhase: coreState.Phase,
         CoreExpected: coreExpected,
         CoreBacking: coreBacking,
 		Installed:    installedNormalized,
@@ -273,6 +289,9 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	fmt.Fprintf(out, "Channel: %s\n", check.Channel)
 	fmt.Fprintf(out, "Available version: %s\n", check.Target)
 	fmt.Fprintf(out, "Platform: %s\n", check.Platform)
+	if check.CoreInstallationID != "" {
+        fmt.Fprintf(out,"Core installation: %s (phase: %s, ready: %t)\n",check.CoreInstallationID,check.CoreInstallPhase,check.CoreInstallReady)
+    }
 	if check.CoreReconciliation == "unavailable_unpinned" {
         fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
     } else if check.CoreReconciliation == "unavailable" {
