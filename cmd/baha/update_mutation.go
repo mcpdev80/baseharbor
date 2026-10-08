@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+ "github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -392,6 +393,22 @@ func selfUpdateEnvironment(target string) []string {
 }
 
 func existingControlPlaneForSelfUpdate(ctx context.Context) (bhruntime.Files, bool) {
+	// Owned installation identity is authoritative even if runtime files are
+	// missing or degraded. Never infer "no Core" from unreadable runtime files.
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return bhruntime.Files{}, true
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return bhruntime.Files{}, true
+	}
+	if _, err := coreinstallation.Load(root); err == nil {
+		files, _ := existingTargetRuntimeFiles(ctx)
+		return files, true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return bhruntime.Files{}, true
+	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	return files, err == nil
 }
