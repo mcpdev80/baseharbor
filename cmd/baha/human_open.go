@@ -5,7 +5,6 @@ import (
  "fmt"
  "io"
  "net/url"
- "os"
  "os/exec"
  "runtime"
  "strings"
@@ -72,5 +71,3 @@ var launchApplicationURL = func(ctx context.Context, address string) error {
   return fmt.Errorf("unsupported host browser launcher on %s",runtime.GOOS)
  }
 }
-
-var _ = os.ErrNotExist
