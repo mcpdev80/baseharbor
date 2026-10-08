@@ -66,9 +66,9 @@ func ResolveOwnedServiceVolume(path, service, project string) (string, error) {
 					actual = value.Value
 				}
 			}
-		} else if declared.Kind != yaml.ScalarNode || declared.Value != "" {
-			return "", fmt.Errorf("provider %s data volume declaration is not verifiable", service)
-		}
+		} else if declared.Kind != yaml.ScalarNode || (declared.Tag != "!!null" && declared.Value != "") {
+            return "", fmt.Errorf("provider %s data volume declaration is not verifiable", service)
+        }
 		if found != "" {
 			return "", fmt.Errorf("provider %s has ambiguous multiple data volumes", service)
 		}
