@@ -65,3 +65,9 @@ func TestPatroniClusterRollNeedsDCSEvidenceBeforeMutation(t *testing.T) {
 		t.Fatalf("unsafe sequence: %s", actions)
 	}
 }
+
+func TestCaptureAndVerifyDCSFailsClosed(t *testing.T) {
+ ctx:=context.Background()
+ if _,err:=CaptureAndVerifyDCS(ctx,nil,"core","cluster","0.4.24");!errors.Is(err,ErrDCSUnsupported){t.Fatalf("missing adapter accepted: %v",err)}
+ if _,err:=CaptureAndVerifyDCS(ctx,fakeDCS{valid:true},"core","cluster","0.4.24");!errors.Is(err,ErrDCSUnsupported){t.Fatalf("adapter without snapshot rejected incorrectly: %v",err)}
+}
