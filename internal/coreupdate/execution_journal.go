@@ -30,12 +30,20 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
         if err := ctx.Err(); err != nil { return err }
 		status := journal.Steps[JournalKey(delta)]
 		if status == "applying" || status == "apply_failed" || status == "verify_failed" {
-			if hooks.RecoveryPoint == nil {
-				return fmt.Errorf("incomplete Core provider %s requires explicit recovery before replay", JournalKey(delta))
-			}
+			if hooks.Recover == nil {
+                return fmt.Errorf("incomplete Core provider %s requires explicit provider recovery before replay", JournalKey(delta))
+            }
 		}
 	}
-	remaining := Plan{Release: plan.Release}
+	for _, delta := range plan.Deltas {
+        status := journal.Steps[JournalKey(delta)]
+        if status == "applying" || status == "apply_failed" || status == "verify_failed" {
+            if err := hooks.Recover(ctx, delta, status); err != nil {
+                return fmt.Errorf("restore interrupted Core provider %s: %w", JournalKey(delta), err)
+            }
+        }
+    }
+    remaining := Plan{Release: plan.Release}
 	for _, delta := range plan.Deltas {
         if err := ctx.Err(); err != nil { return err }
 		if delta.Classification != NoChange && journal.Steps[JournalKey(delta)] == "verified" {
