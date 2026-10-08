@@ -57,5 +57,27 @@ func currentDeviceResources() string {
 	if err != nil {
 		return "Current Device (CLI host)\n  Resource telemetry unavailable on this platform\n"
 	}
-	return fmt.Sprintf("Current Device (CLI host, not a deployment Target)\n  RAM total        %.1f GiB\n  RAM available    %.1f GiB\n  Swap total       %.1f GiB\n  Swap available   %.1f GiB\n", float64(mem.TotalKiB)/1048576, float64(mem.AvailableKiB)/1048576, float64(mem.SwapTotalKiB)/1048576, float64(mem.SwapFreeKiB)/1048576)
+	return fmt.Sprintf("Current Device (CLI host, not a deployment Target)\n  RAM total        %.1f GiB\n  RAM available    %.1f GiB\n  Swap total       %.1f GiB\n  Swap available   %.1f GiB\n%s", float64(mem.TotalKiB)/1048576, float64(mem.AvailableKiB)/1048576, float64(mem.SwapTotalKiB)/1048576, float64(mem.SwapFreeKiB)/1048576, currentDevicePressure())
+}
+
+func currentDevicePressure() string {
+ var b strings.Builder
+ if data,err:=os.ReadFile("/proc/loadavg");err==nil {
+  parts:=strings.Fields(string(data))
+  if len(parts)>=3 {fmt.Fprintf(&b,"  Host load (1/5/15m) %s / %s / %s\n",parts[0],parts[1],parts[2])}
+ }
+ if data,err:=os.ReadFile("/proc/pressure/memory");err==nil {
+  for _,line:=range strings.Split(string(data),"\n") {
+   fields:=strings.Fields(line)
+   if len(fields)<2||fields[0]!="some" {continue}
+   for _,field:=range fields[1:] {
+    if strings.HasPrefix(field,"avg10=") {
+     fmt.Fprintf(&b,"  Memory pressure (10s) %s%%\n",strings.TrimPrefix(field,"avg10="))
+     return b.String()
+    }
+   }
+  }
+ }
+ b.WriteString("  Memory pressure  unavailable\n")
+ return b.String()
 }
