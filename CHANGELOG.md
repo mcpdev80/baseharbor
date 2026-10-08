@@ -4,6 +4,26 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.24] - Unreleased
+
+### Added
+
+- Task-first human CLI entry point `baha new`, repository-aware root facades for `init`, `list`, `inspect`, `backup`, `restore`, and context-sensitive help.
+- Core provider-update planner with release-pinned digest validation, ownership-aware scope classification, recovery and verification interfaces.
+- EN/DE CLI workflow documentation and draft release notes.
+
+### Changed
+
+- `baha down` and `baha destroy` select application lifecycle inside repositories and installation lifecycle outside; `destroy --all` remains explicitly installation-wide.
+- `baha update --check` reports whether installed-Core provider reconciliation is available.
+
+### Fixed
+
+- Application `down` rejects unrecognized options instead of misclassifying them as application names.
+- Binary-only self-update refuses an existing Core when SQL/Secrets/Identity reconciliation cannot be proven; existing Core remains untouched.
+
+**Release gate:** Provider-native Core updates, full CLI acceptance, final documentation consolidation, and pre-release/runtime evidence are still outstanding.
+
 ## [0.4.23] - Unreleased
 
 ### Added
