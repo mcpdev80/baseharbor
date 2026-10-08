@@ -87,6 +87,7 @@ func ownedTrustRecords() ([]hosttrust.AnchorRecord,error) {
 
 func uninstallManagedTrust(ctx context.Context,approved bool)(trustUninstallResult,error){
  result:=trustUninstallResult{ContractVersion:"v1"}
+ if err:=authorizeCurrentMCPContext(ctx,"trust.uninstall","","","");err!=nil{return result,err}
  if err:=applicationlifecycle.RequireApproval("trust.uninstall",approved);err!=nil{return result,err}
  // This mutation is host-local and independent of OpenBao availability:
  // an old issuer may no longer exist, yet its recorded anchor must be removable.
