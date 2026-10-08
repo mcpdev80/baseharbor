@@ -33,6 +33,7 @@ func (p EtcdBootProbe) Verify(ctx context.Context,id etcdbackup.Identity,snapsho
  if _,err:=p.TLS.Config();err!=nil{return fmt.Errorf("etcd mTLS trust unavailable: %w",err)}
  members:=map[string]bool{}
  leaders:=0
+ memberIDs:=map[string]bool{}
  var expectedLeader string
  for _,endpoint:=range p.Endpoints{
   parsed,err:=url.Parse(endpoint)
@@ -58,10 +59,11 @@ func (p EtcdBootProbe) Verify(ctx context.Context,id etcdbackup.Identity,snapsho
   if err:=dec.Decode(&status);err!=nil||len(status)!=1||status[0].Endpoint!=endpoint{return errors.New("invalid authenticated etcd endpoint status")}
   s:=status[0].Status
   revision,err:=s.Header.Revision.Int64()
-  if err!=nil||revision<snapshot.Revision||s.Header.ClusterID.String()!=id.Cluster||s.Version==""||s.Leader.String()==""||s.Leader.String()=="0"{
+  if err!=nil||revision<snapshot.Revision||s.Header.ClusterID.String()!=id.Cluster||s.Version!=snapshot.Version||s.Leader.String()==""||s.Leader.String()=="0"{
    return errors.New("etcd recovery identity, version, leader or revision mismatch")
   }
-  if _,err:=s.Header.MemberID.Int64();err!=nil{return errors.New("etcd member identity missing")}
+  if _,err:=s.Header.MemberID.Int64();err!=nil||s.Header.MemberID.String()=="0"||memberIDs[s.Header.MemberID.String()]{return errors.New("etcd member identity is missing or duplicated")}
+  memberIDs[s.Header.MemberID.String()]=true
   if expectedLeader==""{expectedLeader=s.Leader.String()}
   if expectedLeader!=s.Leader.String(){return errors.New("etcd recovered cluster has no common leader")}
   if s.IsLeader{leaders++}
