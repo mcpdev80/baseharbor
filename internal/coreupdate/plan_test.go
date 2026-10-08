@@ -66,3 +66,22 @@ func TestBuildRejectsMalformedDigestAndDetectsDifferentImage(t *testing.T) {
   t.Fatalf("same digest with different image must not be treated as unchanged: %+v",plan)
  }
 }
+
+func TestBuildRejectsUnverifiableInstalledDigestBeforeMutation(t *testing.T) {
+ installed:=[]Realization{{Kind:Secrets,Installation:"core-a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Version:"2.7.0"}}
+ plan,err:=Build("0.4.24",installed,expected())
+ if err!=nil {t.Fatal(err)}
+ if len(plan.Deltas)!=1 || plan.Deltas[0].Classification!=Unsupported {
+  t.Fatalf("unverified installed image cannot be safely reconciled: %+v",plan)
+ }
+ called:=false
+ hooks:=Hooks{
+  Preflight:func(context.Context,Plan)error{called=true;return nil},
+  Apply:func(context.Context,Delta)error{called=true;return nil},
+  Verify:func(context.Context,Delta)error{called=true;return nil},
+  Record:func(context.Context,Delta,string)error{called=true;return nil},
+ }
+ if err:=Execute(context.Background(),plan,hooks);err==nil || called {
+  t.Fatalf("unsafe plan executed: err=%v called=%v",err,called)
+ }
+}
