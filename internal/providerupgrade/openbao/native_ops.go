@@ -2,6 +2,7 @@ package openbao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -53,10 +54,11 @@ func (n *NativeOps) Inspect(ctx context.Context) (State, error) {
 	topology := "single"
 	if len(members) > 1 {
 		topology = "ha"
-		if n.Hooks.InspectMembers == nil {
-			return State{}, errors.New("OpenBao HA member verification is unavailable")
+		probe := n.Hooks.InspectMembers
+		if probe == nil {
+			probe = n.inspectMembersNative
 		}
-		states, err := n.Hooks.InspectMembers(ctx)
+		states, err := probe(ctx)
 		if err != nil {
 			return State{}, fmt.Errorf("verify OpenBao HA members: %w", err)
 		}
@@ -158,4 +160,29 @@ func verifyHAMembers(states []State, expected int, version string) error {
 		}
 	}
 	return nil
+}
+
+func (n *NativeOps) inspectMembersNative(ctx context.Context) ([]State, error) {
+	members := n.Files.OpenBaoMembers()
+	if len(members) == 0 {
+		return nil, errors.New("managed OpenBao member inventory is empty")
+	}
+	states := make([]State, 0, len(members))
+	for _, service := range members {
+		// Exit 2 means an initialized but sealed OpenBao node; preserve its
+		// JSON state and reject it in verifyHAMembers, not as a shell failure.
+		script := "rc=0; BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || rc=$?; if [ \"$rc\" -eq 0 ] || [ \"$rc\" -eq 2 ]; then exit 0; fi; exit \"$rc\""
+		out, err := n.Executor.ExecProject(ctx, n.Files.Project, n.Files.Compose, n.Files.Env, service, "sh", "-c", script)
+		if err != nil { return nil, errors.New("OpenBao HA member probe failed") }
+		var st struct {
+			Version string `json:"version"`
+			Initialized bool `json:"initialized"`
+			Sealed bool `json:"sealed"`
+		}
+		if err := json.Unmarshal([]byte(out), &st); err != nil {
+			return nil, errors.New("OpenBao HA member returned invalid status")
+		}
+		states = append(states, State{Version: st.Version, Initialized: st.Initialized, Sealed: st.Sealed, Healthy: st.Initialized && !st.Sealed})
+	}
+	return states, nil
 }
