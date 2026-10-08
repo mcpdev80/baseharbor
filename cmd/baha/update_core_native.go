@@ -6,6 +6,7 @@ import(
  "fmt"
  "os"
  "path/filepath"
+ "strings"
 
  "github.com/mcpdev80/baseharbor/internal/coreinstallation"
  "github.com/mcpdev80/baseharbor/internal/coreupdate"
