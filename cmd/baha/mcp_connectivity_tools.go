@@ -18,8 +18,10 @@ func registerMCPConnectivityTools(server *mcp.Server) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if rules == nil { return nil, map[string]any{"contract_version":"v1","rules":[]any{}}, nil }
-		return nil, map[string]any{"contract_version":"v1","rules": rules}, nil
+		if rules == nil {
+			return nil, map[string]any{"contract_version": "v1", "rules": []any{}}, nil
+		}
+		return nil, map[string]any{"contract_version": "v1", "rules": rules}, nil
 	})
 	mcp.AddTool(server, machineMCPTool("connectivity.connect", "Converge and verify one directional connectivity exception after authorization of both environments.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineConnectivityInput) (*mcp.CallToolResult, any, error) {
 		source, err := parseConnectivityEndpointInput(formatConnectivityInput(input.Source))
