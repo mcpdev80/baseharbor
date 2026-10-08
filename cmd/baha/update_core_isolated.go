@@ -54,9 +54,9 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 				continue
 			}
 			kind, ok := isolatedCoreServiceKind(container.Service)
-            if !ok || !manifestAuthorizesIsolatedProvider(m,kind,container.Service){
-                continue
-            }
+			if !ok || !manifestAuthorizesIsolatedProvider(m, kind, container.Service) {
+				continue
+			}
 			if !container.Running {
 				return nil, fmt.Errorf("registered isolated %s service %s/%s is not running", kind, project, container.Service)
 			}
@@ -120,18 +120,22 @@ func coreProviderImageVersion(ref string, kind coreupdate.ProviderKind) (string,
 	return version, nil
 }
 
-func manifestAuthorizesIsolatedProvider(m application.Manifest,kind coreupdate.ProviderKind,service string)bool{
- switch kind{
- case coreupdate.SQL:
-  for _,instance:=range application.SQLInstanceNames(m){
-   base:="postgres"
-   if instance!="default"{base+="-"+instance}
-   if service==base||strings.HasPrefix(service,base+"-member-"){return true}
-  }
- case coreupdate.Secrets:
-  return m.Services.Secrets && (service=="openbao"||strings.HasPrefix(service,"openbao-member-"))
- case coreupdate.Identity:
-  return m.Services.Identity && (service=="keycloak"||strings.HasPrefix(service,"keycloak-member-"))
- }
- return false
+func manifestAuthorizesIsolatedProvider(m application.Manifest, kind coreupdate.ProviderKind, service string) bool {
+	switch kind {
+	case coreupdate.SQL:
+		for _, instance := range application.SQLInstanceNames(m) {
+			base := "postgres"
+			if instance != "default" {
+				base += "-" + instance
+			}
+			if service == base || strings.HasPrefix(service, base+"-member-") {
+				return true
+			}
+		}
+	case coreupdate.Secrets:
+		return m.Services.Secrets && (service == "openbao" || strings.HasPrefix(service, "openbao-member-"))
+	case coreupdate.Identity:
+		return m.Services.Identity && (service == "keycloak" || strings.HasPrefix(service, "keycloak-member-"))
+	}
+	return false
 }
