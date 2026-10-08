@@ -244,3 +244,48 @@ func TestVerifyRecoveryRejectsForeignArchiveAndDestination(t *testing.T) {
 		t.Fatal("relative recovery target accepted")
 	}
 }
+
+type fakeReadiness struct {
+	etcdErr    error
+	patroniErr error
+	called     int
+}
+
+func (r *fakeReadiness) VerifyEtcdQuorum(_ context.Context, _ Identity, _ SnapshotInfo) error {
+	r.called++
+	return r.etcdErr
+}
+func (r *fakeReadiness) VerifyPatroniDCS(_ context.Context, _ Identity, _ SnapshotInfo) error {
+	r.called++
+	return r.patroniErr
+}
+func TestOperationalRecoveryFailClosed(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	if _, err := s.CreateSnapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.PrepareRestore(ctx, filepath.Join(t.TempDir(), "restored"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := &fakeRestore{}
+	if err := s.Restore(ctx, plan, restore); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.VerifyOperationalRecovery(ctx, plan, restore, nil); err == nil {
+		t.Fatal("missing quorum evidence accepted")
+	}
+	checks := &fakeReadiness{etcdErr: errors.New("no quorum")}
+	if err := s.VerifyOperationalRecovery(ctx, plan, restore, checks); err == nil || checks.called != 1 {
+		t.Fatal("etcd quorum failure ignored")
+	}
+	checks = &fakeReadiness{patroniErr: errors.New("Patroni not ready")}
+	if err := s.VerifyOperationalRecovery(ctx, plan, restore, checks); err == nil || checks.called != 2 {
+		t.Fatal("Patroni readiness failure ignored")
+	}
+	checks = &fakeReadiness{}
+	if err := s.VerifyOperationalRecovery(ctx, plan, restore, checks); err != nil || checks.called != 2 {
+		t.Fatalf("valid readiness rejected: %v", err)
+	}
+}

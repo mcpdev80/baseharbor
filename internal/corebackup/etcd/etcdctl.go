@@ -71,7 +71,9 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 		return SnapshotInfo{}, err
 	}
 	attest := s.Attest
-	if attest == nil { attest = s.attestEndpointStatus }
+	if attest == nil {
+		attest = s.attestEndpointStatus
+	}
 	attested, err := attest(ctx)
 	if err != nil {
 		return SnapshotInfo{}, err
@@ -138,37 +140,53 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 }
 
 type endpointStatus struct {
- Header struct {
-  ClusterID json.Number `json:"cluster_id"`
-  Revision json.Number `json:"revision"`
- } `json:"header"`
- Version string `json:"version"`
+	Header struct {
+		ClusterID json.Number `json:"cluster_id"`
+		Revision  json.Number `json:"revision"`
+	} `json:"header"`
+	Version string `json:"version"`
 }
+
 func (s EtcdctlSource) attestEndpointStatus(ctx context.Context) (SnapshotInfo, error) {
- var result SnapshotInfo
- for _, endpoint := range s.Endpoints {
-  cmd := exec.CommandContext(ctx, s.Etcdctl, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
-  cmd.Env = []string{
-   "PATH=/usr/bin:/bin", "ETCDCTL_API=3",
-   "ETCDCTL_CACERT="+s.TLS.CA,
-   "ETCDCTL_CERT="+s.TLS.Cert,
-   "ETCDCTL_KEY="+s.TLS.Key,
-  }
-  output,err:=cmd.Output()
-  if err!=nil || len(output)>32768 {return SnapshotInfo{},errors.New("etcd endpoint status authentication failed")}
-  var statuses []struct {Endpoint string `json:"Endpoint"`; Status endpointStatus `json:"Status"`}
-  decoder:=json.NewDecoder(strings.NewReader(string(output)))
-  decoder.UseNumber()
-  if err:=decoder.Decode(&statuses);err!=nil || len(statuses)!=1 || statuses[0].Endpoint!=endpoint {return SnapshotInfo{},errors.New("invalid authenticated etcd endpoint status")}
-  st:=statuses[0].Status
-  revision,err:=st.Header.Revision.Int64()
-  if err!=nil || revision<=0 || st.Version=="" || st.Header.ClusterID=="" {return SnapshotInfo{},errors.New("incomplete etcd cluster attestation")}
-  // etcdctl emits uint64 cluster IDs as JSON integers. Compare the decimal
-  // representation directly to the caller's pinned cluster identity.
-  current:=SnapshotInfo{ClusterID:st.Header.ClusterID.String(),Version:st.Version,Revision:revision}
-  if current.ClusterID!=s.Identity.Cluster {return SnapshotInfo{},errors.New("foreign etcd cluster detected")}
-  if result.ClusterID!="" && (result.ClusterID!=current.ClusterID || result.Version!=current.Version) {return SnapshotInfo{},errors.New("inconsistent etcd endpoint identity or version")}
-  if result.Revision==0 || current.Revision<result.Revision {result=current}
- }
- return result,nil
+	var result SnapshotInfo
+	for _, endpoint := range s.Endpoints {
+		cmd := exec.CommandContext(ctx, s.Etcdctl, "--endpoints="+endpoint, "endpoint", "status", "--write-out=json")
+		cmd.Env = []string{
+			"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
+			"ETCDCTL_CACERT=" + s.TLS.CA,
+			"ETCDCTL_CERT=" + s.TLS.Cert,
+			"ETCDCTL_KEY=" + s.TLS.Key,
+		}
+		output, err := cmd.Output()
+		if err != nil || len(output) > 32768 {
+			return SnapshotInfo{}, errors.New("etcd endpoint status authentication failed")
+		}
+		var statuses []struct {
+			Endpoint string         `json:"Endpoint"`
+			Status   endpointStatus `json:"Status"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(output)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&statuses); err != nil || len(statuses) != 1 || statuses[0].Endpoint != endpoint {
+			return SnapshotInfo{}, errors.New("invalid authenticated etcd endpoint status")
+		}
+		st := statuses[0].Status
+		revision, err := st.Header.Revision.Int64()
+		if err != nil || revision <= 0 || st.Version == "" || st.Header.ClusterID == "" {
+			return SnapshotInfo{}, errors.New("incomplete etcd cluster attestation")
+		}
+		// etcdctl emits uint64 cluster IDs as JSON integers. Compare the decimal
+		// representation directly to the caller's pinned cluster identity.
+		current := SnapshotInfo{ClusterID: st.Header.ClusterID.String(), Version: st.Version, Revision: revision}
+		if current.ClusterID != s.Identity.Cluster {
+			return SnapshotInfo{}, errors.New("foreign etcd cluster detected")
+		}
+		if result.ClusterID != "" && (result.ClusterID != current.ClusterID || result.Version != current.Version) {
+			return SnapshotInfo{}, errors.New("inconsistent etcd endpoint identity or version")
+		}
+		if result.Revision == 0 || current.Revision < result.Revision {
+			result = current
+		}
+	}
+	return result, nil
 }
