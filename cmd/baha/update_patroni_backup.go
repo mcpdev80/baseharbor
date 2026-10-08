@@ -62,7 +62,10 @@ func captureOwnedPatroniBackup(ctx context.Context, rt bhruntime.RuntimeProvider
 		return fmt.Errorf("native backup replication credentials unavailable: %w", err)
 	}
 	recovery := coreupdate.StreamRecoveryPoint{Directory: directory, Name: "core-spilo-basebackup"}
-	return recovery.Capture(ctx, func(ctx context.Context, dest io.Writer) error {
+	if err := recovery.Capture(ctx, func(ctx context.Context, dest io.Writer) error {
 		return streamPatroniBasebackup(ctx, rt, files, leader, creds.PostgresReplicationUser, creds.PostgresReplicationPass, dest)
-	})
+	}); err != nil {
+		return err
+	}
+	return coreupdate.VerifyPostgresBasebackup(recovery, "18")
 }
