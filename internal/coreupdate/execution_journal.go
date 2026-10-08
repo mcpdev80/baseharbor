@@ -21,7 +21,10 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 	if originalVerify == nil || originalRecord == nil {
 		return errors.New("journaled Core updates require live verification and journal hooks")
 	}
-	remaining := Plan{Release: plan.Release}
+	if err := validateExecutionPlan(plan, hooks); err != nil {
+        return err
+    }
+    remaining := Plan{Release: plan.Release}
 	for _, delta := range plan.Deltas {
 		if delta.Classification != NoChange && journal.Steps[JournalKey(delta)] == "verified" {
 			if err := originalVerify(ctx, delta); err != nil {
