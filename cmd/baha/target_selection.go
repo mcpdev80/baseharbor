@@ -25,6 +25,11 @@ func readPersistedTarget() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	info, statErr := os.Lstat(path)
+	if errors.Is(statErr, os.ErrNotExist) { return "", nil }
+	if statErr != nil { return "", fmt.Errorf("inspect active target: %w", statErr) }
+	if !info.Mode().IsRegular() { return "", machine.NewError(machine.ErrorValidationFailed, "active target selection is not a regular file", "Remove the invalid active-target entry after checking it, then run baha target activate NAME.", false) }
+	if info.Mode().Perm()&0077 != 0 { return "", machine.NewError(machine.ErrorValidationFailed, "active target selection permissions are too broad", "Restrict the active-target file to mode 0600, or recreate it using baha target activate NAME.", false) }
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
