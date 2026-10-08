@@ -112,7 +112,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 			return err
 		}
 		defer zeroBytes(password)
-		return withInMemoryPasswordFile(password, func(passwordPath string) error {
+		backupErr := withInMemoryPasswordFile(password, func(passwordPath string) error {
 			forwarded := append([]string(nil), selectionFiltered...)
 			for _, class := range requestedSelection.Include {
 				forwarded = append(forwarded, "--include-state", string(class))
@@ -131,6 +131,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				return baseRun(ctx, forwarded, buffer, errOut)
 			})
 		})
+		if backupErr != nil { return backupErr }
+		fmt.Fprintf(out,"Backup saved: %s\nRestore with: baha app restore %q\n",outputPath,outputPath)
+		return nil
 	}
 	return command
 }
