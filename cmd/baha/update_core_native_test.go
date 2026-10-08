@@ -92,16 +92,23 @@ func TestNativeCoreReceiptsPreserveEveryProviderStep(t *testing.T) {
 }
 
 func TestNativeRecoveryUsesActualOwnerDataLayer(t *testing.T) {
- cases:=[]struct{kind coreupdate.ProviderKind; instance,expected string}{
-  {coreupdate.SQL,"postgres-member-1","postgres-member-1"},
-  {coreupdate.Secrets,"openbao-member-1","postgres-member-1"},
-  {coreupdate.Identity,"keycloak-1","keycloak-db"},
- }
- for _,tc:=range cases{
-  d:=coreupdate.Delta{Installed:coreupdate.Realization{Kind:tc.kind,Instance:tc.instance}}
-  if got:=nativeRecoveryService(d);got!=tc.expected {t.Errorf("%s expected datastore %s got %s",tc.instance,tc.expected,got)}
- }
- compose:=filepath.Join("..","..","internal","runtime","assets","compose-single.yaml")
- volume,err:=coreupdate.ResolveOwnedServiceVolume(compose,"postgres-member-1","bh-test")
- if err!=nil||volume!="bh-test_postgres-data-1"{t.Fatalf("checked-in Core Postgres mount not recoverable: %q %v",volume,err)}
+	cases := []struct {
+		kind               coreupdate.ProviderKind
+		instance, expected string
+	}{
+		{coreupdate.SQL, "postgres-member-1", "postgres-member-1"},
+		{coreupdate.Secrets, "openbao-member-1", "postgres-member-1"},
+		{coreupdate.Identity, "keycloak-1", "keycloak-db"},
+	}
+	for _, tc := range cases {
+		d := coreupdate.Delta{Installed: coreupdate.Realization{Kind: tc.kind, Instance: tc.instance}}
+		if got := nativeRecoveryService(d); got != tc.expected {
+			t.Errorf("%s expected datastore %s got %s", tc.instance, tc.expected, got)
+		}
+	}
+	compose := filepath.Join("..", "..", "internal", "runtime", "assets", "compose-single.yaml")
+	volume, err := coreupdate.ResolveOwnedServiceVolume(compose, "postgres-member-1", "bh-test")
+	if err != nil || volume != "bh-test_postgres-data-1" {
+		t.Fatalf("checked-in Core Postgres mount not recoverable: %q %v", volume, err)
+	}
 }
