@@ -207,39 +207,50 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 	return Status{Fingerprint: fingerprint, Trusted: true, Owned: true, Backend: backend.Name(), Path: path}, nil
 }
 
-func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
-	state, err := loadState(stateDir)
-	if err != nil {
-		return 0, err
-	}
-	if len(state.Anchors) == 0 {
-		return 0, nil
-	}
-	removed := 0
-	var removeErr error
-	for _, record := range state.Anchors {
-		backend, err := resolveBackend(record.Backend)
-		if err != nil {
-			removeErr = errors.Join(removeErr, err)
-			continue
-		}
-		if err := verifyRecordedAnchor(record); err != nil {
-			removeErr = errors.Join(removeErr, err)
-			continue
-		}
-		if err := backend.Remove(ctx, record.Path); err != nil {
-			removeErr = errors.Join(removeErr, fmt.Errorf("remove owned host trust %s: %w", record.Path, err))
-			continue
-		}
-		removed++
-	}
-	if removeErr != nil {
-		return removed, removeErr
-	}
-	if err := os.Remove(statePath(stateDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return removed, err
-	}
-	return removed, nil
+// RemovalResult retains explicit evidence for every owned, preserved or refused CA.
+type RemovalResult struct {
+ Removed []AnchorRecord `json:"removed,omitempty"`
+ Preserved []AnchorRecord `json:"preserved,omitempty"`
+}
+
+func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult,error) {
+ state,err:=loadState(stateDir)
+ if err!=nil{return RemovalResult{},err}
+ result:=RemovalResult{}
+ var failures error
+ retained:=make([]AnchorRecord,0,len(state.Anchors))
+ for _,record:=range state.Anchors {
+  backend,resolveErr:=resolveBackend(record.Backend)
+  if resolveErr==nil {
+   var expected string
+   expected,resolveErr=backend.AnchorPath(record.Fingerprint)
+   if resolveErr==nil && filepath.Clean(expected)!=filepath.Clean(record.Path) {
+    resolveErr=fmt.Errorf("recorded anchor path does not match fingerprint %s",record.Fingerprint)
+   }
+  }
+  if resolveErr==nil {resolveErr=verifyRecordedAnchor(record)}
+  if resolveErr==nil {resolveErr=backend.Remove(ctx,record.Path)}
+  if resolveErr!=nil {
+   failures=errors.Join(failures,fmt.Errorf("PRESERVED %s (%s): %w",record.Path,record.Fingerprint,resolveErr))
+   retained=append(retained,record)
+   result.Preserved=append(result.Preserved,record)
+   continue
+  }
+  result.Removed=append(result.Removed,record)
+
+ }
+ if len(retained)>0 {
+  state.Anchors=retained
+  if err:=saveState(stateDir,state);err!=nil{return result,errors.Join(failures,err)}
+ } else if len(state.Anchors)>0 || len(result.Removed)>0 {
+  if err:=os.Remove(statePath(stateDir));err!=nil&&!errors.Is(err,os.ErrNotExist){return result,errors.Join(failures,err)}
+ }
+ return result,failures
+}
+
+func RemoveOwned(ctx context.Context,stateDir string)(int,error){
+ result,err:=RemoveOwnedDetailed(ctx,stateDir)
+ return len(result.Removed),err
 }
 
 func verifyRecordedAnchor(record AnchorRecord) error {
