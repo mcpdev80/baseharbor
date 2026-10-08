@@ -127,6 +127,23 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	if values == nil {
 		values = map[string]string{}
 	}
+	// An existing HA data layer must never be implicitly replaced by a
+	// single-node PostgreSQL topology (or vice versa).
+	desiredTopology := "single"
+	if app.HA { desiredTopology = "ha" }
+	if previous := values["BASEHARBOR_KEYCLOAK_TOPOLOGY"]; previous != "" && previous != desiredTopology {
+		return KeycloakFiles{}, fmt.Errorf("Keycloak topology transition %s -> %s requires explicit data migration and recovery", previous, desiredTopology)
+	}
+	if previous := values["BASEHARBOR_KEYCLOAK_TOPOLOGY"]; previous == "" {
+		if existing, readErr := os.ReadFile(files.Compose); readErr == nil {
+			oldTopology := "single"
+			if strings.Contains(string(existing), "keycloak-db-member-1:") { oldTopology = "ha" }
+			if oldTopology != desiredTopology {
+				return KeycloakFiles{}, fmt.Errorf("existing Keycloak %s data cannot be silently converted to %s", oldTopology, desiredTopology)
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) { return KeycloakFiles{}, readErr }
+	}
+	values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] = desiredTopology
 	if values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"] == "" {
 		port, err := allocateIdentityPort(nil)
 		if err != nil {
@@ -206,9 +223,11 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	if _, err := projectKeycloakTLSMaterial(filepath.Join(dir, "db-ha", "runtime"), dbMaterial); err != nil {
 		return KeycloakFiles{}, err
 	}
+	upstreams := []string{"https://keycloak-1:8443"}
+	if app.HA { upstreams = append(upstreams,"https://keycloak-2:8443","https://keycloak-3:8443") }
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
-		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
+		Upstreams:          upstreams,
 		UpstreamTrustFile:  nativeMaterial.CA,
 		UpstreamServerName: keycloakPublicHost,
 		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
@@ -248,8 +267,10 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
+	if app.HA {
 	if err := ensureKeycloakPostgresHA(files.Dir); err != nil {
 		return KeycloakFiles{}, fmt.Errorf("prepare Keycloak HA database routing: %w", err)
+	}
 	}
 
 	compose := keycloakCompose(app, files)
@@ -392,13 +413,15 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 
 	var b strings.Builder
 	b.WriteString("services:\n")
-	b.WriteString(keycloakHADataLayerCompose())
+	if app.HA { b.WriteString(keycloakHADataLayerCompose()) } else { b.WriteString(keycloakSingleDataLayerCompose()) }
 	b.WriteString(member("keycloak-1"))
 	b.WriteString("\n")
-	b.WriteString(member("keycloak-2"))
-	b.WriteString("\n")
-	b.WriteString(member("keycloak-3"))
-	b.WriteString("\n")
+	if app.HA {
+		b.WriteString(member("keycloak-2"))
+		b.WriteString("\n")
+		b.WriteString(member("keycloak-3"))
+		b.WriteString("\n")
+	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
 		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
@@ -415,7 +438,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
 	b.WriteString("\nvolumes:\n")
-	b.WriteString(keycloakHAVolumesCompose())
+	if app.HA { b.WriteString(keycloakHAVolumesCompose()) } else { b.WriteString(keycloakSingleVolumesCompose()) }
 	b.WriteString("\nnetworks:\n")
 	fmt.Fprintf(&b, "  identity-consumer:\n    name: %s\n", files.ConsumerNetwork)
 	fmt.Fprintf(&b, "  identity-internal:\n    name: %s\n", files.InternalNetwork)
