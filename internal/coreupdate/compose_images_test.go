@@ -41,3 +41,14 @@ func TestRewriteOwnedComposeImagesFailsOnUnverifiedProvider(t *testing.T) {
 		t.Fatal("created missing Keycloak member")
 	}
 }
+
+func TestRewriteOwnedComposeRejectsForgedUnsafeClassifications(t *testing.T){
+ source:=[]byte("services:\n  postgres-member-1:\n    image: postgres:18\n")
+ delta:=Delta{Installed:Realization{Kind:SQL,Installation:"c",Scope:"shared",Instance:"postgres-member-1",Owner:"baseharbor",Image:"postgres:18",Version:"18",Digest:digestA},Desired:Desired{Kind:SQL,Image:"postgres:18",Version:"18",Digest:digestB},Classification:SafeReconcile}
+ if _,err:=RewriteOwnedComposeImages(source,map[string]Delta{"postgres-member-1":delta});err==nil{t.Fatal("backup bypass via forged safe reconcile")}
+ delta.Classification=BackupRequired
+ delta.Desired.Version="17"
+ if _,err:=RewriteOwnedComposeImages(source,map[string]Delta{"postgres-member-1":delta});err==nil{t.Fatal("Postgres downgrade accepted")}
+ delta.Desired.Version="19"
+ if _,err:=RewriteOwnedComposeImages(source,map[string]Delta{"postgres-member-1":delta});err==nil{t.Fatal("Postgres major transition accepted")}
+}
