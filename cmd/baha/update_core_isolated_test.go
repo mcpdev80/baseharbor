@@ -31,7 +31,7 @@ func (r isolatedInventoryRuntime) ProjectServiceImageIdentity(_ context.Context,
 
 func TestIsolatedCoreInventoryOnlyRegisteredOwnedProject(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-    t.Setenv("BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE","application")
+	t.Setenv("BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE", "application")
 	m := application.New("app", "dev", true, false, false)
 	target := "isolated-inventory"
 	record := deployment.DeploymentRecord{
