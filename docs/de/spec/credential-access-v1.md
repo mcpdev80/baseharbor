@@ -6,7 +6,7 @@ Diese Spezifikation definiert die normative BaseHarbor Credential Taxonomie und 
 
 Es klassifiziert das von BaseHarbor verwaltete Material und Identität. Es erstellt kein neues IAM-, RBAC-, Secret-Store- oder Provider-Protokoll.
 
-Die Taxonomie gilt konsequent für Anbieterimplementierungen, Managementflächen, sichere Bindungen, CLI, Maschine JSON, MCP, Status, Arzt und Nachweis.
+Die Taxonomie gilt konsequent für Anbieterimplementierungen, Managementflächen, sichere Bindungen, CLI, Maschine JSON, MCP, Status, Doctor und Nachweis.
 
 ## Beglaubigungsklassen
 
@@ -108,13 +108,13 @@ Es enthält anbieterneutrale Referenzen und Sicherheitsmetadaten für Material d
 
 Es wird nicht zu einem Humanlogin- oder Business-RBAC-Vertrag.
 
-Plaintext geheime Werte bleiben in portabler Absicht, Anbieter-Register, Plan, Status, Arzt, Beweise und normale Protokolle verboten.
+Plaintext geheime Werte bleiben in portabler Absicht, Anbieter-Register, Plan, Status, Doctor, Beweise und normale Protokolle verboten.
 
 ## Maschinenschnittstellenparität
 
 CLI, Machine JSON und MCP MUSS die gleiche Anerkennungs-Klassifikation aufdecken und KEINE Klassen zusammenfügen.
 
-Status, Arzt und Beweismittel MÜSSEN KEINE stärkeren Eigentums-, Isolations- oder Authentifizierungsgarantien geltend machen, als die Implementierung bestätigt hat.
+Status, Doctor und Beweismittel MÜSSEN KEINE stärkeren Eigentums-, Isolations- oder Authentifizierungsgarantien geltend machen, als die Implementierung bestätigt hat.
 
 ## Versionierung
 

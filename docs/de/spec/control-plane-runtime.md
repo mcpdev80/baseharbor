@@ -1,4 +1,4 @@
-# Laufzeit des Steuerflugzeugs
+# Laufzeit des Control Planes
 
 BaseHarbor stellt seine geschützte Steuerungs-Plane API durch die `baha serve` Prozess. Der Server ist bewusst von Anwendungsserviceprotokollen getrennt: PostgreSQL, Valkey, OpenBao und zukünftige S3-kompatible Dienste bleiben über ihre nativen Schnittstellen direkt konsumierbar.
 

@@ -4,7 +4,7 @@ BaseHarbor entlarvt ein geheimes Evidenzmodell für Lebenszyklus, Politik, Laufz
 
 ## Anwendungsbereich
 
-Das Beweisbündel ist eine schreibgeschützte Projektion der bestehenden semantischen Modelle von BaseHarbor. Es erstellt keine zweite Kontrollebene und ersetzt nicht Plan, Politik, Status, Arzt oder Erholungszustand.
+Das Beweisbündel ist eine schreibgeschützte Projektion der bestehenden semantischen Modelle von BaseHarbor. Es erstellt keine zweite Kontrollebene und ersetzt nicht Plan, Politik, Status, Doctor oder Erholungszustand.
 
 Das Bündel unterscheidet gewünschten Zustand, durchgesetzte Politik, beobachteten Zustand, überprüfte Ergebnisse, explizite Ausnahmen, nicht unterstützte Kontrollen, Recovery-Evidenz und gebundene Audit-Ereignisse.
 
@@ -42,7 +42,7 @@ Dieser Digest ist ein Manipulationsnachweis für ein exportiertes Bündel; es ha
 
 ## Begrenzung der Geheimsicherheit
 
-Beweise dürfen keine geheimen Werte, Zugriffsschlüssel, Token, private Schlüssel, kridentielle Verbindungs-URLs, interaktive Prompt-Inhalte oder Modell-/Agenten-Überlegungen enthalten. Evidence verwendet BaseHarbors maschinensicheren Status, Arzt- und Richtlinienmodelle. Neue Evidence-Felder müssen die gleiche Grenze wahren.
+Beweise dürfen keine geheimen Werte, Zugriffsschlüssel, Token, private Schlüssel, kridentielle Verbindungs-URLs, interaktive Prompt-Inhalte oder Modell-/Agenten-Überlegungen enthalten. Evidence verwendet BaseHarbors maschinensicheren Status, Doctor- und Richtlinienmodelle. Neue Evidence-Felder müssen die gleiche Grenze wahren.
 
 ## Vertrauensgrenze
 
