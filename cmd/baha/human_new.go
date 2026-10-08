@@ -59,6 +59,7 @@ func runHumanNewSelection(ctx context.Context, kind string, args []string, out, 
   }
   return createTarget(ctx, args, out, errOut)
  case "4", "provider":
+  if len(args)==0 {return guidedCreateProvider(ctx,out,errOut)}
   return providerInitCommand().Run(ctx, args, out, errOut)
  case "5", "workspace":
   return appWorkspaceCommand().Run(ctx, args, out, errOut)
@@ -130,4 +131,29 @@ func runGuidedNewLocalTarget(ctx context.Context, out, errOut io.Writer) error {
   return nil
  }
  return createTarget(ctx, args, out, errOut)
+}
+
+func guidedCreateProvider(ctx context.Context,out,errOut io.Writer)error{
+ if noInput(ctx)||!readerIsTerminal(appNewInput){
+  return usageError("provider creation needs a provider ID in non-interactive mode","Run 'baha new provider namespace/name --path DIR' or launch 'baha new' in an interactive terminal.")
+ }
+ reader:=bufio.NewReader(appNewInput)
+ fmt.Fprintln(out,"Create a Capability Provider extension.")
+ fmt.Fprint(out,"Provider ID (namespace/name, or cancel): ")
+ id,err:=reader.ReadString('\n')
+ if err!=nil{return fmt.Errorf("read provider ID: %w",err)}
+ id=strings.TrimSpace(id)
+ if strings.EqualFold(id,"cancel")||strings.EqualFold(id,"q"){fmt.Fprintln(out,"Cancelled. No files created.");return nil}
+ if !strings.Contains(id,"/") {return usageError("provider ID must use namespace/name","Example: baha new provider company/postgres --path ./postgres")}
+ fmt.Fprintf(out,"Create the provider skeleton for %s in the default directory? [y/N]: ",id)
+ confirmation,err:=reader.ReadString('\n')
+ if err!=nil{return fmt.Errorf("read provider creation confirmation: %w",err)}
+ if !isAffirmative(strings.TrimSpace(confirmation)){fmt.Fprintln(out,"Cancelled. No files created.");return nil}
+ return providerInitCommand().Run(ctx,[]string{id},out,errOut)
+}
+func isAffirmative(value string)bool{
+ switch strings.ToLower(strings.TrimSpace(value)){
+ case "y","yes","j","ja":return true
+ default:return false
+ }
 }
