@@ -118,6 +118,7 @@ func TestExecuteJournaledRejectsForgedPreviouslyVerifiedPlan(t *testing.T) {
 
 func TestExecuteJournaledReceiptFailureNeverCommitsVerified(t *testing.T) {
  root:=t.TempDir()
+ if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
  path:=filepath.Join(root,"journal.json")
  plan,err:=Build("0.4.24",[]Realization{{Kind:Secrets,Installation:"a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Digest:digestA,Version:"2.7.0"}},expected())
  if err!=nil{t.Fatal(err)}
