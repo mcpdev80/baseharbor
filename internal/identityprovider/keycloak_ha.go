@@ -29,6 +29,12 @@ defaults
   timeout client 30s
   timeout server 30s
 
+resolvers container_dns
+  parse-resolv-conf
+  resolve_retries 3
+  timeout retry 1s
+  hold valid 5s
+
 frontend postgres
   bind :5432
   default_backend primary
@@ -36,7 +42,7 @@ frontend postgres
 backend primary
   option httpchk GET /primary
   http-check expect status 200
-  default-server check port 8008 inter 2s fall 2 rise 2 init-addr last,libc,none
+  default-server check port 8008 inter 2s fall 2 rise 2 resolvers container_dns resolve-prefer ipv4 init-addr last,none
   server postgres-1 keycloak-db-member-1:5432 check
   server postgres-2 keycloak-db-member-2:5432 check
   server postgres-3 keycloak-db-member-3:5432 check
