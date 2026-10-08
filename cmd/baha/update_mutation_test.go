@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
- "errors"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -295,22 +295,28 @@ func TestSelfUpdateUpToDateDoesNotClaimCoreReconciliation(t *testing.T) {
 	}
 }
 
-func TestSelfUpdateUpToDateVerifiesUnchangedCore(t *testing.T){
- old:=verifyCoreBinaryOnly
- defer func(){verifyCoreBinaryOnly=old}()
- verified:=0
- verifyCoreBinaryOnly=func(_ context.Context,release string)error{
-  verified++
-  if release!="0.4.24"{t.Fatalf("incorrect release %s",release)}
-  return nil
- }
- check:=selfUpdateCheck{Relation:"up-to-date",Target:"0.4.24",CoreReconciliation:"partial_read_only"}
- var out strings.Builder
- if err:=performSelfUpdate(context.Background(),check,selfUpdateOptions{Yes:true},&out,&out);err!=nil{t.Fatal(err)}
- if verified!=1 || !strings.Contains(out.String(),"already installed"){t.Fatalf("Core no-change verification missing: %d %s",verified,out.String())}
- verifyCoreBinaryOnly=func(context.Context,string)error{return errors.New("identity degraded")}
- out.Reset()
- if err:=performSelfUpdate(context.Background(),check,selfUpdateOptions{Yes:true},&out,&out);err==nil || !strings.Contains(err.Error(),"identity degraded"){
-  t.Fatalf("degraded Core falsely accepted: %v",err)
- }
+func TestSelfUpdateUpToDateVerifiesUnchangedCore(t *testing.T) {
+	old := verifyCoreBinaryOnly
+	defer func() { verifyCoreBinaryOnly = old }()
+	verified := 0
+	verifyCoreBinaryOnly = func(_ context.Context, release string) error {
+		verified++
+		if release != "0.4.24" {
+			t.Fatalf("incorrect release %s", release)
+		}
+		return nil
+	}
+	check := selfUpdateCheck{Relation: "up-to-date", Target: "0.4.24", CoreReconciliation: "partial_read_only"}
+	var out strings.Builder
+	if err := performSelfUpdate(context.Background(), check, selfUpdateOptions{Yes: true}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	if verified != 1 || !strings.Contains(out.String(), "already installed") {
+		t.Fatalf("Core no-change verification missing: %d %s", verified, out.String())
+	}
+	verifyCoreBinaryOnly = func(context.Context, string) error { return errors.New("identity degraded") }
+	out.Reset()
+	if err := performSelfUpdate(context.Background(), check, selfUpdateOptions{Yes: true}, &out, &out); err == nil || !strings.Contains(err.Error(), "identity degraded") {
+		t.Fatalf("degraded Core falsely accepted: %v", err)
+	}
 }
