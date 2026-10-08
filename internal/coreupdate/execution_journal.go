@@ -27,25 +27,29 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 	// Never replay an incomplete provider migration unless its recovery hook
 	// explicitly permits idempotent resume. Ordinary application is not safe.
 	for _, delta := range plan.Deltas {
-        if err := ctx.Err(); err != nil { return err }
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		status := journal.Steps[JournalKey(delta)]
 		if status == "applying" || status == "apply_failed" || status == "verify_failed" {
 			if hooks.Recover == nil {
-                return fmt.Errorf("incomplete Core provider %s requires explicit provider recovery before replay", JournalKey(delta))
-            }
+				return fmt.Errorf("incomplete Core provider %s requires explicit provider recovery before replay", JournalKey(delta))
+			}
 		}
 	}
 	for _, delta := range plan.Deltas {
-        status := journal.Steps[JournalKey(delta)]
-        if status == "applying" || status == "apply_failed" || status == "verify_failed" {
-            if err := hooks.Recover(ctx, delta, status); err != nil {
-                return fmt.Errorf("restore interrupted Core provider %s: %w", JournalKey(delta), err)
-            }
-        }
-    }
-    remaining := Plan{Release: plan.Release}
+		status := journal.Steps[JournalKey(delta)]
+		if status == "applying" || status == "apply_failed" || status == "verify_failed" {
+			if err := hooks.Recover(ctx, delta, status); err != nil {
+				return fmt.Errorf("restore interrupted Core provider %s: %w", JournalKey(delta), err)
+			}
+		}
+	}
+	remaining := Plan{Release: plan.Release}
 	for _, delta := range plan.Deltas {
-        if err := ctx.Err(); err != nil { return err }
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if delta.Classification != NoChange && journal.Steps[JournalKey(delta)] == "verified" {
 			if err := originalVerify(ctx, delta); err != nil {
 				return fmt.Errorf("previously verified Core provider %s is no longer ready: %w", JournalKey(delta), err)
