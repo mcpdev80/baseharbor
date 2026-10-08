@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
- "errors"
- "strings"
- "github.com/mcpdev80/baseharbor/internal/hosttrust"
+	"errors"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -126,24 +126,38 @@ func TestTargetOwnedRuntimeContainersFiltersOnlyTargetProjects(t *testing.T) {
 	}
 }
 
-func TestFullDestroyPreservesGlobalOwnershipOnHostCAFailure(t *testing.T){
- t.Setenv("XDG_DATA_HOME",t.TempDir())
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- t.Setenv("BASEHARBOR_STATE_DIR",filepath.Join(t.TempDir(),"runtime-state"))
- root,err:=deployment.TargetStateRoot("orphan")
- if err!=nil{t.Fatal(err)}
- if err:=os.MkdirAll(filepath.Join(root,"runtime"),0700);err!=nil{t.Fatal(err)}
- original:=removeHostTrustForFullDestroy
- removeHostTrustForFullDestroy=func(_ context.Context,dir string)(hosttrust.RemovalResult,error){
-  expected,err:=bhruntime.DataDir("")
-  if err!=nil{t.Fatal(err)}
-  if dir!=expected{t.Fatalf("destroy looked for trust state in %q, expected global %q",dir,expected)}
-  return hosttrust.RemovalResult{Preserved:[]hosttrust.AnchorRecord{{Fingerprint:strings.Repeat("a",64),Path:"/usr/local/share/ca-certificates/baseharbor-aaaaaaaaaaaaaaaa.crt"}}},errors.New("recorded CA mismatch")
- }
- defer func(){removeHostTrustForFullDestroy=original}()
- var out bytes.Buffer
- err=runtimeDestroyAll(context.Background(),[]string{"--all","--yes"},&out,&out)
- if err==nil{t.Fatalf("unverified anchor unexpectedly permitted destroy: %s",out.String())}
- if !strings.Contains(out.String(),"PRESERVED host CA "+strings.Repeat("a",64)){t.Fatalf("missing exact preserved anchor warning: %s",out.String())}
- if _,err:=os.Stat(root);err!=nil{t.Fatalf("destroy discarded ownership evidence: %v",err)}
+func TestFullDestroyPreservesGlobalOwnershipOnHostCAFailure(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-state"))
+	root, err := deployment.TargetStateRoot("orphan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	original := removeHostTrustForFullDestroy
+	removeHostTrustForFullDestroy = func(_ context.Context, dir string) (hosttrust.RemovalResult, error) {
+		expected, err := bhruntime.DataDir("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dir != expected {
+			t.Fatalf("destroy looked for trust state in %q, expected global %q", dir, expected)
+		}
+		return hosttrust.RemovalResult{Preserved: []hosttrust.AnchorRecord{{Fingerprint: strings.Repeat("a", 64), Path: "/usr/local/share/ca-certificates/baseharbor-aaaaaaaaaaaaaaaa.crt"}}}, errors.New("recorded CA mismatch")
+	}
+	defer func() { removeHostTrustForFullDestroy = original }()
+	var out bytes.Buffer
+	err = runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out)
+	if err == nil {
+		t.Fatalf("unverified anchor unexpectedly permitted destroy: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "PRESERVED host CA "+strings.Repeat("a", 64)) {
+		t.Fatalf("missing exact preserved anchor warning: %s", out.String())
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("destroy discarded ownership evidence: %v", err)
+	}
 }
