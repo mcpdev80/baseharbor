@@ -192,6 +192,8 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	var coreExpected []coreupdate.Desired
 	var coreBacking []coreupdate.BackingPin
 	var coreState coreinstallation.State
+ var corePlan []coreupdate.Delta
+ var coreInspectionError string
 	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
 		coreReconciliation = "unavailable"
 		targetInfo, targetErr := effectiveTarget(ctx)
@@ -206,6 +208,19 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 		}
 		if manifest, err := coreupdate.LoadRelease(target); err == nil {
 			coreExpected, coreBacking = manifest.Providers, manifest.Backing
+            if coreState.ID != "" {
+                runtimeTarget, targetErr := effectiveTarget(ctx)
+                if targetErr != nil {coreInspectionError = targetErr.Error()} else {
+                    provider, providerErr := detectRuntimeForTarget(ctx,runtimeTarget)
+                    if providerErr != nil {coreInspectionError = providerErr.Error()} else {
+                        plan, planErr := inspectCoreRuntimePlan(ctx,target,coreState,provider)
+                        if planErr != nil {coreInspectionError = planErr.Error()} else {
+                           corePlan = plan.Deltas
+                           coreReconciliation = "planned_read_only"
+                        }
+                    }
+                }
+            }
 		} else {
 			coreReconciliation = "unavailable_unpinned"
 		}
@@ -217,6 +232,8 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 		CoreInstallPhase:   coreState.Phase,
 		CoreExpected:       coreExpected,
 		CoreBacking:        coreBacking,
+        CorePlan: corePlan,
+        CoreInspectionError: coreInspectionError,
 		Installed:          installedNormalized,
 		Channel:            opts.Channel,
 		Target:             target,
@@ -297,7 +314,14 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	if check.CoreInstallationID != "" {
 		fmt.Fprintf(out, "Core installation: %s (phase: %s, ready: %t)\n", check.CoreInstallationID, check.CoreInstallPhase, check.CoreInstallReady)
 	}
-	if check.CoreReconciliation == "unavailable_unpinned" {
+	if check.CoreReconciliation == "planned_read_only" {
+        fmt.Fprintln(out,"Core provider plan (read-only; upgrade not yet available):")
+        for _, delta := range check.CorePlan {
+           fmt.Fprintf(out,"  %s %s %s -> %s (%s)\n",delta.Installed.Kind,delta.Installed.Instance,delta.Installed.Version,delta.Desired.Version,delta.Classification)
+        }
+    }
+    if check.CoreInspectionError != "" {fmt.Fprintf(out,"Core inventory unavailable: %s\n",check.CoreInspectionError)}
+    if check.CoreReconciliation == "unavailable_unpinned" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
 	} else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
