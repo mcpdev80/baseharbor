@@ -474,7 +474,7 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		{coreupdate.Identity, bhruntime.SharedProjectName(state.Spec.Target + "-core"), "keycloak-1"},
 	}
 	var existing []coreupdate.Realization
- var backing []coreupdate.Delta
+	var backing []coreupdate.Delta
 	for _, item := range services {
 		id, err := runtimeProvider.ProjectServiceImageIdentity(ctx, item.project, item.service)
 		if err != nil {
@@ -487,23 +487,33 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		}
 		v := ref[pos+1:]
 		if item.kind == coreupdate.SQL && state.Spec.HA {
-            var pin *coreupdate.BackingPin
-            for i := range catalog.Backing {
-                if catalog.Backing[i].Role == "keycloak-ha-postgresql" { pin = &catalog.Backing[i]; break }
-            }
-            if pin == nil {return coreupdate.Plan{}, errors.New("missing pinned HA PostgreSQL backing realization")}
-            digest := strings.TrimSpace(id.Digest)
-            if at := strings.Index(digest,"@sha256:");at>=0 {digest=digest[at+1:]}
-            classification := coreupdate.Unsupported
-            reason := "Spilo HA backing version transition requires provider-native backup and recovery"
-            if ref == pin.Image && digest == pin.Digest {classification = coreupdate.NoChange; reason = ""}
-            backing = append(backing,coreupdate.Delta{
-                Installed:coreupdate.Realization{Kind:coreupdate.SQL,Installation:state.ID,Scope:"backing",Instance:item.service,Owner:"baseharbor",Image:ref,Digest:digest,Version:v},
-                Desired:coreupdate.Desired{Kind:coreupdate.SQL,Image:pin.Image,Digest:pin.Digest,Version:pin.Version},
-                Classification:classification,Reason:reason,
-            })
-            continue
-        }
+			var pin *coreupdate.BackingPin
+			for i := range catalog.Backing {
+				if catalog.Backing[i].Role == "keycloak-ha-postgresql" {
+					pin = &catalog.Backing[i]
+					break
+				}
+			}
+			if pin == nil {
+				return coreupdate.Plan{}, errors.New("missing pinned HA PostgreSQL backing realization")
+			}
+			digest := strings.TrimSpace(id.Digest)
+			if at := strings.Index(digest, "@sha256:"); at >= 0 {
+				digest = digest[at+1:]
+			}
+			classification := coreupdate.Unsupported
+			reason := "Spilo HA backing version transition requires provider-native backup and recovery"
+			if ref == pin.Image && digest == pin.Digest {
+				classification = coreupdate.NoChange
+				reason = ""
+			}
+			backing = append(backing, coreupdate.Delta{
+				Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "backing", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v},
+				Desired:        coreupdate.Desired{Kind: coreupdate.SQL, Image: pin.Image, Digest: pin.Digest, Version: pin.Version},
+				Classification: classification, Reason: reason,
+			})
+			continue
+		}
 		if item.kind == coreupdate.SQL {
 			v = strings.SplitN(v, "-", 2)[0]
 		}
@@ -514,7 +524,9 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		existing = append(existing, coreupdate.Realization{Kind: item.kind, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v})
 	}
 	plan, err := coreupdate.Build(targetVersion, existing, catalog.Providers)
- if err != nil {return coreupdate.Plan{},err}
- plan.Deltas = append(plan.Deltas,backing...)
- return plan,nil
+	if err != nil {
+		return coreupdate.Plan{}, err
+	}
+	plan.Deltas = append(plan.Deltas, backing...)
+	return plan, nil
 }
