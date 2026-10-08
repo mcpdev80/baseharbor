@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+ "os"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -35,7 +36,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "doctor",
 		Summary: "Diagnose and safely repair an application's runtime",
-		Usage:   "baha app doctor [NAME] [--fix]",
+		Usage:   "baha app doctor [NAME] [--fix --yes]",
 		Long:    "Runs the existing application doctor, including required-secret presence/usability checks, classifies failures using the same repair classes as root doctor, and with --fix only invokes the normal guarded app apply lifecycle when every remaining failure is safely repairable. External secrets, manifest or permission problems, and platform prerequisites remain fail-closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return executeApplicationRepairLifecycle(ctx, store, args, out, errOut)
@@ -45,6 +46,7 @@ func appDoctorRepairCommand(store application.Store) *cli.Command {
 
 func executeApplicationRepairLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 	if requestsJSONOutput(args) {
+        for _,arg:=range args {if arg=="--yes"{return usageError("structured doctor output is read-only","Remove --yes and --fix for JSON.")}}
 		for _, arg := range args {
 			if arg == "--fix" {
 				return usageError("--fix cannot be combined with structured output", "Run doctor in human mode for guarded repair, or remove --fix for read-only JSON.")
@@ -52,7 +54,10 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 		}
 		return appDoctorCommand(store).Run(ctx, args, out, errOut)
 	}
-	nameArgs, fix, err := parseAppDoctorRepairArgs(args)
+	approved:=false
+ filtered:=make([]string,0,len(args))
+ for _,arg:=range args {if arg=="--yes"{approved=true}else{filtered=append(filtered,arg)}}
+ nameArgs, fix, err := parseAppDoctorRepairArgs(filtered)
 	if err != nil {
 		return err
 	}
@@ -78,6 +83,12 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 	if !allAppDoctorFindingsAutoFixable(findings) {
 		return errors.New("application doctor found findings that require developer or manual action before safe repair")
 	}
+ if !approved {
+  if noInput(ctx)||!readerIsTerminal(os.Stdin) {return usageError("application repair requires explicit consent", "Review doctor findings, then run baha app doctor --fix --yes.")}
+  approved,err=confirmDoctorRepair(os.Stdin,errOut)
+  if err!=nil{return err}
+  if !approved{return usageError("application repair cancelled; no changes made","Review the doctor findings and try again when ready.")}
+ }
 
 	fmt.Fprintln(out, "Applying safe repair through the normal application lifecycle...")
 	if findingsNeedControlPlaneRepair(findings) {
