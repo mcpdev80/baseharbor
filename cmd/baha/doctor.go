@@ -10,6 +10,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
+ "github.com/mcpdev80/baseharbor/internal/hosttrust"
+ bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type doctorRepairClass string
@@ -108,6 +110,7 @@ func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.C
 	if err != nil {
 		return checks
 	}
+	checks = appendHostTrustOwnershipDoctor(checks)
 	return append(checks, health.Check{
 		Name:    "control-plane-ha",
 		OK:      report.Satisfied,
@@ -233,4 +236,13 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 	}
 	fmt.Fprintln(out, "Repair applied: existing runtime definition converged without changing configuration.")
 	return nil
+}
+
+func appendHostTrustOwnershipDoctor(checks []health.Check) []health.Check {
+ dataDir,err:=bhruntime.DataDir("")
+ if err!=nil { return append(checks,health.Check{Name:"host-trust-ownership",OK:false,Message:"host trust state directory unavailable: "+err.Error()}) }
+ records,err:=hosttrust.StateRecords(dataDir)
+ if err!=nil { return append(checks,health.Check{Name:"host-trust-ownership",OK:false,Message:"host trust ownership state invalid: "+err.Error()}) }
+ if len(records)==0{return append(checks,health.Check{Name:"host-trust-ownership",OK:true,Message:"no BaseHarbor-owned host CA anchors"})}
+ return append(checks,health.Check{Name:"host-trust-ownership",OK:true,Message:fmt.Sprintf("%d recorded BaseHarbor-owned CA anchor(s); inspect with 'baha trust status', remove explicitly with 'baha trust uninstall'",len(records))})
 }
