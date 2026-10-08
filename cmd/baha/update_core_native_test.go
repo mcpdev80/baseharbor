@@ -1,7 +1,6 @@
 package main
 import(
  "context"
- "errors"
  "strings"
  "testing"
 
@@ -44,5 +43,4 @@ func TestNativeCorePinnedImageVerificationRefusesDigestDrift(t *testing.T){
  if err:=ops.ReconcilePinned(context.Background(),delta);err!=nil{t.Fatal(err)}
  if runtime.started!=2{t.Fatal("Core reconcile not executed")}
  if err:=ops.ReconcileOriginal(context.Background(),delta);err==nil{t.Fatal("failed to detect old digest mismatch")}
- if !errors.Is(context.Canceled,context.Canceled){t.Fatal("unreachable")}
 }
