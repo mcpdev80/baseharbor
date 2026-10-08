@@ -5,6 +5,9 @@ on:
     paths:
       - "internal/development/nextjsadapter/**"
       - ".github/workflows/nextjs-greenfield-e2e.yml"
+concurrency:
+  group: nextjs-greenfield-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
