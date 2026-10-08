@@ -151,7 +151,7 @@ func TestKeycloakSingleGatewayOmitsAbsentHAMembers(t *testing.T) {
 		t.Fatal("single Keycloak gateway references nonexistent HA peers")
 	}
 	ha := keycloakCompose(application.WithHA(app, true), files)
-	for _, peer := range []string{"https://keycloak-2:8443", "https://keycloak-3:8443"} {
+	for _, peer := range []string{"  keycloak-2:", "  keycloak-3:"} {
 		if !strings.Contains(ha, peer) {
 			t.Fatalf("HA gateway missing %s", peer)
 		}
