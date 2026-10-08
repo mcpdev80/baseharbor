@@ -109,3 +109,39 @@ func TestProviderVersionComparisonFailsClosed(t *testing.T) {
   }
  }
 }
+
+func TestExecuteRejectsForgedPlanBeforeHooks(t *testing.T) {
+ base := Delta{
+  Installed: Realization{Kind:SQL,Installation:"a",Scope:"shared",Instance:"sql",Owner:"baseharbor",Image:"postgres",Digest:digestA,Version:"18.1"},
+  Desired: Desired{Kind:SQL,Image:"postgres",Digest:digestB,Version:"18.2"},
+  Classification: BackupRequired,
+ }
+ called:=false
+ hooks:=Hooks{
+  Preflight:func(context.Context,Plan)error{called=true;return nil},
+  RecoveryPoint:func(context.Context,Delta)error{called=true;return nil},
+  Apply:func(context.Context,Delta)error{called=true;return nil},
+  Verify:func(context.Context,Delta)error{called=true;return nil},
+  Record:func(context.Context,Delta,string)error{called=true;return nil},
+ }
+ cases:=[]struct{name string; mutate func(*Delta)}{
+  {"foreign_owner",func(d *Delta){d.Installed.Owner="external"}},
+  {"provider_mismatch",func(d *Delta){d.Desired.Kind=Secrets}},
+  {"missing_pin",func(d *Delta){d.Desired.Digest=""}},
+  {"forged_no_change",func(d *Delta){d.Classification=NoChange}},
+  {"version_downgrade",func(d *Delta){d.Desired.Version="17.9"}},
+ }
+ for _,tc:=range cases {
+  t.Run(tc.name,func(t *testing.T){
+   d:=base
+   tc.mutate(&d)
+   called=false
+   err:=Execute(context.Background(),Plan{Release:"0.4.24",Deltas:[]Delta{d}},hooks)
+   if err==nil || called {t.Fatalf("unsafe plan invoked hooks: %v called=%v",err,called)}
+  })
+ }
+ called=false
+ if err:=Execute(context.Background(),Plan{Release:"0.4.24",Deltas:[]Delta{base,base}},hooks);err==nil || called {
+  t.Fatalf("duplicate plan invoked hooks: %v called=%v",err,called)
+ }
+}
