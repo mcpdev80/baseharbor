@@ -185,6 +185,7 @@ func Operations() []Operation {
 		{ID: "trust.status", MCPTool: "baseharbor.trust.status", Description: "Inspect public CA trust on the execution host.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "trust.export", MCPTool: "baseharbor.trust.export", Description: "Export public managed CA material without private keys.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "trust.install", MCPTool: "baseharbor.trust.install", Description: "Install public managed CA on the execution host after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "trust.uninstall", MCPTool: "baseharbor.trust.uninstall", Description: "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.stop", MCPTool: "baseharbor.app.stop", Description: "Stop owned application runtime while preserving persistent data.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "app.preflight", MCPTool: "baseharbor.app.preflight", Description: "Validate application preflight without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "secret.list", MCPTool: "baseharbor.secret.list", Description: "List configured secret names without values.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
