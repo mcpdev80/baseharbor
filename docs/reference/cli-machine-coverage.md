@@ -71,7 +71,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha disconnect` | semantic | CLI -o json / typed MCP result | baseharbor.connectivity.disconnect |  |
 | `baha doctor` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.doctor | Control-plane mode maps here; --fix uses control-plane.repair and rechecks readiness. Repository mode uses doctor or repair. |
 | `baha down` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.stop | Control-plane mode maps here; repository application mode uses app.stop. |
-| `baha init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt | New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only. |
+| `baha init` | semantic | CLI -o json / typed MCP result | baseharbor.app.adopt |  |
 | `baha inspect` | semantic | CLI -o json / typed MCP result | baseharbor.inspect |  |
 | `baha list` | semantic | CLI -o json / typed MCP result | baseharbor.app.list |  |
 | `baha login` | excluded |  |  | Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens. |
