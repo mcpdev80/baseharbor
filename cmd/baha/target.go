@@ -315,7 +315,9 @@ func targetCommand() *cli.Command {
 					if len(args) == 1 && strings.HasPrefix(args[0], "-") {
 						return unknownOptionUsage("baha target activate", args[0])
 					}
-					if len(args) == 0 { return guidedTargetActivation(ctx, out, errOut) }
+					if len(args) == 0 {
+						return guidedTargetActivation(ctx, out, errOut)
+					}
 					if len(args) != 1 {
 						return usageError("baha target activate requires NAME", "Example: baha target activate docker-dev")
 					}
