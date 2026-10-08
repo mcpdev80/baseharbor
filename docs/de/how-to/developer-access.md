@@ -4,8 +4,8 @@ Verwende logische Application-/Ressourcennamen statt generierter Container-Namen
 
 ## Kanonische URLs
 
-```bash
-baha dev domain
+```text
+baha.localhost
 ```
 
 Der Standard ist `baha.localhost`; `baha dev domain dev.example.internal` ändert ihn ausdrücklich. Application-Routen verwenden `<app>.<domain>`, Management-Routen semantische Hosts wie `pgadmin`, `auth`, `auth-admin`, `storage`, `secrets` und `metrics`.
@@ -17,7 +17,8 @@ Für einen intern HTTPS-fähigen Repository-Workload ist das Service-Label `io.b
 ## Management-Zugangsdaten
 
 ```bash
-baha dev credentials
+baha dev domain
+baha dev domain dev.example.internal
 ```
 
 Der Standardbenutzer `developer` ist änderbar mit `--username USER`; `--reset` rotiert ausdrücklich. Die Target-/Environment-lokale Management-Identität bleibt von Datenbank-, S3-, Runtime- und Operator-Zugangsdaten getrennt. Normale Status-/Doctor-Ausgaben zeigen das Passwort nicht.
@@ -26,9 +27,17 @@ Der Standardbenutzer `developer` ist änderbar mit `--username USER`; `--reset` 
 
 Im Application-Repository mit installierten nativen Clients:
 
-```bash
-baha app psql
-baha app redis
+```text
+<app>.<domain>
+<app>-<service>.<domain>
+
+pgadmin.<domain>
+cache.<domain>
+storage.<domain>
+auth.<domain>
+auth-admin.<domain>
+secrets.<domain>
+metrics.<domain>
 ```
 
 Mehrere Instanzen werden explizit gewählt, etwa `baha app psql analytics` oder `baha app redis cache`. Außerhalb eines Repositorys ist eine Application mit `--app NAME` nötig. Passwörter gehen über die Child-Prozess-Umgebung, nicht über Befehlsargumente. Ein fehlender Client wird nicht durch eine fremde Container-Shell ersetzt.
@@ -37,13 +46,66 @@ Mehrere Instanzen werden explizit gewählt, etwa `baha app psql analytics` oder 
 
 ## Workload-Zugriff
 
-```text
-baha app logs api
-baha app logs api --follow
-baha app shell api
-baha app exec worker ./bin/worker --version
+```yaml
+services:
+  api:
+    labels:
+      io.baseharbor.workload.protocol: "https"
 ```
 
 Die Services müssen im Application Contract ausgewählt sein. Zugriff benutzt dieselben Bindungen/Overlays wie der Lifecycle; Repository-Compose wird nicht umgeschrieben. Fehlende oder mehrdeutige Instanzen scheitern klar.
 
 [Vollständige Erklärung (EN)](https://mcpdev80.github.io/baseharbor/how-to/developer-access/).
+
+
+## Ergänzende technische Beispiele
+
+```bash
+baha dev credentials
+baha dev credentials --username USER
+baha dev credentials --reset
+```
+
+```bash
+baha app psql
+baha app redis
+```
+
+```bash
+baha app psql primary
+baha app psql analytics
+baha app redis cache
+baha app redis sessions
+```
+
+```bash
+baha app psql --app mailflow
+baha app redis cache --app mailflow
+```
+
+```bash
+baha app creds postgres
+baha app creds valkey cache
+```
+
+```bash
+baha app creds postgres --reveal
+```
+
+```bash
+baha app logs
+baha app logs api
+baha app logs api --follow
+```
+
+```bash
+baha app shell api
+```
+
+```bash
+baha app exec api env
+baha app exec worker ./bin/worker --version
+```
+
+
+Technische Bezeichner: `baseharbor.yaml`, `https://<host>:8443`, `baha status`, `baha doctor`, `valkey-cli`, `redis-cli`, `baha login`, `baha login -e test`, `baha whoami -e test`, `baha logout -e test`.
