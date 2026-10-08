@@ -440,8 +440,15 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	for ordinal := 1; ordinal <= 3; ordinal++ {
-		service := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+	values, err := readProtectedEnv(files.Env)
+	if err != nil { return err }
+	services := []string{"keycloak-db"}
+	if values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] == "ha" {
+		services = []string{"keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"}
+	} else if values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] != "single" {
+		return errors.New("Keycloak PostgreSQL TLS reload requires a known, owned topology")
+	}
+	for _, service := range services {
 		for {
 			_, err := executor.ExecProject(reloadCtx, files.Project, files.Compose, files.Env, service,
 				"su", "postgres", "-c", "psql -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()'")
