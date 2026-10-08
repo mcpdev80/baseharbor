@@ -264,3 +264,20 @@ func TestRecoveryRejectsMissingDatabaseBackup(t *testing.T) {
 		t.Fatalf("class=%q err=%v", providerupgrade.ClassOf(err), err)
 	}
 }
+
+func TestInventoryRejectsMemberDriftAndDuplicateMembers(t *testing.T) {
+	for name, mutate := range map[string]func(*State){
+		"member-version-drift": func(s *State) { s.Members[1].Version = "26.8.0" },
+		"duplicate-member": func(s *State) { s.Members[1].Name = s.Members[0].Name },
+		"missing-ha-member": func(s *State) { s.Members = s.Members[:2] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := haState("26.7.5")
+			mutate(&state)
+			_, err := New(&fakeOps{state: state}).Preflight(context.Background(), req("26.7.5", "26.7.6"))
+			if providerupgrade.ClassOf(err) != providerupgrade.ErrorInvalidState {
+				t.Fatalf("invalid HA inventory accepted: %v", err)
+			}
+		})
+	}
+}
