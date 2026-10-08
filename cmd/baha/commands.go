@@ -232,6 +232,17 @@ func rootCommand() *cli.Command {
 		},
 	}
 	root.Children = append(root.Children, tuiCommand(store), completionCommand(root, store), internalCompletionCommand(root, store))
+	if inApplicationRepository() {
+		root.HelpGroups = []cli.HelpGroup{
+			{Title: "Application", Commands: []string{"init", "up", "down", "status", "open", "inspect", "plan", "doctor", "backup", "restore", "update", "destroy"}},
+			{Title: "Create and discover", Commands: []string{"new", "list"}},
+		}
+	} else {
+		root.HelpGroups = []cli.HelpGroup{
+			{Title: "Get started", Commands: []string{"new", "init", "list", "up"}},
+			{Title: "Understand and maintain", Commands: []string{"status", "inspect", "plan", "doctor", "update", "backup", "restore", "destroy", "down"}},
+		}
+	}
 	return root
 }
 
