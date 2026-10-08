@@ -47,3 +47,11 @@ func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
   t.Fatalf("undeclared exposure was opened: %q %v",endpoint,err)
  }
 }
+
+func TestTargetDeleteUnknownFlagIsNotNameError(t *testing.T) {
+ var out bytes.Buffer
+ err := runWithIO(context.Background(), []string{"target","delete","example","--yes"}, &out, &out)
+ if err==nil || !strings.Contains(err.Error(),"unknown target delete option --yes") {
+  t.Fatalf("target delete must reject undeclared --yes: %v",err)
+ }
+}
