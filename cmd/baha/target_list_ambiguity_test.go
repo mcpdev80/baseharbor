@@ -1,0 +1,31 @@
+package main
+
+import (
+ "bytes"
+ "context"
+ "strings"
+ "testing"
+
+ "github.com/mcpdev80/baseharbor/internal/deployment"
+)
+
+func TestTargetListRemainsAvailableWhenSelectionAmbiguous(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME",t.TempDir())
+ cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{
+  "alpha":{Runtime:deployment.RuntimeDefinition{Provider:"docker"},Access:deployment.TargetAccess{Reference:"local"}},
+  "beta":{Runtime:deployment.RuntimeDefinition{Provider:"podman"},Access:deployment.TargetAccess{Reference:"local"}},
+ },Access:map[string]deployment.AccessDefinition{"local":{Provider:"local",Reference:"local"}}}
+ if err:=cfg.Save();err!=nil{t.Fatal(err)}
+ var out bytes.Buffer
+ var errOut bytes.Buffer
+ var list func(context.Context,[]string,*bytes.Buffer,*bytes.Buffer) error
+ _=list
+ for _,child:=range targetCommand().Children {
+  if child.Name!="list" {continue}
+  if err:=child.Run(context.Background(),[]string{"--json"},&out,&errOut);err!=nil{t.Fatal(err)}
+  if !strings.Contains(out.String(),"\"alpha\"") || !strings.Contains(out.String(),"\"beta\""){t.Fatal(out.String())}
+  if strings.Contains(out.String(),"\"effective\""){t.Fatal("ambiguous selection must not claim effective Target")}
+  return
+ }
+ t.Fatal("target list is not registered")
+}
