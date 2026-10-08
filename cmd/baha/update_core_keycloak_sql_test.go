@@ -8,7 +8,6 @@ import (
  "testing"
 
  "github.com/mcpdev80/baseharbor/internal/identityprovider"
- bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestNativeKeycloakSQLVerificationUsesAppRoleAndTrustedTLS(t *testing.T){
@@ -30,5 +29,4 @@ func TestNativeKeycloakSQLVerificationUsesAppRoleAndTrustedTLS(t *testing.T){
  runtime.fail=false
  if err:=os.WriteFile(env,[]byte("BASEHARBOR_KEYCLOAK_DB_USER=keycloak\n"),0600);err!=nil{t.Fatal(err)}
  if err:=ops.verifyKeycloakBackingSQL(context.Background());err==nil{t.Fatal("missing protected Keycloak SQL secrets accepted")}
- _=bhruntime.Files{}
 }
