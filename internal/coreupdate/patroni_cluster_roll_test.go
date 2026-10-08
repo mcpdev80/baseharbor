@@ -48,15 +48,15 @@ func (f *fakeClusterRoll) Switchover(_ context.Context, old, next string) error 
 }
 func TestPatroniClusterRollNeedsDCSEvidenceBeforeMutation(t *testing.T) {
 	f := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{{Name: "pg1", Primary: true, Healthy: true}, {Name: "pg2", Replica: true, Healthy: true}, {Name: "pg3", Replica: true, Healthy: true}}}, steps: map[string]string{}}}
-	err := RollPatroniCluster(context.Background(), f, nil, DCSRecoveryEvidence{}, "core", "cluster", "0.4.24", 0)
+	err := RollPatroniCluster(context.Background(), f, nil, DCSRecoveryEvidence{}, "core", "target", "cluster", "0.4.24", 0)
 	if !errors.Is(err, ErrDCSUnsupported) || len(f.calls) != 0 {
 		t.Fatalf("missing DCS gate allowed progress: %v calls=%v", err, f.calls)
 	}
-	evidence := DCSRecoveryEvidence{Installation: "core", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
-	if err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: false}, evidence, "core", "cluster", "0.4.24", 0); err == nil || len(f.calls) != 0 {
+	evidence := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	if err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: false}, evidence, "core", "target", "cluster", "0.4.24", 0); err == nil || len(f.calls) != 0 {
 		t.Fatalf("invalid DCS permitted action: %v", err)
 	}
-	if err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "cluster", "0.4.24", 0); err != nil {
+	if err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "target", "cluster", "0.4.24", 0); err != nil {
 		t.Fatal(err)
 	}
 	actions := strings.Join(f.calls, ",")
@@ -70,10 +70,10 @@ func TestPatroniClusterRollNeedsDCSEvidenceBeforeMutation(t *testing.T) {
 
 func TestCaptureAndVerifyDCSFailsClosed(t *testing.T) {
 	ctx := context.Background()
-	if _, err := CaptureAndVerifyDCS(ctx, nil, "core", "cluster", "0.4.24"); !errors.Is(err, ErrDCSUnsupported) {
+	if _, err := CaptureAndVerifyDCS(ctx, nil, "core", "target", "cluster", "0.4.24"); !errors.Is(err, ErrDCSUnsupported) {
 		t.Fatalf("missing adapter accepted: %v", err)
 	}
-	if _, err := CaptureAndVerifyDCS(ctx, fakeDCS{valid: true}, "core", "cluster", "0.4.24"); !errors.Is(err, ErrDCSUnsupported) {
+	if _, err := CaptureAndVerifyDCS(ctx, fakeDCS{valid: true}, "core", "target", "cluster", "0.4.24"); !errors.Is(err, ErrDCSUnsupported) {
 		t.Fatalf("adapter without snapshot rejected incorrectly: %v", err)
 	}
 }
@@ -81,8 +81,8 @@ func TestCaptureAndVerifyDCSFailsClosed(t *testing.T) {
 func TestPatroniClusterRejectsAmbiguousPostSwitchoverResume(t *testing.T) {
 	members := []PatroniMemberState{{Name: "pg1", Replica: true, Healthy: true}, {Name: "pg2", Primary: true, Healthy: true}, {Name: "pg3", Replica: true, Healthy: true}}
 	f := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: members}, steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"}}}
-	evidence := DCSRecoveryEvidence{Installation: "core", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
-	err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "cluster", "0.4.24", 0)
+	evidence := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "target", "cluster", "0.4.24", 0)
 	if err == nil || !strings.Contains(err.Error(), "original switchover") {
 		t.Fatalf("ambiguous leader resume accepted: %v", err)
 	}
@@ -106,10 +106,10 @@ func TestStageAndRollPatroniClusterRecoveryBeforeImageMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	compose := HAPostgresComposeCheckpoint{Path: path, Directory: filepath.Join(dir, "compose-backups"), Previous: prior, Desired: next}
-	evidence := DCSRecoveryEvidence{Installation: "core", Cluster: "cluster", Release: "0.4.24", SnapshotID: "s1", SHA256: strings.Repeat("a", 64)}
+	evidence := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "s1", SHA256: strings.Repeat("a", 64)}
 	fake := &fakeDurableDCS{evidence: evidence}
 	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{{Name: "pg1", Primary: true, Healthy: true}, {Name: "pg2", Replica: true, Healthy: true}, {Name: "pg3", Replica: true, Healthy: true}}}, steps: map[string]string{}}}
-	if err := StageAndRollPatroniCluster(context.Background(), gate, nil, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "cluster", "0.4.24", 0); !errors.Is(err, ErrDCSUnsupported) {
+	if err := StageAndRollPatroniCluster(context.Background(), gate, nil, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "target", "cluster", "0.4.24", 0); !errors.Is(err, ErrDCSUnsupported) {
 		t.Fatalf("missing DCS accepted: %v", err)
 	}
 	contents, err := os.ReadFile(path)
@@ -120,7 +120,7 @@ func TestStageAndRollPatroniClusterRecoveryBeforeImageMutation(t *testing.T) {
 		t.Fatalf("mutated before DCS proof: %s %v", contents, gate.calls)
 	}
 	gate.calls = nil
-	if err := StageAndRollPatroniCluster(context.Background(), gate, fake, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "cluster", "0.4.24", 0); err != nil {
+	if err := StageAndRollPatroniCluster(context.Background(), gate, fake, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "target", "cluster", "0.4.24", 0); err != nil {
 		t.Fatal(err)
 	}
 	contents, err = os.ReadFile(path)
