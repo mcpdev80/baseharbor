@@ -14,7 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
- "github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 )
 
 const defaultReleaseAPIBase = "https://api.github.com/repos/mcpdev80/baseharbor"
@@ -39,23 +39,23 @@ type baseHarborRelease struct {
 }
 
 type selfUpdateCheck struct {
-	Installed    string `json:"installed"`
-	Channel      string `json:"channel"`
-	Target       string `json:"target"`
-	ReleaseURL   string `json:"release_url"`
-	AssetName    string `json:"asset_name"`
-	AssetURL     string `json:"asset_url"`
-	AssetDigest  string `json:"asset_digest"`
-	ChecksumsURL string `json:"checksums_url"`
-	Relation     string `json:"relation"`
-	Platform     string `json:"platform"`
-	Prerelease   bool   `json:"prerelease"`
-	CoreReconciliation string `json:"core_reconciliation"`
- CoreExpected []coreupdate.Desired `json:"core_expected,omitempty"`
- CoreBacking []coreupdate.BackingPin `json:"core_backing,omitempty"`
- CoreInstallationID string `json:"core_installation_id,omitempty"`
- CoreInstallReady bool `json:"core_install_ready,omitempty"`
- CoreInstallPhase string `json:"core_install_phase,omitempty"`
+	Installed          string                  `json:"installed"`
+	Channel            string                  `json:"channel"`
+	Target             string                  `json:"target"`
+	ReleaseURL         string                  `json:"release_url"`
+	AssetName          string                  `json:"asset_name"`
+	AssetURL           string                  `json:"asset_url"`
+	AssetDigest        string                  `json:"asset_digest"`
+	ChecksumsURL       string                  `json:"checksums_url"`
+	Relation           string                  `json:"relation"`
+	Platform           string                  `json:"platform"`
+	Prerelease         bool                    `json:"prerelease"`
+	CoreReconciliation string                  `json:"core_reconciliation"`
+	CoreExpected       []coreupdate.Desired    `json:"core_expected,omitempty"`
+	CoreBacking        []coreupdate.BackingPin `json:"core_backing,omitempty"`
+	CoreInstallationID string                  `json:"core_installation_id,omitempty"`
+	CoreInstallReady   bool                    `json:"core_install_ready,omitempty"`
+	CoreInstallPhase   string                  `json:"core_install_phase,omitempty"`
 }
 
 type selfUpdateOptions struct {
@@ -188,17 +188,19 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	coreReconciliation := "not_required"
 	var coreExpected []coreupdate.Desired
 	var coreBacking []coreupdate.BackingPin
- var coreState coreinstallation.State
+	var coreState coreinstallation.State
 	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
 		coreReconciliation = "unavailable"
-        targetInfo, targetErr := effectiveTarget(ctx)
-        if targetErr == nil {
-          root, rootErr := targetRuntimeStateRoot(targetInfo)
-          if rootErr == nil {
-            state, stateErr := coreinstallation.Load(root)
-            if stateErr == nil { coreState = state }
-          }
-        }
+		targetInfo, targetErr := effectiveTarget(ctx)
+		if targetErr == nil {
+			root, rootErr := targetRuntimeStateRoot(targetInfo)
+			if rootErr == nil {
+				state, stateErr := coreinstallation.Load(root)
+				if stateErr == nil {
+					coreState = state
+				}
+			}
+		}
 		if manifest, err := coreupdate.LoadRelease(target); err == nil {
 			coreExpected, coreBacking = manifest.Providers, manifest.Backing
 		} else {
@@ -207,22 +209,22 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	}
 	return selfUpdateCheck{
 		CoreReconciliation: coreReconciliation,
-        CoreInstallationID: coreState.ID,
-        CoreInstallReady: coreState.Ready,
-        CoreInstallPhase: coreState.Phase,
-        CoreExpected: coreExpected,
-        CoreBacking: coreBacking,
-		Installed:    installedNormalized,
-		Channel:      opts.Channel,
-		Target:       target,
-		ReleaseURL:   release.HTMLURL,
-		AssetName:    assetName,
-		AssetURL:     assetURL,
-		AssetDigest:  assetDigest,
-		ChecksumsURL: checksumsURL,
-		Relation:     relation,
-		Platform:     runtime.GOOS + "/" + runtime.GOARCH,
-		Prerelease:   release.Prerelease,
+		CoreInstallationID: coreState.ID,
+		CoreInstallReady:   coreState.Ready,
+		CoreInstallPhase:   coreState.Phase,
+		CoreExpected:       coreExpected,
+		CoreBacking:        coreBacking,
+		Installed:          installedNormalized,
+		Channel:            opts.Channel,
+		Target:             target,
+		ReleaseURL:         release.HTMLURL,
+		AssetName:          assetName,
+		AssetURL:           assetURL,
+		AssetDigest:        assetDigest,
+		ChecksumsURL:       checksumsURL,
+		Relation:           relation,
+		Platform:           runtime.GOOS + "/" + runtime.GOARCH,
+		Prerelease:         release.Prerelease,
 	}, nil
 }
 
@@ -290,11 +292,11 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	fmt.Fprintf(out, "Available version: %s\n", check.Target)
 	fmt.Fprintf(out, "Platform: %s\n", check.Platform)
 	if check.CoreInstallationID != "" {
-        fmt.Fprintf(out,"Core installation: %s (phase: %s, ready: %t)\n",check.CoreInstallationID,check.CoreInstallPhase,check.CoreInstallReady)
-    }
+		fmt.Fprintf(out, "Core installation: %s (phase: %s, ready: %t)\n", check.CoreInstallationID, check.CoreInstallPhase, check.CoreInstallReady)
+	}
 	if check.CoreReconciliation == "unavailable_unpinned" {
-        fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
-    } else if check.CoreReconciliation == "unavailable" {
+		fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
+	} else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
 	} else {
 		fmt.Fprintln(out, "Core provider upgrade: not required for current installation")
