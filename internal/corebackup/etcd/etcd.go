@@ -315,6 +315,19 @@ func (s Store) VerifyRecovery(ctx context.Context, plan RestorePlan, client Rest
 	if plan.Identity != s.Identity {
 		return errors.New("foreign recovery identity")
 	}
+	if plan.Destination == "" || !filepath.IsAbs(plan.Destination) || filepath.Clean(plan.Destination) != plan.Destination {
+		return errors.New("invalid recovery destination")
+	}
+	if err := rejectSymlinkAncestors(plan.Destination); err != nil {
+		return err
+	}
+	archive, _, err := s.paths()
+	if err != nil {
+		return err
+	}
+	if plan.Archive != archive {
+		return errors.New("recovery plan refers to foreign snapshot")
+	}
 	m, err := s.VerifySnapshot(ctx)
 	if err != nil {
 		return err
