@@ -66,18 +66,17 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
+	if selectionErr != nil { return deployment.ResolvedTarget{}, selectionErr }
 	state, configured, err := orgconfig.LoadActiveOptional()
 	if err != nil || !configured {
 		if err == nil {
-			return cfg.ResolveTarget(explicit, activated)
+			return cfg.ResolveTarget(selected, "")
 		}
 		return deployment.ResolvedTarget{}, err
 	}
 	var preferences []orgconfig.PreferenceLayer
-	userTarget := activated
-	if userTarget == "" {
-		userTarget = strings.TrimSpace(cfg.DefaultTarget)
-	}
+	userTarget := selected
 	if userTarget != "" {
 		defaults := orgconfig.EnvironmentDefaults{Target: userTarget}
 		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeUser,
@@ -94,7 +93,7 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	if effective.Target != nil {
 		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
-	return cfg.ResolveTarget("", "")
+	return cfg.ResolveTarget(selected, "")
 }
 
 func organizationDefaultTarget() (string, error) {
@@ -198,7 +197,9 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-					effective, err := cfg.ResolveTarget("", activated)
+					selection, err := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
+					if err != nil { return err }
+					effective, err := cfg.ResolveTarget(selection, "")
 					if err != nil {
 						return err
 					}
@@ -297,12 +298,12 @@ func targetCommand() *cli.Command {
 			},
 			{
 				Name:    "activate",
-				Summary: "Print shell code that activates a target in the current shell",
+				Summary: "Persist the active deployment target for this user",
 				Usage:   "baha target activate NAME",
-				Long:    "Activation is shell-local. Evaluate the emitted assignment in the current shell; BaseHarbor never mutates a parent process environment.",
+				Long:    "Persists per-user target selection across CLI processes. --target and BASEHARBOR_TARGET override the persisted selection.",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 					if len(args) != 1 {
-						return usageError("baha target activate requires NAME", "Example: eval \"$(baha target activate docker-dev)\"")
+						return usageError("baha target activate requires NAME", "Example: baha target activate docker-dev")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
@@ -311,19 +312,21 @@ func targetCommand() *cli.Command {
 					if _, ok := cfg.Targets[args[0]]; !ok {
 						return fmt.Errorf("target %q is not configured", args[0])
 					}
-					fmt.Fprint(out, shellActivationCode(currentShellName(), args[0]))
+					if err := writePersistedTarget(args[0]); err != nil { return err }
+					fmt.Fprintf(out, "Active target: %s\n", args[0])
 					return nil
 				},
 			},
 			{
 				Name:    "deactivate",
-				Summary: "Print shell code that clears the active target",
+				Summary: "Clear persisted active deployment target",
 				Usage:   "baha target deactivate",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 					if len(args) != 0 {
-						return usageError("baha target deactivate does not accept arguments", "Example: eval \"$(baha target deactivate)\"")
+						return usageError("baha target deactivate does not accept arguments", "Example: baha target deactivate")
 					}
-					fmt.Fprint(out, shellDeactivationCode(currentShellName()))
+					if err := clearPersistedTarget(); err != nil { return err }
+					fmt.Fprintln(out, "Active target cleared")
 					return nil
 				},
 			},
