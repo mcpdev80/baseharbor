@@ -1,6 +1,8 @@
 package main
 import(
  "context"
+ "os"
+ "path/filepath"
  "strings"
  "testing"
 
@@ -43,4 +45,18 @@ func TestNativeCorePinnedImageVerificationRefusesDigestDrift(t *testing.T){
  if err:=ops.ReconcilePinned(context.Background(),delta);err!=nil{t.Fatal(err)}
  if runtime.started!=2{t.Fatal("Core reconcile not executed")}
  if err:=ops.ReconcileOriginal(context.Background(),delta);err==nil{t.Fatal("failed to detect old digest mismatch")}
+}
+
+func TestNativeCoreReceiptsPreserveEveryProviderStep(t *testing.T){
+ dir:=t.TempDir()
+ if err:=os.Chmod(dir,0700);err!=nil{t.Fatal(err)}
+ ops:=&coreNativeRuntimeOps{release:"0.4.24",receiptPath:filepath.Join(dir,"receipts.json")}
+ first:=coreupdate.Delta{Installed:coreupdate.Realization{Kind:coreupdate.SQL,Installation:"core",Scope:"shared",Instance:"postgres-member-1",Owner:"baseharbor"},Desired:coreupdate.Desired{Kind:coreupdate.SQL,Image:"postgres:18",Version:"18",Digest:"sha256:"+strings.Repeat("a",64)}}
+ second:=coreupdate.Delta{Installed:coreupdate.Realization{Kind:coreupdate.Secrets,Installation:"core",Scope:"shared",Instance:"openbao-member-1",Owner:"baseharbor"},Desired:coreupdate.Desired{Kind:coreupdate.Secrets,Image:"bao:2.7",Version:"2.7",Digest:"sha256:"+strings.Repeat("b",64)}}
+ if err:=ops.Record(context.Background(),first,"verified");err!=nil{t.Fatal(err)}
+ if err:=ops.Record(context.Background(),second,"applying");err!=nil{t.Fatal(err)}
+ journal,err:=coreupdate.LoadJournal(ops.receiptPath,ops.release);if err!=nil{t.Fatal(err)}
+ if len(journal.Steps)!=2||journal.Steps[coreupdate.JournalKey(first)]!="verified"||journal.Steps[coreupdate.JournalKey(second)]!="applying"{
+  t.Fatalf("Core provider receipt lost prior migration evidence: %+v",journal.Steps)
+ }
 }
