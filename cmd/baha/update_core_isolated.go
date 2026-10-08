@@ -112,6 +112,23 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 			}
 			result = append(result, partial.Deltas[0])
 		}
+        // A declared application-owned SQL provider cannot disappear from the
+        // runtime inventory and silently produce an empty update plan.
+        sqlPlacement,placeErr:=application.ResolveProviderPlacement(m,capability.ProviderPostgreSQL)
+        if placeErr!=nil{return nil,fmt.Errorf("inspect SQL placement for %s: %w",record.Identity.DeploymentID,placeErr)}
+        if sqlPlacement.Scope==capability.ScopeApplication&&sqlPlacement.Ownership==capability.OwnershipBaseHarbor{
+            for _,instance:=range application.SQLInstanceNames(m){
+                base:="postgres"
+                if instance!="default"{base+="-"+instance}
+                found:=seen[project+"/"+base]
+                if !found {
+                    for key:=range seen {
+                        if strings.HasPrefix(key,project+"/"+base+"-member-"){found=true;break}
+                    }
+                }
+                if !found{return nil,fmt.Errorf("registered isolated SQL provider %s/%s missing from runtime inventory",project,base)}
+            }
+        }
 	}
 	return result, nil
 }
