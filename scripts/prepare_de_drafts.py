@@ -93,7 +93,11 @@ def main() -> None:
         for idx, value in enumerate(translations):
             translated = translated.replace("@@BHSEG" + str(idx) + "@@", value)
         rel = file.relative_to(args.root / "docs").as_posix()
-        print("BH_DE_FILE\t" + json.dumps({"path": "docs/de/" + rel, "content": translated}, ensure_ascii=False), flush=True)
+        # Keep each line small enough for job-log APIs that truncate large records.
+        chunk_size = 2048
+        parts = [translated[i:i + chunk_size] for i in range(0, len(translated), chunk_size)]
+        for index, part in enumerate(parts):
+            print("BH_DE_PART\\t" + json.dumps({"path": "docs/de/" + rel, "index": index, "total": len(parts), "content": part}, ensure_ascii=False), flush=True)
         print("BH_DE_PROGRESS\t" + rel + "\t" + str(len(items)), file=sys.stderr, flush=True)
 
 
