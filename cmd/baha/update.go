@@ -516,19 +516,10 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			if at := strings.Index(digest, "@sha256:"); at >= 0 {
 				digest = digest[at+1:]
 			}
-			classification := coreupdate.Unsupported
-			reason := "Core HA PostgreSQL Spilo image change requires an explicit Patroni rolling migration contract"
-			installedVersion := v
-			if ref == haPin.Image && digest == haPin.Digest && digest != "" {
-				classification = coreupdate.NoChange
-				reason = ""
-				installedVersion = haPin.Version
-			}
-			backing = append(backing, coreupdate.Delta{
-				Installed: coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: installedVersion},
-				Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: haPin.Image, Digest: haPin.Digest, Version: haPin.Version},
-				Classification: classification, Reason: reason,
-			})
+			backing = append(backing, coreupdate.ClassifyHAPostgresPin(
+				coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v},
+				*haPin,
+			))
 			continue
 		}
 
