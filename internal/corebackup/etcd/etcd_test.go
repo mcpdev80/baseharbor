@@ -218,3 +218,18 @@ func TestSnapshotRejectsSymlinkParent(t *testing.T) {
 		t.Fatal("symlink-parent snapshot accepted")
 	}
 }
+
+func TestVerifyRecoveryRejectsForeignArchiveAndDestination(t *testing.T) {
+ s:=setup(t)
+ ctx:=context.Background()
+ if _,err:=s.CreateSnapshot(ctx);err!=nil{t.Fatal(err)}
+ plan,err:=s.PrepareRestore(ctx,filepath.Join(t.TempDir(),"restored"))
+ if err!=nil{t.Fatal(err)}
+ client:=&fakeRestore{}
+ plan.Archive=filepath.Join(t.TempDir(),"foreign.snapshot")
+ if err:=s.VerifyRecovery(ctx,plan,client);err==nil{t.Fatal("foreign archive accepted")}
+ archive,_,err:=s.paths();if err!=nil{t.Fatal(err)}
+ plan.Archive=archive
+ plan.Destination="relative/restore"
+ if err:=s.VerifyRecovery(ctx,plan,client);err==nil{t.Fatal("relative recovery target accepted")}
+}
