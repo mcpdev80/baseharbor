@@ -163,7 +163,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		return fmt.Errorf("reconcile canonical development routes: %w", err)
 	}
 	if err := devgateway.Verify(ctx, target); err != nil {
-		return fmt.Errorf("verify canonical development routes: %w", err)
+		return fmt.Errorf("verify development gateway upstream: %w", err)
 	}
 	routes, err := devgateway.Routes(target)
 	if err != nil {
