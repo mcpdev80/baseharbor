@@ -8,6 +8,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"os"
+ goruntime "runtime"
+ "fmt"
 )
 
 type publicControlPlaneCheck struct {
@@ -123,12 +125,17 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	// health.Doctor includes legacy default-local runtime probes. Drop those
 	// and use only the effective Target's owned runtime for provider readiness.
 	// This prevents a healthy named Core from being marked FAILED by empty local.
-	host := health.Doctor()
-	checks := make([]health.Check, 0, len(host)+3)
-	for _, check := range host {
-		if check.Name != "postgres" && check.Name != "openbao" && check.Name != "runtime-config" {
-			checks = append(checks, check)
-		}
+	checks := []health.Check{{Name: "os", OK: goruntime.GOOS == "linux" || goruntime.GOOS == "darwin" || goruntime.GOOS == "windows", Message: goruntime.GOOS + "/" + goruntime.GOARCH}}
+	target, targetErr := effectiveTarget(ctx)
+	if targetErr != nil {
+		return append(checks, health.Check{Name: "target-selection", OK: false, Message: targetErr.Error()})
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		_, runtimeErr := detectRuntimeForTarget(ctx, target)
+		checks = append(checks, health.Check{Name: "selected-runtime", OK: runtimeErr == nil, Message: selectedRuntimeDoctorMessage(target.RuntimeProvider, runtimeErr)})
+	} else {
+		_, _, accessErr := runtimeExplorerForTarget(ctx, target.Name)
+		checks = append(checks, health.Check{Name: "target-access", OK: accessErr == nil, Message: selectedRuntimeDoctorMessage(target.AccessProvider, accessErr)})
 	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err == nil {
@@ -143,4 +150,9 @@ func requireControlPlaneReady(result controlPlaneReport) error {
 		return machine.NewError(machine.ErrorVerificationFailed, "control plane is not ready", "Inspect control-plane.status and control-plane.doctor.", false)
 	}
 	return nil
+}
+
+func selectedRuntimeDoctorMessage(provider string,err error) string {
+ if err != nil {return fmt.Sprintf("%s unavailable: %v",provider,err)}
+ return provider+" available"
 }
