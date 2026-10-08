@@ -18,8 +18,6 @@ func TestTargetListRemainsAvailableWhenSelectionAmbiguous(t *testing.T) {
  if err:=cfg.Save();err!=nil{t.Fatal(err)}
  var out bytes.Buffer
  var errOut bytes.Buffer
- var list func(context.Context,[]string,*bytes.Buffer,*bytes.Buffer) error
- _=list
  for _,child:=range targetCommand().Children {
   if child.Name!="list" {continue}
   if err:=child.Run(context.Background(),[]string{"--json"},&out,&errOut);err!=nil{t.Fatal(err)}
