@@ -16,6 +16,7 @@ import (
 // arguments, error messages or log output.
 type RuntimeHooks struct {
 	UpgradePath  func(context.Context, string, string) error
+	InspectMembers func(context.Context) ([]State, error)
 	Backup       func(context.Context, string) (providerupgrade.BackupRef, error)
 	VerifyBackup func(context.Context, providerupgrade.BackupRef) error
 	Apply        func(context.Context, string, string, string) error
@@ -52,6 +53,16 @@ func (n *NativeOps) Inspect(ctx context.Context) (State, error) {
 	topology := "single"
 	if len(members) > 1 {
 		topology = "ha"
+		if n.Hooks.InspectMembers == nil {
+			return State{}, errors.New("OpenBao HA member verification is unavailable")
+		}
+		states, err := n.Hooks.InspectMembers(ctx)
+		if err != nil {
+			return State{}, fmt.Errorf("verify OpenBao HA members: %w", err)
+		}
+		if err := verifyHAMembers(states, len(members), state.Version); err != nil {
+			return State{}, err
+		}
 	}
 	return State{
 		Version:     strings.TrimSpace(state.Version),
@@ -133,4 +144,18 @@ func (n *NativeOps) RestoreBackup(ctx context.Context, backup providerupgrade.Ba
 		return errors.New("owned OpenBao recovery hook is unavailable")
 	}
 	return n.Hooks.Restore(ctx, backup, version)
+}
+
+// verifyHAMembers prevents a single reachable active member from masking an
+// unavailable, sealed or mixed-version HA replica during a provider upgrade.
+func verifyHAMembers(states []State, expected int, version string) error {
+	if expected < 2 || len(states) != expected {
+		return errors.New("OpenBao HA member count does not match managed topology")
+	}
+	for _, member := range states {
+		if member.Version != version || !member.Initialized || member.Sealed || !member.Healthy {
+			return errors.New("OpenBao HA member version, initialization, seal or health differs")
+		}
+	}
+	return nil
 }
