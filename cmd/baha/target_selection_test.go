@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
- "github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
@@ -70,9 +70,11 @@ func TestSingleTargetAndStaleTarget(t *testing.T) {
 }
 
 func TestAmbiguousTargetProducesTypedError(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{"a":{},"b":{}}}
- _,err:=selectedTargetName("","",cfg)
- typed:=machine.Classify(err)
- if typed.Code!=machine.ErrorConflict || typed.Next=="" {t.Fatalf("expected actionable conflict: %#v",typed)}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	cfg := deployment.Config{Version: deployment.ConfigVersion, Targets: map[string]deployment.TargetDefinition{"a": {}, "b": {}}}
+	_, err := selectedTargetName("", "", cfg)
+	typed := machine.Classify(err)
+	if typed.Code != machine.ErrorConflict || typed.Next == "" {
+		t.Fatalf("expected actionable conflict: %#v", typed)
+	}
 }
