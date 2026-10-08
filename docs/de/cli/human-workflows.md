@@ -31,6 +31,8 @@ Außerhalb eines Application-Repositories gelten `down` und `destroy` für die a
 
 `baha update --check` prüft die veröffentlichte Binary-Version und zeigt den Status der Provider-Reconciliation. **Im aktuellen Implementierungsstand von v0.4.24 sind Core-Provider-Upgrades über das reine Binary-Update noch nicht unterstützt.** Bei erkanntem Core wird die Änderung verweigert. PostgreSQL, OpenBao und Keycloak werden nicht stillschweigend neu gestartet.
 
+Bei einem für das Zielrelease eingebetteten Katalog enthält die JSON-Ausgabe außerdem die erwarteten Core- und Keycloak-Datenbank-Images mit Digests. Das ist **keine Ist-Versionsprüfung**: Ein tatsächlicher Vergleich mit allen installierten Realisierungen fehlt noch.
+
 Die benötigten Nachweise zu unveränderlichen Image-Digests, Recovery und Verifikation beschreibt der [Core-Update-Vertrag (EN)](https://mcpdev80.github.io/baseharbor/spec/core-provider-update-v1/).
 
 ## Automation und Maschinenclients
