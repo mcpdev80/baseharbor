@@ -377,3 +377,16 @@ func TestRouteVerificationFailureReportsUpstreamWithoutInternalState(t *testing.
 		t.Fatalf("unrelated route error was misclassified: %s", got)
 	}
 }
+
+func TestRenderedGatewayBoundsRepeatedRuntimeErrors(t *testing.T) {
+	text := renderCaddyfile([]Route{{
+		Owner: "app/nexty/dev", Key: "nexty", Host: "nexty.baseharbor.localhost",
+		Upstream: "http://nexty:8080", Network: "nexty_default",
+	}}, 8443)
+	for _, want := range []string{"sampling {", "interval 1m", "first 3", "thereafter 100", "reverse_proxy http://nexty:8080"} {
+		if !strings.Contains(text, want) { t.Errorf("missing %q from generated Caddyfile", want) }
+	}
+	if strings.Contains(text, "state.json") {
+		t.Fatal("generated proxy configuration leaks state path")
+	}
+}
