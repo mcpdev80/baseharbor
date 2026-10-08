@@ -28,12 +28,14 @@ func appGuidedRestoreCommandWithRecoveryMetadata(store application.Store) *cli.C
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
 
-		if len(args)==0 {
-            selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
-            if selectErr != nil { return selectErr }
-            args=[]string{selected}
-        }
-        backupPath, name, err := parseGuidedRestoreArgs(args)
+		if len(args) == 0 {
+			selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
+			if selectErr != nil {
+				return selectErr
+			}
+			args = []string{selected}
+		}
+		backupPath, name, err := parseGuidedRestoreArgs(args)
 		if err != nil {
 			return err
 		}
