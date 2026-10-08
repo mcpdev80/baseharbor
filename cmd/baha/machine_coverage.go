@@ -123,6 +123,12 @@ var cliMachineOperations = map[string]string{
 }
 
 var cliPresentationCommands = map[string]string{
+	"baha app document-db": "Read-only MongoDB capability overview; app.show and status are machine-readable alternatives.",
+	"baha app queue": "Read-only messaging queue capability overview; app.show and status are machine-readable alternatives.",
+	"baha app pubsub": "Read-only publish/subscribe capability overview; app.show and status are machine-readable alternatives.",
+	"baha app stream": "Read-only messaging stream capability overview; app.show and status are machine-readable alternatives.",
+	"baha app storage": "Read-only object storage capability overview; app.show and status are machine-readable alternatives.",
+	"baha app identity": "Read-only identity capability overview; app.show and status are machine-readable alternatives.",
 	"baha config prompt":     "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
 	"baha app workspace":     "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
 	"baha target activate":   "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
