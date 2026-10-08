@@ -16,4 +16,4 @@ Fehlermeldungen müssen konkrete nächste Schritte ermöglichen und dürfen kein
 
 Maschinenschnittstellen liefern strukturierte Fehlerobjekte. Die menschenlesbare CLI-Ausgabe darf zusätzlichen Kontext anzeigen, aber die zugrunde liegende Semantik nicht verändern.
 
-Siehe [Authentifizierung und API-Fehler](authentication-and-api-errors.md) sowie [Fehlerbehebung](../troubleshooting/index.md).
+Siehe [Authentifizierung und API-Fehler](authentication-and-api-errors.md) sowie Fehlerbehebung in der CLI.
