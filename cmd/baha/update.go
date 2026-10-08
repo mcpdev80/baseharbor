@@ -54,6 +54,8 @@ type selfUpdateCheck struct {
 	CoreReconciliation string                  `json:"core_reconciliation"`
 	CoreExpected       []coreupdate.Desired    `json:"core_expected,omitempty"`
 	CoreBacking        []coreupdate.BackingPin `json:"core_backing,omitempty"`
+ CorePlan []coreupdate.Delta `json:"core_plan,omitempty"`
+ CoreInspectionError string `json:"core_inspection_error,omitempty"`
 	CoreInstallationID string                  `json:"core_installation_id,omitempty"`
 	CoreInstallReady   bool                    `json:"core_install_ready,omitempty"`
 	CoreInstallPhase   string                  `json:"core_install_phase,omitempty"`
