@@ -39,6 +39,12 @@ func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Pl
 			return fmt.Errorf("Core managed project %s preflight: %w", files.project, err)
 		}
 	}
+	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
+		return fmt.Errorf("OpenBao AppRole/policies/KV preflight: %w", err)
+	}
+	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
+		return fmt.Errorf("Keycloak SQL/realm/OIDC/token preflight: %w", err)
+	}
 	return nil
 }
 func (o *coreNativeRuntimeOps) Quiesce(ctx context.Context, d coreupdate.Delta) error {
