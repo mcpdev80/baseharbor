@@ -133,15 +133,31 @@ func TestDeleteTargetClearsPersistedSelection(t *testing.T) {
 }
 
 func TestPersistedTargetRejectsSymlinkAndOpenPermissions(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME", t.TempDir())
- path,err:=targetSelectionPath()
- if err!=nil {t.Fatal(err)}
- if err:=os.MkdirAll(filepath.Dir(path),0700);err!=nil {t.Fatal(err)}
- outside:=filepath.Join(t.TempDir(),"outside")
- if err:=os.WriteFile(outside,[]byte("local\n"),0600);err!=nil{t.Fatal(err)}
- if err:=os.Symlink(outside,path);err!=nil{t.Fatal(err)}
- if _,err:=readPersistedTarget();err==nil{t.Fatal("symlink must fail closed")}
- if err:=os.Remove(path);err!=nil{t.Fatal(err)}
- if err:=os.WriteFile(path,[]byte("local\n"),0644);err!=nil{t.Fatal(err)}
- if _,err:=readPersistedTarget();err==nil{t.Fatal("world readable selection must fail closed")}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := targetSelectionPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("local\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPersistedTarget(); err == nil {
+		t.Fatal("symlink must fail closed")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("local\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPersistedTarget(); err == nil {
+		t.Fatal("world readable selection must fail closed")
+	}
 }
