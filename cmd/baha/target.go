@@ -201,13 +201,17 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-					selection, err := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
-					if err != nil {
-						return err
+					selection, selectionErr := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
+					// Listing must remain usable when multiple Targets require a choice.
+					// All other resolver failures (corrupt selection/config) fail closed.
+					if selectionErr != nil {
+						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict { return selectionErr }
 					}
-					effective, err := cfg.ResolveTarget(selection, "")
-					if err != nil {
-						return err
+					effectiveName := ""
+					if selectionErr == nil {
+						effective, resolveErr := cfg.ResolveTarget(selection, "")
+						if resolveErr != nil { return resolveErr }
+						effectiveName = effective.Name
 					}
 					names := cfg.TargetNames()
 					if _, configured := cfg.Targets["local"]; !configured {
@@ -243,7 +247,7 @@ func targetCommand() *cli.Command {
 						if persisted, _ := readPersistedTarget(); name == activated || (activated == "" && name == persisted) {
 							marks = append(marks, "active")
 						}
-						if name == effective.Name {
+						if name == effectiveName {
 							marks = append(marks, "effective")
 						}
 						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
