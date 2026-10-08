@@ -39,7 +39,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 			return err
 		}
 		if hasOption(args, "--password-file") {
-			return baseRun(ctx, args, out, errOut)
+			forwarded, err := prepareNonInteractiveBackupOutput(ctx, store, args, errOut)
+			if err != nil { return err }
+			return baseRun(ctx, forwarded, out, errOut)
 		}
 		if noInput(ctx) {
 			return usageError("backup requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
@@ -67,6 +69,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				return err
 			}
 		}
+		if backupOutputFlag(filtered) != "" { reportGitBackupRisk(errOut, outputPath) }
 		files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 		if err != nil {
 			return err
@@ -584,6 +587,7 @@ func defaultGuidedBackupPath(app, environment string, now time.Time) (string, er
 	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dir = filepath.Join(home, ".local", "share", "baseharbor", "backups")
 	}
+	if err := ensureDefaultBackupOutsideGit(dir); err != nil { return "", err }
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
