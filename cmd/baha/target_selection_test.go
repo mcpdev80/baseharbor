@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/machine"
- "github.com/mcpdev80/baseharbor/internal/health"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
@@ -81,15 +81,21 @@ func TestAmbiguousTargetProducesTypedError(t *testing.T) {
 }
 
 func TestDoctorTargetFindingsStayManual(t *testing.T) {
- checks:=[]health.Check{
- {Name:"target-selection",OK:false,Message:"ambiguous"},
- {Name:"target-access",OK:false,Message:"not connected"},
- {Name:"selected-runtime",OK:false,Message:"unavailable"},
- }
- findings:=classifyDoctorFindings(checks)
- if len(findings)!=3 {t.Fatalf("got %d findings",len(findings))}
- if hasAutoFixableDoctorFinding(findings){t.Fatal("target selection must never trigger implicit runtime mutation")}
- for _,finding:=range findings {
-  if finding.Action=="" {t.Fatalf("missing next action for %s",finding.Check.Name)}
- }
+	checks := []health.Check{
+		{Name: "target-selection", OK: false, Message: "ambiguous"},
+		{Name: "target-access", OK: false, Message: "not connected"},
+		{Name: "selected-runtime", OK: false, Message: "unavailable"},
+	}
+	findings := classifyDoctorFindings(checks)
+	if len(findings) != 3 {
+		t.Fatalf("got %d findings", len(findings))
+	}
+	if hasAutoFixableDoctorFinding(findings) {
+		t.Fatal("target selection must never trigger implicit runtime mutation")
+	}
+	for _, finding := range findings {
+		if finding.Action == "" {
+			t.Fatalf("missing next action for %s", finding.Check.Name)
+		}
+	}
 }
