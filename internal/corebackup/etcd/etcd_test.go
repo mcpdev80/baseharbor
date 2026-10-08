@@ -178,31 +178,43 @@ func TestRestoreRejectsChangedPlan(t *testing.T) {
 }
 
 func TestRestoreRejectsSymlinkAncestorAndRelativeDestination(t *testing.T) {
- s := setup(t)
- ctx := context.Background()
- if _, err := s.CreateSnapshot(ctx); err != nil { t.Fatal(err) }
- root := t.TempDir()
- actual := filepath.Join(root, "real")
- if err := os.Mkdir(actual, 0700); err != nil { t.Fatal(err) }
- alias := filepath.Join(root, "redirect")
- if err := os.Symlink(actual, alias); err != nil { t.Fatal(err) }
- for _, destination := range []string{
-  filepath.Join(alias, "restored"),
-  "relative/restore",
-  filepath.Join(root, "real") + "/../restored",
- } {
-  if _, err := s.PrepareRestore(ctx, destination); err == nil {
-   t.Fatalf("unsafe restore path accepted: %q", destination)
-  }
- }
+	s := setup(t)
+	ctx := context.Background()
+	if _, err := s.CreateSnapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	actual := filepath.Join(root, "real")
+	if err := os.Mkdir(actual, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "redirect")
+	if err := os.Symlink(actual, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, destination := range []string{
+		filepath.Join(alias, "restored"),
+		"relative/restore",
+		filepath.Join(root, "real") + "/../restored",
+	} {
+		if _, err := s.PrepareRestore(ctx, destination); err == nil {
+			t.Fatalf("unsafe restore path accepted: %q", destination)
+		}
+	}
 }
 
 func TestSnapshotRejectsSymlinkParent(t *testing.T) {
- s := setup(t)
- realDir := filepath.Join(t.TempDir(), "real")
- if err := os.Mkdir(realDir, 0700); err != nil { t.Fatal(err) }
- link := filepath.Join(t.TempDir(), "link")
- if err := os.Symlink(realDir, link); err != nil { t.Fatal(err) }
- s.Directory = filepath.Join(link, "nested")
- if _, err := s.CreateSnapshot(context.Background()); err == nil { t.Fatal("symlink-parent snapshot accepted") }
+	s := setup(t)
+	realDir := filepath.Join(t.TempDir(), "real")
+	if err := os.Mkdir(realDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(realDir, link); err != nil {
+		t.Fatal(err)
+	}
+	s.Directory = filepath.Join(link, "nested")
+	if _, err := s.CreateSnapshot(context.Background()); err == nil {
+		t.Fatal("symlink-parent snapshot accepted")
+	}
 }
