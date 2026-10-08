@@ -161,35 +161,6 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 		}
 	}
 
-	// Host-wide trust ownership is stored in the shared runtime data root,
-	// NOT in individual target directories. Remove it before local state.
-	hostTrustRoot, trustRootErr := bhruntime.DataDir("")
-	if trustRootErr != nil {
-		return fmt.Errorf("locate host trust ownership before destruction: %w", trustRootErr)
-	}
-	hostTrustReport, hostTrustErr := removeHostTrustForFullDestroy(parent, hostTrustRoot)
-	untrackedHostCAs, untrackedErr := hosttrust.UntrackedCandidates(hostTrustRoot)
-	if untrackedErr != nil {
-		return fmt.Errorf("unable to verify surviving host CA candidates: %w", untrackedErr)
-	}
-	for _, path := range untrackedHostCAs {
-		fmt.Fprintf(out, "PRESERVED untracked host CA %s (ownership not verified)\n", path)
-		preserved = append(preserved, fullDestroyResult{Status: "PRESERVED", Resource: "host-CA-untracked", Detail: path + " (ownership not verified)"})
-	}
-	for _, anchor := range hostTrustReport.Removed {
-		preserved = append(preserved, fullDestroyResult{Status: "REMOVED", Resource: "host-CA", Detail: anchor.Fingerprint + " " + anchor.Path})
-	}
-	for _, anchor := range hostTrustReport.Preserved {
-		preserved = append(preserved, fullDestroyResult{Status: "PRESERVED", Resource: "host-CA", Detail: anchor.Fingerprint + " " + anchor.Path})
-	}
-	if hostTrustErr != nil {
-		for _, anchor := range hostTrustReport.Preserved {
-			fmt.Fprintf(out, "PRESERVED host CA %s %s\n", anchor.Fingerprint, anchor.Path)
-		}
-		// Never discard ownership evidence when a protected anchor remains.
-		recordDestroyResults(parent, preserved, false)
-		return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w", hostTrustErr)
-	}
 	results := append([]fullDestroyResult{}, preserved...)
 	results = append(results, discoveryResults...)
 	results = append(results, deploymentResults...)
@@ -222,6 +193,35 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 
 	blockers := countFullDestroyBlockers(results)
 	if blockers == 0 {
+	// Host-wide trust ownership is stored in the shared runtime data root,
+	// NOT in individual target directories. Remove it only after successful runtime cleanup, immediately before local state.
+	hostTrustRoot, trustRootErr := bhruntime.DataDir("")
+	if trustRootErr != nil {
+		return fmt.Errorf("locate host trust ownership before destruction: %w", trustRootErr)
+	}
+	hostTrustReport, hostTrustErr := removeHostTrustForFullDestroy(parent, hostTrustRoot)
+	untrackedHostCAs, untrackedErr := hosttrust.UntrackedCandidates(hostTrustRoot)
+	if untrackedErr != nil {
+		return fmt.Errorf("unable to verify surviving host CA candidates: %w", untrackedErr)
+	}
+	for _, path := range untrackedHostCAs {
+		fmt.Fprintf(out, "PRESERVED untracked host CA %s (ownership not verified)\n", path)
+		results = append(results, fullDestroyResult{Status: "PRESERVED", Resource: "host-CA-untracked", Detail: path + " (ownership not verified)"})
+	}
+	for _, anchor := range hostTrustReport.Removed {
+		results = append(results, fullDestroyResult{Status: "REMOVED", Resource: "host-CA", Detail: anchor.Fingerprint + " " + anchor.Path})
+	}
+	for _, anchor := range hostTrustReport.Preserved {
+		results = append(results, fullDestroyResult{Status: "PRESERVED", Resource: "host-CA", Detail: anchor.Fingerprint + " " + anchor.Path})
+	}
+	if hostTrustErr != nil {
+		for _, anchor := range hostTrustReport.Preserved {
+			fmt.Fprintf(out, "PRESERVED host CA %s %s\n", anchor.Fingerprint, anchor.Path)
+		}
+		// Never discard ownership evidence when a protected anchor remains.
+		recordDestroyResults(parent, results, false)
+		return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w", hostTrustErr)
+	}
 		removeFullDestroyLocalState(&results)
 	} else {
 		results = append(results,
