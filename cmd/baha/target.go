@@ -279,7 +279,9 @@ func targetCommand() *cli.Command {
 					if len(filtered) == 1 {
 						name = filtered[0]
 					}
-					selection, err := selectedTargetName(name, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
+					explicit := name
+					if explicit == "" { explicit = targetOverrideFromContext(ctx) }
+					selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
 					if err != nil {
 						return err
 					}
