@@ -234,7 +234,14 @@ func resolveAccessBinding(ctx context.Context, store application.Store, appName,
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
 	binding, err := application.ResolveServiceBinding(files, kind, selected)
-	return resolved, binding, err
+ if err != nil {return resolvedApplication{}, application.ServiceBinding{}, err}
+ if kind=="postgres" {
+  switch strings.ToLower(strings.TrimSpace(binding.Username)) {
+  case "postgres","baseharbor_admin","root":
+   return resolvedApplication{}, application.ServiceBinding{}, usageError("privileged database identities cannot be opened by the developer console", "Configure an application-scoped, least-privilege PostgreSQL role before opening baha app sql.")
+  }
+ }
+ return resolved, binding, nil
 }
 
 func selectAccessInstance(instances []string, requested, kind string) (string, error) {
