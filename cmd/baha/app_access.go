@@ -30,8 +30,10 @@ func appPSQLCommand(store application.Store) *cli.Command {
 			}
 			path, err := exec.LookPath("psql")
 			if err != nil {
+				if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "postgres", binding.Instance, "managed-runtime"); err != nil { return err }
 				return runManagedBackendConsole(ctx, resolved, binding, "postgres", out, errOut)
 			}
+			if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "postgres", binding.Instance, "host-psql"); err != nil { return err }
 			user := binding.Username
 			if user == "" {
 				user = "baseharbor"
@@ -67,8 +69,10 @@ func appRedisCommand(store application.Store) *cli.Command {
 				path, err = exec.LookPath("redis-cli")
 			}
 			if err != nil {
+				if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "valkey", binding.Instance, "managed-runtime"); err != nil { return err }
 				return runManagedBackendConsole(ctx, resolved, binding, "valkey", out, errOut)
 			}
+			if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "valkey", binding.Instance, "host-client"); err != nil { return err }
 			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
