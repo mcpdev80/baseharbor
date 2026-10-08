@@ -182,7 +182,7 @@ func providerDowngrade(current, target string) bool {
 type Hooks struct {
 	Preflight     func(context.Context, Plan) error
 	RecoveryPoint func(context.Context, Delta) error
-    Recover func(context.Context, Delta, string) error // mandatory for resuming interrupted mutation
+	Recover       func(context.Context, Delta, string) error // mandatory for resuming interrupted mutation
 	Apply         func(context.Context, Delta) error
 	Verify        func(context.Context, Delta) error
 	Record        func(context.Context, Delta, string) error
