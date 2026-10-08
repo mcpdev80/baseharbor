@@ -14,6 +14,16 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
+// ExistingCoreRuntimeFiles resolves the installation-owned Keycloak Compose and
+// backing SQL without regenerating secrets or changing provider topology.
+func ExistingCoreRuntimeFiles(dataDir,namespace string)(KeycloakFiles,error){
+ spec:=application.Manifest{Version:application.CurrentVersion,Name:"core",Environment:"prod",Services:application.Services{Identity:true}}
+ placement:=capability.ProviderPlacement{Scope:capability.ScopeShared,Ownership:capability.OwnershipBaseHarbor,SharingBoundary:"core"}
+ dir,_,err:=keycloakStateIdentity(spec,placement,dataDir,namespace)
+ if err!=nil{return KeycloakFiles{},err}
+ return existingCoreKeycloakFiles(dir)
+}
+
 // EnsureCoreIdentity realizes installation Identity through the existing native
 // provider. No Application, repository, workload binding or login is required.
 // Application placement preferences do not redefine this installation scope.
