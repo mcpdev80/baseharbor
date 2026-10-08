@@ -151,3 +151,8 @@ func targetSelectionOrigin(ctx context.Context) string {
 	}
 	return "implicit-local"
 }
+
+func persistedTargetIsActive() bool {
+	name, err := readPersistedTarget()
+	return err == nil && name != ""
+}
