@@ -26,22 +26,22 @@ runtime != capability != delivery
 
 Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities.
 
-```bash
-baha target create docker-dev \
-  --runtime-provider docker \
-  --access local-docker \
-  --access-provider local \
-  --reference local
+```text
+Target
+├── Runtime Provider
+└── Target Access Provider
 ```
 
 ## Remote-Zugriff
 
 Runtime Provider und Target Access Provider sind getrennt:
 
-```text
-Target
-├── Runtime Provider
-└── Target Access Provider
+```bash
+baha target create docker-dev \
+  --runtime-provider docker \
+  --access local-docker \
+  --access-provider local \
+  --reference local
 ```
 
 Entfernte Docker-/Podman-Hosts werden nicht mehr durch manuelles Erstellen des Connector-Access-Eintrags aufgenommen. Auf dem Core-System wird der geführte Node-Workflow verwendet:
