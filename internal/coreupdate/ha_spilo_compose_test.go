@@ -76,10 +76,12 @@ func TestSpiloTransitionRejectsDowngradeAndUnknownVersion(t *testing.T) {
 }
 
 func TestSpiloComposeRejectsUnknownMemberAndDuplicateRoot(t *testing.T) {
- old:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.1-p2",Image:"spilo:old",Digest:digestA}
- next:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.2-p1",Image:"spilo:new",Digest:digestB}
- valid:="services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n"
- for _,source:=range []string{valid+"  postgres-member-4:\n    image: spilo:old\n",valid+"services:\n  openbao:\n    image: boa\n"}{
-  if _,err:=RewriteOwnedSpiloImages([]byte(source),old,next);err==nil{t.Fatal("ambiguous or foreign HA topology accepted")}
- }
+	old := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "spilo:old", Digest: digestA}
+	next := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.2-p1", Image: "spilo:new", Digest: digestB}
+	valid := "services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n"
+	for _, source := range []string{valid + "  postgres-member-4:\n    image: spilo:old\n", valid + "services:\n  openbao:\n    image: boa\n"} {
+		if _, err := RewriteOwnedSpiloImages([]byte(source), old, next); err == nil {
+			t.Fatal("ambiguous or foreign HA topology accepted")
+		}
+	}
 }
