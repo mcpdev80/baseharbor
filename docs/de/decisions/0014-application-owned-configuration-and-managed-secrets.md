@@ -1,7 +1,7 @@
 # ADR 0002: Anwendungseigene Konfiguration und von BaseHarbor verwaltete Geheimnisse
 
 - Status: angenommen
-- Geburtsdatum: 2026-09-08
+- Datum: 2026-09-08
 
 ## Kontext
 

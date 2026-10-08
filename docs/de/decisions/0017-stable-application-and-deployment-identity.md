@@ -54,7 +54,7 @@ Die anwendungsbezogene Eigentümerschaft des Anbieters wird durch `application_i
 
 ### Maschinen- und Evidenzoberflächen
 
-JSON, MCP, Status, Arzt, Audit und Beweise können aufdecken `application_id` und `deployment_id` für dauerhafte Korrelation, während menschliche CLI-Workflows weiterhin lesbare Namen bevorzugen.
+JSON, MCP, Status, Doctor, Audit und Beweise können aufdecken `application_id` und `deployment_id` für dauerhafte Korrelation, während menschliche CLI-Workflows weiterhin lesbare Namen bevorzugen.
 
 Portable Backup-Identität trägt `application_id`. ` deployment_id`bleibt Target-local und wird nur in lokalen Backup/Recovery-Metadaten aufgezeichnet, wenn eine Deployment-Korrelation erforderlich ist.
 

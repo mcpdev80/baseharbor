@@ -31,7 +31,7 @@ Normalisierung des Laufzeitprotokolls[Log source contract](../architecture/runti
 Zielzugang `internal/targetaccess`, ` contracts/targetaccess/v1/wire.schema.json`, [Wire records](https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/targetaccess/README.md), [Target Access](../spec/target-access-v1.md)Zugriff v1; Deskriptor wird nicht authentifiziert Live-Verhandlungen
 Managementoberflächen / Identität[Management access](../spec/management-access-v1.md), [Application identity](../spec/application-runtime-identity.md)Kontext/Vertrauensgrenzen beibehalten
 Runtime Resource API.`spec/runtime-api/v1/openapi.yaml`• Laufzeit API v1; Standard-OpenAPI-Behörde
-Aussöhnung / Verfügbarkeit / Verbrauch[Reconciliation](../spec/reconciliation-v1.md), [Availability](../spec/availability-v1.md), [Consumption](../spec/application-consumption-v1.md)V1; ein Kernlebenszyklus;
+Reconciliation / Verfügbarkeit / Verbrauch[Reconciliation](../spec/reconciliation-v1.md), [Availability](../spec/availability-v1.md), [Consumption](../spec/application-consumption-v1.md)V1; ein Kernlebenszyklus;
 Prüfung / Beweis `internal/evidence`, [Audit/Evidence](../spec/audit-evidence-v1.md)V1; beibehaltener Exakt-Eingangsnachweis erforderlich
 Beharrlicher Zustand / Erholung `internal/runtime/config.go`, ` internal/orgconfig/store.go`, [Backup/restore](backup-and-restore.md)Artifact-spezifische Version/Eigentum; keine Voreinfrieren-Migration versprechen
 
