@@ -204,10 +204,6 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					names := cfg.TargetNames()
-					if _, configured := cfg.Targets["local"]; !configured {
-						names = append(names, "local")
-						sort.Strings(names)
-					}
 					items := make([]targetListItem, 0, len(names))
 					for _, name := range names {
 						var (
@@ -234,7 +230,7 @@ func targetCommand() *cli.Command {
 						if name == cfg.DefaultTarget {
 							marks = append(marks, "default")
 						}
-						if name == activated {
+						if persisted, _ := readPersistedTarget(); name == activated || (activated == "" && name == persisted) {
 							marks = append(marks, "active")
 						}
 						if name == effective.Name {
@@ -265,7 +261,9 @@ func targetCommand() *cli.Command {
 					if len(filtered) == 1 {
 						name = filtered[0]
 					}
-					target, err := cfg.ResolveTarget(name, os.Getenv("BASEHARBOR_TARGET"))
+					selection, err := selectedTargetName(name, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
+					if err != nil { return err }
+					target, err := cfg.ResolveTarget(selection, "")
 					if err != nil {
 						return err
 					}
