@@ -58,3 +58,6 @@ baha destroy --all --yes -o json
 Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Erst `baha destroy --all --yes -o json` führt das genehmigte Entfernen aus. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
 
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
+
+
+Technische Bezeichner: `ha: true`, `baha app doctor`, `baha app new orders-api --stack go --http --sql`, `preserved`, `results`.
