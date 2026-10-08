@@ -168,6 +168,18 @@ func (t BoundProviderTransaction) Hooks() Hooks {
 			return nil
 		},
 		RecoveryPoint: func(ctx context.Context, d Delta) error {
+			// An interrupted upgrade must reuse its original durable backup.
+			// Never take a new snapshot from a possibly partially migrated provider.
+			path, pathErr := t.backupPath(d)
+			if pathErr != nil {
+				return pathErr
+			}
+			if _, statErr := os.Lstat(path); statErr == nil {
+				_, verifyErr := t.loadBackup(d)
+				return verifyErr
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				return statErr
+			}
 			provider, req, err := boundProvider(d)
 			if err != nil {
 				return err
