@@ -23,7 +23,9 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 	if len(records) == 0 {
 		return nil, nil
 	}
-    if strings.TrimSpace(runtimeKind)==""{return nil,errors.New("Core runtime kind required for isolated provider inventory")}
+	if strings.TrimSpace(runtimeKind) == "" {
+		return nil, errors.New("Core runtime kind required for isolated provider inventory")
+	}
 	containers, err := rt.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("inspect application-scoped runtime containers: %w", err)
@@ -38,9 +40,9 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 		if record.Identity.Target != target {
 			return nil, errors.New("deployment registry returned different owning Target")
 		}
-        if record.Applied.RuntimeProvider!=runtimeKind{
-            return nil,fmt.Errorf("deployment %s runtime provider differs from selected Core runtime",record.Identity.DeploymentID)
-        }
+		if record.Applied.RuntimeProvider != runtimeKind {
+			return nil, fmt.Errorf("deployment %s runtime provider differs from selected Core runtime", record.Identity.DeploymentID)
+		}
 		if len(record.Applied.Intent) == 0 {
 			return nil, fmt.Errorf("deployment %s lacks protected applied intent", record.Identity.DeploymentID)
 		}
