@@ -41,26 +41,38 @@ func inspectPatroniMembers(ctx context.Context, rt bhruntime.RuntimeProvider, fi
 	// /replica health endpoint alone does not establish a bounded WAL lag.
 	const clusterScript = "import urllib.request,sys; sys.stdout.write(urllib.request.urlopen('http://127.0.0.1:8008/cluster',timeout=3).read().decode('utf-8'))"
 	output, err := rt.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-member-1", "python3", "-c", clusterScript)
-	if err != nil { return nil, fmt.Errorf("inspect Patroni cluster replication inventory: %w", err) }
-	var cluster struct { Members []struct {
-		Name string `json:"name"`
-		Role string `json:"role"`
-		State string `json:"state"`
-		Lag *int64 `json:"lag"`
-	} `json:"members"` }
+	if err != nil {
+		return nil, fmt.Errorf("inspect Patroni cluster replication inventory: %w", err)
+	}
+	var cluster struct {
+		Members []struct {
+			Name  string `json:"name"`
+			Role  string `json:"role"`
+			State string `json:"state"`
+			Lag   *int64 `json:"lag"`
+		} `json:"members"`
+	}
 	if err := json.Unmarshal([]byte(output), &cluster); err != nil {
 		return nil, fmt.Errorf("invalid Patroni cluster inventory: %w", err)
 	}
-	if len(cluster.Members) != len(members) { return nil, errors.New("Patroni cluster inventory member count mismatch") }
+	if len(cluster.Members) != len(members) {
+		return nil, errors.New("Patroni cluster inventory member count mismatch")
+	}
 	byName := make(map[string]int, len(members))
-	for i, m := range members { byName[m.Name] = i }
+	for i, m := range members {
+		byName[m.Name] = i
+	}
 	seen := make(map[string]bool, len(members))
 	for _, m := range cluster.Members {
 		i, ok := byName[m.Name]
-		if !ok || seen[m.Name] { return nil, errors.New("Patroni cluster inventory contains foreign or duplicate member") }
+		if !ok || seen[m.Name] {
+			return nil, errors.New("Patroni cluster inventory contains foreign or duplicate member")
+		}
 		seen[m.Name] = true
 		if members[i].Primary {
-			if m.Role != "leader" || m.State != "running" { return nil, fmt.Errorf("Patroni member %s leader identity mismatch", m.Name) }
+			if m.Role != "leader" || m.State != "running" {
+				return nil, fmt.Errorf("Patroni member %s leader identity mismatch", m.Name)
+			}
 		} else {
 			if m.Role != "replica" || (m.State != "running" && m.State != "streaming") || m.Lag == nil || *m.Lag < 0 {
 				return nil, fmt.Errorf("Patroni replica %s has unverifiable replay lag or state", m.Name)
