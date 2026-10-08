@@ -45,8 +45,11 @@ func RewriteOwnedComposeImages(source []byte, mutations map[string]Delta) ([]byt
 		}
 		visited[name] = true
 		if delta.Installed.Owner != "baseharbor" || delta.Installed.Instance != name || delta.Installed.Kind != delta.Desired.Kind ||
-			delta.Classification == NoChange || delta.Classification == Unsupported ||
-			!validDigest(delta.Desired.Digest) || strings.TrimSpace(delta.Desired.Image) == "" {
+            !validDigest(delta.Desired.Digest) || strings.TrimSpace(delta.Desired.Image) == "" ||
+            providerDowngrade(delta.Installed.Version,delta.Desired.Version) ||
+            (delta.Installed.Kind==SQL && strings.Split(delta.Installed.Version,".")[0]!=strings.Split(delta.Desired.Version,".")[0]) ||
+            ((delta.Installed.Kind==SQL||delta.Installed.Kind==Secrets)&&delta.Classification!=BackupRequired) ||
+            (delta.Installed.Kind==Identity&&delta.Classification!=MigrationRequired) {
 			return nil, fmt.Errorf("unowned, unchanged or unsafe provider image change for %s", name)
 		}
 		service := services.Content[i+1]
