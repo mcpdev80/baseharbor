@@ -109,6 +109,16 @@ func deleteTargetDefinition(ctx context.Context, name string) (targetMutationRes
 	if err := cfg.Save(); err != nil {
 		return targetMutationResult{}, err
 	}
+	// A deleted Target must not remain activated for future CLI processes.
+	active, err := readPersistedTarget()
+	if err != nil {
+		return targetMutationResult{}, fmt.Errorf("target deleted, but active selection could not be inspected: %w", err)
+	}
+	if active == name {
+		if err := clearPersistedTarget(); err != nil {
+			return targetMutationResult{}, fmt.Errorf("target deleted, but active selection could not be cleared: %w", err)
+		}
+	}
 	if err := os.Remove(root); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return targetMutationResult{}, fmt.Errorf("remove empty target state directory: %w", err)
 	}
