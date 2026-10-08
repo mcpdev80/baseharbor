@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
- "github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func targetSelectionPath() (string, error) {
