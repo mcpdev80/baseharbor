@@ -32,11 +32,11 @@ var verifyCoreBinaryOnly = verifyUnchangedCoreForBinaryUpdate
 
 func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpdateOptions, out, errOut io.Writer) error {
 	if check.Relation == "up-to-date" {
-        if check.CoreReconciliation != "not_required" {
-            if err:=verifyCoreBinaryOnly(ctx,check.Target);err!=nil{
-                return fmt.Errorf("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled: %w",err)
-            }
-        }
+		if check.CoreReconciliation != "not_required" {
+			if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+				return fmt.Errorf("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled: %w", err)
+			}
+		}
 		fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
 		return nil
 	}
@@ -55,10 +55,10 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	// staging, or executable changes begin.
 	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
 	if controlPlaneExists {
-        if err:=verifyCoreBinaryOnly(ctx,check.Target);err!=nil{
-            return fmt.Errorf("Core provider update cannot be skipped; installed Core was left unchanged: %w",err)
-        }
-    }
+		if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+			return fmt.Errorf("Core provider update cannot be skipped; installed Core was left unchanged: %w", err)
+		}
+	}
 	_, localApplicationExists := localApplicationForSelfUpdate()
 
 	executable, err := selfUpdateExecutable()
@@ -114,11 +114,11 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	}
 
 	if controlPlaneExists {
-        if err:=verifyCoreBinaryOnly(ctx,check.Target);err!=nil{
-            return fmt.Errorf("post-update Core semantic verification failed; previous CLI binary restored: %w",err)
-        }
-    }
-    rollback = false
+		if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+			return fmt.Errorf("post-update Core semantic verification failed; previous CLI binary restored: %w", err)
+		}
+	}
+	rollback = false
 	fmt.Fprintf(out, "BaseHarbor updated successfully: %s -> %s\n", displayInstalledVersion(check.Installed), check.Target)
 	fmt.Fprintf(out, "Runtime image target: %s\n", defaultRuntimeImage(check.Target))
 	return nil
