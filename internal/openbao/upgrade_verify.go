@@ -2,9 +2,9 @@ package openbao
 
 import (
  "context"
+ "encoding/json"
  "errors"
  "fmt"
- "strings"
 
  bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -23,17 +23,26 @@ func VerifyUpgradeManagerPolicyAndAppRole(ctx context.Context, executor Executor
  if err!=nil{return err}
  token,err:=loginManager(ctx,executor,files,creds)
  if err!=nil{return errors.New("OpenBao manager AppRole cannot authenticate")}
- checks:=[]struct{name,command string}{
-  {"manager AppRole","exec bao read -format=json auth/approle/role/baseharbor-manager"},
-  {"manager policy","exec bao policy read baseharbor-manager"},
-  
- }
- for _,check:=range checks {
-  response,err:=execWithToken(ctx,executor,files,token,check.command)
-  if err!=nil{return fmt.Errorf("OpenBao %s authorization failed",check.name)}
-  if strings.TrimSpace(response)=="" {return fmt.Errorf("OpenBao %s returned no observable result",check.name)}
- }
+ roleJSON,err:=execWithToken(ctx,executor,files,token,"exec bao read -format=json auth/approle/role/baseharbor-manager/role-id")
+ if err!=nil{return errors.New("OpenBao manager AppRole identity is unreadable")}
+ var role struct {Data struct {RoleID string `json:"role_id"`} `json:"data"`}
+ if err:=json.Unmarshal([]byte(roleJSON),&role);err!=nil||role.Data.RoleID==""||role.Data.RoleID!=creds.RoleID{return errors.New("OpenBao manager RoleID mismatches protected credentials")}
+ capsJSON,err:=execWithToken(ctx,executor,files,token,"exec bao token capabilities -format=json sys/policies/acl/baseharbor-app-upgrade-probe")
+ if err!=nil{return errors.New("OpenBao manager application-policy authorization failed")}
+ if err:=verifyUpgradePolicyCapabilities(capsJSON);err!=nil{return err}
  if err:=verifyManagerKV(ctx,executor,files,token);err!=nil{return errors.New("OpenBao manager cannot verify protected KV access")}
+ return nil
+}
+
+
+func verifyUpgradePolicyCapabilities(payload string)error{
+ var caps []string
+ if err:=json.Unmarshal([]byte(payload),&caps);err!=nil{return errors.New("OpenBao policy capability report is malformed")}
+ available:=map[string]bool{}
+ for _,capability:=range caps{available[capability]=true}
+ for _,required:=range []string{"create","update","read","delete"} {
+  if !available[required]{return fmt.Errorf("OpenBao manager lacks required %s application-policy authorization",required)}
+ }
  return nil
 }
 
