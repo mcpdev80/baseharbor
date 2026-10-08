@@ -117,30 +117,48 @@ func TestExecuteJournaledRejectsForgedPreviouslyVerifiedPlan(t *testing.T) {
 }
 
 func TestExecuteJournaledReceiptFailureNeverCommitsVerified(t *testing.T) {
- root:=t.TempDir()
- if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
- path:=filepath.Join(root,"journal.json")
- plan,err:=Build("0.4.24",[]Realization{{Kind:Secrets,Installation:"a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Digest:digestA,Version:"2.7.0"}},expected())
- if err!=nil{t.Fatal(err)}
- failReceipt:=true
- applied:=0
- hooks:=Hooks{
-  Preflight:func(context.Context,Plan)error{return nil},
-  RecoveryPoint:func(context.Context,Delta)error{return nil},
-  Apply:func(context.Context,Delta)error{applied++;return nil},
-  Verify:func(context.Context,Delta)error{return nil},
-  Record:func(_ context.Context,_ Delta,state string)error{
-   if failReceipt&&state=="verified"{return errors.New("external receipt unavailable")}
-   return nil
-  },
- }
- if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err==nil{t.Fatal("accepted missing external receipt")}
- journal,err:=LoadJournal(path,"0.4.24")
- if err!=nil{t.Fatal(err)}
- if journal.Steps[JournalKey(plan.Deltas[0])]=="verified"{t.Fatal("persisted verified without external receipt")}
- failReceipt=false
- if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err!=nil{t.Fatal(err)}
- journal,err=LoadJournal(path,"0.4.24")
- if err!=nil{t.Fatal(err)}
- if journal.Steps[JournalKey(plan.Deltas[0])]!="verified"||applied!=2{t.Fatalf("recovery did not replay safely: %+v, applied=%d",journal,applied)}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "journal.json")
+	plan, err := Build("0.4.24", []Realization{{Kind: Secrets, Installation: "a", Scope: "shared", Instance: "vault", Owner: "baseharbor", Image: "openbao", Digest: digestA, Version: "2.7.0"}}, expected())
+	if err != nil {
+		t.Fatal(err)
+	}
+	failReceipt := true
+	applied := 0
+	hooks := Hooks{
+		Preflight:     func(context.Context, Plan) error { return nil },
+		RecoveryPoint: func(context.Context, Delta) error { return nil },
+		Apply:         func(context.Context, Delta) error { applied++; return nil },
+		Verify:        func(context.Context, Delta) error { return nil },
+		Record: func(_ context.Context, _ Delta, state string) error {
+			if failReceipt && state == "verified" {
+				return errors.New("external receipt unavailable")
+			}
+			return nil
+		},
+	}
+	if err := ExecuteJournaled(context.Background(), plan, path, hooks); err == nil {
+		t.Fatal("accepted missing external receipt")
+	}
+	journal, err := LoadJournal(path, "0.4.24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Steps[JournalKey(plan.Deltas[0])] == "verified" {
+		t.Fatal("persisted verified without external receipt")
+	}
+	failReceipt = false
+	if err := ExecuteJournaled(context.Background(), plan, path, hooks); err != nil {
+		t.Fatal(err)
+	}
+	journal, err = LoadJournal(path, "0.4.24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal.Steps[JournalKey(plan.Deltas[0])] != "verified" || applied != 2 {
+		t.Fatalf("recovery did not replay safely: %+v, applied=%d", journal, applied)
+	}
 }
