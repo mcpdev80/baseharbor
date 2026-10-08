@@ -294,15 +294,19 @@ func TestUntrackedCandidatesArePreservedNotClaimed(t *testing.T) {
 	}
 }
 
-func TestSystemHostTrustBackendsRefreshCorrectStore(t *testing.T){
- cases:=[]struct{name,expected string}{
-  {"linux-update-ca-certificates","update-ca-certificates"},
-  {"linux-update-ca-trust","update-ca-trust"},
- }
- for _,tc:=range cases{
-  backend,err:=backendByName(tc.name)
-  if err!=nil{t.Fatal(err)}
-  actual:=backend.(*systemBackend)
-  if len(actual.refreshCmd)==0||actual.refreshCmd[0]!=tc.expected{t.Fatalf("backend %s does not refresh system trust: %v",tc.name,actual.refreshCmd)}
- }
+func TestSystemHostTrustBackendsRefreshCorrectStore(t *testing.T) {
+	cases := []struct{ name, expected string }{
+		{"linux-update-ca-certificates", "update-ca-certificates"},
+		{"linux-update-ca-trust", "update-ca-trust"},
+	}
+	for _, tc := range cases {
+		backend, err := backendByName(tc.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := backend.(*systemBackend)
+		if len(actual.refreshCmd) == 0 || actual.refreshCmd[0] != tc.expected {
+			t.Fatalf("backend %s does not refresh system trust: %v", tc.name, actual.refreshCmd)
+		}
+	}
 }
