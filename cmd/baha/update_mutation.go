@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
- "github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -31,12 +31,12 @@ var selfUpdateExecutable = os.Executable
 
 func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpdateOptions, out, errOut io.Writer) error {
 	if check.Relation == "up-to-date" {
-        if check.CoreReconciliation != "not_required" {
-            return errors.New("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled; inspect 'baha update --check' before retrying")
-        }
-        fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
-        return nil
-    }
+		if check.CoreReconciliation != "not_required" {
+			return errors.New("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled; inspect 'baha update --check' before retrying")
+		}
+		fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
+		return nil
+	}
 	if check.Relation == "target-older" {
 		return errors.New("refusing to install an older BaseHarbor release through self-update")
 	}
@@ -86,7 +86,6 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	}
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
-
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
