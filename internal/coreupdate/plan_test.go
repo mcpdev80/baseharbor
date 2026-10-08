@@ -54,3 +54,15 @@ func TestExecutionRequiresRecoveryAndVerifiedResult(t *testing.T) {
  hooks.RecoveryPoint=func(context.Context,Delta)error{count++;return nil}
  if err:=Execute(context.Background(),plan,hooks);err==nil || !strings.Contains(err.Error(),"verification") || count!=3 {t.Fatalf("verification failure missing: %v count=%d",err,count)}
 }
+
+func TestBuildRejectsMalformedDigestAndDetectsDifferentImage(t *testing.T) {
+ bad := expected()
+ bad[0].Digest = "sha256:" + strings.Repeat("z",64)
+ if _,err:=Build("0.4.24",nil,bad);err==nil { t.Fatal("accepted non-hex digest") }
+ installed := []Realization{{Kind:SQL,Installation:"a",Scope:"shared",Instance:"sql",Owner:"baseharbor",Image:"untrusted-postgres",Digest:digestB,Version:"18.1"}}
+ plan,err := Build("0.4.24",installed,expected())
+ if err!=nil { t.Fatal(err) }
+ if len(plan.Deltas)!=1 || plan.Deltas[0].Classification==NoChange {
+  t.Fatalf("same digest with different image must not be treated as unchanged: %+v",plan)
+ }
+}
