@@ -8,9 +8,9 @@ Referenzprodukte sind PostgreSQL für SQL, Valkey für getrennte Cache-/dauerhaf
 
 In einem Verzeichnis ohne `company-sql-provider`:
 
-```bash
-baha provider init company/sql --path ./company-sql-provider
-baha provider test ./company-sql-provider -o json
+```text
+baha provider init
+baha provider test
 ```
 
 Das Scaffold erzeugt Deskriptor und Implementierungsskelett. Vertrag und Operationen müssen implementiert sein, bevor der Provider produktionsbereit ist. Vertragsprüfungen beweisen keine Erreichbarkeit oder Berechtigung einer beliebigen Datenbank.
@@ -18,11 +18,13 @@ Das Scaffold erzeugt Deskriptor und Implementierungsskelett. Vertrag und Operati
 Nach Registrierung eines vorhandenen Dienstes:
 
 ```bash
-baha provider list
-baha provider inspect company-db
-baha provider verify company-db
+baha provider init company/sql --path ./company-sql-provider
+baha provider test ./company-sql-provider -o json
 ```
 
 Externe Registrierung überträgt keinen Infrastruktur-Besitz. Entfernen löst nur die Bindung/Referenz.
 
 Weiter: [Provider-Modell](../explanation/providers.md), [externe Provider](../how-to/external-providers.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/providers/).
+
+
+Technische Bezeichner: `database.sql`, `cache.key-value`, `database.key-value`, `database.document`, `object-storage.s3`, `baha provider list`, `baha provider inspect company-db`, `baha provider verify company-db`.
