@@ -1,0 +1,37 @@
+{
+  "release": "0.4.24",
+  "providers": [
+    {
+      "kind": "sql",
+      "version": "18",
+      "image": "docker.io/library/postgres:18-alpine",
+      "digest": "sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+    },
+    {
+      "kind": "secrets",
+      "version": "2.7.0",
+      "image": "docker.io/openbao/openbao:2.7.0",
+      "digest": "sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315"
+    },
+    {
+      "kind": "identity",
+      "version": "26.8.0",
+      "image": "quay.io/keycloak/keycloak:26.8.0",
+      "digest": "sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc"
+    }
+  ],
+  "backing": [
+    {
+      "role": "keycloak-ha-postgresql",
+      "version": "18-spilo-4.1-p2",
+      "image": "ghcr.io/zalando/spilo-18:4.1-p2",
+      "digest": "sha256:258a87d34699387f3b6b45d30874c21c6b838ed51c9371ae2a70151d57137990"
+    },
+    {
+      "role": "keycloak-single-postgresql",
+      "version": "18",
+      "image": "docker.io/library/postgres:18-alpine",
+      "digest": "sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+    }
+  ]
+}
