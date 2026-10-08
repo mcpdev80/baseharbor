@@ -27,6 +27,13 @@ type Command struct {
 	Examples []string
 	Run      RunFunc
 	Children []*Command
+	HelpGroups []HelpGroup
+}
+
+// HelpGroup prioritizes task-oriented commands without hiding advanced commands.
+type HelpGroup struct {
+	Title string
+	Commands []string
 }
 
 // UsageError represents invalid user input. Callers should exit with code 2.
@@ -254,22 +261,44 @@ func (c *Command) renderHelp(w io.Writer) {
 		fmt.Fprintf(w, "\nUsage:\n  %s\n", c.Usage)
 	}
 	if len(c.Children) > 0 {
-		fmt.Fprintln(w, "\nCommands:")
-		nameWidth := 0
-		for _, child := range c.Children {
-			if child.Hidden {
-				continue
+		if len(c.HelpGroups) > 0 {
+			seen := make(map[string]bool)
+			byName := make(map[string]*Command, len(c.Children))
+			for _, child := range c.Children {
+				if !child.Hidden { byName[child.Name] = child }
 			}
-			if len(child.Name) > nameWidth {
-				nameWidth = len(child.Name)
+			for _, group := range c.HelpGroups {
+				var children []*Command
+				for _, name := range group.Commands {
+					if child, ok := byName[name]; ok && !seen[name] {
+						seen[name] = true
+						children = append(children, child)
+					}
+				}
+				if len(children) > 0 {
+					fmt.Fprintf(w, "\\n%s:\\n", group.Title)
+					for _, child := range children { writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name)) }
+				}
 			}
-		}
-		for _, child := range c.Children {
-			if child.Hidden {
-				continue
+			var advanced []*Command
+			for _, child := range c.Children {
+				if !child.Hidden && !seen[child.Name] { advanced = append(advanced, child) }
 			}
-			prefix := fmt.Sprintf("  %-*s  ", nameWidth, child.Name)
-			writeWrapped(w, child.Summary, width, prefix)
+			if len(advanced) > 0 {
+				fmt.Fprintln(w, "\\nAdvanced and operator commands:")
+				for _, child := range advanced { writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name)) }
+			}
+		} else {
+			fmt.Fprintln(w, "\\nCommands:")
+			nameWidth := 0
+			for _, child := range c.Children {
+				if !child.Hidden && len(child.Name) > nameWidth { nameWidth = len(child.Name) }
+			}
+			for _, child := range c.Children {
+				if child.Hidden { continue }
+				prefix := fmt.Sprintf("  %-*s  ", nameWidth, child.Name)
+				writeWrapped(w, child.Summary, width, prefix)
+			}
 		}
 	}
 	if len(c.Examples) > 0 {
