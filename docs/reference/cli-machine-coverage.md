@@ -79,6 +79,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha mcp` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha mcp serve` | presentation |  |  | Starts the local MCP transport; clients launch it before discovery. |
 | `baha new` | presentation |  |  | Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations. |
+| `baha open` | presentation |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantic | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |
 | `baha openbao rotate` | semantic | CLI -o json / typed MCP result | baseharbor.openbao.rotate |  |
