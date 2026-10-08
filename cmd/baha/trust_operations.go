@@ -71,3 +71,39 @@ func installManagedTrust(ctx context.Context, approved bool) (managedTrustResult
 	status, err := hosttrust.Install(ctx, dataDir, bundle.PEM, bundle.IssuerReference, nil)
 	return managedTrustResult{Managed: true, Status: &status}, err
 }
+
+type trustUninstallResult struct {
+	ContractVersion string `json:"contract_version"`
+	Removed         int    `json:"removed"`
+}
+
+func ownedTrustRecords() ([]hosttrust.AnchorRecord, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return nil, err
+	}
+	records, err := hosttrust.StateRecords(dataDir)
+	if records == nil {
+		records = []hosttrust.AnchorRecord{}
+	}
+	return records, err
+}
+
+func uninstallManagedTrust(ctx context.Context, approved bool) (trustUninstallResult, error) {
+	result := trustUninstallResult{ContractVersion: "v1"}
+	if err := authorizeCurrentMCPContext(ctx, "trust.uninstall", "", "", ""); err != nil {
+		return result, err
+	}
+	if err := applicationlifecycle.RequireApproval("trust.uninstall", approved); err != nil {
+		return result, err
+	}
+	// This mutation is host-local and independent of OpenBao availability:
+	// an old issuer may no longer exist, yet its recorded anchor must be removable.
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return result, err
+	}
+	removed, err := hosttrust.RemoveOwned(ctx, dataDir)
+	result.Removed = removed
+	return result, err
+}

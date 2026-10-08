@@ -352,6 +352,15 @@
             "mcp_tool": "baseharbor.trust.install"
           },
           {
+            "id": "trust.uninstall",
+            "description": "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.trust.uninstall"
+          },
+          {
             "id": "app.stop",
             "description": "Stop owned application runtime while preserving persistent data.",
             "safety": "mutating",

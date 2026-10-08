@@ -16,11 +16,11 @@ import (
 
 func appPSQLCommand(store application.Store) *cli.Command {
 	return &cli.Command{
-		Name:    "psql",
-		Summary: "Open PostgreSQL for the current application",
-		Usage:   "baha app psql [INSTANCE] [--app NAME]",
+		Name:    "sql",
+		Summary: "Open the managed SQL console for the current application",
+		Usage:   "baha app sql [INSTANCE] [--app NAME]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, instance, err := parseAccessTarget(args, "psql")
+			appName, instance, err := parseAccessTarget(args, "sql")
 			if err != nil {
 				return err
 			}
@@ -30,7 +30,13 @@ func appPSQLCommand(store application.Store) *cli.Command {
 			}
 			path, err := exec.LookPath("psql")
 			if err != nil {
-				return fmt.Errorf("psql client not found in PATH")
+				if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "postgres", binding.Instance, "managed-runtime"); err != nil {
+					return err
+				}
+				return runManagedBackendConsole(ctx, resolved, binding, "postgres", out, errOut)
+			}
+			if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "postgres", binding.Instance, "host-psql"); err != nil {
+				return err
 			}
 			user := binding.Username
 			if user == "" {
@@ -50,12 +56,11 @@ func appPSQLCommand(store application.Store) *cli.Command {
 
 func appRedisCommand(store application.Store) *cli.Command {
 	return &cli.Command{
-		Name:    "redis",
-		Aliases: []string{"valkey"},
-		Summary: "Open Valkey/Redis for the current application",
-		Usage:   "baha app redis [INSTANCE] [--app NAME]",
+		Name:    "cache",
+		Summary: "Open the managed cache console for the current application",
+		Usage:   "baha app cache [INSTANCE] [--app NAME]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, instance, err := parseAccessTarget(args, "redis")
+			appName, instance, err := parseAccessTarget(args, "cache")
 			if err != nil {
 				return err
 			}
@@ -68,7 +73,13 @@ func appRedisCommand(store application.Store) *cli.Command {
 				path, err = exec.LookPath("redis-cli")
 			}
 			if err != nil {
-				return fmt.Errorf("valkey-cli or redis-cli client not found in PATH")
+				if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "valkey", binding.Instance, "managed-runtime"); err != nil {
+					return err
+				}
+				return runManagedBackendConsole(ctx, resolved, binding, "valkey", out, errOut)
+			}
+			if err := requireManagedClientConsent(ctx, os.Stdin, errOut, resolved.Target.Name, resolved.Manifest.Name, resolved.Manifest.Environment, "valkey", binding.Instance, "host-client"); err != nil {
+				return err
 			}
 			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
@@ -223,7 +234,16 @@ func resolveAccessBinding(ctx context.Context, store application.Store, appName,
 		return resolvedApplication{}, application.ServiceBinding{}, err
 	}
 	binding, err := application.ResolveServiceBinding(files, kind, selected)
-	return resolved, binding, err
+	if err != nil {
+		return resolvedApplication{}, application.ServiceBinding{}, err
+	}
+	if kind == "postgres" {
+		switch strings.ToLower(strings.TrimSpace(binding.Username)) {
+		case "postgres", "baseharbor_admin", "root":
+			return resolvedApplication{}, application.ServiceBinding{}, usageError("privileged database identities cannot be opened by the developer console", "Configure an application-scoped, least-privilege PostgreSQL role before opening baha app sql.")
+		}
+	}
+	return resolved, binding, nil
 }
 
 func selectAccessInstance(instances []string, requested, kind string) (string, error) {

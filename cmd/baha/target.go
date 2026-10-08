@@ -41,6 +41,7 @@ type targetInspectionResult struct {
 	Environment        string                             `json:"environment,omitempty"`
 	Repository         string                             `json:"repository,omitempty"`
 	Effective          string                             `json:"effective"`
+	SelectionOrigin    string                             `json:"selection_origin"`
 	OperatorAuth       map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 	AccessCapabilities *targetaccess.Descriptor           `json:"access_capabilities,omitempty"`
 }
@@ -66,18 +67,19 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
+	if selectionErr != nil {
+		return deployment.ResolvedTarget{}, selectionErr
+	}
 	state, configured, err := orgconfig.LoadActiveOptional()
 	if err != nil || !configured {
 		if err == nil {
-			return cfg.ResolveTarget(explicit, activated)
+			return cfg.ResolveTarget(selected, "")
 		}
 		return deployment.ResolvedTarget{}, err
 	}
 	var preferences []orgconfig.PreferenceLayer
-	userTarget := activated
-	if userTarget == "" {
-		userTarget = strings.TrimSpace(cfg.DefaultTarget)
-	}
+	userTarget := selected
 	if userTarget != "" {
 		defaults := orgconfig.EnvironmentDefaults{Target: userTarget}
 		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeUser,
@@ -94,7 +96,7 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	if effective.Target != nil {
 		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
-	return cfg.ResolveTarget("", "")
+	return cfg.ResolveTarget(selected, "")
 }
 
 func organizationDefaultTarget() (string, error) {
@@ -156,6 +158,7 @@ func targetCommand() *cli.Command {
 			}
 			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
 			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
+			fmt.Fprintf(out, "Selected %s\n", result.SelectionOrigin)
 			fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
 			if result.Target.Scope != "" {
 				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
@@ -198,9 +201,21 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-					effective, err := cfg.ResolveTarget("", activated)
-					if err != nil {
-						return err
+					selection, selectionErr := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
+					// Listing must remain usable when multiple Targets require a choice.
+					// All other resolver failures (corrupt selection/config) fail closed.
+					if selectionErr != nil {
+						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict && typed.Code != machine.ErrorNotFound {
+							return selectionErr
+						}
+					}
+					effectiveName := ""
+					if selectionErr == nil {
+						effective, resolveErr := cfg.ResolveTarget(selection, "")
+						if resolveErr != nil {
+							return resolveErr
+						}
+						effectiveName = effective.Name
 					}
 					names := cfg.TargetNames()
 					if _, configured := cfg.Targets["local"]; !configured {
@@ -233,10 +248,10 @@ func targetCommand() *cli.Command {
 						if name == cfg.DefaultTarget {
 							marks = append(marks, "default")
 						}
-						if name == activated {
+						if selectionErr == nil && name == selection && (activated != "" || targetOverrideFromContext(ctx) != "" || persistedTargetIsActive()) {
 							marks = append(marks, "active")
 						}
-						if name == effective.Name {
+						if name == effectiveName {
 							marks = append(marks, "effective")
 						}
 						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
@@ -264,7 +279,15 @@ func targetCommand() *cli.Command {
 					if len(filtered) == 1 {
 						name = filtered[0]
 					}
-					target, err := cfg.ResolveTarget(name, os.Getenv("BASEHARBOR_TARGET"))
+					explicit := name
+					if explicit == "" {
+						explicit = targetOverrideFromContext(ctx)
+					}
+					selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
+					if err != nil {
+						return err
+					}
+					target, err := cfg.ResolveTarget(selection, "")
 					if err != nil {
 						return err
 					}
@@ -297,33 +320,48 @@ func targetCommand() *cli.Command {
 			},
 			{
 				Name:    "activate",
-				Summary: "Print shell code that activates a target in the current shell",
+				Summary: "Persist the active deployment target for this user",
 				Usage:   "baha target activate NAME",
-				Long:    "Activation is shell-local. Evaluate the emitted assignment in the current shell; BaseHarbor never mutates a parent process environment.",
+				Long:    "Persists per-user target selection across CLI processes. --target and BASEHARBOR_TARGET override the persisted selection.",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+					if len(args) == 1 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target activate", args[0])
+					}
+					if len(args) == 0 {
+						return guidedTargetActivation(ctx, out, errOut)
+					}
 					if len(args) != 1 {
-						return usageError("baha target activate requires NAME", "Example: eval \"$(baha target activate docker-dev)\"")
+						return usageError("baha target activate requires NAME", "Example: baha target activate docker-dev")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
 						return err
 					}
-					if _, ok := cfg.Targets[args[0]]; !ok {
-						return fmt.Errorf("target %q is not configured", args[0])
+					if _, ok := cfg.Targets[args[0]]; !ok && args[0] != "local" {
+						return machine.NewError(machine.ErrorNotFound, fmt.Sprintf("target %q is not configured", args[0]), "Run baha target list to choose an existing deployment Target.", false)
 					}
-					fmt.Fprint(out, shellActivationCode(currentShellName(), args[0]))
+					if err := writePersistedTarget(args[0]); err != nil {
+						return err
+					}
+					fmt.Fprintf(out, "Active target: %s\n", args[0])
 					return nil
 				},
 			},
 			{
 				Name:    "deactivate",
-				Summary: "Print shell code that clears the active target",
+				Summary: "Clear persisted active deployment target",
 				Usage:   "baha target deactivate",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) != 0 {
-						return usageError("baha target deactivate does not accept arguments", "Example: eval \"$(baha target deactivate)\"")
+					if len(args) != 0 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target deactivate", args[0])
 					}
-					fmt.Fprint(out, shellDeactivationCode(currentShellName()))
+					if len(args) != 0 {
+						return usageError("baha target deactivate does not accept arguments", "Example: baha target deactivate")
+					}
+					if err := clearPersistedTarget(); err != nil {
+						return err
+					}
+					fmt.Fprintln(out, "Active target cleared")
 					return nil
 				},
 			},
@@ -340,6 +378,7 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+		SelectionOrigin: targetSelectionOrigin(ctx),
 	}
 	if kind, parseErr := targetaccess.ParseProviderKind(target.AccessProvider); parseErr == nil {
 		if descriptor, builtIn := targetaccess.BuiltInDescriptor(kind); builtIn {
@@ -367,6 +406,9 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) == 0 {
+		return runGuidedNewLocalTarget(ctx, out, errOut)
+	}
 	filtered, format, err := parseReadOutputArgs(args, "target create")
 	if err != nil {
 		return err
