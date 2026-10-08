@@ -281,3 +281,13 @@ func buildSelfUpdateArchive(t *testing.T, typeflag byte, payload []byte) []byte 
 	}
 	return buf.Bytes()
 }
+
+func TestSelfUpdateUpToDateDoesNotClaimCoreReconciliation(t *testing.T) {
+ check:=selfUpdateCheck{Relation:"up-to-date",Target:"0.4.24",CoreReconciliation:"planned_read_only"}
+ var out strings.Builder
+ err:=performSelfUpdate(context.Background(),check,selfUpdateOptions{Yes:true},&out,&out)
+ if err==nil || !strings.Contains(err.Error(),"installed Core providers") {
+  t.Fatalf("unreconciled Core was reported successful: err=%v output=%q",err,out.String())
+ }
+ if strings.Contains(out.String(),"already installed") {t.Fatal("unverified update advertised success")}
+}
