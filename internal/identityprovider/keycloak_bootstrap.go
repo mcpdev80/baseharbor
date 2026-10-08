@@ -58,8 +58,12 @@ func keycloakBootstrapServices(compose string) ([]string, error) {
 		}
 	}
 	if _, second := document.Services["keycloak-2"]; second {
-		if _, third := document.Services["keycloak-3"]; !third { return nil, errors.New("Keycloak HA bootstrap graph has fewer than three members") }
-	} else if _, third := document.Services["keycloak-3"]; third { return nil, errors.New("Keycloak HA bootstrap graph is incomplete") }
+		if _, third := document.Services["keycloak-3"]; !third {
+			return nil, errors.New("Keycloak HA bootstrap graph has fewer than three members")
+		}
+	} else if _, third := document.Services["keycloak-3"]; third {
+		return nil, errors.New("Keycloak HA bootstrap graph is incomplete")
+	}
 	var selected []string
 	for name := range document.Services {
 		if name != "keycloak-2" && name != "keycloak-3" {
