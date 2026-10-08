@@ -142,3 +142,14 @@ func TestKeycloakTopologyComposeYAMLValid(t *testing.T) {
 		}
 	}
 }
+
+func TestKeycloakSingleGatewayOmitsAbsentHAMembers(t *testing.T) {
+ app:=application.New("demo","prod",false,false,false)
+ files:=KeycloakFiles{Project:"owned",ConsumerNetwork:"owned-consumer",InternalNetwork:"owned-internal"}
+ single:=keycloakCompose(app,files)
+ if strings.Contains(single,"https://keycloak-2:8443") || strings.Contains(single,"https://keycloak-3:8443") { t.Fatal("single Keycloak gateway references nonexistent HA peers") }
+ ha:=keycloakCompose(application.WithHA(app,true),files)
+ for _,peer:=range []string{"https://keycloak-2:8443","https://keycloak-3:8443"} {
+  if !strings.Contains(ha,peer) {t.Fatalf("HA gateway missing %s",peer)}
+ }
+}
