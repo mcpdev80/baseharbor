@@ -115,6 +115,9 @@ func rootCommand() *cli.Command {
 			Usage:   "baha destroy [--yes] | baha destroy --all [--yes]",
 			Long:    "Without --all, shows the ownership-safe destruction plan for the effective Target and refuses to run while application bindings remain. --all is the explicit installation cleanup path: it removes BaseHarbor-managed deployments across all Targets, shared runtime/provider resources, control-plane data and BaseHarbor XDG state/config while preserving application source repositories and external application-owned data.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() && !containsExactArgument(args, "--all") {
+					return appDestroyCommand(store).Run(ctx, args, out, errOut)
+				}
 				return runtimeDestroyCommand(ctx, args, out, errOut)
 			},
 		},
@@ -251,4 +254,14 @@ func inApplicationRepository() bool {
 	}
 	found, err := application.HasRepositoryApplication(cwd)
 	return err == nil && found
+}
+
+// containsExactArgument avoids guessing intent from substrings of option values.
+func containsExactArgument(args []string, expected string) bool {
+	for _, arg := range args {
+		if arg == expected {
+			return true
+		}
+	}
+	return false
 }
