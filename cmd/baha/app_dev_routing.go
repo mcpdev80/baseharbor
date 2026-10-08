@@ -134,6 +134,22 @@ type developmentRoutePlan struct {
 	groups    []devgateway.OwnerRoutes
 }
 
+
+// diagnoseDevelopmentGatewayVerification keeps upstream failures separate from
+// canonical hostname/route registration errors. A 502/503/504 does not prove
+// that the gateway route is absent, and internal proxy files are not user help.
+func diagnoseDevelopmentGatewayVerification(err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, code := range []string{"502", "503", "504"} {
+		if strings.Contains(err.Error(), "HTTP "+code) {
+			return fmt.Errorf("development application upstream is unavailable (HTTP %s): check the selected Target, the workload listener against exposure.http.port, and gateway network connectivity; retry baha status and baha doctor", code)
+		}
+	}
+	return fmt.Errorf("verify development gateway upstream: %w", err)
+}
+
 func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
 	if !requiresDevelopmentGateway(e.manifest) {
 		return nil
@@ -163,7 +179,7 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		return fmt.Errorf("reconcile canonical development routes: %w", err)
 	}
 	if err := devgateway.Verify(ctx, target); err != nil {
-		return fmt.Errorf("verify development gateway upstream: %w", err)
+		return diagnoseDevelopmentGatewayVerification(err)
 	}
 	routes, err := devgateway.Routes(target)
 	if err != nil {
