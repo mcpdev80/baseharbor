@@ -33,12 +33,22 @@ Jede neue Service-Art beziehungsweise jeder Provider dokumentiert vor Implementi
 ## Service, Protokoll, Provider und Produkt bleiben getrennt
 
 ```text
-Application Intent
-  -> BaseHarbor Service-Vertrag
-  -> Protokoll- / Semantikanforderungen
-  -> Provider-Auflösung
-  -> Provider-Implementierung
-  -> Produkt- / Engine-Realisierung
+Application intent
+        |
+        v
+BaseHarbor service contract
+        |
+        v
+protocol / semantic requirements
+        |
+        v
+provider resolution
+        |
+        v
+provider implementation
+        |
+        v
+product / engine realization
 ```
 
 Beispiel:
