@@ -222,9 +222,9 @@ func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
 			return fmt.Errorf("Core update step %s requires explicit PostgreSQL major migration", key)
 		}
 		if !changed && delta.Classification != NoChange {
-            return fmt.Errorf("Core update step %s is unchanged and must not restart provider", key)
-        }
-        if delta.Classification == SafeReconcile && changed {
+			return fmt.Errorf("Core update step %s is unchanged and must not restart provider", key)
+		}
+		if delta.Classification == SafeReconcile && changed {
 			return fmt.Errorf("Core update step %s cannot bypass durable data recovery", key)
 		}
 		if changed && (current.Kind == SQL || current.Kind == Secrets) && delta.Classification != BackupRequired {
