@@ -204,6 +204,10 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					names := cfg.TargetNames()
+					if _, configured := cfg.Targets["local"]; !configured {
+						names = append(names, "local")
+						sort.Strings(names)
+					}
 					items := make([]targetListItem, 0, len(names))
 					for _, name := range names {
 						var (
