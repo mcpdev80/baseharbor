@@ -95,7 +95,7 @@ nav:
   - Extension artifact trust (EN): https://mcpdev80.github.io/baseharbor/spec/extension-artifact-trust-v1/
 - Betrieb:
   - Fehlerbehebung (EN): https://mcpdev80.github.io/baseharbor/troubleshooting/
-  - Fehler (EN): https://mcpdev80.github.io/baseharbor/reference/errors/
+  - Fehler: reference/errors.md
 - Automation und Agents:
   - Automation-Befehle: cli/automation-agents.md
   - MCP / agent interface (EN): https://mcpdev80.github.io/baseharbor/reference/mcp/
@@ -106,19 +106,19 @@ nav:
   - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
 - Referenz:
   - Public contracts (EN): https://mcpdev80.github.io/baseharbor/reference/public-contracts/
-  - Platform support (EN): https://mcpdev80.github.io/baseharbor/reference/platform-support/
+  - Plattformunterstützung: reference/platform-support.md
   - Complete command index (EN): https://mcpdev80.github.io/baseharbor/cli/command-index/
   - CLI reference (EN): https://mcpdev80.github.io/baseharbor/reference/cli/
   - Globale Optionen: cli/global-options.md
   - Shell und Bedienung: cli/shell-ux.md
   - Manifest (EN): https://mcpdev80.github.io/baseharbor/reference/manifest/
   - Application secret API (EN): https://mcpdev80.github.io/baseharbor/reference/application-secret-api/
-  - Authentication & API errors (EN): https://mcpdev80.github.io/baseharbor/reference/authentication-and-api-errors/
+  - Authentifizierung und API-Fehler: reference/authentication-and-api-errors.md
   - Backup und Restore (EN): https://mcpdev80.github.io/baseharbor/reference/backup-and-restore/
   - PostgreSQL & migrations (EN): https://mcpdev80.github.io/baseharbor/reference/postgresql-and-migrations/
   - Compose runtime (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-compose/
   - Runtime Resource API (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-resource-api/
-  - Runtime secret broker (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-secret-broker/
+  - Runtime Secret Broker: reference/runtime-secret-broker.md
   - Secrets & OpenBao (EN): https://mcpdev80.github.io/baseharbor/reference/secrets-and-openbao/
   - Runtime Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-provider-contract-v1/
   - Runtime Provider Conformance v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-provider-conformance-v1/
