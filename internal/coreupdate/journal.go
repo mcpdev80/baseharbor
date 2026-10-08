@@ -65,7 +65,7 @@ func LoadJournal(path, release string) (Journal, error) {
 
 func validJournalState(value string) bool {
 	switch value {
-	case "applying", "apply_failed", "verify_failed", "verified":
+	case "applying", "apply_failed", "verify_failed", "recovered", "verified":
 		return true
 	}
 	return false
