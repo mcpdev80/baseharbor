@@ -275,10 +275,25 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 	}
 }
 
-func TestCoreHAUpdateCheckCannotMisclassifySpiloVersion(t *testing.T) {
-	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
-	_, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{bhruntime.SharedProjectName("test-core-update") + "/postgres-member-1": {Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "ghcr.io/zalando/spilo-18@sha256:" + strings.Repeat("a", 64)}}})
-	if err == nil || !strings.Contains(err.Error(), "Spilo-backed") {
-		t.Fatalf("HA backing provider was not explicitly rejected: %v", err)
-	}
+func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
+ state := coreinstallation.State{ID:"owned-ha",Ready:true,Spec:coreinstallation.Spec{Target:"test-core-update",HA:true}}
+ project:=bhruntime.SharedProjectName("test-core-update")
+ identityProject:=bhruntime.SharedProjectName("test-core-update-core")
+ images:=map[string]bhruntime.ImageIdentity{
+  project+"/postgres-member-1":{Reference:"ghcr.io/zalando/spilo-18:4.1-p2",Digest:"ghcr.io/zalando/spilo-18@sha256:"+strings.Repeat("a",64)},
+  project+"/openbao-member-1":{Reference:"docker.io/openbao/openbao:2.7.0",Digest:"sha256:"+strings.Repeat("b",64)},
+  identityProject+"/keycloak-1":{Reference:"quay.io/keycloak/keycloak:26.8.0",Digest:"sha256:"+strings.Repeat("c",64)},
+ }
+ plan,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,updateInventoryRuntime{images:images})
+ if err!=nil{t.Fatal(err)}
+ if len(plan.Deltas)!=3{t.Fatalf("expected OpenBao, Identity and Spilo backing, got %d",len(plan.Deltas))}
+ found:=false
+ for _,delta:=range plan.Deltas{
+  if delta.Installed.Scope!="backing"{continue}
+  found=true
+  if delta.Installed.Image!="ghcr.io/zalando/spilo-18:4.1-p2" || delta.Desired.Version!="18-spilo-4.1-p2" || delta.Classification!=coreupdate.Unsupported {
+   t.Fatalf("HA backing delta must fail closed on unverified pin: %+v",delta)
+  }
+ }
+ if !found{t.Fatal("missing Spilo backing delta")}
 }
