@@ -99,3 +99,11 @@ func TestDoctorTargetFindingsStayManual(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitImplicitLocalSelectionPersists(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+ cfg := deployment.Config{Version:deployment.ConfigVersion, Targets:map[string]deployment.TargetDefinition{"docker-test":{}}}
+ if err := writePersistedTarget("local"); err != nil {t.Fatal(err)}
+ selected,err:=selectedTargetName("","",cfg)
+ if err!=nil || selected!="local" {t.Fatalf("explicit local: %q, %v",selected,err)}
+}
