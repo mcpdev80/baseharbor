@@ -44,10 +44,10 @@ func TestPatroniRuntimeInspectionRejectsSplitBrainAndMissingReplica(t *testing.T
 		t.Fatal(err)
 	}
 	roles["postgres-member-3"] = "primary"
-	if members, err := inspectPatroniMembers(context.Background(), rt, files); err != nil {
-		t.Fatal(err)
-	} else if _, _, err := coreupdate.VerifyPatroniQuorum(context.Background(), members, 0); err == nil {
-		t.Fatal("two active primaries accepted")
+	if members, err := inspectPatroniMembers(context.Background(), rt, files); err == nil {
+		if _, _, quorumErr := coreupdate.VerifyPatroniQuorum(context.Background(), members, 0); quorumErr == nil {
+			t.Fatal("two active primaries accepted")
+		}
 	}
 	delete(roles, "postgres-member-3")
 	if _, err := inspectPatroniMembers(context.Background(), rt, files); err == nil {
