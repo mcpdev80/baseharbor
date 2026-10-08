@@ -23,6 +23,7 @@ type EtcdctlSource struct {
  Identity Identity
  TLS TLSFiles
  ScratchDir string
+ Attest func(context.Context)(SnapshotInfo,error)
 }
 func trustedBinary(path string)error{
  if path=="" || !filepath.IsAbs(path){return errors.New("trusted helper must have an absolute path")}
@@ -47,6 +48,10 @@ func (s EtcdctlSource) validate()error{
 func (s EtcdctlSource) Snapshot(ctx context.Context,dest io.Writer)(SnapshotInfo,error){
  if dest==nil{return SnapshotInfo{},errors.New("snapshot stream destination required")}
  if err:=s.validate();err!=nil{return SnapshotInfo{},err}
+ if s.Attest==nil{return SnapshotInfo{},errors.New("authenticated etcd cluster/version attestation required")}
+ attested,err:=s.Attest(ctx)
+ if err!=nil{return SnapshotInfo{},err}
+ if attested.ClusterID!=s.Identity.Cluster || attested.Version=="" || attested.Revision<=0{return SnapshotInfo{},errors.New("etcd cluster attestation mismatch")}
  scratch,err:=os.MkdirTemp(s.ScratchDir,".etcdctl-*")
  if err!=nil{return SnapshotInfo{},err}
  defer os.RemoveAll(scratch)
@@ -62,6 +67,7 @@ func (s EtcdctlSource) Snapshot(ctx context.Context,dest io.Writer)(SnapshotInfo
   "ETCDCTL_KEY="+s.TLS.Key,
  }
  if err:=cmd.Run();err!=nil{return SnapshotInfo{},errors.New("etcd maintenance snapshot failed")}
+ if err:=os.Chmod(archive,0600);err!=nil{return SnapshotInfo{},err}
  if err:=safeRegular(archive);err!=nil{return SnapshotInfo{},err}
  verify:=exec.CommandContext(ctx,s.Etcdutl,"snapshot","status",archive,"--write-out=json")
  verify.Env=[]string{"PATH=/usr/bin:/bin"}
@@ -81,5 +87,6 @@ func (s EtcdctlSource) Snapshot(ctx context.Context,dest io.Writer)(SnapshotInfo
  if _,err:=io.Copy(dest,&contextReader{ctx:ctx,Reader:f});err!=nil{return SnapshotInfo{},err}
  // The owning Core must supply attested cluster ID and etcd version from
  // authenticated etcd status. Snapshot bytes alone cannot attest membership.
- return SnapshotInfo{ClusterID:s.Identity.Cluster,Version:"etcd-v3-attestation-required",Revision:status.Revision},nil
+ if status.Revision>attested.Revision{return SnapshotInfo{},errors.New("snapshot revision exceeds authenticated cluster revision")}
+ return SnapshotInfo{ClusterID:attested.ClusterID,Version:attested.Version,Revision:status.Revision},nil
 }
