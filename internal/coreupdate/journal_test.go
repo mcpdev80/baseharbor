@@ -87,12 +87,16 @@ func TestJournalKeyIncludesDesiredPin(t *testing.T) {
 }
 
 func TestJournalKeyCannotCollideAcrossImagesOrSeparators(t *testing.T) {
- a:=Delta{Installed:Realization{Kind:SQL,Installation:"core/a",Scope:"shared",Instance:"postgres"},Desired:Desired{Kind:SQL,Image:"postgres:18",Version:"18.2",Digest:digestA}}
- b:=a
- b.Installed.Installation="core"
- b.Installed.Scope="a/shared"
- if JournalKey(a)==JournalKey(b){t.Fatal("ambiguous slash-bearing journal identity")}
- b=a
- b.Desired.Image="registry.example/postgres:18"
- if JournalKey(a)==JournalKey(b){t.Fatal("changed target image reused verified update journal")}
+	a := Delta{Installed: Realization{Kind: SQL, Installation: "core/a", Scope: "shared", Instance: "postgres"}, Desired: Desired{Kind: SQL, Image: "postgres:18", Version: "18.2", Digest: digestA}}
+	b := a
+	b.Installed.Installation = "core"
+	b.Installed.Scope = "a/shared"
+	if JournalKey(a) == JournalKey(b) {
+		t.Fatal("ambiguous slash-bearing journal identity")
+	}
+	b = a
+	b.Desired.Image = "registry.example/postgres:18"
+	if JournalKey(a) == JournalKey(b) {
+		t.Fatal("changed target image reused verified update journal")
+	}
 }
