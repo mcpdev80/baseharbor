@@ -27,7 +27,7 @@ func trustCommand() *cli.Command {
 		trustStatusCommand(),
 		trustExportCommand(),
 		trustInstallCommand(),
-        trustUninstallCommand(),
+		trustUninstallCommand(),
 	}
 	return cmd
 }
@@ -146,36 +146,58 @@ func trustInstallCommand() *cli.Command {
 	}
 }
 
-
 func trustUninstallCommand() *cli.Command {
- return &cli.Command{
-  Name:"uninstall",
-  Summary:"Remove only fingerprint-verified, BaseHarbor-owned host CA anchors",
-  Usage:"baha trust uninstall --yes",
-  Long:"Never removes foreign CA certificates. Any anchor that cannot be verified is reported as PRESERVED.",
-  Run:func(ctx context.Context,args []string,out,errOut io.Writer)error {
-   filtered,format,err:=parseReadOutputArgs(args,"trust uninstall")
-   if err!=nil{return err}
-   confirmed:=false
-   for _,arg:=range filtered {
-    if arg=="--yes" || arg=="-y" {confirmed=true;continue}
-    return usageError("unknown argument "+arg,"Usage: baha trust uninstall --yes")
-   }
-   if !confirmed{return usageError("baha trust uninstall requires explicit --yes consent","Re-run 'baha trust uninstall --yes'.")}
-   dataDir,err:=bhruntime.DataDir("")
-   if err!=nil{return err}
-   result,removeErr:=hosttrust.RemoveOwnedDetailed(ctx,dataDir)
-   untracked,inspectErr:=hosttrust.UntrackedCandidates(dataDir)
-   if inspectErr!=nil {removeErr=errors.Join(removeErr,inspectErr)}
-   if format==outputJSON {if err:=writeJSON(out,result);err!=nil{return err}} else {
-    for _,item:=range result.Removed {fmt.Fprintf(out,"REMOVED host CA %s %s\n",item.Fingerprint,item.Path)}
-    for _,item:=range result.Preserved {fmt.Fprintf(out,"PRESERVED host CA %s %s\n",item.Fingerprint,item.Path)}
-    for _,path:=range untracked {fmt.Fprintf(out,"PRESERVED untracked host CA %s (ownership not verified)\n",path)}
-    if len(result.Removed)==0 && len(result.Preserved)==0 {fmt.Fprintln(out,"No BaseHarbor-owned host CA anchors recorded.")}
-   }
-   return removeErr
-  },
- }
+	return &cli.Command{
+		Name:    "uninstall",
+		Summary: "Remove only fingerprint-verified, BaseHarbor-owned host CA anchors",
+		Usage:   "baha trust uninstall --yes",
+		Long:    "Never removes foreign CA certificates. Any anchor that cannot be verified is reported as PRESERVED.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "trust uninstall")
+			if err != nil {
+				return err
+			}
+			confirmed := false
+			for _, arg := range filtered {
+				if arg == "--yes" || arg == "-y" {
+					confirmed = true
+					continue
+				}
+				return usageError("unknown argument "+arg, "Usage: baha trust uninstall --yes")
+			}
+			if !confirmed {
+				return usageError("baha trust uninstall requires explicit --yes consent", "Re-run 'baha trust uninstall --yes'.")
+			}
+			dataDir, err := bhruntime.DataDir("")
+			if err != nil {
+				return err
+			}
+			result, removeErr := hosttrust.RemoveOwnedDetailed(ctx, dataDir)
+			untracked, inspectErr := hosttrust.UntrackedCandidates(dataDir)
+			if inspectErr != nil {
+				removeErr = errors.Join(removeErr, inspectErr)
+			}
+			if format == outputJSON {
+				if err := writeJSON(out, result); err != nil {
+					return err
+				}
+			} else {
+				for _, item := range result.Removed {
+					fmt.Fprintf(out, "REMOVED host CA %s %s\n", item.Fingerprint, item.Path)
+				}
+				for _, item := range result.Preserved {
+					fmt.Fprintf(out, "PRESERVED host CA %s %s\n", item.Fingerprint, item.Path)
+				}
+				for _, path := range untracked {
+					fmt.Fprintf(out, "PRESERVED untracked host CA %s (ownership not verified)\n", path)
+				}
+				if len(result.Removed) == 0 && len(result.Preserved) == 0 {
+					fmt.Fprintln(out, "No BaseHarbor-owned host CA anchors recorded.")
+				}
+			}
+			return removeErr
+		},
+	}
 }
 
 func parseTrustOutputArg(args []string) (string, error) {
