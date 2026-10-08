@@ -111,16 +111,12 @@ func (v VolumeRecovery) Capture(ctx context.Context, delta Delta) error {
 // Recover validates the immutable recovery archive before restoring the
 // *owned* runtime volume; if verification fails it never touches a volume.
 func (v VolumeRecovery) Recover(ctx context.Context, delta Delta) error {
-	if v.Runtime == nil {
-		return errors.New("no owned-volume runtime")
-	}
-	path, err := v.archivePath(delta)
-	if err != nil {
-		return err
-	}
-	data, err := v.readVerifiedArchive(delta)
-    if err != nil {return err}
-	return v.Runtime.RestoreOwnedVolume(ctx, v.Project, v.Volume, data)
+    if v.Runtime == nil {return errors.New("no owned-volume runtime")}
+    if v.VerifyQuiesced==nil{return errors.New("provider volume recovery requires quiescence verification")}
+    if err:=v.VerifyQuiesced(ctx,v.Project,v.Volume);err!=nil{return fmt.Errorf("provider volume is not quiesced: %w",err)}
+    data,err:=v.readVerifiedArchive(delta)
+    if err!=nil{return err}
+    return v.Runtime.RestoreOwnedVolume(ctx,v.Project,v.Volume,data)
 }
 
 func (v VolumeRecovery) verifyArchive(delta Delta)error{
