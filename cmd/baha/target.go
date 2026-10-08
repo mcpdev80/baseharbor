@@ -205,7 +205,7 @@ func targetCommand() *cli.Command {
 					// Listing must remain usable when multiple Targets require a choice.
 					// All other resolver failures (corrupt selection/config) fail closed.
 					if selectionErr != nil {
-						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict {
+						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict && typed.Code != machine.ErrorNotFound {
 							return selectionErr
 						}
 					}
