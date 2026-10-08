@@ -21,6 +21,8 @@ const (
 	AuthorizationPath        = "/api/v1/connectors/authorizations"
 	RenewalAuthorizationPath = "/api/v1/connectors/renewal-authorizations"
 	EnrollmentPath           = "/api/v1/connectors/enroll"
+	StatusPath               = "/api/v1/connectors/status"
+	DisconnectPath           = "/api/v1/connectors/disconnect"
 	enrollmentVersion        = "baseharbor.target-access-enrollment/v1"
 )
 
@@ -75,6 +77,10 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.authorize(w, r, true)
 	case EnrollmentPath:
 		h.enroll(w, r)
+	case StatusPath:
+		h.lifecycle(w, r, false)
+	case DisconnectPath:
+		h.lifecycle(w, r, true)
 	default:
 		enrollmentHTTPError(w, http.StatusNotFound, machine.ErrorNotFound)
 	}
@@ -136,6 +142,70 @@ func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request, renewal 
 		return
 	}
 	enrollmentHTTPJSON(w, http.StatusCreated, bootstrap)
+}
+
+type lifecycleInput struct {
+	TargetID    string `json:"target_id"`
+	NodeID      string `json:"node_id"`
+	Environment string `json:"environment"`
+}
+
+func (h *HTTPHandler) lifecycle(w http.ResponseWriter, r *http.Request, disconnect bool) {
+	principal, authenticated := identity.FromContext(r.Context())
+	tenant, scoped := tenancy.FromContext(r.Context())
+	if !authenticated || (principal.ExpiresAt != nil && !principal.ExpiresAt.After(time.Now())) {
+		enrollmentHTTPError(w, http.StatusUnauthorized, machine.ErrorAuthenticationFailed)
+		return
+	}
+	permission := authorization.PermRead
+	if disconnect {
+		permission = authorization.PermDelete
+	}
+	if !scoped || tenant.TenantID == "" || tenant.ExternalIdentityID == "" ||
+		!authorization.NewService().Allowed(tenant.Roles, permission) {
+		enrollmentHTTPError(w, http.StatusForbidden, machine.ErrorPolicyDenied)
+		return
+	}
+	data, err := enrollmentBody(r.Body, 8192)
+	if err != nil {
+		enrollmentHTTPError(w, http.StatusBadRequest, machine.ErrorValidationFailed)
+		return
+	}
+	var input lifecycleInput
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.TargetID == "" || input.NodeID == "" || input.Environment == "" {
+		enrollmentHTTPError(w, http.StatusBadRequest, machine.ErrorValidationFailed)
+		return
+	}
+	scope, err := h.resolve(r.Context(), input.TargetID, input.NodeID, input.Environment)
+	if err != nil || scope.Validate() != nil || scope.TenantID != tenant.TenantID ||
+		scope.TargetID != input.TargetID || scope.NodeID != input.NodeID {
+		enrollmentHTTPError(w, http.StatusForbidden, machine.ErrorPolicyDenied)
+		return
+	}
+	if disconnect {
+		if err := h.authority.Disconnect(r.Context(), scope); err != nil {
+			enrollmentHTTPError(w, http.StatusConflict, machine.ErrorConflict)
+			return
+		}
+		enrollmentHTTPJSON(w, http.StatusOK, map[string]any{"contract_version": machine.ContractVersion, "target_id": scope.TargetID, "node_id": scope.NodeID, "revoked": true})
+		return
+	}
+	status, err := h.authority.Status(r.Context(), scope)
+	if err != nil {
+		enrollmentHTTPError(w, http.StatusNotFound, machine.ErrorNotFound)
+		return
+	}
+	enrollmentHTTPJSON(w, http.StatusOK, map[string]any{
+		"contract_version": machine.ContractVersion,
+		"target_id": scope.TargetID,
+		"node_id": scope.NodeID,
+		"runtime": scope.Runtime,
+		"enrolled": status.Enrolled,
+		"revoked": status.Revoked,
+		"expires_at": status.ExpiresAt,
+	})
 }
 
 type enrollmentInput struct {
