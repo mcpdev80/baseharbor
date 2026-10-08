@@ -115,7 +115,7 @@ var cliMachineOperations = map[string]string{
 	"baha app status": "status", "baha app doctor": "doctor",
 	"baha app update": "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
-	"baha app workspace status":  "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
+	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
 	"baha provider list": "provider.list", "baha provider inspect": "provider.inspect", "baha provider verify": "provider.verify", "baha provider add": "provider.add", "baha provider remove": "provider.remove",
 	"baha policy check": "policy.check", "baha policy explain": "policy.explain",
@@ -125,7 +125,7 @@ var cliMachineOperations = map[string]string{
 var cliPresentationCommands = map[string]string{
 	"baha config prompt":     "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
 	"baha app workspace":     "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
-	"baha workspace": "Canonical interactive presentation of the same workspace.init/map operations.",
+	"baha workspace":         "Canonical interactive presentation of the same workspace.init/map operations.",
 	"baha target activate":   "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
 	"baha target deactivate": "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
 	"baha":                   "Root help and routing; use semantic operations for product actions.",
