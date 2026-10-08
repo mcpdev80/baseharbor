@@ -16,26 +16,26 @@ import (
 )
 
 type workloadServiceStatus struct {
- Service string `json:"service"`
- State string `json:"state"`
- Health string `json:"health"`
- Readiness string `json:"readiness"`
- Ready bool `json:"ready"`
- Terminal bool `json:"terminal"`
- ExitCode int `json:"exit_code"`
- RuntimeError string `json:"runtime_error,omitempty"`
- Exposures []workloadExposureStatus `json:"exposures"`
+	Service      string                   `json:"service"`
+	State        string                   `json:"state"`
+	Health       string                   `json:"health"`
+	Readiness    string                   `json:"readiness"`
+	Ready        bool                     `json:"ready"`
+	Terminal     bool                     `json:"terminal"`
+	ExitCode     int                      `json:"exit_code"`
+	RuntimeError string                   `json:"runtime_error,omitempty"`
+	Exposures    []workloadExposureStatus `json:"exposures"`
 }
 
 type workloadExposureStatus = endpoint.ExposureStatus
 
 type repositoryWorkloadStatus struct {
- Found bool `json:"found"`
- Workload application.WorkloadFiles `json:"workload"`
- Services []workloadServiceStatus `json:"services"`
- Exposures []workloadExposureStatus `json:"exposures"`
- BuildDrift []string `json:"build_drift"`
- ConfigDrift []string `json:"config_drift"`
+	Found       bool                      `json:"found"`
+	Workload    application.WorkloadFiles `json:"workload"`
+	Services    []workloadServiceStatus   `json:"services"`
+	Exposures   []workloadExposureStatus  `json:"exposures"`
+	BuildDrift  []string                  `json:"build_drift"`
+	ConfigDrift []string                  `json:"config_drift"`
 }
 
 func inspectRepositoryWorkloadStatus(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (repositoryWorkloadStatus, error) {
