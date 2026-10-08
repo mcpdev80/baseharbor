@@ -3,6 +3,7 @@ package providerupgrade
 import (
 	"errors"
 	"testing"
+	"strings"
 )
 
 func TestParseVersion(t *testing.T) {
@@ -82,5 +83,17 @@ func TestErrorClassification(t *testing.T) {
 	}
 	if Wrap(ErrorApplyFailed, "apply", err) != err {
 		t.Fatal("classified error should not be reclassified")
+	}
+}
+
+func TestRequestRejectsNonHexDigest(t *testing.T) {
+	req := Request{
+		CurrentVersion: "2.6.0",
+		TargetVersion: "2.7.0",
+		TargetImage: "openbao:2.7.0",
+		TargetDigest: "sha256:" + strings.Repeat("z", 64),
+	}
+	if err := req.Validate(); err == nil {
+		t.Fatal("invalid SHA-256 hex accepted")
 	}
 }
