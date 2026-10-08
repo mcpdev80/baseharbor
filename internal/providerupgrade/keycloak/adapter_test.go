@@ -281,3 +281,12 @@ func TestInventoryRejectsMemberDriftAndDuplicateMembers(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyRejectsMixedMemberVersions(t *testing.T) {
+	state := haState("26.8.0")
+	state.Members[1].Version = "26.7.5"
+	err := New(&fakeOps{state:state}).Verify(context.Background(), req("26.7.5","26.8.0"))
+	if providerupgrade.ClassOf(err) != providerupgrade.ErrorVerifyFailed {
+		t.Fatalf("mixed HA member versions incorrectly accepted: %v", err)
+	}
+}
