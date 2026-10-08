@@ -114,6 +114,7 @@ func providerListCommand() *cli.Command {
 				return err
 			}
 			if format == outputJSON {
+				if items == nil { return writeJSON(out, []any{}) }
 				return writeJSON(out, items)
 			}
 			if len(items) == 0 {
