@@ -500,33 +500,22 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			}
 		}
 		if item.kind == coreupdate.SQL && state.Spec.HA {
-			var pin *coreupdate.BackingPin
-			for i := range catalog.Backing {
-				if catalog.Backing[i].Role == "keycloak-ha-postgresql" {
-					pin = &catalog.Backing[i]
-					break
-				}
-			}
-			if pin == nil {
-				return coreupdate.Plan{}, errors.New("missing pinned HA PostgreSQL backing realization")
-			}
-			digest := strings.TrimSpace(id.Digest)
-			if at := strings.Index(digest, "@sha256:"); at >= 0 {
-				digest = digest[at+1:]
-			}
-			classification := coreupdate.Unsupported
-			reason := "Spilo HA backing version transition requires provider-native backup and recovery"
-			if ref == pin.Image && digest == pin.Digest && digest != "" {
-				classification = coreupdate.NoChange
-				reason = ""
-			}
-			backing = append(backing, coreupdate.Delta{
-				Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "backing", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v},
-				Desired:        coreupdate.Desired{Kind: coreupdate.SQL, Image: pin.Image, Digest: pin.Digest, Version: pin.Version},
-				Classification: classification, Reason: reason,
-			})
-			continue
-		}
+            // The SQL release pin is for the single-node Core. The Spilo image
+            // of the Core HA cluster is NOT Keycloak's separate backing DB.
+            var sqlTarget coreupdate.Desired
+            for _, desired := range catalog.Providers {
+                if desired.Kind == coreupdate.SQL { sqlTarget = desired; break }
+            }
+            digest := strings.TrimSpace(id.Digest)
+            if at := strings.Index(digest, "@sha256:"); at >= 0 { digest = digest[at+1:] }
+            backing = append(backing, coreupdate.Delta{
+                Installed: coreupdate.Realization{Kind:coreupdate.SQL,Installation:state.ID,Scope:"shared",Instance:item.service,Owner:"baseharbor",Image:ref,Digest:digest,Version:v},
+                Desired:sqlTarget,Classification:coreupdate.Unsupported,
+                Reason:"Core HA PostgreSQL Spilo version pin and verified migration contract are not defined; do not compare against the single-node PostgreSQL pin",
+            })
+            continue
+        }
+
 		if item.kind == coreupdate.SQL {
 			v = strings.SplitN(v, "-", 2)[0]
 		}
