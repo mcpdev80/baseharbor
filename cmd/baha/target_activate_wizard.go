@@ -69,10 +69,16 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 }
 
 func resolveTargetWizardChoice(names []string, choice string) (string, bool) {
- if index,err:=strconv.Atoi(choice);err==nil{
-  if index>=1 && index<=len(names){return names[index-1],true}
-  return "",false
- }
- for _,name:=range names {if name==choice{return name,true}}
- return "",false
+	if index, err := strconv.Atoi(choice); err == nil {
+		if index >= 1 && index <= len(names) {
+			return names[index-1], true
+		}
+		return "", false
+	}
+	for _, name := range names {
+		if name == choice {
+			return name, true
+		}
+	}
+	return "", false
 }
