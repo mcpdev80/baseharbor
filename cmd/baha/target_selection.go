@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+ "github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func targetSelectionPath() (string, error) {
@@ -97,7 +98,7 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 	}
 	if persisted != "" {
 		if _, ok := cfg.Targets[persisted]; !ok {
-			return "", fmt.Errorf("activated target %q no longer exists; run 'baha target deactivate' and select a valid target", persisted)
+			return "", machine.NewError(machine.ErrorNotFound, fmt.Sprintf("activated target %q no longer exists", persisted), "Run baha target deactivate and choose an existing target.", false)
 		}
 		return persisted, nil
 	}
@@ -110,7 +111,7 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 		}
 	}
 	if len(cfg.Targets) > 1 {
-		return "", fmt.Errorf("multiple deployment targets configured: run 'baha target activate NAME' or provide --target NAME")
+		return "", machine.NewError(machine.ErrorConflict, "multiple deployment targets configured", "Run baha target list, then baha target activate NAME or provide --target NAME.", false)
 	}
 	return "", nil
 }
