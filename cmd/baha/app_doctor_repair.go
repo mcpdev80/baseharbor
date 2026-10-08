@@ -71,7 +71,9 @@ func executeApplicationRepairLifecycle(ctx context.Context, store application.St
 	if err != nil {
 		return err
 	}
- if approved && !fix {return usageError("--yes requires --fix", "Run baha app doctor --fix --yes to authorize repair, or omit --yes for diagnosis.")}
+	if approved && !fix {
+		return usageError("--yes requires --fix", "Run baha app doctor --fix --yes to authorize repair, or omit --yes for diagnosis.")
+	}
 
 	doctor, err := collectApplicationDoctor(ctx, store, nameArgs)
 	if err != nil {
