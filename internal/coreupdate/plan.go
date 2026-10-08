@@ -189,10 +189,9 @@ type Hooks struct {
 
 // Execute does not infer that a data migration can be rolled back. All
 // classifications are checked before any provider receives a mutation.
-func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
-	if hooks.Preflight == nil || hooks.Apply == nil || hooks.Verify == nil || hooks.Record == nil {
-		return errors.New("Core update requires complete preflight, apply, verification and journal hooks")
-	}
+// validateExecutionPlan checks every step before journal resume can skip it.
+// Otherwise a forged "verified" entry could bypass ownership and migration guards.
+func validateExecutionPlan(plan Plan, hooks Hooks) error {
 	needsRecovery := false
 	seen := make(map[string]struct{}, len(plan.Deltas))
 	for _, delta := range plan.Deltas {
@@ -245,6 +244,16 @@ func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
 	if needsRecovery && hooks.RecoveryPoint == nil {
 		return errors.New("Core provider update requires a verified recovery-point implementation")
 	}
+	return nil
+}
+
+func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
+	if hooks.Preflight == nil || hooks.Apply == nil || hooks.Verify == nil || hooks.Record == nil {
+		return errors.New("Core update requires complete preflight, apply, verification and journal hooks")
+	}
+	if err := validateExecutionPlan(plan, hooks); err != nil {
+        return err
+    }
 	if err := hooks.Preflight(ctx, plan); err != nil {
 		return fmt.Errorf("Core update preflight: %w", err)
 	}
