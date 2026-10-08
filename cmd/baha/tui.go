@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 type tuiDoctorResult = applicationDoctorResult
@@ -97,7 +98,7 @@ func (m tuiModel) loadStatus() tea.Cmd {
 			if err != nil { return tuiStatusMsg{err:err} }
 			status, err := inspectControlPlane(m.ctx)
 			if err != nil { return tuiStatusMsg{err:err} }
-			return tuiStatusMsg{coreView:currentDeviceResources()+"\n"+renderCoreTUIStatus(target.Name,target.RuntimeProvider,target.AccessProvider,targetSelectionOrigin(m.ctx),status)}
+			return tuiStatusMsg{coreView:currentDeviceResources()+"\n"+renderConfiguredTargets()+"\n"+renderCoreTUIStatus(target.Name,target.RuntimeProvider,target.AccessProvider,targetSelectionOrigin(m.ctx),status)}
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
@@ -447,5 +448,21 @@ func renderCoreTUIStatus(target,runtime,access,origin string, status controlPlan
   fmt.Fprintf(&b,"  %-8s %s\n",state,check.Name)
  }
  fmt.Fprintln(&b,"\nHost and remote resource metrics are not available through this status contract.")
+ return b.String()
+}
+
+func renderConfiguredTargets() string {
+ cfg,err:=deployment.LoadConfig()
+ if err!=nil{return "Registered Targets\n  Unavailable: configuration cannot be read\n"}
+ var b strings.Builder
+ fmt.Fprintln(&b,"Registered Targets (deployment destinations)")
+ names:=cfg.TargetNames()
+ if len(names)==0 {fmt.Fprintln(&b,"  None configured")}
+ for _,name:=range names{
+  definition:=cfg.Targets[name]
+  fmt.Fprintf(&b,"  %-24s %s (access: %s)\n",name,definition.Runtime.Provider,definition.Access.Reference)
+ }
+ fmt.Fprintln(&b,"Other / Unassigned")
+ fmt.Fprintln(&b,"  Unassigned runtime containers are not inventoried by this read-only Core view.")
  return b.String()
 }
