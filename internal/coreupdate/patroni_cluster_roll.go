@@ -35,6 +35,16 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 	if err != nil {
 		return err
 	}
+	// A verified *current* leader may have been the candidate in a previous
+	// interrupted switchover. Without a durable original-leader transaction
+	// identity, continuing could start a second switchover on another timeline.
+	leaderState, err := gate.StepState(ctx, leader)
+	if err != nil {
+		return err
+	}
+	if leaderState != "" {
+		return errors.New("UNSUPPORTED: current leader already has upgrade journal state; reconcile original switchover before resume")
+	}
 	for _, replica := range replicas {
 		state, err := gate.StepState(ctx, replica)
 		if err != nil {
