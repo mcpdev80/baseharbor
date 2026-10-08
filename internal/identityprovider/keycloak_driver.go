@@ -441,7 +441,9 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	values, err := readProtectedEnv(files.Env)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	services := []string{"keycloak-db"}
 	if values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] == "ha" {
 		services = []string{"keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"}
