@@ -250,6 +250,15 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if len(plan.Deltas) != 4 {
 		return errors.New("incomplete SQL/Secrets/Identity/backing inventory")
 	}
+	if state.Spec.HA {
+		files, filesErr := existingTargetRuntimeFiles(ctx)
+		if filesErr != nil { return fmt.Errorf("inspect HA Core runtime files: %w", filesErr) }
+		members, inspectErr := inspectPatroniMembers(ctx, runtime, files)
+		if inspectErr != nil { return fmt.Errorf("inspect HA Patroni members: %w", inspectErr) }
+		if _, _, quorumErr := coreupdate.VerifyPatroniQuorum(ctx, members, 0); quorumErr != nil {
+			return fmt.Errorf("Core HA Patroni quorum not verified: %w", quorumErr)
+		}
+	}
 	for _, d := range plan.Deltas {
 		if state.Spec.HA && d.Classification != coreupdate.NoChange {
 			return fmt.Errorf("HA Core provider %s requires a verified rolling migration (UNSUPPORTED): %s", d.Installed.Instance, d.Reason)
