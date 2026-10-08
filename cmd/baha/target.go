@@ -322,8 +322,8 @@ func targetCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					if _, ok := cfg.Targets[args[0]]; !ok {
-						return fmt.Errorf("target %q is not configured", args[0])
+					if _, ok := cfg.Targets[args[0]]; !ok && args[0] != "local" {
+						return machine.NewError(machine.ErrorNotFound, fmt.Sprintf("target %q is not configured", args[0]), "Run baha target list to choose an existing deployment Target.", false)
 					}
 					if err := writePersistedTarget(args[0]); err != nil {
 						return err
