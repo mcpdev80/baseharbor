@@ -123,3 +123,19 @@ Die technische Registry und ihre Befehle, Flags, Operationskennungen und maschin
 | `baha update` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.release.check | --check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes. |
 | `baha version` | Darstellung |  |  | Die Build-Identität liefert agent describe beziehungsweise die MCP-Initialisierung. |
 | `baha whoami` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.operator.identity |  |
+| `baha app cache` | ausgeschlossen |  |  | Interaktives Datenbankterminal und beliebige Befehlsweitergabe sind ausgeschlossen; app.connection liefert geheimnissichere Verbindungsmetadaten für einen operator-eigenen Client. |
+| `baha app sql` | ausgeschlossen |  |  | Interaktives Datenbankterminal und rohe SQL-Weitergabe sind ausgeschlossen; app.connection liefert geheimnissichere Verbindungsmetadaten für einen operator-eigenen Client. |
+| `baha node` | Darstellung |  |  | Befehlsgruppe; unterstützten Unterbefehl aufrufen. |
+| `baha node add` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.node.add |  |
+| `baha node connect` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.node.connect |  |
+| `baha node disconnect` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.node.disconnect |  |
+| `baha node list` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.node.list |  |
+| `baha node status` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.node.status |  |
+| `baha trust uninstall` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.trust.uninstall |  |
+| `baha workspace` | Darstellung |  |  | Kanonische interaktive Darstellung derselben workspace.init/map-Operationen. |
+| `baha workspace init` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.init |  |
+| `baha workspace map` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.map |  |
+| `baha workspace resolve` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.resolve |  |
+| `baha workspace show` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.show |  |
+| `baha workspace status` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.status |  |
+| `baha workspace update` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.update |  |
