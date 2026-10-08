@@ -26,6 +26,8 @@ import (
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
+var removeHostTrustForFullDestroy = hosttrust.RemoveOwnedDetailed
+
 type fullDestroyResult struct {
 	Status   string `json:"status"`
 	Target   string `json:"target,omitempty"`
@@ -158,7 +160,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	if trustRootErr != nil {
 		return fmt.Errorf("locate host trust ownership before destruction: %w", trustRootErr)
 	}
-	hostTrustReport, hostTrustErr := hosttrust.RemoveOwnedDetailed(parent, hostTrustRoot)
+	hostTrustReport, hostTrustErr := removeHostTrustForFullDestroy(parent, hostTrustRoot)
 	untrackedHostCAs, untrackedErr := hosttrust.UntrackedCandidates(hostTrustRoot)
 	if untrackedErr != nil {
 		return fmt.Errorf("unable to verify surviving host CA candidates: %w", untrackedErr)
