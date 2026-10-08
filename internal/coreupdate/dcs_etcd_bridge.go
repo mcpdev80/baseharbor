@@ -17,7 +17,7 @@ type EtcdDCSBridge struct {
  Restorer etcdbackup.Restorer
  RecoveryDirectory string
  Release string
-}
+ // VerifyRecoveredCluster must attest isolated etcd startup, authenticated\n // cluster identity, quorum and Patroni DCS readiness. File presence is insufficient.\n VerifyRecoveredCluster func(context.Context,etcdbackup.Identity,etcdbackup.SnapshotInfo) error\n}
 
 func (b *EtcdDCSBridge) evidence(m etcdbackup.Metadata) DCSRecoveryEvidence {
  return DCSRecoveryEvidence{
@@ -38,11 +38,11 @@ func (b *EtcdDCSBridge) Validate(ctx context.Context, ev DCSRecoveryEvidence)err
 }
 func (b *EtcdDCSBridge) VerifyRestorable(ctx context.Context, ev DCSRecoveryEvidence)error {
  if err:=b.Validate(ctx,ev);err!=nil{return err}
- if b.Restorer==nil||b.RecoveryDirectory=="" {return ErrDCSUnsupported}
+ if b.Restorer==nil||b.RecoveryDirectory==""||b.VerifyRecoveredCluster==nil {return ErrDCSUnsupported}
  plan,err:=b.Store.PrepareRestore(ctx,b.RecoveryDirectory)
  if err==nil {
   if err:=b.Store.Restore(ctx,plan,b.Restorer);err!=nil{return fmt.Errorf("isolated etcd recovery proof: %w",err)}
-  return b.Store.VerifyRecovery(ctx,plan,b.Restorer)
+  if err:=b.Store.VerifyRecovery(ctx,plan,b.Restorer);err!=nil{return err}\n  return b.VerifyRecoveredCluster(ctx,plan.Identity,plan.Info)
  }
  // A prior verified isolated directory is reused on resume, not overwritten.
  if _,statErr:=os.Lstat(b.RecoveryDirectory);statErr!=nil{return fmt.Errorf("isolated etcd restore unavailable: %w",err)}
@@ -51,8 +51,7 @@ func (b *EtcdDCSBridge) VerifyRestorable(ctx context.Context, ev DCSRecoveryEvid
  archive:=b.Store.Directory+"/etcd.snapshot"
  plan=etcdbackup.RestorePlan{Archive:archive,Destination:b.RecoveryDirectory,Identity:b.Store.Identity,Info:meta.Info,SHA256:meta.SHA256}
  if verifyErr:=b.Store.VerifyRecovery(ctx,plan,b.Restorer);verifyErr!=nil{return fmt.Errorf("prior isolated etcd restore is unverified: %w",verifyErr)}
- return nil
-}
+ meta,metaErr:=b.Store.VerifySnapshot(ctx);if metaErr!=nil{return metaErr}\n return b.VerifyRecoveredCluster(ctx,b.Store.Identity,meta.Info)\n}
 func (b *EtcdDCSBridge) Restore(ctx context.Context,ev DCSRecoveryEvidence)error {
  if b==nil{return ErrDCSUnsupported}
  if err:=b.Validate(ctx,ev);err!=nil{return err}
