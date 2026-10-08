@@ -10,10 +10,10 @@ import "strings"
 func ClassifyHAPostgresPin(installed Realization, pin BackingPin) Delta {
 	desired := Desired{Kind: SQL, Image: pin.Image, Digest: pin.Digest, Version: pin.Version}
 	delta := Delta{
-		Installed: installed,
-		Desired: desired,
+		Installed:      installed,
+		Desired:        desired,
 		Classification: Unsupported,
-		Reason: "Core HA PostgreSQL Spilo update requires a verified Patroni rolling migration, backup and recovery contract",
+		Reason:         "Core HA PostgreSQL Spilo update requires a verified Patroni rolling migration, backup and recovery contract",
 	}
 	digest := strings.TrimSpace(installed.Digest)
 	if strings.HasPrefix(digest, "sha256:") && validDigest(digest) &&
