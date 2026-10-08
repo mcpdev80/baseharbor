@@ -174,6 +174,7 @@ func trustUninstallCommand() *cli.Command {
 			}
 			result, removeErr := hosttrust.RemoveOwnedDetailed(ctx, dataDir)
 			untracked, inspectErr := hosttrust.UntrackedCandidates(dataDir)
+            result.Untracked = untracked
 			if inspectErr != nil {
 				removeErr = errors.Join(removeErr, inspectErr)
 			}
