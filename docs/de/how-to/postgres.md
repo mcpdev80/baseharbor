@@ -37,3 +37,24 @@ Shared PostgreSQL ist ein Target-eigener Provider mit getrennten Application-Dat
 Für bewusst dedizierten Placement existiert `BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application`. Zusätzliche Instanzen können mehr Ressourcen benötigen; die Core-Capability bleibt verpflichtend.
 
 Weiter: [Backup/Restore](backup-restore.md), [exakte SQL-Erklärung (EN)](https://mcpdev80.github.io/baseharbor/how-to/postgres/).
+
+
+## Weitere technische Beispiele
+
+```text
+one shared PostgreSQL provider
+├── baseharbor_admin        BaseHarbor control plane only
+├── app-a/dev/default      own database + own role + own credential
+├── app-a/dev/analytics    own database + own role + own credential
+└── app-b/dev/default      own database + own role + own credential
+```
+
+```text
+App A role -> App A database  ALLOW
+App A role -> App B database  DENY
+App B role -> App B database  ALLOW
+App B role -> App A database  DENY
+```
+
+
+Technische Bezeichner: `baha app inspect .`, `baha app init`.
