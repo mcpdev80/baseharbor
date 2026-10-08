@@ -97,7 +97,7 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 		return "", err
 	}
 	if persisted != "" {
-		if _, ok := cfg.Targets[persisted]; !ok {
+		if _, ok := cfg.Targets[persisted]; !ok && persisted != "local" {
 			return "", machine.NewError(machine.ErrorNotFound, fmt.Sprintf("activated target %q no longer exists", persisted), "Run baha target deactivate and choose an existing target.", false)
 		}
 		return persisted, nil
