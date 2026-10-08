@@ -100,9 +100,14 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "down",
-			Summary: "Stop the local BaseHarbor control-plane runtime",
-			Usage:   "baha down",
-			Run:     controlPlaneDownCLI,
+			Summary: "Stop the current application, or the local control plane outside a repository",
+			Usage:   "baha down [options]",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				if inApplicationRepository() {
+					return appDownCommand(store).Run(ctx, args, out, errOut)
+				}
+				return controlPlaneDownCLI(ctx, args, out, errOut)
+			},
 		},
 		{
 			Name:    "destroy",
