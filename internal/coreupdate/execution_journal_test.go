@@ -225,3 +225,24 @@ func TestInterruptedJournalRecoveryErrorPreventsReapply(t *testing.T) {
 		t.Fatal("unsafe apply after failed recovery")
 	}
 }
+
+func TestInterruptedRecoveryCannotRunBeforeFullPreflight(t *testing.T) {
+ root:=t.TempDir()
+ if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
+ path:=filepath.Join(root,"journal.json")
+ plan,err:=Build("0.4.24",[]Realization{{Kind:Secrets,Installation:"a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Digest:digestA,Version:"2.7.0"}},expected())
+ if err!=nil{t.Fatal(err)}
+ j:=Journal{Release:"0.4.24"}
+ if err:=j.Record(path,plan.Deltas[0],"apply_failed");err!=nil{t.Fatal(err)}
+ recovered:=false
+ hooks:=Hooks{
+  Preflight:func(context.Context,Plan)error{return errors.New("target ownership conflict")},
+  RecoveryPoint:func(context.Context,Delta)error{return nil},
+  Recover:func(context.Context,Delta,string)error{recovered=true;return nil},
+  Apply:func(context.Context,Delta)error{return nil},
+  Verify:func(context.Context,Delta)error{return nil},
+  Record:func(context.Context,Delta,string)error{return nil},
+ }
+ if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err==nil{t.Fatal("preflight failure ignored")}
+ if recovered{t.Fatal("recovery mutated provider before preflight")}
+}
