@@ -65,7 +65,11 @@ func (p StreamRecoveryPoint) Capture(ctx context.Context, source func(context.Co
     if source == nil { return errors.New("provider-native consistent backup source required") }
     if err := ctx.Err(); err != nil { return err }
     if err := os.MkdirAll(p.Directory, 0700); err != nil { return err }
-    if err := os.Chmod(p.Directory, 0700); err != nil { return err }
+    info, err := os.Lstat(p.Directory)
+    if err != nil { return err }
+    if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+        return errors.New("native provider backup directory is not owner-only or is a symlink")
+    }
     if _, err := os.Lstat(path); err == nil {
         return p.Verify()
     } else if !errors.Is(err, os.ErrNotExist) { return err }
