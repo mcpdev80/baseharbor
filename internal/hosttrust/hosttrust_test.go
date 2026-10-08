@@ -216,3 +216,17 @@ func TestRemoveOwnedDetailedIdempotentAndSymlinkSafe(t *testing.T){
  report,err=RemoveOwnedDetailed(context.Background(),stateDir)
  if err!=nil||len(report.Removed)!=0{t.Fatalf("second removal not idempotent: %+v %v",report,err)}
 }
+
+func TestUntrackedCandidatesArePreservedNotClaimed(t *testing.T) {
+ dir:=t.TempDir()
+ stateDir:=t.TempDir()
+ file:=filepath.Join(dir,"baseharbor-0123456789abcdef.crt")
+ if err:=os.WriteFile(file,testCA(t,"orphan"),0644);err!=nil{t.Fatal(err)}
+ foreign:=filepath.Join(dir,"operator.crt")
+ if err:=os.WriteFile(foreign,testCA(t,"operator"),0644);err!=nil{t.Fatal(err)}
+ candidates,err:=findUntrackedCandidates(stateDir,[]struct{path,extension string}{{dir,".crt"}})
+ if err!=nil{t.Fatal(err)}
+ if len(candidates)!=1||candidates[0]!=file{t.Fatalf("unexpected untracked list: %v",candidates)}
+ if _,err:=os.Stat(file);err!=nil{t.Fatalf("orphan removed: %v",err)}
+ if _,err:=os.Stat(foreign);err!=nil{t.Fatalf("foreign anchor removed: %v",err)}
+}
