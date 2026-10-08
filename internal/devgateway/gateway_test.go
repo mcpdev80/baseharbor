@@ -2,6 +2,7 @@ package devgateway
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -358,5 +359,21 @@ func TestRelatedRedirectURLsAllowsPairedIdentityLoginOnly(t *testing.T) {
 	}
 	if got := relatedRedirectURLs(routes, routes[2], 18443); len(got) != 0 {
 		t.Fatalf("non-identity route unexpectedly allows redirects: %#v", got)
+	}
+}
+
+func TestRouteVerificationFailureReportsUpstreamWithoutInternalState(t *testing.T) {
+	for _, status := range []string{"502", "503", "504"} {
+		got := routeVerificationFailure("nexty.baseharbor.localhost", errors.New("browser surface final response is HTTP "+status)).Error()
+		for _, required := range []string{"application upstream unavailable", "HTTP " + status, "exposure.http.port"} {
+			if !strings.Contains(got, required) { t.Errorf("missing %q from %q", required, got) }
+		}
+		for _, forbidden := range []string{"state.json", "Caddyfile", "/gateway/"} {
+			if strings.Contains(got, forbidden) { t.Errorf("leaked internal path %q", forbidden) }
+		}
+	}
+	got := routeVerificationFailure("nexty.baseharbor.localhost", errors.New("browser surface redirect changed canonical authority")).Error()
+	if !strings.Contains(got, "redirect changed canonical authority") || strings.Contains(got, "upstream unavailable") {
+		t.Fatalf("unrelated route error was misclassified: %s", got)
 	}
 }
