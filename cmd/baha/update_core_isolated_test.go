@@ -74,10 +74,10 @@ func TestIsolatedCoreInventoryOnlyRegisteredOwnedProject(t *testing.T) {
 	if _, err := inspectIsolatedCoreProviders(context.Background(), mock, target, "docker", catalog); err == nil {
 		t.Fatal("stopped owned provider was ignored")
 	}
-    mock.Containers=mock.Containers[1:]
-    if _,err:=inspectIsolatedCoreProviders(context.Background(),mock,target,"docker",catalog);err==nil{
-        t.Fatal("missing registered isolated SQL provider was silently ignored")
-    }
+	mock.Containers = mock.Containers[1:]
+	if _, err := inspectIsolatedCoreProviders(context.Background(), mock, target, "docker", catalog); err == nil {
+		t.Fatal("missing registered isolated SQL provider was silently ignored")
+	}
 }
 
 func TestIsolatedCoreServiceClassifierExcludesAccessProxies(t *testing.T) {
