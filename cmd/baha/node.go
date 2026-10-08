@@ -39,6 +39,7 @@ type nodeEnrollmentBundle struct {
 	NodeID          string                     `json:"node_id"`
 	Runtime         string                     `json:"runtime"`
 	Environment     string                     `json:"environment"`
+	CoreTarget      string                     `json:"core_target"`
 	CoreURL         string                     `json:"core_url"`
 	CoreAddress     string                     `json:"core_address"`
 	ServerName      string                     `json:"server_name"`
