@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+ bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const defaultReleaseAPIBase = "https://api.github.com/repos/mcpdev80/baseharbor"
