@@ -32,10 +32,11 @@ func LoadJournal(path, release string) (Journal,error) {
  if !info.Mode().IsRegular() || info.Mode().Perm()&0077!=0 {return Journal{},errors.New("unsafe Core update journal permissions")}
  f,err:=os.Open(path);if err!=nil{return Journal{},err};defer f.Close()
  decoder:=json.NewDecoder(io.LimitReader(f,1<<20));decoder.DisallowUnknownFields()
- if err:=decoder.Decode(&journal);err!=nil{return Journal{},err}
- if decoder.Decode(new(any))!=io.EOF || journal.Release!=release || journal.Steps==nil {return Journal{},errors.New("incompatible Core update journal")}
- for key,value:=range journal.Steps {if strings.TrimSpace(key)=="" || !validJournalState(value){return Journal{},errors.New("invalid Core update journal state")}}
- return journal,nil
+ var stored Journal
+ if err:=decoder.Decode(&stored);err!=nil{return Journal{},err}
+ if decoder.Decode(new(any))!=io.EOF || stored.Release!=release || stored.Steps==nil {return Journal{},errors.New("incompatible Core update journal")}
+ for key,value:=range stored.Steps {if strings.TrimSpace(key)=="" || !validJournalState(value){return Journal{},errors.New("invalid Core update journal state")}}
+ return stored,nil
 }
 
 func validJournalState(value string) bool {
