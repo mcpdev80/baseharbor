@@ -134,8 +134,8 @@ var cliPresentationCommands = map[string]string{
 	"baha shell-init":        "Shell-local helpers; explicit Target selection remains product functionality.",
 	"baha prompt":            "Displays shell-local context; target inspection is the semantic equivalent.",
 	"baha version":           "Executable build identity is provided by agent describe and MCP initialization.",
-	"baha open":             "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
-	"baha new":              "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
+	"baha open":              "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
+	"baha new":               "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
 	"baha tui":               "Human interactive presentation; its product actions require individual semantic coverage.",
 }
 
@@ -144,7 +144,7 @@ var cliPresentationCommands = map[string]string{
 var cliExcludedCommands = map[string]string{
 	"baha app exec":  "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
 	"baha app shell": "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
-	"baha app sql":  "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
+	"baha app sql":   "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app cache": "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app logs":  "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
 	"baha login":     "Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens.",
