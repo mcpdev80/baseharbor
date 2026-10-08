@@ -78,8 +78,24 @@ func (a *Adapter) Inventory(ctx context.Context) (providerupgrade.Inventory, err
 	if state.DatabaseType == "" {
 		return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak database", errors.New("database realization is not observable"))
 	}
-	if state.Topology == TopologyHA && len(state.Members) < 2 {
-		return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("HA topology requires at least two members"))
+	if state.Topology == TopologyHA && len(state.Members) < 3 {
+		return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("HA topology requires at least three members"))
+	}
+	if state.Topology == TopologySingle && len(state.Members) != 1 {
+		return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("single topology requires exactly one member"))
+	}
+	seen := make(map[string]struct{}, len(state.Members))
+	for _, member := range state.Members {
+		if strings.TrimSpace(member.Name) == "" {
+			return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("member name must not be empty"))
+		}
+		if _, duplicate := seen[member.Name]; duplicate {
+			return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("duplicate member in inventory"))
+		}
+		seen[member.Name] = struct{}{}
+		if member.Version != state.Version {
+			return providerupgrade.Inventory{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "keycloak topology", errors.New("inconsistent member versions require recovery before upgrade"))
+		}
 	}
 	return providerupgrade.Inventory{
 		Provider: providerupgrade.ProviderKeycloak,
