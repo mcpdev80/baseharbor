@@ -241,7 +241,7 @@ func registerMCPPlatformReadTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, result, nil
+		return nil, normalizedProviderList(result), nil
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.inspect", "Inspect one external provider registration without revealing credential or private-key material.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
