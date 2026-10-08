@@ -67,10 +67,10 @@ type NodeLifecycleStore interface {
 }
 
 type NodeStatus struct {
-	Enrolled   bool      `json:"enrolled"`
-	Revoked    bool      `json:"revoked"`
-	Serial     string    `json:"-"`
-	ExpiresAt  time.Time `json:"expires_at,omitempty"`
+	Enrolled  bool      `json:"enrolled"`
+	Revoked   bool      `json:"revoked"`
+	Serial    string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
 }
 
 type Authority struct {

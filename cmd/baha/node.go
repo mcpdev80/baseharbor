@@ -386,8 +386,8 @@ func nodeHTTPSClient(caFile string) (*http.Client, error) {
 		return nil, errors.New("Core CA file contains no certificates")
 	}
 	return &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}},
+		Timeout:       30 * time.Second,
+		Transport:     &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}, nil
 }

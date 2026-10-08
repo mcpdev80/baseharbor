@@ -62,9 +62,9 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
 		TenantID: strings.TrimSpace(input.TenantID),
-		Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
-		Access:  deployment.TargetAccess{Reference: accessName},
-		Scope:   scope,
+		Runtime:  deployment.RuntimeDefinition{Provider: runtimeProvider},
+		Access:   deployment.TargetAccess{Reference: accessName},
+		Scope:    scope,
 	}
 	if makeDefault {
 		cfg.DefaultTarget = name

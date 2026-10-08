@@ -199,12 +199,12 @@ func (h *HTTPHandler) lifecycle(w http.ResponseWriter, r *http.Request, disconne
 	}
 	enrollmentHTTPJSON(w, http.StatusOK, map[string]any{
 		"contract_version": machine.ContractVersion,
-		"target_id": scope.TargetID,
-		"node_id": scope.NodeID,
-		"runtime": scope.Runtime,
-		"enrolled": status.Enrolled,
-		"revoked": status.Revoked,
-		"expires_at": status.ExpiresAt,
+		"target_id":        scope.TargetID,
+		"node_id":          scope.NodeID,
+		"runtime":          scope.Runtime,
+		"enrolled":         status.Enrolled,
+		"revoked":          status.Revoked,
+		"expires_at":       status.ExpiresAt,
 	})
 }
 
