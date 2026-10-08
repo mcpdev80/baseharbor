@@ -29,7 +29,7 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 	}
 	defer f.Close()
 	tr := tar.NewReader(f)
-	required := map[string]bool{"PG_VERSION": false, "backup_label": false}
+	required := map[string]bool{"PG_VERSION": false, "backup_label": false, "global/pg_control": false}
 	count := 0
 	for {
 		h, e := tr.Next()
@@ -53,7 +53,7 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 					return errors.New("PostgreSQL backup version mismatch")
 				}
 			} else if h.Size == 0 {
-				return errors.New("empty PostgreSQL backup label")
+				return errors.New("empty PostgreSQL required backup marker")
 			}
 			required[name] = true
 		}
