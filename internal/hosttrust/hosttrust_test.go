@@ -172,3 +172,47 @@ func testCA(t *testing.T, commonName string) []byte {
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
+
+func TestRemoveOwnedDetailedMultipleAnchorsPreservesForeignReplacement(t *testing.T) {
+ stateDir:=t.TempDir()
+ root:=t.TempDir()
+ backend:=&fakeBackend{root:root,name:"fake"}
+ original:=resolveBackend
+ resolveBackend=func(name string)(Backend,error){if name=="fake"{return backend,nil};return original(name)}
+ defer func(){resolveBackend=original}()
+ a,err:=Install(context.Background(),stateDir,testCA(t,"owned A"),"local",backend)
+ if err!=nil{t.Fatal(err)}
+ b,err:=Install(context.Background(),stateDir,testCA(t,"owned B"),"local",backend)
+ if err!=nil{t.Fatal(err)}
+ foreign:=testCA(t,"operator replacement")
+ if err:=os.WriteFile(b.Path,foreign,0644);err!=nil{t.Fatal(err)}
+ report,err:=RemoveOwnedDetailed(context.Background(),stateDir)
+ if err==nil{t.Fatal("fingerprint replacement not refused")}
+ if len(report.Removed)!=1||len(report.Preserved)!=1||report.Preserved[0].Fingerprint!=b.Fingerprint{t.Fatalf("unexpected results %+v",report)}
+ if _,err:=os.Stat(a.Path);!os.IsNotExist(err){t.Fatalf("owned CA not removed: %v",err)}
+ if _,err:=os.Stat(b.Path);err!=nil{t.Fatalf("foreign CA deleted: %v",err)}
+ records,err:=StateRecords(stateDir);if err!=nil{t.Fatal(err)}
+ if len(records)!=1||records[0].Fingerprint!=b.Fingerprint{t.Fatalf("PRESERVED ownership lost: %+v",records)}
+ if _,err:=RemoveOwnedDetailed(context.Background(),stateDir);err==nil{t.Fatal("repeat must still preserve foreign CA")}
+}
+
+func TestRemoveOwnedDetailedIdempotentAndSymlinkSafe(t *testing.T){
+ stateDir:=t.TempDir();root:=t.TempDir();backend:=&fakeBackend{root:root,name:"fake"}
+ old:=resolveBackend
+ resolveBackend=func(n string)(Backend,error){if n=="fake"{return backend,nil};return old(n)}
+ defer func(){resolveBackend=old}()
+ st,err:=Install(context.Background(),stateDir,testCA(t,"owned link"),"local",backend)
+ if err!=nil{t.Fatal(err)}
+ source:=filepath.Join(root,"foreign.crt")
+ if err:=os.WriteFile(source,testCA(t,"foreign"),0644);err!=nil{t.Fatal(err)}
+ if err:=os.Remove(st.Path);err!=nil{t.Fatal(err)}
+ if err:=os.Symlink(source,st.Path);err!=nil{t.Fatal(err)}
+ report,err:=RemoveOwnedDetailed(context.Background(),stateDir)
+ if err==nil||len(report.Preserved)!=1{t.Fatalf("symlink not preserved: %+v %v",report,err)}
+ if _,err:=os.Lstat(st.Path);err!=nil{t.Fatal(err)}
+ if err:=os.Remove(st.Path);err!=nil{t.Fatal(err)}
+ report,err=RemoveOwnedDetailed(context.Background(),stateDir)
+ if err!=nil||len(report.Removed)!=1{t.Fatalf("idempotent removal failed: %+v %v",report,err)}
+ report,err=RemoveOwnedDetailed(context.Background(),stateDir)
+ if err!=nil||len(report.Removed)!=0{t.Fatalf("second removal not idempotent: %+v %v",report,err)}
+}
