@@ -43,6 +43,15 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 		return fmt.Errorf("refusing self-update because installed/target version ordering is %q", check.Relation)
 	}
 
+	// A binary-only update cannot certify the mandatory SQL/Secrets/Identity
+	// release contract. Refuse mutations for an installed Core before downloads,
+	// staging, or executable changes begin.
+	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
+	if controlPlaneExists {
+		return errors.New("Core provider version reconciliation is not yet available for self-update; installed Core was left unchanged. Use 'baha update --check' to inspect the selected release")
+	}
+	_, localApplicationExists := localApplicationForSelfUpdate()
+
 	executable, err := selfUpdateExecutable()
 	if err != nil {
 		return fmt.Errorf("resolve running BaseHarbor executable: %w", err)
@@ -74,15 +83,6 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
 
-	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
-	_, localApplicationExists := localApplicationForSelfUpdate()
-
-	// A binary-only update cannot certify the mandatory SQL/Secrets/Identity
-	// release contract. Refuse mutations for an installed Core until the
-	// release-owned provider reconciliation path is available.
-	if controlPlaneExists {
-		return errors.New("Core provider version reconciliation is not yet available for self-update; installed Core was left unchanged. Use 'baha update --check' to inspect the selected release")
-	}
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
