@@ -2,6 +2,7 @@ package main
 
 import (
  "errors"
+ "context"
  "fmt"
  "os"
  "path/filepath"
@@ -63,4 +64,17 @@ func selectedTargetName(explicit,environment string,cfg deployment.Config) (stri
  if len(cfg.Targets)==1 {for name:=range cfg.Targets{return name,nil}}
  if len(cfg.Targets)>1 {return "",fmt.Errorf("multiple deployment targets configured: run 'baha target activate NAME' or provide --target NAME")}
  return "",nil
+}
+
+func targetSelectionOrigin(ctx context.Context) string {
+ if targetOverrideFromContext(ctx)!="" {return "explicit"}
+ if strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))!="" {return "environment"}
+ persisted,err:=readPersistedTarget()
+ if err==nil && persisted!="" {return "persisted"}
+ cfg,err:=deployment.LoadConfig()
+ if err==nil {
+  if cfg.DefaultTarget!="" {return "configured-default"}
+  if len(cfg.Targets)==1 {return "unique-configured"}
+ }
+ return "implicit-local"
 }
