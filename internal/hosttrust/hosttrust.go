@@ -211,7 +211,7 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 type RemovalResult struct {
 	Removed   []AnchorRecord `json:"removed,omitempty"`
 	Preserved []AnchorRecord `json:"preserved,omitempty"`
- Untracked []string `json:"preserved_untracked,omitempty"`
+	Untracked []string       `json:"preserved_untracked,omitempty"`
 }
 
 func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, error) {
