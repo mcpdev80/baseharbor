@@ -32,6 +32,20 @@ func (o *coreNativeRuntimeOps) files(d coreupdate.Delta) (string, string, string
 	}
 	return o.core.Project, o.core.Compose, o.core.Env
 }
+// verifyOpenBaoBackingSQL proves that the protected OpenBao application
+// credentials can authenticate against their actual, dedicated SQL database.
+// Passwords are passed via stdin by probeControlPlanePostgresCredential.
+func (o *coreNativeRuntimeOps) verifyOpenBaoBackingSQL(ctx context.Context) error {
+ credentials, err := bhruntime.LoadControlPlaneCredentials(o.core)
+ if err != nil {
+  return fmt.Errorf("managed OpenBao SQL credentials unavailable: %w", err)
+ }
+ if err := probeControlPlanePostgresCredential(ctx, o.runtime, o.core, credentials.OpenBaoDBUser, credentials.OpenBaoDBPassword, "openbao"); err != nil {
+  return fmt.Errorf("OpenBao backing SQL authentication/readiness failed: %w", err)
+ }
+ return nil
+}
+
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
 	if len(plan.Deltas) != 4 {
 		return fmt.Errorf("Core runtime update requires four owned SQL/Secrets/Identity/Keycloak-backing realizations")
@@ -40,6 +54,9 @@ func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Pl
 		if err := o.runtime.ConfigProject(ctx, files.project, files.compose, files.env); err != nil {
 			return fmt.Errorf("Core managed project %s preflight: %w", files.project, err)
 		}
+	}
+	if err := o.verifyOpenBaoBackingSQL(ctx); err != nil {
+		return err
 	}
 	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao AppRole/policies/KV preflight: %w", err)
@@ -107,6 +124,9 @@ func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate
 	}
 	if err := platformopenbao.CheckManager(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao semantics: %w", err)
+	}
+	if err := o.verifyOpenBaoBackingSQL(ctx); err != nil {
+		return err
 	}
 	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao AppRole, policies and secret access: %w", err)
