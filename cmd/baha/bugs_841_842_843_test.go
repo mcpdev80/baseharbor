@@ -2,6 +2,9 @@ package main
 
 import (
  "encoding/json"
+ "bytes"
+ "context"
+ "github.com/mcpdev80/baseharbor/internal/operatorauth"
  "os"
  "path/filepath"
  "strings"
@@ -44,4 +47,17 @@ func TestAppInitUsageIncludesDeterministicWorkloadFlags(t *testing.T){
   }
  }
  for _,flag:=range []string{"--workload-component","--workload-source"}{if !strings.Contains(appUsage,flag){t.Errorf("help missing %s: %s",flag,appUsage)}}
+}
+
+func TestOperatorAuthConfigurationDoesNotPromptNonTTY(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME",t.TempDir())
+ input,writer,err:=os.Pipe()
+ if err!=nil{t.Fatal(err)}
+ defer input.Close()
+ defer writer.Close()
+ var out bytes.Buffer
+ ctx:=operatorauth.WithInteractive(operatorauth.WithEnforcement(context.Background()),input,&out,&out)
+ _,err=resolveOperatorAuthBoundaryConfig(ctx,"local","prod")
+ if err==nil{t.Fatal("expected explicit auth configuration error in non TTY mode")}
+ if strings.Contains(out.String(),"Configure it now?"){t.Fatalf("unexpected prompt on non TTY: %s",out.String())}
 }
