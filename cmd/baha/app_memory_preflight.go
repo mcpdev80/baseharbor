@@ -95,6 +95,13 @@ func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, pr
 			Cause:       err,
 		}
 	}
+	return runMemoryEvidencePreflight(ctx, in, out, evidence, estimate, mutating)
+}
+
+func runMemoryEvidencePreflight(ctx context.Context, in io.Reader, out io.Writer, evidence hostresource.MemoryEvidence, estimate hostresource.MemoryEstimate, mutating bool) error {
+	if evidence.AvailableBytes == 0 {
+		return &machine.Error{Code: machine.ErrorHostResourceInsufficient, CauseCode: "host_memory_insufficient", Message: "The selected runtime host has no available memory.", Resource: "host memory", Next: "Free memory on the selected execution host before retrying."}
+	}
 	result := hostresource.Evaluate(evidence, estimate, hostresource.DefaultPolicy())
 	renderHostMemoryPreflight(out, result)
 

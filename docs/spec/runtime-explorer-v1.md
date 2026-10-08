@@ -137,6 +137,15 @@ The protected Machine HTTP API from the sibling HTTP contract may stream Runtime
 
 Metrics are represented through a provider-neutral handle when supported. Absence of runtime metrics is explicit and not synthesized.
 
+For an admitted remote Connector, Core advertises `resources.metrics` only when
+the live session advertises `runtime.metrics`. Core validates the selected Target,
+provider and observed container before dispatch. A successful response includes
+an optional `sample` with `resource_id`, Core receipt time `observed_at`, and the
+native `cpu_percent`, `memory_usage` and `network_io` strings. Native units remain
+unchanged; these observations do not assert normalized capacity or health. A
+missing native sample returns `available: false`; identity mismatches and failed
+requests return errors.
+
 ## Docker and Podman reference realization
 
 Docker and Podman reuse the existing BaseHarbor Runtime Provider implementations.

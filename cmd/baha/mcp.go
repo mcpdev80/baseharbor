@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/evidence"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
 
 type machineProviderIDInput struct {
@@ -44,7 +45,8 @@ type machineProviderRemoveInput struct {
 }
 
 type machineOrganizationInput struct {
-	Environment string `json:"environment,omitempty" jsonschema:"environment used to resolve effective organization defaults; defaults to dev"`
+	Environment string                      `json:"environment,omitempty" jsonschema:"environment used to resolve effective organization defaults; defaults to dev"`
+	Preferences []orgconfig.PreferenceLayer `json:"preferences,omitempty" jsonschema:"non-secret user/repository/invocation preferences; managed policy scopes cannot be supplied by a request"`
 }
 
 type machineOrganizationSetInput struct {

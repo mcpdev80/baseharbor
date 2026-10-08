@@ -147,7 +147,7 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 	return nil
 }
 
-func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakRealm) error {
+func (a *keycloakAdmin) reconcileRealmOnce(ctx context.Context, desired keycloakRealm) error {
 	path := "/admin/realms/" + url.PathEscape(desired.Realm)
 	status, body, err := a.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -167,7 +167,7 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 			return err
 		}
 		if status != http.StatusNoContent {
-			return fmt.Errorf("update Keycloak realm: HTTP %d: %s", status, body)
+			return &keycloakRealmResponseError{status: status, operation: "update"}
 		}
 	case http.StatusNotFound:
 		status, body, err = a.do(ctx, http.MethodPost, "/admin/realms", desired)
@@ -175,10 +175,10 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 			return err
 		}
 		if status != http.StatusCreated {
-			return fmt.Errorf("create Keycloak realm: HTTP %d: %s", status, body)
+			return &keycloakRealmResponseError{status: status, operation: "create"}
 		}
 	default:
-		return fmt.Errorf("inspect Keycloak realm: HTTP %d", status)
+		return &keycloakRealmResponseError{status: status, operation: "inspect"}
 	}
 	return nil
 }
@@ -734,7 +734,10 @@ func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any
 		return resp.StatusCode, strings.TrimSpace(string(data)), nil
 	}
 
-	retryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	// Native Keycloak can retain a closed pooled JDBC connection while its HA
+	// PostgreSQL cluster finishes the initial leader transition. Keep retries
+	// bounded and read-only, but cover the complete provider convergence window.
+	retryCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

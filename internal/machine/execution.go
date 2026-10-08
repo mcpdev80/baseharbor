@@ -89,10 +89,11 @@ type MachineEvent struct {
 }
 
 type Discovery struct {
-	ContractVersion  string      `json:"contract_version"`
-	ExecutionVersion string      `json:"execution_version"`
-	Operations       []Operation `json:"operations"`
-	Capabilities     []string    `json:"capabilities,omitempty"`
+	HTTP             map[string]HTTPBinding `json:"http,omitempty"`
+	ContractVersion  string                 `json:"contract_version"`
+	ExecutionVersion string                 `json:"execution_version"`
+	Operations       []Operation            `json:"operations"`
+	Capabilities     []string               `json:"capabilities,omitempty"`
 }
 
 func MachineDiscovery() Discovery {

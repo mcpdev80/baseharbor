@@ -442,7 +442,16 @@ func renderQuadletHealthCommand(test []string) (string, error) {
 	case "NONE":
 		return "none", nil
 	case "CMD":
-		return quadletSystemdJoin(test[1:]), nil
+		if len(test) < 2 {
+			return "", errors.New("CMD requires a command")
+		}
+		// Podman treats a string health command as CMD-SHELL. Compose CMD is
+		// an argv vector: use Podman's native JSON form to retain literal arguments.
+		encoded, err := json.Marshal(test[1:])
+		if err != nil {
+			return "", err
+		}
+		return quadletSystemdValue(string(encoded)), nil
 	case "CMD-SHELL":
 		if len(test) != 2 {
 			return "", errors.New("CMD-SHELL requires exactly one command")

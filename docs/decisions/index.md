@@ -21,3 +21,9 @@ ADRs preserve decisions and rationale. They do not replace current-state documen
 - [0016 — External Developer Portals integrate through emitted contracts](0016-external-developer-portals-integration-by-contract.md)
 
 - [0017 — Stable application and deployment identity](0017-stable-application-and-deployment-identity.md)
+
+- [0018 — Public contract namespace and compatibility](0018-public-contract-namespace-and-compatibility.md)
+
+- [0019 — Organization preferences and independent policy](0019-organization-preferences-and-independent-policy.md)
+
+- [0020 — Scoped Connector enrollment](0020-scoped-connector-enrollment.md)

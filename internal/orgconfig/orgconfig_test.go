@@ -14,7 +14,7 @@ func writeOrgArtifactFixtures(t *testing.T, root string) {
 	t.Helper()
 	for name, content := range map[string]string{
 		"company-dev":    "kind: target\nname: company-dev\n",
-		"company-go-api": "apiVersion: baseharbor.dev/v1\nkind: StackProfile\nmetadata:\n  name: go-api\ncomponents:\n  - id: app\n    role: application\n    adapter: go\n",
+		"company-go-api": "apiVersion: https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/development/v1\nkind: StackProfile\nmetadata:\n  name: go-api\ncomponents:\n  - id: app\n    role: application\n    adapter: go\n",
 	} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
 			t.Fatal(err)

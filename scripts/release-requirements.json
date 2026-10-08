@@ -1,0 +1,981 @@
+{
+  "schema": "baseharbor.release-requirements/v1",
+  "releases": [
+    "v0.4.22",
+    "v0.4.23"
+  ],
+  "gates": [
+    {
+      "id": "atomic/static/config-matrix",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/static/init",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/static/mcp",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/static/agent",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/static/shell-ux",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "static_gates"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/guided",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/lifecycle",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/policy",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/connectivity",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/reconciliation",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/failure",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/full-destroy",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/data-capabilities",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/observability",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/identity",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/security",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/backup-restore",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/rabbitmq-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/mongodb-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/durable-key-value",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/control-plane-recovery",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/loki-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/docker/tempo-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/guided",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/lifecycle",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/policy",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/connectivity",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/reconciliation",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/failure",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/full-destroy",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_light_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/data-capabilities",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/observability",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/identity",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/security",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/backup-restore",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/rabbitmq-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/mongodb-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/durable-key-value",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/control-plane-recovery",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/loki-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "atomic/podman/tempo-runtime",
+      "schema": "baseharbor.pre-release.gate-evidence/v1",
+      "jobs": [
+        "runtime_candidate",
+        "runtime_heavy_gates_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "adoption/conformance",
+      "schema": "baseharbor.pre-release.adoption-evidence/v1",
+      "jobs": [
+        "adoption"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "adoption/realworld-compose",
+      "schema": "baseharbor.pre-release.adoption-evidence/v1",
+      "jobs": [
+        "adoption"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "adoption/realworld-quadlet",
+      "schema": "baseharbor.pre-release.adoption-evidence/v1",
+      "jobs": [
+        "adoption"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "adoption/realworld-kubernetes",
+      "schema": "baseharbor.pre-release.adoption-evidence/v1",
+      "jobs": [
+        "adoption"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/docker/data",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/docker/identity",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/docker/observability",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/docker/routing",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_docker"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/podman/data",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/podman/identity",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/podman/observability",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "ha/podman/routing",
+      "schema": "baseharbor.pre-release.v0.4.21-ha-evidence/v1",
+      "jobs": [
+        "v0421_ha_groups_podman"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "journey/docker",
+      "schema": "baseharbor.pre-release.reference-journey/v1",
+      "jobs": [
+        "runtime_candidate",
+        "reference_journey"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "journey/podman",
+      "schema": "baseharbor.pre-release.reference-journey/v1",
+      "jobs": [
+        "runtime_candidate",
+        "reference_journey"
+      ],
+      "required_for": [
+        "v0.4.22",
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "demo"
+      ]
+    },
+    {
+      "id": "integration/static/public-contracts",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_public_contracts"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core"
+      ]
+    },
+    {
+      "id": "integration/static/configuration-policy",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_configuration_policy"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core"
+      ]
+    },
+    {
+      "id": "integration/static/browser-terminal",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_browser_terminal"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core"
+      ]
+    },
+    {
+      "id": "integration/docker/remote-target",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_remote_target_docker"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "connector"
+      ]
+    },
+    {
+      "id": "integration/podman/remote-target",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_remote_target_podman"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "connector"
+      ]
+    },
+    {
+      "id": "integration/static/live-console",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_live_console"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ],
+      "dependencies": [
+        "core",
+        "console",
+        "connector",
+        "demo"
+      ]
+    },
+    {
+      "id": "integration/docker/core-bootstrap",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_core_docker"
+      ],
+      "dependencies": [
+        "core"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ]
+    },
+    {
+      "id": "integration/podman/core-bootstrap",
+      "schema": "baseharbor.pre-release.integration-evidence/v1",
+      "jobs": [
+        "integration_core_podman"
+      ],
+      "dependencies": [
+        "core"
+      ],
+      "required_for": [
+        "v0.4.23"
+      ]
+    }
+  ]
+}

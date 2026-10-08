@@ -63,6 +63,8 @@ nav:
 
   - Getting Started:
       - First application: tutorials/getting-started.md
+      - Homelab: tutorials/homelab.md
+      - Core resources: explanation/core-resources.md
       - CLI orientation: cli/index.md
 
   - Applications:
@@ -99,6 +101,7 @@ nav:
 
   - Organization / Platform Configuration:
       - Concepts & distribution: explanation/organization-configuration.md
+      - Resolution & independent policy: spec/organization-resolution-v1.md
       - Organization & policy commands: cli/organization-policy.md
 
   - Security / Trust:
@@ -121,6 +124,8 @@ nav:
       - Runtime Explorer v1: spec/runtime-explorer-v1.md
 
   - Reference:
+      - Public contracts: reference/public-contracts.md
+      - Platform support: reference/platform-support.md
       - Complete command index: cli/command-index.md
       - CLI reference: reference/cli.md
       - Global options: cli/global-options.md
@@ -141,11 +146,13 @@ nav:
 
   - Architecture:
       - System architecture: explanation/architecture.md
+      - Workload sources: explanation/workload-sources.md
 
   - Developer:
       - Contributing: https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md
       - Development guidelines: DEVELOPMENT_GUIDELINES.md
       - Documentation style: STYLE_GUIDE.md
+      - Release requirements: development/v0.4.23-release-requirements.md
       - Architecture decisions: decisions/index.md
       - Specifications:
           - Overview: spec/README.md

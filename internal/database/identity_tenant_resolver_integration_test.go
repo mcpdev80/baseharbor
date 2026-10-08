@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -82,7 +83,14 @@ INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
 	}
 
 	runtimeDSN := "postgres://baseharbor_resolver_ci:" + runtimePassword + "@127.0.0.1:5432/baseharbor_test?sslmode=disable"
-	runtime, err := pgxpool.New(ctx, runtimeDSN)
+	runtimeConfig, err := pgxpool.ParseConfig(runtimeDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force reuse of the connection that previously held a tenant-scoped
+	// transaction; a fresh connection would hide the empty custom-setting bug.
+	runtimeConfig.MaxConns = 1
+	runtime, err := pgxpool.NewWithConfig(ctx, runtimeConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +102,20 @@ INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
 	}
 	if count != 0 {
 		t.Fatalf("resolver role without identity context can see %d memberships", count)
+	}
+	if err := WithTenantTx(ctx, runtime, tenantB, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM memberships").Scan(&count); err != nil {
+			return err
+		}
+		if count != 2 {
+			t.Fatalf("tenant-scoped resolver read exposed wrong memberships: %d", count)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.QueryRow(ctx, "SELECT count(*) FROM memberships").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("reset tenant leaked memberships or broke unscoped RLS: %d %v", count, err)
 	}
 
 	resolver := NewIdentityTenantResolver(runtime)

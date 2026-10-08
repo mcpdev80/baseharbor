@@ -1,0 +1,5 @@
+[
+  "integration/docker/remote-target",
+  "integration/podman/remote-target",
+  "integration/static/live-console"
+]

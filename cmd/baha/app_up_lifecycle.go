@@ -24,6 +24,7 @@ type applicationUpExecution struct {
 	files            application.RuntimeFiles
 	compose          bhruntime.RuntimeProvider
 	before           []bhruntime.ProjectResource
+	coreRuntime      bhruntime.RuntimeProvider
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
 	providers        *managedProviderPreflightState
@@ -33,6 +34,12 @@ type applicationUpExecution struct {
 func executeApplicationUpLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
 	execution, err := newApplicationUpExecution(ctx, store, args, out, errOut)
 	if err != nil {
+		return err
+	}
+	if isRemoteApplication(execution.resolved) {
+		return executeRemoteApplicationApply(ctx, execution.resolved, out)
+	}
+	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return err
 	}
 	if err := execution.runPreflight(ctx); err != nil {
@@ -71,6 +78,9 @@ func newApplicationUpExecution(ctx context.Context, store application.Store, arg
 	if err := printResolvedLogsPlacement(out, resolved); err != nil {
 		return nil, err
 	}
+	if isRemoteApplication(resolved) {
+		return &applicationUpExecution{resolved: resolved, manifest: m, term: term, out: out, providers: &managedProviderPreflightState{}}, nil
+	}
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
 		return nil, err
@@ -89,17 +99,26 @@ func (e *applicationUpExecution) runPreflight(ctx context.Context) error {
 	checks := e.preflightChecks()
 	if application.RequiresRuntimeBroker(e.manifest) {
 		checks = append(checks, preflight.Check{Name: "runtime PKI prerequisites", Run: func(ctx context.Context) error {
+			if e.coreRuntime == nil {
+				return unavailableApplicationCoreRuntime()
+			}
 			identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
-			return openbao.CheckApplicationProvisioning(ctx, e.compose, e.platformFiles, identity)
+			return openbao.CheckApplicationProvisioning(ctx, e.coreRuntime, e.platformFiles, identity)
 		}})
 		if e.manifest.Services.Secrets {
 			checks = append(checks,
 				preflight.Check{Name: "OpenBao application scope", Run: func(ctx context.Context) error {
+					if e.coreRuntime == nil {
+						return unavailableApplicationCoreRuntime()
+					}
 					identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
-					return openbao.InspectApplicationScope(ctx, e.compose, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
+					return openbao.InspectApplicationScope(ctx, e.coreRuntime, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
 				}},
 				preflight.Check{Name: "required application secrets", Run: func(ctx context.Context) error {
-					return checkRequiredApplicationSecrets(ctx, e.compose, e.platformFiles, e.manifest, e.files)
+					if e.coreRuntime == nil {
+						return unavailableApplicationCoreRuntime()
+					}
+					return checkRequiredApplicationSecrets(ctx, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 				}},
 			)
 		}
@@ -138,7 +157,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 	return []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "host memory", Run: func(ctx context.Context) error {
-			return runHostMemoryPreflight(ctx, runtimeInput, e.out, bhruntime.ProviderKind(e.resolved.Target.RuntimeProvider), hostresource.EstimateApplication(m), true)
+			return runApplicationMemoryPreflight(ctx, runtimeInput, e.out, e.resolved, hostresource.EstimateApplication(m), true)
 		}},
 		{Name: "supported desired services", Run: func(context.Context) error { return application.CheckSupportedRuntimeServices(m) }},
 		{Name: "manifest permissions", Run: func(context.Context) error {
@@ -166,14 +185,17 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
 			var err error
-			e.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 			if err != nil {
-				return errors.New("BaseHarbor control-plane runtime is not materialized; run 'baha up' first")
+				return fmt.Errorf("BaseHarbor control-plane runtime is unavailable: %w", err)
 			}
 			return nil
 		}},
 		{Name: "managed service PKI", Run: func(ctx context.Context) error {
-			e.issuer = openbao.NewServiceIssuer(e.compose, e.platformFiles)
+			if e.coreRuntime == nil {
+				return unavailableApplicationCoreRuntime()
+			}
+			e.issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 			status, err := e.issuer.Status(ctx)
 			if err != nil {
 				return fmt.Errorf("managed service PKI is not ready: %w", err)
@@ -254,9 +276,9 @@ func (e *applicationUpExecution) verifyManagedRuntime(ctx context.Context) error
 			verifyErr = verifyDesiredRuntimeServices(verifyCtx, e.compose, e.manifest, e.files)
 			if verifyErr == nil && e.manifest.Services.Secrets {
 				identity := openbao.ApplicationIdentity{Name: e.manifest.Name, Environment: e.manifest.Environment}
-				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.compose, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
+				verifyErr = openbao.CheckApplicationScope(verifyCtx, e.coreRuntime, e.platformFiles, identity, openbao.ApplicationCredentialsPath(e.files.Dir))
 				if verifyErr == nil {
-					verifyErr = checkRequiredApplicationSecrets(verifyCtx, e.compose, e.platformFiles, e.manifest, e.files)
+					verifyErr = checkRequiredApplicationSecrets(verifyCtx, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 				}
 			}
 			if verifyErr == nil {
@@ -287,7 +309,7 @@ func (e *applicationUpExecution) convergeApplicationRuntime(ctx context.Context)
 	}
 	if application.RequiresRuntimeBroker(e.manifest) {
 		if err := activity(ctx, e.term, "Starting secure runtime broker", func(progress io.Writer) error {
-			return ensureAndStartRuntimeBroker(ctx, progress, e.compose, e.platformFiles, e.manifest, e.files)
+			return ensureAndStartRuntimeBrokerWithCore(ctx, progress, e.compose, e.coreRuntime, e.platformFiles, e.manifest, e.files)
 		}); err != nil {
 			return err
 		}
@@ -342,6 +364,7 @@ func (e *applicationUpExecution) reconcileDevelopmentCanonicalRoutes(ctx context
 		term:          e.term,
 		out:           e.out,
 		compose:       e.compose,
+		coreRuntime:   e.coreRuntime,
 		platformFiles: e.platformFiles,
 		issuer:        e.issuer,
 		files:         e.files,

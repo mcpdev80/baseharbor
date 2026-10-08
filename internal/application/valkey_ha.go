@@ -118,8 +118,8 @@ func writeValkeyHAComposeServices(b *strings.Builder, m Manifest, instance strin
 			writeValkeyPrimaryAddressBootstrap(b, primary)
 		}
 		b.WriteString("        {\n")
-		b.WriteString("          printf 'requirepass %s\\n' \"$VALKEY_PASSWORD\"\n")
-		b.WriteString("          printf 'masterauth %s\\n' \"$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'requirepass %s\\n' \"$$VALKEY_PASSWORD\"\n")
+		b.WriteString("          printf 'masterauth %s\\n' \"$$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'appendonly yes\\n'\n")
 		b.WriteString("          printf 'dir /data\\n'\n")
 		fmt.Fprintf(b, "          printf 'replica-announce-ip %s\\n'\n", service)

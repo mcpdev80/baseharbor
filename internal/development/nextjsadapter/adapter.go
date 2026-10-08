@@ -137,13 +137,17 @@ func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development
 			bindings[a.Name] = struct{}{}
 		}
 	}
+	composeSource, err := development.ComposeWithBindings(compose(), plan, component)
+	if err != nil {
+		return nil, err
+	}
 	return []development.GeneratedFile{
 		{Path: "package.json", Content: []byte(renderPackage(plan.Application, deps)), Mode: 0o644},
 		{Path: "app/page.tsx", Content: []byte(pageSource()), Mode: 0o644},
 		{Path: "app/healthz/route.ts", Content: []byte(healthSource()), Mode: 0o644},
 		{Path: "lib/capabilities.ts", Content: []byte(capabilitySource(bindings)), Mode: 0o644},
 		{Path: "Dockerfile", Content: []byte(dockerfile()), Mode: 0o644},
-		{Path: "compose.yaml", Content: []byte(compose()), Mode: 0o644},
+		{Path: "compose.yaml", Content: composeSource, Mode: 0o644},
 		{Path: ".env.example", Content: []byte(envExample(bindings)), Mode: 0o644},
 	}, nil
 }
@@ -172,11 +176,11 @@ func renderPackage(app string, deps map[string]string) string {
 }
 
 func pageSource() string {
-	return "import '../lib/capabilities';\nexport default function Page() { return <main>BaseHarbor Next.js application</main>; }\n"
+	return "export default function Page() { return <main>BaseHarbor Next.js application</main>; }\n"
 }
 
 func healthSource() string {
-	return "import { NextResponse } from 'next/server';\nexport async function GET() { return NextResponse.json({status:'ok'}); }\n"
+	return "import { NextResponse } from 'next/server';\nimport { runtimeBindings } from '../../lib/capabilities';\nexport const dynamic = 'force-dynamic';\nexport async function GET() { try { runtimeBindings(); return NextResponse.json({status:'ok'}); } catch { return NextResponse.json({status:'not_ready'}, {status:503}); } }\n"
 }
 
 func capabilitySource(bindings map[string]struct{}) string {
@@ -189,9 +193,11 @@ func capabilitySource(bindings map[string]struct{}) string {
 	sort.Strings(names)
 	var b strings.Builder
 	b.WriteString("const required = (name: string) => { const value = process.env[name]; if (!value) throw new Error('missing ' + name); return value; };\n")
+	b.WriteString("export function runtimeBindings() { return {\n")
 	for _, n := range names {
-		fmt.Fprintf(&b, "export const %s = required(%q);\n", strings.ReplaceAll(strings.ToLower(n), "_", ""), n)
+		fmt.Fprintf(&b, "  %q: required(%q),\n", n, n)
 	}
+	b.WriteString("}; }\n")
 	b.WriteString("// database.sql: pg\n// cache.key-value/database.key-value: redis\n// database.document: mongodb\n// messaging.*: amqplib\n// object-storage.s3: @aws-sdk/client-s3\n// telemetry.otlp: @opentelemetry/sdk-node\n")
 	return b.String()
 }

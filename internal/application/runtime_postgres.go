@@ -147,40 +147,16 @@ type BackendProbeExecutor interface {
 	ProbeBackend(context.Context, BackendProbe) (string, error)
 }
 
-type RuntimeBackendProbeExecutor struct {
-	runtime bhruntime.RuntimeProvider
-	files   RuntimeFiles
-}
-
-func NewRuntimeBackendProbeExecutor(runtime bhruntime.RuntimeProvider, files RuntimeFiles) RuntimeBackendProbeExecutor {
-	return RuntimeBackendProbeExecutor{runtime: runtime, files: files}
-}
-
-func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe BackendProbe) (string, error) {
-	instance := strings.TrimSpace(probe.Instance)
-	if instance == "" {
-		instance = defaultServiceInstance
-	}
-	switch probe.Kind {
-	case BackendProbeSQLSelectOne:
-		service := runtimeServiceName("postgres", instance)
-		database := strings.TrimSpace(probe.Database)
-		if database == "" {
-			return "", errors.New("postgres verification database is required")
+// The native file/project mechanics remain in the existing local realization
+// adapter; semantic probes also accept independently owned remote services.
+func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files RuntimeFiles) RuntimeBackendProbeExecutor {
+	executor := RuntimeBackendProbeExecutor{files: files}
+	if runtime != nil {
+		executor.local = func(ctx context.Context, service string, argv ...string) (string, error) {
+			return runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, argv...)
 		}
-		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), database)
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	case BackendProbeCachePing:
-		service := runtimeServiceName("valkey", instance)
-		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	case BackendProbeDurableKeyValueRW:
-		service := runtimeServiceName("valkey", instance)
-		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 set __baseharbor_verify__ durable >/dev/null && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 get __baseharbor_verify__ && VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 del __baseharbor_verify__ >/dev/null`, valkeyAccessService(instance), valkeyAccessService(instance), valkeyAccessService(instance))
-		return e.runtime.ExecProject(ctx, e.files.Project, e.files.Compose, e.files.Env, service, "sh", "-ec", command)
-	default:
-		return "", fmt.Errorf("unsupported backend probe %q", probe.Kind)
 	}
+	return executor
 }
 
 func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {

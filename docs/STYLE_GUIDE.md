@@ -74,6 +74,6 @@ Public documentation uses one canonical location per purpose:
 
 Do not add compatibility redirect pages at the `docs/` root. Update links to the canonical page instead.
 
-German documentation is intentionally limited to maintained human-facing `tutorials/` and `explanation/` content. English remains authoritative for reference, specs, ADRs and release engineering.
+German documentation maintains human-facing `tutorials/`, `explanation/`, `cli/` and `how-to/` guidance with the same task/domain navigation as English. Untranslated reference, specs, ADRs and release-engineering pages link explicitly to their canonical English source and are marked `EN`. Command names, flags and machine contracts remain unchanged. English remains authoritative for normative behavior.
 
 Release audits are internal evidence and belong under `docs/internal/release-audits/`.

@@ -2,6 +2,9 @@
 
 Release notes record delivered behavior. Future planning belongs in GitHub Issues.
 
+Prepared and pre-release approved: [v0.4.23](v0.4.23.md).
+Publication starts when the release tag is pushed.
+
 - [v0.4.22](v0.4.22.md)
 - [v0.4.21](v0.4.21.md)
 - [v0.4.20](v0.4.20.md)

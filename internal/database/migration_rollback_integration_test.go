@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -25,6 +26,59 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	}
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
+	}
+	if err := verifyMembershipContextRollback(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate renewal migration: %v", err)
+	}
+	var retainedAdmission, overlapExists, renewalColumn bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&retainedAdmission); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_enrollment_grants' AND column_name='previous_certificate_serial')").Scan(&renewalColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !retainedAdmission || overlapExists || renewalColumn {
+		t.Fatal("renewal rollback changed earlier admission or retained renewal state")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing renewal migration was accepted as schema ready")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate admission migration: %v", err)
+	}
+	var revocationColumn, retainedEnrollment bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&retainedEnrollment); err != nil {
+		t.Fatal(err)
+	}
+	if revocationColumn || !retainedEnrollment {
+		t.Fatal("certificate admission rollback changed earlier enrollment ownership")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing certificate admission migration was accepted as ready")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback Connector enrollment migration: %v", err)
+	}
+	var enrollmentExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&enrollmentExists); err != nil {
+		t.Fatal(err)
+	}
+	if enrollmentExists {
+		t.Fatal("enrollment schema still exists after rolling back its owning migration")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing enrollment migration was accepted as schema ready")
 	}
 
 	if err := RollbackLast(ctx, pool); err != nil {
@@ -105,4 +159,35 @@ SELECT EXISTS (
 	if tenantsExists {
 		t.Fatal("core identity schema still exists after rolling back its owning migration")
 	}
+}
+
+func verifyMembershipContextRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	var safeContext bool
+	query := `SELECT position('NULLIF' in qual)>0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	if !safeContext {
+		return fmt.Errorf("empty tenant context policy correction missing")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	var forcedRLS, identityResolution bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='memberships'::regclass").Scan(&forcedRLS); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_identity_resolution')").Scan(&identityResolution); err != nil {
+		return err
+	}
+	if safeContext || !forcedRLS || !identityResolution {
+		return fmt.Errorf("membership context rollback changed earlier security ownership")
+	}
+	if VerifySchemaReady(ctx, pool) == nil {
+		return fmt.Errorf("missing membership context correction accepted as schema ready")
+	}
+	return nil
 }

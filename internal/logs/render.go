@@ -53,6 +53,7 @@ common:
   path_prefix: /loki
   replication_factor: 2
   ring:
+    instance_id: ${BASEHARBOR_LOKI_MEMBER}
     kvstore:
       store: memberlist
 memberlist:
@@ -344,6 +345,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 	alloyService := "alloy"
 	accessSpec := lokiAccessSpec()
 	if storageNetwork != "" {
+		accessSpec.HealthURI = "/ready"
 		accessSpec.Upstream = ""
 		accessSpec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
 		accessSpec.NetworkAliases = []string{"loki"}
@@ -377,6 +379,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 		for ordinal := 1; ordinal <= 3; ordinal++ {
 			name := fmt.Sprintf("loki-%d", ordinal)
 			fmt.Fprintf(&b, "  %s:\n", name)
+			fmt.Fprintf(&b, "    hostname: %s\n", name)
 			fmt.Fprintf(&b, "    image: %s\n", LokiImage)
 			fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(fmt.Sprintf("%d:%d", LokiRuntimeUID, LokiRuntimeGID)))
 			mode := "worker"
@@ -389,6 +392,7 @@ func providerComposeYAMLForModeAndAccess(placement Placement, registrations []Re
 			b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 			b.WriteString("    tmpfs: [\"/tmp:rw,noexec,nosuid,nodev\"]\n")
 			b.WriteString("    environment:\n")
+			fmt.Fprintf(&b, "      BASEHARBOR_LOKI_MEMBER: %s\n", name)
 			b.WriteString("      BASEHARBOR_LOKI_S3_ENDPOINT: ${BASEHARBOR_LOKI_S3_ENDPOINT}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_BUCKET: ${BASEHARBOR_LOKI_S3_BUCKET}\n")
 			b.WriteString("      BASEHARBOR_LOKI_S3_ACCESS_KEY_ID: ${BASEHARBOR_LOKI_S3_ACCESS_KEY_ID}\n")

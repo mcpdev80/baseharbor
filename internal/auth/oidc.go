@@ -88,6 +88,7 @@ func (v *OIDCVerifier) Verify(ctx context.Context, rawToken string) (*identity.P
 			Audience:  append([]string(nil), token.Audience...),
 			Assurance: strings.TrimSpace(claims.ACR),
 			Methods:   append([]string(nil), claims.AMR...),
+			ExpiresAt: &token.Expiry,
 		}, nil
 	}
 	return nil, ErrInvalidToken

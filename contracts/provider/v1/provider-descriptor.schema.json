@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.baseharbor.dev/provider/v1/provider-descriptor.schema.json",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider/v1/provider-descriptor.schema.json",
   "title": "BaseHarbor Provider Descriptor v1",
   "type": "object",
   "additionalProperties": false,

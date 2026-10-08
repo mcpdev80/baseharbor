@@ -132,6 +132,11 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 	if err != nil {
 		return applicationStatusResult{}, err
 	}
+	if hasRemoteApplicationTarget(resolved) {
+		return applicationStatusResult{StatusResult: result, ApplicationID: resolved.Manifest.ApplicationID,
+			DeploymentID: resolved.DeploymentIdentity.DeploymentID,
+			OperatorAuth: collectOperatorAuthObservation(ctx, resolved.Target.Name, resolved.Manifest.Environment)}, nil
+	}
 	tlsStatus, tlsObservation, tlsErr := collectApplicationTLSObservation(resolved)
 	if tlsErr != nil || (tlsObservation != nil && !tlsObservation.Healthy) {
 		result.Ready = false

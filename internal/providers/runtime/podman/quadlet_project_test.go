@@ -1,8 +1,10 @@
 package podman
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -257,7 +259,7 @@ func TestRenderComposeProjectQuadletsBrokerDoesNotGateSystemdOnCompositeHealth(t
 	if strings.Contains(unit, "Notify=healthy") {
 		t.Fatalf("runtime broker must leave composite readiness to BaseHarbor:\n%s", unit)
 	}
-	if !strings.Contains(unit, "HealthCmd=true") {
+	if !strings.Contains(unit, `HealthCmd=["true"]`) {
 		t.Fatalf("runtime broker must retain its container healthcheck:\n%s", unit)
 	}
 }
@@ -680,5 +682,25 @@ func TestRenderComposeProjectQuadletsRejectsMultilineEnvironmentValue(t *testing
 	}
 	if !strings.Contains(err.Error(), "multiline value unsupported by Podman env files") {
 		t.Fatalf("unexpected multiline environment error: %v", err)
+	}
+}
+
+func TestRenderQuadletExecHealthPreservesLiteralArguments(t *testing.T) {
+	args := []string{"python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/')", "$TOKEN", "%percent", "", "quoted \"argument\""}
+	got, err := renderQuadletHealthCommand(append([]string{"CMD"}, args...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The final systemd ExecStart unescapes its literal dollar/specifier escapes.
+	native := strings.ReplaceAll(strings.ReplaceAll(got, "$$", "$"), "%%", "%")
+	var decoded []string
+	if err := json.Unmarshal([]byte(native), &decoded); err != nil {
+		t.Fatalf("exec-form healthcheck was converted to a shell expression: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, args) {
+		t.Fatalf("healthcheck argument boundaries changed: %q", decoded)
+	}
+	if _, err := renderQuadletHealthCommand([]string{"CMD"}); err == nil {
+		t.Fatal("empty exec healthcheck accepted")
 	}
 }

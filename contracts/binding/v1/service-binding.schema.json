@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.baseharbor.dev/binding/v1/service-binding.schema.json",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/binding/v1/service-binding.schema.json",
   "title": "BaseHarbor Service Binding 1.1-aligned representation",
   "type": "object",
   "additionalProperties": true,

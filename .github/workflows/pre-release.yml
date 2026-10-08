@@ -18,6 +18,11 @@ on:
         description: Exact baseharbor-demo commit SHA to validate
         required: true
         type: string
+      only_gates:
+        description: Optional comma-separated exact gate IDs to execute; complete approval still requires all proofs
+        required: false
+        default: ''
+        type: string
   push:
     branches:
       - 'release-candidate/**'
@@ -56,6 +61,8 @@ jobs:
       ha_podman_count: ${{ steps.resume.outputs.ha_podman_count }}
       journey: ${{ steps.resume.outputs.journey }}
       journey_count: ${{ steps.resume.outputs.journey_count }}
+      integration: ${{ steps.resume.outputs.integration }}
+      integration_count: ${{ steps.resume.outputs.integration_count }}
 
     steps:
       - name: Checkout candidate source
@@ -160,7 +167,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
@@ -179,6 +186,11 @@ jobs:
           python scripts/test_ci_assertion_summary.py
           python scripts/test_ci_run_metrics.py
           python scripts/test_pre_release_resume.py
+          python scripts/test_targeted_atomic_plan.py
+          python scripts/test_private_consumer_evidence.py
+          python scripts/test_public_consumer_evidence.py
+          python scripts/test_private_integration_producer.py
+          python scripts/test_pre_release_integration.py
 
       - name: Run release-source tests
         id: source_tests
@@ -187,7 +199,7 @@ jobs:
           set -euo pipefail
           logs="$RUNNER_TEMP/pre-release-source-logs"
           mkdir -p "$logs"
-          go test ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
+          go test ./contracts/... ./internal/... ./spec/... ./conformance/... 2>&1 | tee "$logs/go-test-internal-spec.log"
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha 2>&1 | tee "$logs/go-test-cmd-baha.log"
           go vet ./... 2>&1 | tee "$logs/go-vet.log"
 
@@ -267,15 +279,21 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
           CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
           DEMO_REF: ${{ steps.release.outputs.demo_ref }}
           TAG: ${{ steps.release.outputs.tag }}
+          ONLY_GATES: ${{ inputs.only_gates }}
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
+            ONLY_GATES="$(python -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
+            test -n "$ONLY_GATES"
+          fi
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/resume-demo"
           python scripts/pre-release-resume.py plan --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG" \
             --demo-repo "$RUNNER_TEMP/resume-demo" --runs "docs/releases/$TAG.evidence-runs" \
-            --output "$RUNNER_TEMP/evidence-plan" | tee -a "$GITHUB_STEP_SUMMARY"
+            --output "$RUNNER_TEMP/evidence-plan" --only-gates "$ONLY_GATES" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload authenticated evidence plan
         uses: actions/upload-artifact@v6
@@ -294,7 +312,7 @@ jobs:
           cat >"$rows" <<EOF
           Candidate resolution	${{ steps.release.outcome }}	release metadata, exact candidate SHA and pinned demo SHA
           Workflow policy	${{ steps.workflow_policy.outcome }}	fixed reviewed workflow surface
-          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
           Source readability	${{ steps.source_readability.outcome }}	production source guard
           Release-source tests	${{ steps.source_tests.outcome }}	unit/package tests and vet
           Documentation	${{ steps.docs.outcome }}	strict EN/DE docs and audit
@@ -322,6 +340,9 @@ jobs:
   runtime_candidate:
     name: Candidate · Runtime Image
     needs: source
+    if: >-
+      needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' ||
+      needs.source.outputs.heavy_docker_count != '0' || needs.source.outputs.heavy_podman_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -488,11 +509,11 @@ jobs:
 
   runtime_light_gates_docker:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, reference_journey, integration_core_docker, integration_core_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_docker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         runtime: [docker]
         gate: ${{ fromJSON(needs.source.outputs.light_docker) }}
@@ -506,11 +527,11 @@ jobs:
 
   runtime_light_gates_podman:
     name: Light · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, reference_journey, integration_core_docker, integration_core_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.light_podman_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         runtime: [podman]
         gate: ${{ fromJSON(needs.source.outputs.light_podman) }}
@@ -542,7 +563,7 @@ jobs:
 
   runtime_heavy_gates_docker:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates_docker]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_docker_count != '0' }}
     strategy:
       fail-fast: false
@@ -560,7 +581,7 @@ jobs:
 
   runtime_heavy_gates_podman:
     name: Heavy · ${{ matrix.runtime }} · ${{ matrix.gate }}
-    needs: [source, runtime_candidate, reference_journey, runtime_light_gates]
+    needs: [source, runtime_candidate, runtime_light_gates_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && needs.source.outputs.heavy_podman_count != '0' }}
     strategy:
       fail-fast: false
@@ -596,7 +617,7 @@ jobs:
 
   v0421_ha_groups_docker:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates]
+    needs: [source, runtime_heavy_gates_docker]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_docker_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
@@ -698,7 +719,7 @@ jobs:
 
   v0421_ha_groups_podman:
     name: v0.4.21 HA · ${{ matrix.group }} · ${{ matrix.runtime }}
-    needs: [source, runtime_heavy_gates]
+    needs: [source, runtime_heavy_gates_podman]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.ha_podman_count != '0' }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 90
@@ -819,7 +840,7 @@ jobs:
   reference_journey:
     if: ${{ needs.source.result == 'success' && needs.source.outputs.journey_count != '0' }}
     name: Reference Journey · ${{ matrix.runtime }} · Full E2E
-    needs: [source, runtime_candidate]
+    needs: [source, runtime_candidate, integration_core_docker, integration_core_podman]
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -1026,10 +1047,312 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  integration_public_contracts:
+    name: Integration · integration/static/public-contracts
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/public-contracts') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/public-contracts
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-public-contracts"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-public-contracts-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-public-contracts
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_configuration_policy:
+    name: Integration · integration/static/configuration-policy
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/configuration-policy') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/configuration-policy
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-configuration-policy"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-configuration-policy-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-configuration-policy
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_browser_terminal:
+    name: Integration · integration/static/browser-terminal
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/browser-terminal') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run source contract integration checks
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/static/browser-terminal
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-browser-terminal"
+
+      - name: Retain source contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-browser-terminal-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-browser-terminal
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_core_docker:
+    name: Integration · integration/docker/core-bootstrap
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/core-bootstrap') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only bootstrap and ownership-safe retry
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/docker/core-bootstrap
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/core-bootstrap-docker"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-docker-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap-docker
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_core_podman:
+    name: Integration · integration/podman/core-bootstrap
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/core-bootstrap') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only bootstrap and ownership-safe retry
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/podman/core-bootstrap
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/core-bootstrap-podman"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-podman-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap-podman
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_remote_target_docker:
+    name: Integration · integration/docker/remote-target
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/remote-target') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/docker/remote-target
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-docker-remote-target"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-docker-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-docker-remote-target
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_remote_target_podman:
+    name: Integration · integration/podman/remote-target
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/remote-target') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/podman/remote-target
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-podman-remote-target"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-podman-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-podman-remote-target
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_live_console:
+    name: Integration · integration/static/live-console
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/static/live-console') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Authenticate full pinned private consumer qualification
+        env:
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+        run: >-
+          python scripts/pre-release-private-integration.py
+          --gate integration/static/live-console
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/integration-static-live-console"
+      - name: Retain public commitments and safe qualification failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-release-integration-static-live-console-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-static-live-console
+          if-no-files-found: error
+          retention-days: 90
+
   evidence:
     name: Evidence · Candidate Manifest
     if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -1041,7 +1364,7 @@ jobs:
       - name: Install evidence parser
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
-      - name: Verify all 55 input-bound proofs and create release approval
+      - name: Verify every required input-bound proof and create release approval
         id: approval
         if: >-
           needs.source.result == 'success' && needs.runtime_candidate.result == 'success' &&
@@ -1052,6 +1375,7 @@ jobs:
           (needs.reference_journey.result == 'success' || (needs.reference_journey.result == 'skipped' && needs.source.outputs.journey_count == '0'))
         env:
           GH_TOKEN: ${{ github.token }}
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}

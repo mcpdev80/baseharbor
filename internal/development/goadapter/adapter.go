@@ -162,11 +162,15 @@ func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development
 		}
 	}
 
+	composeSource, err := development.ComposeWithBindings(renderCompose(), plan, component)
+	if err != nil {
+		return nil, err
+	}
 	return []development.GeneratedFile{
 		{Path: "go.mod", Content: []byte(renderGoMod(plan.Application, dependencies)), Mode: 0o644},
 		{Path: "main.go", Content: []byte(renderMain(capabilities, bindings)), Mode: 0o644},
 		{Path: "Dockerfile", Content: []byte(renderDockerfile()), Mode: 0o644},
-		{Path: "compose.yaml", Content: []byte(renderCompose()), Mode: 0o644},
+		{Path: "compose.yaml", Content: composeSource, Mode: 0o644},
 		{Path: ".env.example", Content: []byte(renderEnvExample(bindings)), Mode: 0o644},
 	}, nil
 }
@@ -356,10 +360,8 @@ func renderMain(caps map[capability.Kind]bool, bindings map[string]struct{}) str
 func renderDockerfile() string {
 	return `FROM golang:1.25-alpine AS build
 WORKDIR /src
-COPY go.mod ./
-COPY main.go ./
-RUN go mod tidy && go mod verify
 COPY . .
+RUN go mod tidy && go mod verify
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app .
 
 FROM alpine:3.24.2

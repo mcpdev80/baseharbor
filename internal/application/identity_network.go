@@ -22,6 +22,10 @@ func IdentityProviderNetworkName(m Manifest, namespace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return IdentityProviderNetworkNameForPlacement(m, namespace, placement)
+}
+
+func IdentityProviderNetworkNameForPlacement(m Manifest, namespace string, placement capability.ProviderPlacement) (string, error) {
 	base := "baseharbor-identity"
 	switch placement.Scope {
 	case capability.ScopeShared:

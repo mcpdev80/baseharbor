@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
 type machineRuntimeTargetInput struct {
@@ -47,6 +48,22 @@ func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimee
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return nil, "", err
+	}
+	if target.AccessProvider == "baseharbor-node-connector" {
+		tenant, ok := tenancy.FromContext(ctx)
+		if !ok || tenant.TenantID != target.TenantID {
+			return nil, "", machine.NewError(machine.ErrorPolicyDenied, "Remote Target is outside the authenticated tenant.", "Select a Target enrolled in the current tenant.", false)
+		}
+		scope, err := connectorScopeForTarget(target)
+		if err != nil {
+			return nil, "", err
+		}
+		backend, err := runtimeexplorer.NewConnectorBackend(targetsession.PoolFromContext(ctx), scope)
+		if err != nil {
+			return nil, "", machine.NewError(machine.ErrorCapabilityMissing, "Selected remote Target has no authenticated live runtime binding.", "Reconnect the selected Connector; remote operations never run locally.", true)
+		}
+		explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{})
+		return explorer, target.Name, err
 	}
 	provider, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
@@ -295,32 +312,4 @@ func executeRuntimeOperation(ctx context.Context, input machineRuntimeOperateInp
 		Resource:  resource.Ref,
 		Operation: operation,
 	})
-}
-
-func executeHTTPRuntimeOperation(
-	ctx context.Context,
-	operationContext machine.OperationContext,
-	raw json.RawMessage,
-	report machinehttp.ProgressReporter,
-) (any, error) {
-	var input machineRuntimeOperateInput
-	if err := decodeHTTPInput(raw, &input); err != nil {
-		return nil, err
-	}
-	var err error
-	input.Target, err = bindHTTPSelector("target", operationContext.Target, input.Target)
-	if err != nil {
-		return nil, err
-	}
-	input.Environment, err = bindHTTPSelector("environment", operationContext.Environment, input.Environment)
-	if err != nil {
-		return nil, err
-	}
-	reportHTTPProgress(report, "runtime", "Executing bounded Runtime Explorer lifecycle action.", 40)
-	result, err := executeRuntimeOperation(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	reportHTTPProgress(report, "runtime", "Runtime Explorer lifecycle action completed.", 100)
-	return result, nil
 }

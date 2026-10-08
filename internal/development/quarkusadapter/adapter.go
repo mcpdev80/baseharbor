@@ -120,12 +120,16 @@ func (Adapter) Bootstrap(plan development.DevelopmentPlan, component development
 			bindings[a.Name] = struct{}{}
 		}
 	}
+	composeSource, err := development.ComposeWithBindings(compose(), plan, component)
+	if err != nil {
+		return nil, err
+	}
 	return []development.GeneratedFile{
 		{Path: "pom.xml", Content: []byte(renderPom(plan.Application, deps)), Mode: 0o644},
 		{Path: "src/main/java/dev/baseharbor/AppResource.java", Content: []byte(renderJava(bindings)), Mode: 0o644},
 		{Path: "src/main/resources/application.properties", Content: []byte(renderProperties(bindings)), Mode: 0o644},
 		{Path: "Dockerfile", Content: []byte(dockerfile()), Mode: 0o644},
-		{Path: "compose.yaml", Content: []byte(compose()), Mode: 0o644},
+		{Path: "compose.yaml", Content: composeSource, Mode: 0o644},
 		{Path: ".env.example", Content: []byte(envExample(bindings)), Mode: 0o644},
 	}, nil
 }
@@ -155,7 +159,7 @@ func renderPom(app string, deps map[string]string) string {
 			b.WriteString("</dependency>")
 		}
 	}
-	b.WriteString("</dependencies><build><plugins><plugin><groupId>io.quarkus</groupId><artifactId>quarkus-maven-plugin</artifactId><version>3.39.5</version><extensions>true</extensions></plugin></plugins></build></project>\n")
+	b.WriteString("</dependencies><build><plugins><plugin><groupId>io.quarkus</groupId><artifactId>quarkus-maven-plugin</artifactId><version>3.39.5</version><extensions>true</extensions><executions><execution><goals><goal>build</goal><goal>generate-code</goal><goal>generate-code-tests</goal></goals></execution></executions></plugin></plugins></build></project>\n")
 	return b.String()
 }
 

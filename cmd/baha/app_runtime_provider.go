@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	runtimeresolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 )
 
 // runtimeProviderKindForApplication resolves deployment-owned runtime selection.
@@ -24,7 +23,9 @@ func detectRuntimeForApplication(ctx context.Context, resolved resolvedApplicati
 	if err != nil {
 		return nil, err
 	}
-	provider, err := runtimeresolver.RuntimeProvider(ctx, kind)
+	target := resolved.Target
+	target.RuntimeProvider = string(kind)
+	provider, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return nil, err
 	}

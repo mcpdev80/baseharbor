@@ -18,11 +18,27 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 	raw json.RawMessage,
 ) (any, error) {
 	switch operationID {
+	case "control-plane.status":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return inspectControlPlane(withTargetOverride(ctx, operationContext.Target))
+	case "operator.identity":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return inspectOperatorIdentity(withTargetOverride(ctx, operationContext.Target), operationContext.Environment)
 	case "workspace.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return collectMachineWorkspaceList()
 	case "target":
 		return executeHTTPTarget(ctx, operationContext, raw)
 	case "target.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return collectMachineTargetList(ctx)
 	case "app.list":
 		return executeHTTPApplicationList(ctx, operationContext, raw)
@@ -30,7 +46,7 @@ func (e *bahaMachineExecutor) executeHTTPRead(
 		return executeHTTPInspect(ctx, operationContext, raw)
 	case "workspace.resolve", "workspace.status":
 		return executeHTTPWorkspaceRead(ctx, operationID, operationContext, raw)
-	case "runtime.capabilities", "runtime.list", "runtime.inspect":
+	case "runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics":
 		return executeHTTPRuntimeExplorerRead(ctx, operationID, operationContext, raw)
 	case "plan", "status", "doctor", "observe", "evidence":
 		return e.executeHTTPApplicationRead(ctx, operationID, operationContext, raw)
@@ -172,6 +188,9 @@ func (e *bahaMachineExecutor) executeHTTPApplicationRead(ctx context.Context, op
 func executeHTTPProviderRead(ctx context.Context, operationID string, raw json.RawMessage) (any, error) {
 	switch operationID {
 	case "provider.list":
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		return application.ListExternalProviders()
 	case "provider.inspect", "provider.verify":
 		var input machineProviderIDInput
@@ -189,6 +208,9 @@ func executeHTTPProviderRead(ctx context.Context, operationID string, raw json.R
 
 func executeHTTPOrganizationRead(ctx context.Context, operationID string, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {
 	if operationID == "organization.check" {
+		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
+			return nil, err
+		}
 		status, available, err := orgconfig.Check(ctx)
 		if err != nil {
 			return nil, err
@@ -207,7 +229,7 @@ func executeHTTPOrganizationRead(ctx context.Context, operationID string, operat
 	if err != nil {
 		return nil, err
 	}
-	effective, err := orgconfig.ResolveEffective(state, environment)
+	effective, err := orgconfig.ResolveEffective(state, environment, input.Preferences...)
 	if err != nil {
 		return nil, err
 	}
