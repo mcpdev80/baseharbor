@@ -48,6 +48,7 @@ type selfUpdateCheck struct {
 	Relation     string `json:"relation"`
 	Platform     string `json:"platform"`
 	Prerelease   bool   `json:"prerelease"`
+	CoreReconciliation string `json:"core_reconciliation"`
 }
 
 type selfUpdateOptions struct {
@@ -177,7 +178,12 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 			relation = "target-older"
 		}
 	}
+	coreReconciliation := "not_required"
+	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
+		coreReconciliation = "unavailable"
+	}
 	return selfUpdateCheck{
+		CoreReconciliation: coreReconciliation,
 		Installed:    installedNormalized,
 		Channel:      opts.Channel,
 		Target:       target,
@@ -255,6 +261,11 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	fmt.Fprintf(out, "Channel: %s\n", check.Channel)
 	fmt.Fprintf(out, "Available version: %s\n", check.Target)
 	fmt.Fprintf(out, "Platform: %s\n", check.Platform)
+	if check.CoreReconciliation == "unavailable" {
+		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
+	} else {
+		fmt.Fprintln(out, "Core provider upgrade: not required for current installation")
+	}
 	fmt.Fprintf(out, "Release asset: %s\n", check.AssetName)
 	if check.Prerelease {
 		fmt.Fprintln(out, "Release type: prerelease (explicitly selected)")
