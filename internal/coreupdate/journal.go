@@ -20,7 +20,10 @@ type Journal struct {
 
 func JournalKey(d Delta) string {
 	r := d.Installed
-	return r.Installation + "/" + r.Scope + "/" + r.Instance + "/" + string(r.Kind) + "@" + d.Desired.Version + "@" + d.Desired.Digest
+	// JSON array encoding keeps arbitrary component names unambiguous and binds
+	// an already-verified step to the complete desired image identity.
+	key, _ := json.Marshal([7]string{r.Installation, r.Scope, r.Instance, string(r.Kind), d.Desired.Image, d.Desired.Version, d.Desired.Digest})
+	return string(key)
 }
 
 func LoadJournal(path, release string) (Journal, error) {
