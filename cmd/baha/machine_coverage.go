@@ -125,8 +125,8 @@ var cliMachineOperations = map[string]string{
 var cliPresentationCommands = map[string]string{
 	"baha config prompt":     "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
 	"baha app workspace":     "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
-	"baha target activate":   "Emits shell-local selection only; machine clients supply the explicit target argument on each semantic operation.",
-	"baha target deactivate": "Clears shell-local selection only; machine clients omit an explicit target to resolve configured defaults.",
+	"baha target activate":   "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
+	"baha target deactivate": "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
 	"baha":                   "Root help and routing; use semantic operations for product actions.",
 	"baha agent describe":    "Machine registry/discovery itself, rather than a product mutation.",
 	"baha mcp serve":         "Starts the local MCP transport; clients launch it before discovery.",
@@ -144,8 +144,8 @@ var cliPresentationCommands = map[string]string{
 var cliExcludedCommands = map[string]string{
 	"baha app exec":  "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
 	"baha app shell": "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
-	"baha app psql":  "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
-	"baha app redis": "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
+	"baha app sql":  "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
+	"baha app cache": "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app logs":  "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
 	"baha login":     "Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens.",
 	"baha logout":    "Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary.",
