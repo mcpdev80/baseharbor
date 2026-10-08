@@ -6,9 +6,10 @@ Development-Einstellungen bleiben außerhalb des portablen Application Intent.
 
 `baha stack list`, `baha stack show NAME` und `baha stack create` verwalten wiederverwendbare Entwicklungseinstellungen aus Built-in-, Benutzer-, Repository- oder Organisationskatalogen. Ein Stack entscheidet nicht über SQL-/Cache-Provider.
 
-```bash
+```text
 baha stack list
-baha stack show go
+baha stack show NAME
+baha stack create
 ```
 
 ## Developer-Zugriff
@@ -25,14 +26,9 @@ BaseHarbor macht kein automatisches Stash, Reset, Rebase, divergierendes Merge o
 
 In einem Application-Repository mit vorhandenem Git-Remote `origin` und Component `app`:
 
-```bash
-repository_url="$(git remote get-url origin)"
-baha app workspace init --source backend="$repository_url" --component app=backend
-baha app workspace map backend "$PWD"
-baha app workspace show
-baha app workspace resolve -o json
-baha app workspace status
-baha app workspace update --check
+```text
+baha dev credentials
+baha dev domain
 ```
 
 Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleibt lokal. Weitere Komponenten müssen tatsächlich im Application Contract vorhanden sein.
@@ -45,20 +41,24 @@ Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleib
 Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
 
 ```text
-baha stack list
-baha stack show NAME
-baha stack create
-```
-
-```text
-baha dev credentials
-baha dev domain
-```
-
-```text
 baha app workspace status
 baha app workspace update --check
 baha app workspace update
+```
+
+```bash
+repository_url="$(git remote get-url origin)"
+baha app workspace init --source backend="$repository_url" --component app=backend
+baha app workspace map backend "$PWD"
+baha app workspace show
+baha app workspace resolve -o json
+baha app workspace status
+baha app workspace update --check
+```
+
+```bash
+baha stack list
+baha stack show go
 ```
 
 Technische Bezeichner: `orders-api`, `--stack go`, `app new`.
