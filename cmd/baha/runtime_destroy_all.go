@@ -128,7 +128,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	fmt.Fprintln(out, "runtime resources, providers, secrets, control-plane data and local")
 	fmt.Fprintln(out, "BaseHarbor configuration/state from this installation.")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.")
+	fmt.Fprintln(out, "Application source repositories and external application-owned data are preserved.\nBaseHarbor-owned host CA anchors will be removed after confirmation; all unverified anchors remain PRESERVED.")
 	fmt.Fprintf(out, "Targets: %d\n", len(targets))
 	fmt.Fprintf(out, "Registered deployments: %d\n", len(deployments))
 	for _, plan := range plans {
@@ -157,6 +157,12 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
     hostTrustRoot,trustRootErr:=bhruntime.DataDir("")
     if trustRootErr!=nil {return fmt.Errorf("locate host trust ownership before destruction: %w",trustRootErr)}
     hostTrustReport,hostTrustErr:=hosttrust.RemoveOwnedDetailed(parent,hostTrustRoot)
+    untrackedHostCAs,untrackedErr:=hosttrust.UntrackedCandidates(hostTrustRoot)
+    if untrackedErr!=nil {return fmt.Errorf("unable to verify surviving host CA candidates: %w",untrackedErr)}
+    for _,path:=range untrackedHostCAs {
+        fmt.Fprintf(out,"PRESERVED untracked host CA %s (ownership not verified)\n",path)
+        preserved=append(preserved,fullDestroyResult{Status:"PRESERVED",Resource:"host-CA-untracked",Detail:path+" (ownership not verified)"})
+    }
     for _,anchor:=range hostTrustReport.Removed {
         preserved=append(preserved,fullDestroyResult{Status:"REMOVED",Resource:"host-CA",Detail:anchor.Fingerprint+" "+anchor.Path})
     }
