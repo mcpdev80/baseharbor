@@ -12,7 +12,7 @@ func TestJournalDurableTransitionsAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "update.json")
-	d := Delta{Installed: Realization{Kind: SQL, Installation: "core", Scope: "shared", Instance: "sql"}}
+	d := Delta{Installed: Realization{Kind: SQL, Installation: "core", Scope: "shared", Instance: "sql"}, Desired: Desired{Kind: SQL, Version: "18.2", Digest: digestB}}
 	j, err := LoadJournal(path, "0.4.24")
 	if err != nil {
 		t.Fatal(err)
@@ -70,4 +70,14 @@ func TestJournalFailsClosedOnPermissionsAndInvalidState(t *testing.T) {
 	if err := j.Record(path, d, "unsupported"); err == nil {
 		t.Fatal("accepted unknown journal state")
 	}
+}
+
+func TestJournalKeyIncludesDesiredPin(t *testing.T) {
+ a := Delta{Installed: Realization{Kind: SQL, Installation: "c", Scope: "shared", Instance: "db"}, Desired: Desired{Kind: SQL, Version: "18.2", Digest: digestA}}
+ b := a
+ b.Desired.Digest = digestB
+ if JournalKey(a) == JournalKey(b) { t.Fatal("different target digests share update journal step") }
+ b = a
+ b.Desired.Version = "18.3"
+ if JournalKey(a) == JournalKey(b) { t.Fatal("different target versions share update journal step") }
 }
