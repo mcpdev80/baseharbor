@@ -63,10 +63,7 @@ func TestRegistryRejectsMissingSQLAndRecoveryBindings(t *testing.T) {
 	if err == nil {
 		t.Fatal("registry accepted absent runtime")
 	}
-	if !errors.Is(providerupgrade.Wrap(providerupgrade.ErrorDependency, "test", errors.New("missing")), errors.New("missing")) {
-		// ClassOf, not errors.Is against a newly allocated sentinel, is the stable contract.
-		if providerupgrade.ClassOf(providerupgrade.Wrap(providerupgrade.ErrorDependency, "test", errors.New("missing"))) != providerupgrade.ErrorDependency {
-			t.Fatal("error class lost")
-		}
+	if providerupgrade.ClassOf(providerupgrade.Wrap(providerupgrade.ErrorDependency, "test", errors.New("missing"))) != providerupgrade.ErrorDependency {
+		t.Fatal("error class lost")
 	}
 }
