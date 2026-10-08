@@ -37,10 +37,10 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 			}
 		}
 	}
-	if err := hooks.Preflight(ctx,plan);err!=nil {
-        return fmt.Errorf("Core update preflight before recovery: %w",err)
-    }
-    hooks.Preflight=func(context.Context,Plan)error{return nil}
+	if err := hooks.Preflight(ctx, plan); err != nil {
+		return fmt.Errorf("Core update preflight before recovery: %w", err)
+	}
+	hooks.Preflight = func(context.Context, Plan) error { return nil }
 	for _, delta := range plan.Deltas {
 		status := journal.Steps[JournalKey(delta)]
 		if status == "applying" || status == "apply_failed" || status == "verify_failed" {
