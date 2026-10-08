@@ -32,21 +32,29 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 	for i, name := range names {
 		fmt.Fprintf(out, "  %d  %s\n", i+1, name)
 	}
-	fmt.Fprint(out, "Choice (or cancel): ")
-	line, err := bufio.NewReader(appNewInput).ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("read target selection: %w", err)
+	reader := bufio.NewReader(appNewInput)
+	var selected string
+	for {
+		fmt.Fprint(out, "Choice (number, name, or cancel): ")
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil && strings.TrimSpace(line) == "" {
+			return fmt.Errorf("read target selection: %w", readErr)
+		}
+		choice := strings.TrimSpace(line)
+		if strings.EqualFold(choice, "cancel") || strings.EqualFold(choice, "q") {
+			fmt.Fprintln(out, "Cancelled. No changes were made.")
+			return nil
+		}
+		if index, convErr := strconv.Atoi(choice); convErr == nil {
+			if index >= 1 && index <= len(names) { selected = names[index-1] }
+		} else {
+			for _, candidate := range names {
+				if choice == candidate { selected = candidate; break }
+			}
+		}
+		if selected != "" { break }
+		fmt.Fprintln(out, "Invalid selection. Choose a displayed name or number, or cancel.")
 	}
-	choice := strings.TrimSpace(strings.ToLower(line))
-	if choice == "cancel" || choice == "q" {
-		fmt.Fprintln(out, "Cancelled. No changes were made.")
-		return nil
-	}
-	index, err := strconv.Atoi(choice)
-	if err != nil || index < 1 || index > len(names) {
-		return usageError("invalid target choice", "Select a listed number or type cancel.")
-	}
-	selected := names[index-1]
 	// Re-read configuration at submit time: a concurrent operator may have deleted this Target.
 	latest, err := deployment.LoadConfig()
 	if err != nil {
