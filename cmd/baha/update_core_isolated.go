@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
- "github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -64,14 +64,20 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 			if !ok || !manifestAuthorizesIsolatedProvider(m, kind, container.Service) {
 				continue
 			}
-            capabilityKind:=capability.ProviderPostgreSQL
-            if kind==coreupdate.Secrets{capabilityKind=capability.ProviderOpenBao}
-            if kind==coreupdate.Identity{capabilityKind=capability.ProviderKeycloak}
-            placement,placeErr:=application.ResolveProviderPlacement(m,capabilityKind)
-            if placeErr!=nil{return nil,fmt.Errorf("resolve protected isolated provider placement: %w",placeErr)}
-            if placement.Scope!=capability.ScopeApplication || placement.Ownership!=capability.OwnershipBaseHarbor{
-                return nil,fmt.Errorf("runtime service %s/%s conflicts with selected %s provider placement; refuse isolated update",project,container.Service,capabilityKind)
-            }
+			capabilityKind := capability.ProviderPostgreSQL
+			if kind == coreupdate.Secrets {
+				capabilityKind = capability.ProviderOpenBao
+			}
+			if kind == coreupdate.Identity {
+				capabilityKind = capability.ProviderKeycloak
+			}
+			placement, placeErr := application.ResolveProviderPlacement(m, capabilityKind)
+			if placeErr != nil {
+				return nil, fmt.Errorf("resolve protected isolated provider placement: %w", placeErr)
+			}
+			if placement.Scope != capability.ScopeApplication || placement.Ownership != capability.OwnershipBaseHarbor {
+				return nil, fmt.Errorf("runtime service %s/%s conflicts with selected %s provider placement; refuse isolated update", project, container.Service, capabilityKind)
+			}
 			if !container.Running {
 				return nil, fmt.Errorf("registered isolated %s service %s/%s is not running", kind, project, container.Service)
 			}
