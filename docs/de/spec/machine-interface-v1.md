@@ -48,13 +48,13 @@ Jede Maschinenoperation wird unterhalb der Darstellungsschicht durch ein transpo
 Die Entscheidung verknüpft:
 
 ```text
-wirksamer Akteur / Principal
+effective actor/principal
         +
-Operation und Sicherheitsklasse
+operation + safety class
         +
-Application-/Environment-/Target-/Workspace-Kontext
+application/environment/target/workspace context
         ↓
-erlauben / ablehnen
+allow / deny
 ```
 
 In Entwicklungsumgebungen gelten ausdrücklich `trusted-local`-Akteursemantiken. Verwaltete Umgebungen verweigern den Zugriff, wenn die erforderliche authentifizierte Operator-Identität fehlt oder ungültig ist. Die Entscheidung ist secret-sicher und gibt nur stabile Identitäts- und Herkunftsfelder aus, niemals Tokens oder private Zugangsdaten.
