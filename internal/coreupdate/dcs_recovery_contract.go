@@ -52,9 +52,15 @@ func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence
 // No cluster mutation is authorized until the same artifact is both validated
 // and independently checked for restorable content.
 func CaptureAndVerifyDCS(ctx context.Context, adapter DCSRecoveryAdapter, installation, cluster, release string) (DCSRecoveryEvidence, error) {
- if adapter==nil{return DCSRecoveryEvidence{},ErrDCSUnsupported}
- evidence,err:=adapter.Snapshot(ctx)
- if err!=nil{return DCSRecoveryEvidence{},fmt.Errorf("etcd DCS snapshot creation failed: %w",err)}
- if err:=VerifyDCSEvidence(ctx,adapter,evidence,installation,cluster,release);err!=nil{return DCSRecoveryEvidence{},err}
- return evidence,nil
+	if adapter == nil {
+		return DCSRecoveryEvidence{}, ErrDCSUnsupported
+	}
+	evidence, err := adapter.Snapshot(ctx)
+	if err != nil {
+		return DCSRecoveryEvidence{}, fmt.Errorf("etcd DCS snapshot creation failed: %w", err)
+	}
+	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, cluster, release); err != nil {
+		return DCSRecoveryEvidence{}, err
+	}
+	return evidence, nil
 }
