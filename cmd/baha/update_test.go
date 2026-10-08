@@ -286,6 +286,8 @@ func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
 		project + "/openbao-member-1":   {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "sha256:" + strings.Repeat("b", 64)},
 		identityProject + "/keycloak-1": {Reference: "quay.io/keycloak/keycloak:26.8.0", Digest: "sha256:" + strings.Repeat("c", 64)},
 	}
+	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
+	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
 	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
 	if err != nil {
 		t.Fatal(err)
