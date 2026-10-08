@@ -139,7 +139,7 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 		return err
 	}
 	if err := WaitForPatroniQuorum(ctx, gate, candidate, maxLag, 30*time.Second); err != nil {
-		return fmt.Errorf("Patroni leader drift after old primary reconciliation: %w",err)
+		return fmt.Errorf("Patroni leader drift after old primary reconciliation: %w", err)
 	}
 	return gate.Record(ctx, leader, "verified")
 }
