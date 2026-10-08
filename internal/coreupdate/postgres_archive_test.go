@@ -19,6 +19,7 @@ func TestVerifyPostgresBasebackupMarkers(t *testing.T) {
 		{"valid", "18", map[string]string{"PG_VERSION": "18\n", "backup_label": "START WAL LOCATION: 0/1000000\n", "global/pg_control": "control"}, true},
 		{"wrong_major", "18", map[string]string{"PG_VERSION": "17\n", "backup_label": "label"}, false},
 		{"missing_label", "18", map[string]string{"PG_VERSION": "18\n"}, false},
+		{"missing_control", "18", map[string]string{"PG_VERSION": "18\n", "backup_label": "label"}, false},
 		{"tablespaces", "18", map[string]string{"PG_VERSION": "18\n", "backup_label": "label", "tablespace_map": "16384 /data"}, false},
 		{"not_tar", "18", nil, false},
 	}
