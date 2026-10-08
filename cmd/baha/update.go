@@ -222,7 +222,7 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 							coreInspectionError = planErr.Error()
 						} else {
 							corePlan = plan.Deltas
-							coreReconciliation = "planned_read_only"
+							coreReconciliation = "partial_read_only"
 						}
 					}
 				}
@@ -320,8 +320,8 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	if check.CoreInstallationID != "" {
 		fmt.Fprintf(out, "Core installation: %s (phase: %s, ready: %t)\n", check.CoreInstallationID, check.CoreInstallPhase, check.CoreInstallReady)
 	}
-	if check.CoreReconciliation == "planned_read_only" {
-		fmt.Fprintln(out, "Core provider plan (read-only; upgrade not yet available):")
+	if check.CoreReconciliation == "partial_read_only" {
+		fmt.Fprintln(out, "Core shared-provider inventory (read-only; isolated/backing providers not yet fully covered):")
 		for _, delta := range check.CorePlan {
 			fmt.Fprintf(out, "  %s %s %s -> %s (%s)\n", delta.Installed.Kind, delta.Installed.Instance, delta.Installed.Version, delta.Desired.Version, delta.Classification)
 		}
@@ -331,7 +331,7 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	}
 	if check.CoreReconciliation == "unavailable_unpinned" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
-	} else if check.CoreReconciliation == "planned_read_only" {
+	} else if check.CoreReconciliation == "partial_read_only" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable until durable runtime lifecycle is verified")
 	} else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
