@@ -97,7 +97,7 @@ func (m tuiModel) loadStatus() tea.Cmd {
 			if err != nil { return tuiStatusMsg{err:err} }
 			status, err := inspectControlPlane(m.ctx)
 			if err != nil { return tuiStatusMsg{err:err} }
-			return tuiStatusMsg{coreView:fmt.Sprintf("Target: %s\nRuntime: %s\nAccess: %s\n\nControl Plane\n%+v\n",target.Name,target.RuntimeProvider,target.AccessProvider,status)}
+			return tuiStatusMsg{coreView:renderCoreTUIStatus(target.Name,target.RuntimeProvider,target.AccessProvider,targetSelectionOrigin(m.ctx),status)}
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
@@ -429,4 +429,23 @@ func wrapTUIText(text string, width int) string {
 	}
 	lines = append(lines, line)
 	return strings.Join(lines, "\n")
+}
+
+func renderCoreTUIStatus(target,runtime,access,origin string, status controlPlaneReport) string {
+ var b strings.Builder
+ fmt.Fprintf(&b,"Target       %s (%s)\nRuntime      %s\nAccess       %s\nCore state   %s\n",target,origin,runtime,access,status.State)
+ if status.Ready { fmt.Fprintln(&b,"Readiness    READY") } else { fmt.Fprintln(&b,"Readiness    NOT READY") }
+ fmt.Fprintf(&b,"Availability %t\n",status.AvailabilitySatisfied)
+ if status.AvailabilityDetail!="" {fmt.Fprintf(&b,"HA details   %s\n",status.AvailabilityDetail)}
+ fmt.Fprintln(&b,"\nManaged services")
+ if len(status.Running)==0 { fmt.Fprintln(&b,"  No running services reported") }
+ for _,name:=range status.Running {fmt.Fprintf(&b,"  %s\n",name)}
+ fmt.Fprintln(&b,"\nReadiness checks")
+ if len(status.Checks)==0 {fmt.Fprintln(&b,"  Not available")}
+ for _,check:=range status.Checks {
+  state:="FAILED";if check.Ready {state="OK"}
+  fmt.Fprintf(&b,"  %-8s %s\n",state,check.Name)
+ }
+ fmt.Fprintln(&b,"\nHost and remote resource metrics are not available through this status contract.")
+ return b.String()
 }
