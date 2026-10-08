@@ -3,10 +3,10 @@ package coreupdate
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
-"os"
-"path/filepath"
 )
 
 type fakeDCS struct{ valid bool }
@@ -93,24 +93,44 @@ func TestPatroniClusterRejectsAmbiguousPostSwitchoverResume(t *testing.T) {
 	}
 }
 
-func TestStageAndRollPatroniClusterRecoveryBeforeImageMutation(t *testing.T){
- dir:=t.TempDir()
- if err:=os.Chmod(dir,0700);err!=nil{t.Fatal(err)}
- prior:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.1-p2",Image:"spilo:old",Digest:digestA}
- next:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.2-p1",Image:"spilo:new",Digest:digestB}
- path:=filepath.Join(dir,"compose.yaml")
- input:="services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n"
- if err:=os.WriteFile(path,[]byte(input),0600);err!=nil{t.Fatal(err)}
- compose:=HAPostgresComposeCheckpoint{Path:path,Directory:filepath.Join(dir,"compose-backups"),Previous:prior,Desired:next}
- evidence:=DCSRecoveryEvidence{Installation:"core",Cluster:"cluster",Release:"0.4.24",SnapshotID:"s1",SHA256:strings.Repeat("a",64)}
- fake:=&fakeDurableDCS{evidence:evidence}
- gate:=&fakeClusterRoll{resumablePatroniFake:resumablePatroniFake{fakePatroniRoll:fakePatroniRoll{members:[]PatroniMemberState{{Name:"pg1",Primary:true,Healthy:true},{Name:"pg2",Replica:true,Healthy:true},{Name:"pg3",Replica:true,Healthy:true}}},steps:map[string]string{}}}
- if err:=StageAndRollPatroniCluster(context.Background(),gate,nil,DCSCheckpoint{Path:filepath.Join(dir,"dcs.json")},compose,"core","cluster","0.4.24",0);!errors.Is(err,ErrDCSUnsupported){t.Fatalf("missing DCS accepted: %v",err)}
- contents,err:=os.ReadFile(path);if err!=nil{t.Fatal(err)}
- if string(contents)!=input||len(gate.calls)!=1{t.Fatalf("mutated before DCS proof: %s %v",contents,gate.calls)}
- gate.calls=nil
- if err:=StageAndRollPatroniCluster(context.Background(),gate,fake,DCSCheckpoint{Path:filepath.Join(dir,"dcs.json")},compose,"core","cluster","0.4.24",0);err!=nil{t.Fatal(err)}
- contents,err=os.ReadFile(path);if err!=nil{t.Fatal(err)}
- if strings.Count(string(contents),"spilo:new@"+digestB)!=3{t.Fatalf("Spilo image staging failed: %s",contents)}
- if fake.snapshots!=1{t.Fatalf("DCS snapshot must be captured exactly once: %d",fake.snapshots)}
+func TestStageAndRollPatroniClusterRecoveryBeforeImageMutation(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	prior := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "spilo:old", Digest: digestA}
+	next := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.2-p1", Image: "spilo:new", Digest: digestB}
+	path := filepath.Join(dir, "compose.yaml")
+	input := "services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n"
+	if err := os.WriteFile(path, []byte(input), 0600); err != nil {
+		t.Fatal(err)
+	}
+	compose := HAPostgresComposeCheckpoint{Path: path, Directory: filepath.Join(dir, "compose-backups"), Previous: prior, Desired: next}
+	evidence := DCSRecoveryEvidence{Installation: "core", Cluster: "cluster", Release: "0.4.24", SnapshotID: "s1", SHA256: strings.Repeat("a", 64)}
+	fake := &fakeDurableDCS{evidence: evidence}
+	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{{Name: "pg1", Primary: true, Healthy: true}, {Name: "pg2", Replica: true, Healthy: true}, {Name: "pg3", Replica: true, Healthy: true}}}, steps: map[string]string{}}}
+	if err := StageAndRollPatroniCluster(context.Background(), gate, nil, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "cluster", "0.4.24", 0); !errors.Is(err, ErrDCSUnsupported) {
+		t.Fatalf("missing DCS accepted: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != input || len(gate.calls) != 1 {
+		t.Fatalf("mutated before DCS proof: %s %v", contents, gate.calls)
+	}
+	gate.calls = nil
+	if err := StageAndRollPatroniCluster(context.Background(), gate, fake, DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}, compose, "core", "cluster", "0.4.24", 0); err != nil {
+		t.Fatal(err)
+	}
+	contents, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(contents), "spilo:new@"+digestB) != 3 {
+		t.Fatalf("Spilo image staging failed: %s", contents)
+	}
+	if fake.snapshots != 1 {
+		t.Fatalf("DCS snapshot must be captured exactly once: %d", fake.snapshots)
+	}
 }
