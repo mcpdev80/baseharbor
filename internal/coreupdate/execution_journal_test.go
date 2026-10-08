@@ -23,7 +23,7 @@ func TestExecuteJournaledRecoversFailedProvider(t *testing.T) {
 	hooks := Hooks{
 		Preflight:     func(context.Context, Plan) error { return nil },
 		RecoveryPoint: func(context.Context, Delta) error { return nil },
-        Recover: func(context.Context,Delta,string)error{return nil},
+		Recover:       func(context.Context, Delta, string) error { return nil },
 		Apply: func(context.Context, Delta) error {
 			calls++
 			if fail {
@@ -132,7 +132,7 @@ func TestExecuteJournaledReceiptFailureNeverCommitsVerified(t *testing.T) {
 	hooks := Hooks{
 		Preflight:     func(context.Context, Plan) error { return nil },
 		RecoveryPoint: func(context.Context, Delta) error { return nil },
-        Recover: func(context.Context,Delta,string)error{return nil},
+		Recover:       func(context.Context, Delta, string) error { return nil },
 		Apply:         func(context.Context, Delta) error { applied++; return nil },
 		Verify:        func(context.Context, Delta) error { return nil },
 		Record: func(_ context.Context, _ Delta, state string) error {
@@ -195,23 +195,33 @@ func TestInterruptedJournalCannotReplayWithoutRecoveryHook(t *testing.T) {
 }
 
 func TestInterruptedJournalRecoveryErrorPreventsReapply(t *testing.T) {
- root:=t.TempDir()
- if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
- path:=filepath.Join(root,"journal.json")
- plan,err:=Build("0.4.24",[]Realization{{Kind:Secrets,Installation:"a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Digest:digestA,Version:"2.7.0"}},expected())
- if err!=nil{t.Fatal(err)}
- j:=Journal{Release:"0.4.24"}
- if err:=j.Record(path,plan.Deltas[0],"verify_failed");err!=nil{t.Fatal(err)}
- applied:=false
- recovered:=false
- hooks:=Hooks{
-  Preflight:func(context.Context,Plan)error{return nil},
-  RecoveryPoint:func(context.Context,Delta)error{return nil},
-  Recover:func(context.Context,Delta,string)error{recovered=true;return errors.New("restore unverified")},
-  Apply:func(context.Context,Delta)error{applied=true;return nil},
-  Verify:func(context.Context,Delta)error{return nil},
-  Record:func(context.Context,Delta,string)error{return nil},
- }
- if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err==nil {t.Fatal("missing recovery error")}
- if !recovered || applied {t.Fatal("unsafe apply after failed recovery")}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "journal.json")
+	plan, err := Build("0.4.24", []Realization{{Kind: Secrets, Installation: "a", Scope: "shared", Instance: "vault", Owner: "baseharbor", Image: "openbao", Digest: digestA, Version: "2.7.0"}}, expected())
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := Journal{Release: "0.4.24"}
+	if err := j.Record(path, plan.Deltas[0], "verify_failed"); err != nil {
+		t.Fatal(err)
+	}
+	applied := false
+	recovered := false
+	hooks := Hooks{
+		Preflight:     func(context.Context, Plan) error { return nil },
+		RecoveryPoint: func(context.Context, Delta) error { return nil },
+		Recover:       func(context.Context, Delta, string) error { recovered = true; return errors.New("restore unverified") },
+		Apply:         func(context.Context, Delta) error { applied = true; return nil },
+		Verify:        func(context.Context, Delta) error { return nil },
+		Record:        func(context.Context, Delta, string) error { return nil },
+	}
+	if err := ExecuteJournaled(context.Background(), plan, path, hooks); err == nil {
+		t.Fatal("missing recovery error")
+	}
+	if !recovered || applied {
+		t.Fatal("unsafe apply after failed recovery")
+	}
 }
