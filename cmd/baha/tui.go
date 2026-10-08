@@ -101,7 +101,7 @@ func (m tuiModel) loadStatus() tea.Cmd {
 			if err != nil {
 				return tuiStatusMsg{err: err}
 			}
-			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderTargetApplicationInventory(target.Name)}
+			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderTargetApplicationInventory(target.Name) + "\n" + renderTargetRuntimeInventory(m.ctx, target.Name)}
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
