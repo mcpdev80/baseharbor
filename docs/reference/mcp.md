@@ -62,6 +62,11 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.secret.set` | `mutating` | false | false |
 | `baseharbor.secret.delete` | `destructive` | false | true |
 | `baseharbor.secret.tls-set` | `mutating` | false | false |
+| `baseharbor.node.add` | `mutating` | false | false |
+| `baseharbor.node.connect` | `mutating` | false | true |
+| `baseharbor.node.list` | `read_only` | false | false |
+| `baseharbor.node.status` | `read_only` | false | false |
+| `baseharbor.node.disconnect` | `destructive` | false | true |
 | `baseharbor.target.create` | `mutating` | false | false |
 | `baseharbor.target.delete` | `mutating` | false | false |
 | `baseharbor.stack.list` | `read_only` | false | false |
