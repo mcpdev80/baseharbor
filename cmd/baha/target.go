@@ -248,7 +248,7 @@ func targetCommand() *cli.Command {
 						if name == cfg.DefaultTarget {
 							marks = append(marks, "default")
 						}
-						if persisted, _ := readPersistedTarget(); name == activated || (activated == "" && name == persisted) {
+						if selectionErr == nil && name == selection && (activated != "" || targetOverrideFromContext(ctx) != "" || persistedTargetIsActive()) {
 							marks = append(marks, "active")
 						}
 						if name == effectiveName {
