@@ -19,6 +19,7 @@ type tuiDoctorResult = applicationDoctorResult
 type tuiApplicationStatusResult = applicationStatusResult
 
 type tuiStatusMsg struct {
+	coreView string
 	result application.StatusResult
 	tls    *applicationTLSObservation
 	doctor tuiDoctorResult
@@ -38,6 +39,8 @@ type tuiModel struct {
 	height        int
 	reducedMotion bool
 	noColor       bool
+	coreView string
+	coreMode bool
 }
 
 func tuiCommand(store application.Store) *cli.Command {
@@ -64,14 +67,13 @@ func tuiCommand(store application.Store) *cli.Command {
 			if !cli.IsTerminal(out) || !readerIsTerminal(os.Stdin) {
 				return usageError("TUI requires an interactive terminal", "Use 'baha status' or 'baha status -o json' when piping or running in CI.")
 			}
-			if !inApplicationRepository() {
-				return usageError("TUI currently requires an application repository", "Run inside a repository containing baseharbor.yaml.")
-			}
+			
 
 			model := tuiModel{
 				ctx:           ctx,
 				store:         store,
 				loading:       true,
+				coreMode: !inApplicationRepository(),
 				reducedMotion: opts.ReducedMotion,
 				noColor:       opts.NoColor || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 			}
@@ -90,6 +92,13 @@ func (m tuiModel) Init() tea.Cmd {
 
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
+		if m.coreMode {
+			target, err := effectiveTarget(m.ctx)
+			if err != nil { return tuiStatusMsg{err:err} }
+			status, err := inspectControlPlane(m.ctx)
+			if err != nil { return tuiStatusMsg{err:err} }
+			return tuiStatusMsg{coreView:fmt.Sprintf("Target: %s\nRuntime: %s\nAccess: %s\n\nControl Plane\n%+v\n",target.Name,target.RuntimeProvider,target.AccessProvider,status)}
+		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
 			return tuiStatusMsg{result: status.StatusResult, tls: status.TLS, err: err}
@@ -119,6 +128,7 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tuiStatusMsg:
 		m.loading = false
+		m.coreView = msg.coreView
 		m.result = msg.result
 		m.tls = msg.tls
 		m.doctor = msg.doctor
@@ -187,6 +197,8 @@ func (m tuiModel) View() tea.View {
 		b.WriteString("  ")
 		b.WriteString(wrapTUIText(m.err.Error(), contentWidth-8))
 		b.WriteString("\n\nNext:\n  baha doctor --verbose\n")
+	case m.coreMode:
+		b.WriteString(wrapTUIBlock(m.coreView, contentWidth))
 	case m.tab == 0:
 		b.WriteString(renderTUISummary(m.result, contentWidth, success, failure))
 	case m.tab == 1:
