@@ -487,6 +487,15 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		}
 		v := ref[pos+1:]
 		if item.kind == coreupdate.SQL && state.Spec.HA {
+            // Never accept a single HA member as evidence for the entire data layer.
+            for ordinal := 2; ordinal <= 3; ordinal++ {
+                peer := fmt.Sprintf("postgres-member-%d", ordinal)
+                peerIdentity, peerErr := runtimeProvider.ProjectServiceImageIdentity(ctx, item.project, peer)
+                if peerErr != nil { return coreupdate.Plan{}, fmt.Errorf("inspect required HA PostgreSQL peer %s: %w", peer, peerErr) }
+                if peerIdentity.Reference != id.Reference || peerIdentity.Digest != id.Digest {
+                    return coreupdate.Plan{}, fmt.Errorf("HA PostgreSQL peer %s image identity disagrees with primary realization", peer)
+                }
+            }
 			var pin *coreupdate.BackingPin
 			for i := range catalog.Backing {
 				if catalog.Backing[i].Role == "keycloak-ha-postgresql" {
