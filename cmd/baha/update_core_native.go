@@ -121,3 +121,25 @@ func reconcileNativeCoreProviders(ctx context.Context,release string)error{
  if err:=coreupdate.RunNativeProviderUpdates(ctx,plan,filepath.Join(journalDir,"journal.json"),ops,assets);err!=nil{return err}
  return verifyCoreBinaryOnly(ctx,release)
 }
+
+func preflightNativeCoreUpgrade(ctx context.Context,release string)error{
+ target,err:=effectiveTarget(ctx);if err!=nil{return err}
+ root,err:=targetRuntimeStateRoot(target);if err!=nil{return err}
+ state,err:=coreinstallation.Load(root);if err!=nil{return err}
+ if !state.Ready||state.ID==""||state.Spec.Target!=target.Name||state.Spec.Runtime!=target.RuntimeProvider{
+  return errors.New("Core installation not owned and ready for provider upgrade")
+ }
+ if state.Spec.HA{return errors.New("Core HA upgrade requires a validated rolling Spilo/Patroni migration; no mutation attempted")}
+ records,err:=deployment.ListDeployments(target.Name);if err!=nil{return err}
+ if len(records)>0{return errors.New("Core provider upgrade blocked until registered application-scoped provider migrations can be verified")}
+ runtime,err:=detectRuntimeForTarget(ctx,target);if err!=nil{return err}
+ plan,err:=inspectCoreRuntimePlan(ctx,release,state,runtime);if err!=nil{return err}
+ if len(plan.Deltas)!=4{return errors.New("incomplete SQL/Secrets/Identity/backing inventory")}
+ for _,d:=range plan.Deltas{
+  switch d.Classification{
+  case coreupdate.NoChange,coreupdate.BackupRequired,coreupdate.MigrationRequired:
+  default:return fmt.Errorf("Core provider %s requires unsupported migration: %s",d.Installed.Instance,d.Reason)
+  }
+ }
+ return nil
+}
