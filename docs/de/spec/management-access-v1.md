@@ -24,10 +24,10 @@ BaseHarbor führt keinen proprietären Authentifizierungsproxy ein, nur um eine 
 Das providerneutrale Profil lautet:
 
 ```text
-admin
-edit
-view
-audit
+native OIDC/OAuth2
+    -> existing standards-based auth adapter/proxy
+    -> provider-native credential
+    -> unsupported
 ```
 
 Die Rollen gelten nur für BaseHarbor-verwaltete Infrastruktur und Management-Oberflächen. Provider-Adapter ordnen sie nach Möglichkeit nativen Rollen und Richtlinien zu. Jede Zuordnung ist `exact`, `limited` oder `unsupported`. Es darf keine feinere Berechtigung zugesichert werden, als der Provider tatsächlich erzwingt. Application-Benutzer, Gruppen, Rollen und Rechte bleiben bei Application beziehungsweise Identity-Provider.
@@ -52,3 +52,13 @@ Die Rollen gelten nur für BaseHarbor-verwaltete Infrastruktur und Management-Ob
 Jede ausgelieferte Management-Oberfläche dokumentiert und überprüft HTTPS/Trust, Authentifizierungsklasse, Identity-Anbindung oder Fallback, Rollenzuordnung, Herkunft und Eigentümerschaft von Zugangsdaten, Rotation/Widerruf, secret-sichere Diagnose und gegebenenfalls HA-Kontinuität.
 
 Maschinenlesbare Ergebnisse müssen die gleiche wirksame Authentifizierungsklasse und Rollenzuordnung wie CLI und Statusanzeigen liefern.
+
+
+## Weitere technische Beispiele
+
+```text
+admin
+edit
+view
+audit
+```
