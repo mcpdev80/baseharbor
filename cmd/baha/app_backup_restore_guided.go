@@ -63,7 +63,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		m := resolved.Manifest
 		if outputPath == "" {
 			outputPath, err = defaultGuidedBackupPath(m.Name, m.Environment, time.Now())
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 		}
 		files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 		if err != nil {
@@ -568,20 +570,30 @@ func withInMemoryPasswordFile(password []byte, fn func(string) error) error {
 	return fn(path)
 }
 
-func defaultGuidedBackupPath(app, environment string, now time.Time) (string,error) {
- base,err:=os.UserConfigDir()
- if err!=nil{return "",fmt.Errorf("resolve user backup directory: %w",err)}
- dir:=filepath.Join(filepath.Dir(base),"baseharbor-backups")
- if xdg:=strings.TrimSpace(os.Getenv("XDG_DATA_HOME"));xdg!="" {
-  if !filepath.IsAbs(xdg){return "",errors.New("XDG_DATA_HOME must be absolute for safe backup output")}
-  dir=filepath.Join(xdg,"baseharbor","backups")
- }else if home,err:=os.UserHomeDir();err==nil&&home!=""{
-  dir=filepath.Join(home,".local","share","baseharbor","backups")
- }
- if err:=os.MkdirAll(dir,0700);err!=nil{return "",fmt.Errorf("create backup directory: %w",err)}
- info,err:=os.Lstat(dir)
- if err!=nil{return "",err}
- if !info.IsDir()|| info.Mode().Perm()&0077!=0{return "",errors.New("backup directory must be owner-only (0700)")}
- filename:=fmt.Sprintf("%s-%s-%s.bhbackup",app,environment,now.UTC().Format("20060102T150405Z"))
- return filepath.Join(dir,filename),nil
+func defaultGuidedBackupPath(app, environment string, now time.Time) (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user backup directory: %w", err)
+	}
+	dir := filepath.Join(filepath.Dir(base), "baseharbor-backups")
+	if xdg := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); xdg != "" {
+		if !filepath.IsAbs(xdg) {
+			return "", errors.New("XDG_DATA_HOME must be absolute for safe backup output")
+		}
+		dir = filepath.Join(xdg, "baseharbor", "backups")
+	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dir = filepath.Join(home, ".local", "share", "baseharbor", "backups")
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("create backup directory: %w", err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("backup directory must be owner-only (0700)")
+	}
+	filename := fmt.Sprintf("%s-%s-%s.bhbackup", app, environment, now.UTC().Format("20060102T150405Z"))
+	return filepath.Join(dir, filename), nil
 }
