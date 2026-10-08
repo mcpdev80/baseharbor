@@ -52,3 +52,17 @@ func TestExternalClientRejectsInsecureEndpoints(t *testing.T) {
 		t.Fatal("URL credentials accepted")
 	}
 }
+
+func TestAuthenticatedEndpointStatusAttestation(t *testing.T) {
+ root:=t.TempDir()
+ binary:=filepath.Join(root,"etcdctl")
+ script:="#!/bin/sh\n" +
+  "printf '%s' '[{\"Endpoint\":\"https://etcd-1:2379\",\"Status\":{\"header\":{\"cluster_id\":12345,\"revision\":42},\"version\":\"3.6.0\"}}]'\n"
+ if err:=os.WriteFile(binary,[]byte(script),0700);err!=nil{t.Fatal(err)}
+ source:=EtcdctlSource{Etcdctl:binary,Endpoints:[]string{"https://etcd-1:2379"},Identity:Identity{Core:"core-123",Target:"target-123",Cluster:"12345"}}
+ info,err:=source.attestEndpointStatus(context.Background())
+ if err!=nil{t.Fatal(err)}
+ if info.ClusterID!="12345" || info.Revision!=42 || info.Version!="3.6.0"{t.Fatalf("unexpected attestation: %+v",info)}
+ source.Identity.Cluster="foreign"
+ if _,err:=source.attestEndpointStatus(context.Background());err==nil{t.Fatal("foreign cluster accepted")}
+}
