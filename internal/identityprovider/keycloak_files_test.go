@@ -1,6 +1,8 @@
 package identityprovider
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -71,4 +73,15 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 			t.Fatalf("Keycloak HA compose contains unescaped shell interpolation %q:\n%s", forbidden, got)
 		}
 	}
+}
+
+func TestKeycloakHAPostgresHAProxyUsesRuntimeDNS(t *testing.T) {
+ dir:=t.TempDir()
+ if err:=ensureKeycloakPostgresHA(dir);err!=nil{t.Fatal(err)}
+ config,err:=os.ReadFile(filepath.Join(dir,"db-ha","haproxy.cfg"))
+ if err!=nil{t.Fatal(err)}
+ got:=string(config)
+ for _,required:=range []string{"resolvers container_dns","parse-resolv-conf","resolvers container_dns resolve-prefer ipv4 init-addr last,none"} {
+  if !strings.Contains(got,required) {t.Fatalf("HAProxy must refresh DNS after runtime recovery: missing %q",required)}
+ }
 }
