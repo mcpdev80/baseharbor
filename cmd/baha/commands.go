@@ -68,10 +68,28 @@ func rootCommand() *cli.Command {
 	root.Children = []*cli.Command{
 		{
 			Name:    "init",
-			Summary: "Show the current BaseHarbor initialization paths",
-			Usage:   "baha init",
-			Long:    "Compatibility entrypoint. It no longer writes baseharbor.yaml. Use 'baha app init' for portable repository application intent and 'baha target create' for deployment target/runtime selection.",
-			Run:     noArgs("baha init", initConfig),
+			Summary: "Initialize or adopt the application in the current repository",
+			Usage:   "baha init [--quick] [--json] [--agents] [--input NAME=VALUE]... [--yes]",
+			Long:    "Canonical application initialization. Reuses the same repository inspection, guided input resolution and Core bootstrap as application initialization; explicit flags remain available for non-interactive use.",
+			Run:     appInitWithInputResolverCommand(store).Run,
+		},
+		{
+			Name:    "inspect",
+			Summary: "Inspect the current repository and its application requirements",
+			Usage:   "baha inspect [options]",
+			Run:     appInspectCommand().Run,
+		},
+		{
+			Name:    "backup",
+			Summary: "Back up the current application through its managed lifecycle",
+			Usage:   "baha backup [options]",
+			Run:     appGuidedBackupCommand(store).Run,
+		},
+		{
+			Name:    "restore",
+			Summary: "Restore an application through the ownership-safe managed lifecycle",
+			Usage:   "baha restore [options]",
+			Run:     appGuidedRestoreCommandWithRecoveryMetadata(store).Run,
 		},
 		{
 			Name:    "up",
