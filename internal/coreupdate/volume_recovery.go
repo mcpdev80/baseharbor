@@ -62,10 +62,9 @@ func (v VolumeRecovery) Capture(ctx context.Context, delta Delta) error {
 		return err
 	}
 	if _, err := os.Lstat(path); err == nil {
-		return fmt.Errorf("recovery point already exists for %s", delta.Installed.Instance)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+        if err := v.verifyArchive(delta); err != nil {return fmt.Errorf("existing recovery point is unsafe: %w",err)}
+        return nil
+    } else if !errors.Is(err, os.ErrNotExist) {return err}
 	data, err := v.Runtime.ExportOwnedVolume(ctx, v.Project, v.Volume)
 	if err != nil {
 		return fmt.Errorf("export owned volume: %w", err)
@@ -119,26 +118,38 @@ func (v VolumeRecovery) Recover(ctx context.Context, delta Delta) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range []string{path, path + ".sha256"} {
+	data, err := v.readVerifiedArchive(delta)
+    if err != nil {return err}
+	return v.Runtime.RestoreOwnedVolume(ctx, v.Project, v.Volume, data)
+}
+
+func (v VolumeRecovery) verifyArchive(delta Delta)error{
+ _,err:=v.readVerifiedArchive(delta)
+ return err
+}
+func (v VolumeRecovery) readVerifiedArchive(delta Delta)([]byte,error){
+ path,err:=v.archivePath(delta);if err!=nil{return nil,err}
+for _, p := range []string{path, path + ".sha256"} {
 		st, err := os.Lstat(p)
 		if err != nil {
-			return err
+			return nil,err
 		}
 		if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
-			return fmt.Errorf("unsafe recovery artifact %s", p)
+			return nil,fmt.Errorf("unsafe recovery artifact %s", p)
 		}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil,err
 	}
 	expected, err := os.ReadFile(path + ".sha256")
 	if err != nil {
-		return err
+		return nil,err
 	}
 	checksum := sha256.Sum256(data)
 	if len(data) == 0 || strings.TrimSpace(string(expected)) != hex.EncodeToString(checksum[:]) {
-		return errors.New("provider recovery archive checksum mismatch")
+		return nil,errors.New("provider recovery archive checksum mismatch")
 	}
-	return v.Runtime.RestoreOwnedVolume(ctx, v.Project, v.Volume, data)
+
+ return data,nil
 }
