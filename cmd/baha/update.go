@@ -323,7 +323,9 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
     if check.CoreInspectionError != "" {fmt.Fprintf(out,"Core inventory unavailable: %s\n",check.CoreInspectionError)}
     if check.CoreReconciliation == "unavailable_unpinned" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
-	} else if check.CoreReconciliation == "unavailable" {
+	} else if check.CoreReconciliation == "planned_read_only" {
+        fmt.Fprintln(out,"Core provider upgrade: unavailable until durable runtime lifecycle is verified")
+    } else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
 	} else {
 		fmt.Fprintln(out, "Core provider upgrade: not required for current installation")
