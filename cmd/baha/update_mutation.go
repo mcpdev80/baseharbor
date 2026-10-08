@@ -31,9 +31,12 @@ var selfUpdateExecutable = os.Executable
 
 func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpdateOptions, out, errOut io.Writer) error {
 	if check.Relation == "up-to-date" {
-		fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
-		return nil
-	}
+        if check.CoreReconciliation != "not_required" {
+            return errors.New("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled; inspect 'baha update --check' before retrying")
+        }
+        fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
+        return nil
+    }
 	if check.Relation == "target-older" {
 		return errors.New("refusing to install an older BaseHarbor release through self-update")
 	}
