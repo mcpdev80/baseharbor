@@ -490,10 +490,14 @@ func renderConfiguredTargets() string {
 }
 
 func renderTargetApplicationInventory(targetName string) string {
- records,warnings,err:=deployment.ListDeploymentsForDisplay(targetName)
- if err!=nil {return "Applications\n  Inventory unavailable: "+err.Error()+"\n"}
- var b strings.Builder
- fmt.Fprintf(&b,"Applications\n  %d registered deployment(s)\n",len(records))
- for _,warning:=range warnings {fmt.Fprintf(&b,"  WARN %v\n",warning)}
- return b.String()
+	records, warnings, err := deployment.ListDeploymentsForDisplay(targetName)
+	if err != nil {
+		return "Applications\n  Inventory unavailable: " + err.Error() + "\n"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Applications\n  %d registered deployment(s)\n", len(records))
+	for _, warning := range warnings {
+		fmt.Fprintf(&b, "  WARN %v\n", warning)
+	}
+	return b.String()
 }
