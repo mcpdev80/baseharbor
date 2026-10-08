@@ -134,6 +134,7 @@ var cliPresentationCommands = map[string]string{
 	"baha shell-init":        "Shell-local helpers; explicit Target selection remains product functionality.",
 	"baha prompt":            "Displays shell-local context; target inspection is the semantic equivalent.",
 	"baha version":           "Executable build identity is provided by agent describe and MCP initialization.",
+	"baha open":             "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
 	"baha new":              "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
 	"baha tui":               "Human interactive presentation; its product actions require individual semantic coverage.",
 }
