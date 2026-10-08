@@ -46,9 +46,18 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil || index < 1 || index > len(names) {
 		return usageError("invalid target choice", "Select a listed number or type cancel.")
 	}
-	if err := writePersistedTarget(names[index-1]); err != nil {
+	selected := names[index-1]
+	// Re-read configuration at submit time: a concurrent operator may have deleted this Target.
+	latest, err := deployment.LoadConfig()
+	if err != nil { return err }
+	if selected != "local" {
+		if _, ok := latest.Targets[selected]; !ok {
+			return usageError("selected target is no longer configured", "Run baha target activate again to refresh the available Targets.")
+		}
+	}
+	if err := writePersistedTarget(selected); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Active target: %s\n", names[index-1])
+	fmt.Fprintf(out, "Active target: %s\n", selected)
 	return nil
 }
