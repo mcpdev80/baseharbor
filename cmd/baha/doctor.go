@@ -82,7 +82,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		if hasAutoFixableDoctorFinding(findings) {
 			fmt.Fprintln(out, "  baha doctor --fix")
 		}
-		fmt.Fprintln(out, "  baha doctor --verbose")
+		fmt.Fprintln(out, "  baha doctor --json")
 		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
 		return cli.Presented(errors.New("one or more checks failed"))
 	}
@@ -120,7 +120,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	renderDoctorFindings(term, remaining)
 	fmt.Fprintln(out, "\nNext:")
 	fmt.Fprintln(out, "  Resolve the remaining problems above.")
-	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintln(out, "  baha doctor --json")
 	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
 	return cli.Presented(errors.New("one or more checks still require action"))
 }
