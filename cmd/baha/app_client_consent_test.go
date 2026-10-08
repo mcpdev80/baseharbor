@@ -5,9 +5,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"time"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClientConsentFailsClosedWithoutTerminal(t *testing.T) {
@@ -61,20 +61,30 @@ func TestClientConsentRememberedOnlyForExactScope(t *testing.T) {
 }
 
 func TestClientConsentRejectsForgedLongExpiry(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- ctx:=context.Background()
- if err:=requireManagedClientConsent(ctx,strings.NewReader("yes\n"),&bytes.Buffer{},"local","webshop","dev","postgres","default","host-psql");err!=nil{t.Fatal(err)}
- base,err:=targetSelectionPath()
- if err!=nil{t.Fatal(err)}
- files,err:=filepath.Glob(filepath.Join(filepath.Dir(base),"client-consent","*"))
- if err!=nil||len(files)!=1{t.Fatalf("consent files %v: %v",files,err)}
- future:=time.Now().Add(365*24*time.Hour).UTC().Format(time.RFC3339)+"\n"
- if err:=os.WriteFile(files[0],[]byte(future),0600);err!=nil{t.Fatal(err)}
- read,write,err:=os.Pipe()
- if err!=nil{t.Fatal(err)}
- defer read.Close()
- write.Close()
- if err:=requireManagedClientConsent(ctx,read,&bytes.Buffer{},"local","webshop","dev","postgres","default","host-psql");err==nil{
-  t.Fatal("forged overlong consent must not grant access")
- }
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	ctx := context.Background()
+	if err := requireManagedClientConsent(ctx, strings.NewReader("yes\n"), &bytes.Buffer{}, "local", "webshop", "dev", "postgres", "default", "host-psql"); err != nil {
+		t.Fatal(err)
+	}
+	base, err := targetSelectionPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob(filepath.Join(filepath.Dir(base), "client-consent", "*"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("consent files %v: %v", files, err)
+	}
+	future := time.Now().Add(365*24*time.Hour).UTC().Format(time.RFC3339) + "\n"
+	if err := os.WriteFile(files[0], []byte(future), 0600); err != nil {
+		t.Fatal(err)
+	}
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	write.Close()
+	if err := requireManagedClientConsent(ctx, read, &bytes.Buffer{}, "local", "webshop", "dev", "postgres", "default", "host-psql"); err == nil {
+		t.Fatal("forged overlong consent must not grant access")
+	}
 }
