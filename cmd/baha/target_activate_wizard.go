@@ -46,13 +46,20 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 			return nil
 		}
 		if index, convErr := strconv.Atoi(choice); convErr == nil {
-			if index >= 1 && index <= len(names) { selected = names[index-1] }
+			if index >= 1 && index <= len(names) {
+				selected = names[index-1]
+			}
 		} else {
 			for _, candidate := range names {
-				if choice == candidate { selected = candidate; break }
+				if choice == candidate {
+					selected = candidate
+					break
+				}
 			}
 		}
-		if selected != "" { break }
+		if selected != "" {
+			break
+		}
 		fmt.Fprintln(out, "Invalid selection. Choose a displayed name or number, or cancel.")
 	}
 	// Re-read configuration at submit time: a concurrent operator may have deleted this Target.
