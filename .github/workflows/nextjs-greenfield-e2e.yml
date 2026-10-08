@@ -1,0 +1,46 @@
+name: "P0 Next.js generated runtime E2E"
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "internal/development/nextjsadapter/**"
+      - ".github/workflows/nextjs-greenfield-e2e.yml"
+permissions:
+  contents: read
+jobs:
+  nextjs-docker:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 25
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Regression test generated port agreement
+        run: go test ./internal/development/nextjsadapter ./internal/development -count=1
+      - name: Generate a real Next.js application
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nextjs-844"
+          go run ./cmd/baha app new nexty --directory "$RUNNER_TEMP/nextjs-844" --stack nextjs --http
+      - name: Docker build, start, HTTP 200 and destroy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/nextjs-844/nexty"
+          export COMPOSE_PROJECT_NAME="bh844-${GITHUB_RUN_ID}"
+          cleanup() {
+            docker compose down --remove-orphans --volumes || true
+          }
+          trap cleanup EXIT
+          docker compose up --build --detach --wait
+          curl --fail --silent --show-error --max-time 15 http://127.0.0.1:8080/healthz
+          code="$(curl --silent --output /tmp/nextjs844.html --write-out '%{http_code}' --max-time 15 http://127.0.0.1:8080/)"
+          test "$code" = 200
+          grep -q 'BaseHarbor Next.js application' /tmp/nextjs844.html
+          docker compose down --remove-orphans --volumes
+          test -z "$(docker compose ps --all --quiet)"
+          trap - EXIT
