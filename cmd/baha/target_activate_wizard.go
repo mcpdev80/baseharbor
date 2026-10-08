@@ -45,18 +45,7 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 			fmt.Fprintln(out, "Cancelled. No changes were made.")
 			return nil
 		}
-		if index, convErr := strconv.Atoi(choice); convErr == nil {
-			if index >= 1 && index <= len(names) {
-				selected = names[index-1]
-			}
-		} else {
-			for _, candidate := range names {
-				if choice == candidate {
-					selected = candidate
-					break
-				}
-			}
-		}
+		selected, _ = resolveTargetWizardChoice(names, choice)
 		if selected != "" {
 			break
 		}
@@ -77,4 +66,13 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 	}
 	fmt.Fprintf(out, "Active target: %s\n", selected)
 	return nil
+}
+
+func resolveTargetWizardChoice(names []string, choice string) (string, bool) {
+ if index,err:=strconv.Atoi(choice);err==nil{
+  if index>=1 && index<=len(names){return names[index-1],true}
+  return "",false
+ }
+ for _,name:=range names {if name==choice{return name,true}}
+ return "",false
 }
