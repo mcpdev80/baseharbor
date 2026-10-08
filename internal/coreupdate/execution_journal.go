@@ -35,12 +35,12 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 		remaining.Deltas = append(remaining.Deltas, delta)
 	}
 	hooks.Record = func(ctx context.Context, delta Delta, state string) error {
-        // Publish to the external receipt projection before marking verified on disk.
-        // If publication fails, the journal remains replayable on restart.
-        if err := originalRecord(ctx, delta, state); err != nil {
-            return err
-        }
-        return journal.Record(journalPath, delta, state)
+		// Publish to the external receipt projection before marking verified on disk.
+		// If publication fails, the journal remains replayable on restart.
+		if err := originalRecord(ctx, delta, state); err != nil {
+			return err
+		}
+		return journal.Record(journalPath, delta, state)
 	}
 	// Execute replays incomplete mutations, but skips no provider implicitly.
 	return Execute(ctx, remaining, hooks)
