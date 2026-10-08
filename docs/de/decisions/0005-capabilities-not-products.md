@@ -152,3 +152,6 @@ Manifest v1 aus v0.3.0 benennt noch PostgreSQL-/Redis-/Valkey-orientierte Dienst
 v0.3 ergänzt deploymentspezifisches Verhalten wie öffentliche FQDN-/TLS-Zustände, BYOC-Zertifikate, Application-eigene HTTP-/TLS-Readiness und Compose-Host-Port-Fallback. Diese Details bleiben absichtlich außerhalb des portablen Manifests.
 
 Spätere Vertragsentwicklung muss den in ADR 0018 geregelten Weg für öffentliche Vertragsänderungen respektieren.
+
+
+Technische Bezeichner: `0.x`.
