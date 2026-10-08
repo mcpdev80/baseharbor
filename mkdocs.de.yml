@@ -56,6 +56,7 @@ nav:
   - Homelab: tutorials/homelab.md
   - Core-Ressourcen: explanation/core-resources.md
   - CLI-Überblick: cli/index.md
+  - Menschliche CLI-Workflows: cli/human-workflows.md
 - Applications:
   - Application Contract: explanation/application-contract.md
   - Application-Befehle: cli/applications.md
