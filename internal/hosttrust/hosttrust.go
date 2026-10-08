@@ -283,6 +283,37 @@ func StateRecords(stateDir string) ([]AnchorRecord, error) {
 	return append([]AnchorRecord(nil), state.Anchors...), nil
 }
 
+// UntrackedCandidates reports BaseHarbor-named anchors which lack verified
+// ownership evidence. Their names do NOT imply ownership and they are never
+// eligible for automatic deletion.
+func UntrackedCandidates(stateDir string) ([]string,error) {
+ state,err:=loadState(stateDir)
+ if err!=nil{return nil,err}
+ owned:=map[string]bool{}
+ for _,record:=range state.Anchors {owned[filepath.Clean(record.Path)]=true}
+ candidates:=[]string{}
+ for _,name:=range []string{"linux-update-ca-certificates","linux-update-ca-trust"} {
+  backend,err:=backendByName(name)
+  if err!=nil{return nil,err}
+  system:=backend.(*systemBackend)
+  entries,err:=os.ReadDir(system.anchorDir)
+  if errors.Is(err,os.ErrNotExist){continue}
+  if err!=nil{return nil,fmt.Errorf("inspect host trust candidates: %w",err)}
+  for _,entry:=range entries {
+   file:=entry.Name()
+   if !strings.HasPrefix(file,"baseharbor-")||!strings.HasSuffix(file,system.extension){continue}
+   fingerprintPart:=strings.TrimSuffix(strings.TrimPrefix(file,"baseharbor-"),system.extension)
+   if len(fingerprintPart)!=16{continue}
+   valid:=true
+   for _,r:=range fingerprintPart {if (r<'0'||r>'9')&&(r<'a'||r>'f'){valid=false;break}}
+   if !valid{continue}
+   path:=filepath.Join(system.anchorDir,file)
+   if !owned[filepath.Clean(path)] {candidates=append(candidates,path)}
+  }
+ }
+ return candidates,nil
+}
+
 func statePath(stateDir string) string {
 	return filepath.Join(stateDir, "host-trust.json")
 }
