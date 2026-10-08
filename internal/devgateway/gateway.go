@@ -565,6 +565,11 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 	}
 	client := &http.Client{Transport: transport}
 	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
+		if strings.Contains(err.Error(), "browser surface final response is HTTP 502") ||
+			strings.Contains(err.Error(), "browser surface final response is HTTP 503") ||
+			strings.Contains(err.Error(), "browser surface final response is HTTP 504") {
+			return fmt.Errorf("%s: application upstream unavailable; check that the running container listens on the declared exposure.http.port and that the gateway can reach its target (gateway returned HTTP 502/503/504)", route.Host)
+		}
 		return fmt.Errorf("%s: %w", route.Host, err)
 	}
 	return nil
