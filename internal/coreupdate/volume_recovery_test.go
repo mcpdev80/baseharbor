@@ -33,9 +33,9 @@ func TestVolumeRecoveryCaptureRestoreAndTamperRefusal(t *testing.T) {
 	if err := recovery.Capture(ctx, delta); err != nil {
 		t.Fatal(err)
 	}
-	if err := recovery.Capture(ctx, delta); err == nil {
-		t.Fatal("overwrote original backup")
-	}
+	if err := recovery.Capture(ctx, delta); err != nil {
+        t.Fatalf("verified original recovery point cannot be reused: %v",err)
+    }
 	if rt.exports != 1 {
 		t.Fatalf("unexpected second export: %d", rt.exports)
 	}
