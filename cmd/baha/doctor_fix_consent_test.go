@@ -22,3 +22,14 @@ func TestDoctorFixRequiresExplicitConsent(t *testing.T) {
 		t.Fatalf("unknown argument: %v", err)
 	}
 }
+
+func TestDoctorCanonicalHelpAdvertisesConsent(t *testing.T) {
+ root:=rootCommand()
+ for _,command:=range root.Children{
+  if command.Name=="doctor" {
+   if !strings.Contains(command.Usage,"--fix --yes"){t.Fatalf("doctor help does not advertise explicit consent: %s",command.Usage)}
+   return
+  }
+ }
+ t.Fatal("canonical doctor command missing")
+}
