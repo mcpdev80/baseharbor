@@ -12,11 +12,11 @@ func TestVerifyHAMembersFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := map[string]func([]State) []State{
-		"missing-member": func(s []State) []State { return s[:2] },
-		"mixed-version": func(s []State) []State { s[1].Version = "2.6.0"; return s },
-		"sealed-member": func(s []State) []State { s[1].Sealed = true; return s },
+		"missing-member":       func(s []State) []State { return s[:2] },
+		"mixed-version":        func(s []State) []State { s[1].Version = "2.6.0"; return s },
+		"sealed-member":        func(s []State) []State { s[1].Sealed = true; return s },
 		"uninitialized-member": func(s []State) []State { s[1].Initialized = false; return s },
-		"unhealthy-member": func(s []State) []State { s[1].Healthy = false; return s },
+		"unhealthy-member":     func(s []State) []State { s[1].Healthy = false; return s },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
