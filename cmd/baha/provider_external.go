@@ -114,7 +114,7 @@ func providerListCommand() *cli.Command {
 				return err
 			}
 			if format == outputJSON {
-				return writeJSON(out, items)
+				return writeJSON(out, normalizedProviderList(items))
 			}
 			if len(items) == 0 {
 				fmt.Fprintln(out, "No external providers registered.")

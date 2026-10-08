@@ -23,3 +23,6 @@ err := cache.Set(ctx, "product:42", `{"name":"Coffee mug"}`, 5*time.Minute).Err(
 Fehler prüfen. Bei `cache.Get`-Miss aus der autoritativen Datenquelle laden und den Cache auffüllen. Fachliche Endpunkte erzeugt das Scaffold nicht. `baha doctor` prüft die Capability.
 
 Für nicht rekonstruierbare Daten verwende [dauerhaften Key-Value-Speicher](durable-key-value.md). [Kanonisches Beispiel (EN)](https://mcpdev80.github.io/baseharbor/how-to/cache/).
+
+
+Technische Bezeichner: `.env.example`, `cache.Get(ctx, "product:42")`.

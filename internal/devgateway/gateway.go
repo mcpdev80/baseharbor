@@ -565,9 +565,21 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 	}
 	client := &http.Client{Transport: transport}
 	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
-		return fmt.Errorf("%s: %w", route.Host, err)
+		return routeVerificationFailure(route.Host, err)
 	}
 	return nil
+}
+
+func routeVerificationFailure(host string, err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, status := range []string{"502", "503", "504"} {
+		if strings.Contains(err.Error(), "browser surface final response is HTTP "+status) {
+			return fmt.Errorf("%s: application upstream unavailable (HTTP %s); verify the workload listener matches exposure.http.port and the selected Target network is reachable", host, status)
+		}
+	}
+	return fmt.Errorf("%s: %w", host, err)
 }
 
 func Verify(ctx context.Context, target string) error {

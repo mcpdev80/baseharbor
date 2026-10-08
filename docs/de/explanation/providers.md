@@ -45,3 +45,24 @@ Der gemeinsam genutzte PostgreSQL-Referenzprovider besitzt genau eine interne Ad
 Jede registrierte SQL-Ressource besitzt eine eigene Datenbank, eine eigene Rolle mit minimalen Rechten und eine geschützte Zugangsdaten-Referenz. Anwendungsbindungen enthalten ausschließlich Host, Port, Datenbank, App-Rolle, App-Zugangsdaten und Vertrauensmaterial dieser Ressource. Provider-weite Administrationszugangsdaten verlassen die Provider-Grenze niemals.
 
 Sicherung, Wiederherstellung und Löschen leiten ihren Ressourcensatz aus der geschützten Registrierung ab. Mehrdeutiger Besitz führt zu einem sicheren Abbruch; rekonstruierte Namen allein autorisieren keine Löschung.
+
+
+## Weitere unveränderte technische Beispiele
+
+```text
+runtime != capability != delivery
+```
+
+```text
+one shared PostgreSQL provider
+├── app-a database + least-privilege role
+├── app-b database + least-privilege role
+└── app-c database + least-privilege role
+```
+
+```text
+provider_instance_id != application_id != deployment_id
+```
+
+
+Technische Kennungen: `database.sql`, `messaging.pubsub`, `messaging.stream`, `object-storage.s3`.

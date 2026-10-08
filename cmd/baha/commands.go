@@ -18,7 +18,7 @@ func rootCommand() *cli.Command {
 		switch child.Name {
 		case "init":
 			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]"
+			initCmd.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]"
 			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
 			appCmd.Children[i] = initCmd
 		case "show":
@@ -170,13 +170,18 @@ func rootCommand() *cli.Command {
 					}
 					return writeJSON(out, result)
 				}
+				target, err := effectiveTarget(ctx)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "Selection source: %s (%s)\n", target.Name, targetSelectionOrigin(ctx))
 				return runtimeStatus(ctx, out)
 			},
 		},
 		{
 			Name:    "doctor",
 			Summary: "Diagnose the current application repository, otherwise the control plane",
-			Usage:   "baha doctor [--fix] [-o json|--output json]",
+			Usage:   "baha doctor [--fix --yes] [-o json|--output json]",
 			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if inApplicationRepository() {
@@ -188,7 +193,9 @@ func rootCommand() *cli.Command {
 		},
 		providerCommand(),
 		stackCommand(),
+		workspaceNamespaceCommand(),
 		targetCommand(),
+		nodeCommand(),
 		devCommand(),
 		configCommand(),
 		shellInitCommand(),

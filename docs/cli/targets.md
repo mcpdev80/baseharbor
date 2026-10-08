@@ -55,15 +55,30 @@ baha target create docker-dev \
   --reference local
 ```
 
-Remote Docker through the optional Node Connector:
+Remote Docker/Podman hosts use the Node Connector enrollment workflow rather than hand-authoring access records:
 
 ```bash
-baha target create edge-a \
-  --runtime-provider docker \
-  --access node-a \
-  --access-provider baseharbor-node-connector \
-  --reference node-a
+baha node add node-a
+baha node list
+baha node status node-a
 ```
+
+`baha node add` is guided on a terminal. It creates the remote Target and writes one owner-only enrollment bundle containing the short-lived one-use authorization. Copy that file to the remote host and run:
+
+```bash
+baha node connect /path/to/node-a.json
+```
+
+The remote command consumes the bundle through the existing Connector bootstrap API, keeps the private key local, installs the rootless user service, and establishes outbound mTLS. Token and nonce values are never accepted as process arguments or written to logs. For automation, provide the explicit `node add` options shown by `--help`; non-TTY mode never prompts.
+
+To retire a node, inspect it first and then explicitly approve revocation:
+
+```bash
+baha node status node-a
+baha node disconnect node-a --yes
+```
+
+Disconnect revokes Core admission before the empty Target registration is removed. An old CA-trusted connector certificate therefore cannot silently reconnect.
 
 Kubernetes/OpenShift can use native API access without a Node Connector:
 

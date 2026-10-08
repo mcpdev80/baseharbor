@@ -12,6 +12,15 @@
 | `baha update` | Unterstützten Update-Pfad ausführen | Verändernd |
 | `baha version` | Build-Version anzeigen | Lesend |
 
+## Control-Plane-Topologie
+
+```bash
+# Default single-server control plane outside an application repository
+baha up --control-plane-only --yes
+# Explicit HA on a separate fresh target
+baha up --control-plane-only --ha --yes
+```
+
 ## Einrichtung und Konvergenz
 
 Der Core benötigt SQL, Secrets und Identity mit PostgreSQL, OpenBao und Keycloak. Ohne Repository/Application ist `baha up --control-plane-only` der explizite Core-only-Pfad. Beim ersten Application-Ablauf wird fehlender Core angeboten und nach geprüfter Readiness derselbe Ablauf fortgesetzt. TLS und geschützte Zugangsdaten bleiben verpflichtend.
@@ -41,9 +50,14 @@ Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd
 `baha destroy` zeigt den sicheren Scope des effektiven Targets. `baha destroy --all` betrifft alle eigenen Installationsressourcen, bewahrt Source-Repositories und fremde Infrastruktur. Ohne ausdrückliche Freigabe wird nicht gelöscht.
 
 ```bash
-baha destroy --all -o json
+baha destroy                 # preview this target after its applications are destroyed
+baha destroy --all -o json   # inventory the full installation without mutation
+baha destroy --all --yes -o json
 ```
 
 Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Erst `baha destroy --all --yes -o json` führt das genehmigte Entfernen aus. Externe Recovery-Dateien werden als `PRESERVED` aufgeführt, nicht gelesen oder automatisch gelöscht. Container-Alter oder rekonstruierte Namen beweisen keinen Besitz.
 
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
+
+
+Technische Bezeichner: `ha: true`, `baha app doctor`, `baha app new orders-api --stack go --http --sql`, `preserved`, `results`.

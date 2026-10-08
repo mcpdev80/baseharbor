@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 type tuiDoctorResult = applicationDoctorResult
@@ -19,10 +20,11 @@ type tuiDoctorResult = applicationDoctorResult
 type tuiApplicationStatusResult = applicationStatusResult
 
 type tuiStatusMsg struct {
-	result application.StatusResult
-	tls    *applicationTLSObservation
-	doctor tuiDoctorResult
-	err    error
+	coreView string
+	result   application.StatusResult
+	tls      *applicationTLSObservation
+	doctor   tuiDoctorResult
+	err      error
 }
 
 type tuiModel struct {
@@ -38,19 +40,31 @@ type tuiModel struct {
 	height        int
 	reducedMotion bool
 	noColor       bool
+	coreView      string
+	coreMode      bool
 }
 
 func tuiCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "tui",
 		Summary: "Open the interactive BaseHarbor status dashboard",
-		Usage:   "baha tui",
+		Usage:   "baha tui [--json]",
 		Long:    "Opens a read-only terminal dashboard backed by the same application status model as 'baha status'. Use Tab or left/right to switch views, r to refresh and q or Ctrl-C to quit.",
 		Examples: []string{
 			"baha tui",
 			"BASEHARBOR_REDUCED_MOTION=1 baha tui",
 		},
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			if len(args) == 1 && args[0] == "--json" {
+				if inApplicationRepository() {
+					return appStatusCommandWithTLS(store).Run(ctx, []string{"--json"}, out, errOut)
+				}
+				result, err := inspectControlPlane(ctx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, result)
+			}
 			if len(args) != 0 {
 				return usageError("baha tui does not accept arguments", "Run 'baha tui --help' for usage.")
 			}
@@ -62,16 +76,14 @@ func tuiCommand(store application.Store) *cli.Command {
 				return usageError("TUI is unavailable in --no-input mode", "Use 'baha status -o json' for automation.")
 			}
 			if !cli.IsTerminal(out) || !readerIsTerminal(os.Stdin) {
-				return usageError("TUI requires an interactive terminal", "Use 'baha status' or 'baha status -o json' when piping or running in CI.")
-			}
-			if !inApplicationRepository() {
-				return usageError("TUI currently requires an application repository", "Run inside a repository containing baseharbor.yaml.")
+				return usageError("TUI requires an interactive terminal", "Use 'baha tui --json' for structured output when piping or running in CI.")
 			}
 
 			model := tuiModel{
 				ctx:           ctx,
 				store:         store,
 				loading:       true,
+				coreMode:      !inApplicationRepository(),
 				reducedMotion: opts.ReducedMotion,
 				noColor:       opts.NoColor || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 			}
@@ -90,6 +102,17 @@ func (m tuiModel) Init() tea.Cmd {
 
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
+		if m.coreMode {
+			target, err := effectiveTarget(m.ctx)
+			if err != nil {
+				return tuiStatusMsg{coreView: renderUnselectedCoreTUIView(currentDeviceResources(), renderConfiguredTargets(), err)}
+			}
+			status, err := inspectControlPlane(m.ctx)
+			if err != nil {
+				return tuiStatusMsg{err: err}
+			}
+			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderTargetApplicationInventory(target.Name) + "\n" + renderTargetRuntimeInventory(m.ctx, target.Name)}
+		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
 			return tuiStatusMsg{result: status.StatusResult, tls: status.TLS, err: err}
@@ -119,6 +142,7 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tuiStatusMsg:
 		m.loading = false
+		m.coreView = msg.coreView
 		m.result = msg.result
 		m.tls = msg.tls
 		m.doctor = msg.doctor
@@ -187,6 +211,8 @@ func (m tuiModel) View() tea.View {
 		b.WriteString("  ")
 		b.WriteString(wrapTUIText(m.err.Error(), contentWidth-8))
 		b.WriteString("\n\nNext:\n  baha doctor --verbose\n")
+	case m.coreMode:
+		b.WriteString(wrapTUIBlock(m.coreView, contentWidth))
 	case m.tab == 0:
 		b.WriteString(renderTUISummary(m.result, contentWidth, success, failure))
 	case m.tab == 1:
@@ -417,4 +443,75 @@ func wrapTUIText(text string, width int) string {
 	}
 	lines = append(lines, line)
 	return strings.Join(lines, "\n")
+}
+
+func renderCoreTUIStatus(target, runtime, access, origin string, status controlPlaneReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Target       %s (%s)\nRuntime      %s\nAccess       %s\nCore state   %s\n", target, origin, runtime, access, status.State)
+	if status.Ready {
+		fmt.Fprintln(&b, "Readiness    READY")
+	} else {
+		fmt.Fprintln(&b, "Readiness    NOT READY")
+	}
+	fmt.Fprintf(&b, "Availability %t\n", status.AvailabilitySatisfied)
+	if status.AvailabilityDetail != "" {
+		fmt.Fprintf(&b, "HA details   %s\n", status.AvailabilityDetail)
+	}
+	fmt.Fprintln(&b, "\nManaged services")
+	if len(status.Running) == 0 {
+		fmt.Fprintln(&b, "  No running services reported")
+	}
+	for _, name := range status.Running {
+		fmt.Fprintf(&b, "  %s\n", name)
+	}
+	fmt.Fprintln(&b, "\nReadiness checks")
+	if len(status.Checks) == 0 {
+		fmt.Fprintln(&b, "  Not available")
+	}
+	for _, check := range status.Checks {
+		state := "FAILED"
+		if check.Ready {
+			state = "OK"
+		}
+		fmt.Fprintf(&b, "  %-8s %s\n", state, check.Name)
+	}
+	fmt.Fprintln(&b, "\nHost and remote resource metrics are not available through this status contract.")
+	return b.String()
+}
+
+func renderConfiguredTargets() string {
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return "Registered Targets\n  Unavailable: configuration cannot be read\n"
+	}
+	var b strings.Builder
+	fmt.Fprintln(&b, "Registered Targets (deployment destinations)")
+	names := cfg.TargetNames()
+	if len(names) == 0 {
+		fmt.Fprintln(&b, "  None configured")
+	}
+	for _, name := range names {
+		definition := cfg.Targets[name]
+		fmt.Fprintf(&b, "  %-24s %s (access: %s)\n", name, definition.Runtime.Provider, definition.Access.Reference)
+	}
+	fmt.Fprintln(&b, "Other / Unassigned")
+	fmt.Fprintln(&b, "  Unassigned runtime containers are not inventoried by this read-only Core view.")
+	return b.String()
+}
+
+func renderTargetApplicationInventory(targetName string) string {
+	records, warnings, err := deployment.ListDeploymentsForDisplay(targetName)
+	if err != nil {
+		return "Applications\n  Inventory unavailable: " + err.Error() + "\n"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Applications\n  %d registered deployment(s)\n", len(records))
+	for _, warning := range warnings {
+		fmt.Fprintf(&b, "  WARN %v\n", warning)
+	}
+	return b.String()
+}
+
+func renderUnselectedCoreTUIView(device, targets string, err error) string {
+	return device + "\n" + targets + "\nNo active Core Target: " + err.Error() + "\nNext: baha target list; baha target activate NAME"
 }

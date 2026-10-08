@@ -38,3 +38,12 @@ Die benötigten Nachweise zu unveränderlichen Image-Digests, Recovery und Verif
 ## Automation und Maschinenclients
 
 Menschenlesbare Terminalausgaben sind keine stabile API. Verwende `-o json`, sofern unterstützt, oder die typisierten MCP-/HTTP-Operationen. Die [CLI/Machine-Coverage-Übersicht (EN)](https://mcpdev80.github.io/baseharbor/reference/cli-machine-coverage/) dokumentiert Semantik und Ausnahmen.
+
+
+## Ergänzende Befehlsreferenz
+
+Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
+
+
+
+Technische Bezeichner: `baha COMMAND --help`.

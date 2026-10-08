@@ -8,30 +8,86 @@ Die Auflösung verwendet zuerst globales `--target NAME`, dann das aktivierte Sh
 
 ## Lokaler Docker-Zugriff
 
-```bash
-baha target create docker-dev --runtime-provider docker --access local-docker --access-provider local --reference local
-baha target show docker-dev -o json
+```text
+baha target
+baha target list
+baha target show
+baha target create
+baha target delete
+baha target activate
+baha target deactivate
 ```
 
 Im Application-Repository mit funktionierender Runtime:
 
-```bash
-baha --target docker-dev plan -e dev
-baha --target docker-dev up -e dev
+```text
+runtime != capability != delivery
 ```
 
 Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities.
 
-## Remote-Zugriff
-
-Runtime Provider und Target Access Provider sind getrennt. Ein Connector-Target kann registriert werden mit:
-
-```bash
-baha target create edge-a --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a
+```text
+Target
+├── Runtime Provider
+└── Target Access Provider
 ```
 
-Registrierung allein stellt keine authentifizierte Verbindung her. Der vollständige Remote-Application-Lifecycle wird für v0.4.23 noch qualifiziert; ein Remote-Target darf niemals ersatzweise lokal ausgeführt werden. Native Kubernetes-/OpenShift-API-Zugriffe benötigen nicht grundsätzlich einen Connector; diese Runtime-Realisierungen folgen später.
+## Remote-Zugriff
+
+Runtime Provider und Target Access Provider sind getrennt:
+
+```bash
+baha target create docker-dev \
+  --runtime-provider docker \
+  --access local-docker \
+  --access-provider local \
+  --reference local
+```
+
+Entfernte Docker-/Podman-Hosts werden nicht mehr durch manuelles Erstellen des Connector-Access-Eintrags aufgenommen. Auf dem Core-System wird der geführte Node-Workflow verwendet:
+
+```bash
+baha node add node-a
+baha node list
+baha node status node-a
+```
+
+`baha node add` erzeugt das Remote-Target und genau eine owner-only Enrollment-Datei mit kurzlebiger Einmal-Autorisierung. Diese Datei wird auf den Remote-Host kopiert und dort konsumiert:
+
+```bash
+baha node connect /path/to/node-a.json
+```
+
+Der Connector erzeugt seinen privaten Schlüssel ausschließlich lokal, verwendet die bestehende Bootstrap-API und baut anschließend die outbound-initiierte mTLS-Verbindung als rootless User-Service auf. Token und Nonce werden weder als Prozessargumente noch in Logs ausgegeben. Non-TTY-Automation verwendet die expliziten Optionen aus `baha node add --help` und fragt niemals interaktiv nach.
+
+Zum Entfernen wird zuerst der Zustand geprüft und anschließend die Sperrung ausdrücklich bestätigt:
+
+```bash
+baha node status node-a
+baha node disconnect node-a --yes
+```
+
+Der Core widerruft die Connector-Zulassung, bevor das leere Target entfernt wird. Ein altes, weiterhin CA-vertrauenswürdiges Zertifikat kann sich dadurch nicht unbemerkt erneut verbinden. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
 
 `--provider` bleibt Alias von `--runtime-provider`; nicht lokaler Zugriff braucht einen ausdrücklichen `--access-provider`.
 
 Weiter: [Target-Konzept](../explanation/targets.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/targets/).
+
+
+## Zusätzliche Befehlsbeispiele
+
+
+```text
+runtime = kubernetes|openshift
+access.provider = native-api
+```
+
+```bash
+baha target list
+baha target show docker-dev -o json
+baha --target docker-dev plan -e dev
+baha --target docker-dev up -e dev
+```
+
+
+Technische Bezeichner: `runtime_provider`.

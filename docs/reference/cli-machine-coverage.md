@@ -78,6 +78,12 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha mcp` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha mcp serve` | presentation |  |  | Starts the local MCP transport; clients launch it before discovery. |
 | `baha new` | presentation |  |  | Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations. |
+| `baha node` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha node add` | semantic | CLI -o json / typed MCP result | baseharbor.node.add |  |
+| `baha node connect` | semantic | CLI -o json / typed MCP result | baseharbor.node.connect |  |
+| `baha node disconnect` | semantic | CLI -o json / typed MCP result | baseharbor.node.disconnect |  |
+| `baha node list` | semantic | CLI -o json / typed MCP result | baseharbor.node.list |  |
+| `baha node status` | semantic | CLI -o json / typed MCP result | baseharbor.node.status |  |
 | `baha open` | presentation |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantic | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |
@@ -121,3 +127,10 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha update` | semantic | CLI -o json / typed MCP result | baseharbor.release.check | --check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes. |
 | `baha version` | presentation |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantic | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
+| `baha workspace` | presentation |  |  | Canonical interactive presentation of the same workspace.init/map operations. |
+| `baha workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
+| `baha workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
+| `baha workspace resolve` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.resolve |  |
+| `baha workspace show` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.show |  |
+| `baha workspace status` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.status |  |
+| `baha workspace update` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.update |  |

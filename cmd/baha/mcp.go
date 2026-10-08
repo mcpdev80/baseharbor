@@ -214,6 +214,7 @@ func newMCPServer(store application.Store) *mcp.Server {
 	registerMCPWorkspaceMutationTools(server)
 	registerMCPStackTools(server)
 	registerMCPTargetMutationTools(server)
+	registerMCPNodeTools(server)
 	registerMCPSecretTools(server, store)
 	registerMCPAdditionalLifecycleTools(server, store)
 	registerMCPTrustTools(server)

@@ -23,7 +23,7 @@ const (
 
 func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base := appInitOrConfigureCommand(store)
-	base.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options]"
+	base.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options] [--workload-component NAME]... [--workload-source KIND:PATH]"
 	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
