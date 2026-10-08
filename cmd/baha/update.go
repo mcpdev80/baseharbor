@@ -420,3 +420,28 @@ func comparePrerelease(left, right string) int {
 	}
 	return 0
 }
+
+func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state coreinstallation.State, runtimeProvider bhruntime.RuntimeProvider) (coreupdate.Plan, error) {
+ catalog, err := coreupdate.LoadRelease(targetVersion)
+ if err != nil { return coreupdate.Plan{}, err }
+ if !state.Ready || state.ID == "" { return coreupdate.Plan{}, errors.New("Core installation is not ready for provider inventory") }
+ services := []struct{kind coreupdate.ProviderKind; project, service string}{
+  {coreupdate.SQL, bhruntime.SharedProjectName(state.Spec.Target), "postgres-member-1"},
+  {coreupdate.Secrets, bhruntime.SharedProjectName(state.Spec.Target), "openbao-member-1"},
+  {coreupdate.Identity, bhruntime.SharedProjectName(state.Spec.Target + "-core"), "keycloak-1"},
+ }
+ var existing []coreupdate.Realization
+ for _, item := range services {
+  id, err := runtimeProvider.ProjectServiceImageIdentity(ctx,item.project,item.service)
+  if err != nil { return coreupdate.Plan{}, fmt.Errorf("inspect Core %s runtime image: %w",item.kind,err) }
+  ref := strings.TrimSpace(id.Reference)
+  pos := strings.LastIndex(ref,":")
+  if pos <= strings.LastIndex(ref,"/") { return coreupdate.Plan{},fmt.Errorf("Core %s runtime version is not explicit",item.kind) }
+  v := ref[pos+1:]
+  if item.kind == coreupdate.SQL { v = strings.SplitN(v,"-",2)[0] }
+  digest := strings.TrimSpace(id.Digest)
+  if at := strings.Index(digest,"@sha256:"); at >= 0 { digest = digest[at+1:] }
+  existing = append(existing,coreupdate.Realization{Kind:item.kind,Installation:state.ID,Scope:"shared",Instance:item.service,Owner:"baseharbor",Image:ref,Digest:digest,Version:v})
+ }
+ return coreupdate.Build(targetVersion, existing, catalog.Providers)
+}
