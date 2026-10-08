@@ -146,6 +146,8 @@ var cliPresentationCommands = map[string]string{
 var cliExcludedCommands = map[string]string{
 	"baha app exec":  "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
 	"baha app shell": "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
+	"baha app psql":  "Interactive PostgreSQL console and raw SQL passthrough are excluded; app.connection supplies protected connection metadata.",
+	"baha app valkey": "Interactive Valkey command shell is excluded; app.connection supplies protected connection metadata.",
 	"baha app sql":   "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app cache": "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
 	"baha app logs":  "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
