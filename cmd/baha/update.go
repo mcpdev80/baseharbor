@@ -485,6 +485,9 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			return coreupdate.Plan{}, fmt.Errorf("Core %s runtime version is not explicit", item.kind)
 		}
 		v := ref[pos+1:]
+		if item.kind == coreupdate.SQL && state.Spec.HA {
+			return coreupdate.Plan{}, errors.New("HA PostgreSQL uses a Spilo-backed realization: Core update inventory requires a distinct pinned backing-image contract before comparing provider versions")
+		}
 		if item.kind == coreupdate.SQL {
 			v = strings.SplitN(v, "-", 2)[0]
 		}
