@@ -85,3 +85,27 @@ func TestBuildRejectsUnverifiableInstalledDigestBeforeMutation(t *testing.T) {
   t.Fatalf("unsafe plan executed: err=%v called=%v",err,called)
  }
 }
+
+func TestProviderVersionComparisonFailsClosed(t *testing.T) {
+ for _, tc := range []struct{current,target string; downgrade bool}{
+  {"26.8.0","26.7.1",true},
+  {"18.1","17.9",true},
+  {"2.7.1","2.7.1",false},
+  {"2.7","2.7.0",false},
+  {"2.7.0","2.8.0",false},
+  {"26.8.0-rc1","26.8.0",true},
+  {"","26.8.0",true},
+ } {
+  if got := providerDowngrade(tc.current,tc.target); got != tc.downgrade {
+   t.Errorf("providerDowngrade(%q,%q)=%v, want %v",tc.current,tc.target,got,tc.downgrade)
+  }
+ }
+ for _, kind := range []ProviderKind{SQL,Secrets,Identity} {
+  installed := []Realization{{Kind:kind,Installation:"a",Scope:"shared",Instance:"owned",Owner:"baseharbor",Image:"provider",Digest:digestA,Version:"99.0.0"}}
+  plan,err := Build("0.4.24",installed,expected())
+  if err!=nil {t.Fatal(err)}
+  if len(plan.Deltas)!=1 || plan.Deltas[0].Classification!=Unsupported {
+   t.Fatalf("%s downgrade accepted: %+v",kind,plan)
+  }
+ }
+}
