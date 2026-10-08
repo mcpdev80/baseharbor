@@ -22,7 +22,9 @@ func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer ser
 		return "", err
 	}
 	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
-	if len(ha) > 0 { spec.HA = ha[0] }
+	if len(ha) > 0 {
+		spec.HA = ha[0]
+	}
 	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
 	files, err := ensureKeycloakFilesForPlacement(ctx, spec, issuer, dataDir, namespace, placement)
 	if err != nil {
