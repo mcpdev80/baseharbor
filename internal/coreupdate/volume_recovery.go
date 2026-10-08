@@ -23,8 +23,8 @@ type VolumeRecovery struct {
 	Directory string
 	Project   string
 	Volume    string
- // VerifyQuiesced proves no database writer can mutate this volume during an archive/restore.
- VerifyQuiesced func(context.Context,string,string)error
+	// VerifyQuiesced proves no database writer can mutate this volume during an archive/restore.
+	VerifyQuiesced func(context.Context, string, string) error
 }
 
 func (v VolumeRecovery) archivePath(delta Delta) (string, error) {
@@ -46,9 +46,15 @@ func (v VolumeRecovery) Capture(ctx context.Context, delta Delta) error {
 		return errors.New("no owned-volume runtime")
 	}
 	path, err := v.archivePath(delta)
-    if err != nil{return err}
-    if v.VerifyQuiesced==nil{return errors.New("provider volume recovery requires quiescence verification")}
-    if err:=v.VerifyQuiesced(ctx,v.Project,v.Volume);err!=nil{return fmt.Errorf("provider volume is not quiesced: %w",err)}
+	if err != nil {
+		return err
+	}
+	if v.VerifyQuiesced == nil {
+		return errors.New("provider volume recovery requires quiescence verification")
+	}
+	if err := v.VerifyQuiesced(ctx, v.Project, v.Volume); err != nil {
+		return fmt.Errorf("provider volume is not quiesced: %w", err)
+	}
 	if err := os.MkdirAll(v.Directory, 0700); err != nil {
 		return err
 	}
