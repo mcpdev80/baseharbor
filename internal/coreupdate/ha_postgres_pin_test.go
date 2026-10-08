@@ -10,7 +10,7 @@ func TestHAPostgresPinFailsClosedOnDrift(t *testing.T) {
 		t.Fatalf("identical immutable HA image cannot require restart: %+v", same)
 	}
 	tests := []struct {
-		name string
+		name  string
 		alter func(*Realization)
 	}{
 		{"digest_drift", func(r *Realization) { r.Digest = digestA }},
