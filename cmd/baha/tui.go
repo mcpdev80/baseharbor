@@ -48,13 +48,19 @@ func tuiCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "tui",
 		Summary: "Open the interactive BaseHarbor status dashboard",
-		Usage:   "baha tui",
+		Usage:   "baha tui [--json]",
 		Long:    "Opens a read-only terminal dashboard backed by the same application status model as 'baha status'. Use Tab or left/right to switch views, r to refresh and q or Ctrl-C to quit.",
 		Examples: []string{
 			"baha tui",
 			"BASEHARBOR_REDUCED_MOTION=1 baha tui",
 		},
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+            if len(args)==1 && args[0]=="--json" {
+               if inApplicationRepository() {return appStatusCommandWithTLS(store).Run(ctx,[]string{"--json"},out,errOut)}
+               result,err:=inspectControlPlane(ctx)
+               if err!=nil{return err}
+               return writeJSON(out,result)
+            }
 			if len(args) != 0 {
 				return usageError("baha tui does not accept arguments", "Run 'baha tui --help' for usage.")
 			}
@@ -66,7 +72,7 @@ func tuiCommand(store application.Store) *cli.Command {
 				return usageError("TUI is unavailable in --no-input mode", "Use 'baha status -o json' for automation.")
 			}
 			if !cli.IsTerminal(out) || !readerIsTerminal(os.Stdin) {
-				return usageError("TUI requires an interactive terminal", "Use 'baha status' or 'baha status -o json' when piping or running in CI.")
+				return usageError("TUI requires an interactive terminal", "Use 'baha tui --json' for structured output when piping or running in CI.")
 			}
 
 			model := tuiModel{
