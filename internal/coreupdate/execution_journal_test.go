@@ -82,3 +82,26 @@ func TestExecuteJournaledVerifiedStateRequiresLiveReadiness(t *testing.T) {
 		t.Fatalf("stale journal led to apply: %v applied %v", err, applied)
 	}
 }
+
+func TestExecuteJournaledRejectsForgedPreviouslyVerifiedPlan(t *testing.T) {
+ root:=t.TempDir()
+ if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
+ path:=filepath.Join(root,"journal.json")
+ plan,err:=Build("0.4.24",[]Realization{{Kind:Identity,Installation:"a",Scope:"shared",Instance:"id",Owner:"baseharbor",Image:"keycloak",Digest:digestA,Version:"26.7.0"}},expected())
+ if err!=nil{t.Fatal(err)}
+ original:=plan.Deltas[0]
+ journal:=Journal{Release:"0.4.24"}
+ if err:=journal.Record(path,original,"verified");err!=nil{t.Fatal(err)}
+ plan.Deltas[0].Installed.Owner="foreign"
+ applied:=false
+ verified:=false
+ hooks:=Hooks{
+  Preflight:func(context.Context,Plan)error{return nil},
+  RecoveryPoint:func(context.Context,Delta)error{return nil},
+  Apply:func(context.Context,Delta)error{applied=true;return nil},
+  Verify:func(context.Context,Delta)error{verified=true;return nil},
+  Record:func(context.Context,Delta,string)error{return nil},
+ }
+ if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err==nil {t.Fatal("forged verified journal step accepted")}
+ if applied||verified{t.Fatal("forged step reached runtime hooks")}
+}
