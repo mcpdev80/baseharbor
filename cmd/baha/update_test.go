@@ -288,6 +288,10 @@ func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
 	}
 	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
 	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
+	images[project+"/openbao-member-2"] = images[project+"/openbao-member-1"]
+	images[project+"/openbao-member-3"] = images[project+"/openbao-member-1"]
+	images[identityProject+"/keycloak-2"] = images[identityProject+"/keycloak-1"]
+	images[identityProject+"/keycloak-3"] = images[identityProject+"/keycloak-1"]
 	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
 	if err != nil {
 		t.Fatal(err)
