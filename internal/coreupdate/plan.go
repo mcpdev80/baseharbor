@@ -252,8 +252,8 @@ func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
 		return errors.New("Core update requires complete preflight, apply, verification and journal hooks")
 	}
 	if err := validateExecutionPlan(plan, hooks); err != nil {
-        return err
-    }
+		return err
+	}
 	if err := hooks.Preflight(ctx, plan); err != nil {
 		return fmt.Errorf("Core update preflight: %w", err)
 	}
