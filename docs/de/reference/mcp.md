@@ -232,3 +232,9 @@ Die [Rezepte für Maschinenoperationen](../how-to/machine-operations.md) beschre
 ```json
 {"name":"baseharbor.control-plane.up","arguments":{"target":"local","ha":false}}
 ```
+
+## Node- und Trust-Werkzeuge
+
+Die typisierten Node-Operationen `baseharbor.node.add`, `baseharbor.node.connect`, `baseharbor.node.list`, `baseharbor.node.status` und `baseharbor.node.disconnect` bilden denselben sicheren Enrollment- und Lifecycle-Vertrag wie die CLI ab. Enrollment-Geheimnisse werden nicht als MCP-Ergebnis zurückgegeben; `node.add` liefert ausschließlich den Pfad zur owner-only Enrollment-Datei. `node.connect` und `node.disconnect` benötigen ausdrückliche Freigabe.
+
+`baseharbor.trust.uninstall` entfernt ausschließlich von BaseHarbor verwaltetes Host-Trust-Material und bewahrt fremde Zertifikate auf.
