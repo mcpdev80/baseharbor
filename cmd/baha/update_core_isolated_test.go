@@ -56,7 +56,7 @@ func TestIsolatedCoreInventoryOnlyRegisteredOwnedProject(t *testing.T) {
 		},
 		Images: map[string]bhruntime.ImageIdentity{files.Project + "/postgres": img},
 	}
-	deltas, err := inspectIsolatedCoreProviders(context.Background(), mock, target, catalog)
+	deltas, err := inspectIsolatedCoreProviders(context.Background(), mock, target, "docker", catalog)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestIsolatedCoreInventoryOnlyRegisteredOwnedProject(t *testing.T) {
 		t.Fatalf("identical pinned image needs no restart: %+v", deltas[0])
 	}
 	mock.Containers[0].Running = false
-	if _, err := inspectIsolatedCoreProviders(context.Background(), mock, target, catalog); err == nil {
+	if _, err := inspectIsolatedCoreProviders(context.Background(), mock, target, "docker", catalog); err == nil {
 		t.Fatal("stopped owned provider was ignored")
 	}
 }
@@ -81,4 +81,21 @@ func TestIsolatedCoreServiceClassifierExcludesAccessProxies(t *testing.T) {
 			t.Fatalf("gateway or proxy %s misclassified as Core", name)
 		}
 	}
+}
+
+func TestIsolatedCoreInventoryRejectsRuntimeMismatch(t *testing.T) {
+ t.Setenv("XDG_DATA_HOME",t.TempDir())
+ target:="wrong-runtime"
+ m:=application.New("app","dev",true,false,false)
+ intent,_:=json.Marshal(m)
+ record:=deployment.DeploymentRecord{
+  Version:deployment.DeploymentRecordVersion,
+  Identity:deployment.DeploymentIdentity{DeploymentID:testDeploymentID,ApplicationID:m.ApplicationID,Target:target,Application:m.Name,Environment:m.Environment},
+  Applied:deployment.AppliedDeployment{RuntimeProvider:"docker",Intent:intent},
+ }
+ if err:=deployment.SaveDeploymentRecord(record);err!=nil{t.Fatal(err)}
+ catalog,err:=coreupdate.LoadRelease("0.4.24");if err!=nil{t.Fatal(err)}
+ if _,err:=inspectIsolatedCoreProviders(context.Background(),isolatedInventoryRuntime{},target,"podman",catalog);err==nil{
+  t.Fatal("accepted a Docker-owned deployment under Podman Core")
+ }
 }
