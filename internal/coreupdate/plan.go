@@ -97,8 +97,8 @@ func Build(release string, installed []Realization, desired []Desired) (Plan, er
   switch {
   case current.Digest != "" && current.Digest == target.Digest && current.Version == target.Version && current.Image == target.Image:
    delta.Classification = NoChange
-  case current.Image == "" || current.Version == "":
-   delta.Classification, delta.Reason = Unsupported, "installed provider identity is unverifiable"
+  case current.Image == "" || current.Version == "" || !validDigest(current.Digest):
+   delta.Classification, delta.Reason = Unsupported, "installed provider image/version/digest identity is unverifiable"
   case current.Kind == SQL && strings.Split(current.Version, ".")[0] != strings.Split(target.Version, ".")[0]:
    delta.Classification, delta.Reason = Unsupported, "PostgreSQL major upgrade requires an explicit supported migration"
   case current.Kind == SQL || current.Kind == Secrets:
