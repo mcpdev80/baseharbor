@@ -55,12 +55,16 @@ func tuiCommand(store application.Store) *cli.Command {
 			"BASEHARBOR_REDUCED_MOTION=1 baha tui",
 		},
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-            if len(args)==1 && args[0]=="--json" {
-               if inApplicationRepository() {return appStatusCommandWithTLS(store).Run(ctx,[]string{"--json"},out,errOut)}
-               result,err:=inspectControlPlane(ctx)
-               if err!=nil{return err}
-               return writeJSON(out,result)
-            }
+			if len(args) == 1 && args[0] == "--json" {
+				if inApplicationRepository() {
+					return appStatusCommandWithTLS(store).Run(ctx, []string{"--json"}, out, errOut)
+				}
+				result, err := inspectControlPlane(ctx)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, result)
+			}
 			if len(args) != 0 {
 				return usageError("baha tui does not accept arguments", "Run 'baha tui --help' for usage.")
 			}
