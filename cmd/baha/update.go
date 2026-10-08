@@ -589,7 +589,7 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 	if len(plan.Deltas) != 4 {
 		return coreupdate.Plan{}, fmt.Errorf("Core update inventory must contain exactly four owned Core and Keycloak backing realizations, got %d", len(plan.Deltas))
 	}
-	isolated, err := inspectIsolatedCoreProviders(ctx, runtimeProvider, state.Spec.Target, catalog)
+	isolated, err := inspectIsolatedCoreProviders(ctx, runtimeProvider, state.Spec.Target, state.Spec.Runtime, catalog)
 	if err != nil {
 		return coreupdate.Plan{}, err
 	}
