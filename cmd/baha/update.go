@@ -500,23 +500,34 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			}
 		}
 		if item.kind == coreupdate.SQL && state.Spec.HA {
-			// The SQL release pin is for the single-node Core. The Spilo image
-			// of the Core HA cluster is NOT Keycloak's separate backing DB.
-			var sqlTarget coreupdate.Desired
-			for _, desired := range catalog.Providers {
-				if desired.Kind == coreupdate.SQL {
-					sqlTarget = desired
+			// HA PostgreSQL is a distinct Spilo/Patroni realization. Never compare
+			// it with the single-node postgres image; use the release-owned HA pin.
+			var haPin *coreupdate.BackingPin
+			for i := range catalog.Backing {
+				if catalog.Backing[i].Role == "core-ha-postgresql" {
+					haPin = &catalog.Backing[i]
 					break
 				}
+			}
+			if haPin == nil {
+				return coreupdate.Plan{}, errors.New("missing Core HA PostgreSQL release pin")
 			}
 			digest := strings.TrimSpace(id.Digest)
 			if at := strings.Index(digest, "@sha256:"); at >= 0 {
 				digest = digest[at+1:]
 			}
+			classification := coreupdate.Unsupported
+			reason := "Core HA PostgreSQL Spilo image change requires an explicit Patroni rolling migration contract"
+			installedVersion := v
+			if ref == haPin.Image && digest == haPin.Digest && digest != "" {
+				classification = coreupdate.NoChange
+				reason = ""
+				installedVersion = haPin.Version
+			}
 			backing = append(backing, coreupdate.Delta{
-				Installed: coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v},
-				Desired:   sqlTarget, Classification: coreupdate.Unsupported,
-				Reason: "Core HA PostgreSQL Spilo version pin and verified migration contract are not defined; do not compare against the single-node PostgreSQL pin",
+				Installed: coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: installedVersion},
+				Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: haPin.Image, Digest: haPin.Digest, Version: haPin.Version},
+				Classification: classification, Reason: reason,
 			})
 			continue
 		}
