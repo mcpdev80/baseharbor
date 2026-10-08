@@ -124,10 +124,7 @@ func connectionsCommand() *cli.Command {
 				return err
 			}
 			if format == outputJSON {
-				if rules == nil {
-					return writeJSON(out, []any{})
-				}
-				return writeJSON(out, rules)
+				return writeJSON(out, normalizedConnectivityList(rules))
 			}
 			if len(rules) == 0 {
 				fmt.Fprintln(out, "No cross-application connectivity is allowed.")
