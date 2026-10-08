@@ -55,13 +55,13 @@ func requireManagedClientConsent(ctx context.Context, in io.Reader, out io.Write
 			return err
 		}
 		until, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
-		if err == nil && time.Now().Before(until) {
+		if err == nil && until.After(time.Now()) && !until.After(time.Now().Add(managedClientConsentLifetime)) {
 			return nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fmt.Fprintf(out, "Client: %s\nApp: %s / %s\nTarget: %s\nInstance: %s\nExecution: %s\nSession: up to 12 hours, only for this scope; server authorization checked every time.\n", kind, application, environment, target, instance, execution)
+	fmt.Fprintf(out, "Client: %s\nApp: %s / %s\nTarget: %s\nInstance: %s\nExecution: %s\nApproval: valid for up to 12 hours for this client scope; login expiry and authorization checked every time.\n", kind, application, environment, target, instance, execution)
 	if noInput(ctx) || in == nil || !readerIsTerminal(in) {
 		return usageError("explicit consent is required before launching a client", "Run this command in a terminal to approve the exact client, instance, Target and execution method.")
 	}
