@@ -105,11 +105,22 @@ func TestKeycloakBootstrapAuthenticatesBeforeStartingAdditionalMembers(t *testin
 }
 
 func TestKeycloakSingleBootstrapDependencies(t *testing.T) {
- path:=filepath.Join(t.TempDir(),"compose.yaml")
- if err:=os.WriteFile(path,[]byte(keycloakCompose(application.New("demo","prod",false,false,false),KeycloakFiles{})),0600);err!=nil{t.Fatal(err)}
- selected,err:=keycloakBootstrapServices(path)
- if err!=nil{t.Fatal(err)}
- want:=map[string]bool{"keycloak-1":true,"keycloak-access":true,"keycloak-db-tls-init":true,"keycloak-db":true,"keycloak-db-init":true}
- for _,name:=range selected { if !want[name] {t.Errorf("unexpected single boot service %s",name)}; delete(want,name) }
- for missing:=range want {t.Errorf("missing single boot dependency %s",missing)}
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(path, []byte(keycloakCompose(application.New("demo", "prod", false, false, false), KeycloakFiles{})), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := keycloakBootstrapServices(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"keycloak-1": true, "keycloak-access": true, "keycloak-db-tls-init": true, "keycloak-db": true, "keycloak-db-init": true}
+	for _, name := range selected {
+		if !want[name] {
+			t.Errorf("unexpected single boot service %s", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("missing single boot dependency %s", missing)
+	}
 }
