@@ -154,6 +154,9 @@ func TestExecuteRejectsForgedPlanBeforeHooks(t *testing.T) {
 		{"missing_pin", func(d *Delta) { d.Desired.Digest = "" }},
 		{"forged_no_change", func(d *Delta) { d.Classification = NoChange }},
 		{"version_downgrade", func(d *Delta) { d.Desired.Version = "17.9" }},
+        {"postgres_major_upgrade", func(d *Delta) { d.Desired.Version = "19.0" }},
+        {"forged_safe_reconcile", func(d *Delta) { d.Classification = SafeReconcile }},
+        {"forged_migration", func(d *Delta) { d.Classification = MigrationRequired }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
