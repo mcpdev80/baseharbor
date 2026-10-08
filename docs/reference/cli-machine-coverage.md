@@ -12,6 +12,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app apply` | semantic | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app backup` | semantic | CLI -o json / typed MCP result | baseharbor.backup |  |
+| `baha app cache` | excluded |  |  | Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app create` | semantic | CLI -o json / typed MCP result | baseharbor.app.create |  |
 | `baha app creds` | semantic | CLI -o json / typed MCP result | baseharbor.app.connection | MCP exposes connection metadata without passwords or credential-bearing URIs; CLI credential reveal is operator-local and excluded from MCP. |
 | `baha app destroy` | semantic | CLI -o json / typed MCP result | baseharbor.destroy |  |
@@ -27,8 +28,6 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app new` | semantic | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantic | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantic | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
-| `baha app psql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
-| `baha app redis` | excluded |  |  | Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app restore` | semantic | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantic | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |
@@ -40,12 +39,12 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app secret tls-set` | semantic | CLI -o json / typed MCP result | baseharbor.secret.tls-set |  |
 | `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. |
 | `baha app show` | semantic | CLI -o json / typed MCP result | baseharbor.app.show |  |
+| `baha app sql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
 | `baha app status` | semantic | CLI -o json / typed MCP result | baseharbor.status |  |
 | `baha app tls` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app tls update` | semantic | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantic | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app update` | semantic | CLI -o json / typed MCP result | baseharbor.update |  |
-| `baha app valkey` | alias |  |  | Canonical command: baha app redis; shares its coverage classification. |
 | `baha app workspace` | presentation |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
 | `baha app workspace init` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantic | CLI -o json / typed MCP result | baseharbor.workspace.map |  |
@@ -106,9 +105,9 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha stack show` | semantic | CLI -o json / typed MCP result | baseharbor.stack.show |  |
 | `baha status` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.status | Control-plane mode maps here; repository application mode uses status. |
 | `baha target` | semantic | CLI -o json / typed MCP result | baseharbor.target |  |
-| `baha target activate` | presentation |  |  | Emits shell-local selection only; machine clients supply the explicit target argument on each semantic operation. |
+| `baha target activate` | presentation |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
 | `baha target create` | semantic | CLI -o json / typed MCP result | baseharbor.target.create |  |
-| `baha target deactivate` | presentation |  |  | Clears shell-local selection only; machine clients omit an explicit target to resolve configured defaults. |
+| `baha target deactivate` | presentation |  |  | Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults. |
 | `baha target delete` | semantic | CLI -o json / typed MCP result | baseharbor.target.delete |  |
 | `baha target list` | semantic | CLI -o json / typed MCP result | baseharbor.target.list |  |
 | `baha target show` | semantic | CLI -o json / typed MCP result | baseharbor.target |  |
@@ -116,6 +115,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha trust export` | semantic | CLI --json (--output is CA destination) / typed MCP result | baseharbor.trust.export |  |
 | `baha trust install` | semantic | CLI -o json / typed MCP result | baseharbor.trust.install |  |
 | `baha trust status` | semantic | CLI -o json / typed MCP result | baseharbor.trust.status |  |
+| `baha trust uninstall` | semantic | CLI -o json / typed MCP result | baseharbor.trust.uninstall |  |
 | `baha tui` | presentation |  |  | Human interactive presentation; its product actions require individual semantic coverage. |
 | `baha up` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.up | Control-plane-only mode maps here. Repository application mode additionally uses app.configure and apply; host trust installation uses trust.install with approval. |
 | `baha update` | semantic | CLI -o json / typed MCP result | baseharbor.release.check | --check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes. |
