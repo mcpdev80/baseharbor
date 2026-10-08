@@ -22,6 +22,8 @@ func TestMultiInstanceComposeLifecycleInCI(t *testing.T) {
 	}
 	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeApplication))
+	// Each instance must use its container credential, independent of host interpolation.
+	t.Setenv("VALKEY_PASSWORD", "host-value-must-not-be-used-by-instance")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

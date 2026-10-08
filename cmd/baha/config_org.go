@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -38,7 +41,7 @@ func configOrganizationCommand() *cli.Command {
 			{
 				Name:    "show",
 				Summary: "Show the active organization configuration and effective defaults",
-				Usage:   "baha config organization show [--environment ENV] [-o json]",
+				Usage:   "baha config organization show [--environment ENV] [--preferences FILE] [-o json]",
 				Run:     runOrganizationShow,
 			},
 			{
@@ -70,6 +73,10 @@ func runOrganizationSet(ctx context.Context, args []string, out, errOut io.Write
 }
 
 func runOrganizationShow(ctx context.Context, args []string, out, errOut io.Writer) error {
+	args, preferences, err := readOrganizationPreferences(args)
+	if err != nil {
+		return err
+	}
 	environment, format, err := parseOrganizationReadArgs(args, "config organization show", false)
 	if err != nil {
 		return err
@@ -78,7 +85,7 @@ func runOrganizationShow(ctx context.Context, args []string, out, errOut io.Writ
 	if err != nil {
 		return err
 	}
-	return writeOrganizationView(out, state, environment, format)
+	return writeOrganizationView(out, state, environment, format, preferences...)
 }
 
 func runOrganizationCheck(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -117,8 +124,8 @@ func runOrganizationUpdate(ctx context.Context, args []string, out, errOut io.Wr
 	return writeOrganizationView(out, state, environment, format)
 }
 
-func writeOrganizationView(out io.Writer, state orgconfig.ActiveState, environment string, format cliOutputFormat) error {
-	effective, err := orgconfig.ResolveEffective(state, environment)
+func writeOrganizationView(out io.Writer, state orgconfig.ActiveState, environment string, format cliOutputFormat, preferences ...orgconfig.PreferenceLayer) error {
+	effective, err := orgconfig.ResolveEffective(state, environment, preferences...)
 	if err != nil {
 		return err
 	}
@@ -154,6 +161,45 @@ func writeOrganizationView(out io.Writer, state orgconfig.ActiveState, environme
 		fmt.Fprintf(out, "Policy:       %s -> %s [%s] (%s)\n", policy.Policy, policy.Reference, mode, policy.Source)
 	}
 	return nil
+}
+
+func readOrganizationPreferences(args []string) ([]string, []orgconfig.PreferenceLayer, error) {
+	remaining := make([]string, 0, len(args))
+	var preferences []orgconfig.PreferenceLayer
+	seen := false
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--preferences" {
+			remaining = append(remaining, args[i])
+			continue
+		}
+		if seen || i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+			return nil, nil, usageError("--preferences requires one file", "Provide one JSON array of lower-trust preference layers.")
+		}
+		seen = true
+		i++
+		file, err := os.Open(args[i])
+		if err != nil {
+			return nil, nil, fmt.Errorf("read organization preferences: %w", err)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+		_ = file.Close()
+		if readErr != nil || len(data) > 1<<20 {
+			return nil, nil, usageError("preference file exceeds limit or cannot be read", "Provide a readable JSON array no larger than 1 MiB.")
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		err = decoder.Decode(&preferences)
+		if err == nil {
+			var extra any
+			if trailing := decoder.Decode(&extra); trailing != io.EOF {
+				err = fmt.Errorf("preferences require exactly one JSON array")
+			}
+		}
+		if err != nil {
+			return nil, nil, usageError("invalid preference file", "Use the versioned organization preference-layer JSON contract without unknown fields or trailing data.")
+		}
+	}
+	return remaining, preferences, nil
 }
 
 func organizationResolutionIdentity(r orgconfig.Resolution) string {

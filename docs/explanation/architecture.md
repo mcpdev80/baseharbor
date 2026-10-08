@@ -16,6 +16,54 @@ Runtime + Capability + Delivery Providers
 Verified Result
 ```
 
+## Core installation
+
+BaseHarbor Core consists of **SQL + Secrets + Identity**, currently realized by
+PostgreSQL, OpenBao and Keycloak. These capabilities are mandatory. The Web Console
+is optional and connects to one selected Core in the same installation/security
+boundary; same-origin HTTPS is the default topology.
+
+Core bootstrap is independent of applications and repositories. It verifies the
+three capabilities and persists one authoritative installation identity. A partial
+failure remains observable; retry reconciles the same owned installation. Foreign
+or ambiguous resources fail closed instead of being adopted or replaced.
+
+The first application flow offers Core setup when needed and resumes after verified
+readiness. Development/deployment machine selection changes workspace/source defaults,
+not capabilities or transport security. Local development keeps required TLS and
+protected credentials without requiring an interactive login for ordinary local work.
+
+The selected installation remains the authority for Core-managed credentials,
+service PKI and runtime-permission brokers. Application workload placement has its
+own runtime boundary. Execution revalidates the selected Core configuration;
+changed or unavailable bindings fail closed before native workload inspection or
+mutation. A selected remote Core is never replaced implicitly with a local one.
+
+Core capabilities are mandatory; provider placement may be shared or application-isolated.
+Additional isolation can require extra provider instances. Resource evidence must
+identify topology/placement, stabilized idle memory, startup/convergence peak and
+simultaneous Core total. Unavailable measurements are not presented as measured values.
+
+## Optional companion implementations
+
+The public [BaseHarbor Console](https://github.com/mcpdev80/baseharbor-console) and [BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) consume Core-owned contracts; they do not introduce new authority.
+
+```text
+CLI / JSON / MCP / protected HTTP / Console
+                    ↓
+             BaseHarbor Core
+                    ↓
+           runtime semantics
+                    ↓
+          Target Access boundary
+                    ↓
+   local/native API or optional Connector
+```
+
+The Console is a projection/client surface: no Console-local RBAC, deployment database, secret store or direct runtime/Connector path. The Node Connector is an optional outbound-initiated authenticated Target Access transport for remote non-Kubernetes hosts: not a control plane, not a Runtime Provider and not an autonomous agent. Kubernetes/OpenShift normally use native authenticated APIs.
+
+A companion repository may prove its own build/tests independently. BaseHarbor support still requires pinned end-to-end evidence against the exact Core/consumer revisions.
+
 ## Portable intent
 
 The application describes what it needs, not which infrastructure product must provide it.

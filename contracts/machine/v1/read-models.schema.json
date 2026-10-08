@@ -1,0 +1,544 @@
+{
+  "$defs": {
+    "app.list": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "deployments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "application": {
+                "type": "string"
+              },
+              "application_id": {
+                "type": "string"
+              },
+              "contract_version": {
+                "type": "string"
+              },
+              "deployment_id": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "ready": {
+                "type": "boolean"
+              },
+              "runtime_provider": {
+                "type": "string"
+              },
+              "source_available": {
+                "type": "boolean"
+              },
+              "source_kind": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "contract_version",
+              "deployment_id",
+              "application_id",
+              "target",
+              "application",
+              "environment",
+              "ready",
+              "source_available"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "deployments"
+      ],
+      "type": "object"
+    },
+    "runtime.capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "resource_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "provider",
+        "target",
+        "capabilities",
+        "resource_kinds"
+      ],
+      "type": "object"
+    },
+    "runtime.list": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contract_version": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "extension": {
+                "items": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "ownership": {
+                "type": "string"
+              },
+              "reconciliation": {
+                "additionalProperties": false,
+                "properties": {
+                  "detail": {
+                    "type": "string"
+                  },
+                  "direct_mutation_may_be_reconciled": {
+                    "type": "boolean"
+                  },
+                  "preferred_operation": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "ref": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "resource_id": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "target",
+                  "kind",
+                  "resource_id"
+                ],
+                "type": "object"
+              },
+              "references": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "relationship": {
+                "additionalProperties": false,
+                "properties": {
+                  "application": {
+                    "type": "string"
+                  },
+                  "application_id": {
+                    "type": "string"
+                  },
+                  "component": {
+                    "type": "string"
+                  },
+                  "deployment_id": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "runtime_name": {
+                "type": "string"
+              },
+              "state": {
+                "additionalProperties": false,
+                "properties": {
+                  "desired": {
+                    "type": "string"
+                  },
+                  "health": {
+                    "type": "string"
+                  },
+                  "observed": {
+                    "type": "string"
+                  },
+                  "ready": {
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "updated_at": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "contract_version",
+              "ref",
+              "ownership"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stream.descriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "additionalProperties": false,
+          "properties": {
+            "assurance": {
+              "type": "string"
+            },
+            "authentication_methods": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "issuer": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "application": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "workspace": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "resource_kind": {
+          "type": "string"
+        },
+        "stream_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "stream_id",
+        "kind",
+        "actor",
+        "context",
+        "resource_kind",
+        "resource_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "target.list": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "access_reference": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "contract_version": {
+                "type": "string"
+              },
+              "default": {
+                "type": "boolean"
+              },
+              "effective": {
+                "type": "boolean"
+              },
+              "implicit": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "runtime_provider": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "contract_version",
+              "name",
+              "runtime_provider",
+              "access_reference"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "targets"
+      ],
+      "type": "object"
+    },
+    "terminal.event": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "data": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "exit_code": {
+          "type": [
+            "null",
+            "integer"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "stream_id",
+        "sequence",
+        "kind",
+        "occurred_at"
+      ],
+      "type": "object"
+    },
+    "terminal.input": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "type": "integer"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "data": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "sequence": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_version",
+        "sequence",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "workspace.list": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "workspaces": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "application": {
+                "type": "string"
+              },
+              "contract_version": {
+                "type": "string"
+              },
+              "manifest": {
+                "type": "string"
+              },
+              "source_count": {
+                "type": "integer"
+              },
+              "sources": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "contract_version",
+              "application",
+              "manifest",
+              "source_count"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "workspaces"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/read-models.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Core result shapes derived from the semantic Go types. Native observations do not imply health or authorization."
+}

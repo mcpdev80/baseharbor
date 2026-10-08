@@ -1,18 +1,29 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 type bahaMachineExecutor struct {
-	store application.Store
+	store             application.Store
+	connectorSessions *targetsession.Pool
+	coreAuthority     *deployment.ResolvedTarget
+}
+
+// Bound once during Core startup, before accepting any machine request.
+func (e *bahaMachineExecutor) BindConnectorSessions(pool *targetsession.Pool) {
+	e.connectorSessions = pool
 }
 
 func newBahaMachineExecutor(store application.Store) machinehttp.Executor {
@@ -26,6 +37,11 @@ func (e *bahaMachineExecutor) Execute(
 	input json.RawMessage,
 	report machinehttp.ProgressReporter,
 ) (json.RawMessage, error) {
+	ctx = targetsession.WithPool(ctx, e.connectorSessions)
+	if e.coreAuthority != nil {
+		ctx = withCoreAuthority(ctx, *e.coreAuthority)
+	}
+	ctx = withOrganizationEnvironment(ctx, operationContext.Environment)
 	opts := cli.OutputOptionsFromContext(ctx)
 	opts.NonInteractive = true
 	opts.Quiet = true
@@ -40,28 +56,19 @@ func (e *bahaMachineExecutor) Execute(
 		result any
 		err    error
 	)
-	switch operation.ID {
-	case "target", "inspect", "workspace.resolve", "workspace.status",
-		"runtime.capabilities", "runtime.list", "runtime.inspect", "runtime.metrics",
-		"plan", "status", "doctor", "observe", "evidence",
-		"provider.list", "provider.inspect", "provider.verify",
-		"organization.inspect", "organization.check", "policy.check", "policy.explain":
+	switch httpOperationKinds[operation.ID] {
+	case httpRead:
 		result, err = e.executeHTTPRead(ctx, operation.ID, operationContext, input)
-	case "runtime.start", "runtime.stop", "runtime.restart":
+	case httpRuntimeMutation:
 		result, err = e.executeHTTPRuntimeMutation(ctx, operation.ID, operationContext, input)
-	case "workspace.update", "app.new", "provider.add", "provider.remove",
-		"organization.set", "organization.update", "runtime.operate":
+	case httpPlatformMutation:
 		result, err = e.executeHTTPPlatformMutation(ctx, operation.ID, operationContext, input, report)
-	case "apply", "update", "repair", "backup", "restore", "destroy":
+	case httpLifecycle:
 		result, err = e.executeHTTPLifecycle(ctx, operation.ID, operationContext, input, report)
 	default:
-		return nil, machine.NewError(
-			machine.ErrorUnsupported,
-			"Machine operation is not implemented by the HTTP semantic executor.",
-			"Use machine discovery and select an implemented operation.",
-			false,
-		)
+		return nil, machine.NewError(machine.ErrorUnsupported, "Machine operation is not implemented by the HTTP semantic executor.", "Use machine discovery and select an implemented operation.", false)
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +83,19 @@ func decodeHTTPInput(input json.RawMessage, target any) error {
 	if len(input) == 0 {
 		input = json.RawMessage("{}")
 	}
-	if err := json.Unmarshal(input, target); err != nil {
-		return machine.Wrap(machine.ErrorValidationFailed, err, "Send valid JSON input for the selected operation.", false)
+	invalid := func() error {
+		return machine.NewError(machine.ErrorValidationFailed, "Invalid machine operation input.", "Send valid JSON input for the selected operation.", false)
+	}
+	if machine.ValidateJSONObject(input, 1<<20) != nil {
+		return invalid()
+	}
+	decoder := json.NewDecoder(bytes.NewReader(input))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return invalid()
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return invalid()
 	}
 	return nil
 }

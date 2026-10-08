@@ -57,6 +57,34 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
+		if !hasLocalManifest {
+			for _, arg := range forwarded {
+				if arg != "--quick" {
+					continue
+				}
+				if len(forwarded) != 1 || agents || len(injected) > 0 {
+					return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
+				}
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				if _, err := manifestFromDetectedProject(detected, true); err != nil {
+					return err
+				}
+			}
+			for _, arg := range forwarded {
+				if arg == "--yes" || arg == "-y" {
+					ctx = withAssumeYes(ctx, true)
+				}
+			}
+			if readerIsTerminal(appInitInput) {
+				ctx = context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(appInitInput))
+			}
+			if err := applicationCorePrerequisite(ctx, applicationInput(ctx, appInitInput), out); err != nil {
+				return err
+			}
+		}
 		for _, arg := range forwarded {
 			if arg != "--quick" {
 				continue
@@ -434,6 +462,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		out = io.Discard
 		ctx = machineNoninteractiveContext(ctx)
 	}
+	ctx = withApplicationInput(ctx, runtimeInput)
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -466,11 +495,11 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			}
 		}
 	}
-	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+		if err := maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 			return err
 		}
 		if format == outputJSON {
@@ -491,12 +520,12 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 		return err
 	}
 	if !found {
-		initialized, err := initializeRepositoryManifestForUp(ctx, runtimeInput, out, errOut, opts)
+		initialized, err := initializeRepositoryManifestForUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts)
 		if err != nil {
 			return err
 		}
 		if !initialized {
-			if err := maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts); err != nil {
+			if err := maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 				return err
 			}
 			if format == outputJSON {
@@ -509,10 +538,10 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return nil
 		}
 	}
-	if err := ensureRepositoryDeploymentInputsForUp(ctx, runtimeInput, out, opts); err != nil {
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
-	if err := repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts); err != nil {
+	if err := repositoryApplicationUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); err != nil {
 		return err
 	}
 	if format == outputJSON {

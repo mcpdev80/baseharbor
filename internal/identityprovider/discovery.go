@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
@@ -40,19 +41,7 @@ func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, 
 	if client == nil {
 		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointIssuer+"/.well-known/openid-configuration", nil)
-	if err != nil {
-		return application.IdentityDiscovery{}, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return application.IdentityDiscovery{}, fmt.Errorf("discover OIDC provider: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return application.IdentityDiscovery{}, fmt.Errorf("discover OIDC provider: HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := fetchDiscoveryDocument(ctx, client, endpointIssuer+"/.well-known/openid-configuration")
 	if err != nil {
 		return application.IdentityDiscovery{}, err
 	}
@@ -83,4 +72,46 @@ func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, 
 		}
 	}
 	return result, nil
+}
+
+func fetchDiscoveryDocument(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {
+	retryCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		req, err := http.NewRequestWithContext(retryCtx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			if resp.StatusCode == http.StatusOK {
+				return body, nil
+			}
+			lastErr = fmt.Errorf("discover OIDC provider: HTTP %d", resp.StatusCode)
+			if resp.StatusCode != http.StatusInternalServerError && resp.StatusCode != http.StatusBadGateway &&
+				resp.StatusCode != http.StatusServiceUnavailable && resp.StatusCode != http.StatusGatewayTimeout {
+				return nil, lastErr
+			}
+		} else {
+			lastErr = fmt.Errorf("discover OIDC provider: %w", err)
+		}
+
+		select {
+		case <-retryCtx.Done():
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("discover OIDC provider: %w", ctx.Err())
+			}
+			return nil, lastErr
+		case <-ticker.C:
+		}
+	}
 }

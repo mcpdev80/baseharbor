@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -38,24 +37,34 @@ func (h *Handler) handleLogStream(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	descriptor, err := newStreamDescriptor(request, decision.Actor)
+	if err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Classify(err))
+		return
+	}
+	streamCtx = machine.WithExecutionCorrelation(streamCtx, descriptor.StreamID)
 	stream, err := h.logStreamExecutor.OpenLogStream(streamCtx, request)
 	if err != nil {
 		writeMachineError(w, machineErrorStatus(err), err)
 		return
 	}
 	defer stream.Close()
+	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
+	defer stopClose()
 
-	descriptor, err := newStreamDescriptor(request, decision.Actor)
-	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the stream request.", true))
-		return
-	}
 	writeStreamHeaders(w, descriptor)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
+	if err := writer.prepareWrite(); err != nil {
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, stream)
+	if err := http.NewResponseController(w).Flush(); err != nil {
+		return
+	}
+	_, _ = io.Copy(writer, stream)
 }
 
 func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
@@ -83,24 +92,62 @@ func (h *Handler) handleExecStream(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	descriptor, err := newStreamDescriptor(request, decision.Actor)
+	if err != nil {
+		writeMachineError(w, http.StatusInternalServerError, machine.Classify(err))
+		return
+	}
+	streamCtx = machine.WithExecutionCorrelation(streamCtx, descriptor.StreamID)
 	stream, err := executor.OpenExecStream(streamCtx, request)
 	if err != nil {
 		writeMachineError(w, machineErrorStatus(err), err)
 		return
 	}
 	defer stream.Close()
+	stopClose := context.AfterFunc(r.Context(), func() { _ = stream.Close() })
+	defer stopClose()
 
-	descriptor, err := newStreamDescriptor(request, decision.Actor)
-	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the stream request.", true))
-		return
-	}
 	writeStreamHeaders(w, descriptor)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
+	if err := writer.prepareWrite(); err != nil {
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, stream)
+	if err := http.NewResponseController(w).Flush(); err != nil {
+		return
+	}
+	_, _ = io.Copy(writer, stream)
+}
+
+type streamDeadlineWriter struct {
+	http.ResponseWriter
+	ctx context.Context
+}
+
+func (w streamDeadlineWriter) prepareWrite() error {
+	if err := w.ctx.Err(); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	if limit, ok := w.ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
+	_ = http.NewResponseController(w.ResponseWriter).SetWriteDeadline(deadline)
+	return nil
+}
+
+func (w streamDeadlineWriter) Write(data []byte) (int, error) {
+	if err := w.prepareWrite(); err != nil {
+		return 0, err
+	}
+	n, err := w.ResponseWriter.Write(data)
+	if err != nil {
+		return n, err
+	}
+	return n, http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKind) (machine.StreamRequest, operatorauth.AuthorizationDecision, context.Context, error) {
@@ -123,9 +170,7 @@ func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKin
 	}
 
 	var request machine.StreamRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
+	if err := decodeRequest(r.Body, &request); err != nil {
 		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, machine.Wrap(machine.ErrorValidationFailed, err, "Send a valid stream request.", false)
 	}
 	request.Kind = kind
@@ -140,6 +185,10 @@ func (h *Handler) authorizeStreamRequest(r *http.Request, kind machine.StreamKin
 		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, err
 	}
 
+	if request.Context.Resource != "" && request.Context.Resource != request.ResourceID {
+		return machine.StreamRequest{}, operatorauth.AuthorizationDecision{}, nil, machine.NewError(machine.ErrorPolicyDenied, "Stream resource differs from the authorized context.", "Use the same stable resource in context and stream selection.", false)
+	}
+	request.Context.Resource = request.ResourceID
 	ctx := operatorauth.WithVerifiedPrincipal(r.Context(), principal)
 	operation := machine.Operation{
 		ID:              "runtime." + string(kind),

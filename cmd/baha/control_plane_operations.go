@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"os"
 )
@@ -13,6 +15,7 @@ type publicControlPlaneCheck struct {
 	Ready bool   `json:"ready"`
 }
 type controlPlaneReport struct {
+	Installation          *coreinstallation.State   `json:"installation,omitempty"`
 	Target                string                    `json:"target"`
 	State                 string                    `json:"state"`
 	Ready                 bool                      `json:"ready"`
@@ -31,6 +34,21 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 		return controlPlaneReport{}, err
 	}
 	result := controlPlaneReport{Target: target.Name, State: "not_deployed"}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return result, err
+	}
+	state, stateErr := coreinstallation.Load(root)
+	if stateErr != nil && !errors.Is(stateErr, os.ErrNotExist) {
+		return result, stateErr
+	}
+	if stateErr == nil {
+		if state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
+			return result, machine.NewError(machine.ErrorOwnershipAmbiguous, "Core belongs to another installation selection.", "Select the owning installation.", false)
+		}
+		result.Installation = &state
+		result.State = "degraded"
+	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	if errors.Is(err, os.ErrNotExist) {
 		return result, nil
@@ -49,6 +67,9 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 	result.Running = running
 	result.State = "stopped"
 	if len(running) == 0 {
+		if result.Installation != nil {
+			result.Installation.Ready = false
+		}
 		return result, nil
 	}
 	checks := health.RuntimeChecksForFiles(files)
@@ -57,6 +78,20 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 	for _, check := range checks {
 		result.Checks = append(result.Checks, publicControlPlaneCheck{Name: check.Name, Ready: check.OK})
 		result.Ready = result.Ready && check.OK
+	}
+	coreReady := stateErr == nil && state.Ready && state.Spec.Target == target.Name && state.Spec.Runtime == target.RuntimeProvider
+	if coreReady {
+		dataDir, err := targetDataRoot(target)
+		if err != nil {
+			return result, err
+		}
+		coreReady = identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer) == nil
+	}
+	result.Checks = append(result.Checks, publicControlPlaneCheck{Name: "Core Identity", Ready: coreReady})
+	result.Ready = result.Ready && coreReady
+	if stateErr == nil {
+		state.Ready = result.Ready
+		result.Installation = &state
 	}
 	availability := evaluateControlPlaneAvailability(running, checks, files.HA)
 	result.AvailabilitySatisfied = availability.Satisfied

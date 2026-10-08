@@ -250,7 +250,7 @@ func writeMongoDBComposeService(b *strings.Builder, m Manifest, instance string)
 		fmt.Fprintf(b, "      - ./providers/mongodb/%s/runtime/server.pem:/run/baseharbor/tls/server.pem:ro\n", instance)
 		fmt.Fprintf(b, "      - ./providers/mongodb/%s/runtime/ca.pem:/run/baseharbor/tls/ca.pem:ro\n", instance)
 		b.WriteString("    healthcheck:\n")
-		b.WriteString("      test: [\"CMD-SHELL\", \"mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \\\"$${MONGO_INITDB_ROOT_USERNAME}\\\" --password \\\"$${MONGO_INITDB_ROOT_PASSWORD}\\\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'\"]\n")
+		b.WriteString("      test: [\"CMD-SHELL\", \"mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\\\"$${MONGO_INITDB_ROOT_USERNAME}\\\" --password=\\\"$${MONGO_INITDB_ROOT_PASSWORD}\\\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'\"]\n")
 		b.WriteString("      interval: 5s\n      timeout: 10s\n      retries: 18\n      start_period: 15s\n\n")
 	}
 }

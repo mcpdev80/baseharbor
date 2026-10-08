@@ -5,60 +5,152 @@ repo_url: https://github.com/mcpdev80/baseharbor
 repo_name: mcpdev80/baseharbor
 docs_dir: docs/de
 site_dir: site/de
-
 theme:
   name: material
   language: de
   logo: ../brand/baseharbor-master-lockup.png
   favicon: ../brand/baseharbor.ico
   features:
-    - navigation.instant
-    - navigation.sections
-    - navigation.top
-    - search.suggest
-    - search.highlight
-    - content.code.copy
+  - navigation.instant
+  - navigation.sections
+  - navigation.path
+  - navigation.top
+  - toc.follow
+  - search.suggest
+  - search.highlight
+  - content.code.copy
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle:
-        icon: material/brightness-7
-        name: Zum dunklen Modus wechseln
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      toggle:
-        icon: material/brightness-4
-        name: Zum hellen Modus wechseln
-
+  - media: '(prefers-color-scheme: light)'
+    scheme: default
+    toggle:
+      icon: material/brightness-7
+      name: Zum dunklen Modus wechseln
+  - media: '(prefers-color-scheme: dark)'
+    scheme: slate
+    toggle:
+      icon: material/brightness-4
+      name: Zum hellen Modus wechseln
 plugins:
-  - search
-
+- search
 markdown_extensions:
-  - admonition
-  - attr_list
-  - md_in_html
-  - pymdownx.details
-  - pymdownx.superfences
-
+- admonition
+- attr_list
+- md_in_html
+- pymdownx.details
+- pymdownx.superfences
 extra_css:
-  - ../brand/brand-tokens.css
-  - ../stylesheets/baseharbor-docs.css
-
+- ../brand/brand-tokens.css
+- ../stylesheets/baseharbor-docs.css
 extra:
   alternate:
-    - name: English
-      link: /baseharbor/
-      lang: en
-    - name: Deutsch
-      link: /baseharbor/de/
-      lang: de
-
+  - name: English
+    link: /baseharbor/
+    lang: en
+  - name: Deutsch
+    link: /baseharbor/de/
+    lang: de
 nav:
-  - Start: index.md
-  - Einstieg: tutorials/getting-started.md
-  - Verstehen:
-      - Architektur: explanation/architecture.md
-      - Application Contract: explanation/application-contract.md
-      - Provider: explanation/providers.md
-      - Targets und Deployment-Ziele: explanation/targets.md
-      - Security: explanation/security.md
+- Start: index.md
+- Einstieg:
+  - Erste Application: tutorials/getting-started.md
+  - Homelab: tutorials/homelab.md
+  - Core-Ressourcen: explanation/core-resources.md
+  - CLI-Überblick: cli/index.md
+- Applications:
+  - Application Contract: explanation/application-contract.md
+  - Application-Befehle: cli/applications.md
+  - Core-Workflow: cli/core.md
+  - Umgebungen: how-to/environments.md
+  - Backup und Restore: how-to/backup-restore.md
+  - Dynamische Application-Secrets: how-to/dynamic-application-secrets.md
+- Targets:
+  - Target-Konzepte: explanation/targets.md
+  - Target-Befehle: cli/targets.md
+  - Developer-Zugriff: how-to/developer-access.md
+- Provider:
+  - Provider-Modell: explanation/providers.md
+  - Provider-Befehle: cli/providers.md
+  - Externe/BYO-Provider: how-to/external-providers.md
+  - PostgreSQL: how-to/postgres.md
+  - Cache: how-to/cache.md
+  - Dauerhafter Key-Value-Speicher: how-to/durable-key-value.md
+  - Dokumentdatenbank: how-to/document-database.md
+  - Messaging: how-to/messaging.md
+  - Objektspeicher: how-to/object-storage.md
+  - Secrets: how-to/secrets.md
+  - Observability: how-to/observability.md
+- Workspaces:
+  - Workspace und Development: cli/development.md
+- Development Stacks:
+  - Backstage-Integration: how-to/backstage.md
+- Organisation und Plattform:
+  - Konzepte und Verteilung: explanation/organization-configuration.md
+  - Resolution & independent policy (EN): https://mcpdev80.github.io/baseharbor/spec/organization-resolution-v1/
+  - Organisation und Policy: cli/organization-policy.md
+- Security und Trust:
+  - Sicherheitsmodell: explanation/security.md
+  - Authentifizierung: explanation/authentication.md
+  - Security-/Trust-Befehle: cli/security-trust.md
+  - Extension artifact trust (EN): https://mcpdev80.github.io/baseharbor/spec/extension-artifact-trust-v1/
+- Betrieb:
+  - Fehlerbehebung (EN): https://mcpdev80.github.io/baseharbor/troubleshooting/
+  - Fehler (EN): https://mcpdev80.github.io/baseharbor/reference/errors/
+- Automation und Agents:
+  - Automation-Befehle: cli/automation-agents.md
+  - MCP / agent interface (EN): https://mcpdev80.github.io/baseharbor/reference/mcp/
+  - CLI / machine coverage (EN): https://mcpdev80.github.io/baseharbor/reference/cli-machine-coverage/
+  - Maschinenoperationen: how-to/machine-operations.md
+  - Machine Interface v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-interface-v1/
+  - Protected Machine HTTP v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-http-v1/
+  - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
+- Referenz:
+  - Public contracts (EN): https://mcpdev80.github.io/baseharbor/reference/public-contracts/
+  - Platform support (EN): https://mcpdev80.github.io/baseharbor/reference/platform-support/
+  - Complete command index (EN): https://mcpdev80.github.io/baseharbor/cli/command-index/
+  - CLI reference (EN): https://mcpdev80.github.io/baseharbor/reference/cli/
+  - Globale Optionen: cli/global-options.md
+  - Shell und Bedienung: cli/shell-ux.md
+  - Manifest (EN): https://mcpdev80.github.io/baseharbor/reference/manifest/
+  - Application secret API (EN): https://mcpdev80.github.io/baseharbor/reference/application-secret-api/
+  - Authentication & API errors (EN): https://mcpdev80.github.io/baseharbor/reference/authentication-and-api-errors/
+  - Backup und Restore (EN): https://mcpdev80.github.io/baseharbor/reference/backup-and-restore/
+  - PostgreSQL & migrations (EN): https://mcpdev80.github.io/baseharbor/reference/postgresql-and-migrations/
+  - Compose runtime (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-compose/
+  - Runtime Resource API (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-resource-api/
+  - Runtime secret broker (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-secret-broker/
+  - Secrets & OpenBao (EN): https://mcpdev80.github.io/baseharbor/reference/secrets-and-openbao/
+  - Runtime Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-provider-contract-v1/
+  - Runtime Provider Conformance v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-provider-conformance-v1/
+  - Public provider conformance v1 (EN): https://mcpdev80.github.io/baseharbor/spec/provider-conformance-v1/
+  - Delivery Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/delivery-provider-contract-v1/
+- Architektur:
+  - Systemarchitektur: explanation/architecture.md
+  - Workload-Quellen: explanation/workload-sources.md
+- Entwicklung:
+  - Mitwirken (EN): https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md
+  - Entwicklungsrichtlinien (EN): https://mcpdev80.github.io/baseharbor/DEVELOPMENT_GUIDELINES/
+  - Doku-Stil (EN): https://mcpdev80.github.io/baseharbor/STYLE_GUIDE/
+  - Release-Anforderungen (EN): https://mcpdev80.github.io/baseharbor/development/v0.4.23-release-requirements/
+  - Architekturentscheidungen (EN): https://mcpdev80.github.io/baseharbor/decisions/
+  - Spezifikationen:
+    - Überblick (EN): https://mcpdev80.github.io/baseharbor/spec/
+    - Application Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/application-contract-v1/
+    - Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/provider-contract-v1/
+    - Development Extension v1 (EN): https://mcpdev80.github.io/baseharbor/spec/development-extension-v1/
+    - Reconciliation v1 (EN): https://mcpdev80.github.io/baseharbor/spec/reconciliation-v1/
+    - Machine Interface v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-interface-v1/
+    - Protected Machine HTTP v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-http-v1/
+    - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
+    - Audit & Evidence v1 (EN): https://mcpdev80.github.io/baseharbor/spec/audit-evidence-v1/
+    - Security invariants (EN): https://mcpdev80.github.io/baseharbor/spec/security-invariants/
+    - Input resolution (EN): https://mcpdev80.github.io/baseharbor/spec/input-resolution/
+    - Control-plane runtime (EN): https://mcpdev80.github.io/baseharbor/spec/control-plane-runtime/
+    - Application Runtime Broker (EN): https://mcpdev80.github.io/baseharbor/spec/application-runtime-broker/
+    - Application runtime identity (EN): https://mcpdev80.github.io/baseharbor/spec/application-runtime-identity/
+    - Runtime broker security (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-secret-broker-security/
+    - Standards-first contracts (EN): https://mcpdev80.github.io/baseharbor/spec/standards-first/
+    - Standards matrix (EN): https://mcpdev80.github.io/baseharbor/spec/standards-matrix/
+- Projekt:
+  - Roadmap (EN): https://mcpdev80.github.io/baseharbor/roadmap/
+  - Release Notes: releases/index.md
+  - Release-Referenz (EN): https://mcpdev80.github.io/baseharbor/reference/releases/

@@ -157,7 +157,7 @@ func (e AuditEvent) Validate() error {
 	if e.SchemaVersion != SchemaVersion {
 		return errors.New("unsupported audit schema version")
 	}
-	if e.ID == "" || e.Timestamp.IsZero() || e.Actor.Interface == "" || e.Target == "" || e.Application == "" || e.Environment == "" || e.Operation == "" || e.Outcome == "" {
+	if e.ID == "" || e.Timestamp.IsZero() || e.Actor.Interface == "" || e.Target == "" || (e.Application == "" && !(strings.HasPrefix(e.Operation, "runtime.") && e.Resource != "")) || e.Environment == "" || e.Operation == "" || e.Outcome == "" {
 		return errors.New("audit event is incomplete")
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -17,13 +18,16 @@ import (
 )
 
 const (
-	maxRequestBytes     = 1 << 20
-	executionMaxRuntime = 30 * time.Minute
+	maxRequestBytes        = 1 << 20
+	executionMaxRuntime    = 30 * time.Minute
+	streamMaxRuntime       = 5 * time.Minute
+	eventHeartbeatInterval = 15 * time.Second
 )
 
 type ProgressReporter func(machine.OperationProgress)
 
 type Executor interface {
+	SupportedOperationIDs() []string
 	Execute(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 }
 
@@ -34,10 +38,13 @@ type ExecuteRequest struct {
 }
 
 type Handler struct {
+	operations        []machine.Operation
+	operationByID     map[string]machine.Operation
 	executor          Executor
 	logStreamExecutor LogStreamExecutor
 	executions        *executionStore
 	mux               *http.ServeMux
+	terminals         *terminalStore
 }
 
 func New(executor Executor) (*Handler, error) {
@@ -45,19 +52,37 @@ func New(executor Executor) (*Handler, error) {
 		return nil, errors.New("machine HTTP executor is required")
 	}
 	h := &Handler{
-		executor:   executor,
-		executions: newExecutionStore(),
-		mux:        http.NewServeMux(),
+		operations:    make([]machine.Operation, 0),
+		operationByID: make(map[string]machine.Operation),
+		executor:      executor,
+		executions:    newExecutionStore(),
+		mux:           http.NewServeMux(),
+		terminals:     newTerminalStore(),
+	}
+	for _, id := range executor.SupportedOperationIDs() {
+		operation, exists := machine.OperationByID(id)
+		if _, duplicate := h.operationByID[id]; !exists || duplicate {
+			return nil, errors.New("invalid machine HTTP operation support registry")
+		}
+		h.operationByID[id] = operation
+	}
+	for _, operation := range machine.Operations() {
+		if _, supported := h.operationByID[operation.ID]; supported {
+			h.operations = append(h.operations, operation)
+		}
 	}
 	if logStreamExecutor, ok := executor.(LogStreamExecutor); ok {
 		h.logStreamExecutor = logStreamExecutor
 	}
-	h.mux.HandleFunc("GET /api/v1/machine/discovery", h.handleDiscovery)
-	h.mux.HandleFunc("POST /api/v1/machine/executions", h.handleExecute)
-	h.mux.HandleFunc("GET /api/v1/machine/executions/{execution_id}", h.handleExecution)
-	h.mux.HandleFunc("GET /api/v1/machine/executions/{execution_id}/events", h.handleEvents)
-	h.mux.HandleFunc("POST /api/v1/machine/streams/logs", h.handleLogStream)
-	h.mux.HandleFunc("POST /api/v1/machine/streams/exec", h.handleExecStream)
+	bindings := machine.MachineHTTPBindings()
+	for key, handler := range map[string]http.HandlerFunc{
+		"discovery": h.handleDiscovery, "execute": h.handleExecute, "execution": h.handleExecution, "execution_events": h.handleEvents,
+		"logs": h.handleLogStream, "exec": h.handleExecStream, "terminal_open": h.handleTerminalOpen, "terminal_events": h.handleTerminalEvents,
+		"terminal_input": h.handleTerminalInput, "terminal_close": h.handleTerminalClose,
+	} {
+		binding := bindings[key]
+		h.mux.HandleFunc(binding.Method+" "+binding.Href, handler)
+	}
 	return h, nil
 }
 
@@ -71,6 +96,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		parsed, err := url.Parse(origin)
+		if err != nil || len(r.Header.Values("Origin")) != 1 || parsed.Scheme != "https" || parsed.Host != r.Host || parsed.User != nil ||
+			parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			writeMachineError(w, http.StatusForbidden, machine.NewError(machine.ErrorPolicyDenied,
+				"The browser origin does not match the protected Core destination.",
+				"Use the configured same-origin HTTPS Console/Core endpoint.", false))
+			return
+		}
+	}
+	principal, authenticated := identity.FromContext(r.Context())
+	if authenticated && principal.ExpiresAt != nil && !principal.ExpiresAt.After(time.Now()) {
+		writeMachineError(w, http.StatusUnauthorized, machine.NewError(machine.ErrorAuthenticationFailed,
+			"The authenticated operator session has expired.", "Authenticate again before opening a new request.", false))
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/machine/streams/") || strings.HasSuffix(r.URL.Path, "/events") {
+		deadline := time.Now().Add(streamMaxRuntime)
+		if authenticated && principal.ExpiresAt != nil && principal.ExpiresAt.Before(deadline) {
+			deadline = *principal.ExpiresAt
+		}
+		ctx, cancel := context.WithDeadline(r.Context(), deadline)
+		defer cancel()
+		r = r.WithContext(ctx)
+	}
 	h.mux.ServeHTTP(w, r)
 }
 
@@ -80,6 +130,11 @@ func (h *Handler) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	discovery := machine.MachineDiscovery()
+	discovery.Operations = h.operations
+	discovery.HTTP = machine.MachineHTTPBindings()
+	if _, ok := h.executor.(TerminalExecutor); ok {
+		discovery.Capabilities = append(discovery.Capabilities, "streams.terminal")
+	}
 	if h.logStreamExecutor != nil {
 		discovery.Capabilities = append(discovery.Capabilities, "streams.logs")
 	}
@@ -94,9 +149,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request ExecuteRequest
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
+	if err := decodeRequest(r.Body, &request); err != nil {
 		writeMachineError(w, http.StatusBadRequest, machine.Wrap(machine.ErrorValidationFailed, err, "Send a valid machine execution request.", false))
 		return
 	}
@@ -106,7 +159,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed, "operation_id and context.environment are required.", "Provide an explicit semantic operation and environment.", false))
 		return
 	}
-	operation, exists := machine.OperationByID(request.OperationID)
+	operation, exists := h.operationByID[request.OperationID]
 	if !exists {
 		writeMachineError(w, http.StatusNotFound, machine.NewError(machine.ErrorUnsupported, "Unknown machine operation.", "Use GET /api/v1/machine/discovery to negotiate supported operations.", false))
 		return
@@ -142,6 +195,7 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
+	parent = machine.WithExecutionCorrelation(parent, executionID)
 	ctx, cancel := context.WithTimeout(parent, executionMaxRuntime)
 	defer cancel()
 	if err := h.executions.start(executionID); err != nil {
@@ -199,7 +253,14 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cancel()
+	heartbeat := time.NewTicker(eventHeartbeatInterval)
+	defer heartbeat.Stop()
+	serveExecutionEvents(w, r, history, events, heartbeat.C)
+}
 
+// SSE comments preserve idle transport without reporting progress, changing
+// sequence numbers or extending the authenticated observation deadline.
+func serveExecutionEvents(w http.ResponseWriter, r *http.Request, history []machine.MachineEvent, events <-chan machine.MachineEvent, heartbeat <-chan time.Time) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeMachineError(w, http.StatusInternalServerError, machine.NewError(machine.ErrorUnsupported, "Streaming is not supported by this HTTP server.", "Use a server that supports streaming responses.", false))
@@ -209,9 +270,11 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
+	writer := streamDeadlineWriter{ResponseWriter: w, ctx: r.Context()}
 	for _, event := range history {
-		if err := writeSSEEvent(w, event); err != nil {
+		if err := writeSSEEvent(writer, event); err != nil {
 			return
 		}
 		flusher.Flush()
@@ -223,11 +286,16 @@ func (h *Handler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeat:
+			if _, err := io.WriteString(writer, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case event, open := <-events:
 			if !open {
 				return
 			}
-			if err := writeSSEEvent(w, event); err != nil {
+			if err := writeSSEEvent(writer, event); err != nil {
 				return
 			}
 			flusher.Flush()

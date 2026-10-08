@@ -1,0 +1,453 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/machine/v1/control.schema.json",
+  "title": "Machine HTTP semantic control records v1",
+  "$defs": {
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "application": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "environment": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "workspace": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "resource": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": []
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "cause": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "next": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "resource": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "remediation_class": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "issuer": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "assurance": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "authentication_methods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "current": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "percent": {
+          "type": "number"
+        }
+      },
+      "required": []
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v1"
+        },
+        "execution_id": {
+          "type": "string",
+          "pattern": "^exec_[0-9a-f]{32}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "maxLength": 256
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "progress": {
+          "$ref": "#/$defs/progress"
+        },
+        "result": {},
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      },
+      "required": [
+        "contract_version",
+        "execution_id",
+        "operation_id",
+        "actor",
+        "context",
+        "state"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "result"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error"
+            ]
+          }
+        }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v1"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "kind": {
+          "enum": [
+            "operation.started",
+            "operation.progress",
+            "operation.succeeded",
+            "operation.failed",
+            "operation.cancelled",
+            "application.state",
+            "provider.state",
+            "target.state",
+            "runtime.resource"
+          ]
+        },
+        "execution_id": {
+          "type": "string",
+          "pattern": "^exec_[0-9a-f]{32}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "maxLength": 256
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "progress": {
+          "$ref": "#/$defs/progress"
+        },
+        "result": {},
+        "error": {
+          "$ref": "#/$defs/error"
+        },
+        "resource_kind": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "resource_id": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": [
+        "contract_version",
+        "sequence",
+        "occurred_at",
+        "kind"
+      ]
+    },
+    "execute_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "maxLength": 256
+        },
+        "context": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/context"
+            },
+            {
+              "required": [
+                "environment"
+              ],
+              "properties": {
+                "environment": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        },
+        "input": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "context"
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "maxLength": 256
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "safety": {
+          "enum": [
+            "read_only",
+            "mutating",
+            "destructive"
+          ]
+        },
+        "confirmation_required": {
+          "type": "boolean"
+        },
+        "policy_required": {
+          "type": "boolean"
+        },
+        "contract_version": {
+          "const": "v1"
+        },
+        "mcp_tool": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "safety",
+        "confirmation_required",
+        "policy_required",
+        "contract_version"
+      ]
+    },
+    "http_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "href": {
+          "type": "string",
+          "pattern": "^/[^/].*",
+          "maxLength": 2048
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        },
+        "protocol": {
+          "enum": [
+            "sse",
+            "text"
+          ]
+        }
+      },
+      "required": [
+        "href",
+        "method"
+      ]
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v1"
+        },
+        "execution_version": {
+          "const": "v1"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operation"
+          },
+          "maxItems": 2048
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "maxItems": 256
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/http_binding"
+          },
+          "maxProperties": 128
+        }
+      },
+      "required": [
+        "contract_version",
+        "execution_version",
+        "operations"
+      ]
+    },
+    "error_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v1"
+        },
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      },
+      "required": [
+        "contract_version",
+        "error"
+      ]
+    }
+  }
+}

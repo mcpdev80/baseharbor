@@ -46,14 +46,35 @@ func NewService(backend ContainerBackend, target string, resolver OwnershipResol
 	return &Service{backend: backend, target: target, resolver: resolver}, nil
 }
 
-func (s *Service) Capabilities(context.Context, string) (CapabilitySet, error) {
+func (s *Service) Capabilities(ctx context.Context, target string) (CapabilitySet, error) {
+	if target != "" && target != s.target {
+		return CapabilitySet{}, errors.New("runtime capability Target mismatch")
+	}
 	capabilities := []Capability{
 		CapabilityResourceInspect,
 		CapabilityLogs,
 		CapabilityContainerLifecycle,
 		CapabilityContainerExec,
 	}
+	if _, ok := s.backend.(TerminalBackend); ok {
+		available := true
+		if backend, ok := s.backend.(interface{ TerminalAvailable() bool }); ok {
+			available = backend.TerminalAvailable()
+		}
+		if available {
+			capabilities = append(capabilities, CapabilityContainerTerminal)
+		}
+	}
 	resourceKinds := []ResourceKind{KindContainer}
+	if negotiated, ok := s.backend.(interface {
+		RuntimeExplorerCapabilities(context.Context) ([]Capability, error)
+	}); ok {
+		var err error
+		capabilities, err = negotiated.RuntimeExplorerCapabilities(ctx)
+		if err != nil {
+			return CapabilitySet{}, err
+		}
+	}
 	if inventory, ok := s.backend.(InventoryBackend); ok {
 		for _, kind := range inventory.InventoryResourceKinds() {
 			if kind == KindContainer || containsResourceKind(resourceKinds, kind) {
@@ -172,9 +193,19 @@ func (s *Service) Logs(ctx context.Context, request LogRequest) (io.ReadCloser, 
 	return s.backend.ContainerLogs(ctx, request.Resource.ResourceID, request.Since, request.Tail, request.Follow)
 }
 
-func (s *Service) Metrics(_ context.Context, ref ResourceRef) (MetricsHandle, error) {
+func (s *Service) Metrics(ctx context.Context, ref ResourceRef) (MetricsHandle, error) {
 	if err := s.validateRef(ref); err != nil {
 		return MetricsHandle{}, err
+	}
+	if ref.Kind == KindContainer {
+		if backend, ok := s.backend.(interface {
+			ContainerMetrics(context.Context, string) (MetricsHandle, error)
+		}); ok {
+			if _, err := s.Inspect(ctx, ref); err != nil {
+				return MetricsHandle{}, err
+			}
+			return backend.ContainerMetrics(ctx, ref.ResourceID)
+		}
 	}
 	return MetricsHandle{Available: false}, nil
 }

@@ -3,6 +3,7 @@ package orgconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -72,6 +73,8 @@ type Config struct {
 	Stacks       map[string]Reference           `yaml:"stacks,omitempty" json:"stacks,omitempty"`
 	Trust        map[string]Reference           `yaml:"trust,omitempty" json:"trust,omitempty"`
 	Policies     map[string]Reference           `yaml:"policies,omitempty" json:"policies,omitempty"`
+	Constraints  []Constraint                   `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+	Team         *TeamConfiguration             `yaml:"team,omitempty" json:"team,omitempty"`
 }
 
 var (
@@ -87,6 +90,9 @@ func (s Source) Validate() error {
 	}
 	if strings.TrimSpace(s.Location) == "" {
 		return fmt.Errorf("organization source location is required")
+	}
+	if containsSecretMaterial(s.Location) || containsSecretMaterial(s.Requested) {
+		return fmt.Errorf("organization sources must use protected credentials, not inline secret material")
 	}
 	switch s.Kind {
 	case SourceOCI:
@@ -104,6 +110,9 @@ func (s Source) Validate() error {
 func (r Resolution) Validate() error {
 	if err := r.Source.Validate(); err != nil {
 		return err
+	}
+	if containsSecretMaterial(r.Provenance) || containsSecretMaterial(r.CachePath) {
+		return fmt.Errorf("organization resolution must not contain inline secret material")
 	}
 	if d := strings.TrimSpace(r.ResolvedDigest); d != "" && !digestPattern.MatchString(d) {
 		return fmt.Errorf("resolved digest %q must be an immutable sha256 digest", d)
@@ -143,6 +152,20 @@ func (c Config) Validate() error {
 		"policies":  c.Policies,
 	} {
 		if err := validateReferenceMap(label, refs); err != nil {
+			return err
+		}
+	}
+	if err := validateConstraints(c.Constraints); err != nil {
+		return err
+	}
+	if c.Team != nil {
+		if !namePattern.MatchString(c.Team.Name) {
+			return fmt.Errorf("team name is invalid")
+		}
+		if err := validateDefaults("team", c.Team.Defaults); err != nil {
+			return err
+		}
+		if err := validateConstraints(c.Team.Constraints); err != nil {
 			return err
 		}
 	}
@@ -217,6 +240,17 @@ func containsSecretMaterial(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	if strings.Contains(lower, "-----begin") {
 		return true
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" {
+		if parsed.User != nil {
+			return true
+		}
+		for key := range parsed.Query() {
+			key = strings.ToLower(key)
+			if strings.Contains(key, "token") || strings.Contains(key, "secret") || strings.Contains(key, "password") || strings.Contains(key, "credential") {
+				return true
+			}
+		}
 	}
 	for _, marker := range []string{"password=", "token=", "secret=", "private_key=", "private-key="} {
 		if strings.Contains(lower, marker) {

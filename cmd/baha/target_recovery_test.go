@@ -67,7 +67,7 @@ func TestTargetRecoveryFileResolutionAndPersistence(t *testing.T) {
 	}
 }
 
-func TestPreflightNewTargetRecoveryFileRejectsExistingMaterial(t *testing.T) {
+func TestPreflightNewTargetRecoveryFilePreservesOldMaterialAndAllocatesFreshDefault(t *testing.T) {
 	configRoot := t.TempDir()
 	dataRoot := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configRoot)
@@ -85,9 +85,24 @@ func TestPreflightNewTargetRecoveryFileRejectsExistingMaterial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = preflightNewTargetRecoveryFile(ctx, "")
-	if err == nil {
-		t.Fatal("preflight accepted existing recovery material")
+	next, _, err := preflightNewTargetRecoveryFile(ctx, "")
+	if err != nil || next == path || filepath.Dir(next) != filepath.Dir(path) {
+		t.Fatalf("fresh default = %q, %v", next, err)
+	}
+	if _, err := os.Stat(next); !os.IsNotExist(err) {
+		t.Fatalf("preflight created material: %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "stale recovery material\n" {
+		t.Fatalf("old recovery changed: %v", err)
+	}
+	if _, _, err := preflightNewTargetRecoveryFile(ctx, path); err == nil {
+		t.Fatal("explicit existing material accepted")
+	}
+	if err := persistTargetRecoveryFileReference(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := preflightNewTargetRecoveryFile(ctx, ""); err == nil {
+		t.Fatal("persisted existing material accepted")
 	}
 	if _, statErr := os.Stat(path); statErr != nil {
 		t.Fatalf("existing recovery material was changed: %v", statErr)

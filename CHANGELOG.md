@@ -4,6 +4,56 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.23] - 2026-10-08
+
+### Added
+
+- Public Console and Node Connector repositories are documented as optional Core-contract consumers, with support claims bound to pinned cross-repository evidence rather than repository-local checks alone.
+- Repository-independent Core bootstrap for mandatory SQL, Secrets and Identity, using PostgreSQL, OpenBao and Keycloak with protected credentials and TLS.
+- Authoritative installation identity, observable bootstrap stages and ownership-safe retry/reconciliation through shared CLI/MCP/protected HTTP semantics.
+- First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
+- Development/deployment machine-role defaults and an optional Console bound to one selected Core in the same installation/security boundary.
+
+- Protected HTTP managed-trust rotation reuses Core credential/CA semantics, requires explicit installation approval and keeps recovery material out of browser input/results.
+
+### Changed
+
+- Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
+- Remote application memory preflight requests fresh evidence from the authenticated execution node; Core-host RAM and runtime-info total RAM cannot replace available node capacity. Exhausted RAM is rejected even when a workload estimate is unavailable.
+
+### Fixed
+
+- Loki HA rotates storage credentials one ready member at a time with stable ring identities. Access PKI reconciliation restarts only the gateway and collector, preserving healthy Loki capacity.
+
+- Core realm reconciliation reads back state and rechecks ownership before resuming after transient server failures.
+
+- OIDC discovery retries transient server failures within a bounded identity convergence window; access denials remain blocking.
+
+- Keycloak bootstrap uses the active administrator after credential rotation. MongoDB treats credentials beginning with a dash as values in health checks, HA probes and rotation.
+- Core Identity read-only reconciliation tolerates the bounded native Keycloak JDBC reconnection window after HA database convergence; mutations and authentication failures remain fail-closed.
+- Remote application status and overview use the protected Node project binding and live owned inventory instead of inferring absence from local files. Provider observations remain insufficient for complete application readiness.
+- Core Identity readiness retries the specific native Keycloak server-exception response after database convergence; invalid credentials and other client denials still fail closed.
+
+- Keycloak starts one authenticated bootstrap member before additional members join, preventing concurrent initial database migrations.
+
+- Application execution revalidates the selected Core installation and keeps Core-managed secret, PKI and broker operations independent of workload placement; remote bindings never fall back implicitly to local authority.
+- Remote Quadlet project realization publishes every unit before container activation, starts dependencies first and rejects cycles before mutation.
+- Core-managed init dependencies require verified successful native completion before application activation and retain completion evidence without enabling automatic node startup.
+- Remote provider publication requires durable Core receipt persistence before activation; persistence failures block execution and automatic publication replay.
+- Managed Podman network teardown removes only the exact owned network without force and preserves live consumers. Explicit owned data reset verifies volume absence and supports reconciliation after ordinary teardown.
+- Ordinary Podman destroy/reapply reuses the exact owned provider data volume. Managed unit removal rechecks native ownership and preserves resources replaced with foreign project labels.
+- Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
+- Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
+- Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.
+- Application repair preserves the explicitly selected environment through CLI, MCP and protected HTTP.
+- Repeated authenticated requests resolve tenant membership correctly after a scoped database transaction resets its connection context; row-level isolation and denied unscoped writes remain enforced.
+- Application overview uses the canonical managed-provider readiness model instead of requiring provider containers in the application Compose project (#811).
+- Backup loads Core runtime context for runtime-permission brokers and attempts bounded runtime recovery even when archive capture is cancelled (#812).
+- Missing required secrets without a terminal return an actionable typed error; `--yes` does not bypass secret availability (#813).
+- Generated Compose delivers the same runtime environment bindings required by generated source (#814).
+- Fresh Go image builds retain tidied module state; Next.js validates runtime bindings at request time; Quarkus packaging executes through the Maven lifecycle. Generated Compose workloads are recognized independently of YAML indentation (#815).
+- Fresh Core bootstrap allocates a new default recovery output when old recovery material remains, preserving previous files and explicit/persisted path protection (#526).
+
 ## [0.4.22] - 2026-10-06
 
 ### Added

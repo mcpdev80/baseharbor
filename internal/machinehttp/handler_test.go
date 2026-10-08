@@ -19,6 +19,14 @@ import (
 
 type executorFunc func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 
+func (f executorFunc) SupportedOperationIDs() []string {
+	var ids []string
+	for _, operation := range machine.Operations() {
+		ids = append(ids, operation.ID)
+	}
+	return ids
+}
+
 func (f executorFunc) Execute(ctx context.Context, op machine.Operation, opCtx machine.OperationContext, input json.RawMessage, report ProgressReporter) (json.RawMessage, error) {
 	return f(ctx, op, opCtx, input, report)
 }
@@ -94,7 +102,17 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 		"context":{"application":"demo","environment":"prod","target":"prod-eu"},
 		"input":{"opaque":"` + secretMarker + `"}
 	}`)
-	request := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", body))
+	discoveryRec := httptest.NewRecorder()
+	handler.ServeHTTP(discoveryRec, withTestPrincipal(httptest.NewRequest(http.MethodGet, "/api/v1/machine/discovery", nil)))
+	var discovery machine.Discovery
+	if discoveryRec.Code != http.StatusOK || json.Unmarshal(discoveryRec.Body.Bytes(), &discovery) != nil {
+		t.Fatalf("discovery failed: %s", discoveryRec.Body.String())
+	}
+	executeBinding, found := discovery.HTTP["execute"]
+	if !found || executeBinding.Method != http.MethodPost {
+		t.Fatal("discovery lacks an executable HTTP binding")
+	}
+	request := withTestPrincipal(httptest.NewRequest(executeBinding.Method, executeBinding.Href, body))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusAccepted {
@@ -115,7 +133,8 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 	var completed machine.Execution
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		get := withTestPrincipal(httptest.NewRequest(http.MethodGet, "/api/v1/machine/executions/"+accepted.ExecutionID, nil))
+		binding := discovery.HTTP["execution"]
+		get := withTestPrincipal(httptest.NewRequest(binding.Method, strings.ReplaceAll(binding.Href, "{execution_id}", accepted.ExecutionID), nil))
 		getRec := httptest.NewRecorder()
 		handler.ServeHTTP(getRec, get)
 		if getRec.Code != http.StatusOK {
@@ -139,7 +158,11 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 		t.Fatal("secret input leaked into result")
 	}
 
-	events := withTestPrincipal(httptest.NewRequest(http.MethodGet, "/api/v1/machine/executions/"+accepted.ExecutionID+"/events", nil))
+	eventBinding := discovery.HTTP["execution_events"]
+	if eventBinding.Protocol != "sse" {
+		t.Fatal("discovery event binding lacks SSE protocol")
+	}
+	events := withTestPrincipal(httptest.NewRequest(eventBinding.Method, strings.ReplaceAll(eventBinding.Href, "{execution_id}", accepted.ExecutionID), nil))
 	eventsRec := httptest.NewRecorder()
 	handler.ServeHTTP(eventsRec, events)
 	if eventsRec.Code != http.StatusOK {

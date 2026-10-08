@@ -1,5 +1,7 @@
 # ADR 0006: Portable application contract before runtime providers
 
+> Compatibility status: pre-freeze legacy/migration-preservation wording below is superseded by [ADR 0018](0018-public-contract-namespace-and-compatibility.md). The historical rationale remains; v0.4 carries no legacy or migration obligation.
+
 Status: Accepted
 
 ## Context

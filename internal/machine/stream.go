@@ -1,6 +1,9 @@
 package machine
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const StreamContractVersion = "v1"
 
@@ -21,6 +24,8 @@ type StreamRequest struct {
 	Tail            int              `json:"tail,omitempty"`
 	Follow          bool             `json:"follow,omitempty"`
 	Command         []string         `json:"command,omitempty"`
+	Rows            int              `json:"rows,omitempty"`
+	Columns         int              `json:"columns,omitempty"`
 	TTY             bool             `json:"tty,omitempty"`
 }
 
@@ -47,6 +52,19 @@ func (r StreamRequest) Validate() error {
 	}
 	if r.Kind == StreamExec && len(r.Command) == 0 {
 		return NewError(ErrorValidationFailed, "Exec stream requires an explicit bounded command.", "Provide a container/pod command; host shell is not implied.", false)
+	}
+	if len(r.Command) > 64 {
+		return NewError(ErrorValidationFailed, "Exec argv exceeds the argument limit.", "Use at most 64 bounded container arguments.", false)
+	}
+	size := 0
+	for _, arg := range r.Command {
+		size += len(arg)
+		if strings.ContainsRune(arg, 0) || size > 16384 {
+			return NewError(ErrorValidationFailed, "Exec argv is invalid or exceeds the byte limit.", "Use NUL-free container arguments totaling at most 16 KiB.", false)
+		}
+	}
+	if r.Kind == StreamLogs && (r.TTY || r.Rows != 0 || r.Columns != 0) {
+		return NewError(ErrorValidationFailed, "Logs do not accept terminal options.", "Remove tty and terminal size fields.", false)
 	}
 	if r.Kind == StreamLogs && len(r.Command) != 0 {
 		return NewError(ErrorValidationFailed, "Log streams do not accept commands.", "Remove command from the log stream request.", false)

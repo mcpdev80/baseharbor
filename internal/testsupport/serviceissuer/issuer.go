@@ -128,3 +128,21 @@ func (i *Issuer) Status(context.Context) (serviceaccess.IssuerStatus, error) {
 }
 
 var _ serviceaccess.Issuer = (*Issuer)(nil)
+
+func (i *Issuer) SignCSR(_ context.Context, request serviceaccess.CSRSigningRequest) (serviceaccess.IssuedCertificate, error) {
+	csr, err := request.Validate()
+	if err != nil {
+		return serviceaccess.IssuedCertificate{}, err
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return serviceaccess.IssuedCertificate{}, err
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	certificate := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: request.Identity}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(request.TTL), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, URIs: csr.URIs}
+	der, err := x509.CreateCertificate(rand.Reader, certificate, i.ca, csr.PublicKey, i.caKey)
+	if err != nil {
+		return serviceaccess.IssuedCertificate{}, err
+	}
+	return serviceaccess.IssuedCertificate{IssuerReference: i.reference, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}), Serial: serial.Text(16), ExpiresAt: certificate.NotAfter}, nil
+}

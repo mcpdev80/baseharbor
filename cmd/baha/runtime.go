@@ -12,13 +12,14 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/hostresource"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
+	MachineRole         coreinstallation.MachineRole
 	HA                  bool
 	Yes                 bool
 	ControlPlaneOnly    bool
@@ -31,6 +32,7 @@ type runtimeUpOptions struct {
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	ctx = withApplicationInput(ctx, runtimeInput)
 	opts, err := parseRuntimeUpOptions(args)
 	if err != nil {
 		return err
@@ -39,13 +41,13 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
-	if err := runtimeUpGuided(ctx, runtimeInput, out, opts); err != nil {
+	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
 	if opts.ControlPlaneOnly {
-		return maybeOfferManagedHostTrustWhenReady(ctx, runtimeInput, out, opts)
+		return maybeOfferManagedHostTrustWhenReady(ctx, applicationInput(ctx, runtimeInput), out, opts)
 	}
-	return repositoryApplicationUp(ctx, runtimeInput, out, errOut, opts)
+	return repositoryApplicationUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts)
 }
 
 func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
@@ -124,6 +126,14 @@ func parsePort(value string) (int, error) {
 }
 
 func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
+	if opts.PostgresPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
+		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
+	}
+	_, err := installCore(parent, in, out, opts)
+	return err
+}
+
+func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
 		return err
 	}
@@ -195,18 +205,6 @@ func runtimeUpGuided(parent context.Context, in io.Reader, out io.Writer, opts r
 		fmt.Fprintln(out, "BaseHarbor control-plane ports:")
 		fmt.Fprintf(out, "  PostgreSQL  127.0.0.1:%d\n", postgresPort)
 		fmt.Fprintf(out, "  OpenBao     127.0.0.1:%d\n", openBaoPort)
-	}
-
-	target, err := effectiveTarget(parent)
-	if err != nil {
-		return err
-	}
-	estimate, err := hostresource.EstimateControlPlane(opts.HA)
-	if err != nil {
-		return err
-	}
-	if err := runHostMemoryPreflight(parent, in, out, bhruntime.ProviderKind(target.RuntimeProvider), estimate, true); err != nil {
-		return err
 	}
 
 	if !opts.ControlPlaneOnly && repositoryApplicationDetectedForUp() {

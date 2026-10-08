@@ -26,6 +26,7 @@ type applicationStatusCollection struct {
 	manifest       application.Manifest
 	files          application.RuntimeFiles
 	compose        bhruntime.RuntimeProvider
+	coreRuntime    bhruntime.RuntimeProvider
 	services       []string
 	result         application.StatusResult
 	workloadStatus repositoryWorkloadStatus
@@ -36,6 +37,14 @@ func newApplicationStatusCollection(ctx context.Context, store application.Store
 	resolved, err := resolveApplication(ctx, store, args, "status")
 	if err != nil {
 		return &applicationStatusCollection{}, false, err
+	}
+	return newResolvedApplicationStatusCollection(ctx, resolved)
+}
+
+func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolvedApplication) (*applicationStatusCollection, bool, error) {
+	if isRemoteApplication(resolved) {
+		result, err := collectRemoteApplicationStatus(ctx, resolved)
+		return &applicationStatusCollection{resolved: resolved, manifest: resolved.Manifest, result: result}, true, err
 	}
 	m := resolved.Manifest
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
@@ -123,7 +132,13 @@ func (c *applicationStatusCollection) componentsStopped(ctx context.Context) boo
 	}
 
 	exposureRunning := managedExposureRunning(ctx, c.compose, c.manifest, c.files)
-	return applicationComponentsStopped(c.services, workloadRunning, c.workloadStatus.Found, brokerRunning, exposureRunning) && !application.HasObjectStorage(c.manifest)
+	// Shared SQL/cache live in provider projects. An empty application project
+	// cannot establish their state; the authenticated provider checks below must
+	// decide readiness, including failures, before status/show return.
+	return applicationComponentsStopped(c.services, workloadRunning, c.workloadStatus.Found, brokerRunning, exposureRunning) &&
+		!application.HasObjectStorage(c.manifest) &&
+		!application.UsesSharedPostgreSQL(c.manifest) &&
+		!application.UsesSharedValkey(c.manifest)
 }
 
 func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Context) {
@@ -446,13 +461,14 @@ func (c *applicationStatusCollection) collectSecretsAndBrokerChecks(ctx context.
 		return
 	}
 
-	platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
+	core, platformFiles, platformErr := resolveApplicationCoreRuntime(ctx, c.resolved, c.compose)
+	c.coreRuntime = core
 	if platformErr != nil {
 		c.result.AddCheck("secrets", false, "BaseHarbor OpenBao runtime is not materialized")
 	} else {
 		scopeCtx, scopeCancel := context.WithTimeout(ctx, applicationOpenBaoStatusTimeout)
 		identity := openbao.ApplicationIdentity{Name: c.manifest.Name, Environment: c.manifest.Environment}
-		err := openbao.InspectApplicationScope(scopeCtx, c.compose, platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
+		err := openbao.InspectApplicationScope(scopeCtx, c.coreRuntime, platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
 		scopeCancel()
 		if err != nil {
 			c.result.AddCheck("secrets", false, "isolated OpenBao application scope is not ready")
@@ -477,7 +493,7 @@ func (c *applicationStatusCollection) collectRequiredSecretChecks(ctx context.Co
 		return
 	}
 	secretCtx, secretCancel := context.WithTimeout(ctx, applicationRequiredSecretTimeout)
-	statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, c.compose, platformFiles, c.manifest, c.files)
+	statuses, statusErr := inspectRequiredApplicationSecrets(secretCtx, c.coreRuntime, platformFiles, c.manifest, c.files)
 	secretCancel()
 	if statusErr != nil {
 		c.result.AddCheck("required-secrets", false, "readiness inspection failed")

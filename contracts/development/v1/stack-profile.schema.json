@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.baseharbor.dev/development/v1/stack-profile.schema.json",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/development/v1/stack-profile.schema.json",
   "title": "BaseHarbor Stack Profile v1",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "apiVersion": {"const": "baseharbor.dev/v1"},
+    "apiVersion": {"const": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/development/v1"},
     "kind": {"const": "StackProfile"},
     "metadata": {
       "type": "object",

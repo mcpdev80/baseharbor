@@ -150,7 +150,8 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 				t.Fatal(err)
 			}
 			if result.IsError {
-				t.Fatalf("tool returned error: %#v", result.Content)
+				body, _ := json.Marshal(result.Content)
+				t.Fatalf("tool returned error: %s", body)
 			}
 			encoded, err := json.Marshal(result)
 			if err != nil {

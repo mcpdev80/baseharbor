@@ -29,6 +29,7 @@ type applicationDoctorCollector struct {
 	serviceTLSErr     error
 	compose           bhruntime.RuntimeProvider
 	running           []string
+	coreRuntime       bhruntime.RuntimeProvider
 	platformFiles     bhruntime.Files
 	requiredStatuses  []openbao.RequiredSecretStatus
 	workloadStatus    repositoryWorkloadStatus
@@ -59,6 +60,21 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		Checks:          []preflight.Result{},
 		OperatorAuth:    collectOperatorAuthObservation(ctx, resolved.Target.Name, m.Environment),
 		manifest:        m,
+	}
+	if isRemoteApplication(resolved) {
+		status, err := collectRemoteApplicationStatus(ctx, resolved)
+		if err != nil {
+			return &applicationDoctorCollector{result: result}, true, err
+		}
+		result.State, result.Healthy = status.State, status.Ready
+		for _, check := range status.Checks {
+			var failure error
+			if !check.OK {
+				failure = errors.New(check.Detail)
+			}
+			result.Checks = append(result.Checks, preflight.Result{Name: "running services", OK: check.OK, Detail: check.Detail, Err: failure})
+		}
+		return &applicationDoctorCollector{resolved: resolved, manifest: m, result: result}, true, nil
 	}
 
 	files, runtimeErr := application.ExistingRuntimeFiles(resolved.Store, m)
@@ -420,11 +436,11 @@ func (c *applicationDoctorCollector) appendSecretChecks(checks []preflight.Check
 	checks = append(checks,
 		preflight.Check{Name: "OpenBao control-plane runtime", Run: func(ctx context.Context) error {
 			var err error
-			c.platformFiles, err = existingTargetRuntimeFiles(ctx)
+			c.coreRuntime, c.platformFiles, err = resolveApplicationCoreRuntime(ctx, c.resolved, c.compose)
 			if err != nil {
 				return err
 			}
-			state, err := openbao.Inspect(ctx, c.compose, c.platformFiles)
+			state, err := openbao.Inspect(ctx, c.coreRuntime, c.platformFiles)
 			if err != nil {
 				return err
 			}
@@ -440,11 +456,11 @@ func (c *applicationDoctorCollector) appendSecretChecks(checks []preflight.Check
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
-			if c.platformFiles.Compose == "" {
+			if c.coreRuntime == nil || c.platformFiles.Compose == "" {
 				return errors.New("BaseHarbor OpenBao runtime is not materialized")
 			}
 			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-			return openbao.InspectApplicationScope(ctx, c.compose, c.platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
+			return openbao.InspectApplicationScope(ctx, c.coreRuntime, c.platformFiles, identity, openbao.ApplicationCredentialsPath(c.files.Dir))
 		}},
 		preflight.Check{Name: "application runtime broker", Run: func(ctx context.Context) error {
 			if c.runtimeErr != nil {
@@ -458,8 +474,11 @@ func (c *applicationDoctorCollector) appendSecretChecks(checks []preflight.Check
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
+			if c.coreRuntime == nil {
+				return unavailableApplicationCoreRuntime()
+			}
 			var err error
-			c.requiredStatuses, err = inspectRequiredApplicationSecrets(checkCtx, c.compose, c.platformFiles, m, c.files)
+			c.requiredStatuses, err = inspectRequiredApplicationSecrets(checkCtx, c.coreRuntime, c.platformFiles, m, c.files)
 			if err != nil {
 				return err
 			}

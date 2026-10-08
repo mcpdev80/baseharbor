@@ -209,6 +209,7 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 	}
 	accessSpec := lokiAccessSpec()
 	if storage != nil {
+		accessSpec.HealthURI = "/ready"
 		accessSpec.Upstream = ""
 		accessSpec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
 		accessSpec.NetworkAliases = []string{"loki"}

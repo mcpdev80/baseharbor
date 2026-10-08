@@ -23,6 +23,10 @@ func inactiveTargetDeployments(ctx context.Context, target string) ([]deployment
 	}
 	var inactive []deployment.DeploymentRecord
 	for _, record := range records {
+		if record.Applied.RemoteProject != nil {
+			// Local files and local inventory cannot prove absence on a Node.
+			continue
+		}
 		root, err := deployment.DeploymentRoot(record.Identity)
 		if err != nil {
 			return nil, err
@@ -48,6 +52,9 @@ func markInactiveTargetDeployments(records []deployment.DeploymentRecord, contai
 			return err
 		}
 		record = current
+		if record.Applied.RemoteProject != nil {
+			continue
+		}
 		// Recheck after teardown so concurrent/partial materialization is never lost.
 		root, err := deployment.DeploymentRoot(record.Identity)
 		if err != nil {
