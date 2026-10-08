@@ -7,7 +7,7 @@ func TestPinnedReleaseCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Providers) != 3 || len(manifest.Backing) != 2 {
+	if len(manifest.Providers) != 3 || len(manifest.Backing) != 3 {
 		t.Fatalf("incomplete immutable provider catalog: %+v", manifest)
 	}
 	for _, item := range manifest.Providers {
