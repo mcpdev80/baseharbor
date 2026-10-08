@@ -164,6 +164,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
         preserved=append(preserved,fullDestroyResult{Status:"PRESERVED",Resource:"host-CA",Detail:anchor.Fingerprint+" "+anchor.Path})
     }
     if hostTrustErr!=nil {
+        for _,anchor:=range hostTrustReport.Preserved {fmt.Fprintf(out,"PRESERVED host CA %s %s\n",anchor.Fingerprint,anchor.Path)}
         // Never discard ownership evidence when a protected anchor remains.
         return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w",hostTrustErr)
     }
