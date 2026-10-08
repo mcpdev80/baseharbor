@@ -95,7 +95,7 @@ func (m tuiModel) loadStatus() tea.Cmd {
 		if m.coreMode {
 			target, err := effectiveTarget(m.ctx)
 			if err != nil {
-                return tuiStatusMsg{coreView:renderUnselectedCoreTUIView(currentDeviceResources(),renderConfiguredTargets(),err)}
+				return tuiStatusMsg{coreView: renderUnselectedCoreTUIView(currentDeviceResources(), renderConfiguredTargets(), err)}
 			}
 			status, err := inspectControlPlane(m.ctx)
 			if err != nil {
@@ -503,5 +503,5 @@ func renderTargetApplicationInventory(targetName string) string {
 }
 
 func renderUnselectedCoreTUIView(device, targets string, err error) string {
-    return device + "\n" + targets + "\nNo active Core Target: " + err.Error() + "\nNext: baha target list; baha target activate NAME"
+	return device + "\n" + targets + "\nNo active Core Target: " + err.Error() + "\nNext: baha target list; baha target activate NAME"
 }
