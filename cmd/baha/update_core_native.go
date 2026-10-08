@@ -13,6 +13,8 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"github.com/mcpdev80/baseharbor/internal/providerbinding"
+	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -193,6 +195,20 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	identityFiles, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target.Name)
 	if err != nil {
 		return err
+	}
+	// Require live ownership and immutable image identity for both provider
+	// adapters before any native update journal, backup or mutation is touched.
+	binding := &providerbinding.RuntimeBinding{
+		Reader: runtime, Engine: target.RuntimeProvider,
+		Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
+			providerupgrade.ProviderOpenBao: {Project: coreFiles.Project, Service: coreFiles.OpenBaoMembers()[0]},
+			providerupgrade.ProviderKeycloak: {Project: identityFiles.Project, Service: "keycloak-1"},
+		},
+	}
+	for _, kind := range []providerupgrade.Provider{providerupgrade.ProviderOpenBao, providerupgrade.ProviderKeycloak} {
+		if _, err := binding.InspectManaged(ctx, kind); err != nil {
+			return fmt.Errorf("managed %s runtime ownership preflight: %w", kind, err)
+		}
 	}
 	journalDir := filepath.Join(stateRoot, "core-updates", safeVersionPathPart(release))
 	if err := os.MkdirAll(journalDir, 0700); err != nil {
