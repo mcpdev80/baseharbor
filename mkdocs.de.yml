@@ -116,7 +116,7 @@ nav:
   - Authentifizierung und API-Fehler: reference/authentication-and-api-errors.md
   - Backup und Restore (EN): https://mcpdev80.github.io/baseharbor/reference/backup-and-restore/
   - PostgreSQL & migrations (EN): https://mcpdev80.github.io/baseharbor/reference/postgresql-and-migrations/
-  - Compose runtime (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-compose/
+  - Lokale Control-Plane-Runtime: reference/runtime-compose.md
   - Runtime Resource API (EN): https://mcpdev80.github.io/baseharbor/reference/runtime-resource-api/
   - Runtime Secret Broker: reference/runtime-secret-broker.md
   - Secrets & OpenBao (EN): https://mcpdev80.github.io/baseharbor/reference/secrets-and-openbao/
