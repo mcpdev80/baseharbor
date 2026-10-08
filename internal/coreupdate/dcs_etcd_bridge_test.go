@@ -35,6 +35,7 @@ func TestEtcdDCSBridgeRestoresOnlyIsolatedOnce(t *testing.T) {
  bridge:=&EtcdDCSBridge{
   Store:etcdbackup.Store{Directory:filepath.Join(dir,"snapshot"),Identity:etcdbackup.Identity{Core:"core-123",Target:"target-123",Cluster:"cluster-123"},Client:source},
   Restorer:restorer, RecoveryDirectory:filepath.Join(dir,"isolated"),Release:"0.4.24",
+ VerifyRecoveredCluster:func(_ context.Context,id etcdbackup.Identity,info etcdbackup.SnapshotInfo)error{if id.Cluster!="cluster-123"||info.Revision!=42{return errors.New("invalid boot attestation")};return nil},
  }
  ctx:=context.Background()
  ev,err:=bridge.Snapshot(ctx);if err!=nil{t.Fatal(err)}
