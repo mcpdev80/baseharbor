@@ -53,13 +53,13 @@ func (a *Adapter) Inventory(ctx context.Context) (providerupgrade.Inventory, err
 	}
 	return providerupgrade.Inventory{
 		Provider: providerupgrade.ProviderOpenBao,
-		Version: state.Version,
+		Version:  state.Version,
 		Topology: state.Topology,
-		Owner: state.Owner,
-		Healthy: state.Healthy && state.Initialized && !state.Sealed,
+		Owner:    state.Owner,
+		Healthy:  state.Healthy && state.Initialized && !state.Sealed,
 		Details: map[string]string{
 			"initialized": fmt.Sprintf("%t", state.Initialized),
-			"sealed": fmt.Sprintf("%t", state.Sealed),
+			"sealed":      fmt.Sprintf("%t", state.Sealed),
 		},
 	}, nil
 }
@@ -100,7 +100,7 @@ func (a *Adapter) Preflight(ctx context.Context, req providerupgrade.Request) (p
 	}
 	return providerupgrade.Assessment{
 		Classification: providerupgrade.ClassificationSupported,
-		Reason: "provider compatibility accepted; verified backup required",
+		Reason:         "provider compatibility accepted; verified backup required",
 		BackupRequired: true,
 	}, nil
 }
