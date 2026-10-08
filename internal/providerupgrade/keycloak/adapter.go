@@ -314,11 +314,7 @@ func (a *Adapter) Verify(ctx context.Context, req providerupgrade.Request) error
 	if state.Owner != "baseharbor" || (state.Topology != TopologySingle && state.Topology != TopologyHA) {
 		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak ownership", errors.New("provider ownership or topology changed"))
 	}
-	expected := 1
-	if state.Topology == TopologyHA {
-		expected = 3
-	}
-	if len(state.Members) != expected {
+	if state.Topology == TopologySingle && len(state.Members) != 1 || state.Topology == TopologyHA && len(state.Members) < 3 {
 		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak topology", errors.New("provider member count changed"))
 	}
 	seen := make(map[string]bool, len(state.Members))
