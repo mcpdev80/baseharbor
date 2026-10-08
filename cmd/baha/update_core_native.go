@@ -191,6 +191,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
         // Keycloak's identity service is stateless: its durable state lives
         // in the separately owned Keycloak PostgreSQL backing database.
         if d.Installed.Kind==coreupdate.Identity {dataService="keycloak-db"}
+        // OpenBao persists its encrypted storage in managed Core PostgreSQL,
+        // never in the OpenBao container filesystem.
+        if d.Installed.Kind==coreupdate.Secrets {dataService="postgres-member-1"}
         volume, volumeErr := coreupdate.ResolveOwnedServiceVolume(compose, dataService, project)
         if volumeErr != nil {
             return fmt.Errorf("Core %s requires a verifiable persistent data volume before migration: %w", d.Installed.Instance, volumeErr)
