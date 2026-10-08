@@ -29,9 +29,9 @@ func TestDCSCheckpointPersistsAndRejectsTamper(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt := DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")}
-	fake := &fakeDurableDCS{evidence: DCSRecoveryEvidence{Installation: "core", Cluster: "db", Release: "0.4.24", SnapshotID: "snapshot-1", SHA256: strings.Repeat("a", 64)}}
+	fake := &fakeDurableDCS{evidence: DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "db", Release: "0.4.24", SnapshotID: "snapshot-1", SHA256: strings.Repeat("a", 64)}}
 	for i := 0; i < 2; i++ {
-		got, err := receipt.Acquire(context.Background(), fake, "core", "db", "0.4.24")
+		got, err := receipt.Acquire(context.Background(), fake, "core", "target", "db", "0.4.24")
 		if err != nil || got.SnapshotID != "snapshot-1" {
 			t.Fatalf("checkpoint attempt %d: %+v err=%v", i, got, err)
 		}
@@ -39,13 +39,13 @@ func TestDCSCheckpointPersistsAndRejectsTamper(t *testing.T) {
 	if fake.snapshots != 1 {
 		t.Fatalf("recreated snapshot on resume: %d", fake.snapshots)
 	}
-	if _, err := receipt.Acquire(context.Background(), fake, "foreign", "db", "0.4.24"); err == nil {
+	if _, err := receipt.Acquire(context.Background(), fake, "foreign", "target", "db", "0.4.24"); err == nil {
 		t.Fatal("foreign owner reused backup")
 	}
 	if err := os.WriteFile(receipt.Path, []byte("{\"invalid\":true}"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := receipt.Acquire(context.Background(), fake, "core", "db", "0.4.24"); err == nil {
+	if _, err := receipt.Acquire(context.Background(), fake, "core", "target", "db", "0.4.24"); err == nil {
 		t.Fatal("corrupt DCS receipt accepted")
 	}
 	if fake.snapshots != 1 {
