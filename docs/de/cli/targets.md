@@ -26,6 +26,14 @@ runtime != capability != delivery
 
 Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities.
 
+```bash
+baha target create docker-dev \
+  --runtime-provider docker \
+  --access local-docker \
+  --access-provider local \
+  --reference local
+```
+
 ## Remote-Zugriff
 
 Runtime Provider und Target Access Provider sind getrennt:
@@ -47,7 +55,7 @@ baha node status node-a
 `baha node add` erzeugt das Remote-Target und genau eine owner-only Enrollment-Datei mit kurzlebiger Einmal-Autorisierung. Diese Datei wird auf den Remote-Host kopiert und dort konsumiert:
 
 ```bash
-baha node connect /pfad/zu/node-a.json
+baha node connect /path/to/node-a.json
 ```
 
 Der Connector erzeugt seinen privaten Schlüssel ausschließlich lokal, verwendet die bestehende Bootstrap-API und baut anschließend die outbound-initiierte mTLS-Verbindung als rootless User-Service auf. Token und Nonce werden weder als Prozessargumente noch in Logs ausgegeben. Non-TTY-Automation verwendet die expliziten Optionen aus `baha node add --help` und fragt niemals interaktiv nach.
@@ -68,13 +76,6 @@ Weiter: [Target-Konzept](../explanation/targets.md), [exakte Befehle (EN)](https
 
 ## Zusätzliche Befehlsbeispiele
 
-```bash
-baha target create docker-dev \
-  --runtime-provider docker \
-  --access local-docker \
-  --access-provider local \
-  --reference local
-```
 
 ```text
 runtime = kubernetes|openshift
