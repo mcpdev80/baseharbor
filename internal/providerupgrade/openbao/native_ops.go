@@ -15,15 +15,15 @@ import (
 // Missing hooks fail closed. Secrets and unseal keys must never be included in
 // arguments, error messages or log output.
 type RuntimeHooks struct {
-	UpgradePath  func(context.Context, string, string) error
+	UpgradePath    func(context.Context, string, string) error
 	InspectMembers func(context.Context) ([]State, error)
-	Backup       func(context.Context, string) (providerupgrade.BackupRef, error)
-	VerifyBackup func(context.Context, providerupgrade.BackupRef) error
-	Apply        func(context.Context, string, string, string) error
-	Unseal       func(context.Context) error
-	VerifyAuth   func(context.Context) error
-	VerifyApps   func(context.Context) error
-	Restore      func(context.Context, providerupgrade.BackupRef, string) error
+	Backup         func(context.Context, string) (providerupgrade.BackupRef, error)
+	VerifyBackup   func(context.Context, providerupgrade.BackupRef) error
+	Apply          func(context.Context, string, string, string) error
+	Unseal         func(context.Context) error
+	VerifyAuth     func(context.Context) error
+	VerifyApps     func(context.Context) error
+	Restore        func(context.Context, providerupgrade.BackupRef, string) error
 }
 
 // NativeOps binds the existing BaseHarbor OpenBao lifecycle to the isolated
