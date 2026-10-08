@@ -1,12 +1,14 @@
 package identityprovider
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
@@ -97,4 +99,26 @@ func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
   if strings.Contains(got,unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" { t.Errorf("non-HA contains %q",unwanted) }
  }
  if strings.Count(got,"  keycloak-1:")!=1 {t.Error("single mode has duplicate member")}
+}
+
+func TestKeycloakTopologyComposeYAMLValid(t *testing.T) {
+ for _,ha:=range []bool{false,true} {
+  app:=application.WithHA(application.New("demo","prod",false,false,false),ha)
+  files:=KeycloakFiles{Project:"owned",ConsumerNetwork:"owned-consumer",InternalNetwork:"owned-internal"}
+  var document struct {
+   Services map[string]yaml.Node `yaml:"services"`
+   Volumes map[string]yaml.Node `yaml:"volumes"`
+  }
+  if err:=yaml.Unmarshal([]byte(keycloakCompose(app,files)),&document);err!=nil {t.Fatalf("HA=%v invalid compose: %v",ha,err)}
+  count:=1
+  if ha {count=3}
+  for n:=1;n<=3;n++ {
+   name:=fmt.Sprintf("keycloak-%d",n)
+   _,ok:=document.Services[name]
+   if ok!=(n<=count) {t.Errorf("HA=%v service %s present=%v",ha,name,ok)}
+  }
+  _,etcd:=document.Services["keycloak-db-etcd-1"]
+  _,single:=document.Volumes["keycloak-db-data"]
+  if etcd!=ha || single==ha {t.Errorf("HA=%v unexpected SQL realization etcd=%v singleVolume=%v",ha,etcd,single)}
+ }
 }
