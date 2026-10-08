@@ -220,8 +220,8 @@ func TestUpdateCheckCoreCatalogHasImmutableReferenceVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Providers) != 3 || len(manifest.Backing) != 2 {
-		t.Fatalf("release must declare three Core providers and both Keycloak SQL placements: %+v", manifest)
+	if len(manifest.Providers) != 3 || len(manifest.Backing) != 3 {
+		t.Fatalf("release must declare three Core providers, both Keycloak SQL placements and Core HA Spilo backing: %+v", manifest)
 	}
 	check := selfUpdateCheck{CoreReconciliation: "unavailable", CoreExpected: manifest.Providers, CoreBacking: manifest.Backing}
 	encoded, err := json.Marshal(check)
