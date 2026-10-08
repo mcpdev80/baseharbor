@@ -106,11 +106,11 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 }
 
 func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.Check) []health.Check {
+	checks = appendHostTrustOwnershipDoctor(checks)
 	report, err := collectControlPlaneAvailability(ctx, checks)
 	if err != nil {
 		return checks
 	}
-	checks = appendHostTrustOwnershipDoctor(checks)
 	return append(checks, health.Check{
 		Name:    "control-plane-ha",
 		OK:      report.Satisfied,
@@ -153,8 +153,8 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 			finding.Class = doctorNeedsInput
 			finding.Action = "reconnect the authenticated remote Target and rerun baha doctor"
 		case "host-trust-ownership":
-			finding.Class = doctorNeedsConfirmation
-			finding.Action = "review BaseHarbor-owned trust anchors with 'baha trust status', then run 'baha trust uninstall --yes' only if they should be removed"
+			finding.Class = doctorManualAction
+			finding.Action = "inspect the host-trust ownership state; do not delete or overwrite unverified records. If ownership is valid, use 'baha trust uninstall --yes' for explicit cleanup."
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
