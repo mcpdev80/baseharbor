@@ -173,11 +173,13 @@ func (n *NativeOps) inspectMembersNative(ctx context.Context) ([]State, error) {
 		// JSON state and reject it in verifyHAMembers, not as a shell failure.
 		script := "rc=0; BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || rc=$?; if [ \"$rc\" -eq 0 ] || [ \"$rc\" -eq 2 ]; then exit 0; fi; exit \"$rc\""
 		out, err := n.Executor.ExecProject(ctx, n.Files.Project, n.Files.Compose, n.Files.Env, service, "sh", "-c", script)
-		if err != nil { return nil, errors.New("OpenBao HA member probe failed") }
+		if err != nil {
+			return nil, errors.New("OpenBao HA member probe failed")
+		}
 		var st struct {
-			Version string `json:"version"`
-			Initialized bool `json:"initialized"`
-			Sealed bool `json:"sealed"`
+			Version     string `json:"version"`
+			Initialized bool   `json:"initialized"`
+			Sealed      bool   `json:"sealed"`
 		}
 		if err := json.Unmarshal([]byte(out), &st); err != nil {
 			return nil, errors.New("OpenBao HA member returned invalid status")
