@@ -182,7 +182,6 @@ func targetCommand() *cli.Command {
 			return nil
 		},
 		Children: []*cli.Command{
-			currentDeviceResourcesCommand(),
 			{
 				Name:    "list",
 				Summary: "List configured targets",
