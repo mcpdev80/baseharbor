@@ -1,10 +1,6 @@
 name: "P0 Next.js generated runtime E2E"
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "internal/development/nextjsadapter/**"
-      - ".github/workflows/nextjs-greenfield-e2e.yml"
 concurrency:
   group: nextjs-greenfield-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
