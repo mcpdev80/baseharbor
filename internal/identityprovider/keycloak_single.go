@@ -3,7 +3,7 @@ package identityprovider
 // The non-HA Core topology uses one PostgreSQL server with a durable data
 // volume. It deliberately does not create Patroni/etcd or HAProxy services.
 func keycloakSingleDataLayerCompose() string {
- return `  keycloak-db-tls-init:
+	return `  keycloak-db-tls-init:
     image: docker.io/library/postgres:18-alpine
     restart: "no"
     user: "0:0"
@@ -58,14 +58,14 @@ func keycloakSingleDataLayerCompose() string {
 }
 
 func keycloakSingleVolumesCompose() string {
- return "  keycloak-db-data:\n  keycloak-db-tls:\n"
+	return "  keycloak-db-data:\n  keycloak-db-tls:\n"
 }
 
 // The shared bootstrap is deliberately identical for single and HA database
 // realizations. It creates the least-privileged application login only after
 // the selected SQL endpoint has become writable and TLS verified.
 func keycloakDBInitCompose() string {
- return `  keycloak-db-init:
+	return `  keycloak-db-init:
     image: docker.io/library/postgres:18-alpine
     restart: "no"
     read_only: true
