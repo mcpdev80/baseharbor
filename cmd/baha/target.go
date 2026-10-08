@@ -280,7 +280,9 @@ func targetCommand() *cli.Command {
 						name = filtered[0]
 					}
 					explicit := name
-					if explicit == "" { explicit = targetOverrideFromContext(ctx) }
+					if explicit == "" {
+						explicit = targetOverrideFromContext(ctx)
+					}
 					selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
 					if err != nil {
 						return err
