@@ -36,19 +36,21 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 	args = filtered
 	fix := false
- approved := false
+	approved := false
 	for _, arg := range args {
 		switch arg {
 		case "--fix":
 			fix = true
-        case "--yes":
-            approved = true
+		case "--yes":
+			approved = true
 		default:
 			return usageError("unknown argument "+arg, "Usage: baha doctor [--fix --yes]")
 		}
 	}
 
- if approved && !fix { return usageError("--yes requires --fix","Use baha doctor --fix --yes to confirm reconvergence of existing Core components.") }
+	if approved && !fix {
+		return usageError("--yes requires --fix", "Use baha doctor --fix --yes to confirm reconvergence of existing Core components.")
+	}
 	if format == outputJSON {
 		if fix {
 			return usageError("structured doctor output is read-only", "Use the explicit control-plane.repair semantic operation or human doctor --fix.")
@@ -84,7 +86,9 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 
 	if hasAutoFixableDoctorFinding(findings) {
-        if !approved { return usageError("doctor --fix requires explicit consent before modifying the Core", "Review the findings and run baha doctor --fix --yes. Only existing runtime components will be reconverged.") }
+		if !approved {
+			return usageError("doctor --fix requires explicit consent before modifying the Core", "Review the findings and run baha doctor --fix --yes. Only existing runtime components will be reconverged.")
+		}
 		term.Section("Repair")
 		if err := repairExistingControlPlaneRuntime(ctx, out); err != nil {
 			term.Result("FAILED", "repair", err.Error())
