@@ -32,6 +32,12 @@
       "version": "18",
       "image": "docker.io/library/postgres:18-alpine",
       "digest": "sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+    },
+    {
+      "role": "core-ha-postgresql",
+      "version": "18-spilo-4.1-p2",
+      "image": "ghcr.io/zalando/spilo-18:4.1-p2",
+      "digest": "sha256:258a87d34699387f3b6b45d30874c21c6b838ed51c9371ae2a70151d57137990"
     }
   ]
 }
