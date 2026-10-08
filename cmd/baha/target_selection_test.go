@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+ "github.com/mcpdev80/baseharbor/internal/machine"
+
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -65,4 +67,12 @@ func TestSingleTargetAndStaleTarget(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no longer exists") {
 		t.Fatalf("expected stale target error, got %v", err)
 	}
+}
+
+func TestAmbiguousTargetProducesTypedError(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME",t.TempDir())
+ cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{"a":{},"b":{}}}
+ _,err:=selectedTargetName("","",cfg)
+ typed:=machine.Classify(err)
+ if typed.Code!=machine.ErrorConflict || typed.Next=="" {t.Fatalf("expected actionable conflict: %#v",typed)}
 }
