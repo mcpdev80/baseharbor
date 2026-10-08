@@ -68,7 +68,9 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
 	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
-	if selectionErr != nil { return deployment.ResolvedTarget{}, selectionErr }
+	if selectionErr != nil {
+		return deployment.ResolvedTarget{}, selectionErr
+	}
 	state, configured, err := orgconfig.LoadActiveOptional()
 	if err != nil || !configured {
 		if err == nil {
@@ -200,7 +202,9 @@ func targetCommand() *cli.Command {
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
 					selection, err := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
-					if err != nil { return err }
+					if err != nil {
+						return err
+					}
 					effective, err := cfg.ResolveTarget(selection, "")
 					if err != nil {
 						return err
@@ -268,7 +272,9 @@ func targetCommand() *cli.Command {
 						name = filtered[0]
 					}
 					selection, err := selectedTargetName(name, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
-					if err != nil { return err }
+					if err != nil {
+						return err
+					}
 					target, err := cfg.ResolveTarget(selection, "")
 					if err != nil {
 						return err
@@ -319,7 +325,9 @@ func targetCommand() *cli.Command {
 					if _, ok := cfg.Targets[args[0]]; !ok {
 						return fmt.Errorf("target %q is not configured", args[0])
 					}
-					if err := writePersistedTarget(args[0]); err != nil { return err }
+					if err := writePersistedTarget(args[0]); err != nil {
+						return err
+					}
 					fmt.Fprintf(out, "Active target: %s\n", args[0])
 					return nil
 				},
@@ -335,7 +343,9 @@ func targetCommand() *cli.Command {
 					if len(args) != 0 {
 						return usageError("baha target deactivate does not accept arguments", "Example: baha target deactivate")
 					}
-					if err := clearPersistedTarget(); err != nil { return err }
+					if err := clearPersistedTarget(); err != nil {
+						return err
+					}
 					fmt.Fprintln(out, "Active target cleared")
 					return nil
 				},
