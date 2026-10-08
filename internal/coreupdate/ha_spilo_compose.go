@@ -77,6 +77,9 @@ func RewriteOwnedSpiloImages(input []byte, previous, desired BackingPin) ([]byte
 	root := doc.Content[0]
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == "services" {
+			if services != nil {
+				return nil, errors.New("duplicate Core HA Compose services mapping")
+			}
 			services = root.Content[i+1]
 		}
 	}
@@ -87,6 +90,9 @@ func RewriteOwnedSpiloImages(input []byte, previous, desired BackingPin) ([]byte
 	for i := 0; i+1 < len(services.Content); i += 2 {
 		name := services.Content[i].Value
 		if _, ok := wanted[name]; !ok {
+			if len(name) >= len("postgres-member-") && name[:len("postgres-member-")] == "postgres-member-" {
+				return nil, fmt.Errorf("unrecognized additional Spilo HA member %s", name)
+			}
 			continue
 		}
 		if wanted[name] {
