@@ -76,7 +76,10 @@ func TestDCSCutoverFencesBeforeActivationAndResumes(t *testing.T) {
 	if !strings.HasPrefix(order, "fence,verify_fence,verify_fence,activate,quorum,patroni,commit") {
 		t.Fatalf("unsafe order: %s", order)
 	}
-	if phase, err := journal.load(); err != nil || phase != "committed" {
+	other:=ev
+ other.SnapshotID="another-valid-snapshot"
+ if err:=RunVerifiedDCSCutover(context.Background(),fakeDCS{valid:true},other,"core","target","cluster","0.4.24",ops,journal);err==nil {t.Fatal("journal resumed using a different DCS snapshot")}
+ if phase, err := journal.load(); err != nil || phase != "committed" {
 		t.Fatalf("cutover not durable: %s %v", phase, err)
 	}
 	before := len(ops.calls)
