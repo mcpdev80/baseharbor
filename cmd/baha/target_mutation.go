@@ -12,6 +12,7 @@ import (
 
 type machineTargetCreateInput struct {
 	Name            string `json:"name"`
+	TenantID        string `json:"tenant_id,omitempty"`
 	RuntimeProvider string `json:"runtime_provider"`
 	AccessProvider  string `json:"access_provider,omitempty"`
 	Access          string `json:"access"`
@@ -60,6 +61,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
+		TenantID: strings.TrimSpace(input.TenantID),
 		Runtime: deployment.RuntimeDefinition{Provider: runtimeProvider},
 		Access:  deployment.TargetAccess{Reference: accessName},
 		Scope:   scope,
