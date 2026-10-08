@@ -81,3 +81,22 @@ func TestTargetListActiveMarkerUsesExplicitPrecedence(t *testing.T) {
 	}
 	t.Fatal("missing target list")
 }
+
+func TestTargetListWorksWithStalePersistedSelection(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME",t.TempDir())
+ t.Setenv("BASEHARBOR_TARGET","")
+ cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{
+  "current":{Runtime:deployment.RuntimeDefinition{Provider:"docker"},Access:deployment.TargetAccess{Reference:"local"}},
+ },Access:map[string]deployment.AccessDefinition{"local":{Provider:"local",Reference:"local"}}}
+ if err:=cfg.Save();err!=nil{t.Fatal(err)}
+ if err:=writePersistedTarget("deleted");err!=nil{t.Fatal(err)}
+ if _,err:=selectedTargetName("","",cfg);err==nil{t.Fatal("stale selection must fail closed for deployment")}
+ for _,child:=range targetCommand().Children{
+  if child.Name!="list"{continue}
+  var out,errOut bytes.Buffer
+  if err:=child.Run(context.Background(),[]string{"--json"},&out,&errOut);err!=nil{t.Fatalf("target discovery must work with stale selection: %v",err)}
+  if !strings.Contains(out.String(),"\"current\""){t.Fatalf("expected configured target in list: %s",out.String())}
+  return
+ }
+ t.Fatal("missing target list command")
+}
