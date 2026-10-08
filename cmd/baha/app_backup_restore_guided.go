@@ -138,7 +138,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 func appGuidedRestoreCommand(store application.Store) *cli.Command {
 	command := appRestoreCommand(store)
 	baseRun := command.Run
-	command.Usage = "baha app restore BACKUP [NAME] [--password-file FILE]"
+	command.Usage = "baha app restore [BACKUP] [NAME] [--password-file FILE]"
 	command.Long = "Validates and decrypts the complete archive before mutation. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry, shows the backup identity, included durable resources and mutation impact, and requires confirmation before restore. Automation keeps the deterministic --password-file path."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if hasOption(args, "--password-file") {
@@ -151,7 +151,12 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
 
-		backupPath, name, err := parseGuidedRestoreArgs(args)
+		if len(args)==0 {
+            selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
+            if selectErr != nil { return selectErr }
+            args=[]string{selected}
+        }
+        backupPath, name, err := parseGuidedRestoreArgs(args)
 		if err != nil {
 			return err
 		}
