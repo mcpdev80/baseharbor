@@ -32,6 +32,11 @@ func appDownCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			for _, arg := range filtered {
+				if strings.HasPrefix(arg, "-") {
+					return usageError("unknown option "+arg, "Run 'baha down --help' for available options; down preserves persistent data and does not require --yes.")
+				}
+			}
 			args = filtered
 			resolved, err := resolveApplication(ctx, store, args, "down")
 			if err != nil {
