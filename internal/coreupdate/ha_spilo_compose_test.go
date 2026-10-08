@@ -60,13 +60,17 @@ func TestOwnedSpiloComposeRejectsMajorChangeAndIncompleteMembers(t *testing.T) {
 }
 
 func TestSpiloTransitionRejectsDowngradeAndUnknownVersion(t *testing.T) {
- old:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.2-p2",Image:"spilo:old",Digest:digestA}
- newPin:=BackingPin{Role:"core-ha-postgresql",Version:"18-spilo-4.2-p1",Image:"spilo:new",Digest:digestB}
- manifest:=[]byte("services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n")
- for _,v:=range []string{"18-spilo-4.2-p1","18-spilo-3.9-p9","18-spilo-5.0-p1","18-spilo-4.3","19-spilo-4.2-p3"} {
-  newPin.Version=v
-  if _,err:=RewriteOwnedSpiloImages(manifest,old,newPin);err==nil{t.Fatalf("unsafe Spilo transition %q accepted",v)}
- }
- newPin.Version="18-spilo-4.3-p0"
- if _,err:=RewriteOwnedSpiloImages(manifest,old,newPin);err!=nil{t.Fatalf("supported same-major staging rejected: %v",err)}
+	old := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.2-p2", Image: "spilo:old", Digest: digestA}
+	newPin := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.2-p1", Image: "spilo:new", Digest: digestB}
+	manifest := []byte("services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n")
+	for _, v := range []string{"18-spilo-4.2-p1", "18-spilo-3.9-p9", "18-spilo-5.0-p1", "18-spilo-4.3", "19-spilo-4.2-p3"} {
+		newPin.Version = v
+		if _, err := RewriteOwnedSpiloImages(manifest, old, newPin); err == nil {
+			t.Fatalf("unsafe Spilo transition %q accepted", v)
+		}
+	}
+	newPin.Version = "18-spilo-4.3-p0"
+	if _, err := RewriteOwnedSpiloImages(manifest, old, newPin); err != nil {
+		t.Fatalf("supported same-major staging rejected: %v", err)
+	}
 }
