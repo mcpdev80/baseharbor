@@ -196,12 +196,16 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
+	openBaoMembers := coreFiles.OpenBaoMembers()
+	if len(openBaoMembers) != 1 {
+		return errors.New("single-Core OpenBao upgrade requires exactly one owned member")
+	}
 	// Require live ownership and immutable image identity for both provider
 	// adapters before any native update journal, backup or mutation is touched.
 	binding := &providerbinding.RuntimeBinding{
 		Reader: runtime, Engine: target.RuntimeProvider,
 		Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
-			providerupgrade.ProviderOpenBao: {Project: coreFiles.Project, Service: coreFiles.OpenBaoMembers()[0]},
+			providerupgrade.ProviderOpenBao: {Project: coreFiles.Project, Service: openBaoMembers[0]},
 			providerupgrade.ProviderKeycloak: {Project: identityFiles.Project, Service: "keycloak-1"},
 		},
 	}
