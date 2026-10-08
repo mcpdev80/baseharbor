@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"bufio"
-	"os"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -93,8 +93,12 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 				return usageError("doctor --fix requires explicit consent before modifying the Core", "Review the findings and run baha doctor --fix --yes. Only existing runtime components will be reconverged.")
 			}
 			approved, err = confirmDoctorRepair(os.Stdin, errOut)
-			if err != nil { return err }
-			if !approved { return usageError("Core repair cancelled; no changes made", "Review the Doctor findings or run 'baha doctor --fix --yes' when ready.") }
+			if err != nil {
+				return err
+			}
+			if !approved {
+				return usageError("Core repair cancelled; no changes made", "Review the Doctor findings or run 'baha doctor --fix --yes' when ready.")
+			}
 		}
 		term.Section("Repair")
 		if err := repairExistingControlPlaneRuntime(ctx, out); err != nil {
@@ -269,11 +273,13 @@ func appendHostTrustOwnershipDoctor(checks []health.Check) []health.Check {
 	return append(checks, health.Check{Name: "host-trust-ownership", OK: true, Message: fmt.Sprintf("%d recorded BaseHarbor-owned CA anchor(s); inspect with 'baha trust status', remove explicitly with 'baha trust uninstall'", len(records))})
 }
 
-func confirmDoctorRepair(in io.Reader, out io.Writer) (bool,error) {
- fmt.Fprintln(out, "Planned action: reconverge the EXISTING selected Core runtime. No reinstall or destructive reset.")
- fmt.Fprint(out, "Approve repair for this run? [y/N]: ")
- answer,err:=bufio.NewReader(in).ReadString('\n')
- if err!=nil { return false, fmt.Errorf("read repair consent: %w; use --fix --yes in non-interactive mode",err) }
- normalized:=strings.ToLower(strings.TrimSpace(answer))
- return normalized=="y"||normalized=="yes"||normalized=="j"||normalized=="ja",nil
+func confirmDoctorRepair(in io.Reader, out io.Writer) (bool, error) {
+	fmt.Fprintln(out, "Planned action: reconverge the EXISTING selected Core runtime. No reinstall or destructive reset.")
+	fmt.Fprint(out, "Approve repair for this run? [y/N]: ")
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("read repair consent: %w; use --fix --yes in non-interactive mode", err)
+	}
+	normalized := strings.ToLower(strings.TrimSpace(answer))
+	return normalized == "y" || normalized == "yes" || normalized == "j" || normalized == "ja", nil
 }
