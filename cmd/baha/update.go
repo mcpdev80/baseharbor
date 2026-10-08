@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+ "github.com/mcpdev80/baseharbor/internal/coreupdate"
 )
 
 const defaultReleaseAPIBase = "https://api.github.com/repos/mcpdev80/baseharbor"
@@ -49,6 +50,8 @@ type selfUpdateCheck struct {
 	Platform     string `json:"platform"`
 	Prerelease   bool   `json:"prerelease"`
 	CoreReconciliation string `json:"core_reconciliation"`
+ CoreExpected []coreupdate.Desired `json:"core_expected,omitempty"`
+ CoreBacking []coreupdate.BackingPin `json:"core_backing,omitempty"`
 }
 
 type selfUpdateOptions struct {
@@ -179,11 +182,20 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 		}
 	}
 	coreReconciliation := "not_required"
+	var coreExpected []coreupdate.Desired
+	var coreBacking []coreupdate.BackingPin
 	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
 		coreReconciliation = "unavailable"
+		if manifest, err := coreupdate.LoadRelease(target); err == nil {
+			coreExpected, coreBacking = manifest.Providers, manifest.Backing
+		} else {
+			coreReconciliation = "unavailable_unpinned"
+		}
 	}
 	return selfUpdateCheck{
 		CoreReconciliation: coreReconciliation,
+        CoreExpected: coreExpected,
+        CoreBacking: coreBacking,
 		Installed:    installedNormalized,
 		Channel:      opts.Channel,
 		Target:       target,
@@ -261,7 +273,9 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 	fmt.Fprintf(out, "Channel: %s\n", check.Channel)
 	fmt.Fprintf(out, "Available version: %s\n", check.Target)
 	fmt.Fprintf(out, "Platform: %s\n", check.Platform)
-	if check.CoreReconciliation == "unavailable" {
+	if check.CoreReconciliation == "unavailable_unpinned" {
+        fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
+    } else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
 	} else {
 		fmt.Fprintln(out, "Core provider upgrade: not required for current installation")
