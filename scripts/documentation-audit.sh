@@ -154,7 +154,12 @@ for file in "${legacy_root_pages[@]}"; do
   fi
 done
 
-# EN/DE are both first-class public documentation trees.\n# Verify full coverage before permitting documentation publication.\npython scripts/check_docs_locale_parity.py\n\nif [ -d site/de ]; then
+# EN/DE are both first-class public documentation trees.
+# Release audit requires full page coverage and retained technical literals.
+python scripts/check_docs_locale_parity.py
+python scripts/check_de_translation_integrity.py
+
+if [ -d site/de ]; then
   python scripts/documentation-language-audit.py --built-site
 else
   python scripts/documentation-language-audit.py
