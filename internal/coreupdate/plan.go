@@ -5,6 +5,7 @@ package coreupdate
 import (
  "context"
  "errors"
+ "encoding/hex"
  "fmt"
  "strings"
 )
@@ -56,6 +57,12 @@ type Plan struct {
  Deltas []Delta `json:"deltas"`
 }
 
+func validDigest(digest string) bool {
+ if !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 { return false }
+ _, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+ return err == nil
+}
+
 func validKind(kind ProviderKind) bool {
  return kind == SQL || kind == Secrets || kind == Identity
 }
@@ -67,7 +74,7 @@ func Build(release string, installed []Realization, desired []Desired) (Plan, er
   if !validKind(item.Kind) || references[item.Kind].Kind != "" {
    return Plan{}, fmt.Errorf("invalid or duplicated Core release provider kind %q", item.Kind)
   }
-  if item.Version == "" || item.Image == "" || !strings.HasPrefix(item.Digest, "sha256:") || len(item.Digest) != 71 {
+  if item.Version == "" || item.Image == "" || !validDigest(item.Digest) {
    return Plan{}, fmt.Errorf("Core release provider %s lacks immutable image/version identity", item.Kind)
   }
   references[item.Kind] = item
@@ -88,7 +95,7 @@ func Build(release string, installed []Realization, desired []Desired) (Plan, er
   target := references[current.Kind]
   delta := Delta{Installed:current, Desired:target}
   switch {
-  case current.Digest != "" && current.Digest == target.Digest && current.Version == target.Version:
+  case current.Digest != "" && current.Digest == target.Digest && current.Version == target.Version && current.Image == target.Image:
    delta.Classification = NoChange
   case current.Image == "" || current.Version == "":
    delta.Classification, delta.Reason = Unsupported, "installed provider identity is unverifiable"
