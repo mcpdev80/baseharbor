@@ -100,6 +100,9 @@ func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate
 	if err := platformopenbao.CheckManager(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao semantics: %w", err)
 	}
+	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
+		return fmt.Errorf("OpenBao AppRole, policies and secret access: %w", err)
+	}
 	if err := identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
 		return fmt.Errorf("Keycloak OIDC semantics: %w", err)
 	}
