@@ -4,9 +4,10 @@
 
 Nach erfolgreichem lokalem Deployment:
 
-```bash
+```text
 baha trust status
-baha trust export --output ./baseharbor-dev-ca.pem
+baha trust export --output PATH
+baha trust install --yes
 ```
 
 Exportiert wird die öffentliche managed-local CA, kein privater Schlüssel. Installation ins Host-Vertrauen ist eine ausdrücklich genehmigte Host-Mutation mit `baha trust install --yes`. Externe Firmen-/BYOC-CAs bleiben Operator-Besitz. Danach den Status erneut prüfen.
@@ -29,3 +30,34 @@ Rotation ersetzt Manager-AppRole, Control-Plane-Datenbankzugangsdaten und manage
 `baha connect`, `baha disconnect` und `baha connections` verwalten explizite Verbindungen. Zugangsdaten, private Schlüssel und Secret-Werte gehören nicht in Application Intent oder normale Maschinenausgabe.
 
 Weiter: [Sicherheit](../explanation/security.md), [Authentifizierung](../explanation/authentication.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/security-trust/).
+
+
+## Weitere Befehlsbeispiele
+
+```text
+baha login
+baha logout
+baha whoami
+```
+
+```text
+baha connect
+baha disconnect
+baha connections
+```
+
+```bash
+baha trust status
+baha trust export --output ./baseharbor-dev-ca.pem
+```
+
+```bash
+baha trust install --yes
+```
+
+```bash
+baha whoami
+baha login
+baha whoami
+baha logout
+```
