@@ -29,9 +29,23 @@ func ResolveOwnedServiceVolume(path, service, project string)(string,error){
   durable:=destination=="/var/lib/postgresql"||destination=="/var/lib/postgresql/data"||destination=="/home/postgres/pgroot"||destination=="/openbao/file"||destination=="/vault/file"
   if !durable{continue}
   if strings.ContainsAny(source,"/\\")||strings.HasPrefix(source,"."){return "",fmt.Errorf("provider %s uses bind-backed data requiring provider-native backup",service)}
-  if _,declared:=root.Volumes[source];!declared{return "",fmt.Errorf("provider %s data volume %s is not declared",service,source)}
+  declared,declaredOK:=root.Volumes[source]
+  if !declaredOK{return "",fmt.Errorf("provider %s data volume %s is not declared",service,source)}
+  actual:=project+"_"+source
+  if declared.Kind==yaml.MappingNode{
+   for i:=0;i+1<len(declared.Content);i+=2{
+    key,value:=declared.Content[i].Value,declared.Content[i+1]
+    if key=="external"&&value.Value!="false"{return "",fmt.Errorf("provider %s uses foreign external data volume %s",service,source)}
+    if key=="name" {
+      if value.Kind!=yaml.ScalarNode||strings.TrimSpace(value.Value)==""||strings.Contains(value.Value,"$"){return "",fmt.Errorf("provider %s has unverified data volume name",service)}
+      actual=value.Value
+    }
+   }
+  }else if declared.Kind!=yaml.ScalarNode || declared.Value!=""{
+   return "",fmt.Errorf("provider %s data volume declaration is not verifiable",service)
+  }
   if found!=""{return "",fmt.Errorf("provider %s has ambiguous multiple data volumes",service)}
-  found=project+"_"+source
+  found=actual
  }
  if found==""{return "",fmt.Errorf("provider %s has no verified persistent data volume",service)}
  return found,nil
