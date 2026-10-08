@@ -18,7 +18,6 @@ func inspectPatroniMembers(ctx context.Context, rt bhruntime.RuntimeProvider, fi
     if rt == nil || files.Project == "" || files.Compose == "" || files.Env == "" {
         return nil, errors.New("Patroni runtime and managed project identity required")
     }
-    const probe = "import json,urllib.request,sys\ntry:\n d=json.load(urllib.request.urlopen('http://127.0.0.1:8008/patroni', timeout=3))\n role=d.get('role',''); state=d.get('state',''); lag=d.get('xlog',{}).get('replayed_location'); print(json.dumps({'role':role,'state':state}))\nexcept Exception:\n sys.exit(1)"
     members := make([]coreupdate.PatroniMemberState, 0, 3)
     for _, name := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
         if err := ctx.Err(); err != nil { return nil, err }
@@ -35,6 +34,5 @@ func inspectPatroniMembers(ctx context.Context, rt bhruntime.RuntimeProvider, fi
             Name: name, Primary: pErr == nil, Replica: rErr == nil, Healthy: true,
         })
     }
-    _ = probe // preserved as schema documentation for a future lag-aware probe
     return members, nil
 }
