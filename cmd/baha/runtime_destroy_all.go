@@ -61,13 +61,13 @@ func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io
 			err = destroyControlPlane(parent, confirmed, io.Discard)
 		}
 		if err != nil {
-            // Preserve structured partial failure details, especially
-            // foreign or unverified host CA anchors.
-            if all {
-                if writeErr := writeJSON(out, report); writeErr != nil {
-                    return errors.Join(err, writeErr)
-                }
-            }
+			// Preserve structured partial failure details, especially
+			// foreign or unverified host CA anchors.
+			if all {
+				if writeErr := writeJSON(out, report); writeErr != nil {
+					return errors.Join(err, writeErr)
+				}
+			}
 			return err
 		}
 		return writeJSON(out, report)
@@ -187,7 +187,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 			fmt.Fprintf(out, "PRESERVED host CA %s %s\n", anchor.Fingerprint, anchor.Path)
 		}
 		// Never discard ownership evidence when a protected anchor remains.
-        recordDestroyResults(parent, preserved, false)
+		recordDestroyResults(parent, preserved, false)
 		return fmt.Errorf("host trust cleanup incomplete; CA anchors PRESERVED and installation ownership retained: %w", hostTrustErr)
 	}
 	results := append([]fullDestroyResult{}, preserved...)
