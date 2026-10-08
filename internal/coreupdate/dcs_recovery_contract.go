@@ -29,14 +29,14 @@ type DCSRecoveryAdapter interface {
 var ErrDCSUnsupported = errors.New("UNSUPPORTED: durable etcd DCS snapshot and verified restore adapter unavailable")
 var ErrDCSInvalidEvidence = errors.New("invalid etcd DCS recovery evidence")
 
-func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, cluster, release string) error {
+func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, target, cluster, release string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if adapter == nil {
 		return ErrDCSUnsupported
 	}
-	if installation == "" || cluster == "" || release == "" || evidence.Installation != installation || evidence.Cluster != cluster || evidence.Release != release || evidence.SnapshotID == "" || !validDigest("sha256:"+evidence.SHA256) {
+	if installation == "" || target == "" || cluster == "" || release == "" || evidence.Installation != installation || evidence.Target != target || evidence.Cluster != cluster || evidence.Release != release || evidence.SnapshotID == "" || !validDigest("sha256:"+evidence.SHA256) {
 		return ErrDCSInvalidEvidence
 	}
 	if err := adapter.Validate(ctx, evidence); err != nil {
@@ -51,7 +51,7 @@ func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence
 // CaptureAndVerifyDCS delegates snapshot creation exclusively to Session 1B.
 // No cluster mutation is authorized until the same artifact is both validated
 // and independently checked for restorable content.
-func CaptureAndVerifyDCS(ctx context.Context, adapter DCSRecoveryAdapter, installation, cluster, release string) (DCSRecoveryEvidence, error) {
+func CaptureAndVerifyDCS(ctx context.Context, adapter DCSRecoveryAdapter, installation, target, cluster, release string) (DCSRecoveryEvidence, error) {
 	if adapter == nil {
 		return DCSRecoveryEvidence{}, ErrDCSUnsupported
 	}
@@ -59,7 +59,7 @@ func CaptureAndVerifyDCS(ctx context.Context, adapter DCSRecoveryAdapter, instal
 	if err != nil {
 		return DCSRecoveryEvidence{}, fmt.Errorf("etcd DCS snapshot creation failed: %w", err)
 	}
-	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, cluster, release); err != nil {
+	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
 		return DCSRecoveryEvidence{}, err
 	}
 	return evidence, nil
