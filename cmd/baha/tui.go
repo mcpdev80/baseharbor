@@ -502,6 +502,6 @@ func renderTargetApplicationInventory(targetName string) string {
 	return b.String()
 }
 
-func renderUnselectedCoreTUIView(device,targets string,err error) string {
- return device+"\n"+targets+"\nNo active Core Target: "+err.Error()+"\nNext: baha target list; baha target activate NAME"
+func renderUnselectedCoreTUIView(device, targets string, err error) string {
+    return device + "\n" + targets + "\nNo active Core Target: " + err.Error() + "\nNext: baha target list; baha target activate NAME"
 }
