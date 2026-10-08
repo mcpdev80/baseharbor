@@ -525,13 +525,50 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		}
 		existing = append(existing, coreupdate.Realization{Kind: item.kind, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v})
 	}
+    // Keycloak owns an additional PostgreSQL data layer, distinct from Core SQL.
+    // It is inventoried against its own single/HA backing pin.
+    backingRole := "keycloak-single-postgresql"
+    dbService := "keycloak-db"
+    if state.Spec.HA { backingRole="keycloak-ha-postgresql"; dbService="keycloak-db-member-1" }
+    var keycloakBacking *coreupdate.BackingPin
+    for i := range catalog.Backing {
+        if catalog.Backing[i].Role == backingRole {keycloakBacking=&catalog.Backing[i];break}
+    }
+    if keycloakBacking==nil {return coreupdate.Plan{},fmt.Errorf("missing Core release backing pin %s",backingRole)}
+    dbProject := bhruntime.SharedProjectName(state.Spec.Target+"-core")
+    dbImage,dbErr := runtimeProvider.ProjectServiceImageIdentity(ctx,dbProject,dbService)
+    if dbErr!=nil {return coreupdate.Plan{},fmt.Errorf("inspect owned Keycloak backing %s: %w",dbService,dbErr)}
+    if state.Spec.HA {
+        for ordinal:=2;ordinal<=3;ordinal++ {
+            peer:=fmt.Sprintf("keycloak-db-member-%d",ordinal)
+            peerImage,peerErr:=runtimeProvider.ProjectServiceImageIdentity(ctx,dbProject,peer)
+            if peerErr!=nil{return coreupdate.Plan{},fmt.Errorf("inspect required Keycloak backing peer %s: %w",peer,peerErr)}
+            if peerImage.Reference!=dbImage.Reference || peerImage.Digest!=dbImage.Digest {
+                return coreupdate.Plan{},fmt.Errorf("Keycloak backing peer %s image identity differs from primary",peer)
+            }
+        }
+    }
+    dbRef:=strings.TrimSpace(dbImage.Reference)
+    dbDigest:=strings.TrimSpace(dbImage.Digest)
+    if at:=strings.Index(dbDigest,"@sha256:");at>=0 {dbDigest=dbDigest[at+1:]}
+    dbClass:=coreupdate.Unsupported
+    dbReason:="Keycloak backing SQL version change needs verified provider-native recovery"
+    if dbRef==keycloakBacking.Image && dbDigest==keycloakBacking.Digest && dbDigest!="" {
+        dbClass=coreupdate.NoChange
+        dbReason=""
+    }
+    backing=append(backing,coreupdate.Delta{
+        Installed:coreupdate.Realization{Kind:coreupdate.SQL,Installation:state.ID,Scope:"backing",Instance:dbService,Owner:"baseharbor",Image:dbRef,Digest:dbDigest,Version:dbRef},
+        Desired:coreupdate.Desired{Kind:coreupdate.SQL,Image:keycloakBacking.Image,Digest:keycloakBacking.Digest,Version:keycloakBacking.Version},
+        Classification:dbClass,Reason:dbReason,
+    })
 	plan, err := coreupdate.Build(targetVersion, existing, catalog.Providers)
 	if err != nil {
 		return coreupdate.Plan{}, err
 	}
 	plan.Deltas = append(plan.Deltas, backing...)
-	if len(plan.Deltas) != 3 {
-		return coreupdate.Plan{}, fmt.Errorf("Core update inventory must contain exactly three owned SQL/Secrets/Identity realizations, got %d", len(plan.Deltas))
+	if len(plan.Deltas) != 4 {
+		return coreupdate.Plan{}, fmt.Errorf("Core update inventory must contain exactly four owned Core and Keycloak backing realizations, got %d", len(plan.Deltas))
 	}
 	return plan, nil
 }
