@@ -11,6 +11,8 @@ import (
 	"testing"
 
  "github.com/mcpdev80/baseharbor/internal/coreupdate"
+ "github.com/mcpdev80/baseharbor/internal/coreinstallation"
+ bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestParseSelfUpdateOptionsDefaultsToStable(t *testing.T) {
@@ -226,4 +228,39 @@ func TestUpdateCheckCoreCatalogHasImmutableReferenceVersions(t *testing.T) {
       !strings.Contains(string(encoded),`"core_reconciliation":"unavailable"`) {
         t.Fatalf("structured update check omits immutable Core metadata: %s",encoded)
     }
+}
+
+type updateInventoryRuntime struct {
+ bhruntime.RuntimeProvider
+ images map[string]bhruntime.ImageIdentity
+}
+
+func (r updateInventoryRuntime) ProjectServiceImageIdentity(_ context.Context, project, service string) (bhruntime.ImageIdentity,error) {
+ v,ok:=r.images[project+"/"+service]
+ if !ok {return bhruntime.ImageIdentity{},fmt.Errorf("missing %s/%s",project,service)}
+ return v,nil
+}
+
+func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
+ namespace:="test-core-update"
+ project:=bhruntime.SharedProjectName(namespace)
+ idProject:=bhruntime.SharedProjectName(namespace+"-core")
+ images:=map[string]bhruntime.ImageIdentity{
+  project+"/postgres-member-1":{Reference:"docker.io/library/postgres:18-alpine",Digest:"docker.io/library/postgres@sha256:"+strings.Repeat("a",64)},
+  project+"/openbao-member-1":{Reference:"docker.io/openbao/openbao:2.7.0",Digest:"docker.io/openbao/openbao@sha256:"+strings.Repeat("b",64)},
+  idProject+"/keycloak-1":{Reference:"quay.io/keycloak/keycloak:26.8.0",Digest:"quay.io/keycloak/keycloak@sha256:"+strings.Repeat("c",64)},
+ }
+ state:=coreinstallation.State{ID:"owned-core",Ready:true,Spec:coreinstallation.Spec{Target:namespace}}
+ plan,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,updateInventoryRuntime{images:images})
+ if err!=nil{t.Fatal(err)}
+ if len(plan.Deltas)!=3{t.Fatalf("expected 3 Core realizations, got %d",len(plan.Deltas))}
+ for _,d:=range plan.Deltas {
+  if d.Installed.Owner!="baseharbor" || d.Installed.Scope!="shared" || !strings.HasPrefix(d.Installed.Digest,"sha256:") {
+   t.Fatalf("unverified provider inventory %+v",d)
+  }
+ }
+ delete(images,idProject+"/keycloak-1")
+ if _,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,updateInventoryRuntime{images:images});err==nil {
+  t.Fatal("accepted incomplete Identity runtime inventory")
+ }
 }
