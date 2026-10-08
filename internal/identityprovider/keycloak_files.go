@@ -434,9 +434,13 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 		b.WriteString(member("keycloak-3"))
 		b.WriteString("\n")
 	}
+	upstreams := []string{"https://keycloak-1:8443"}
+	if app.HA {
+		upstreams = append(upstreams, "https://keycloak-2:8443", "https://keycloak-3:8443")
+	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "keycloak-access",
-		Upstreams:          []string{"https://keycloak-1:8443", "https://keycloak-2:8443", "https://keycloak-3:8443"},
+		Upstreams:          upstreams,
 		UpstreamTrustFile:  filepath.Join(files.Dir, "native-tls", "runtime", "ca.pem"),
 		UpstreamServerName: keycloakPublicHost,
 		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
