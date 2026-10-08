@@ -40,7 +40,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		}
 		if hasOption(args, "--password-file") {
 			forwarded, err := prepareNonInteractiveBackupOutput(ctx, store, args, errOut)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			return baseRun(ctx, forwarded, out, errOut)
 		}
 		if noInput(ctx) {
@@ -69,7 +71,9 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				return err
 			}
 		}
-		if backupOutputFlag(filtered) != "" { reportGitBackupRisk(errOut, outputPath) }
+		if backupOutputFlag(filtered) != "" {
+			reportGitBackupRisk(errOut, outputPath)
+		}
 		files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 		if err != nil {
 			return err
@@ -131,8 +135,10 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				return baseRun(ctx, forwarded, buffer, errOut)
 			})
 		})
-		if backupErr != nil { return backupErr }
-		fmt.Fprintf(out,"Backup saved: %s\nRestore with: baha app restore %q\n",outputPath,outputPath)
+		if backupErr != nil {
+			return backupErr
+		}
+		fmt.Fprintf(out, "Backup saved: %s\nRestore with: baha app restore %q\n", outputPath, outputPath)
 		return nil
 	}
 	return command
@@ -154,12 +160,14 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
 
-		if len(args)==0 {
-            selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
-            if selectErr != nil { return selectErr }
-            args=[]string{selected}
-        }
-        backupPath, name, err := parseGuidedRestoreArgs(args)
+		if len(args) == 0 {
+			selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
+			if selectErr != nil {
+				return selectErr
+			}
+			args = []string{selected}
+		}
+		backupPath, name, err := parseGuidedRestoreArgs(args)
 		if err != nil {
 			return err
 		}
@@ -595,7 +603,9 @@ func defaultGuidedBackupPath(app, environment string, now time.Time) (string, er
 	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dir = filepath.Join(home, ".local", "share", "baseharbor", "backups")
 	}
-	if err := ensureDefaultBackupOutsideGit(dir); err != nil { return "", err }
+	if err := ensureDefaultBackupOutsideGit(dir); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
