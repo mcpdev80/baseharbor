@@ -61,23 +61,27 @@ func currentDeviceResources() string {
 }
 
 func currentDevicePressure() string {
- var b strings.Builder
- if data,err:=os.ReadFile("/proc/loadavg");err==nil {
-  parts:=strings.Fields(string(data))
-  if len(parts)>=3 {fmt.Fprintf(&b,"  Host load (1/5/15m) %s / %s / %s\n",parts[0],parts[1],parts[2])}
- }
- if data,err:=os.ReadFile("/proc/pressure/memory");err==nil {
-  for _,line:=range strings.Split(string(data),"\n") {
-   fields:=strings.Fields(line)
-   if len(fields)<2||fields[0]!="some" {continue}
-   for _,field:=range fields[1:] {
-    if strings.HasPrefix(field,"avg10=") {
-     fmt.Fprintf(&b,"  Memory pressure (10s) %s%%\n",strings.TrimPrefix(field,"avg10="))
-     return b.String()
-    }
-   }
-  }
- }
- b.WriteString("  Memory pressure  unavailable\n")
- return b.String()
+	var b strings.Builder
+	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) >= 3 {
+			fmt.Fprintf(&b, "  Host load (1/5/15m) %s / %s / %s\n", parts[0], parts[1], parts[2])
+		}
+	}
+	if data, err := os.ReadFile("/proc/pressure/memory"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || fields[0] != "some" {
+				continue
+			}
+			for _, field := range fields[1:] {
+				if strings.HasPrefix(field, "avg10=") {
+					fmt.Fprintf(&b, "  Memory pressure (10s) %s%%\n", strings.TrimPrefix(field, "avg10="))
+					return b.String()
+				}
+			}
+		}
+	}
+	b.WriteString("  Memory pressure  unavailable\n")
+	return b.String()
 }
