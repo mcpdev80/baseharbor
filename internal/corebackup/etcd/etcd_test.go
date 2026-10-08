@@ -189,7 +189,7 @@ func TestRestoreRejectsSymlinkAncestorAndRelativeDestination(t *testing.T) {
  for _, destination := range []string{
   filepath.Join(alias, "restored"),
   "relative/restore",
-  filepath.Join(root, "real", "..", "restored"),
+  filepath.Join(root, "real") + "/../restored",
  } {
   if _, err := s.PrepareRestore(ctx, destination); err == nil {
    t.Fatalf("unsafe restore path accepted: %q", destination)
