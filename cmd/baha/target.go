@@ -307,6 +307,9 @@ func targetCommand() *cli.Command {
 				Usage:   "baha target activate NAME",
 				Long:    "Persists per-user target selection across CLI processes. --target and BASEHARBOR_TARGET override the persisted selection.",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+					if len(args) == 1 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target activate", args[0])
+					}
 					if len(args) != 1 {
 						return usageError("baha target activate requires NAME", "Example: baha target activate docker-dev")
 					}
@@ -327,6 +330,9 @@ func targetCommand() *cli.Command {
 				Summary: "Clear persisted active deployment target",
 				Usage:   "baha target deactivate",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+					if len(args) != 0 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target deactivate", args[0])
+					}
 					if len(args) != 0 {
 						return usageError("baha target deactivate does not accept arguments", "Example: baha target deactivate")
 					}
