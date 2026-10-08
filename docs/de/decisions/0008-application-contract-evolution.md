@@ -90,7 +90,7 @@ Kubernetes oder OpenShift dürfen daher bei der Auswahl von PostgreSQL, Geheimni
 
 Die Bereitstellungsauswahl ist ebenfalls Bereitstellungs-/Operatorzustand. Direkte Laufzeitmutation und delegierte/GitOps-Abgleiche müssen ohne Änderung der portablen Applikationsabsicht wählbar sein. Argo CD, Flux, Git Repository Layout, Helm-Werte und abgestimmte spezifische Ressourcen bleiben Liefer-/Laufzeit-Implementierungsdetails.
 
-Für einen verwalteten Ressourcensatz muss es genau einen aktiven Aussöhnungsbesitzer geben.
+Für einen verwalteten Ressourcensatz muss es genau einen aktiven Reconciliationsbesitzer geben.
 
 ### 6. Lifecycle Stabilität ist der Akzeptanztest
 

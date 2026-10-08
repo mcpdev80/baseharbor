@@ -1,7 +1,7 @@
 # ADR 0009: Gemeinsamer Kern mit mehreren Kontrollflächen
 
 - Status: angenommen
-- Geburtsdatum: 2026-09-18
+- Datum: 2026-09-18
 
 ## Kontext
 
@@ -71,7 +71,7 @@ Sie kann Maßnahmen durchführen, wie z. B.:
 
 - Anwendungsübersicht und -bereitschaft;
 - plan/preflight/apply/up/down;
-- Arzt und Sanierung;
+- Doctor und Sanierung;
 - Protokolle;
 - Angabe der Inputs für die Deklaration des Einsatzes;
 - geheime Metadaten zur Anwesenheit/Verwendbarkeit;
@@ -110,7 +110,7 @@ observe + verify
 CR status / conditions
 ```
 
-Der Betreiber muss idempotente Aussöhnung und Anbieter-native Beobachtung verwenden, anstatt Imperativ zu umhüllen.`baha` Befehlen.
+Der Betreiber muss idempotente Reconciliation und Anbieter-native Beobachtung verwenden, anstatt Imperativ zu umhüllen.`baha` Befehlen.
 
 Kubernetes/OpenShift CRDs sind clusterseitige Darstellungen des gewünschten BaseHarbor-Zustandes. Sie müssen die gleiche logische Anwendungsabsicht bewahren und dürfen Anwendungen nicht zwingen, sich auf Kubernetes/OpenShift-Implementationsdetails zu verlassen.
 

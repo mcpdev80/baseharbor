@@ -4,7 +4,7 @@
 
 Status: angenommen
 
-Geburtsdatum: 2026-09-23
+Datum: 2026-09-23
 
 ## Kontext
 

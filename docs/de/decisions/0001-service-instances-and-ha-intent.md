@@ -116,7 +116,7 @@ baseharbor:
 Die HA-Steuerplane soll mindestens Folgendes abdecken:
 
 - die BaseHarbor Control-Plane API
-- Steuerflugzeug PostgreSQL
+- Control Plane PostgreSQL
 - OpenBao
 - stabile Endpunkte der Steuerungs-Plane-Netzwerke
 - Zertifikat/PKI-Verfügbarkeit und Rotationswege

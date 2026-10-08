@@ -1,4 +1,4 @@
-# ADR 0010: Evolvierende Anwendungsabsicht und zerstörungsfreie Aussöhnung
+# ADR 0010: Evolvierende Anwendungsabsicht und zerstörungsfreie Reconciliation
 
 ## Status
 
@@ -27,9 +27,9 @@ Sichtbare v1 Leser bleiben rückseitig kompatibel mit bestehenden expliziten `en
 
 `baha app inspect` ist während der Entwicklung immer wieder sicher zu laufen.
 
-Die Inspektion liefert Belege für das Endlager und versöhnt es mit dem ausdrücklichen Vertrag in vier Staaten:
+Die Inspektion liefert Belege für das Repository und versöhnt es mit dem ausdrücklichen Vertrag in vier Staaten:
 
-- `satisfied`: deklarierte Absicht enthält Belege für das Endlager;
+- `satisfied`: deklarierte Absicht enthält Belege für das Repository;
 - `new`: starke Beweise für eine nicht angemeldete Fähigkeit;
 - `ambiguous`: schwächere Beweise bestehen und erfordern ein Urteil des Entwicklers;
 - `stale`: erklärte Absicht wurde in der aktuellen Inspektion nicht wiederentdeckt.

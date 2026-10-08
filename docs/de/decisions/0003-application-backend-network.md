@@ -1,7 +1,7 @@
 # ADR 0003: Stabiles Backend-Netzwerk für Anwendungen
 
 - Status: angenommen
-- Geburtsdatum: 2026-09-08
+- Datum: 2026-09-08
 
 ## Kontext
 

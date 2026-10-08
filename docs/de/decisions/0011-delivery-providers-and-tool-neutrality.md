@@ -1,4 +1,4 @@
-# ADR 0011: Lieferer, delegierte Aussöhnung und Werkzeugneutralität
+# ADR 0011: Lieferer, delegierte Reconciliation und Werkzeugneutralität
 
 ## Status
 
@@ -68,7 +68,7 @@ BaseHarbor
 
 BaseHarbor besitzt immer noch tragbare Semantik, Politik, Provider-Auswahl, Lebenszyklus-Intention, Beobachtung, semantische Verifizierung und Evidenz. Der delegierte Versöhner besitzt Laufzeitmutation für den delegierten Ressourcensatz.
 
-### 3. Genau ein Aussöhnungsbesitzer
+### 3. Genau ein Reconciliationsbesitzer
 
 Für einen verwalteten Ressourcensatz gibt es genau einen aktiven Mutation/Versöhnungsbesitzer.
 
@@ -175,7 +175,7 @@ Kompromisse:
 
 Bevor v0.5 den Kernvertrag einfriert:
 
-- Bereitstellungs-/Operatorstaat kann die Auswahl des Lieferers und die Aussöhnung des Eigentümers darstellen;
+- Bereitstellungs-/Operatorstaat kann die Auswahl des Lieferers und die Reconciliation des Eigentümers darstellen;
 - direkte oder delegierte Lieferung ohne Produktnamen in portabler Absicht aussprechbar ist;
 - Typisierte Ergebnismodelle können Bereitstellungssynchronisation/Konflikt/nicht verfügbare Zustände darstellen;
 - Anwendung/gemeinsame/externe Platzierungssemantik bleibt wiederverwendbar;
