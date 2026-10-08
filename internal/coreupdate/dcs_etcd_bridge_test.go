@@ -61,7 +61,11 @@ func TestEtcdDCSBridgeRestoresOnlyIsolatedOnce(t *testing.T) {
 	if ev.Target != "target-123" || len(ev.SHA256) != 64 {
 		t.Fatalf("invalid DCS evidence: %+v", ev)
 	}
-	for i := 0; i < 2; i++ {
+	attestor:=bridge.VerifyRecoveredCluster
+ bridge.VerifyRecoveredCluster=nil
+ if err:=VerifyDCSEvidence(ctx,bridge,ev,"core-123","target-123","cluster-123","0.4.24");!errors.Is(err,ErrDCSUnsupported){t.Fatalf("missing live boot attestation accepted: %v",err)}
+ bridge.VerifyRecoveredCluster=attestor
+ for i := 0; i < 2; i++ {
 		if err := VerifyDCSEvidence(ctx, bridge, ev, "core-123", "target-123", "cluster-123", "0.4.24"); err != nil {
 			t.Fatal(err)
 		}
