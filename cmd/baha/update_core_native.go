@@ -32,18 +32,19 @@ func (o *coreNativeRuntimeOps) files(d coreupdate.Delta) (string, string, string
 	}
 	return o.core.Project, o.core.Compose, o.core.Env
 }
+
 // verifyOpenBaoBackingSQL proves that the protected OpenBao application
 // credentials can authenticate against their actual, dedicated SQL database.
 // Passwords are passed via stdin by probeControlPlanePostgresCredential.
 func (o *coreNativeRuntimeOps) verifyOpenBaoBackingSQL(ctx context.Context) error {
- credentials, err := bhruntime.LoadControlPlaneCredentials(o.core)
- if err != nil {
-  return fmt.Errorf("managed OpenBao SQL credentials unavailable: %w", err)
- }
- if err := probeControlPlanePostgresCredential(ctx, o.runtime, o.core, credentials.OpenBaoDBUser, credentials.OpenBaoDBPassword, "openbao"); err != nil {
-  return fmt.Errorf("OpenBao backing SQL authentication/readiness failed: %w", err)
- }
- return nil
+	credentials, err := bhruntime.LoadControlPlaneCredentials(o.core)
+	if err != nil {
+		return fmt.Errorf("managed OpenBao SQL credentials unavailable: %w", err)
+	}
+	if err := probeControlPlanePostgresCredential(ctx, o.runtime, o.core, credentials.OpenBaoDBUser, credentials.OpenBaoDBPassword, "openbao"); err != nil {
+		return fmt.Errorf("OpenBao backing SQL authentication/readiness failed: %w", err)
+	}
+	return nil
 }
 
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
