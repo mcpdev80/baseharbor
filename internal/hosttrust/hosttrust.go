@@ -254,7 +254,11 @@ func RemoveOwned(ctx context.Context,stateDir string)(int,error){
 }
 
 func verifyRecordedAnchor(record AnchorRecord) error {
-	data, err := os.ReadFile(record.Path)
+	info, statErr := os.Lstat(record.Path)
+ if errors.Is(statErr,os.ErrNotExist){return nil}
+ if statErr!=nil{return statErr}
+ if !info.Mode().IsRegular(){return fmt.Errorf("PRESERVED host trust anchor %s is not a regular file",record.Path)}
+ data, err := os.ReadFile(record.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
