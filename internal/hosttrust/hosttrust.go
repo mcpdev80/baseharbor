@@ -209,56 +209,72 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 
 // RemovalResult retains explicit evidence for every owned, preserved or refused CA.
 type RemovalResult struct {
- Removed []AnchorRecord `json:"removed,omitempty"`
- Preserved []AnchorRecord `json:"preserved,omitempty"`
+	Removed   []AnchorRecord `json:"removed,omitempty"`
+	Preserved []AnchorRecord `json:"preserved,omitempty"`
 }
 
-func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult,error) {
- state,err:=loadState(stateDir)
- if err!=nil{return RemovalResult{},err}
- result:=RemovalResult{}
- var failures error
- retained:=make([]AnchorRecord,0,len(state.Anchors))
- for _,record:=range state.Anchors {
-  backend,resolveErr:=resolveBackend(record.Backend)
-  if resolveErr==nil {
-   var expected string
-   expected,resolveErr=backend.AnchorPath(record.Fingerprint)
-   if resolveErr==nil && filepath.Clean(expected)!=filepath.Clean(record.Path) {
-    resolveErr=fmt.Errorf("recorded anchor path does not match fingerprint %s",record.Fingerprint)
-   }
-  }
-  if resolveErr==nil {resolveErr=verifyRecordedAnchor(record)}
-  if resolveErr==nil {resolveErr=backend.Remove(ctx,record.Path)}
-  if resolveErr!=nil {
-   failures=errors.Join(failures,fmt.Errorf("PRESERVED %s (%s): %w",record.Path,record.Fingerprint,resolveErr))
-   retained=append(retained,record)
-   result.Preserved=append(result.Preserved,record)
-   continue
-  }
-  result.Removed=append(result.Removed,record)
+func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, error) {
+	state, err := loadState(stateDir)
+	if err != nil {
+		return RemovalResult{}, err
+	}
+	result := RemovalResult{}
+	var failures error
+	retained := make([]AnchorRecord, 0, len(state.Anchors))
+	for _, record := range state.Anchors {
+		backend, resolveErr := resolveBackend(record.Backend)
+		if resolveErr == nil {
+			var expected string
+			expected, resolveErr = backend.AnchorPath(record.Fingerprint)
+			if resolveErr == nil && filepath.Clean(expected) != filepath.Clean(record.Path) {
+				resolveErr = fmt.Errorf("recorded anchor path does not match fingerprint %s", record.Fingerprint)
+			}
+		}
+		if resolveErr == nil {
+			resolveErr = verifyRecordedAnchor(record)
+		}
+		if resolveErr == nil {
+			resolveErr = backend.Remove(ctx, record.Path)
+		}
+		if resolveErr != nil {
+			failures = errors.Join(failures, fmt.Errorf("PRESERVED %s (%s): %w", record.Path, record.Fingerprint, resolveErr))
+			retained = append(retained, record)
+			result.Preserved = append(result.Preserved, record)
+			continue
+		}
+		result.Removed = append(result.Removed, record)
 
- }
- if len(retained)>0 {
-  state.Anchors=retained
-  if err:=saveState(stateDir,state);err!=nil{return result,errors.Join(failures,err)}
- } else if len(state.Anchors)>0 || len(result.Removed)>0 {
-  if err:=os.Remove(statePath(stateDir));err!=nil&&!errors.Is(err,os.ErrNotExist){return result,errors.Join(failures,err)}
- }
- return result,failures
+	}
+	if len(retained) > 0 {
+		state.Anchors = retained
+		if err := saveState(stateDir, state); err != nil {
+			return result, errors.Join(failures, err)
+		}
+	} else if len(state.Anchors) > 0 || len(result.Removed) > 0 {
+		if err := os.Remove(statePath(stateDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return result, errors.Join(failures, err)
+		}
+	}
+	return result, failures
 }
 
-func RemoveOwned(ctx context.Context,stateDir string)(int,error){
- result,err:=RemoveOwnedDetailed(ctx,stateDir)
- return len(result.Removed),err
+func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
+	result, err := RemoveOwnedDetailed(ctx, stateDir)
+	return len(result.Removed), err
 }
 
 func verifyRecordedAnchor(record AnchorRecord) error {
 	info, statErr := os.Lstat(record.Path)
- if errors.Is(statErr,os.ErrNotExist){return nil}
- if statErr!=nil{return statErr}
- if !info.Mode().IsRegular(){return fmt.Errorf("PRESERVED host trust anchor %s is not a regular file",record.Path)}
- data, err := os.ReadFile(record.Path)
+	if errors.Is(statErr, os.ErrNotExist) {
+		return nil
+	}
+	if statErr != nil {
+		return statErr
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("PRESERVED host trust anchor %s is not a regular file", record.Path)
+	}
+	data, err := os.ReadFile(record.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -286,37 +302,58 @@ func StateRecords(stateDir string) ([]AnchorRecord, error) {
 // UntrackedCandidates reports BaseHarbor-named anchors which lack verified
 // ownership evidence. Their names do NOT imply ownership and they are never
 // eligible for automatic deletion.
-func UntrackedCandidates(stateDir string) ([]string,error) {
- directories:=[]struct{path,extension string}{
-  {"/usr/local/share/ca-certificates",".crt"},
-  {"/etc/pki/ca-trust/source/anchors",".pem"},
- }
- return findUntrackedCandidates(stateDir,directories)
+func UntrackedCandidates(stateDir string) ([]string, error) {
+	directories := []struct{ path, extension string }{
+		{"/usr/local/share/ca-certificates", ".crt"},
+		{"/etc/pki/ca-trust/source/anchors", ".pem"},
+	}
+	return findUntrackedCandidates(stateDir, directories)
 }
 
-func findUntrackedCandidates(stateDir string,directories []struct{path,extension string}) ([]string,error) {
- state,err:=loadState(stateDir)
- if err!=nil{return nil,err}
- owned:=map[string]bool{}
- for _,record:=range state.Anchors {owned[filepath.Clean(record.Path)]=true}
- candidates:=[]string{}
- for _,dir:=range directories {
-  entries,err:=os.ReadDir(dir.path)
-  if errors.Is(err,os.ErrNotExist){continue}
-  if err!=nil{return nil,fmt.Errorf("inspect host trust candidates: %w",err)}
-  for _,entry:=range entries {
-   file:=entry.Name()
-   if !strings.HasPrefix(file,"baseharbor-")||!strings.HasSuffix(file,dir.extension){continue}
-   fingerprintPart:=strings.TrimSuffix(strings.TrimPrefix(file,"baseharbor-"),dir.extension)
-   if len(fingerprintPart)!=16{continue}
-   valid:=true
-   for _,r:=range fingerprintPart {if (r<'0'||r>'9')&&(r<'a'||r>'f'){valid=false;break}}
-   if !valid{continue}
-   path:=filepath.Join(dir.path,file)
-   if !owned[filepath.Clean(path)] {candidates=append(candidates,path)}
-  }
- }
- return candidates,nil
+func findUntrackedCandidates(stateDir string, directories []struct{ path, extension string }) ([]string, error) {
+	state, err := loadState(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	owned := map[string]bool{}
+	for _, record := range state.Anchors {
+		owned[filepath.Clean(record.Path)] = true
+	}
+	candidates := []string{}
+	for _, dir := range directories {
+		entries, err := os.ReadDir(dir.path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect host trust candidates: %w", err)
+		}
+		for _, entry := range entries {
+			file := entry.Name()
+			if !strings.HasPrefix(file, "baseharbor-") || !strings.HasSuffix(file, dir.extension) {
+				continue
+			}
+			fingerprintPart := strings.TrimSuffix(strings.TrimPrefix(file, "baseharbor-"), dir.extension)
+			if len(fingerprintPart) != 16 {
+				continue
+			}
+			valid := true
+			for _, r := range fingerprintPart {
+				if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
+			path := filepath.Join(dir.path, file)
+			if !owned[filepath.Clean(path)] {
+				candidates = append(candidates, path)
+			}
+		}
+	}
+	return candidates, nil
 }
 
 func statePath(stateDir string) string {
