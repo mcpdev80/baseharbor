@@ -471,13 +471,9 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		return
 	}
 	if strings.TrimSpace(target.RuntimeProvider) == "" {
-		if err := os.RemoveAll(dataDir); err != nil {
-			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
-		} else {
-			*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state", Detail: "runtime provider unknown; no external runtime resources were guessed"})
-		}
-		return
-	}
+        *results = append(*results,fullDestroyResult{Status:"DEFERRED",Target:target.Name,Resource:"target-state",Detail:"unknown runtime provider; state removal deferred until host CA cleanup succeeds"})
+        return
+    }
 
 	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
 	defer cancel()
@@ -577,11 +573,7 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		})
 		return
 	}
-	if err := os.RemoveAll(dataDir); err != nil {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "target-state", Detail: err.Error()})
-	} else {
-		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "target-state"})
-	}
+	*results = append(*results,fullDestroyResult{Status:"DEFERRED",Target:target.Name,Resource:"target-state",Detail:"state removal deferred until host CA cleanup succeeds"})
 }
 
 func cleanupOrphanedTargetRuntimeProjects(ctx context.Context, runtime bhruntime.RuntimeProvider, target string, results *[]fullDestroyResult) {
@@ -673,6 +665,12 @@ func removeFullDestroyLocalState(results *[]fullDestroyResult) {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Resource: "xdg-data", Detail: err.Error()})
 	} else {
 		*results = append(*results, fullDestroyResult{Status: "REMOVED", Resource: "xdg-data", Detail: dataRoot})
+        for i:=range *results{
+            if (*results)[i].Resource=="target-state"&&(*results)[i].Status=="DEFERRED"{
+                (*results)[i].Status="REMOVED"
+                (*results)[i].Detail="removed after successful host trust cleanup"
+            }
+        }
 	}
 
 	configPath, configErr := deployment.ConfigPath()
