@@ -24,3 +24,22 @@ baha policy explain -e test
 `check` bewertet den aufgelösten Kontext; `explain` zeigt die maßgebliche Regel. Fehlende Provider oder abgelehnte Anforderungen müssen vor Apply korrigiert werden. Überschreibbare Defaults ersetzen keine verbindliche Policy.
 
 Weiter: [Konzept](../explanation/organization-configuration.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/organization-policy/).
+
+
+## Ergänzende Befehlsreferenz
+
+Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
+
+```text
+baha policy check
+baha policy explain
+```
+
+```bash
+baha config organization set --source local \
+  --location "$HOME/company/baseharbor-config" --environment dev
+baha config organization show --environment dev -o json
+baha config organization check
+```
+
+Technische Bezeichner: `baha config ...`, `baseharbor.yaml`.
