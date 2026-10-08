@@ -106,8 +106,9 @@ func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate
 	return nil
 }
 func (o *coreNativeRuntimeOps) Record(_ context.Context, d coreupdate.Delta, state string) error {
-	journal := coreupdate.Journal{Release: o.release}
-	return journal.Record(o.receiptPath, d, state)
+	journal,err:=coreupdate.LoadJournal(o.receiptPath,o.release)
+    if err!=nil{return err}
+    return journal.Record(o.receiptPath,d,state)
 }
 
 func reconcileNativeCoreProviders(ctx context.Context, release string) error {
