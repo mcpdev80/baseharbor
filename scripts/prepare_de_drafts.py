@@ -75,15 +75,32 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--segment-start", type=int, default=0)
+    parser.add_argument("--segment-count", type=int, default=0)
+    parser.add_argument("--skeleton-only", action="store_true")
     args = parser.parse_args()
     files = missing_pages(args.root)[args.offset:args.offset + args.limit]
     if not files:
         print("BH_TRANSLATION_EMPTY", flush=True)
         return
-    from transformers import pipeline
-    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-de", device=-1)
+    if not args.skeleton_only:
+        from transformers import pipeline
+        translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-de", device=-1)
     for file in files:
         pieces, items = page_segments(file.read_text(encoding="utf-8"))
+        if args.skeleton_only:
+            template = "".join(pieces)
+            chunks = [template[i:i + 2048] for i in range(0, len(template), 2048)]
+            for i, chunk in enumerate(chunks):
+                print("BH_DE_SKELETON\t" + json.dumps({"index": i, "total": len(chunks), "content": chunk}, ensure_ascii=False), flush=True)
+            print("BH_DE_TOTAL\t" + str(len(items)), flush=True)
+            continue
+        if args.segment_count:
+            end = min(len(items), args.segment_start + args.segment_count)
+            for i in range(args.segment_start, end):
+                translated = translator(items[i], max_length=512)[0]["translation_text"]
+                print("BH_DE_SEGMENT\t" + json.dumps({"index": i, "translation": translated}, ensure_ascii=False), flush=True)
+            continue
         translations = []
         for chunk in range(0, len(items), 16):
             batch = items[chunk:chunk + 16]
