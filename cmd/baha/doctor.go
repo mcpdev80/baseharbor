@@ -51,15 +51,6 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		if err != nil {
 			return err
 		}
-		if fix && !result.Ready && hasAutoFixableDoctorFinding(classifyDoctorFindings(collectControlPlaneDoctorChecks(ctx))) {
-			if err := repairExistingControlPlaneRuntime(ctx, io.Discard); err != nil {
-				return err
-			}
-			result, err = inspectControlPlaneDoctor(ctx)
-			if err != nil {
-				return err
-			}
-		}
 		return writeJSON(out, result)
 	}
 	term := cli.NewTerminal(ctx, out, errOut)
@@ -78,7 +69,7 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	renderDoctorFindings(term, findings)
 	if !fix {
 		fmt.Fprintln(out, "\nNext:")
-		fmt.Fprintln(out, "  baha doctor --fix")
+		if hasAutoFixableDoctorFinding(findings) { fmt.Fprintln(out, "  baha doctor --fix") }
 		fmt.Fprintln(out, "  baha doctor --verbose")
 		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
 		return cli.Presented(errors.New("one or more checks failed"))
@@ -148,6 +139,14 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 		}
 		finding := doctorFinding{Check: check, Class: doctorManualAction, Action: "inspect the failed prerequisite and correct it manually"}
 		switch check.Name {
+		case "target-selection":
+			finding.Class = doctorNeedsInput
+			finding.Action = "run baha target list, then baha target activate NAME"
+		case "selected-runtime":
+			finding.Action = "start or configure the selected runtime; rerun baha doctor"
+		case "target-access":
+			finding.Class = doctorNeedsInput
+			finding.Action = "reconnect the authenticated remote Target and rerun baha doctor"
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
