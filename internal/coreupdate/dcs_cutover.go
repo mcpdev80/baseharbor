@@ -2,6 +2,8 @@ package coreupdate
 
 import (
 	"context"
+ "crypto/sha256"
+ "encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -24,7 +26,7 @@ type DCSCutoverOps interface {
 // DCSCutoverJournal stores the last durable phase in a protected Core state
 // directory. A failed or ambiguous phase remains fenced and MUST NOT restore
 // the previous DCS automatically, avoiding concurrent DCS primaries.
-type DCSCutoverJournal struct{ Path string }
+type DCSCutoverJournal struct{ Path string; binding string }
 
 func (j DCSCutoverJournal) load() (string, error) {
 	if j.Path == "" {
@@ -37,14 +39,18 @@ func (j DCSCutoverJournal) load() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 || st.Size() > 64 {
+	if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 || st.Size() > 160 {
 		return "", errors.New("unsafe DCS cutover journal")
 	}
 	data, err := os.ReadFile(j.Path)
 	if err != nil {
 		return "", err
 	}
-	switch state := strings.TrimSpace(string(data)); state {
+	fields := strings.Fields(string(data))
+ if len(fields)!=2 || len(fields[1])!=64 {return "",errors.New("unbound DCS cutover receipt")}
+ if _,err:=hex.DecodeString(fields[1]);err!=nil{return "",err}
+ if j.binding!="" && fields[1]!=j.binding{return "",errors.New("DCS snapshot identity differs from original cutover")}
+ switch state := fields[0]; state {
 	case "prepared", "fenced", "activated", "verified", "committed":
 		return state, nil
 	default:
@@ -52,8 +58,8 @@ func (j DCSCutoverJournal) load() (string, error) {
 	}
 }
 func (j DCSCutoverJournal) record(previous, next string) error {
-	if j.Path == "" {
-		return errors.New("durable DCS cutover journal path required")
+	if j.Path == "" || j.binding=="" {
+		return errors.New("durable, identity-bound DCS cutover journal required")
 	}
 	dir := filepath.Dir(j.Path)
 	info, err := os.Lstat(dir)
@@ -79,7 +85,7 @@ func (j DCSCutoverJournal) record(previous, next string) error {
 		tmp.Close()
 		return err
 	}
-	if _, err = tmp.WriteString(next + "\n"); err == nil {
+	if _, err = tmp.WriteString(next + " " + j.binding + "\n"); err == nil {
 		err = tmp.Sync()
 	}
 	closeErr := tmp.Close()
@@ -111,7 +117,14 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
-	phase, err := journal.load()
+ identity := sha256.Sum256([]byte(evidence.Installation+"\x00"+evidence.Target+"\x00"+evidence.Cluster+"\x00"+evidence.Release+"\x00"+evidence.SnapshotID+"\x00"+evidence.SHA256))
+ journal.binding = hex.EncodeToString(identity[:])
+ // A second concurrent upgrade must never share a mutable cutover journal.
+ lock,lockErr:=os.OpenFile(journal.Path+".lock",os.O_WRONLY|os.O_CREATE|os.O_EXCL,0600)
+ if lockErr!=nil{return fmt.Errorf("exclusive DCS cutover lock unavailable: %w",lockErr)}
+ if err:=lock.Close();err!=nil{return err}
+ defer os.Remove(journal.Path+".lock")
+ phase, err := journal.load()
 	if err != nil {
 		return err
 	}
