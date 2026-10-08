@@ -74,6 +74,19 @@ func rootCommand() *cli.Command {
 			Run:     appInitWithInputResolverCommand(store).Run,
 		},
 		{
+			Name:    "list",
+			Summary: "List managed applications on the selected Target",
+			Usage:   "baha list [options]",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				for _, child := range appCmd.Children {
+					if child.Name == "list" && child.Run != nil {
+						return child.Run(ctx, args, out, errOut)
+					}
+				}
+				return errors.New("application discovery is unavailable")
+			},
+		},
+		{
 			Name:    "inspect",
 			Summary: "Inspect the current repository and its application requirements",
 			Usage:   "baha inspect [options]",
