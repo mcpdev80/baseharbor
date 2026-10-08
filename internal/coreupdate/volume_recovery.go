@@ -62,9 +62,13 @@ func (v VolumeRecovery) Capture(ctx context.Context, delta Delta) error {
 		return err
 	}
 	if _, err := os.Lstat(path); err == nil {
-        if err := v.verifyArchive(delta); err != nil {return fmt.Errorf("existing recovery point is unsafe: %w",err)}
-        return nil
-    } else if !errors.Is(err, os.ErrNotExist) {return err}
+		if err := v.verifyArchive(delta); err != nil {
+			return fmt.Errorf("existing recovery point is unsafe: %w", err)
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	data, err := v.Runtime.ExportOwnedVolume(ctx, v.Project, v.Volume)
 	if err != nil {
 		return fmt.Errorf("export owned volume: %w", err)
@@ -111,41 +115,52 @@ func (v VolumeRecovery) Capture(ctx context.Context, delta Delta) error {
 // Recover validates the immutable recovery archive before restoring the
 // *owned* runtime volume; if verification fails it never touches a volume.
 func (v VolumeRecovery) Recover(ctx context.Context, delta Delta) error {
-    if v.Runtime == nil {return errors.New("no owned-volume runtime")}
-    if v.VerifyQuiesced==nil{return errors.New("provider volume recovery requires quiescence verification")}
-    if err:=v.VerifyQuiesced(ctx,v.Project,v.Volume);err!=nil{return fmt.Errorf("provider volume is not quiesced: %w",err)}
-    data,err:=v.readVerifiedArchive(delta)
-    if err!=nil{return err}
-    return v.Runtime.RestoreOwnedVolume(ctx,v.Project,v.Volume,data)
+	if v.Runtime == nil {
+		return errors.New("no owned-volume runtime")
+	}
+	if v.VerifyQuiesced == nil {
+		return errors.New("provider volume recovery requires quiescence verification")
+	}
+	if err := v.VerifyQuiesced(ctx, v.Project, v.Volume); err != nil {
+		return fmt.Errorf("provider volume is not quiesced: %w", err)
+	}
+	data, err := v.readVerifiedArchive(delta)
+	if err != nil {
+		return err
+	}
+	return v.Runtime.RestoreOwnedVolume(ctx, v.Project, v.Volume, data)
 }
 
-func (v VolumeRecovery) verifyArchive(delta Delta)error{
- _,err:=v.readVerifiedArchive(delta)
- return err
+func (v VolumeRecovery) verifyArchive(delta Delta) error {
+	_, err := v.readVerifiedArchive(delta)
+	return err
 }
-func (v VolumeRecovery) readVerifiedArchive(delta Delta)([]byte,error){
- path,err:=v.archivePath(delta);if err!=nil{return nil,err}
-for _, p := range []string{path, path + ".sha256"} {
+func (v VolumeRecovery) readVerifiedArchive(delta Delta) ([]byte, error) {
+	path, err := v.archivePath(delta)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range []string{path, path + ".sha256"} {
 		st, err := os.Lstat(p)
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
 		if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
-			return nil,fmt.Errorf("unsafe recovery artifact %s", p)
+			return nil, fmt.Errorf("unsafe recovery artifact %s", p)
 		}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	expected, err := os.ReadFile(path + ".sha256")
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	checksum := sha256.Sum256(data)
 	if len(data) == 0 || strings.TrimSpace(string(expected)) != hex.EncodeToString(checksum[:]) {
-		return nil,errors.New("provider recovery archive checksum mismatch")
+		return nil, errors.New("provider recovery archive checksum mismatch")
 	}
 
- return data,nil
+	return data, nil
 }
