@@ -47,6 +47,21 @@ func (o *coreNativeRuntimeOps) verifyOpenBaoBackingSQL(ctx context.Context) erro
 	return nil
 }
 
+// verifyKeycloakBackingSQL authenticates with the dedicated Keycloak
+// application role over verified TLS. It does not use the superuser or log
+// credentials, and runs only in the owned single-Core topology.
+func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) error {
+ files := bhruntime.Files{Project:o.identity.Project, Compose:o.identity.Compose, Env:o.identity.Env}
+ values,err:=bhruntime.RuntimeEnvironment(files)
+ if err!=nil{return fmt.Errorf("protected Keycloak SQL credentials unavailable: %w",err)}
+ user,password,database:=values["BASEHARBOR_KEYCLOAK_DB_USER"],values["BASEHARBOR_KEYCLOAK_DB_PASSWORD"],values["BASEHARBOR_KEYCLOAK_DB_NAME"]
+ if user==""||password==""||database=="" {return errors.New("Keycloak SQL owner credentials are incomplete")}
+ const script="IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc 'SELECT 1' -v ON_ERROR_STOP=1"
+ _,err=o.runtime.ExecProjectInput(ctx,files.Project,files.Compose,files.Env,[]byte(password+"\n"),"keycloak-db","sh","-ec",script,"--",user,database)
+ if err!=nil{return fmt.Errorf("Keycloak managed SQL user cannot authenticate over TLS: %w",err)}
+ return nil
+}
+
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
 	if len(plan.Deltas) != 4 {
 		return fmt.Errorf("Core runtime update requires four owned SQL/Secrets/Identity/Keycloak-backing realizations")
@@ -61,6 +76,9 @@ func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Pl
 	}
 	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao AppRole/policies/KV preflight: %w", err)
+	}
+	if err := o.verifyKeycloakBackingSQL(ctx); err != nil {
+		return err
 	}
 	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
 		return fmt.Errorf("Keycloak SQL/realm/OIDC/token preflight: %w", err)
@@ -131,6 +149,9 @@ func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate
 	}
 	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao AppRole, policies and secret access: %w", err)
+	}
+	if err := o.verifyKeycloakBackingSQL(ctx); err != nil {
+		return err
 	}
 	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
 		return fmt.Errorf("Keycloak realm, OIDC and operator token semantics: %w", err)
