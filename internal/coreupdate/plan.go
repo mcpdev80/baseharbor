@@ -8,6 +8,7 @@ import (
  "encoding/hex"
  "fmt"
  "strings"
+ "strconv"
 )
 
 type Classification string
@@ -67,6 +68,35 @@ func validKind(kind ProviderKind) bool {
  return kind == SQL || kind == Secrets || kind == Identity
 }
 
+// compareProviderVersions compares dotted numeric upstream provider versions.
+// An unknown version is not evidence that a destructive downgrade is safe.
+func compareProviderVersions(current, target string) (int, error) {
+ parse := func(value string) ([]uint64, error) {
+  if value == "" { return nil, errors.New("empty version") }
+  fields := strings.Split(value, ".")
+  result := make([]uint64, 0, len(fields))
+  for _, field := range fields {
+   if field == "" { return nil, fmt.Errorf("unverifiable provider version %q", value) }
+   number, err := strconv.ParseUint(field, 10, 64)
+   if err != nil { return nil, fmt.Errorf("unverifiable provider version %q: %w", value, err) }
+   result = append(result, number)
+  }
+  return result, nil
+ }
+ left, err := parse(current)
+ if err != nil { return 0, err }
+ right, err := parse(target)
+ if err != nil { return 0, err }
+ for i := 0; i < len(left) || i < len(right); i++ {
+  var a, b uint64
+  if i < len(left) { a = left[i] }
+  if i < len(right) { b = right[i] }
+  if a > b { return 1, nil }
+  if a < b { return -1, nil }
+ }
+ return 0, nil
+}
+
 func Build(release string, installed []Realization, desired []Desired) (Plan, error) {
  if strings.TrimSpace(release) == "" { return Plan{}, errors.New("Core update requires a pinned BaseHarbor release") }
  references := make(map[ProviderKind]Desired,3)
@@ -99,6 +129,8 @@ func Build(release string, installed []Realization, desired []Desired) (Plan, er
    delta.Classification = NoChange
   case current.Image == "" || current.Version == "" || !validDigest(current.Digest):
    delta.Classification, delta.Reason = Unsupported, "installed provider image/version/digest identity is unverifiable"
+  case providerDowngrade(current.Version, target.Version):
+   delta.Classification, delta.Reason = Unsupported, "Core provider downgrade or unverifiable version requires explicit supported recovery/migration"
   case current.Kind == SQL && strings.Split(current.Version, ".")[0] != strings.Split(target.Version, ".")[0]:
    delta.Classification, delta.Reason = Unsupported, "PostgreSQL major upgrade requires an explicit supported migration"
   case current.Kind == SQL || current.Kind == Secrets:
@@ -111,6 +143,11 @@ func Build(release string, installed []Realization, desired []Desired) (Plan, er
   plan.Deltas = append(plan.Deltas,delta)
  }
  return plan,nil
+}
+
+func providerDowngrade(current, target string) bool {
+ comparison, err := compareProviderVersions(current, target)
+ return err != nil || comparison > 0
 }
 
 type Hooks struct {
