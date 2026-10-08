@@ -503,11 +503,6 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		}
 	}
 
-	if removed, err := hosttrust.RemoveOwned(ctx, dataDir); err != nil {
-		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "host-trust", Detail: err.Error()})
-	} else if removed > 0 {
-		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "host-trust", Detail: fmt.Sprintf("%d CA anchor(s)", removed)})
-	}
 
 	if relays, err := connectivityrelay.ExistingInstancesAt(dataDir, target.Name); err != nil {
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "connectivity-relays", Detail: err.Error()})
@@ -573,6 +568,17 @@ func destroyTargetBestEffort(parent context.Context, target deployment.ResolvedT
 		})
 		return
 	}
+	// Only touch target-scoped host trust after this target's runtime resources
+    // have been fully destroyed and ownership audits succeeded.
+	if removed, err := hosttrust.RemoveOwned(ctx, dataDir); err != nil {
+		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: target.Name, Resource: "host-trust", Detail: err.Error()})
+	} else if removed > 0 {
+		*results = append(*results, fullDestroyResult{Status: "REMOVED", Target: target.Name, Resource: "host-trust", Detail: fmt.Sprintf("%d CA anchor(s)", removed)})
+	}
+	if countFullDestroyBlockers((*results)[cleanupResultStart:]) > 0 {
+        *results = append(*results, fullDestroyResult{Status:"SKIPPED",Target:target.Name,Resource:"target-state",Detail:"preserved because target host CA cleanup failed"})
+        return
+    }
 	*results = append(*results, fullDestroyResult{Status: "DEFERRED", Target: target.Name, Resource: "target-state", Detail: "state removal deferred until host CA cleanup succeeds"})
 }
 
