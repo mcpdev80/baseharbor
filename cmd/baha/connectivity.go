@@ -124,6 +124,7 @@ func connectionsCommand() *cli.Command {
 				return err
 			}
 			if format == outputJSON {
+				if rules == nil { return writeJSON(out, []any{}) }
 				return writeJSON(out, rules)
 			}
 			if len(rules) == 0 {
