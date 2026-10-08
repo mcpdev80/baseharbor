@@ -31,3 +31,11 @@ Vor Veröffentlichung nach `queue.Name` den Fehler prüfen. Durable Queue allein
 Weitere Scaffolds aus dem übergeordneten Verzeichnis sind `baha app new event-feed --stack go --pubsub` und `baha app new audit-events --stack go --stream`. Sie erzeugen keine vollständige Subscriber-/Replay-Implementierung. Jede deployte Application mit `baha doctor` prüfen.
 
 [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/messaging/).
+
+
+## Weitere technische Beispiele
+
+```bash
+baha app new event-feed --stack go --pubsub
+baha app new audit-events --stack go --stream
+```
