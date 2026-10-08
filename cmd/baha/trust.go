@@ -167,6 +167,7 @@ func trustUninstallCommand() *cli.Command {
 					return usageError("unknown trust uninstall argument "+arg, "Usage: baha trust uninstall [--yes] [--json]")
 				}
 			}
+			if err := authorizeCurrentMCPContext(ctx, "trust.uninstall", "", "", ""); err != nil { return err }
 			records, err := ownedTrustRecords()
 			if err != nil {
 				return err
