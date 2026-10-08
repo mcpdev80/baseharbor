@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -30,7 +31,7 @@ func appPSQLCommand(store application.Store) *cli.Command {
 			}
 			path, err := exec.LookPath("psql")
 			if err != nil {
-				return fmt.Errorf("psql client not found in PATH")
+				return machine.NewError(machine.ErrorCapabilityMissing, "PostgreSQL interactive client is unavailable on the CLI device", "Install psql or use a provider-managed SQL client once its runtime execution capability is available.", false)
 			}
 			user := binding.Username
 			if user == "" {
@@ -68,7 +69,7 @@ func appRedisCommand(store application.Store) *cli.Command {
 				path, err = exec.LookPath("redis-cli")
 			}
 			if err != nil {
-				return fmt.Errorf("valkey-cli or redis-cli client not found in PATH")
+				return machine.NewError(machine.ErrorCapabilityMissing, "Valkey interactive client is unavailable on the CLI device", "Install valkey-cli/redis-cli or use a provider-managed client once its runtime execution capability is available.", false)
 			}
 			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
