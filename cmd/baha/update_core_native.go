@@ -186,10 +186,10 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			continue
 		}
 		project, compose, _ := ops.files(d)
-		volume := project + "_postgres-data-1"
-		if d.Installed.Kind == coreupdate.Identity || d.Installed.Scope == "backing" {
-			volume = project + "_keycloak-db-data"
-		}
+		volume, volumeErr := coreupdate.ResolveOwnedServiceVolume(compose, d.Installed.Instance, project)
+        if volumeErr != nil {
+            return fmt.Errorf("Core %s requires a verifiable persistent data volume before migration: %w", d.Installed.Instance, volumeErr)
+        }
 		assets[coreupdate.JournalKey(d)] = coreupdate.NativeProviderAssets{
 			Recovery: coreupdate.VolumeRecovery{Runtime: runtime, Directory: filepath.Join(journalDir, "backups"), Project: project, Volume: volume, VerifyQuiesced: ops.verifyQuiesced},
 			Compose:  coreupdate.ComposeCheckpoint{Path: compose, Directory: filepath.Join(journalDir, "compose-backups")},
