@@ -77,6 +77,13 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
 	_, localApplicationExists := localApplicationForSelfUpdate()
 
+	// A binary-only update cannot certify the mandatory SQL/Secrets/Identity
+	// release contract. Refuse mutations for an installed Core until the
+	// release-owned provider reconciliation path is available.
+	if controlPlaneExists {
+		return errors.New("Core provider version reconciliation is not yet available for self-update; installed Core was left unchanged. Use 'baha update --check' to inspect the selected release")
+	}
+
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
 		return err
