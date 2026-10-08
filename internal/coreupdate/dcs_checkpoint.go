@@ -15,7 +15,7 @@ import (
 // with a new snapshot from an already partially mutated cluster.
 type DCSCheckpoint struct{ Path string }
 
-func (c DCSCheckpoint) Acquire(ctx context.Context, adapter DCSRecoveryAdapter, installation, cluster, release string) (DCSRecoveryEvidence, error) {
+func (c DCSCheckpoint) Acquire(ctx context.Context, adapter DCSRecoveryAdapter, installation, target, cluster, release string) (DCSRecoveryEvidence, error) {
 	if c.Path == "" {
 		return DCSRecoveryEvidence{}, errors.New("durable DCS recovery receipt path required")
 	}
@@ -50,7 +50,7 @@ func (c DCSCheckpoint) Acquire(ctx context.Context, adapter DCSRecoveryAdapter, 
 		if e != nil {
 			return DCSRecoveryEvidence{}, fmt.Errorf("corrupt DCS receipt: %w", e)
 		}
-		if e = VerifyDCSEvidence(ctx, adapter, evidence, installation, cluster, release); e != nil {
+		if e = VerifyDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); e != nil {
 			return DCSRecoveryEvidence{}, e
 		}
 		return evidence, nil
@@ -58,7 +58,7 @@ func (c DCSCheckpoint) Acquire(ctx context.Context, adapter DCSRecoveryAdapter, 
 	if !errors.Is(err, os.ErrNotExist) {
 		return DCSRecoveryEvidence{}, err
 	}
-	evidence, err := CaptureAndVerifyDCS(ctx, adapter, installation, cluster, release)
+	evidence, err := CaptureAndVerifyDCS(ctx, adapter, installation, target, cluster, release)
 	if err != nil {
 		return DCSRecoveryEvidence{}, err
 	}
