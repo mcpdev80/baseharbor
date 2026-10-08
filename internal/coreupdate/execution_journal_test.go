@@ -164,20 +164,30 @@ func TestExecuteJournaledReceiptFailureNeverCommitsVerified(t *testing.T) {
 }
 
 func TestInterruptedJournalCannotReplayWithoutRecoveryHook(t *testing.T) {
- root:=t.TempDir()
- if err:=os.Chmod(root,0700);err!=nil{t.Fatal(err)}
- path:=filepath.Join(root,"journal.json")
- plan,err:=Build("0.4.24",[]Realization{{Kind:Secrets,Installation:"a",Scope:"shared",Instance:"vault",Owner:"baseharbor",Image:"openbao",Digest:digestA,Version:"2.7.0"}},expected())
- if err!=nil{t.Fatal(err)}
- j:=Journal{Release:"0.4.24"}
- if err:=j.Record(path,plan.Deltas[0],"apply_failed");err!=nil{t.Fatal(err)}
- touched:=false
- hooks:=Hooks{
-  Preflight:func(context.Context,Plan)error{return nil},
-  Apply:func(context.Context,Delta)error{touched=true;return nil},
-  Verify:func(context.Context,Delta)error{return nil},
-  Record:func(context.Context,Delta,string)error{return nil},
- }
- if err:=ExecuteJournaled(context.Background(),plan,path,hooks);err==nil {t.Fatal("interrupted mutation replayed without recovery")}
- if touched{t.Fatal("unsafe runtime mutation occurred")}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "journal.json")
+	plan, err := Build("0.4.24", []Realization{{Kind: Secrets, Installation: "a", Scope: "shared", Instance: "vault", Owner: "baseharbor", Image: "openbao", Digest: digestA, Version: "2.7.0"}}, expected())
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := Journal{Release: "0.4.24"}
+	if err := j.Record(path, plan.Deltas[0], "apply_failed"); err != nil {
+		t.Fatal(err)
+	}
+	touched := false
+	hooks := Hooks{
+		Preflight: func(context.Context, Plan) error { return nil },
+		Apply:     func(context.Context, Delta) error { touched = true; return nil },
+		Verify:    func(context.Context, Delta) error { return nil },
+		Record:    func(context.Context, Delta, string) error { return nil },
+	}
+	if err := ExecuteJournaled(context.Background(), plan, path, hooks); err == nil {
+		t.Fatal("interrupted mutation replayed without recovery")
+	}
+	if touched {
+		t.Fatal("unsafe runtime mutation occurred")
+	}
 }
