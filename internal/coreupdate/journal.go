@@ -20,7 +20,7 @@ type Journal struct {
 
 func JournalKey(d Delta) string {
 	r := d.Installed
-	return r.Installation + "/" + r.Scope + "/" + r.Instance + "/" + string(r.Kind)
+	return r.Installation + "/" + r.Scope + "/" + r.Instance + "/" + string(r.Kind) + "@" + d.Desired.Version + "@" + d.Desired.Digest
 }
 
 func LoadJournal(path, release string) (Journal, error) {
@@ -76,7 +76,7 @@ func (j *Journal) Record(path string, d Delta, state string) error {
 		j.Steps = map[string]string{}
 	}
 	key := JournalKey(d)
-	if strings.TrimSpace(d.Installed.Installation) == "" || strings.TrimSpace(d.Installed.Scope) == "" || strings.TrimSpace(d.Installed.Instance) == "" || !validKind(d.Installed.Kind) {
+	if strings.TrimSpace(d.Installed.Installation) == "" || strings.TrimSpace(d.Installed.Scope) == "" || strings.TrimSpace(d.Installed.Instance) == "" || !validKind(d.Installed.Kind) || !validDigest(d.Desired.Digest) || strings.TrimSpace(d.Desired.Version) == "" {
 		return errors.New("incomplete Core update journal key")
 	}
 	if j.Steps[key] == "verified" && state != "verified" {
