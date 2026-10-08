@@ -96,8 +96,13 @@ func TestNativeProviderReplayRestoresOriginalDataBeforeRetry(t *testing.T) {
 	plan := Plan{Release: "0.4.24", Deltas: []Delta{delta}}
 	journal := filepath.Join(dir, "journal.json")
 	if err := RunNativeProviderUpdates(context.Background(), plan, journal, ops, assets); err == nil {
-		t.Fatal("failed provider restart reported success")
-	}
+        t.Fatal("failed provider restart reported success")
+    }
+    stateAfterRollback,err:=LoadJournal(journal,"0.4.24")
+    if err!=nil{t.Fatal(err)}
+    if stateAfterRollback.Steps[JournalKey(delta)]!="recovered"||rt.restores!=1||ops.original!=1{
+        t.Fatalf("automatic rollback not committed: %+v; restores=%d ops=%+v",stateAfterRollback,rt.restores,ops)
+    }
 	ops.failPinned = false
 	if err := RunNativeProviderUpdates(context.Background(), plan, journal, ops, assets); err != nil {
 		t.Fatal(err)
