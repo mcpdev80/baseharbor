@@ -114,11 +114,14 @@ func (o *coreNativeRuntimeOps) Record(_ context.Context, d coreupdate.Delta, sta
 }
 
 func nativeRecoveryService(d coreupdate.Delta) string {
- switch d.Installed.Kind {
- case coreupdate.Identity: return "keycloak-db"
- case coreupdate.Secrets: return "postgres-member-1"
- default: return d.Installed.Instance
- }
+	switch d.Installed.Kind {
+	case coreupdate.Identity:
+		return "keycloak-db"
+	case coreupdate.Secrets:
+		return "postgres-member-1"
+	default:
+		return d.Installed.Instance
+	}
 }
 
 func reconcileNativeCoreProviders(ctx context.Context, release string) error {
