@@ -151,16 +151,17 @@ Erfolg bedeutet verifizierte Capability-Bereitschaft, nicht nur einen gestartete
 Diese Befehle bleiben verfügbar, gehören aber nicht zum notwendigen Standardablauf:
 
 ```bash
-baha plan
-baha app preflight
-baha app apply
-baha app secret set APP_SECRET
+baha dev domain
+baha dev credentials
 ```
 
 Automatisierung kann weiterhin ausdrücklich `--stdin` verwenden:
 
 ```bash
-printf '%s' "$APP_SECRET" | baha app secret set APP_SECRET --stdin
+baha plan
+baha app preflight
+baha app apply
+baha app secret set APP_SECRET
 ```
 
 ## Durchgängige Referenzdemo
@@ -180,3 +181,13 @@ Die Vorabprüfung validiert sowohl den geführten Benutzerablauf als auch determ
 - [Secrets](../how-to/secrets.md)
 - [Backup und Restore](../how-to/backup-restore.md)
 - [CLI-Überblick](../cli/index.md)
+
+
+## Weitere technische Beispiele
+
+```bash
+printf '%s' "$APP_SECRET" | baha app secret set APP_SECRET --stdin
+```
+
+
+Technische Bezeichner: `baha.localhost`, `https://my-app.baha.localhost`, `https://secrets.baha.localhost`, `127.0.0.1:<port>`.
