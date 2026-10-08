@@ -462,7 +462,7 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 	if err != nil {
 		return coreupdate.Plan{}, err
 	}
-	if !state.Ready || state.ID == "" {
+	if !state.Ready || state.ID == "" || strings.TrimSpace(state.Spec.Target) == "" {
 		return coreupdate.Plan{}, errors.New("Core installation is not ready for provider inventory")
 	}
 	services := []struct {
@@ -503,7 +503,7 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			}
 			classification := coreupdate.Unsupported
 			reason := "Spilo HA backing version transition requires provider-native backup and recovery"
-			if ref == pin.Image && digest == pin.Digest {
+			if ref == pin.Image && digest == pin.Digest && digest != "" {
 				classification = coreupdate.NoChange
 				reason = ""
 			}
@@ -528,5 +528,8 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		return coreupdate.Plan{}, err
 	}
 	plan.Deltas = append(plan.Deltas, backing...)
+	if len(plan.Deltas) != 3 {
+		return coreupdate.Plan{}, fmt.Errorf("Core update inventory must contain exactly three owned SQL/Secrets/Identity realizations, got %d", len(plan.Deltas))
+	}
 	return plan, nil
 }
