@@ -10,8 +10,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
- "github.com/mcpdev80/baseharbor/internal/hosttrust"
- bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type doctorRepairClass string
@@ -153,8 +153,8 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 			finding.Class = doctorNeedsInput
 			finding.Action = "reconnect the authenticated remote Target and rerun baha doctor"
 		case "host-trust-ownership":
-            finding.Class = doctorNeedsConfirmation
-            finding.Action = "review BaseHarbor-owned trust anchors with 'baha trust status', then run 'baha trust uninstall --yes' only if they should be removed"
+			finding.Class = doctorNeedsConfirmation
+			finding.Action = "review BaseHarbor-owned trust anchors with 'baha trust status', then run 'baha trust uninstall --yes' only if they should be removed"
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
@@ -239,10 +239,16 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 }
 
 func appendHostTrustOwnershipDoctor(checks []health.Check) []health.Check {
- dataDir,err:=bhruntime.DataDir("")
- if err!=nil { return append(checks,health.Check{Name:"host-trust-ownership",OK:false,Message:"host trust state directory unavailable: "+err.Error()}) }
- records,err:=hosttrust.StateRecords(dataDir)
- if err!=nil { return append(checks,health.Check{Name:"host-trust-ownership",OK:false,Message:"host trust ownership state invalid: "+err.Error()}) }
- if len(records)==0{return append(checks,health.Check{Name:"host-trust-ownership",OK:true,Message:"no BaseHarbor-owned host CA anchors"})}
- return append(checks,health.Check{Name:"host-trust-ownership",OK:true,Message:fmt.Sprintf("%d recorded BaseHarbor-owned CA anchor(s); inspect with 'baha trust status', remove explicitly with 'baha trust uninstall'",len(records))})
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: false, Message: "host trust state directory unavailable: " + err.Error()})
+	}
+	records, err := hosttrust.StateRecords(dataDir)
+	if err != nil {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: false, Message: "host trust ownership state invalid: " + err.Error()})
+	}
+	if len(records) == 0 {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: true, Message: "no BaseHarbor-owned host CA anchors"})
+	}
+	return append(checks, health.Check{Name: "host-trust-ownership", OK: true, Message: fmt.Sprintf("%d recorded BaseHarbor-owned CA anchor(s); inspect with 'baha trust status', remove explicitly with 'baha trust uninstall'", len(records))})
 }
