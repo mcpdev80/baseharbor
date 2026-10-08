@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -52,6 +53,7 @@ type nodeRecord struct {
 	NodeID          string `json:"node_id"`
 	Runtime         string `json:"runtime"`
 	Environment     string `json:"environment"`
+	CoreTarget      string `json:"core_target"`
 	CoreURL         string `json:"core_url"`
 	CoreAddress     string `json:"core_address"`
 	ServerName      string `json:"server_name"`
@@ -173,7 +175,7 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	bundle := nodeEnrollmentBundle{
 		ContractVersion: nodeBundleVersion, TenantID: opts.TenantID, TargetID: opts.TargetID, NodeID: opts.NodeID,
-		Runtime: opts.Runtime, Environment: opts.Environment, CoreURL: strings.TrimRight(opts.CoreURL, "/"),
+		Runtime: opts.Runtime, Environment: opts.Environment, CoreTarget: coreTarget.Name, CoreURL: strings.TrimRight(opts.CoreURL, "/"),
 		CoreAddress: opts.CoreAddress, ServerName: serverName, BootstrapCA: string(caPEM), Authorization: grant,
 	}
 	if opts.Output == "" {
@@ -576,7 +578,7 @@ func nodeStatus(ctx context.Context, args []string, out, errOut io.Writer) error
 }
 
 func requestNodeLifecycle(ctx context.Context, record nodeRecord, path string) (nodeStatusResult, error) {
-	session, err := operatorauth.LoadSession(effectiveCoreSessionTarget(), record.Environment)
+	session, err := operatorauth.LoadSession(record.CoreTarget, record.Environment)
 	if err != nil || !session.ValidAt(time.Now()) {
 		return nodeStatusResult{}, machine.NewError(machine.ErrorAuthenticationFailed, "node lifecycle requires a valid Core operator session", "Run 'baha login' for the Core Target/environment and retry.", false)
 	}
