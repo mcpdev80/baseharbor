@@ -130,7 +130,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			if err != nil {
 				return "", err
 			}
-			return identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID)
+			return identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID, state.Spec.HA)
 		},
 		Verify: func(ctx context.Context, state coreinstallation.State) error {
 			_, ready := health.Format(health.RuntimeChecksForFiles(files))
