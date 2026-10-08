@@ -1,8 +1,8 @@
 package nextjsadapter
 
 import (
-	"path/filepath"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,8 +43,8 @@ func TestNextJSGeneratedHTTPPortAgreement(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, check := range []struct {
-		path string
-		required []string
+		path      string
+		required  []string
 		forbidden []string
 	}{
 		{"baseharbor.yaml", []string{"8080"}, []string{"port: 3000"}},
@@ -52,12 +52,18 @@ func TestNextJSGeneratedHTTPPortAgreement(t *testing.T) {
 		{"Dockerfile", []string{"EXPOSE 8080"}, []string{"EXPOSE 3000"}},
 	} {
 		body, err := os.ReadFile(filepath.Join(root, check.path))
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, want := range check.required {
-			if !strings.Contains(string(body), want) { t.Errorf("%s missing %q", check.path, want) }
+			if !strings.Contains(string(body), want) {
+				t.Errorf("%s missing %q", check.path, want)
+			}
 		}
 		for _, old := range check.forbidden {
-			if strings.Contains(string(body), old) { t.Errorf("%s still uses %q", check.path, old) }
+			if strings.Contains(string(body), old) {
+				t.Errorf("%s still uses %q", check.path, old)
+			}
 		}
 	}
 }
