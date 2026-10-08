@@ -120,7 +120,23 @@ func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, e
 	return result, nil
 }
 func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
-	return appendControlPlaneAvailabilityDoctor(ctx, health.Doctor())
+	// health.Doctor includes legacy default-local runtime probes. Drop those
+	// and use only the effective Target's owned runtime for provider readiness.
+	// This prevents a healthy named Core from being marked FAILED by empty local.
+	host := health.Doctor()
+	checks := make([]health.Check, 0, len(host)+3)
+	for _, check := range host {
+		if check.Name != "postgres" && check.Name != "openbao" && check.Name != "runtime-config" {
+			checks = append(checks, check)
+		}
+	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err == nil {
+		checks = append(checks, health.RuntimeChecksForFiles(files)...)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		checks = append(checks, health.Check{Name: "runtime-config", OK: false, Message: "selected Target runtime state is unreadable"})
+	}
+	return appendControlPlaneAvailabilityDoctor(ctx, checks)
 }
 func requireControlPlaneReady(result controlPlaneReport) error {
 	if result.State != "running" || !result.Ready {
