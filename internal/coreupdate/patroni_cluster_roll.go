@@ -18,11 +18,11 @@ type PatroniSwitchoverGate interface {
 // RollPatroniCluster requires both data and DCS recovery evidence before ANY
 // mutation. It rolls replicas, explicitly switches leadership, then reconciles
 // the old primary as a replica. An ambiguous switchover is never retried blindly.
-func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, cluster, release string, maxLag int64) error {
+func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, target, cluster, release string, maxLag int64) error {
 	if gate == nil {
 		return errors.New("native Patroni rolling provider is unavailable")
 	}
-	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, cluster, release); err != nil {
+	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
@@ -67,7 +67,7 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 				return err
 			}
 		case "":
-			if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, cluster, release); err != nil {
+			if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 				return err
 			}
 			if err := gate.VerifyRecovery(ctx); err != nil {
@@ -107,7 +107,7 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 	if state == "verified" {
 		return errors.New("old-primary journal contradicts current leader identity; manual reconciliation required")
 	}
-	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, cluster, release); err != nil {
+	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
@@ -156,43 +156,43 @@ func verifiedPatroniSnapshot(ctx context.Context, gate PatroniRollingGate, maxLa
 // obtains a fresh DCS snapshot through the injected adapter, verifies its
 // identity and restore viability, and only then enters the native mutation
 // state machine. A nil/unavailable adapter stops before any member action.
-func PrepareAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, installation, cluster, release string, maxLag int64) error {
+func PrepareAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, installation, target, cluster, release string, maxLag int64) error {
 	if gate == nil {
 		return errors.New("native Patroni rolling provider is unavailable")
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
 		return fmt.Errorf("PostgreSQL physical recovery proof: %w", err)
 	}
-	evidence, err := CaptureAndVerifyDCS(ctx, dcs, installation, cluster, release)
+	evidence, err := CaptureAndVerifyDCS(ctx, dcs, installation, target, cluster, release)
 	if err != nil {
 		return err
 	}
-	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, cluster, release, maxLag)
+	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, target, cluster, release, maxLag)
 }
 
 // StageAndRollPatroniCluster is the durable high-availability coordinator.
 // A streaming PostgreSQL backup is verified before obtaining DCS evidence;
 // both recovery artifacts precede atomic, idempotent Compose staging, and only
 // then may individual native Patroni members be reconciled.
-func StageAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, dcsCheckpoint DCSCheckpoint, images HAPostgresComposeCheckpoint, installation, cluster, release string, maxLag int64) error {
+func StageAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, dcsCheckpoint DCSCheckpoint, images HAPostgresComposeCheckpoint, installation, target, cluster, release string, maxLag int64) error {
 	if gate == nil {
 		return errors.New("native Patroni rolling provider is unavailable")
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
 		return fmt.Errorf("PostgreSQL physical backup verification failed: %w", err)
 	}
-	evidence, err := dcsCheckpoint.Acquire(ctx, dcs, installation, cluster, release)
+	evidence, err := dcsCheckpoint.Acquire(ctx, dcs, installation, target, cluster, release)
 	if err != nil {
 		return err
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
 		return err
 	}
-	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, cluster, release); err != nil {
+	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
 	if err := images.Stage(); err != nil {
 		return fmt.Errorf("stage owned immutable Spilo images: %w", err)
 	}
-	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, cluster, release, maxLag)
+	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, target, cluster, release, maxLag)
 }
