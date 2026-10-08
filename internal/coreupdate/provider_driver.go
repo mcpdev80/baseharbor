@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
- "time"
+	"time"
 )
 
 // NativeProviderOps holds provider-specific lifecycle operations (PostgreSQL,
@@ -79,24 +79,30 @@ func RunNativeProviderUpdates(ctx context.Context, plan Plan, journalPath string
 		Record: ops.Record,
 	}
 
-    err:=ExecuteJournaled(ctx,plan,journalPath,hooks)
-    if err==nil{return nil}
-    journal,readErr:=LoadJournal(journalPath,plan.Release)
-    if readErr!=nil{return errors.Join(err,readErr)}
-    rollbackCtx,cancel:=context.WithTimeout(context.Background(),2*time.Minute)
-    defer cancel()
-    for _,delta:=range plan.Deltas{
-        status:=journal.Steps[JournalKey(delta)]
-        if status!="applying"&&status!="apply_failed"&&status!="verify_failed"{continue}
-        if recoverErr:=hooks.Recover(rollbackCtx,delta,status);recoverErr!=nil{
-            return errors.Join(err,fmt.Errorf("automatic recovery failed for %s: %w",delta.Installed.Instance,recoverErr))
-        }
-        if recordErr:=ops.Record(rollbackCtx,delta,"recovered");recordErr!=nil{
-            return errors.Join(err,fmt.Errorf("provider recovery receipt failed: %w",recordErr))
-        }
-        if recordErr:=journal.Record(journalPath,delta,"recovered");recordErr!=nil{
-            return errors.Join(err,fmt.Errorf("persist provider recovered state: %w",recordErr))
-        }
-    }
-    return err
+	err := ExecuteJournaled(ctx, plan, journalPath, hooks)
+	if err == nil {
+		return nil
+	}
+	journal, readErr := LoadJournal(journalPath, plan.Release)
+	if readErr != nil {
+		return errors.Join(err, readErr)
+	}
+	rollbackCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	for _, delta := range plan.Deltas {
+		status := journal.Steps[JournalKey(delta)]
+		if status != "applying" && status != "apply_failed" && status != "verify_failed" {
+			continue
+		}
+		if recoverErr := hooks.Recover(rollbackCtx, delta, status); recoverErr != nil {
+			return errors.Join(err, fmt.Errorf("automatic recovery failed for %s: %w", delta.Installed.Instance, recoverErr))
+		}
+		if recordErr := ops.Record(rollbackCtx, delta, "recovered"); recordErr != nil {
+			return errors.Join(err, fmt.Errorf("provider recovery receipt failed: %w", recordErr))
+		}
+		if recordErr := journal.Record(journalPath, delta, "recovered"); recordErr != nil {
+			return errors.Join(err, fmt.Errorf("persist provider recovered state: %w", recordErr))
+		}
+	}
+	return err
 }
