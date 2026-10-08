@@ -76,3 +76,14 @@ func TestBackupInGitRepoExplicitPathWarnsAndDefaultRejects(t *testing.T) {
 		t.Fatal("equals output flag lost")
 	}
 }
+
+func TestBackupRejectsXDGSymlinkIntoWorktree(t *testing.T) {
+ worktree:=t.TempDir()
+ if err:=os.Mkdir(filepath.Join(worktree,".git"),0700);err!=nil{t.Fatal(err)}
+ t.Chdir(worktree)
+ alias:=filepath.Join(t.TempDir(),"backup-link")
+ if err:=os.Symlink(worktree,alias);err!=nil{t.Skipf("symlinks unavailable: %v",err)}
+ t.Setenv("XDG_DATA_HOME",alias)
+ _,err:=defaultGuidedBackupPath("webshop","dev",time.Now())
+ if err==nil{t.Fatal("symlinked XDG backup location into Git worktree must be refused")}
+}
