@@ -38,3 +38,27 @@ baha app workspace update --check
 Source-Identität gehört in `.baseharbor/sources.yaml`; der Checkout-Pfad bleibt lokal. Weitere Komponenten müssen tatsächlich im Application Contract vorhanden sein.
 
 [Exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/development/).
+
+
+## Ergänzende Befehlsreferenz
+
+Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
+
+```text
+baha stack list
+baha stack show NAME
+baha stack create
+```
+
+```text
+baha dev credentials
+baha dev domain
+```
+
+```text
+baha app workspace status
+baha app workspace update --check
+baha app workspace update
+```
+
+Technische Bezeichner: `orders-api`, `--stack go`, `app new`.
