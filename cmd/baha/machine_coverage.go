@@ -110,7 +110,7 @@ var cliMachineOperations = map[string]string{
 	"baha target create": "target.create", "baha target delete": "target.delete",
 	"baha stack list": "stack.list", "baha stack show": "stack.show", "baha stack create": "stack.create",
 	"baha target": "target", "baha target show": "target", "baha target list": "target.list",
-	"baha app list": "app.list", "baha app inspect": "inspect", "baha app new": "app.new", "baha inspect": "inspect", "baha backup": "backup", "baha restore": "restore",
+	"baha list": "app.list", "baha app list": "app.list", "baha app inspect": "inspect", "baha app new": "app.new", "baha inspect": "inspect", "baha backup": "backup", "baha restore": "restore",
 	"baha plan": "plan", "baha app plan": "plan", "baha app apply": "apply", "baha app up": "apply",
 	"baha app status": "status", "baha app doctor": "doctor",
 	"baha app update": "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
