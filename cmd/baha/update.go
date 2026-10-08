@@ -487,19 +487,19 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		}
 		v := ref[pos+1:]
 		if state.Spec.HA {
-            base := strings.TrimSuffix(item.service, "1")
-            for ordinal := 2; ordinal <= 3; ordinal++ {
-                peer := fmt.Sprintf("%s%d", base, ordinal)
-                peerIdentity, peerErr := runtimeProvider.ProjectServiceImageIdentity(ctx, item.project, peer)
-                if peerErr != nil {
-                    return coreupdate.Plan{}, fmt.Errorf("inspect required HA %s peer %s: %w", item.kind, peer, peerErr)
-                }
-                if peerIdentity.Reference != id.Reference || peerIdentity.Digest != id.Digest {
-                    return coreupdate.Plan{}, fmt.Errorf("HA %s peer %s image identity disagrees with primary realization", item.kind, peer)
-                }
-            }
-        }
-        if item.kind == coreupdate.SQL && state.Spec.HA {
+			base := strings.TrimSuffix(item.service, "1")
+			for ordinal := 2; ordinal <= 3; ordinal++ {
+				peer := fmt.Sprintf("%s%d", base, ordinal)
+				peerIdentity, peerErr := runtimeProvider.ProjectServiceImageIdentity(ctx, item.project, peer)
+				if peerErr != nil {
+					return coreupdate.Plan{}, fmt.Errorf("inspect required HA %s peer %s: %w", item.kind, peer, peerErr)
+				}
+				if peerIdentity.Reference != id.Reference || peerIdentity.Digest != id.Digest {
+					return coreupdate.Plan{}, fmt.Errorf("HA %s peer %s image identity disagrees with primary realization", item.kind, peer)
+				}
+			}
+		}
+		if item.kind == coreupdate.SQL && state.Spec.HA {
 			var pin *coreupdate.BackingPin
 			for i := range catalog.Backing {
 				if catalog.Backing[i].Role == "keycloak-ha-postgresql" {
