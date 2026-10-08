@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
- "github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 const managedClientConsentLifetime = 12 * time.Hour
@@ -26,15 +26,19 @@ func requireManagedClientConsent(ctx context.Context, in io.Reader, out io.Write
 		return errors.New("cannot request consent for an incomplete client scope")
 	}
 	actor := "trusted-local"
- if principal, verified := operatorauth.PrincipalFromContext(ctx); verified {
-  actor = "authenticated:"+principal.Issuer+":"+principal.Subject
- } else if operatorauth.ManagedEnvironment(environment) {
-  identity, err := inspectOperatorIdentity(ctx, environment)
-  if err != nil { return err }
-  if identity.Target != target { return errors.New("operator session does not match the selected Target") }
-  actor = "authenticated:"+identity.Actor.Issuer+":"+identity.Actor.Subject
- }
- scope := strings.Join([]string{actor,target,application,environment,kind,instance,execution}, "\x00")
+	if principal, verified := operatorauth.PrincipalFromContext(ctx); verified {
+		actor = "authenticated:" + principal.Issuer + ":" + principal.Subject
+	} else if operatorauth.ManagedEnvironment(environment) {
+		identity, err := inspectOperatorIdentity(ctx, environment)
+		if err != nil {
+			return err
+		}
+		if identity.Target != target {
+			return errors.New("operator session does not match the selected Target")
+		}
+		actor = "authenticated:" + identity.Actor.Issuer + ":" + identity.Actor.Subject
+	}
+	scope := strings.Join([]string{actor, target, application, environment, kind, instance, execution}, "\x00")
 	digest := sha256.Sum256([]byte(scope))
 	id := hex.EncodeToString(digest[:])
 	configPath, err := deployment.ConfigPath()
