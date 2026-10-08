@@ -55,7 +55,7 @@ func (b *EtcdDCSBridge) VerifyRestorable(ctx context.Context, ev DCSRecoveryEvid
  archive:=b.Store.Directory+"/etcd.snapshot"
  plan=etcdbackup.RestorePlan{Archive:archive,Destination:b.RecoveryDirectory,Identity:b.Store.Identity,Info:meta.Info,SHA256:meta.SHA256}
  if verifyErr:=b.Store.VerifyRecovery(ctx,plan,b.Restorer);verifyErr!=nil{return fmt.Errorf("prior isolated etcd restore is unverified: %w",verifyErr)}
- meta,metaErr:=b.Store.VerifySnapshot(ctx);if metaErr!=nil{return metaErr}
+ meta,metaErr=b.Store.VerifySnapshot(ctx);if metaErr!=nil{return metaErr}
  return b.VerifyRecoveredCluster(ctx,b.Store.Identity,meta.Info)
 }
 func (b *EtcdDCSBridge) Restore(ctx context.Context,ev DCSRecoveryEvidence)error {
