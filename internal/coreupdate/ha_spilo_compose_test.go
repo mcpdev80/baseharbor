@@ -50,7 +50,7 @@ func TestOwnedSpiloComposeRejectsMajorChangeAndIncompleteMembers(t *testing.T) {
 	if _, err := RewriteOwnedSpiloImages(source, a, b); err == nil {
 		t.Fatal("PostgreSQL major upgrade accepted")
 	}
-	b.Version = "18-spilo-4.2"
+	b.Version = "18-spilo-4.2-p1"
 	if _, err := RewriteOwnedSpiloImages(source, a, b); err != nil {
 		t.Fatal(err)
 	}
