@@ -8,9 +8,10 @@ import (
 
 // DCSRecoveryEvidence is the minimum cross-session contract with the etcd
 // adapter (Session 1B). Its identity must be bound to the managed installation,
-// cluster and release. SHA256 covers the complete immutable snapshot bytes.
+// target, cluster and release. SHA256 covers the complete immutable snapshot bytes.
 type DCSRecoveryEvidence struct {
 	Installation string
+	Target       string
 	Cluster      string
 	Release      string
 	SnapshotID   string
