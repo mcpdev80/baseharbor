@@ -10,11 +10,11 @@ import (
 // PatroniMemberState is a verified, non-secret snapshot from Patroni's
 // /primary and /replica endpoints. Unknown members must never be inferred.
 type PatroniMemberState struct {
-	Name       string
-	Primary    bool
-	Replica    bool
-	ReplayLag  int64
-	Healthy    bool
+	Name      string
+	Primary   bool
+	Replica   bool
+	ReplayLag int64
+	Healthy   bool
 }
 
 // VerifyPatroniQuorum checks a complete three-member HA snapshot before a
