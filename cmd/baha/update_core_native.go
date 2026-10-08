@@ -13,9 +13,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/providerbinding"
 	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
-	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -205,7 +205,7 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	binding := &providerbinding.RuntimeBinding{
 		Reader: runtime, Engine: target.RuntimeProvider,
 		Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
-			providerupgrade.ProviderOpenBao: {Project: coreFiles.Project, Service: openBaoMembers[0]},
+			providerupgrade.ProviderOpenBao:  {Project: coreFiles.Project, Service: openBaoMembers[0]},
 			providerupgrade.ProviderKeycloak: {Project: identityFiles.Project, Service: "keycloak-1"},
 		},
 	}
