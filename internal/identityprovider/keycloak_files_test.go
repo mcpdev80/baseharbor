@@ -10,7 +10,7 @@ import (
 )
 
 func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
-	app := application.New("demo", "dev", false, false, false)
+	app := application.WithHA(application.New("demo", "dev", false, false, false), true)
 	files := KeycloakFiles{
 		Project:         "baseharbor-demo",
 		ConsumerNetwork: "baseharbor-demo-identity",
@@ -84,4 +84,17 @@ func TestKeycloakHAPostgresHAProxyUsesRuntimeDNS(t *testing.T) {
  for _,required:=range []string{"resolvers container_dns","parse-resolv-conf","resolvers container_dns resolve-prefer ipv4 init-addr last,none"} {
   if !strings.Contains(got,required) {t.Fatalf("HAProxy must refresh DNS after runtime recovery: missing %q",required)}
  }
+}
+
+func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
+ app := application.New("demo", "prod", false, false, false)
+ files := KeycloakFiles{Project:"test",ConsumerNetwork:"test-identity",InternalNetwork:"test-identity-internal"}
+ got := keycloakCompose(app,files)
+ for _,want:=range []string{"  keycloak-1:","  keycloak-db:","  keycloak-db-init:","  keycloak-db-data:"} {
+  if !strings.Contains(got,want) {t.Errorf("single mode missing %q",want)}
+ }
+ for _,unwanted:=range []string{"  keycloak-2:","  keycloak-3:","keycloak-db-member-1:","keycloak-db-etcd-1:","keycloak-db-tls:/run/baseharbor/db-tls:ro"} {
+  if strings.Contains(got,unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" { t.Errorf("non-HA contains %q",unwanted) }
+ }
+ if strings.Count(got,"  keycloak-1:")!=1 {t.Error("single mode has duplicate member")}
 }
