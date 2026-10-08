@@ -610,8 +610,12 @@ func defaultGuidedBackupPath(app, environment string, now time.Time) (string, er
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
 	actualDir, err := filepath.EvalSymlinks(dir)
-	if err != nil { return "", fmt.Errorf("resolve backup directory symlinks: %w",err) }
-	if err := ensureDefaultBackupOutsideGit(actualDir); err != nil { return "", err }
+	if err != nil {
+		return "", fmt.Errorf("resolve backup directory symlinks: %w", err)
+	}
+	if err := ensureDefaultBackupOutsideGit(actualDir); err != nil {
+		return "", err
+	}
 	info, err := os.Lstat(dir)
 	if err != nil {
 		return "", err
