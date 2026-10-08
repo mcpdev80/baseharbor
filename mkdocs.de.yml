@@ -101,7 +101,7 @@ nav:
   - MCP / agent interface (EN): https://mcpdev80.github.io/baseharbor/reference/mcp/
   - CLI / machine coverage (EN): https://mcpdev80.github.io/baseharbor/reference/cli-machine-coverage/
   - Maschinenoperationen: how-to/machine-operations.md
-  - Machine Interface v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-interface-v1/
+  - Machine Interface v1: spec/machine-interface-v1.md
   - Protected Machine HTTP v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-http-v1/
   - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
 - Referenz:
@@ -111,7 +111,7 @@ nav:
   - CLI reference (EN): https://mcpdev80.github.io/baseharbor/reference/cli/
   - Globale Optionen: cli/global-options.md
   - Shell und Bedienung: cli/shell-ux.md
-  - Manifest (EN): https://mcpdev80.github.io/baseharbor/reference/manifest/
+  - Manifest: reference/manifest.md
   - Application secret API (EN): https://mcpdev80.github.io/baseharbor/reference/application-secret-api/
   - Authentifizierung und API-Fehler: reference/authentication-and-api-errors.md
   - Backup und Restore (EN): https://mcpdev80.github.io/baseharbor/reference/backup-and-restore/
@@ -135,7 +135,7 @@ nav:
   - Architekturentscheidungen (EN): https://mcpdev80.github.io/baseharbor/decisions/
   - Spezifikationen:
     - Überblick (EN): https://mcpdev80.github.io/baseharbor/spec/
-    - Application Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/application-contract-v1/
+    - Application Contract v1: spec/application-contract-v1.md
     - Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/provider-contract-v1/
     - Development Extension v1 (EN): https://mcpdev80.github.io/baseharbor/spec/development-extension-v1/
     - Reconciliation v1 (EN): https://mcpdev80.github.io/baseharbor/spec/reconciliation-v1/
@@ -144,12 +144,12 @@ nav:
     - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
     - Audit & Evidence v1 (EN): https://mcpdev80.github.io/baseharbor/spec/audit-evidence-v1/
     - Security invariants (EN): https://mcpdev80.github.io/baseharbor/spec/security-invariants/
-    - Input resolution (EN): https://mcpdev80.github.io/baseharbor/spec/input-resolution/
+    - Eingabeauflösung: spec/input-resolution.md
     - Control-plane runtime (EN): https://mcpdev80.github.io/baseharbor/spec/control-plane-runtime/
     - Application Runtime Broker (EN): https://mcpdev80.github.io/baseharbor/spec/application-runtime-broker/
     - Application runtime identity (EN): https://mcpdev80.github.io/baseharbor/spec/application-runtime-identity/
     - Runtime broker security (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-secret-broker-security/
-    - Standards-first contracts (EN): https://mcpdev80.github.io/baseharbor/spec/standards-first/
+    - Standards-first-Verträge: spec/standards-first.md
     - Standards matrix (EN): https://mcpdev80.github.io/baseharbor/spec/standards-matrix/
 - Projekt:
   - Roadmap (EN): https://mcpdev80.github.io/baseharbor/roadmap/
