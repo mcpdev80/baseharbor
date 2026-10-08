@@ -31,6 +31,16 @@ func TestPrivilegedSystemHostTrustInstallUninstallE2E(t *testing.T) {
  }()
  if !strings.HasPrefix(status.Path,"/usr/local/share/ca-certificates/baseharbor-") {t.Fatalf("unexpected system trust path %s",status.Path)}
  if _,err:=os.Stat(status.Path);err!=nil{t.Fatal(err)}
+ // Host-level negative case: replacing the file with an operator CA must
+ // NEVER be interpreted as authorization to delete that CA.
+ foreign:=testCA(t,"foreign operator CA - preserve")
+ if err:=os.WriteFile(status.Path,foreign,0644);err!=nil{t.Fatal(err)}
+ refusal,removeErr:=RemoveOwnedDetailed(ctx,dir)
+ if removeErr==nil || len(refusal.Preserved)!=1 {t.Fatalf("foreign CA not preserved: %+v %v",refusal,removeErr)}
+ if installed,readErr:=os.ReadFile(status.Path);readErr!=nil || string(installed)!=string(foreign) {
+  t.Fatalf("foreign CA mutated by uninstall: %v",readErr)
+ }
+ if err:=os.WriteFile(status.Path,ca,0644);err!=nil{t.Fatal(err)}
  result,err:=RemoveOwnedDetailed(ctx,dir)
  if err!=nil{t.Fatal(err)}
  if len(result.Removed)!=1 || len(result.Preserved)!=0 {t.Fatalf("uninstall report %+v",result)}
