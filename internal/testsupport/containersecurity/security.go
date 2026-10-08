@@ -39,7 +39,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 		return err
 	}
 
-	raw, err := exec.CommandContext(ctx, containerRuntime(), "inspect", id).Output()
+	raw, err := runtimeCommand(ctx, containerRuntime(), "container", "inspect", id).Output()
 	if err != nil {
 		return fmt.Errorf("inspect %s/%s: %w", project, service, err)
 	}
@@ -84,7 +84,7 @@ func VerifyComposeService(ctx context.Context, project, service string, req Requ
 func composeServiceContainerID(ctx context.Context, project, service string) (string, error) {
 	runtime := containerRuntime()
 	if runtime != "podman" {
-		idOut, err := exec.CommandContext(ctx, runtime, "ps", "-q",
+		idOut, err := runtimeCommand(ctx, runtime, "ps", "-q",
 			"--filter", "label=com.docker.compose.project="+project,
 			"--filter", "label=com.docker.compose.service="+service,
 		).Output()
@@ -101,19 +101,23 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		return ids[0], nil
 	}
 
-	idOut, err := exec.CommandContext(ctx, runtime, "ps", "-q").Output()
+	idOut, err := runtimeCommand(ctx, runtime, "container", "ls", "-aq").Output()
 	if err != nil {
 		return "", fmt.Errorf("list running Podman containers: %w", err)
 	}
 	var matches []string
+	var observed []string
 	for _, id := range strings.Fields(string(idOut)) {
-		raw, inspectErr := exec.CommandContext(ctx, runtime, "inspect", id).Output()
+		raw, inspectErr := runtimeCommand(ctx, runtime, "container", "inspect", id).Output()
 		if inspectErr != nil {
-			continue
+			return "", fmt.Errorf("inspect running Podman container %s: %w", id, inspectErr)
 		}
 		var records []inspectRecord
-		if json.Unmarshal(raw, &records) != nil || len(records) != 1 {
-			continue
+		if err := json.Unmarshal(raw, &records); err != nil {
+			return "", fmt.Errorf("decode running Podman container %s: %w", id, err)
+		}
+		if len(records) != 1 {
+			return "", fmt.Errorf("inspect running Podman container %s returned %d records", id, len(records))
 		}
 		labels := records[0].Config.Labels
 		projectLabel := labels["com.docker.compose.project"]
@@ -124,12 +128,15 @@ func composeServiceContainerID(ctx context.Context, project, service string) (st
 		if serviceLabel == "" {
 			serviceLabel = labels["io.podman.compose.service"]
 		}
-		if projectLabel == project && serviceLabel == service {
+		if len(observed) < 64 {
+			observed = append(observed, projectLabel+"/"+serviceLabel)
+		}
+		if records[0].State.Running && projectLabel == project && serviceLabel == service {
 			matches = append(matches, id)
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("running container for %s/%s not found", project, service)
+		return "", fmt.Errorf("running container for %s/%s not found; inspected Podman ownership labels: %v", project, service, observed)
 	}
 	if len(matches) != 1 {
 		return "", fmt.Errorf("multiple running containers found for %s/%s", project, service)
@@ -169,7 +176,7 @@ func rootlessPodman() bool {
 	if containerRuntime() != "podman" {
 		return false
 	}
-	out, err := exec.Command("podman", "info", "--format", "{{.Host.Security.Rootless}}").Output()
+	out, err := runtimeCommand(context.Background(), "podman", "info", "--format", "{{.Host.Security.Rootless}}").Output()
 	if err != nil {
 		return false
 	}
@@ -180,11 +187,28 @@ func containerRuntime() string {
 	if runtime := strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")); runtime == "docker" || runtime == "podman" {
 		return runtime
 	}
-	if err := exec.Command("docker", "info").Run(); err == nil {
+	if err := runtimeCommand(context.Background(), "docker", "info").Run(); err == nil {
 		return "docker"
 	}
-	if err := exec.Command("podman", "info").Run(); err == nil {
+	if err := runtimeCommand(context.Background(), "podman", "info").Run(); err == nil {
 		return "podman"
 	}
 	return "docker"
+}
+
+// Match the production Runtime adapter: BaseHarbor's isolated XDG paths must
+// not select a different rootless Podman store. Keep XDG_RUNTIME_DIR, which
+// identifies the actual user session and runtime socket.
+func runtimeCommand(ctx context.Context, runtime string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, runtime, args...)
+	if runtime == "podman" {
+		cmd.Env = []string{}
+		for _, entry := range os.Environ() {
+			if strings.HasPrefix(entry, "XDG_CONFIG_HOME=") || strings.HasPrefix(entry, "XDG_DATA_HOME=") {
+				continue
+			}
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	return cmd
 }

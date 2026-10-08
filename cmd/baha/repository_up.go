@@ -217,6 +217,9 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 
 func recoveryFileForRepositoryUp(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions, action string) (string, error) {
 	path, source, err := resolveTargetRecoveryFile(ctx, opts.RecoveryFile)
+	if action == "initialize" {
+		path, source, err = preflightNewTargetRecoveryFile(ctx, opts.RecoveryFile)
+	}
 	if err != nil {
 		return "", err
 	}

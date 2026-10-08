@@ -143,6 +143,12 @@ jobs:
               ".github/workflows/targeted-demo-acceptance.yml",
           }
 
+          # Keep qualified, failed and cancelled atomic evidence together.
+          qualification_prefixes = (
+              "runtime-validation/ha/core-bootstrap/",
+              "runtime-validation/ha/bug-hunt/",
+          )
+
           preserved_branches = {
               "main",
               "develop",
@@ -224,6 +230,8 @@ jobs:
                       continue
                   if run.get("status") != "completed":
                       continue
+                  if (run.get("head_branch") or "").startswith(qualification_prefixes):
+                      continue
                   if run.get("path") in preserved_workflows:
                       continue
                   completed_at = run.get("updated_at") or run.get("run_started_at") or run.get("created_at")
@@ -282,6 +290,8 @@ jobs:
 
           for branch in branches:
               name = branch["name"]
+              if name.startswith(qualification_prefixes):
+                  continue
               if name in preserved_branches:
                   continue
               if branch.get("protected"):

@@ -111,8 +111,19 @@ type LogRequest struct {
 }
 
 type MetricsHandle struct {
-	Available bool   `json:"available"`
-	Reference string `json:"reference,omitempty"`
+	Available bool           `json:"available"`
+	Reference string         `json:"reference,omitempty"`
+	Sample    *MetricsSample `json:"sample,omitempty"`
+}
+
+// MetricsSample preserves native runtime units; it is an observation, not a
+// normalized capacity or health decision.
+type MetricsSample struct {
+	ResourceID  string    `json:"resource_id"`
+	ObservedAt  time.Time `json:"observed_at"`
+	CPUPercent  string    `json:"cpu_percent,omitempty"`
+	MemoryUsage string    `json:"memory_usage,omitempty"`
+	NetworkIO   string    `json:"network_io,omitempty"`
 }
 
 type Operation string

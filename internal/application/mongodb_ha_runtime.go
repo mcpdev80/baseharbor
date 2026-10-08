@@ -34,7 +34,7 @@ func ReconcileMongoDBHA(ctx context.Context, runtime mongoDBHAProbeRuntime, m Ma
 			}
 		}
 		service := mongodbMemberServiceName(instance, 0)
-		script := fmt.Sprintf("mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
+		script := fmt.Sprintf("mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\"$MONGO_INITDB_ROOT_USERNAME\" --password=\"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'try { const status = rs.status(); if (status.ok === 1) quit(0); } catch (e) { if (e.code !== 94 && e.codeName !== \"NotYetInitialized\") throw e; } const result = rs.initiate({_id: process.env.BASEHARBOR_MONGODB_REPLICA_SET, members:[%s]}); if (!result.ok) throw new Error(JSON.stringify(result));'", strings.Join(members, ","))
 		if _, err := runtime.Run(ctx, service, "sh", "-ec", script); err != nil {
 			return fmt.Errorf("initialize MongoDB replica set %s: %w", instance, err)
 		}
@@ -51,7 +51,7 @@ func waitMongoDBBootstrapMember(ctx context.Context, runtime mongoDBHAProbeRunti
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	command := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'"
+	command := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\"$MONGO_INITDB_ROOT_USERNAME\" --password=\"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 2)'"
 	var lastErr error
 	for {
 		if _, err := runtime.Run(ctx, service, "sh", "-ec", command); err == nil {
@@ -112,7 +112,7 @@ func verifyMongoDBHAInstance(ctx context.Context, runtime mongoDBHAProbeRuntime,
 	replicaSet := mongodbReplicaSetName(instance)
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_HELLO__\" + JSON.stringify({setName:h.setName,isWritablePrimary:h.isWritablePrimary,secondary:h.secondary}))'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\"$MONGO_INITDB_ROOT_USERNAME\" --password=\"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_HELLO__\" + JSON.stringify({setName:h.setName,isWritablePrimary:h.isWritablePrimary,secondary:h.secondary}))'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("inspect MongoDB HA member %s: %w", service, err)
@@ -161,7 +161,7 @@ func MongoDBHAPrimary(ctx context.Context, runtime mongoDBHAProbeRuntime, m Mani
 	const marker = "__BASEHARBOR_PRIMARY__"
 	for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
 		service := mongodbMemberServiceName(instance, ordinal)
-		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username \"$MONGO_INITDB_ROOT_USERNAME\" --password \"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_PRIMARY__\" + (h.isWritablePrimary ? \"yes\" : \"no\"))'"
+		script := "mongosh --quiet --host localhost --tls --tlsCAFile /run/baseharbor/tls/ca.pem --username=\"$MONGO_INITDB_ROOT_USERNAME\" --password=\"$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'const h=db.adminCommand({hello:1}); print(\"__BASEHARBOR_PRIMARY__\" + (h.isWritablePrimary ? \"yes\" : \"no\"))'"
 		out, err := runtime.Run(ctx, service, "sh", "-ec", script)
 		if err != nil {
 			continue

@@ -47,6 +47,7 @@ jobs:
       demo_ref: ${{ steps.resolve.outputs.demo_ref }}
       runtime: ${{ steps.resolve.outputs.runtime }}
       gate: ${{ steps.resolve.outputs.gate }}
+      gates: ${{ steps.resolve.outputs.gates }}
     steps:
       - name: Checkout candidate for pinned demo ref
         if: github.event_name != 'workflow_dispatch'
@@ -93,7 +94,7 @@ jobs:
           fi
 
           case "$runtime" in
-            static|docker|podman) ;;
+            static|docker|podman|batch) ;;
             *)
               echo "Unsupported targeted runtime: $runtime" >&2
               exit 2
@@ -102,6 +103,13 @@ jobs:
           test -n "$ref"
           test -n "$demo_ref"
           test -n "$gate"
+          if [ "$runtime" = batch ]; then
+            test "$EVENT_NAME" = push
+            test "$gate" = remaining
+            gates="$(python scripts/targeted-atomic-plan.py --tag "v$version")"
+          else
+            gates="$(python -c 'import json,sys; print(json.dumps([{"runtime":sys.argv[1],"gate":sys.argv[2]}]))' "$runtime" "$gate")"
+          fi
           if [ "$gate" = "reference-journey" ] && [ "$runtime" != "docker" ]; then
             echo "The complete reference journey requires Docker." >&2
             exit 2
@@ -111,17 +119,23 @@ jobs:
             echo "demo_ref=$demo_ref"
             echo "runtime=$runtime"
             echo "gate=$gate"
+            echo "gates=$gates"
           } >> "$GITHUB_OUTPUT"
 
   selected_gate:
     if: needs.resolve.outputs.gate != 'reference-journey'
     needs: resolve
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.gates) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
     with:
       ref: ${{ needs.resolve.outputs.ref }}
       demo_ref: ${{ needs.resolve.outputs.demo_ref }}
-      runtime: ${{ needs.resolve.outputs.runtime }}
-      gate: ${{ needs.resolve.outputs.gate }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
       candidate_artifact: ""
 
   reference_journey:

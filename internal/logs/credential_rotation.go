@@ -51,7 +51,7 @@ func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
 		if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 			return err
 		}
-		return d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env)
+		return rollLokiStorageMembers(ctx, d.runtime, placement, files)
 	}
 	verify := func(ctx context.Context, _ objectstorage.PlatformBucket) error {
 		files, err := ExistingProviderFilesAt(dataDir, d.namespace, d.app)
@@ -125,6 +125,7 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 	}
 	spec := lokiAccessSpec()
 	if d.app.HA {
+		spec.HealthURI = "/ready"
 		spec.Upstream = ""
 		spec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
 		spec.NetworkAliases = []string{"loki"}
@@ -140,7 +141,7 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 		if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 			return err
 		}
-		if err := d.runtime.UpProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
+		if err := reconcileLokiAccessRuntime(ctx, d.runtime, placement, files, spec.ServiceName, d.app.HA); err != nil {
 			return err
 		}
 		if _, err := executor.ExecProject(ctx, placement.Project, files.Compose, files.Env, spec.ServiceName,

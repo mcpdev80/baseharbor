@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,19 @@ func TestFormatApplicationOverviewHidesSecretValues(t *testing.T) {
 	}
 	if !strings.Contains(text, "Status: NOT READY") {
 		t.Fatalf("overview should report NOT READY:\n%s", text)
+	}
+}
+
+func TestOverviewUsesCanonicalManagedProviderReadiness(t *testing.T) {
+	for _, ready := range []bool{true, false} {
+		overview := applicationOverview{Postgres: []overviewResource{{Name: "primary"}}, SecretsDeclared: true}
+		status := application.StatusResult{Ready: ready, State: "running", Checks: []application.StatusCheck{{Name: "postgres", OK: true}, {Name: "secrets", OK: true}, {Name: "runtime-broker", OK: ready}, {Name: "required-secret/API_TOKEN", OK: ready}}}
+		projectApplicationOverviewStatus(&overview, status, repositoryWorkloadStatus{})
+		if overview.Ready != ready || overview.Postgres[0].State != "healthy" {
+			t.Fatalf("overview disagrees with canonical status: %+v", overview)
+		}
+		if !ready && (overview.SecretsState != "not ready" || overview.BrokerState != "not ready") {
+			t.Fatalf("failed canonical observations lost: %+v", overview)
+		}
 	}
 }

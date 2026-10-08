@@ -38,8 +38,18 @@ func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
 func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
+	return ensureAndStartRuntimeBrokerWithCore(ctx, progress, compose, compose, platformFiles, m, files)
+}
+
+func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer, compose, core bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	if !application.RequiresRuntimeBroker(m) {
 		return nil
+	}
+	if core == nil {
+		return unavailableApplicationCoreRuntime()
+	}
+	if compose == nil {
+		return errors.New("application workload runtime is unavailable")
 	}
 	runtimeImage := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
 	refreshMutableImage := runtimebroker.IsMutableDevelopmentImage(runtimeImage)
@@ -49,10 +59,10 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
-	if err := compose.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
+	if err := core.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
 		return fmt.Errorf("reconcile shared control-plane runtime before broker start: %w", err)
 	}
-	if err := ensureAndStartRuntimeProviderExecutor(ctx, progress, compose, platformFiles, m, files, refreshMutableImage); err != nil {
+	if err := ensureAndStartRuntimeProviderExecutorWithCore(ctx, progress, compose, core, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
 	}
 	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
@@ -67,7 +77,7 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 			workloadDNSNames = append(workloadDNSNames, application.MetricsTargetAlias(m, source.Service))
 		}
 	}
-	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	issuer := openbao.NewServiceIssuer(core, platformFiles)
 	mtlsFiles, identityChanged, err := openbao.EnsureRuntimeMTLSIdentity(ctx, issuer, identity, files, workloadDNSNames)
 	if err != nil {
 		return fmt.Errorf("converge runtime mTLS identity: %w", err)
@@ -168,13 +178,20 @@ func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compos
 }
 
 func ensureAndStartRuntimeProviderExecutor(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
+	return ensureAndStartRuntimeProviderExecutorWithCore(ctx, progress, compose, compose, platformFiles, m, files, refreshMutableImage)
+}
+
+func ensureAndStartRuntimeProviderExecutorWithCore(ctx context.Context, progress io.Writer, compose, core bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles, refreshMutableImage bool) error {
 	if !requiresRuntimeObjectStorageExecutor(m) {
 		return nil
+	}
+	if core == nil {
+		return unavailableApplicationCoreRuntime()
 	}
 	if platformFiles.Compose == "" || platformFiles.Env == "" {
 		return errors.New("BaseHarbor control-plane runtime is required for runtime provider executor PKI")
 	}
-	issuer := openbao.NewServiceIssuer(compose, platformFiles)
+	issuer := openbao.NewServiceIssuer(core, platformFiles)
 	dataDir, err := runtimeComponentDataRoot(files)
 	if err != nil {
 		return fmt.Errorf("resolve target data directory for runtime executor: %w", err)

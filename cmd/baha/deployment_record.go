@@ -19,6 +19,10 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
 	}
+	remoteProject, err := retainedRemoteProject(resolved)
+	if err != nil {
+		return deployment.DeploymentRecord{}, err
+	}
 	intent, err := json.Marshal(resolved.Manifest)
 	if err != nil {
 		return deployment.DeploymentRecord{}, fmt.Errorf("encode normalized pending intent: %w", err)
@@ -37,6 +41,7 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			Digest:     revision,
 		},
 		Applied: deployment.AppliedDeployment{
+			RemoteProject:   remoteProject,
 			Intent:          intent,
 			RuntimeProvider: resolved.Target.RuntimeProvider,
 			GeneratedState: map[string]string{
@@ -60,6 +65,10 @@ func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, 
 	if !resolved.SourceAvailable {
 		return fmt.Errorf("cannot record applied deployment without available source")
 	}
+	remoteProject, err := retainedRemoteProject(resolved)
+	if err != nil {
+		return err
+	}
 	intent, err := json.Marshal(resolved.Manifest)
 	if err != nil {
 		return fmt.Errorf("encode normalized applied intent: %w", err)
@@ -78,6 +87,7 @@ func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, 
 			Digest:     revision,
 		},
 		Applied: deployment.AppliedDeployment{
+			RemoteProject:   remoteProject,
 			Intent:          intent,
 			RuntimeProvider: resolved.Target.RuntimeProvider,
 			GeneratedState: map[string]string{
@@ -100,7 +110,10 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 	if resolved.DeploymentRecord == nil {
 		return nil
 	}
-	record := *resolved.DeploymentRecord
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if err != nil {
+		return err
+	}
 	record.Observed = deployment.ObservedDeployment{State: state, Ready: ready}
 	if ready {
 		record.Observed.VerifiedAt = time.Now().UTC()

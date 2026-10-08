@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"go.yaml.in/yaml/v3"
 )
 
 var ErrWorkloadComposeAmbiguous = errors.New("multiple application Compose files found")
@@ -187,46 +187,27 @@ func SelectedWorkloadServicesFromCompose(repositoryRoot, sourcePath string, m Ma
 }
 
 func composeServiceNames(path string) ([]string, error) {
-	file, err := os.Open(path)
+	source, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open application Compose file: %w", err)
 	}
-	defer file.Close()
-
-	inServices := false
-	var services []string
-	s := bufio.NewScanner(file)
-	for s.Scan() {
-		raw := strings.TrimRight(s.Text(), " \t\r")
-		trim := strings.TrimSpace(raw)
-		if trim == "" || strings.HasPrefix(trim, "#") {
-			continue
-		}
-		indent := len(raw) - len(strings.TrimLeft(raw, " "))
-		if indent == 0 {
-			if trim == "services:" {
-				inServices = true
-				continue
-			}
-			if inServices {
-				break
-			}
-			continue
-		}
-		if inServices && indent == 2 && strings.HasSuffix(trim, ":") {
-			name := strings.TrimSpace(strings.TrimSuffix(trim, ":"))
-			if err := validateComposeServiceName(name); err != nil {
-				return nil, fmt.Errorf("invalid application Compose service: %w", err)
-			}
-			services = append(services, name)
-		}
+	var document struct {
+		Services map[string]any `yaml:"services"`
 	}
-	if err := s.Err(); err != nil {
-		return nil, err
+	if err := yaml.Unmarshal(source, &document); err != nil {
+		return nil, fmt.Errorf("parse application Compose file %s: %w", path, err)
 	}
-	if len(services) == 0 {
+	if len(document.Services) == 0 {
 		return nil, fmt.Errorf("application Compose file %s contains no services", path)
 	}
+	services := make([]string, 0, len(document.Services))
+	for name := range document.Services {
+		if err := validateComposeServiceName(name); err != nil {
+			return nil, fmt.Errorf("invalid application Compose service: %w", err)
+		}
+		services = append(services, name)
+	}
+	sort.Strings(services)
 	return services, nil
 }
 

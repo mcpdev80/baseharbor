@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,7 +43,7 @@ BEGIN
 END
 $$;
 GRANT USAGE ON SCHEMA public TO baseharbor_runtime_ci;
-GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, memberships, application_ownerships TO baseharbor_runtime_ci;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, memberships, application_ownerships, connector_nodes, connector_enrollment_grants TO baseharbor_runtime_ci;
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -144,6 +146,33 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 		t.Fatalf("cross-tenant claim error = %v, want ownership conflict", err)
 	}
 
+	grantStore := NewConnectorEnrollmentStore(runtime)
+	grant := targetenrollment.Grant{Scope: targetenrollment.Scope{TenantID: tenantA, TargetID: "lab", NodeID: "node-a", Runtime: "docker"}, TokenDigest: repeatDigest("a"), NonceDigest: repeatDigest("b"), ExpiresAt: time.Now().Add(time.Minute), CertificateTTL: time.Hour}
+	if err := grantStore.Create(ctx, grant); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.QueryRow(ctx, "SELECT count(*) FROM connector_nodes").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("unscoped node visibility: %d, %v", count, err)
+	}
+	if err := WithTenantTx(ctx, runtime, tenantB, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM connector_enrollment_grants").Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			t.Error("foreign enrollment grant visible")
+		}
+		_, err := tx.Exec(ctx, "INSERT INTO connector_nodes (tenant_id,node_id,target_id,runtime) VALUES ($1,'foreign-node','lab','docker')", tenantA)
+		return err
+	}); err == nil {
+		t.Fatal("tenant B inserted tenant A's node")
+	}
+	if _, err := grantStore.Consume(ctx, grant.Scope, grant.TokenDigest, grant.NonceDigest, repeatDigest("c"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := grantStore.RecordIssued(ctx, grant.Scope, grant.TokenDigest, "abcd", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
 	if !errors.Is(WithTenantTx(ctx, runtime, "not-a-uuid", func(pgx.Tx) error { return nil }), ErrInvalidTenantID) {
 		t.Fatal("invalid tenant id was not rejected before opening tenant scope")
 	}
@@ -151,6 +180,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenants, external_identities, membership
 
 func resetTestDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
+DROP TABLE IF EXISTS connector_enrollment_grants CASCADE;
+DROP TABLE IF EXISTS connector_certificate_overlap CASCADE;
+DROP TABLE IF EXISTS connector_nodes CASCADE;
 DROP TABLE IF EXISTS application_ownerships CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS external_identities CASCADE;

@@ -35,17 +35,35 @@ func collectApplicationStatus(ctx context.Context, store application.Store, args
 	if err != nil || done {
 		return collection.result, err
 	}
+	return finishApplicationStatusCollection(statusCtx, collection), nil
+}
+
+func collectResolvedApplicationStatus(ctx context.Context, resolved resolvedApplication) (application.StatusResult, repositoryWorkloadStatus, error) {
+	if isRemoteApplication(resolved) {
+		result, err := collectRemoteApplicationStatus(ctx, resolved)
+		return result, repositoryWorkloadStatus{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, applicationStatusTimeout)
+	defer cancel()
+	collection, done, err := newResolvedApplicationStatusCollection(ctx, resolved)
+	if err != nil || done {
+		return collection.result, collection.workloadStatus, err
+	}
+	return finishApplicationStatusCollection(ctx, collection), collection.workloadStatus, nil
+}
+
+func finishApplicationStatusCollection(statusCtx context.Context, collection *applicationStatusCollection) application.StatusResult {
 	if collection.componentsStopped(statusCtx) {
 		collection.result.State = "stopped"
 		collection.result.Ready = false
-		return collection.result, nil
+		return collection.result
 	}
 	collection.collectManagedServiceChecks(statusCtx)
 	collection.collectWorkloadChecks()
 	collection.collectLogsCheck(statusCtx)
 	collection.collectExposureCheck(statusCtx)
 	collection.collectCanonicalDevelopmentCheck(statusCtx)
-	return collection.result, nil
+	return collection.result
 }
 
 func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result application.StatusResult) {

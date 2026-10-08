@@ -130,3 +130,33 @@ func EstimateApplication(m application.Manifest) MemoryEstimate {
 	}
 	return Sum(components)
 }
+
+// EstimateCore preserves existing SQL/Secrets planning estimates. Identity is
+// explicitly UNKNOWN until the complete shipped realization is measured (#549).
+func EstimateCore(ha bool, existing map[string]bool) (MemoryEstimate, error) {
+	base, err := EstimateControlPlane(ha)
+	if err != nil {
+		return MemoryEstimate{}, err
+	}
+	var components []ComponentEstimate
+	if !existing["sql"] || !existing["secrets"] {
+		for _, component := range base.Components {
+			if strings.HasPrefix(component.Name, "postgres") && existing["sql"] {
+				continue
+			}
+			if strings.HasPrefix(component.Name, "openbao") && existing["secrets"] {
+				continue
+			}
+			components = append(components, component)
+		}
+	}
+	if !existing["identity"] {
+		// Largest sampled Identity startup peak across both machine-role runs in
+		// rootless Docker qualification 37492547982, Core b25c4e25f0244648cc6a7641828e238005925933.
+		// The reference contains three Keycloak, three PostgreSQL and three etcd
+		// members plus gateways. It is a planning estimate for another host,
+		// never a universal minimum or a measurement of that selected host.
+		components = append(components, ComponentEstimate{Name: "Core Identity reference realization (Keycloak and its SQL dependencies)", EstimatedBytes: 4_976_065_638, Confidence: ConfidenceEstimated, Source: "measured Docker reference startup sample, run 37492547982; three Identity members and dependencies; host-specific planning estimate, no reliable minimum"})
+	}
+	return Sum(components), nil
+}

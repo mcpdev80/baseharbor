@@ -47,3 +47,40 @@ Security-sensitive areas include, among others:
 - container/runtime isolation and privilege handling.
 
 For normal bugs, feature requests and documentation issues, use the public GitHub issue tracker.
+
+## Session and stream bounds
+
+The OIDC verifier validates issuer, audience, signature and expiry at each new
+protected HTTP request. Tenant/operator policy is evaluated before execution.
+Operator CLI sessions are Target/environment-bound and must have more than
+30 seconds of remaining lifetime before persisted reuse.
+
+Group or role changes at the identity provider do not imply instant revocation
+of an already issued token. Their effect depends on token expiry and the
+authoritative membership/policy resolver. There is no claimed fixed group
+revocation interval in the current contract.
+
+The machine HTTP projection bounds asynchronous execution to 30 minutes.
+Event/log/exec streams end at the earlier of verified token expiry and five
+minutes after admission. Request cancellation closes the producer stream, even
+when it is idle. Each socket write has a maximum 30-second backpressure bound
+clamped to the session deadline. A new connection requires fresh authentication
+and policy evaluation. Browser requests with an Origin must match the protected
+HTTPS Core authority; cookie-only requests are not bearer authentication.
+
+This bounds one admitted stream, not token-wide instant group revocation. A
+still-valid token may be accepted for another request until its expiry unless
+the authoritative membership/policy resolver denies it. Already authorized
+mutations have their own completion/deadline semantics.
+
+Private vulnerability reporting was verified enabled through the repository's
+GitHub API on 2026-10-06. The direct private reporting route is
+https://github.com/mcpdev80/baseharbor/security/advisories/new .
+
+Connector transport sessions require TLS 1.3 client-chain verification and the
+exact active PostgreSQL certificate scope. A trusted CA alone does not admit a
+node. Sessions expire after at most five minutes or earlier peer expiry/Core
+shutdown. Each operation rechecks admission; ongoing sessions also recheck every
+five seconds with a two-second registry deadline. Revocation or registry failure
+retires the connection within that bound. Interrupted control operations are not
+automatically replayed; reconcile observed state before issuing another mutation.

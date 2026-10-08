@@ -50,9 +50,28 @@ jobs:
 
   release_source_preflight:
     name: Release Source Preflight
+    permissions:
+      contents: read
+      actions: read
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/source-preflight/')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:source-test-password@127.0.0.1:5432/baseharbor_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: baseharbor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: source-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d baseharbor_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
@@ -83,10 +102,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
+            for path in $files; do
+              echo "PUBLIC_FORMAT_PATH:$path"
+              gofmt "$path" | base64 -w 0 | fold -w 3072 | sed 's/^/PUBLIC_FORMAT_CHUNK:/'
+            done
             exit 1
           }
 
@@ -97,9 +120,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/... ./spec/...
+          go test ./contracts/... ./internal/... ./spec/...
           BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
           go vet ./...
+
+      - name: Exercise enrollment and operator boundary races
+        shell: bash
+        run: |
+          go test -race -p 2 ./internal/coreinstallation ./internal/operatorauth ./internal/machinehttp ./internal/targetenrollment ./internal/targetsession ./internal/runtimeexplorer ./internal/runtime/terminal -count=1
+          go test -race ./internal/runtime/terminal -run TestPTYInputResizeExitAndCancellation -count=25
+
+      - name: Validate requirements-bound integration evidence
+        run: |
+          python scripts/test_pre_release_resume.py
+          python scripts/test_targeted_atomic_plan.py
+          python scripts/test_private_consumer_evidence.py
+          python scripts/test_public_consumer_evidence.py
+          python scripts/test_private_integration_producer.py
+          python scripts/test_pre_release_integration.py
+          python scripts/test_artifact_gc.py
+
+      - name: Validate private source access preflight
+        run: python scripts/test_private_evidence_access_preflight.py
+
+      - name: Check protected private source and Actions access
+        if: github.ref_name == 'runtime-validation/source-preflight/v0.4.23-private-evidence-access'
+        env:
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/private_evidence_access_preflight.py
 
       - name: Validate documentation
         shell: bash
@@ -289,7 +338,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec)"
+          files="$(gofmt -l cmd internal spec contracts)"
           test -z "$files" || {
             echo "gofmt required:" >&2
             echo "$files" >&2
@@ -359,7 +408,7 @@ jobs:
           Tooling	${{ steps.tooling.outcome }}	documentation and workflow validation tools
           Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
           Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
-          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
           Unit/package tests	${{ steps.unit_tests.outcome }}	go test ./...
           Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle tests
           Go vet	${{ steps.vet.outcome }}	go vet ./...

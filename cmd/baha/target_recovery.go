@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -33,6 +35,19 @@ func preflightNewTargetRecoveryFile(ctx context.Context, explicit string) (strin
 	}
 	info, statErr := os.Stat(path)
 	if statErr == nil {
+		if source == "target default" && !info.IsDir() {
+			// A destroyed installation's recovery material remains operator-owned.
+			// Allocate a new output name, never delete or overwrite the old file.
+			var suffix [16]byte
+			if _, err := rand.Read(suffix[:]); err != nil {
+				return "", "", fmt.Errorf("allocate fresh recovery output name: %w", err)
+			}
+			fresh := filepath.Join(filepath.Dir(path), "openbao-recovery-"+hex.EncodeToString(suffix[:])+".json")
+			if _, err := os.Lstat(fresh); !errors.Is(err, os.ErrNotExist) {
+				return "", "", errors.New("fresh recovery output path is unavailable")
+			}
+			return fresh, "target default (fresh installation)", nil
+		}
 		kind := "file"
 		if info.IsDir() {
 			kind = "directory"

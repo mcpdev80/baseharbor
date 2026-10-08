@@ -23,6 +23,13 @@ func inspectOperatorIdentity(ctx context.Context, environment string) (operatorI
 		return operatorIdentityResult{}, err
 	}
 	result := operatorIdentityResult{Target: target.Name, Environment: environment, Actor: machine.ActorRef{Mode: "trusted-local", Subject: "local-operator"}}
+	if principal, verified := operatorauth.PrincipalFromContext(ctx); verified {
+		if err := authorizeMCPOperation(ctx, "operator.identity", target.Name, environment, "", ""); err != nil {
+			return result, err
+		}
+		result.Actor = machine.ActorRef{Mode: "authenticated", Issuer: principal.Issuer, Subject: principal.Subject, Assurance: principal.Assurance, Methods: append([]string(nil), principal.Methods...)}
+		return result, nil
+	}
 	if !operatorauth.ManagedEnvironment(environment) {
 		return result, nil
 	}

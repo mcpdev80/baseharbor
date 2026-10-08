@@ -30,6 +30,7 @@ func httpsAdoptionFixture(t *testing.T, ambiguous bool) string {
 func TestQuickAdoptionCarriesExposureAndRepeatedInitPreservesContract(t *testing.T) {
 	for _, jsonMode := range []bool{false, true} {
 		t.Run(map[bool]string{false: "human", true: "json"}[jsonMode], func(t *testing.T) {
+			assumeVerifiedCoreForSourceTest(t)
 			configureTestTarget(t)
 			root := httpsAdoptionFixture(t, false)
 			t.Chdir(root)

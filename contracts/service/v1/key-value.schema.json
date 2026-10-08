@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.baseharbor.dev/service/v1/key-value.schema.json",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/service/v1/key-value.schema.json",
   "title": "BaseHarbor Durable Key-Value Service Contract v1",
   "type": "object",
   "additionalProperties": false,

@@ -10,9 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 type overviewResource struct {
@@ -117,118 +114,58 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 		overview.BrokerState = "not applied"
 	}
 
-	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
-	if errors.Is(err, application.ErrRuntimeNotApplied) {
-		overview.Ready = false
-		return overview, nil
-	}
+	status, workload, err := collectResolvedApplicationStatus(ctx, resolved)
 	if err != nil {
 		return overview, err
 	}
-	required := []bhruntime.RuntimeCapability{
-		bhruntime.CapabilityWorkloadLifecycle,
-		bhruntime.CapabilityPublishedPorts,
-	}
-	if m.Services.Secrets {
-		required = append(required, bhruntime.CapabilityServiceExec)
-	}
-	compose, err := detectRuntimeForApplication(ctx, resolved, required...)
-	if err != nil {
-		return overview, err
-	}
-	running, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
-	if err != nil {
-		return overview, err
-	}
-
-	if m.Services.SQL {
-		state := "not running"
-		if containsString(running, "postgres") {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			verifyErr := application.VerifyPostgresRuntime(checkCtx, compose, m, files)
-			cancel()
-			if verifyErr == nil {
-				state = "healthy"
-			} else {
-				state = "not ready"
-			}
-		}
-		setOverviewResourceState(overview.Postgres, state)
-		if state != "healthy" {
-			overview.Ready = false
-		}
-	}
-
-	if m.Services.Cache {
-		state := "not running"
-		if containsString(running, "valkey") {
-			checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			verifyErr := application.VerifyValkeyRuntime(checkCtx, compose, m, files)
-			cancel()
-			if verifyErr == nil {
-				state = "healthy"
-			} else {
-				state = "not ready"
-			}
-		}
-		setOverviewResourceState(overview.Valkey, state)
-		if state != "healthy" {
-			overview.Ready = false
-		}
-	}
-
-	if m.Services.Secrets {
-		overview.SecretsState = "not ready"
-		overview.BrokerState = "not ready"
-		platformFiles, platformErr := existingTargetRuntimeFiles(ctx)
-		if platformErr == nil {
-			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-			if openbao.InspectApplicationScope(checkCtx, compose, platformFiles, identity, openbao.ApplicationCredentialsPath(files.Dir)) == nil {
-				overview.SecretsState = "healthy"
-				statuses, statusErr := inspectRequiredApplicationSecrets(checkCtx, compose, platformFiles, m, files)
-				if statusErr == nil {
-					for _, status := range statuses {
-						if status.Present && status.Usable {
-							overview.SecretsReady++
-						}
-					}
-					if openbao.RequireApplicationSecrets(statuses) != nil {
-						overview.SecretsState = "not ready"
-					}
-				}
-			}
-			cancel()
-		}
-		brokerCtx, brokerCancel := context.WithTimeout(ctx, 10*time.Second)
-		if verifyRuntimeBrokerRunning(brokerCtx, compose, m, files) == nil {
-			overview.BrokerState = "healthy"
-		}
-		brokerCancel()
-		if overview.SecretsState != "healthy" || overview.BrokerState != "healthy" {
-			overview.Ready = false
-		}
-	}
-
-	if application.HasOTLPTelemetry(m) {
-		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		verifyErr := telemetry.VerifyApplicationAt(checkCtx, m, files, resolved.TargetStateRoot, resolved.Target.Name)
-		cancel()
-		if verifyErr == nil {
-			overview.TelemetryState = "healthy"
-		} else {
-			overview.TelemetryState = "not ready"
-			overview.Ready = false
-		}
-	}
-
-	workloadStatus, workloadErr := inspectRepositoryWorkloadStatus(ctx, compose, resolved, files)
-	overview.Workload = workloadStatus
-	if workloadErr != nil || (workloadStatus.Found && !workloadStatus.Ready()) {
-		overview.Ready = false
-	}
+	projectApplicationOverviewStatus(&overview, status, workload)
 
 	return overview, nil
+}
+
+// Project the canonical status observations; provider placement and literal
+// service names in the Application project never decide overview readiness.
+func projectApplicationOverviewStatus(overview *applicationOverview, status application.StatusResult, workload repositoryWorkloadStatus) {
+	overview.Ready = status.Ready
+	overview.Workload = workload
+	state := func(name string) string {
+		for _, check := range status.Checks {
+			if check.Name == name {
+				if check.OK {
+					return "healthy"
+				}
+				return "not ready"
+			}
+		}
+		if status.State == "not_applied" {
+			return "not applied"
+		}
+		if status.State == "stopped" {
+			return "not running"
+		}
+		return "unverified"
+	}
+	setOverviewResourceState(overview.Postgres, state("postgres"))
+	setOverviewResourceState(overview.Valkey, state("valkey"))
+	if overview.TelemetryState != "not declared" {
+		overview.TelemetryState = state("telemetry/otlp")
+	}
+	if overview.SecretsDeclared {
+		overview.SecretsState = state("secrets")
+		overview.BrokerState = state("runtime-broker")
+		for _, check := range status.Checks {
+			if check.Name == "required-secrets" && !check.OK {
+				overview.SecretsState = "not ready"
+			}
+			if strings.HasPrefix(check.Name, "required-secret/") {
+				if check.OK {
+					overview.SecretsReady++
+				} else {
+					overview.SecretsState = "not ready"
+				}
+			}
+		}
+	}
 }
 
 func setOverviewResourceState(resources []overviewResource, state string) {

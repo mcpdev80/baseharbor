@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/stableid"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 const DeploymentRecordVersion = 2
@@ -55,11 +56,12 @@ type DeploymentSource struct {
 }
 
 type AppliedDeployment struct {
-	Intent          json.RawMessage    `json:"intent,omitempty"`
-	RuntimeProvider string             `json:"runtime_provider"`
-	Delivery        delivery.Selection `json:"delivery,omitempty"`
-	GeneratedState  map[string]string  `json:"generated_state,omitempty"`
-	LastAppliedRef  string             `json:"last_applied_ref,omitempty"`
+	Intent          json.RawMessage              `json:"intent,omitempty"`
+	RuntimeProvider string                       `json:"runtime_provider"`
+	Delivery        delivery.Selection           `json:"delivery,omitempty"`
+	GeneratedState  map[string]string            `json:"generated_state,omitempty"`
+	LastAppliedRef  string                       `json:"last_applied_ref,omitempty"`
+	RemoteProject   *targetsession.ProjectRecord `json:"remote_project,omitempty"`
 }
 
 type ObservedDeployment struct {
@@ -152,6 +154,9 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := record.Applied.Delivery.Validate(); err != nil {
 		return fmt.Errorf("invalid delivery selection: %w", err)
 	}
+	if err := validateRemoteProject(record); err != nil {
+		return err
+	}
 	root, err := DeploymentRoot(record.Identity)
 	if err != nil {
 		return err
@@ -203,6 +208,9 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("invalid delivery selection: %w", err)}
 	}
 	if err := record.Identity.Validate(); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}
+	}
+	if err := validateRemoteProject(record); err != nil {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}
 	}
 	if record.Identity.Target != target || record.Identity.DeploymentID != deploymentID {

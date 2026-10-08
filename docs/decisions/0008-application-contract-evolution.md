@@ -1,5 +1,7 @@
 # ADR 0008: Application contract evolution and compatibility
 
+> Compatibility status: pre-freeze legacy/migration-preservation wording below is superseded by [ADR 0018](0018-public-contract-namespace-and-compatibility.md). The historical rationale remains; v0.4 carries no legacy or migration obligation.
+
 ## Status
 
 > Roadmap sequencing note (2026-09-21): the architectural decision remains unchanged, but release sequencing has evolved. v0.7 implements the Kubernetes Runtime, v0.8 completes Kubernetes feature parity and production acceptance, and OpenShift/Enterprise specialization follows afterward. Version labels in this ADR are sequencing context, not part of the contract decision.

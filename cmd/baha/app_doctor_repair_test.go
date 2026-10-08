@@ -1,10 +1,24 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 )
+
+func TestRepairPreservesMachineApplicationEnvironmentSelection(t *testing.T) {
+	for _, environment := range []string{"dev", "test", "prod"} {
+		args := machineApplicationArgs("browser-managed", environment)
+		parsed, fix, err := parseAppDoctorRepairArgs(append(append([]string{}, args...), "--fix"))
+		if err != nil || !fix || !reflect.DeepEqual(parsed, args) {
+			t.Fatalf("repair lost its application/environment selection: %v %v %v", parsed, fix, err)
+		}
+	}
+	if _, _, err := parseAppDoctorRepairArgs([]string{"browser-managed", "--environment", "dev", "--environment=prod", "--fix"}); err == nil {
+		t.Fatal("repair accepted conflicting environments")
+	}
+}
 
 func TestParseAppDoctorRepairArgs(t *testing.T) {
 	nameArgs, fix, err := parseAppDoctorRepairArgs([]string{"mailflow", "--fix"})

@@ -57,7 +57,10 @@ func (l keycloakRuntimeLifecycle) Validate(ctx context.Context, files KeycloakFi
 }
 
 func (l keycloakRuntimeLifecycle) Apply(ctx context.Context, files KeycloakFiles) error {
-	return l.runtime.UpProject(ctx, files.Project, files.Compose, files.Env)
+	return applyKeycloakBootstrap(ctx, l.runtime, files, func(ctx context.Context, files KeycloakFiles) error {
+		_, err := operatorKeycloakAdmin(ctx, files)
+		return err
+	})
 }
 
 func (l keycloakRuntimeLifecycle) Destroy(ctx context.Context, files KeycloakFiles) error {
@@ -88,7 +91,14 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 	if placement.Scope == capability.ScopeExternal {
 		return KeycloakFiles{}, errors.New("external identity must use the external OIDC provider")
 	}
-	consumer, err := application.IdentityProviderNetworkName(app, namespace)
+	if placement.Scope == capability.ScopeShared && strings.TrimSpace(placement.SharingBoundary) == "core" {
+		return KeycloakFiles{}, errors.New("Core Identity sharing boundary is reserved for installation bootstrap")
+	}
+	return ensureKeycloakFilesForPlacement(ctx, app, issuer, dataDir, namespace, placement)
+}
+
+func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string, placement capability.ProviderPlacement) (KeycloakFiles, error) {
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(app, namespace, placement)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
@@ -261,12 +271,12 @@ func DestroyAllSharedKeycloakAt(ctx context.Context, runtime KeycloakRuntime, da
 	if err != nil {
 		return err
 	}
-	project := bhruntime.SharedProjectName(namespace)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		dir := filepath.Join(root, entry.Name())
+		project := sharedKeycloakProject(namespace, entry.Name())
 		compose := filepath.Join(dir, "compose.yaml")
 		env := filepath.Join(dir, "runtime.env")
 		if _, err := os.Stat(compose); errors.Is(err, os.ErrNotExist) {
@@ -290,13 +300,20 @@ func keycloakStateIdentity(app application.Manifest, placement capability.Provid
 			boundary = "default"
 		}
 		dir := filepath.Join(root, "shared", boundary)
-		return dir, bhruntime.SharedProjectName(namespace), nil
+		return dir, sharedKeycloakProject(namespace, boundary), nil
 	case capability.ScopeApplication:
 		dir := filepath.Join(root, "applications", app.Name, app.Environment)
 		return dir, bhruntime.ApplicationProjectName(namespace, app.Name+"-identity", app.Environment), nil
 	default:
 		return "", "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
 	}
+}
+
+func sharedKeycloakProject(namespace, boundary string) string {
+	if boundary == "core" {
+		return bhruntime.SharedProjectName(namespace + "-core")
+	}
+	return bhruntime.SharedProjectName(namespace)
 }
 
 func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {

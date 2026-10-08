@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const (
@@ -17,7 +18,11 @@ const (
 	maxAuditBytes  = 8 << 20
 )
 
+var appendMu sync.Mutex
+
 func Append(root string, event AuditEvent) error {
+	appendMu.Lock()
+	defer appendMu.Unlock()
 	if err := event.Validate(); err != nil {
 		return err
 	}

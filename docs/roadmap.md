@@ -35,6 +35,17 @@ Freeze Readiness Policy, Public Namespace and Platform Contract.
 - remaining runtime-neutral contract boundaries;
 - machine HTTP/streaming and Target Access boundaries required so future Console
   work does not reopen frozen Core semantics.
+- repository-independent secure Core bootstrap with mandatory SQL, Secrets and
+  Identity, first-application continuation and machine-role defaults;
+- optional Console attached to one selected Core in the same installation and
+  security boundary, with same-origin HTTPS as the default;
+- explicit shared/application-isolated placement and measured Core resource
+  evidence;
+- complete remote application and private-consumer integration qualification
+  before pre-release approval.
+
+Implementation is in progress in PR #809. The [draft release notes](releases/v0.4.23.md)
+do not claim release or pre-release approval.
 
 ### v0.4.24
 
