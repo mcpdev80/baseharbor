@@ -140,9 +140,6 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("refusing provider upgrade for unready or mismatched owned Core")
 	}
-	if state.Spec.HA {
-		return errors.New("HA provider-native upgrade requires separately proven rolling Spilo/Patroni recovery; no unsafe topology mutation")
-	}
 	deployed, err := deployment.ListDeployments(target.Name)
 	if err != nil {
 		return err
@@ -172,6 +169,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	}
 	if !changed {
 		return verifyCoreBinaryOnly(ctx, release)
+	}
+	if state.Spec.HA {
+		return errors.New("HA Core provider change UNSUPPORTED: verified rolling Spilo/Patroni backup, replica checks and recovery are required; no mutation attempted")
 	}
 	coreFiles, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
@@ -232,9 +232,6 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("Core installation not owned and ready for provider upgrade")
 	}
-	if state.Spec.HA {
-		return errors.New("Core HA upgrade requires a validated rolling Spilo/Patroni migration; no mutation attempted")
-	}
 	records, err := deployment.ListDeployments(target.Name)
 	if err != nil {
 		return err
@@ -254,6 +251,9 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 		return errors.New("incomplete SQL/Secrets/Identity/backing inventory")
 	}
 	for _, d := range plan.Deltas {
+		if state.Spec.HA && d.Classification != coreupdate.NoChange {
+			return fmt.Errorf("HA Core provider %s requires a verified rolling migration (UNSUPPORTED): %s", d.Installed.Instance, d.Reason)
+		}
 		switch d.Classification {
 		case coreupdate.NoChange, coreupdate.BackupRequired, coreupdate.MigrationRequired:
 		default:
