@@ -187,7 +187,11 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			continue
 		}
 		project, compose, _ := ops.files(d)
-		volume, volumeErr := coreupdate.ResolveOwnedServiceVolume(compose, d.Installed.Instance, project)
+		dataService := d.Installed.Instance
+        // Keycloak's identity service is stateless: its durable state lives
+        // in the separately owned Keycloak PostgreSQL backing database.
+        if d.Installed.Kind==coreupdate.Identity {dataService="keycloak-db"}
+        volume, volumeErr := coreupdate.ResolveOwnedServiceVolume(compose, dataService, project)
         if volumeErr != nil {
             return fmt.Errorf("Core %s requires a verifiable persistent data volume before migration: %w", d.Installed.Instance, volumeErr)
         }
