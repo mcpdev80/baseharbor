@@ -89,6 +89,7 @@ func (s Store) paths() (string, string, error) {
 	return filepath.Join(s.Directory, "etcd.snapshot"), filepath.Join(s.Directory, "etcd.metadata.json"), nil
 }
 func safeDirectory(dir string) error {
+	if err := rejectSymlinkAncestors(dir); err != nil { return err }
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -275,9 +276,10 @@ func (s Store) PrepareRestore(ctx context.Context, destination string) (RestoreP
 	if err != nil {
 		return RestorePlan{}, err
 	}
-	if destination == "" {
-		return RestorePlan{}, errors.New("isolated destination required")
+	if destination == "" || !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
+		return RestorePlan{}, errors.New("absolute clean isolated destination required")
 	}
+	if err := rejectSymlinkAncestors(destination); err != nil { return RestorePlan{}, err }
 	if _, err := os.Lstat(destination); err == nil {
 		return RestorePlan{}, errors.New("restore destination already exists")
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -317,4 +319,18 @@ func (s Store) VerifyRecovery(ctx context.Context, plan RestorePlan, client Rest
 		return errors.New("snapshot changed since restore")
 	}
 	return client.VerifyIsolated(ctx, plan.Destination, plan.Identity, plan.Info)
+}
+
+// rejectSymlinkAncestors rejects symlink redirection of an otherwise owner-only
+// snapshot or restore path, including an existing ancestor of a new directory.
+func rejectSymlinkAncestors(path string) error {
+ if !filepath.IsAbs(path) { return errors.New("absolute path required") }
+ clean := filepath.Clean(path)
+ for current := clean; ; current = filepath.Dir(current) {
+  st, err := os.Lstat(current)
+  if err == nil && st.Mode()&os.ModeSymlink != 0 { return errors.New("symlink in managed recovery path") }
+  if err != nil && !errors.Is(err, os.ErrNotExist) { return err }
+  if parent := filepath.Dir(current); parent == current { break }
+ }
+ return nil
 }
