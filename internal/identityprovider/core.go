@@ -17,11 +17,12 @@ import (
 // EnsureCoreIdentity realizes installation Identity through the existing native
 // provider. No Application, repository, workload binding or login is required.
 // Application placement preferences do not redefine this installation scope.
-func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, installationID string) (string, error) {
+func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, installationID string, ha ...bool) (string, error) {
 	if err := stableid.ValidateUUIDv4("installation", installationID); err != nil {
 		return "", err
 	}
 	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
+	if len(ha) > 0 { spec.HA = ha[0] }
 	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
 	files, err := ensureKeycloakFilesForPlacement(ctx, spec, issuer, dataDir, namespace, placement)
 	if err != nil {
