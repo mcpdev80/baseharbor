@@ -165,7 +165,27 @@ func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
   return errors.New("Core update requires complete preflight, apply, verification and journal hooks")
  }
  needsRecovery := false
+ seen := make(map[string]struct{}, len(plan.Deltas))
  for _, delta := range plan.Deltas {
+  current := delta.Installed
+  if !validKind(current.Kind) || current.Kind != delta.Desired.Kind ||
+   current.Owner != "baseharbor" || strings.TrimSpace(current.Installation) == "" ||
+   strings.TrimSpace(current.Scope) == "" || strings.TrimSpace(current.Instance) == "" ||
+   strings.TrimSpace(delta.Desired.Image) == "" || strings.TrimSpace(delta.Desired.Version) == "" ||
+   !validDigest(delta.Desired.Digest) {
+   return errors.New("Core update plan contains an unowned, malformed or mismatched provider realization")
+  }
+  key := current.Installation + "/" + current.Scope + "/" + current.Instance + "/" + string(current.Kind)
+  if _, found := seen[key]; found { return fmt.Errorf("duplicate Core update step %s",key) }
+  seen[key] = struct{}{}
+  if delta.Classification == NoChange &&
+   (current.Image != delta.Desired.Image || current.Version != delta.Desired.Version || current.Digest != delta.Desired.Digest) {
+   return fmt.Errorf("Core no-change step %s does not match pinned desired identity",key)
+  }
+  if delta.Classification != NoChange && providerDowngrade(current.Version,delta.Desired.Version) {
+   return fmt.Errorf("Core update step %s attempts unsupported downgrade or unverified version",key)
+  }
+
   switch delta.Classification {
   case NoChange, SafeReconcile:
   case BackupRequired, MigrationRequired:
