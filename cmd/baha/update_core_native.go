@@ -103,8 +103,8 @@ func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate
 	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
 		return fmt.Errorf("OpenBao AppRole, policies and secret access: %w", err)
 	}
-	if err := identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
-		return fmt.Errorf("Keycloak OIDC semantics: %w", err)
+	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
+		return fmt.Errorf("Keycloak realm, OIDC and operator token semantics: %w", err)
 	}
 	return nil
 }
