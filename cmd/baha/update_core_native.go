@@ -252,9 +252,13 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	}
 	if state.Spec.HA {
 		files, filesErr := existingTargetRuntimeFiles(ctx)
-		if filesErr != nil { return fmt.Errorf("inspect HA Core runtime files: %w", filesErr) }
+		if filesErr != nil {
+			return fmt.Errorf("inspect HA Core runtime files: %w", filesErr)
+		}
 		members, inspectErr := inspectPatroniMembers(ctx, runtime, files)
-		if inspectErr != nil { return fmt.Errorf("inspect HA Patroni members: %w", inspectErr) }
+		if inspectErr != nil {
+			return fmt.Errorf("inspect HA Patroni members: %w", inspectErr)
+		}
 		if _, _, quorumErr := coreupdate.VerifyPatroniQuorum(ctx, members, 0); quorumErr != nil {
 			return fmt.Errorf("Core HA Patroni quorum not verified: %w", quorumErr)
 		}
