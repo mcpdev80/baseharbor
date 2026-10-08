@@ -163,14 +163,20 @@ func verifiedPatroniSnapshot(ctx context.Context, gate PatroniRollingGate, maxLa
 	return VerifyPatroniQuorum(ctx, snapshot, maxLag)
 }
 
- // PrepareAndRollPatroniCluster is the central handoff for Session 1B. It
- // obtains a fresh DCS snapshot through the injected adapter, verifies its
- // identity and restore viability, and only then enters the native mutation
- // state machine. A nil/unavailable adapter stops before any member action.
+// PrepareAndRollPatroniCluster is the central handoff for Session 1B. It
+// obtains a fresh DCS snapshot through the injected adapter, verifies its
+// identity and restore viability, and only then enters the native mutation
+// state machine. A nil/unavailable adapter stops before any member action.
 func PrepareAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, installation, cluster, release string, maxLag int64) error {
- if gate == nil { return errors.New("native Patroni rolling provider is unavailable") }
- if err := gate.VerifyRecovery(ctx); err != nil {return fmt.Errorf("PostgreSQL physical recovery proof: %w",err)}
- evidence,err:=CaptureAndVerifyDCS(ctx,dcs,installation,cluster,release)
- if err!=nil{return err}
- return RollPatroniCluster(ctx,gate,dcs,evidence,installation,cluster,release,maxLag)
+	if gate == nil {
+		return errors.New("native Patroni rolling provider is unavailable")
+	}
+	if err := gate.VerifyRecovery(ctx); err != nil {
+		return fmt.Errorf("PostgreSQL physical recovery proof: %w", err)
+	}
+	evidence, err := CaptureAndVerifyDCS(ctx, dcs, installation, cluster, release)
+	if err != nil {
+		return err
+	}
+	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, cluster, release, maxLag)
 }
