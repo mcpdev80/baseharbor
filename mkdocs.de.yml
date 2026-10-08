@@ -103,7 +103,7 @@ nav:
   - Maschinenoperationen: how-to/machine-operations.md
   - Machine Interface v1: spec/machine-interface-v1.md
   - Protected Machine HTTP v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-http-v1/
-  - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
+  - Runtime Explorer v1: spec/runtime-explorer-v1.md
 - Referenz:
   - Public contracts: reference/public-contracts.md
   - Plattformunterstützung: reference/platform-support.md
@@ -119,7 +119,7 @@ nav:
   - Lokale Control-Plane-Runtime: reference/runtime-compose.md
   - Runtime Resource API: reference/runtime-resource-api.md
   - Runtime Secret Broker: reference/runtime-secret-broker.md
-  - Secrets & OpenBao (EN): https://mcpdev80.github.io/baseharbor/reference/secrets-and-openbao/
+  - Secrets und OpenBao: reference/secrets-and-openbao.md
   - Runtime Provider Contract v1: spec/runtime-provider-contract-v1.md
   - Runtime Provider Conformance v1: spec/runtime-provider-conformance-v1.md
   - Public provider conformance v1: spec/provider-conformance-v1.md
@@ -141,7 +141,7 @@ nav:
     - Reconciliation v1: spec/reconciliation-v1.md
     - Machine Interface v1: spec/machine-interface-v1.md
     - Protected Machine HTTP v1 (EN): https://mcpdev80.github.io/baseharbor/spec/machine-http-v1/
-    - Runtime Explorer v1 (EN): https://mcpdev80.github.io/baseharbor/spec/runtime-explorer-v1/
+    - Runtime Explorer v1: spec/runtime-explorer-v1.md
     - Audit & Evidence v1: spec/audit-evidence-v1.md
     - Security invariants: spec/security-invariants.md
     - Eingabeauflösung: spec/input-resolution.md
@@ -154,4 +154,4 @@ nav:
 - Projekt:
   - Roadmap: roadmap.md
   - Release Notes: releases/index.md
-  - Release-Referenz (EN): https://mcpdev80.github.io/baseharbor/reference/releases/
+  - Release-Referenz: reference/releases.md
