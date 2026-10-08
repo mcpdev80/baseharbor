@@ -132,6 +132,7 @@ func TestExecuteJournaledReceiptFailureNeverCommitsVerified(t *testing.T) {
 	hooks := Hooks{
 		Preflight:     func(context.Context, Plan) error { return nil },
 		RecoveryPoint: func(context.Context, Delta) error { return nil },
+        Recover: func(context.Context,Delta,string)error{return nil},
 		Apply:         func(context.Context, Delta) error { applied++; return nil },
 		Verify:        func(context.Context, Delta) error { return nil },
 		Record: func(_ context.Context, _ Delta, state string) error {
