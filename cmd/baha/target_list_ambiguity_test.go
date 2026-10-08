@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
- "encoding/json"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -40,26 +40,44 @@ func TestTargetListRemainsAvailableWhenSelectionAmbiguous(t *testing.T) {
 }
 
 func TestTargetListActiveMarkerUsesExplicitPrecedence(t *testing.T) {
- t.Setenv("XDG_CONFIG_HOME",t.TempDir())
- t.Setenv("BASEHARBOR_TARGET","")
- cfg:=deployment.Config{Version:deployment.ConfigVersion,Targets:map[string]deployment.TargetDefinition{
-  "one":{Runtime:deployment.RuntimeDefinition{Provider:"docker"},Access:deployment.TargetAccess{Reference:"local"}},
-  "two":{Runtime:deployment.RuntimeDefinition{Provider:"podman"},Access:deployment.TargetAccess{Reference:"local"}},
- },Access:map[string]deployment.AccessDefinition{"local":{Provider:"local",Reference:"local"}}}
- if err:=cfg.Save();err!=nil{t.Fatal(err)}
- if err:=writePersistedTarget("one");err!=nil{t.Fatal(err)}
- for _,child:=range targetCommand().Children{
-  if child.Name!="list"{continue}
-  var out,errOut bytes.Buffer
-  if err:=child.Run(withTargetOverride(context.Background(),"two"),[]string{"--json"},&out,&errOut);err!=nil{t.Fatal(err)}
-  var result struct{Targets []targetListItem `json:"targets"`}
-  if err:=json.Unmarshal(out.Bytes(),&result);err!=nil{t.Fatal(err)}
-  for _,entry:=range result.Targets{
-   isActive:=false
-   for _,sel:=range entry.Selectors{if sel=="active"{isActive=true}}
-   if isActive!=(entry.Name=="two"){t.Fatalf("wrong active marker for %s: %v",entry.Name,entry.Selectors)}
-  }
-  return
- }
- t.Fatal("missing target list")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_TARGET", "")
+	cfg := deployment.Config{Version: deployment.ConfigVersion, Targets: map[string]deployment.TargetDefinition{
+		"one": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}},
+		"two": {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}},
+	}, Access: map[string]deployment.AccessDefinition{"local": {Provider: "local", Reference: "local"}}}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePersistedTarget("one"); err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range targetCommand().Children {
+		if child.Name != "list" {
+			continue
+		}
+		var out, errOut bytes.Buffer
+		if err := child.Run(withTargetOverride(context.Background(), "two"), []string{"--json"}, &out, &errOut); err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Targets []targetListItem `json:"targets"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range result.Targets {
+			isActive := false
+			for _, sel := range entry.Selectors {
+				if sel == "active" {
+					isActive = true
+				}
+			}
+			if isActive != (entry.Name == "two") {
+				t.Fatalf("wrong active marker for %s: %v", entry.Name, entry.Selectors)
+			}
+		}
+		return
+	}
+	t.Fatal("missing target list")
 }
