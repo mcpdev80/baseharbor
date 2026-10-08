@@ -161,3 +161,18 @@ func TestFullDestroyPreservesGlobalOwnershipOnHostCAFailure(t *testing.T) {
 		t.Fatalf("destroy discarded ownership evidence: %v", err)
 	}
 }
+
+func TestFullDestroyJSONReportsPreservedCAOnFailure(t *testing.T) {
+ t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+ t.Setenv("XDG_DATA_HOME", t.TempDir())
+ t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(),"runtime-state"))
+ original:=removeHostTrustForFullDestroy
+ removeHostTrustForFullDestroy=func(_ context.Context,_ string)(hosttrust.RemovalResult,error){
+  return hosttrust.RemovalResult{Preserved:[]hosttrust.AnchorRecord{{Fingerprint:strings.Repeat("f",64),Path:"/test/operator-owned.crt"}}},errors.New("fingerprint changed")
+ }
+ defer func(){removeHostTrustForFullDestroy=original}()
+ var out bytes.Buffer
+ err:=runtimeDestroyCommand(context.Background(),[]string{"--all","--yes","--json"},&out,&out)
+ if err==nil{t.Fatal("unsafe destroy reported success")}
+ if !strings.Contains(out.String(),"\"PRESERVED\"")||!strings.Contains(out.String(),"operator-owned.crt"){t.Fatalf("JSON did not report preserved CA: %s",out.String())}
+}
