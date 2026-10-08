@@ -1,9 +1,9 @@
 package coreupdate
 
 import (
- "context"
- "errors"
- "fmt"
+	"context"
+	"errors"
+	"fmt"
 )
 
 // ExecuteJournaled runs an already validated release plan against a durable
@@ -12,12 +12,12 @@ import (
 // A verified step is also re-verified before it can be skipped, preventing
 // stale disk state from being mistaken for a live ready provider.
 func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks Hooks) error {
- journal, err := LoadJournal(journalPath, plan.Release)
+	journal, err := LoadJournal(journalPath, plan.Release)
 	if err != nil {
 		return err
 	}
- originalVerify := hooks.Verify
- originalRecord := hooks.Record
+	originalVerify := hooks.Verify
+	originalRecord := hooks.Record
 	if originalVerify == nil || originalRecord == nil {
 		return errors.New("journaled Core updates require live verification and journal hooks")
 	}
@@ -37,6 +37,6 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 		}
 		return originalRecord(ctx, delta, state)
 	}
- // Execute replays incomplete mutations, but skips no provider implicitly.
+	// Execute replays incomplete mutations, but skips no provider implicitly.
 	return Execute(ctx, remaining, hooks)
 }
