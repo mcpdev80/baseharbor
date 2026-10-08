@@ -15,6 +15,9 @@ type patroniInspectionRuntime struct {
 }
 
 func (r patroniInspectionRuntime) ExecProject(_ context.Context, _, _, _, service string, argv ...string) (string, error) {
+	if len(argv) >= 3 && argv[2] == "import urllib.request,sys; sys.stdout.write(urllib.request.urlopen('http://127.0.0.1:8008/cluster',timeout=3).read().decode('utf-8'))" {
+		return `{"members":[{"name":"postgres-member-1","role":"leader","state":"running"},{"name":"postgres-member-2","role":"replica","state":"streaming","lag":0},{"name":"postgres-member-3","role":"replica","state":"streaming","lag":0}]}`, nil
+	}
 	if len(argv) < 3 {
 		return "", errors.New("invalid probe")
 	}
