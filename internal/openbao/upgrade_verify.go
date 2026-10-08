@@ -26,13 +26,14 @@ func VerifyUpgradeManagerPolicyAndAppRole(ctx context.Context, executor Executor
  checks:=[]struct{name,command string}{
   {"manager AppRole","exec bao read -format=json auth/approle/role/baseharbor-manager"},
   {"manager policy","exec bao policy read baseharbor-manager"},
-  {"manager KV access","exec bao kv list -format=json -mount=baseharbor /"},
+  
  }
  for _,check:=range checks {
   response,err:=execWithToken(ctx,executor,files,token,check.command)
   if err!=nil{return fmt.Errorf("OpenBao %s authorization failed",check.name)}
   if strings.TrimSpace(response)=="" {return fmt.Errorf("OpenBao %s returned no observable result",check.name)}
  }
+ if err:=verifyManagerKV(ctx,executor,files,token);err!=nil{return errors.New("OpenBao manager cannot verify protected KV access")}
  return nil
 }
 
