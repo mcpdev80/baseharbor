@@ -149,6 +149,9 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 		case "target-access":
 			finding.Class = doctorNeedsInput
 			finding.Action = "reconnect the authenticated remote Target and rerun baha doctor"
+		case "host-trust-ownership":
+            finding.Class = doctorNeedsConfirmation
+            finding.Action = "review BaseHarbor-owned trust anchors with 'baha trust status', then run 'baha trust uninstall --yes' only if they should be removed"
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
