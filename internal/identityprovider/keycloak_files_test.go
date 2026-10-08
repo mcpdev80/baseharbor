@@ -78,47 +78,67 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 }
 
 func TestKeycloakHAPostgresHAProxyUsesRuntimeDNS(t *testing.T) {
- dir:=t.TempDir()
- if err:=ensureKeycloakPostgresHA(dir);err!=nil{t.Fatal(err)}
- config,err:=os.ReadFile(filepath.Join(dir,"db-ha","haproxy.cfg"))
- if err!=nil{t.Fatal(err)}
- got:=string(config)
- for _,required:=range []string{"resolvers container_dns","parse-resolv-conf","resolvers container_dns resolve-prefer ipv4 init-addr last,none"} {
-  if !strings.Contains(got,required) {t.Fatalf("HAProxy must refresh DNS after runtime recovery: missing %q",required)}
- }
+	dir := t.TempDir()
+	if err := ensureKeycloakPostgresHA(dir); err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile(filepath.Join(dir, "db-ha", "haproxy.cfg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(config)
+	for _, required := range []string{"resolvers container_dns", "parse-resolv-conf", "resolvers container_dns resolve-prefer ipv4 init-addr last,none"} {
+		if !strings.Contains(got, required) {
+			t.Fatalf("HAProxy must refresh DNS after runtime recovery: missing %q", required)
+		}
+	}
 }
 
 func TestKeycloakSingleComposeHasNoHAResources(t *testing.T) {
- app := application.New("demo", "prod", false, false, false)
- files := KeycloakFiles{Project:"test",ConsumerNetwork:"test-identity",InternalNetwork:"test-identity-internal"}
- got := keycloakCompose(app,files)
- for _,want:=range []string{"  keycloak-1:","  keycloak-db:","  keycloak-db-init:","  keycloak-db-data:"} {
-  if !strings.Contains(got,want) {t.Errorf("single mode missing %q",want)}
- }
- for _,unwanted:=range []string{"  keycloak-2:","  keycloak-3:","keycloak-db-member-1:","keycloak-db-etcd-1:","keycloak-db-tls:/run/baseharbor/db-tls:ro"} {
-  if strings.Contains(got,unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" { t.Errorf("non-HA contains %q",unwanted) }
- }
- if strings.Count(got,"  keycloak-1:")!=1 {t.Error("single mode has duplicate member")}
+	app := application.New("demo", "prod", false, false, false)
+	files := KeycloakFiles{Project: "test", ConsumerNetwork: "test-identity", InternalNetwork: "test-identity-internal"}
+	got := keycloakCompose(app, files)
+	for _, want := range []string{"  keycloak-1:", "  keycloak-db:", "  keycloak-db-init:", "  keycloak-db-data:"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("single mode missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"  keycloak-2:", "  keycloak-3:", "keycloak-db-member-1:", "keycloak-db-etcd-1:", "keycloak-db-tls:/run/baseharbor/db-tls:ro"} {
+		if strings.Contains(got, unwanted) && unwanted != "keycloak-db-tls:/run/baseharbor/db-tls:ro" {
+			t.Errorf("non-HA contains %q", unwanted)
+		}
+	}
+	if strings.Count(got, "  keycloak-1:") != 1 {
+		t.Error("single mode has duplicate member")
+	}
 }
 
 func TestKeycloakTopologyComposeYAMLValid(t *testing.T) {
- for _,ha:=range []bool{false,true} {
-  app:=application.WithHA(application.New("demo","prod",false,false,false),ha)
-  files:=KeycloakFiles{Project:"owned",ConsumerNetwork:"owned-consumer",InternalNetwork:"owned-internal"}
-  var document struct {
-   Services map[string]yaml.Node `yaml:"services"`
-   Volumes map[string]yaml.Node `yaml:"volumes"`
-  }
-  if err:=yaml.Unmarshal([]byte(keycloakCompose(app,files)),&document);err!=nil {t.Fatalf("HA=%v invalid compose: %v",ha,err)}
-  count:=1
-  if ha {count=3}
-  for n:=1;n<=3;n++ {
-   name:=fmt.Sprintf("keycloak-%d",n)
-   _,ok:=document.Services[name]
-   if ok!=(n<=count) {t.Errorf("HA=%v service %s present=%v",ha,name,ok)}
-  }
-  _,etcd:=document.Services["keycloak-db-etcd-1"]
-  _,single:=document.Volumes["keycloak-db-data"]
-  if etcd!=ha || single==ha {t.Errorf("HA=%v unexpected SQL realization etcd=%v singleVolume=%v",ha,etcd,single)}
- }
+	for _, ha := range []bool{false, true} {
+		app := application.WithHA(application.New("demo", "prod", false, false, false), ha)
+		files := KeycloakFiles{Project: "owned", ConsumerNetwork: "owned-consumer", InternalNetwork: "owned-internal"}
+		var document struct {
+			Services map[string]yaml.Node `yaml:"services"`
+			Volumes  map[string]yaml.Node `yaml:"volumes"`
+		}
+		if err := yaml.Unmarshal([]byte(keycloakCompose(app, files)), &document); err != nil {
+			t.Fatalf("HA=%v invalid compose: %v", ha, err)
+		}
+		count := 1
+		if ha {
+			count = 3
+		}
+		for n := 1; n <= 3; n++ {
+			name := fmt.Sprintf("keycloak-%d", n)
+			_, ok := document.Services[name]
+			if ok != (n <= count) {
+				t.Errorf("HA=%v service %s present=%v", ha, name, ok)
+			}
+		}
+		_, etcd := document.Services["keycloak-db-etcd-1"]
+		_, single := document.Volumes["keycloak-db-data"]
+		if etcd != ha || single == ha {
+			t.Errorf("HA=%v unexpected SQL realization etcd=%v singleVolume=%v", ha, etcd, single)
+		}
+	}
 }
