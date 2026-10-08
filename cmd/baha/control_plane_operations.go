@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"os"
- goruntime "runtime"
- "fmt"
+	goruntime "runtime"
 )
 
 type publicControlPlaneCheck struct {
@@ -152,7 +152,9 @@ func requireControlPlaneReady(result controlPlaneReport) error {
 	return nil
 }
 
-func selectedRuntimeDoctorMessage(provider string,err error) string {
- if err != nil {return fmt.Sprintf("%s unavailable: %v",provider,err)}
- return provider+" available"
+func selectedRuntimeDoctorMessage(provider string, err error) string {
+	if err != nil {
+		return fmt.Sprintf("%s unavailable: %v", provider, err)
+	}
+	return provider + " available"
 }
