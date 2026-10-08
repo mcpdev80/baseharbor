@@ -15,7 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
- bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 const defaultReleaseAPIBase = "https://api.github.com/repos/mcpdev80/baseharbor"
@@ -40,25 +40,25 @@ type baseHarborRelease struct {
 }
 
 type selfUpdateCheck struct {
-	Installed          string                  `json:"installed"`
-	Channel            string                  `json:"channel"`
-	Target             string                  `json:"target"`
-	ReleaseURL         string                  `json:"release_url"`
-	AssetName          string                  `json:"asset_name"`
-	AssetURL           string                  `json:"asset_url"`
-	AssetDigest        string                  `json:"asset_digest"`
-	ChecksumsURL       string                  `json:"checksums_url"`
-	Relation           string                  `json:"relation"`
-	Platform           string                  `json:"platform"`
-	Prerelease         bool                    `json:"prerelease"`
-	CoreReconciliation string                  `json:"core_reconciliation"`
-	CoreExpected       []coreupdate.Desired    `json:"core_expected,omitempty"`
-	CoreBacking        []coreupdate.BackingPin `json:"core_backing,omitempty"`
- CorePlan []coreupdate.Delta `json:"core_plan,omitempty"`
- CoreInspectionError string `json:"core_inspection_error,omitempty"`
-	CoreInstallationID string                  `json:"core_installation_id,omitempty"`
-	CoreInstallReady   bool                    `json:"core_install_ready,omitempty"`
-	CoreInstallPhase   string                  `json:"core_install_phase,omitempty"`
+	Installed           string                  `json:"installed"`
+	Channel             string                  `json:"channel"`
+	Target              string                  `json:"target"`
+	ReleaseURL          string                  `json:"release_url"`
+	AssetName           string                  `json:"asset_name"`
+	AssetURL            string                  `json:"asset_url"`
+	AssetDigest         string                  `json:"asset_digest"`
+	ChecksumsURL        string                  `json:"checksums_url"`
+	Relation            string                  `json:"relation"`
+	Platform            string                  `json:"platform"`
+	Prerelease          bool                    `json:"prerelease"`
+	CoreReconciliation  string                  `json:"core_reconciliation"`
+	CoreExpected        []coreupdate.Desired    `json:"core_expected,omitempty"`
+	CoreBacking         []coreupdate.BackingPin `json:"core_backing,omitempty"`
+	CorePlan            []coreupdate.Delta      `json:"core_plan,omitempty"`
+	CoreInspectionError string                  `json:"core_inspection_error,omitempty"`
+	CoreInstallationID  string                  `json:"core_installation_id,omitempty"`
+	CoreInstallReady    bool                    `json:"core_install_ready,omitempty"`
+	CoreInstallPhase    string                  `json:"core_install_phase,omitempty"`
 }
 
 type selfUpdateOptions struct {
@@ -192,8 +192,8 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 	var coreExpected []coreupdate.Desired
 	var coreBacking []coreupdate.BackingPin
 	var coreState coreinstallation.State
- var corePlan []coreupdate.Delta
- var coreInspectionError string
+	var corePlan []coreupdate.Delta
+	var coreInspectionError string
 	if _, installedCore := existingControlPlaneForSelfUpdate(ctx); installedCore {
 		coreReconciliation = "unavailable"
 		targetInfo, targetErr := effectiveTarget(ctx)
@@ -208,43 +208,49 @@ func inspectSelfUpdate(ctx context.Context, installed string, opts selfUpdateOpt
 		}
 		if manifest, err := coreupdate.LoadRelease(target); err == nil {
 			coreExpected, coreBacking = manifest.Providers, manifest.Backing
-            if coreState.ID != "" {
-                runtimeTarget, targetErr := effectiveTarget(ctx)
-                if targetErr != nil {coreInspectionError = targetErr.Error()} else {
-                    provider, providerErr := detectRuntimeForTarget(ctx,runtimeTarget)
-                    if providerErr != nil {coreInspectionError = providerErr.Error()} else {
-                        plan, planErr := inspectCoreRuntimePlan(ctx,target,coreState,provider)
-                        if planErr != nil {coreInspectionError = planErr.Error()} else {
-                           corePlan = plan.Deltas
-                           coreReconciliation = "planned_read_only"
-                        }
-                    }
-                }
-            }
+			if coreState.ID != "" {
+				runtimeTarget, targetErr := effectiveTarget(ctx)
+				if targetErr != nil {
+					coreInspectionError = targetErr.Error()
+				} else {
+					provider, providerErr := detectRuntimeForTarget(ctx, runtimeTarget)
+					if providerErr != nil {
+						coreInspectionError = providerErr.Error()
+					} else {
+						plan, planErr := inspectCoreRuntimePlan(ctx, target, coreState, provider)
+						if planErr != nil {
+							coreInspectionError = planErr.Error()
+						} else {
+							corePlan = plan.Deltas
+							coreReconciliation = "planned_read_only"
+						}
+					}
+				}
+			}
 		} else {
 			coreReconciliation = "unavailable_unpinned"
 		}
 	}
 	return selfUpdateCheck{
-		CoreReconciliation: coreReconciliation,
-		CoreInstallationID: coreState.ID,
-		CoreInstallReady:   coreState.Ready,
-		CoreInstallPhase:   coreState.Phase,
-		CoreExpected:       coreExpected,
-		CoreBacking:        coreBacking,
-        CorePlan: corePlan,
-        CoreInspectionError: coreInspectionError,
-		Installed:          installedNormalized,
-		Channel:            opts.Channel,
-		Target:             target,
-		ReleaseURL:         release.HTMLURL,
-		AssetName:          assetName,
-		AssetURL:           assetURL,
-		AssetDigest:        assetDigest,
-		ChecksumsURL:       checksumsURL,
-		Relation:           relation,
-		Platform:           runtime.GOOS + "/" + runtime.GOARCH,
-		Prerelease:         release.Prerelease,
+		CoreReconciliation:  coreReconciliation,
+		CoreInstallationID:  coreState.ID,
+		CoreInstallReady:    coreState.Ready,
+		CoreInstallPhase:    coreState.Phase,
+		CoreExpected:        coreExpected,
+		CoreBacking:         coreBacking,
+		CorePlan:            corePlan,
+		CoreInspectionError: coreInspectionError,
+		Installed:           installedNormalized,
+		Channel:             opts.Channel,
+		Target:              target,
+		ReleaseURL:          release.HTMLURL,
+		AssetName:           assetName,
+		AssetURL:            assetURL,
+		AssetDigest:         assetDigest,
+		ChecksumsURL:        checksumsURL,
+		Relation:            relation,
+		Platform:            runtime.GOOS + "/" + runtime.GOARCH,
+		Prerelease:          release.Prerelease,
 	}, nil
 }
 
@@ -315,17 +321,19 @@ func formatSelfUpdateCheck(out io.Writer, check selfUpdateCheck) {
 		fmt.Fprintf(out, "Core installation: %s (phase: %s, ready: %t)\n", check.CoreInstallationID, check.CoreInstallPhase, check.CoreInstallReady)
 	}
 	if check.CoreReconciliation == "planned_read_only" {
-        fmt.Fprintln(out,"Core provider plan (read-only; upgrade not yet available):")
-        for _, delta := range check.CorePlan {
-           fmt.Fprintf(out,"  %s %s %s -> %s (%s)\n",delta.Installed.Kind,delta.Installed.Instance,delta.Installed.Version,delta.Desired.Version,delta.Classification)
-        }
-    }
-    if check.CoreInspectionError != "" {fmt.Fprintf(out,"Core inventory unavailable: %s\n",check.CoreInspectionError)}
-    if check.CoreReconciliation == "unavailable_unpinned" {
+		fmt.Fprintln(out, "Core provider plan (read-only; upgrade not yet available):")
+		for _, delta := range check.CorePlan {
+			fmt.Fprintf(out, "  %s %s %s -> %s (%s)\n", delta.Installed.Kind, delta.Installed.Instance, delta.Installed.Version, delta.Desired.Version, delta.Classification)
+		}
+	}
+	if check.CoreInspectionError != "" {
+		fmt.Fprintf(out, "Core inventory unavailable: %s\n", check.CoreInspectionError)
+	}
+	if check.CoreReconciliation == "unavailable_unpinned" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; no release-owned immutable provider set is installed for this target")
 	} else if check.CoreReconciliation == "planned_read_only" {
-        fmt.Fprintln(out,"Core provider upgrade: unavailable until durable runtime lifecycle is verified")
-    } else if check.CoreReconciliation == "unavailable" {
+		fmt.Fprintln(out, "Core provider upgrade: unavailable until durable runtime lifecycle is verified")
+	} else if check.CoreReconciliation == "unavailable" {
 		fmt.Fprintln(out, "Core provider upgrade: unavailable; installed SQL/Secrets/Identity must not be upgraded by binary-only update")
 	} else {
 		fmt.Fprintln(out, "Core provider upgrade: not required for current installation")
@@ -450,26 +458,41 @@ func comparePrerelease(left, right string) int {
 }
 
 func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state coreinstallation.State, runtimeProvider bhruntime.RuntimeProvider) (coreupdate.Plan, error) {
- catalog, err := coreupdate.LoadRelease(targetVersion)
- if err != nil { return coreupdate.Plan{}, err }
- if !state.Ready || state.ID == "" { return coreupdate.Plan{}, errors.New("Core installation is not ready for provider inventory") }
- services := []struct{kind coreupdate.ProviderKind; project, service string}{
-  {coreupdate.SQL, bhruntime.SharedProjectName(state.Spec.Target), "postgres-member-1"},
-  {coreupdate.Secrets, bhruntime.SharedProjectName(state.Spec.Target), "openbao-member-1"},
-  {coreupdate.Identity, bhruntime.SharedProjectName(state.Spec.Target + "-core"), "keycloak-1"},
- }
- var existing []coreupdate.Realization
- for _, item := range services {
-  id, err := runtimeProvider.ProjectServiceImageIdentity(ctx,item.project,item.service)
-  if err != nil { return coreupdate.Plan{}, fmt.Errorf("inspect Core %s runtime image: %w",item.kind,err) }
-  ref := strings.TrimSpace(id.Reference)
-  pos := strings.LastIndex(ref,":")
-  if pos <= strings.LastIndex(ref,"/") { return coreupdate.Plan{},fmt.Errorf("Core %s runtime version is not explicit",item.kind) }
-  v := ref[pos+1:]
-  if item.kind == coreupdate.SQL { v = strings.SplitN(v,"-",2)[0] }
-  digest := strings.TrimSpace(id.Digest)
-  if at := strings.Index(digest,"@sha256:"); at >= 0 { digest = digest[at+1:] }
-  existing = append(existing,coreupdate.Realization{Kind:item.kind,Installation:state.ID,Scope:"shared",Instance:item.service,Owner:"baseharbor",Image:ref,Digest:digest,Version:v})
- }
- return coreupdate.Build(targetVersion, existing, catalog.Providers)
+	catalog, err := coreupdate.LoadRelease(targetVersion)
+	if err != nil {
+		return coreupdate.Plan{}, err
+	}
+	if !state.Ready || state.ID == "" {
+		return coreupdate.Plan{}, errors.New("Core installation is not ready for provider inventory")
+	}
+	services := []struct {
+		kind             coreupdate.ProviderKind
+		project, service string
+	}{
+		{coreupdate.SQL, bhruntime.SharedProjectName(state.Spec.Target), "postgres-member-1"},
+		{coreupdate.Secrets, bhruntime.SharedProjectName(state.Spec.Target), "openbao-member-1"},
+		{coreupdate.Identity, bhruntime.SharedProjectName(state.Spec.Target + "-core"), "keycloak-1"},
+	}
+	var existing []coreupdate.Realization
+	for _, item := range services {
+		id, err := runtimeProvider.ProjectServiceImageIdentity(ctx, item.project, item.service)
+		if err != nil {
+			return coreupdate.Plan{}, fmt.Errorf("inspect Core %s runtime image: %w", item.kind, err)
+		}
+		ref := strings.TrimSpace(id.Reference)
+		pos := strings.LastIndex(ref, ":")
+		if pos <= strings.LastIndex(ref, "/") {
+			return coreupdate.Plan{}, fmt.Errorf("Core %s runtime version is not explicit", item.kind)
+		}
+		v := ref[pos+1:]
+		if item.kind == coreupdate.SQL {
+			v = strings.SplitN(v, "-", 2)[0]
+		}
+		digest := strings.TrimSpace(id.Digest)
+		if at := strings.Index(digest, "@sha256:"); at >= 0 {
+			digest = digest[at+1:]
+		}
+		existing = append(existing, coreupdate.Realization{Kind: item.kind, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v})
+	}
+	return coreupdate.Build(targetVersion, existing, catalog.Providers)
 }
