@@ -16,11 +16,11 @@ import (
 
 func appPSQLCommand(store application.Store) *cli.Command {
 	return &cli.Command{
-		Name:    "psql",
-		Summary: "Open PostgreSQL for the current application",
-		Usage:   "baha app psql [INSTANCE] [--app NAME]",
+		Name:    "sql",
+		Summary: "Open the managed SQL console for the current application",
+		Usage:   "baha app sql [INSTANCE] [--app NAME]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, instance, err := parseAccessTarget(args, "psql")
+			appName, instance, err := parseAccessTarget(args, "sql")
 			if err != nil {
 				return err
 			}
@@ -50,12 +50,11 @@ func appPSQLCommand(store application.Store) *cli.Command {
 
 func appRedisCommand(store application.Store) *cli.Command {
 	return &cli.Command{
-		Name:    "redis",
-		Aliases: []string{"valkey"},
-		Summary: "Open Valkey/Redis for the current application",
-		Usage:   "baha app redis [INSTANCE] [--app NAME]",
+		Name:    "cache",
+		Summary: "Open the managed cache console for the current application",
+		Usage:   "baha app cache [INSTANCE] [--app NAME]",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			appName, instance, err := parseAccessTarget(args, "redis")
+			appName, instance, err := parseAccessTarget(args, "cache")
 			if err != nil {
 				return err
 			}
