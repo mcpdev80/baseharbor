@@ -185,13 +185,25 @@ func PrepareAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGat
 // A streaming PostgreSQL backup is verified before obtaining DCS evidence;
 // both recovery artifacts precede atomic, idempotent Compose staging, and only
 // then may individual native Patroni members be reconciled.
-func StageAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, dcsCheckpoint DCSCheckpoint, images HAPostgresComposeCheckpoint, installation,cluster,release string,maxLag int64)error{
- if gate==nil{return errors.New("native Patroni rolling provider is unavailable")}
- if err:=gate.VerifyRecovery(ctx);err!=nil{return fmt.Errorf("PostgreSQL physical backup verification failed: %w",err)}
- evidence,err:=dcsCheckpoint.Acquire(ctx,dcs,installation,cluster,release)
- if err!=nil{return err}
- if err:=gate.VerifyRecovery(ctx);err!=nil{return err}
- if err:=VerifyDCSEvidence(ctx,dcs,evidence,installation,cluster,release);err!=nil{return err}
- if err:=images.Stage();err!=nil{return fmt.Errorf("stage owned immutable Spilo images: %w",err)}
- return RollPatroniCluster(ctx,gate,dcs,evidence,installation,cluster,release,maxLag)
+func StageAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCSRecoveryAdapter, dcsCheckpoint DCSCheckpoint, images HAPostgresComposeCheckpoint, installation, cluster, release string, maxLag int64) error {
+	if gate == nil {
+		return errors.New("native Patroni rolling provider is unavailable")
+	}
+	if err := gate.VerifyRecovery(ctx); err != nil {
+		return fmt.Errorf("PostgreSQL physical backup verification failed: %w", err)
+	}
+	evidence, err := dcsCheckpoint.Acquire(ctx, dcs, installation, cluster, release)
+	if err != nil {
+		return err
+	}
+	if err := gate.VerifyRecovery(ctx); err != nil {
+		return err
+	}
+	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, cluster, release); err != nil {
+		return err
+	}
+	if err := images.Stage(); err != nil {
+		return fmt.Errorf("stage owned immutable Spilo images: %w", err)
+	}
+	return RollPatroniCluster(ctx, gate, dcs, evidence, installation, cluster, release, maxLag)
 }
