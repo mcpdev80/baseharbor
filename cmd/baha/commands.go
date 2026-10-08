@@ -171,7 +171,9 @@ func rootCommand() *cli.Command {
 					return writeJSON(out, result)
 				}
 				target, err := effectiveTarget(ctx)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				fmt.Fprintf(out, "Selection source: %s (%s)\n", target.Name, targetSelectionOrigin(ctx))
 				return runtimeStatus(ctx, out)
 			},
