@@ -94,7 +94,7 @@ nav:
   - Security-/Trust-Befehle: cli/security-trust.md
   - Extension artifact trust: spec/extension-artifact-trust-v1.md
 - Betrieb:
-  - Fehlerbehebung (EN): https://mcpdev80.github.io/baseharbor/troubleshooting/
+  - Fehlerbehebung: troubleshooting/index.md
   - Fehler: reference/errors.md
 - Automation und Agents:
   - Automation-Befehle: cli/automation-agents.md
@@ -132,11 +132,11 @@ nav:
   - Entwicklungsrichtlinien: DEVELOPMENT_GUIDELINES.md
   - Doku-Stil: STYLE_GUIDE.md
   - Release-Anforderungen: development/v0.4.23-release-requirements.md
-  - Architekturentscheidungen (EN): https://mcpdev80.github.io/baseharbor/decisions/
+  - Architekturentscheidungen: decisions/index.md
   - Spezifikationen:
     - Überblick: spec/README.md
     - Application Contract v1: spec/application-contract-v1.md
-    - Provider Contract v1 (EN): https://mcpdev80.github.io/baseharbor/spec/provider-contract-v1/
+    - Provider Contract v1: spec/provider-contract-v1.md
     - Development Extension v1: spec/development-extension-v1.md
     - Reconciliation v1: spec/reconciliation-v1.md
     - Machine Interface v1: spec/machine-interface-v1.md
@@ -150,7 +150,7 @@ nav:
     - Application runtime identity: spec/application-runtime-identity.md
     - Runtime broker security: spec/runtime-secret-broker-security.md
     - Standards-first-Verträge: spec/standards-first.md
-    - Standards matrix (EN): https://mcpdev80.github.io/baseharbor/spec/standards-matrix/
+    - Standards matrix: spec/standards-matrix.md
 - Projekt:
   - Roadmap: roadmap.md
   - Release Notes: releases/index.md
