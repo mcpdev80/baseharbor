@@ -181,7 +181,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "doctor",
 			Summary: "Diagnose the current application repository, otherwise the control plane",
-			Usage:   "baha doctor [--fix] [-o json|--output json]",
+			Usage:   "baha doctor [--fix --yes] [-o json|--output json]",
 			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if inApplicationRepository() {
