@@ -39,6 +39,9 @@ func TestDCSCheckpointPersistsAndRejectsTamper(t *testing.T) {
 	if fake.snapshots != 1 {
 		t.Fatalf("recreated snapshot on resume: %d", fake.snapshots)
 	}
+	if _, err := receipt.Acquire(context.Background(), fake, "core", "foreign-target", "db", "0.4.24"); err == nil {
+		t.Fatal("foreign target reused backup")
+	}
 	if _, err := receipt.Acquire(context.Background(), fake, "foreign", "target", "db", "0.4.24"); err == nil {
 		t.Fatal("foreign owner reused backup")
 	}
