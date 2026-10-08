@@ -67,6 +67,7 @@ func rootCommand() *cli.Command {
 
 	root.Children = []*cli.Command{
 		humanNewCommand(),
+		humanOpenCommand(store),
 		{
 			Name:    "init",
 			Summary: "Initialize or adopt the application in the current repository",
