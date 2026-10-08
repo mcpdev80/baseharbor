@@ -15,7 +15,7 @@ import (
 
 // inspectIsolatedCoreProviders enumerates registered, applied application projects.
 // No name-prefix sweep can authorize a foreign container for a Core update.
-func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvider, target string, catalog coreupdate.ReleaseManifest) ([]coreupdate.Delta, error) {
+func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvider, target, runtimeKind string, catalog coreupdate.ReleaseManifest) ([]coreupdate.Delta, error) {
 	records, err := deployment.ListDeployments(target)
 	if err != nil {
 		return nil, fmt.Errorf("inspect protected deployment registry: %w", err)
@@ -23,6 +23,7 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 	if len(records) == 0 {
 		return nil, nil
 	}
+    if strings.TrimSpace(runtimeKind)==""{return nil,errors.New("Core runtime kind required for isolated provider inventory")}
 	containers, err := rt.ListRuntimeContainers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("inspect application-scoped runtime containers: %w", err)
@@ -37,6 +38,9 @@ func inspectIsolatedCoreProviders(ctx context.Context, rt bhruntime.RuntimeProvi
 		if record.Identity.Target != target {
 			return nil, errors.New("deployment registry returned different owning Target")
 		}
+        if record.Applied.RuntimeProvider!=runtimeKind{
+            return nil,fmt.Errorf("deployment %s runtime provider differs from selected Core runtime",record.Identity.DeploymentID)
+        }
 		if len(record.Applied.Intent) == 0 {
 			return nil, fmt.Errorf("deployment %s lacks protected applied intent", record.Identity.DeploymentID)
 		}
