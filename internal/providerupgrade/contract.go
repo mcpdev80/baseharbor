@@ -2,6 +2,7 @@ package providerupgrade
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,6 +99,9 @@ func (r Request) Validate() error {
 	}
 	if !strings.HasPrefix(r.TargetDigest, "sha256:") || len(r.TargetDigest) != len("sha256:")+64 {
 		return errors.New("target digest must be sha256")
+	}
+	if _, err := hex.DecodeString(strings.TrimPrefix(r.TargetDigest, "sha256:")); err != nil {
+		return errors.New("target digest must contain 64 hexadecimal characters")
 	}
 	return nil
 }
