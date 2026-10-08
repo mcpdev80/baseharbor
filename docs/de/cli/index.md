@@ -18,3 +18,17 @@ Für den normalen Application-Ablauf: neue Anwendung mit `baha app new` oder bes
 - [Globale Optionen](global-options.md)
 
 Die [vollständige Befehlsreferenz (EN)](https://mcpdev80.github.io/baseharbor/cli/command-index/) dokumentiert die genaue aktuelle Oberfläche. Namen und Flags werden nicht übersetzt.
+
+
+## Ergänzende Befehlsreferenz
+
+Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
+
+```text
+baha app new
+baha app init
+baha up
+baha status
+baha doctor
+baha down
+```
