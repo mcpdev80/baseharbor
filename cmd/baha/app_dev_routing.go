@@ -134,7 +134,6 @@ type developmentRoutePlan struct {
 	groups    []devgateway.OwnerRoutes
 }
 
-
 // diagnoseDevelopmentGatewayVerification keeps upstream failures separate from
 // canonical hostname/route registration errors. A 502/503/504 does not prove
 // that the gateway route is absent, and internal proxy files are not user help.
