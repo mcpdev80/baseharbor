@@ -19,14 +19,15 @@ import (
 func trustCommand() *cli.Command {
 	cmd := &cli.Command{
 		Name:    "trust",
-		Summary: "Inspect, export or explicitly install the managed local BaseHarbor CA",
-		Usage:   "baha trust <status|export|install> [options]",
+		Summary: "Inspect, export, install or uninstall the managed local BaseHarbor CA",
+		Usage:   "baha trust <status|export|install|uninstall> [options]",
 		Long:    "Operates only on public trust material for the managed-local issuer. Private CA keys remain inside the issuer provider. External PKI and BYOC trust roots are never claimed or installed as BaseHarbor-owned host trust.",
 	}
 	cmd.Children = []*cli.Command{
 		trustStatusCommand(),
 		trustExportCommand(),
 		trustInstallCommand(),
+        trustUninstallCommand(),
 	}
 	return cmd
 }
@@ -143,6 +144,35 @@ func trustInstallCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+
+func trustUninstallCommand() *cli.Command {
+ return &cli.Command{
+  Name:"uninstall",
+  Summary:"Remove only fingerprint-verified, BaseHarbor-owned host CA anchors",
+  Usage:"baha trust uninstall --yes",
+  Long:"Never removes foreign CA certificates. Any anchor that cannot be verified is reported as PRESERVED.",
+  Run:func(ctx context.Context,args []string,out,errOut io.Writer)error {
+   filtered,format,err:=parseReadOutputArgs(args,"trust uninstall")
+   if err!=nil{return err}
+   confirmed:=false
+   for _,arg:=range filtered {
+    if arg=="--yes" || arg=="-y" {confirmed=true;continue}
+    return usageError("unknown argument "+arg,"Usage: baha trust uninstall --yes")
+   }
+   if !confirmed{return usageError("baha trust uninstall requires explicit --yes consent","Re-run 'baha trust uninstall --yes'.")}
+   dataDir,err:=bhruntime.DataDir("")
+   if err!=nil{return err}
+   result,removeErr:=hosttrust.RemoveOwnedDetailed(ctx,dataDir)
+   if format==outputJSON {if err:=writeJSON(out,result);err!=nil{return err}} else {
+    for _,item:=range result.Removed {fmt.Fprintf(out,"REMOVED host CA %s %s\n",item.Fingerprint,item.Path)}
+    for _,item:=range result.Preserved {fmt.Fprintf(out,"PRESERVED host CA %s %s\n",item.Fingerprint,item.Path)}
+    if len(result.Removed)==0 && len(result.Preserved)==0 {fmt.Fprintln(out,"No BaseHarbor-owned host CA anchors recorded.")}
+   }
+   return removeErr
+  },
+ }
 }
 
 func parseTrustOutputArg(args []string) (string, error) {
