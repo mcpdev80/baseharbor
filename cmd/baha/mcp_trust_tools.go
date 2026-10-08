@@ -18,6 +18,11 @@ type machineTrustInstallInput struct {
 }
 
 func registerMCPTrustTools(server *mcp.Server) {
+ mcp.AddTool(server,machineMCPTool("trust.uninstall","Remove only recorded BaseHarbor-owned CA anchors from this execution host after explicit approval.",false),func(ctx context.Context,req *mcp.CallToolRequest,input machineTrustInstallInput)(*mcp.CallToolResult,any,error){
+  result,err:=uninstallManagedTrust(withTargetOverride(ctx,input.Target),input.Approval)
+  if err!=nil{return machineMCPFailure(err)}
+  return nil,result,nil
+ })
 	mcp.AddTool(server, machineMCPTool("trust.status", "Inspect managed public CA trust on the execution host without mutation.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTrustInput) (*mcp.CallToolResult, any, error) {
 		result, err := inspectManagedTrust(withTargetOverride(ctx, input.Target))
 		if err != nil {
