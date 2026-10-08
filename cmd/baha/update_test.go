@@ -258,7 +258,7 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 	}
 	state := coreinstallation.State{ID: "owned-core", Ready: true, Spec: coreinstallation.Spec{Target: namespace}}
 	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
-    images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
+	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
 	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
 	if err != nil {
 		t.Fatal(err)
@@ -325,11 +325,15 @@ func TestCoreInventoryRejectsIncompleteOwnedState(t *testing.T) {
 }
 
 func TestCoreHAInventoryRejectsImageDriftAndMissingPeers(t *testing.T) {
- state:=coreinstallation.State{ID:"owned-ha",Ready:true,Spec:coreinstallation.Spec{Target:"test-core-update",HA:true}}
- project:=bhruntime.SharedProjectName(state.Spec.Target)
- primary:=bhruntime.ImageIdentity{Reference:"ghcr.io/zalando/spilo-18:4.1-p2",Digest:"sha256:"+strings.Repeat("a",64)}
- images:=map[string]bhruntime.ImageIdentity{project+"/postgres-member-1":primary,project+"/postgres-member-2":primary}
- if _,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,updateInventoryRuntime{images:images});err==nil || !strings.Contains(err.Error(),"postgres-member-3") {t.Fatalf("missing HA peer accepted: %v",err)}
- images[project+"/postgres-member-3"]=bhruntime.ImageIdentity{Reference:primary.Reference,Digest:"sha256:"+strings.Repeat("b",64)}
- if _,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,updateInventoryRuntime{images:images});err==nil || !strings.Contains(err.Error(),"disagrees") {t.Fatalf("HA image drift accepted: %v",err)}
+	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
+	project := bhruntime.SharedProjectName(state.Spec.Target)
+	primary := bhruntime.ImageIdentity{Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "sha256:" + strings.Repeat("a", 64)}
+	images := map[string]bhruntime.ImageIdentity{project + "/postgres-member-1": primary, project + "/postgres-member-2": primary}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil || !strings.Contains(err.Error(), "postgres-member-3") {
+		t.Fatalf("missing HA peer accepted: %v", err)
+	}
+	images[project+"/postgres-member-3"] = bhruntime.ImageIdentity{Reference: primary.Reference, Digest: "sha256:" + strings.Repeat("b", 64)}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil || !strings.Contains(err.Error(), "disagrees") {
+		t.Fatalf("HA image drift accepted: %v", err)
+	}
 }
