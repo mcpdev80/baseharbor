@@ -41,6 +41,7 @@ type targetInspectionResult struct {
 	Environment        string                             `json:"environment,omitempty"`
 	Repository         string                             `json:"repository,omitempty"`
 	Effective          string                             `json:"effective"`
+	SelectionOrigin    string                             `json:"selection_origin"`
 	OperatorAuth       map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 	AccessCapabilities *targetaccess.Descriptor           `json:"access_capabilities,omitempty"`
 }
@@ -155,6 +156,7 @@ func targetCommand() *cli.Command {
 			}
 			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
 			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
+			fmt.Fprintf(out, "Selected %s\n", result.SelectionOrigin)
 			fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
 			if result.Target.Scope != "" {
 				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
@@ -345,6 +347,7 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+		SelectionOrigin: targetSelectionOrigin(ctx),
 	}
 	if kind, parseErr := targetaccess.ParseProviderKind(target.AccessProvider); parseErr == nil {
 		if descriptor, builtIn := targetaccess.BuiltInDescriptor(kind); builtIn {
