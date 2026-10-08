@@ -15,7 +15,10 @@ func TestVerifyPatroniQuorum(t *testing.T) {
 	if err != nil || leader != "postgres-member-1" || len(replicas) != 2 {
 		t.Fatalf("healthy quorum rejected: leader=%s replicas=%v err=%v", leader, replicas, err)
 	}
-	for _, tc := range []struct{name string; mutate func([]PatroniMemberState)}{
+	for _, tc := range []struct {
+		name   string
+		mutate func([]PatroniMemberState)
+	}{
 		{"missing", func(m []PatroniMemberState) { m[2].Healthy = false }},
 		{"split_brain", func(m []PatroniMemberState) { m[2].Primary = true; m[2].Replica = false }},
 		{"no_leader", func(m []PatroniMemberState) { m[0].Primary = false; m[0].Replica = true }},
