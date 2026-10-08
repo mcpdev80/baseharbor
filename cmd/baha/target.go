@@ -391,7 +391,9 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
-	if len(args) == 0 { return runGuidedNewLocalTarget(ctx, out, errOut) }
+	if len(args) == 0 {
+		return runGuidedNewLocalTarget(ctx, out, errOut)
+	}
 	filtered, format, err := parseReadOutputArgs(args, "target create")
 	if err != nil {
 		return err
