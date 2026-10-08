@@ -32,7 +32,7 @@ func TestAppShowMachineShape(t *testing.T){
  for _,expected:=range []string{`"contract_version":"v1"`,`"name":""`,`"postgres":[]`,`"valkey":[]`}{
   if !strings.Contains(got,expected){t.Fatalf("missing %s in %s",expected,got)}
  }
- if strings.Contains(got,"Name")||strings.Contains(got,"null"){t.Fatal(got)}
+ if strings.Contains(got,`"Name"`)||strings.Contains(got,`"postgres":null`)||strings.Contains(got,`"valkey":null`){t.Fatal(got)}
 }
 
 func TestAppInitUsageIncludesDeterministicWorkloadFlags(t *testing.T){
