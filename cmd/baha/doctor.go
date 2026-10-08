@@ -69,7 +69,9 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	renderDoctorFindings(term, findings)
 	if !fix {
 		fmt.Fprintln(out, "\nNext:")
-		if hasAutoFixableDoctorFinding(findings) { fmt.Fprintln(out, "  baha doctor --fix") }
+		if hasAutoFixableDoctorFinding(findings) {
+			fmt.Fprintln(out, "  baha doctor --fix")
+		}
 		fmt.Fprintln(out, "  baha doctor --verbose")
 		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
 		return cli.Presented(errors.New("one or more checks failed"))
