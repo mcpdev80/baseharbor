@@ -97,9 +97,11 @@ def main() -> None:
             continue
         if args.segment_count:
             end = min(len(items), args.segment_start + args.segment_count)
-            for i in range(args.segment_start, end):
-                translated = translator(items[i], max_length=512)[0]["translation_text"]
-                print("BH_DE_SEGMENT\t" + json.dumps({"index": i, "translation": translated}, ensure_ascii=False), flush=True)
+            for batch_start in range(args.segment_start, end, 8):
+                batch = items[batch_start:min(end, batch_start + 8)]
+                translated = translator(batch, max_length=512, batch_size=8)
+                for index, result in enumerate(translated, start=batch_start):
+                    print("BH_DE_SEGMENT\t" + json.dumps({"index": index, "translation": result["translation_text"]}, ensure_ascii=False), flush=True)
             continue
         translations = []
         for chunk in range(0, len(items), 16):
