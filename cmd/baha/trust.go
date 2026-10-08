@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
- "os"
+	"os"
 	"strings"
 	"time"
 
@@ -148,51 +148,67 @@ func trustInstallCommand() *cli.Command {
 }
 
 func trustUninstallCommand() *cli.Command {
- return &cli.Command{
-  Name: "uninstall",
-  Summary: "Remove only BaseHarbor-owned host trust anchors",
-  Usage: "baha trust uninstall [--yes] [--json]",
-  Long: "Inspects recorded BaseHarbor host-trust ownership before mutation. Removes only matching owned trust anchors; manually installed and unrelated CA certificates remain untouched. Requires explicit consent to uninstall; non-TTY requires --yes.",
-  Run: func(ctx context.Context,args []string,out,errOut io.Writer)error {
-   filtered, format,err:=parseReadOutputArgs(args,"trust uninstall")
-   if err!=nil{return err}
-   yes:=false
-   for _,arg:=range filtered {
-    switch arg {
-    case "--yes","-y":yes=true
-    default:return usageError("unknown trust uninstall argument "+arg,"Usage: baha trust uninstall [--yes] [--json]")
-    }
-   }
-   records,err:=ownedTrustRecords()
-   if err!=nil{return err}
-   if len(records)==0 {
-    result:=trustUninstallResult{ContractVersion:"v1",Removed:0}
-    if format==outputJSON{return writeJSON(out,result)}
-    fmt.Fprintln(out,"[OK] host trust         no BaseHarbor-owned CA anchors recorded; host trust unchanged")
-    return nil
-   }
-   fmt.Fprintf(errOut,"BaseHarbor-owned host trust anchors: %d\n",len(records))
-   for _,record:=range records{fmt.Fprintf(errOut,"  %s (fingerprint %s, backend %s)\n",record.Path,record.Fingerprint,record.Backend)}
-   if !yes {
-    if format==outputJSON || noInput(ctx) || !readerIsTerminal(guidedTrustInput) {
-     return usageError("trust uninstall requires explicit approval","Run 'baha trust uninstall --yes' after reviewing the owned anchors with 'baha trust status'.")
-    }
-    fmt.Fprint(errOut,"Remove ONLY these BaseHarbor-owned CA anchors? [y/N]: ")
-    response,err:=bufio.NewReader(guidedTrustInput).ReadString('\n')
-    if err!=nil{return fmt.Errorf("read host trust removal approval: %w",err)}
-    answer:=strings.ToLower(strings.TrimSpace(response))
-    if answer!="y"&&answer!="yes"&&answer!="ja"&&answer!="j" {
-     fmt.Fprintln(out,"Host trust unchanged.")
-     return nil
-    }
-   }
-   result,err:=uninstallManagedTrust(ctx,true)
-   if err!=nil{return err}
-   if format==outputJSON{return writeJSON(out,result)}
-   fmt.Fprintf(out,"[OK] host trust         removed %d BaseHarbor-owned anchor(s)\n",result.Removed)
-   return nil
-  },
- }
+	return &cli.Command{
+		Name:    "uninstall",
+		Summary: "Remove only BaseHarbor-owned host trust anchors",
+		Usage:   "baha trust uninstall [--yes] [--json]",
+		Long:    "Inspects recorded BaseHarbor host-trust ownership before mutation. Removes only matching owned trust anchors; manually installed and unrelated CA certificates remain untouched. Requires explicit consent to uninstall; non-TTY requires --yes.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "trust uninstall")
+			if err != nil {
+				return err
+			}
+			yes := false
+			for _, arg := range filtered {
+				switch arg {
+				case "--yes", "-y":
+					yes = true
+				default:
+					return usageError("unknown trust uninstall argument "+arg, "Usage: baha trust uninstall [--yes] [--json]")
+				}
+			}
+			records, err := ownedTrustRecords()
+			if err != nil {
+				return err
+			}
+			if len(records) == 0 {
+				result := trustUninstallResult{ContractVersion: "v1", Removed: 0}
+				if format == outputJSON {
+					return writeJSON(out, result)
+				}
+				fmt.Fprintln(out, "[OK] host trust         no BaseHarbor-owned CA anchors recorded; host trust unchanged")
+				return nil
+			}
+			fmt.Fprintf(errOut, "BaseHarbor-owned host trust anchors: %d\n", len(records))
+			for _, record := range records {
+				fmt.Fprintf(errOut, "  %s (fingerprint %s, backend %s)\n", record.Path, record.Fingerprint, record.Backend)
+			}
+			if !yes {
+				if format == outputJSON || noInput(ctx) || !readerIsTerminal(guidedTrustInput) {
+					return usageError("trust uninstall requires explicit approval", "Run 'baha trust uninstall --yes' after reviewing the owned anchors with 'baha trust status'.")
+				}
+				fmt.Fprint(errOut, "Remove ONLY these BaseHarbor-owned CA anchors? [y/N]: ")
+				response, err := bufio.NewReader(guidedTrustInput).ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("read host trust removal approval: %w", err)
+				}
+				answer := strings.ToLower(strings.TrimSpace(response))
+				if answer != "y" && answer != "yes" && answer != "ja" && answer != "j" {
+					fmt.Fprintln(out, "Host trust unchanged.")
+					return nil
+				}
+			}
+			result, err := uninstallManagedTrust(ctx, true)
+			if err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(out, result)
+			}
+			fmt.Fprintf(out, "[OK] host trust         removed %d BaseHarbor-owned anchor(s)\n", result.Removed)
+			return nil
+		},
+	}
 }
 
 var guidedTrustInput io.Reader = os.Stdin
