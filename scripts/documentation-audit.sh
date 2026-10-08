@@ -154,14 +154,7 @@ for file in "${legacy_root_pages[@]}"; do
   fi
 done
 
-# German docs intentionally contain only maintained human-facing guidance.
-if find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md|cli/[^/]+\.md|how-to/[^/]+\.md|releases/(index|v0\.4\.23)\.md)$' >/dev/null; then
-  echo "documentation audit: German docs must stay in maintained human-facing index/tutorials/explanation/cli/how-to/release notes" >&2
-  find docs/de -type f -name '*.md' | grep -Ev '^docs/de/(index\.md|tutorials/[^/]+\.md|explanation/[^/]+\.md|cli/[^/]+\.md|how-to/[^/]+\.md|releases/(index|v0\.4\.23)\.md)$' >&2 || true
-  exit 1
-fi
-
-if [ -d site/de ]; then
+# EN/DE are both first-class public documentation trees.\n# Verify full coverage before permitting documentation publication.\npython scripts/check_docs_locale_parity.py\n\nif [ -d site/de ]; then
   python scripts/documentation-language-audit.py --built-site
 else
   python scripts/documentation-language-audit.py
