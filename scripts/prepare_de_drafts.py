@@ -26,7 +26,7 @@ def missing_pages(root: Path) -> list[Path]:
             continue
         if not (docs / "de" / rel).is_file():
             result.append(p)
-    return sorted(result)
+    return sorted(result, key=lambda file: (file.stat().st_size, str(file)))
 
 
 def page_segments(source: str) -> tuple[list[str], list[str]]:
