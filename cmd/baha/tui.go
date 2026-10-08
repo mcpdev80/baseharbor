@@ -21,10 +21,10 @@ type tuiApplicationStatusResult = applicationStatusResult
 
 type tuiStatusMsg struct {
 	coreView string
-	result application.StatusResult
-	tls    *applicationTLSObservation
-	doctor tuiDoctorResult
-	err    error
+	result   application.StatusResult
+	tls      *applicationTLSObservation
+	doctor   tuiDoctorResult
+	err      error
 }
 
 type tuiModel struct {
@@ -40,8 +40,8 @@ type tuiModel struct {
 	height        int
 	reducedMotion bool
 	noColor       bool
-	coreView string
-	coreMode bool
+	coreView      string
+	coreMode      bool
 }
 
 func tuiCommand(store application.Store) *cli.Command {
@@ -68,13 +68,12 @@ func tuiCommand(store application.Store) *cli.Command {
 			if !cli.IsTerminal(out) || !readerIsTerminal(os.Stdin) {
 				return usageError("TUI requires an interactive terminal", "Use 'baha status' or 'baha status -o json' when piping or running in CI.")
 			}
-			
 
 			model := tuiModel{
 				ctx:           ctx,
 				store:         store,
 				loading:       true,
-				coreMode: !inApplicationRepository(),
+				coreMode:      !inApplicationRepository(),
 				reducedMotion: opts.ReducedMotion,
 				noColor:       opts.NoColor || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 			}
@@ -95,10 +94,14 @@ func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
 		if m.coreMode {
 			target, err := effectiveTarget(m.ctx)
-			if err != nil { return tuiStatusMsg{err:err} }
+			if err != nil {
+				return tuiStatusMsg{err: err}
+			}
 			status, err := inspectControlPlane(m.ctx)
-			if err != nil { return tuiStatusMsg{err:err} }
-			return tuiStatusMsg{coreView:currentDeviceResources()+"\n"+renderConfiguredTargets()+"\n"+renderCoreTUIStatus(target.Name,target.RuntimeProvider,target.AccessProvider,targetSelectionOrigin(m.ctx),status)}
+			if err != nil {
+				return tuiStatusMsg{err: err}
+			}
+			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status)}
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
@@ -432,37 +435,56 @@ func wrapTUIText(text string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func renderCoreTUIStatus(target,runtime,access,origin string, status controlPlaneReport) string {
- var b strings.Builder
- fmt.Fprintf(&b,"Target       %s (%s)\nRuntime      %s\nAccess       %s\nCore state   %s\n",target,origin,runtime,access,status.State)
- if status.Ready { fmt.Fprintln(&b,"Readiness    READY") } else { fmt.Fprintln(&b,"Readiness    NOT READY") }
- fmt.Fprintf(&b,"Availability %t\n",status.AvailabilitySatisfied)
- if status.AvailabilityDetail!="" {fmt.Fprintf(&b,"HA details   %s\n",status.AvailabilityDetail)}
- fmt.Fprintln(&b,"\nManaged services")
- if len(status.Running)==0 { fmt.Fprintln(&b,"  No running services reported") }
- for _,name:=range status.Running {fmt.Fprintf(&b,"  %s\n",name)}
- fmt.Fprintln(&b,"\nReadiness checks")
- if len(status.Checks)==0 {fmt.Fprintln(&b,"  Not available")}
- for _,check:=range status.Checks {
-  state:="FAILED";if check.Ready {state="OK"}
-  fmt.Fprintf(&b,"  %-8s %s\n",state,check.Name)
- }
- fmt.Fprintln(&b,"\nHost and remote resource metrics are not available through this status contract.")
- return b.String()
+func renderCoreTUIStatus(target, runtime, access, origin string, status controlPlaneReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Target       %s (%s)\nRuntime      %s\nAccess       %s\nCore state   %s\n", target, origin, runtime, access, status.State)
+	if status.Ready {
+		fmt.Fprintln(&b, "Readiness    READY")
+	} else {
+		fmt.Fprintln(&b, "Readiness    NOT READY")
+	}
+	fmt.Fprintf(&b, "Availability %t\n", status.AvailabilitySatisfied)
+	if status.AvailabilityDetail != "" {
+		fmt.Fprintf(&b, "HA details   %s\n", status.AvailabilityDetail)
+	}
+	fmt.Fprintln(&b, "\nManaged services")
+	if len(status.Running) == 0 {
+		fmt.Fprintln(&b, "  No running services reported")
+	}
+	for _, name := range status.Running {
+		fmt.Fprintf(&b, "  %s\n", name)
+	}
+	fmt.Fprintln(&b, "\nReadiness checks")
+	if len(status.Checks) == 0 {
+		fmt.Fprintln(&b, "  Not available")
+	}
+	for _, check := range status.Checks {
+		state := "FAILED"
+		if check.Ready {
+			state = "OK"
+		}
+		fmt.Fprintf(&b, "  %-8s %s\n", state, check.Name)
+	}
+	fmt.Fprintln(&b, "\nHost and remote resource metrics are not available through this status contract.")
+	return b.String()
 }
 
 func renderConfiguredTargets() string {
- cfg,err:=deployment.LoadConfig()
- if err!=nil{return "Registered Targets\n  Unavailable: configuration cannot be read\n"}
- var b strings.Builder
- fmt.Fprintln(&b,"Registered Targets (deployment destinations)")
- names:=cfg.TargetNames()
- if len(names)==0 {fmt.Fprintln(&b,"  None configured")}
- for _,name:=range names{
-  definition:=cfg.Targets[name]
-  fmt.Fprintf(&b,"  %-24s %s (access: %s)\n",name,definition.Runtime.Provider,definition.Access.Reference)
- }
- fmt.Fprintln(&b,"Other / Unassigned")
- fmt.Fprintln(&b,"  Unassigned runtime containers are not inventoried by this read-only Core view.")
- return b.String()
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return "Registered Targets\n  Unavailable: configuration cannot be read\n"
+	}
+	var b strings.Builder
+	fmt.Fprintln(&b, "Registered Targets (deployment destinations)")
+	names := cfg.TargetNames()
+	if len(names) == 0 {
+		fmt.Fprintln(&b, "  None configured")
+	}
+	for _, name := range names {
+		definition := cfg.Targets[name]
+		fmt.Fprintf(&b, "  %-24s %s (access: %s)\n", name, definition.Runtime.Provider, definition.Access.Reference)
+	}
+	fmt.Fprintln(&b, "Other / Unassigned")
+	fmt.Fprintln(&b, "  Unassigned runtime containers are not inventoried by this read-only Core view.")
+	return b.String()
 }
