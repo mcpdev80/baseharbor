@@ -93,3 +93,19 @@ func TestBoundProviderRejectsMissingHooksAndBackup(t *testing.T) {
 		t.Fatal("mutation accepted without verified durable backup")
 	}
 }
+
+func TestProviderRecoveryPointReusesOriginalBackup(t *testing.T) {
+ dir:=t.TempDir()
+ if err:=os.Chmod(dir,0700);err!=nil {t.Fatal(err)}
+ adapter:=&mockBoundAdapter{}
+ txn:=BoundProviderTransaction{Registry:mockBoundRegistry{adapter:adapter},BackupDirectory:dir,RecordExternal:func(context.Context,Delta,string)error{return nil}}
+ delta:=Delta{Installed:Realization{Kind:Secrets,Installation:"core",Scope:"shared",Instance:"openbao",Owner:"baseharbor",Version:"2.7.0",Digest:digestA},Desired:Desired{Kind:Secrets,Version:"2.7.1",Image:"openbao:new",Digest:digestB},Classification:BackupRequired}
+ hook:=txn.Hooks()
+ if err:=hook.RecoveryPoint(context.Background(),delta);err!=nil{t.Fatal(err)}
+ if err:=hook.RecoveryPoint(context.Background(),delta);err!=nil{t.Fatal(err)}
+ if adapter.backupCalls!=1{t.Fatalf("resume recreated backup %d times",adapter.backupCalls)}
+ path,err:=txn.backupPath(delta);if err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(path,[]byte("tamper"),0600);err!=nil{t.Fatal(err)}
+ if err:=hook.RecoveryPoint(context.Background(),delta);err==nil{t.Fatal("corrupted backup receipt reused")}
+ if adapter.backupCalls!=1{t.Fatal("tampered resume created new backup")}
+}
