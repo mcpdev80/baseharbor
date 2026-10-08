@@ -35,3 +35,15 @@ func TestHumanNewExplicitObjectKinds(t *testing.T) {
   }
  }
 }
+
+func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
+ var out bytes.Buffer
+ err := runWithIO(context.Background(), []string{"open","--unknown"}, &out, &out)
+ if err == nil || !strings.Contains(err.Error(), "unknown open option") {
+  t.Fatalf("unrecognized open options must fail before target lookup: %v",err)
+ }
+ endpoint,err := verifiedApplicationOpenURL(resolvedApplication{})
+ if err == nil || endpoint != "" || !strings.Contains(err.Error(), "no declared HTTP exposure") {
+  t.Fatalf("undeclared exposure was opened: %q %v",endpoint,err)
+ }
+}
