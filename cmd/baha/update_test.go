@@ -256,7 +256,7 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 		project + "/openbao-member-1":  {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "docker.io/openbao/openbao@sha256:" + strings.Repeat("b", 64)},
 		idProject + "/keycloak-1":      {Reference: "quay.io/keycloak/keycloak:26.8.0", Digest: "quay.io/keycloak/keycloak@sha256:" + strings.Repeat("c", 64)},
 	}
-	images[idProject+"/keycloak-db"] = bhruntime.ImageIdentity{Reference:"docker.io/library/postgres:18-alpine",Digest:"sha256:"+strings.Repeat("d",64)}
+	images[idProject+"/keycloak-db"] = bhruntime.ImageIdentity{Reference: "docker.io/library/postgres:18-alpine", Digest: "sha256:" + strings.Repeat("d", 64)}
 	state := coreinstallation.State{ID: "owned-core", Ready: true, Spec: coreinstallation.Spec{Target: namespace}}
 	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
 	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
@@ -293,9 +293,9 @@ func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
 	images[project+"/openbao-member-3"] = images[project+"/openbao-member-1"]
 	images[identityProject+"/keycloak-2"] = images[identityProject+"/keycloak-1"]
 	images[identityProject+"/keycloak-3"] = images[identityProject+"/keycloak-1"]
-	images[identityProject+"/keycloak-db-member-1"] = bhruntime.ImageIdentity{Reference:"ghcr.io/zalando/spilo-18:4.1-p2",Digest:"sha256:"+strings.Repeat("a",64)}
-    images[identityProject+"/keycloak-db-member-2"] = images[identityProject+"/keycloak-db-member-1"]
-    images[identityProject+"/keycloak-db-member-3"] = images[identityProject+"/keycloak-db-member-1"]
+	images[identityProject+"/keycloak-db-member-1"] = bhruntime.ImageIdentity{Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "sha256:" + strings.Repeat("a", 64)}
+	images[identityProject+"/keycloak-db-member-2"] = images[identityProject+"/keycloak-db-member-1"]
+	images[identityProject+"/keycloak-db-member-3"] = images[identityProject+"/keycloak-db-member-1"]
 	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
 	if err != nil {
 		t.Fatal(err)
