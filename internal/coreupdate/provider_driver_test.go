@@ -16,6 +16,7 @@ func(o *mockNativeOps)Record(context.Context,Delta,string)error{return nil}
 
 func TestNativeProviderUpdateStagesBacksUpAndVerifies(t *testing.T){
  dir:=t.TempDir()
+ if err:=os.Chmod(dir,0700);err!=nil{t.Fatal(err)}
  compose:=filepath.Join(dir,"provider-compose.yaml")
  if err:=os.WriteFile(compose,[]byte("services:\n  postgres-member-1:\n    image: postgres:18.0\n"),0600);err!=nil{t.Fatal(err)}
  installed:=Realization{Kind:SQL,Installation:"c",Scope:"shared",Instance:"postgres-member-1",Owner:"baseharbor",Image:"postgres:18.0",Version:"18.0",Digest:digestA}
