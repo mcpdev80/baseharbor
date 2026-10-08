@@ -359,3 +359,18 @@ func rejectSymlinkAncestors(path string) error {
 	}
 	return nil
 }
+
+// RecoveryReadiness is supplied by the Core/Patroni orchestrator. Verification
+// must prove both restored etcd quorum and the Patroni DCS consumer state.
+type RecoveryReadiness interface {
+ VerifyEtcdQuorum(context.Context, Identity, SnapshotInfo) error
+ VerifyPatroniDCS(context.Context, Identity, SnapshotInfo) error
+}
+// VerifyOperationalRecovery never treats local files as proof of HA recovery.
+func (s Store) VerifyOperationalRecovery(ctx context.Context, plan RestorePlan, client Restorer, readiness RecoveryReadiness) error {
+ if readiness==nil {return errors.New("Core etcd quorum and Patroni readiness verifier required")}
+ if err:=s.VerifyRecovery(ctx,plan,client);err!=nil{return err}
+ if err:=readiness.VerifyEtcdQuorum(ctx,plan.Identity,plan.Info);err!=nil{return fmt.Errorf("restored etcd quorum not verified: %w",err)}
+ if err:=readiness.VerifyPatroniDCS(ctx,plan.Identity,plan.Info);err!=nil{return fmt.Errorf("Patroni DCS readiness not verified: %w",err)}
+ return nil
+}
