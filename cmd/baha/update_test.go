@@ -277,7 +277,7 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 
 func TestCoreHAUpdateCheckCannotMisclassifySpiloVersion(t *testing.T) {
 	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
-	_, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{bhruntime.SharedProjectName("test-core-update")+"/postgres-member-1": {Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "ghcr.io/zalando/spilo-18@sha256:"+strings.Repeat("a",64)}}})
+	_, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{bhruntime.SharedProjectName("test-core-update") + "/postgres-member-1": {Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "ghcr.io/zalando/spilo-18@sha256:" + strings.Repeat("a", 64)}}})
 	if err == nil || !strings.Contains(err.Error(), "Spilo-backed") {
 		t.Fatalf("HA backing provider was not explicitly rejected: %v", err)
 	}
