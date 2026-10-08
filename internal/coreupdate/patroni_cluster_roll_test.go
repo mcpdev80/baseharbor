@@ -77,10 +77,16 @@ func TestCaptureAndVerifyDCSFailsClosed(t *testing.T) {
 }
 
 func TestPatroniClusterRejectsAmbiguousPostSwitchoverResume(t *testing.T) {
- members:=[]PatroniMemberState{{Name:"pg1",Replica:true,Healthy:true},{Name:"pg2",Primary:true,Healthy:true},{Name:"pg3",Replica:true,Healthy:true}}
- f:=&fakeClusterRoll{resumablePatroniFake:resumablePatroniFake{fakePatroniRoll:fakePatroniRoll{members:members},steps:map[string]string{"pg1":"applying","pg2":"verified","pg3":"verified"}}}
- evidence:=DCSRecoveryEvidence{Installation:"core",Cluster:"cluster",Release:"0.4.24",SnapshotID:"backup",SHA256:strings.Repeat("a",64)}
- err:=RollPatroniCluster(context.Background(),f,fakeDCS{valid:true},evidence,"core","cluster","0.4.24",0)
- if err==nil || !strings.Contains(err.Error(),"original switchover"){t.Fatalf("ambiguous leader resume accepted: %v",err)}
- for _,c:=range f.calls {if strings.HasPrefix(c,"recreate:")||strings.HasPrefix(c,"switch:"){t.Fatalf("mutated ambiguous cluster: %v",f.calls)}}
+	members := []PatroniMemberState{{Name: "pg1", Replica: true, Healthy: true}, {Name: "pg2", Primary: true, Healthy: true}, {Name: "pg3", Replica: true, Healthy: true}}
+	f := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: members}, steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"}}}
+	evidence := DCSRecoveryEvidence{Installation: "core", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "cluster", "0.4.24", 0)
+	if err == nil || !strings.Contains(err.Error(), "original switchover") {
+		t.Fatalf("ambiguous leader resume accepted: %v", err)
+	}
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "recreate:") || strings.HasPrefix(c, "switch:") {
+			t.Fatalf("mutated ambiguous cluster: %v", f.calls)
+		}
+	}
 }
