@@ -438,6 +438,11 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return err
 	}
 	args = filtered
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			return usageError("unknown target delete option "+arg, "Run 'baha target delete --help'; target deletion does not accept --yes.")
+		}
+	}
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
 	}
