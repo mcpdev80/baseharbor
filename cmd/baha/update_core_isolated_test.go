@@ -84,18 +84,23 @@ func TestIsolatedCoreServiceClassifierExcludesAccessProxies(t *testing.T) {
 }
 
 func TestIsolatedCoreInventoryRejectsRuntimeMismatch(t *testing.T) {
- t.Setenv("XDG_DATA_HOME",t.TempDir())
- target:="wrong-runtime"
- m:=application.New("app","dev",true,false,false)
- intent,_:=json.Marshal(m)
- record:=deployment.DeploymentRecord{
-  Version:deployment.DeploymentRecordVersion,
-  Identity:deployment.DeploymentIdentity{DeploymentID:testDeploymentID,ApplicationID:m.ApplicationID,Target:target,Application:m.Name,Environment:m.Environment},
-  Applied:deployment.AppliedDeployment{RuntimeProvider:"docker",Intent:intent},
- }
- if err:=deployment.SaveDeploymentRecord(record);err!=nil{t.Fatal(err)}
- catalog,err:=coreupdate.LoadRelease("0.4.24");if err!=nil{t.Fatal(err)}
- if _,err:=inspectIsolatedCoreProviders(context.Background(),isolatedInventoryRuntime{},target,"podman",catalog);err==nil{
-  t.Fatal("accepted a Docker-owned deployment under Podman Core")
- }
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	target := "wrong-runtime"
+	m := application.New("app", "dev", true, false, false)
+	intent, _ := json.Marshal(m)
+	record := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: deployment.DeploymentIdentity{DeploymentID: testDeploymentID, ApplicationID: m.ApplicationID, Target: target, Application: m.Name, Environment: m.Environment},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Intent: intent},
+	}
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := coreupdate.LoadRelease("0.4.24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectIsolatedCoreProviders(context.Background(), isolatedInventoryRuntime{}, target, "podman", catalog); err == nil {
+		t.Fatal("accepted a Docker-owned deployment under Podman Core")
+	}
 }
