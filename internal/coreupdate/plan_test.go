@@ -156,7 +156,11 @@ func TestExecuteRejectsForgedPlanBeforeHooks(t *testing.T) {
 		{"version_downgrade", func(d *Delta) { d.Desired.Version = "17.9" }},
 		{"postgres_major_upgrade", func(d *Delta) { d.Desired.Version = "19.0" }},
 		{"forged_safe_reconcile", func(d *Delta) { d.Classification = SafeReconcile }},
-        {"restart_unchanged", func(d *Delta) { d.Desired.Image=d.Installed.Image; d.Desired.Version=d.Installed.Version; d.Desired.Digest=d.Installed.Digest }},
+		{"restart_unchanged", func(d *Delta) {
+			d.Desired.Image = d.Installed.Image
+			d.Desired.Version = d.Installed.Version
+			d.Desired.Digest = d.Installed.Digest
+		}},
 		{"forged_migration", func(d *Delta) { d.Classification = MigrationRequired }},
 	}
 	for _, tc := range cases {
