@@ -101,7 +101,7 @@ func (m tuiModel) loadStatus() tea.Cmd {
 			if err != nil {
 				return tuiStatusMsg{err: err}
 			}
-			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status)}
+			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderTargetApplicationInventory(target.Name)}
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
@@ -487,4 +487,13 @@ func renderConfiguredTargets() string {
 	fmt.Fprintln(&b, "Other / Unassigned")
 	fmt.Fprintln(&b, "  Unassigned runtime containers are not inventoried by this read-only Core view.")
 	return b.String()
+}
+
+func renderTargetApplicationInventory(targetName string) string {
+ records,warnings,err:=deployment.ListDeploymentsForDisplay(targetName)
+ if err!=nil {return "Applications\n  Inventory unavailable: "+err.Error()+"\n"}
+ var b strings.Builder
+ fmt.Fprintf(&b,"Applications\n  %d registered deployment(s)\n",len(records))
+ for _,warning:=range warnings {fmt.Fprintf(&b,"  WARN %v\n",warning)}
+ return b.String()
 }
