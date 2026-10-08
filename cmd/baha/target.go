@@ -205,12 +205,16 @@ func targetCommand() *cli.Command {
 					// Listing must remain usable when multiple Targets require a choice.
 					// All other resolver failures (corrupt selection/config) fail closed.
 					if selectionErr != nil {
-						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict { return selectionErr }
+						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict {
+							return selectionErr
+						}
 					}
 					effectiveName := ""
 					if selectionErr == nil {
 						effective, resolveErr := cfg.ResolveTarget(selection, "")
-						if resolveErr != nil { return resolveErr }
+						if resolveErr != nil {
+							return resolveErr
+						}
 						effectiveName = effective.Name
 					}
 					names := cfg.TargetNames()
