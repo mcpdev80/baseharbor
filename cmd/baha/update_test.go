@@ -307,13 +307,17 @@ func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
 }
 
 func TestCoreInventoryRejectsIncompleteOwnedState(t *testing.T) {
- state:=coreinstallation.State{ID:"owned",Ready:true,Spec:coreinstallation.Spec{Target:"core-test"}}
- project:=bhruntime.SharedProjectName("core-test")
- runtime:=updateInventoryRuntime{images:map[string]bhruntime.ImageIdentity{
-  project+"/postgres-member-1":{Reference:"docker.io/library/postgres:18-alpine",Digest:"sha256:"+strings.Repeat("a",64)},
-  project+"/openbao-member-1":{Reference:"docker.io/openbao/openbao:2.7.0",Digest:"sha256:"+strings.Repeat("b",64)},
- }}
- if _,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,runtime);err==nil {t.Fatal("accepted missing Identity image")}
- state.Spec.Target=""
- if _,err:=inspectCoreRuntimePlan(context.Background(),"0.4.24",state,runtime);err==nil {t.Fatal("accepted empty owning Target")}
+	state := coreinstallation.State{ID: "owned", Ready: true, Spec: coreinstallation.Spec{Target: "core-test"}}
+	project := bhruntime.SharedProjectName("core-test")
+	runtime := updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{
+		project + "/postgres-member-1": {Reference: "docker.io/library/postgres:18-alpine", Digest: "sha256:" + strings.Repeat("a", 64)},
+		project + "/openbao-member-1":  {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "sha256:" + strings.Repeat("b", 64)},
+	}}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, runtime); err == nil {
+		t.Fatal("accepted missing Identity image")
+	}
+	state.Spec.Target = ""
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, runtime); err == nil {
+		t.Fatal("accepted empty owning Target")
+	}
 }
