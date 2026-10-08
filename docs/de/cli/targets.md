@@ -28,7 +28,7 @@ Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities
 
 ## Remote-Zugriff
 
-Runtime Provider und Target Access Provider sind getrennt. Ein Connector-Target kann registriert werden mit:
+Runtime Provider und Target Access Provider sind getrennt:
 
 ```text
 Target
@@ -36,7 +36,30 @@ Target
 └── Target Access Provider
 ```
 
-Registrierung allein stellt keine authentifizierte Verbindung her. Der vollständige Remote-Application-Lifecycle wird für v0.4.23 noch qualifiziert; ein Remote-Target darf niemals ersatzweise lokal ausgeführt werden. Native Kubernetes-/OpenShift-API-Zugriffe benötigen nicht grundsätzlich einen Connector; diese Runtime-Realisierungen folgen später.
+Entfernte Docker-/Podman-Hosts werden nicht mehr durch manuelles Erstellen des Connector-Access-Eintrags aufgenommen. Auf dem Core-System wird der geführte Node-Workflow verwendet:
+
+```bash
+baha node add node-a
+baha node list
+baha node status node-a
+```
+
+`baha node add` erzeugt das Remote-Target und genau eine owner-only Enrollment-Datei mit kurzlebiger Einmal-Autorisierung. Diese Datei wird auf den Remote-Host kopiert und dort konsumiert:
+
+```bash
+baha node connect /pfad/zu/node-a.json
+```
+
+Der Connector erzeugt seinen privaten Schlüssel ausschließlich lokal, verwendet die bestehende Bootstrap-API und baut anschließend die outbound-initiierte mTLS-Verbindung als rootless User-Service auf. Token und Nonce werden weder als Prozessargumente noch in Logs ausgegeben. Non-TTY-Automation verwendet die expliziten Optionen aus `baha node add --help` und fragt niemals interaktiv nach.
+
+Zum Entfernen wird zuerst der Zustand geprüft und anschließend die Sperrung ausdrücklich bestätigt:
+
+```bash
+baha node status node-a
+baha node disconnect node-a --yes
+```
+
+Der Core widerruft die Connector-Zulassung, bevor das leere Target entfernt wird. Ein altes, weiterhin CA-vertrauenswürdiges Zertifikat kann sich dadurch nicht unbemerkt erneut verbinden. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
 
 `--provider` bleibt Alias von `--runtime-provider`; nicht lokaler Zugriff braucht einen ausdrücklichen `--access-provider`.
 
@@ -51,14 +74,6 @@ baha target create docker-dev \
   --access local-docker \
   --access-provider local \
   --reference local
-```
-
-```bash
-baha target create edge-a \
-  --runtime-provider docker \
-  --access node-a \
-  --access-provider baseharbor-node-connector \
-  --reference node-a
 ```
 
 ```text
