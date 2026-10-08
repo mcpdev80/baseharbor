@@ -55,10 +55,10 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	// staging, or executable changes begin.
 	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
 	if controlPlaneExists {
-		if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
-			return fmt.Errorf("Core provider update cannot be skipped; installed Core was left unchanged: %w", err)
-		}
-	}
+        if err:=preflightNativeCoreUpgrade(ctx,check.Target);err!=nil{
+            return fmt.Errorf("Core provider migration preflight refused update: %w",err)
+        }
+    }
 	_, localApplicationExists := localApplicationForSelfUpdate()
 
 	executable, err := selfUpdateExecutable()
@@ -91,6 +91,14 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	}
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
+    // A verified binary candidate is available before any data-bearing Core
+    // provider update begins. Recovery remains durable if mutation fails.
+    if controlPlaneExists {
+        if err:=reconcileNativeCoreProviders(ctx,check.Target);err!=nil{
+            return fmt.Errorf("Core native provider update incomplete; recovery journal retained: %w",err)
+        }
+        fmt.Fprintln(out,"[OK] core              pinned SQL, Secrets and Identity semantics verified")
+    }
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
