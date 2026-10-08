@@ -58,7 +58,7 @@ func keycloakSingleDataLayerCompose() string {
 }
 
 func keycloakSingleVolumesCompose() string {
- return "  keycloak-db-data:\\n  keycloak-db-tls:\\n"
+ return "  keycloak-db-data:\n  keycloak-db-tls:\n"
 }
 
 // The shared bootstrap is deliberately identical for single and HA database
