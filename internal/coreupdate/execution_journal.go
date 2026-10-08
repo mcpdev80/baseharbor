@@ -24,6 +24,16 @@ func ExecuteJournaled(ctx context.Context, plan Plan, journalPath string, hooks 
 	if err := validateExecutionPlan(plan, hooks); err != nil {
 		return err
 	}
+	// Never replay an incomplete provider migration unless its recovery hook
+	// explicitly permits idempotent resume. Ordinary application is not safe.
+	for _, delta := range plan.Deltas {
+		status := journal.Steps[JournalKey(delta)]
+		if status == "applying" || status == "apply_failed" || status == "verify_failed" {
+			if hooks.RecoveryPoint == nil {
+				return fmt.Errorf("incomplete Core provider %s requires explicit recovery before replay", JournalKey(delta))
+			}
+		}
+	}
 	remaining := Plan{Release: plan.Release}
 	for _, delta := range plan.Deltas {
 		if delta.Classification != NoChange && journal.Steps[JournalKey(delta)] == "verified" {
