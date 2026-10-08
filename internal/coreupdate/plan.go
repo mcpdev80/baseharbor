@@ -217,19 +217,19 @@ func Execute(ctx context.Context, plan Plan, hooks Hooks) error {
 			return fmt.Errorf("Core update step %s attempts unsupported downgrade or unverified version", key)
 		}
 
-        changed := current.Image != delta.Desired.Image || current.Version != delta.Desired.Version || current.Digest != delta.Desired.Digest
-        if current.Kind == SQL && strings.Split(current.Version, ".")[0] != strings.Split(delta.Desired.Version, ".")[0] {
-            return fmt.Errorf("Core update step %s requires explicit PostgreSQL major migration", key)
-        }
-        if delta.Classification == SafeReconcile && changed {
-            return fmt.Errorf("Core update step %s cannot bypass durable data recovery", key)
-        }
-        if changed && (current.Kind == SQL || current.Kind == Secrets) && delta.Classification != BackupRequired {
-            return fmt.Errorf("Core update step %s requires a provider recovery point", key)
-        }
-        if changed && current.Kind == Identity && delta.Classification != MigrationRequired {
-            return fmt.Errorf("Core update step %s requires verified Keycloak migration", key)
-        }
+		changed := current.Image != delta.Desired.Image || current.Version != delta.Desired.Version || current.Digest != delta.Desired.Digest
+		if current.Kind == SQL && strings.Split(current.Version, ".")[0] != strings.Split(delta.Desired.Version, ".")[0] {
+			return fmt.Errorf("Core update step %s requires explicit PostgreSQL major migration", key)
+		}
+		if delta.Classification == SafeReconcile && changed {
+			return fmt.Errorf("Core update step %s cannot bypass durable data recovery", key)
+		}
+		if changed && (current.Kind == SQL || current.Kind == Secrets) && delta.Classification != BackupRequired {
+			return fmt.Errorf("Core update step %s requires a provider recovery point", key)
+		}
+		if changed && current.Kind == Identity && delta.Classification != MigrationRequired {
+			return fmt.Errorf("Core update step %s requires verified Keycloak migration", key)
+		}
 
 		switch delta.Classification {
 		case NoChange, SafeReconcile:
