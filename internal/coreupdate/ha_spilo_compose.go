@@ -33,19 +33,31 @@ func (c HAPostgresComposeCheckpoint) checkpointPath() (string, error) {
 	h := sha256.Sum256([]byte(c.Previous.Image + "@" + c.Previous.Digest + "\x00" + c.Desired.Image + "@" + c.Desired.Digest))
 	return filepath.Join(c.Directory, hex.EncodeToString(h[:])+".spilo-compose"), nil
 }
-func safeSpiloTransition(a,b BackingPin) bool {
- parse:=func(v string)([4]int,bool){
-  var parsed [4]int
-  n,err:=fmt.Sscanf(v,"%d-spilo-%d.%d-p%d",&parsed[0],&parsed[1],&parsed[2],&parsed[3])
-  if err!=nil||n!=4||fmt.Sprintf("%d-spilo-%d.%d-p%d",parsed[0],parsed[1],parsed[2],parsed[3])!=v{return [4]int{},false}
-  return parsed,true
- }
- old,ok:=parse(a.Version);if !ok{return false}
- next,ok:=parse(b.Version);if !ok{return false}
- // A new PostgreSQL or Spilo major is never an automatic rolling upgrade.
- if old[0]!=next[0]||old[1]!=next[1]{return false}
- if next[2]<old[2] || (next[2]==old[2]&&next[3]<old[3]){return false}
- return true
+func safeSpiloTransition(a, b BackingPin) bool {
+	parse := func(v string) ([4]int, bool) {
+		var parsed [4]int
+		n, err := fmt.Sscanf(v, "%d-spilo-%d.%d-p%d", &parsed[0], &parsed[1], &parsed[2], &parsed[3])
+		if err != nil || n != 4 || fmt.Sprintf("%d-spilo-%d.%d-p%d", parsed[0], parsed[1], parsed[2], parsed[3]) != v {
+			return [4]int{}, false
+		}
+		return parsed, true
+	}
+	old, ok := parse(a.Version)
+	if !ok {
+		return false
+	}
+	next, ok := parse(b.Version)
+	if !ok {
+		return false
+	}
+	// A new PostgreSQL or Spilo major is never an automatic rolling upgrade.
+	if old[0] != next[0] || old[1] != next[1] {
+		return false
+	}
+	if next[2] < old[2] || (next[2] == old[2] && next[3] < old[3]) {
+		return false
+	}
+	return true
 }
 
 // RewriteOwnedSpiloImages applies the same immutable image to exactly three
