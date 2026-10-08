@@ -37,15 +37,21 @@ func ParseVersion(value string) (Version, error) {
 
 func (v Version) Compare(other Version) int {
 	if v.Major != other.Major {
-		if v.Major < other.Major { return -1 }
+		if v.Major < other.Major {
+			return -1
+		}
 		return 1
 	}
 	if v.Minor != other.Minor {
-		if v.Minor < other.Minor { return -1 }
+		if v.Minor < other.Minor {
+			return -1
+		}
 		return 1
 	}
 	if v.Patch != other.Patch {
-		if v.Patch < other.Patch { return -1 }
+		if v.Patch < other.Patch {
+			return -1
+		}
 		return 1
 	}
 	return 0
