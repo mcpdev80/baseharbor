@@ -311,6 +311,23 @@ func (a *Adapter) Verify(ctx context.Context, req providerupgrade.Request) error
 	if !state.Healthy || !allMembersReady(state) {
 		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak readiness", errors.New("Keycloak is not fully ready"))
 	}
+	if state.Owner != "baseharbor" || (state.Topology != TopologySingle && state.Topology != TopologyHA) {
+		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak ownership", errors.New("provider ownership or topology changed"))
+	}
+	expected := 1
+	if state.Topology == TopologyHA {
+		expected = 3
+	}
+	if len(state.Members) != expected {
+		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak topology", errors.New("provider member count changed"))
+	}
+	seen := make(map[string]bool, len(state.Members))
+	for _, member := range state.Members {
+		if strings.TrimSpace(member.Name) == "" || seen[member.Name] || member.Version != req.TargetVersion {
+			return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak member version", errors.New("provider member inventory is inconsistent with target"))
+		}
+		seen[member.Name] = true
+	}
 	if err := a.ops.VerifyDatabase(ctx); err != nil {
 		return providerupgrade.Wrap(providerupgrade.ErrorVerifyFailed, "keycloak database", err)
 	}
