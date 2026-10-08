@@ -21,3 +21,17 @@ func TestAppDownRejectsUnknownOptionsBeforeRuntime(t *testing.T) {
   }
  }
 }
+
+func TestHumanNewExplicitObjectKinds(t *testing.T) {
+ for _, tc := range []struct{ kind string; next string }{
+  {"target", "target creation needs"},
+  {"provider", "provider ID is required"},
+  {"bogus", "unsupported creation type"},
+ } {
+  var out bytes.Buffer
+  err := runWithIO(context.Background(), []string{"new", tc.kind}, &out, &out)
+  if err == nil || !strings.Contains(err.Error(), tc.next) {
+   t.Fatalf("new %s: want %q, got %v", tc.kind, tc.next, err)
+  }
+ }
+}
