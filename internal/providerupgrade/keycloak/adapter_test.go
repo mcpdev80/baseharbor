@@ -268,8 +268,8 @@ func TestRecoveryRejectsMissingDatabaseBackup(t *testing.T) {
 func TestInventoryRejectsMemberDriftAndDuplicateMembers(t *testing.T) {
 	for name, mutate := range map[string]func(*State){
 		"member-version-drift": func(s *State) { s.Members[1].Version = "26.8.0" },
-		"duplicate-member": func(s *State) { s.Members[1].Name = s.Members[0].Name },
-		"missing-ha-member": func(s *State) { s.Members = s.Members[:2] },
+		"duplicate-member":     func(s *State) { s.Members[1].Name = s.Members[0].Name },
+		"missing-ha-member":    func(s *State) { s.Members = s.Members[:2] },
 	} {
 		t.Run(name, func(t *testing.T) {
 			state := haState("26.7.5")
