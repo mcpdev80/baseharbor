@@ -99,7 +99,7 @@ nav:
 - Automation und Agents:
   - Automation-Befehle: cli/automation-agents.md
   - MCP- und Agent-Schnittstelle: reference/mcp.md
-  - CLI / machine coverage (EN): https://mcpdev80.github.io/baseharbor/reference/cli-machine-coverage/
+  - CLI-/Maschinen-Abdeckung: reference/cli-machine-coverage.md
   - Maschinenoperationen: how-to/machine-operations.md
   - Machine Interface v1: spec/machine-interface-v1.md
   - Protected Machine HTTP v1: spec/machine-http-v1.md
