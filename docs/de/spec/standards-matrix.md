@@ -6,7 +6,7 @@ Bereich: Standard / Muster Aktuelle Version / Status: Klasse: Governance / Lizen
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 Schema-Schema-Schema-Strategie 2020-12-Standard öffnen JSON-Schema-Community; offene Spezifikation sehr hoch Portable Service-Schemas und Provider-Konfigurationsvalidierung Lebenszyklus, Eigentümer und Provider-Ausführung sind außerhalb des Schema-Scope-Bereichs. **ADOPT**-
 Service-Anbindung: Service-Bindung: Spezifikation: 1.1.0. Öffne Spezifikation: servicebinding.io community: Apache-2.0. reif in Cloud-native Ökosysteme: Bekannte Bindungsnamen:`type `, ` provider `, ` host `, ` port `, ` uri `, ` username `, ` password `, ` certificates `, ` private-key`• Identity Refs, Autorisierung, Rotation/Revokation, Eigentum und Verifizierung von Metadaten, **ALIGN**
-Provider/Resourcen-Architektur-Modell: Crossplane ressource/provider/reconciliation model: v2.4 docs line: Establiertes Architekturmuster: CNCF-Ökosystem; Apache-2.0-Projekt: High-Beobachteter Zustand, Provider-Abstraktion, externe Realisierungs- und Aussöhnungskonzepte: Importieren Sie keine Kubernetes CRDs/finalizers/namespaces in portable Intent **KEEP / ALIGN**
+Provider/Resourcen-Architektur-Modell: Crossplane ressource/provider/reconciliation model: v2.4 docs line: Establiertes Architekturmuster: CNCF-Ökosystem; Apache-2.0-Projekt: High-Beobachteter Zustand, Provider-Abstraktion, externe Realisierungs- und Reconciliationskonzepte: Importieren Sie keine Kubernetes CRDs/finalizers/namespaces in portable Intent **KEEP / ALIGN**
 Open Service Broker API-Datei v2.17 familie • Open API / Architekturmuster • Open Service Broker community • Apache-2.0 · Reifer, aber schmaler als BaseHarbor · Katalog, Plan, Bereitstellung, Update, Bind, Entbind, Deprovision und Async-Operation Konzepte • BaseHarbor fügt Versöhnung, Platzierung, Eigentum, Verifikation, Backup/Restore und Laufzeit-Separierung hinzu **KEEP / ALIGN**
 Provider-Distribution: OCI Bild / Distribution / Laufzeit: Bild 1.1.1, Distribution 1.1.1, Laufzeit: 1.3.0 standard öffnen: Open Container Initiative / Linux Foundation; Apache-2.0 , sehr hohe Provider-Artefakte, Digest-Identität, Indexe/Plattformen, registry-neutrale Distribution: BaseHarbor Katalog-Metadaten und Kompatibilitätsregeln: **KEEP** .
 Beobachtbarkeit: OpenTelemetry / OTLP-OTel 1.61.0, OTLP 1.11.0-Standard öffnen: CNCF; Apache-2.0-Sehr hohe Spuren, Metriken, Protokolle Transport und semantische Konventionen.Nur BaseHarbor-Intent/Policy/Provider-Auflösung **KEEP / ALIGN**
@@ -58,7 +58,7 @@ Kein ausgelieferter v0.4 Vertrag ist derzeit für Blindersatz geplant. Jeder Ers
 ### BAHA ERWEITERUNG
 
 - Anbieterplatzierung und Lebenszyklus-Eigentum;
-- Aussöhnung/Verifikationssemantik;
+- Reconciliation/Verifikationssemantik;
 - Anbieterkatalog-Metadaten über OCI;
 - Metadaten über den Sicherheitslebenszyklus, die nicht von der Dienstbindung erfasst werden;
 - minimale Vektor-Service-Semantik, wenn/wenn implementiert.

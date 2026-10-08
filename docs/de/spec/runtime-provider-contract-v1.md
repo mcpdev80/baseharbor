@@ -15,7 +15,7 @@ runtime != capability != delivery != workload source
 Es ist absichtlich getrennt von:
 
 - Lebensdauer von Fähigkeiten/Dienstleistungsanbietern
-- Auswahl der Lieferer und Aussöhnung Eigentum
+- Auswahl der Lieferer und Reconciliation Eigentum
 - Repository-Workload-Quellenerkennung und -Erstellung
 - anwendungsorientierte Runtime Broker APIs
 - lokale Docker/Podman-Projektdatei/Container-Mechanik

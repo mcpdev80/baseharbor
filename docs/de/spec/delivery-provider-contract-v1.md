@@ -25,7 +25,7 @@ BaseHarbor besitzt Versöhnung.
 
 ### delegierte Rechtsakte
 
-Ein externer Aussöhner besitzt die Aussöhnung.
+Ein externer Aussöhner besitzt die Reconciliation.
 
 - Eigentümer:`external`
 - Anbieter: Implementierungskennung wie eine zukünftige Argo-CD oder Flux-Anbieter

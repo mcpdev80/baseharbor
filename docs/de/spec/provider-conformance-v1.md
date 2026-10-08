@@ -14,7 +14,7 @@ Artifact signature/provenance trust ist ein unabhängiges Ergebnis, das in[Exten
 
 ## Volle semantische Akzeptanz
 
-Verwendung `provider.RunFull(ctx, target)` für `suite=full`. Neben dem unveränderten Lebenszyklus-Kabelbaum läuft dies auf deterministische Drift/Reparatur, Auslagerung/Recovery, Bereitstellung/Verfälschung-Bindung/Verifikationsfehler, Retry-Idempotenz, ausländische Eigentums- und eigentumssichere Vernichtungskontrollen. Die Fixtur implementiert typisierte Aussöhnung und den im öffentlichen Paket dokumentierten Zustand/Fahrt/Vernichtung/Fehler/Eigentumshaken. Fehlende Haken scheitern an der Akzeptanz.
+Verwendung `provider.RunFull(ctx, target)` für `suite=full`. Neben dem unveränderten Lebenszyklus-Kabelbaum läuft dies auf deterministische Drift/Reparatur, Auslagerung/Recovery, Bereitstellung/Verfälschung-Bindung/Verifikationsfehler, Retry-Idempotenz, ausländische Eigentums- und eigentumssichere Vernichtungskontrollen. Die Fixtur implementiert typisierte Reconciliation und den im öffentlichen Paket dokumentierten Zustand/Fahrt/Vernichtung/Fehler/Eigentumshaken. Fehlende Haken scheitern an der Akzeptanz.
 
 `provider.Run ` bleibt ein explizit beschrifteter`suite=lifecycle` Diagnoselauf. Sein Pass-Ergebnis beansprucht nicht die volle Fehler-und Eigentums-Suite. Beide Suiten Redact Provider error text und emittieren deterministisch benannte Kontrollen.
 

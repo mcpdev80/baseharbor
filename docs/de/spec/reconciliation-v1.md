@@ -15,7 +15,7 @@ desired state
 
 ## Anforderungen
 
-- Aussöhnung MUSS für stabilen gewünschten Zustand idempotent sein.
+- Reconciliation MUSS für stabilen gewünschten Zustand idempotent sein.
 - Ausländische Eigentums- oder Eigentumskonflikte MÜSSEN vor destruktiver Mutation geschlossen werden.
 - Nicht unterstützte erforderliche Semantik MUSS vor der Mutation scheitern.
 - Externe Ressourcen MÜSSEN nur beobachtet werden, es sei denn, eine explizit unterstützte Eigentumsübertragung existiert.
