@@ -154,7 +154,7 @@ func runGuidedNewLocalTarget(ctx context.Context, out, errOut io.Writer) error {
 
 func guidedCreateProvider(ctx context.Context, out, errOut io.Writer) error {
 	if noInput(ctx) || !readerIsTerminal(appNewInput) {
-		return usageError("provider creation needs a provider ID in non-interactive mode", "Run 'baha new provider namespace/name --path DIR' or launch 'baha new' in an interactive terminal.")
+		return usageError("provider ID is required for non-interactive creation", "Run 'baha new provider namespace/name --path DIR' or launch 'baha new' in an interactive terminal.")
 	}
 	reader := bufio.NewReader(appNewInput)
 	fmt.Fprintln(out, "Create a Capability Provider extension.")
