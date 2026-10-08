@@ -28,7 +28,7 @@ func (r *snapshotRuntime) RestoreOwnedVolume(_ context.Context, _, _ string, dat
 func TestVolumeRecoveryCaptureRestoreAndTamperRefusal(t *testing.T) {
 	rt := &snapshotRuntime{data: []byte("pg-safe-backup")}
 	delta := Delta{Installed: Realization{Kind: SQL, Installation: "core", Scope: "shared", Instance: "postgres-member-1", Owner: "baseharbor"}, Desired: Desired{Kind: SQL, Image: "postgres:18", Version: "18.2", Digest: digestA}}
-	recovery := VolumeRecovery{Runtime: rt, Directory: filepath.Join(t.TempDir(), "artifacts"), Project: "owned-core", Volume: "postgres-data-1"}
+	recovery := VolumeRecovery{Runtime: rt, Directory: filepath.Join(t.TempDir(), "artifacts"), Project: "owned-core", Volume: "postgres-data-1", VerifyQuiesced:func(context.Context,string,string)error{return nil}}
 	ctx := context.Background()
 	if err := recovery.Capture(ctx, delta); err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestVolumeRecoveryCaptureRestoreAndTamperRefusal(t *testing.T) {
 func TestVolumeRecoveryRejectsMissingOwnershipAndSymlinks(t *testing.T) {
 	rt := &snapshotRuntime{data: []byte("openbao")}
 	delta := Delta{Installed: Realization{Kind: Secrets, Installation: "core", Scope: "shared", Instance: "bao", Owner: "foreign"}, Desired: Desired{Kind: Secrets, Image: "openbao", Version: "2.7.0", Digest: digestA}}
-	recovery := VolumeRecovery{Runtime: rt, Directory: t.TempDir(), Project: "owned", Volume: "bao"}
+	recovery := VolumeRecovery{Runtime: rt, Directory: t.TempDir(), Project: "owned", Volume: "bao",VerifyQuiesced:func(context.Context,string,string)error{return nil}}
 	if err := recovery.Capture(context.Background(), delta); err == nil {
 		t.Fatal("foreign volume capture authorized")
 	}
@@ -101,8 +101,19 @@ func TestVolumeRecoveryRejectsMissingOwnershipAndSymlinks(t *testing.T) {
 func TestVolumeRecoveryRefusesFailedExport(t *testing.T) {
 	rt := &snapshotRuntime{}
 	delta := Delta{Installed: Realization{Kind: SQL, Installation: "core", Scope: "shared", Instance: "pg", Owner: "baseharbor"}, Desired: Desired{Kind: SQL, Image: "postgres", Version: "18", Digest: digestA}}
-	r := VolumeRecovery{Runtime: rt, Directory: t.TempDir(), Project: "p", Volume: "v"}
+	r := VolumeRecovery{Runtime: rt, Directory: t.TempDir(), Project: "p", Volume: "v",VerifyQuiesced:func(context.Context,string,string)error{return nil}}
 	if err := r.Capture(context.Background(), delta); !errors.Is(err, errors.New("empty")) && err == nil {
 		t.Fatal("empty snapshot accepted")
 	}
+}
+
+func TestVolumeRecoveryRejectsActiveDatabaseWriters(t *testing.T){
+ rt:=&snapshotRuntime{data:[]byte("pg-data")}
+ delta:=Delta{Installed:Realization{Kind:SQL,Installation:"c",Scope:"shared",Instance:"postgres",Owner:"baseharbor"},Desired:Desired{Kind:SQL,Image:"postgres",Version:"18",Digest:digestA}}
+ v:=VolumeRecovery{Runtime:rt,Directory:t.TempDir(),Project:"p",Volume:"v"}
+ if err:=v.Capture(context.Background(),delta);err==nil{t.Fatal("unquiesced postgres snapshot accepted")}
+ if rt.exports!=0{t.Fatal("active database exported")}
+ v.VerifyQuiesced=func(context.Context,string,string)error{return errors.New("writer active")}
+ if err:=v.Capture(context.Background(),delta);err==nil{t.Fatal("active postgres snapshot accepted")}
+ if rt.exports!=0{t.Fatal("active database exported")}
 }
