@@ -274,3 +274,11 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 		t.Fatal("accepted incomplete Identity runtime inventory")
 	}
 }
+
+func TestCoreHAUpdateCheckCannotMisclassifySpiloVersion(t *testing.T) {
+	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
+	_, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{}})
+	if err == nil || !strings.Contains(err.Error(), "Spilo-backed") {
+		t.Fatalf("HA backing provider was not explicitly rejected: %v", err)
+	}
+}
