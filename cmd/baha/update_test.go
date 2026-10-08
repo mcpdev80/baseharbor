@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+ "github.com/mcpdev80/baseharbor/internal/coreupdate"
 )
 
 func TestParseSelfUpdateOptionsDefaultsToStable(t *testing.T) {
@@ -209,4 +211,19 @@ func testRelease(tag string, prerelease bool) baseHarborRelease {
 			{Name: "checksums.txt", BrowserDownloadURL: "https://example.invalid/checksums.txt", Digest: "sha256:def"},
 		},
 	}
+}
+
+func TestUpdateCheckCoreCatalogHasImmutableReferenceVersions(t *testing.T) {
+    manifest,err:=coreupdate.LoadRelease("0.4.24")
+    if err!=nil {t.Fatal(err)}
+    if len(manifest.Providers)!=3 || len(manifest.Backing)!=2 {
+        t.Fatalf("release must declare three Core providers and both Keycloak SQL placements: %+v",manifest)
+    }
+    check:=selfUpdateCheck{CoreReconciliation:"unavailable",CoreExpected:manifest.Providers,CoreBacking:manifest.Backing}
+    encoded,err:=json.Marshal(check)
+    if err!=nil {t.Fatal(err)}
+    if !strings.Contains(string(encoded),`"core_expected"`) || !strings.Contains(string(encoded),`"core_backing"`) ||
+      !strings.Contains(string(encoded),`"core_reconciliation":"unavailable"`) {
+        t.Fatalf("structured update check omits immutable Core metadata: %s",encoded)
+    }
 }
