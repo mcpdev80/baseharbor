@@ -366,10 +366,14 @@ func TestRouteVerificationFailureReportsUpstreamWithoutInternalState(t *testing.
 	for _, status := range []string{"502", "503", "504"} {
 		got := routeVerificationFailure("nexty.baseharbor.localhost", errors.New("browser surface final response is HTTP "+status)).Error()
 		for _, required := range []string{"application upstream unavailable", "HTTP " + status, "exposure.http.port"} {
-			if !strings.Contains(got, required) { t.Errorf("missing %q from %q", required, got) }
+			if !strings.Contains(got, required) {
+				t.Errorf("missing %q from %q", required, got)
+			}
 		}
 		for _, forbidden := range []string{"state.json", "Caddyfile", "/gateway/"} {
-			if strings.Contains(got, forbidden) { t.Errorf("leaked internal path %q", forbidden) }
+			if strings.Contains(got, forbidden) {
+				t.Errorf("leaked internal path %q", forbidden)
+			}
 		}
 	}
 	got := routeVerificationFailure("nexty.baseharbor.localhost", errors.New("browser surface redirect changed canonical authority")).Error()
@@ -384,7 +388,9 @@ func TestRenderedGatewayBoundsRepeatedRuntimeErrors(t *testing.T) {
 		Upstream: "http://nexty:8080", Network: "nexty_default",
 	}}, 8443)
 	for _, want := range []string{"sampling {", "interval 1m", "first 3", "thereafter 100", "reverse_proxy http://nexty:8080"} {
-		if !strings.Contains(text, want) { t.Errorf("missing %q from generated Caddyfile", want) }
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q from generated Caddyfile", want)
+		}
 	}
 	if strings.Contains(text, "state.json") {
 		t.Fatal("generated proxy configuration leaks state path")
