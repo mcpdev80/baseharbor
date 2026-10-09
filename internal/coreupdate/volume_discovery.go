@@ -41,7 +41,7 @@ func ResolveOwnedServiceVolume(path, service, project string) (string, error) {
 			return "", errors.New("ambiguous provider mount")
 		}
 		destination = strings.SplitN(destination, ":", 2)[0]
-		durable := destination == "/var/lib/postgresql" || destination == "/var/lib/postgresql/data" || destination == "/home/postgres/pgroot" || destination == "/openbao/file" || destination == "/vault/file"
+		durable := destination == "/var/lib/postgresql" || destination == "/var/lib/postgresql/data" || destination == "/home/postgres/pgroot" || destination == "/home/postgres/pgdata/pgroot" || destination == "/openbao/file" || destination == "/vault/file"
 		if !durable {
 			continue
 		}

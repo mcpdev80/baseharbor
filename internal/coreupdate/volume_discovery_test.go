@@ -51,3 +51,15 @@ func TestResolveOwnedVolumeHonorsExplicitNameButRejectsExternal(t *testing.T) {
 		t.Fatal("foreign external volume accepted")
 	}
 }
+
+func TestResolveOwnedSpiloPGROOTVolume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	raw := "services:\n  postgres-member-1:\n    volumes:\n      - pg-data:/home/postgres/pgdata/pgroot\nvolumes:\n  pg-data: {}\n"
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	volume, err := ResolveOwnedServiceVolume(path, "postgres-member-1", "owned")
+	if err != nil || volume != "owned_pg-data" {
+		t.Fatalf("Spilo PGROOT: %q %v", volume, err)
+	}
+}

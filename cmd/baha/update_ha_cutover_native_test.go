@@ -162,6 +162,16 @@ func TestPatroniImageVerificationAcceptsRealDigestPinnedContainerReference(t *te
 	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-1"); err != nil {
 		t.Fatal(err)
 	}
+	rt.image.Reference = "spilo@" + digest
+	ops.runtime = rt
+	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-1"); err != nil {
+		t.Fatal(err)
+	}
+	rt.image.Reference = "spilo:wrong@" + digest
+	ops.runtime = rt
+	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-1"); err == nil {
+		t.Fatal("wrong mutable tag accepted")
+	}
 	rt.image.Reference = "foreign:4.1-p2@" + digest
 	ops.runtime = rt
 	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-1"); err == nil {
@@ -199,5 +209,27 @@ func TestRecoveredUpdateRetryNeverRenamesActiveDCSDirectory(t *testing.T) {
 	replay, err = coreUpdateJournal(root, "0.4.24", false)
 	if err != nil || replay != next {
 		t.Fatal("latest captured recovery point not selected")
+	}
+}
+
+func TestHARecoveryRejectsUnrelatedProviderDrift(t *testing.T) {
+	original, err := os.ReadFile("../../internal/runtime/assets/compose.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(original, &doc); err != nil {
+		t.Fatal(err)
+	}
+	services := doc["services"].(map[string]any)
+	services["postgres-member-1"].(map[string]any)["image"] = "spilo@sha256:new"
+	allowed, _ := yaml.Marshal(doc)
+	if err := validateHARecoveryComposeDrift(original, allowed); err != nil {
+		t.Fatal(err)
+	}
+	services["openbao-member-1"].(map[string]any)["image"] = "openbao:new"
+	rejected, _ := yaml.Marshal(doc)
+	if err := validateHARecoveryComposeDrift(original, rejected); err == nil {
+		t.Fatal("unrelated provider rollback admitted")
 	}
 }

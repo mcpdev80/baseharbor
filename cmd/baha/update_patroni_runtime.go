@@ -60,8 +60,20 @@ func (o *patroniCoreRollingOps) VerifyMemberImage(ctx context.Context, name stri
 	}
 	observedRef := strings.Split(strings.TrimSpace(identity.Reference), "@")[0]
 	desiredRef := strings.Split(o.journal.Desired.Image, "@")[0]
-	if digest != o.journal.Desired.Digest || observedRef != desiredRef {
-		return fmt.Errorf("Patroni member %s not running the desired immutable image and reference", name)
+	// A runtime may canonicalize a pinned tag to repository@digest. Require
+	// both that immutable reference and the inspected image digest to agree.
+	referenceMatches := observedRef == desiredRef
+	if !referenceMatches && strings.HasSuffix(identity.Reference, "@"+o.journal.Desired.Digest) {
+		repository := func(ref string) string {
+			if colon := strings.LastIndex(ref, ":"); colon > strings.LastIndex(ref, "/") {
+				return ref[:colon]
+			}
+			return ref
+		}
+		referenceMatches = observedRef == repository(desiredRef)
+	}
+	if digest != o.journal.Desired.Digest || !referenceMatches {
+		return fmt.Errorf("Patroni member %s not running the desired immutable image and reference: observed=%q digest=%q desired=%q digest=%q", name, identity.Reference, identity.Digest, o.journal.Desired.Image, o.journal.Desired.Digest)
 	}
 	return nil
 }

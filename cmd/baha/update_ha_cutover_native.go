@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -416,6 +417,32 @@ func (o *nativeHACutover) CommitCutover(ctx context.Context, ev coreupdate.DCSRe
 	return writeRecoveryCompose(filepath.Join(o.journal, "ha-cutover-committed"), []byte(recoveryDigest(o.projected)+" "+ev.SHA256))
 }
 
+// Only the three SQL image pins may differ from the captured recovery manifest.
+// Other provider/configuration changes need reconciliation before fencing.
+func validateHARecoveryComposeDrift(original, current []byte) error {
+	var documents [2]map[string]any
+	for i, raw := range [][]byte{original, current} {
+		if err := yaml.Unmarshal(raw, &documents[i]); err != nil {
+			return err
+		}
+		services, ok := documents[i]["services"].(map[string]any)
+		if !ok {
+			return errors.New("recovery manifest has no service mapping")
+		}
+		for _, name := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+			service, ok := services[name].(map[string]any)
+			if !ok {
+				return errors.New("recovery manifest lacks a required SQL member")
+			}
+			delete(service, "image")
+		}
+	}
+	if !reflect.DeepEqual(documents[0], documents[1]) {
+		return errors.New("Core configuration outside the SQL image pins changed since recovery capture; reconcile before fencing")
+	}
+	return nil
+}
+
 func recoverOwnedCoreHA(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, journal, installation, target, release string) error {
 	if rt == nil || !files.HA {
 		return errors.New("owned HA runtime recovery required")
@@ -445,17 +472,30 @@ func recoverOwnedCoreHA(ctx context.Context, rt bhruntime.RuntimeProvider, files
 	// The prior manifest is saved once; activated/committed replay must retain it.
 	priorPath := filepath.Join(journal, "ha-before-cutover.yaml")
 	if _, err := os.Lstat(priorPath); errors.Is(err, os.ErrNotExist) {
+		if err := validateHARecoveryComposeDrift(original, current); err != nil {
+			return err
+		}
 		if err := writeRecoveryCompose(priorPath, current); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	}
-	members := []string{"postgres-etcd-1", "postgres-etcd-2", "postgres-etcd-3"}
-	recoveryDir := filepath.Join(journal, "dcs-isolated-restore")
-	projected, volumes, err := projectHARecoveryCompose(original, source, files.Project, recoveryDir, identity)
+	prior, err := privateRecoveryFile(priorPath)
 	if err != nil {
 		return err
+	}
+	if err := validateHARecoveryComposeDrift(original, prior); err != nil {
+		return err
+	}
+	members := []string{"postgres-etcd-1", "postgres-etcd-2", "postgres-etcd-3"}
+	recoveryDir := filepath.Join(journal, "dcs-isolated-restore")
+	projected, volumes, err := projectHARecoveryCompose(prior, source, files.Project, recoveryDir, identity)
+	if err != nil {
+		return err
+	}
+	if recoveryDigest(current) != recoveryDigest(prior) && recoveryDigest(current) != recoveryDigest(projected) {
+		return errors.New("active Core manifest changed outside the recovery transaction")
 	}
 	tools := runtimeEtcdTools{Runtime: rt, Files: files, Service: coreEtcdRecoveryService, Endpoints: []string{"https://postgres-etcd-1:2379", "https://postgres-etcd-2:2379", "https://postgres-etcd-3:2379"}, ExpectedCluster: source.Evidence.Cluster, ScratchDir: filepath.Join(journal, "dcs-scratch"), ContainerCA: "/run/baseharbor/etcd/ca.pem", ContainerCert: "/run/baseharbor/etcd/client.pem", ContainerKey: "/run/baseharbor/etcd/client-key.pem", Members: members, InitialCluster: "postgres-etcd-1=https://postgres-etcd-1:2380,postgres-etcd-2=https://postgres-etcd-2:2380,postgres-etcd-3=https://postgres-etcd-3:2380", Identity: identity}
 	bridge := &coreupdate.EtcdDCSBridge{Store: etcdbackup.Store{Directory: filepath.Join(journal, "dcs-snapshot"), Identity: etcdbackup.Identity{Core: installation, Target: target, Cluster: source.Evidence.Cluster}}, Restorer: tools, RecoveryDirectory: recoveryDir, Release: release}
