@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"\n\t"path/filepath"
+	"os"
+	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
