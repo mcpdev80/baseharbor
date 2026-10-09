@@ -285,14 +285,7 @@ func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context,
 					return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
 				},
 				VerifyApps: func(ctx context.Context) error {
-					records, err := deployment.ListDeployments(o.target)
-					if err != nil {
-						return err
-					}
-					if len(records) != 0 {
-						return errors.New("application secret-scoped authorizations must be verified before provider upgrade")
-					}
-					return nil
+					return o.verifyOwnedApplicationSecretScopes(ctx)
 				},
 			},
 		}
