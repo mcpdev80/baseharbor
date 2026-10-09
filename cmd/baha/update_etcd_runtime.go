@@ -121,6 +121,15 @@ func parseRuntimeEtcdStatus(data []byte) (runtimeEtcdStatus, error) {
 		strings.TrimSpace(rows[0].Status.Version) == "" {
 		return runtimeEtcdStatus{}, errors.New("incomplete authenticated etcd endpoint status")
 	}
+	// etcd IDs are unsigned 64-bit values. Reject malformed or zero IDs,
+	// including quoted nonnumeric JSON values, before trusting quorum status.
+	ids := []json.Number{rows[0].Status.Header.ClusterID, rows[0].Status.Header.MemberID, rows[0].Status.Leader}
+	for _, id := range ids {
+		value, parseErr := strconv.ParseUint(id.String(), 10, 64)
+		if parseErr != nil || value == 0 {
+			return runtimeEtcdStatus{}, errors.New("invalid unsigned etcd cluster/member/leader identity")
+		}
+	}
 	return runtimeEtcdStatus{
 		Endpoint: rows[0].Endpoint, ClusterID: rows[0].Status.Header.ClusterID.String(),
 		MemberID: rows[0].Status.Header.MemberID.String(), LeaderID: rows[0].Status.Leader.String(),
