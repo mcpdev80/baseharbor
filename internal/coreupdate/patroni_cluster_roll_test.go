@@ -83,12 +83,12 @@ func TestPatroniClusterRejectsAmbiguousPostSwitchoverResume(t *testing.T) {
 	f := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{fakePatroniRoll: fakePatroniRoll{members: members}, steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"}}}
 	evidence := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
 	err := RollPatroniCluster(context.Background(), f, fakeDCS{valid: true}, evidence, "core", "target", "cluster", "0.4.24", 0)
-	if err == nil || !strings.Contains(err.Error(), "original switchover") {
-		t.Fatalf("ambiguous leader resume accepted: %v", err)
+	if err != nil || f.steps["pg1"] != "verified" {
+		t.Fatalf("verified post-switchover recovery failed: %v steps=%v", err, f.steps)
 	}
 	for _, c := range f.calls {
 		if strings.HasPrefix(c, "recreate:") || strings.HasPrefix(c, "switch:") {
-			t.Fatalf("mutated ambiguous cluster: %v", f.calls)
+			t.Fatalf("unnecessary recreation or duplicate switchover: %v", f.calls)
 		}
 	}
 }
