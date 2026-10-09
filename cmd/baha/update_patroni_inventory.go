@@ -13,6 +13,31 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+// A fully upgraded image inventory must not erase unfinished member receipts.
+// The file may be absent for an unchanged installation that never needed a roll.
+func verifyCompletedPatroniJournal(ctx context.Context, state coreinstallation.State, release string, pin coreupdate.BackingPin, path string) error {
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	journal := coreupdate.PatroniMemberJournal{
+		Path: path, Release: release, Installation: state.ID, Scope: "shared",
+		Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: pin.Image, Digest: pin.Digest, Version: pin.Version},
+	}
+	for i := 1; i <= 3; i++ {
+		name := fmt.Sprintf("postgres-member-%d", i)
+		step, err := journal.StepState(ctx, name)
+		if err != nil {
+			return err
+		}
+		if step != "verified" {
+			return fmt.Errorf("UNSUPPORTED: Patroni member %s has incomplete HA upgrade journal state %q", name, step)
+		}
+	}
+	return nil
+}
+
 // classifyOwnedHAPostgresRollingInventory admits a mixed Spilo image set only
 // when an original release-pinned image and the desired immutable image are
 // the ONLY two identities observed, and a durable member journal proves that
@@ -33,10 +58,24 @@ func classifyOwnedHAPostgresRollingInventory(ctx context.Context, state coreinst
 		if at := strings.Index(digest, "@sha256:"); at >= 0 {
 			digest = digest[at+1:]
 		}
-		return coreupdate.ClassifyHAPostgresPin(coreupdate.Realization{
+		classified := coreupdate.ClassifyHAPostgresPin(coreupdate.Realization{
 			Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: "postgres-member-1",
 			Owner: "baseharbor", Image: strings.TrimSpace(id.Reference), Digest: digest,
-		}, pin), nil
+		}, pin)
+		if classified.Classification == coreupdate.NoChange {
+			selected, selectErr := effectiveTarget(ctx)
+			if selectErr == nil && selected.Name == state.Spec.Target && selected.RuntimeProvider == state.Spec.Runtime {
+				root, rootErr := targetRuntimeStateRoot(selected)
+				if rootErr != nil {
+					return coreupdate.Delta{}, rootErr
+				}
+				path := filepath.Join(root, "core-updates", safeVersionPathPart(release), "patroni-members.json")
+				if err := verifyCompletedPatroniJournal(ctx, state, release, pin, path); err != nil {
+					return coreupdate.Delta{}, err
+				}
+			}
+		}
+		return classified, nil
 	}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
