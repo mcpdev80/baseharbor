@@ -652,11 +652,15 @@ func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
 		"Wants=dependency-complete-init.service",
 		"After=dependency-complete-init.service",
 		"ExecStartPre=/bin/sh -ec",
-		"systemctl --user is-active --quiet dependency-complete-init.service",
+		"systemctl --user show dependency-complete-init.service",
+		"ExecMainExitTimestampMonotonic",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("completed dependency Quadlet missing %q:\n%s", want, unit)
 		}
+	}
+	if !strings.Contains(got.Files["dependency-complete-init.container"], "RemainAfterExit=yes") {
+		t.Fatal("init exit evidence may disappear before dependent verification")
 	}
 	if strings.Contains(unit, "Requires=dependency-complete-init.service") {
 		t.Fatalf("completed dependency must not use Requires= because successful one-shots become inactive:\n%s", unit)

@@ -1,6 +1,6 @@
 name: "Targeted · Integration"
 
-run-name: "Targeted · Integration · ${{ inputs.gate }} · ${{ inputs.ref }}"
+run-name: "Targeted · Integration · ${{ inputs.gate || github.ref_name }} · ${{ inputs.ref || github.sha }}"
 
 on:
   push:
@@ -37,7 +37,7 @@ permissions:
 
 concurrency:
   group: targeted-integration-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' }}
 
 jobs:
   focused:

@@ -110,6 +110,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}
 	first, err := installCore(ctx, strings.NewReader(""), &out, opts)
 	if err != nil {
+		logCoreBootstrapFailure(t, runtime, target.Name, target.RuntimeProvider)
 		t.Fatalf("Core-only bootstrap failed: %v", err)
 	}
 	if !first.Ready || first.IdentityIssuer == "" || first.Spec.MachineRole != role {
@@ -186,6 +187,43 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 		runManagedProviderOnlyReadinessRegression(t, ctx)
 		runManagedReadinessAndBackupRegression(t, ctx)
 		runGeneratedSecretDeliveryRegression(t, ctx)
+	}
+}
+
+// Observe only this fixture's resources before deferred cleanup removes them.
+// Emit lifecycle state and known error categories, never raw provider logs or
+// credential-bearing environments.
+func logCoreBootstrapFailure(t *testing.T, runtime bhruntime.RuntimeProvider, target, engine string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Log("Core failure inventory unavailable")
+		return
+	}
+	backend := bhruntime.NewCLIBackend(engine)
+	projects := map[string]bool{bhruntime.SharedProjectName(target): true, bhruntime.SharedProjectName(target + "-core"): true}
+	for _, container := range containers {
+		if !projects[container.Project] {
+			continue
+		}
+		t.Logf("Core failure resource: project=%s service=%s running=%t health=%s", container.Project, container.Service, container.Running, container.Health)
+		if engine == "podman" {
+			state, err := exec.CommandContext(ctx, "systemctl", "--user", "show", container.Project+"-"+container.Service+".service", "--property=ActiveState,SubState,Result,ExecMainStatus,ExecMainCode,ExecMainExitTimestampMonotonic", "--no-pager").Output()
+			if err == nil {
+				t.Logf("Core failure unit: service=%s %s", container.Service, strings.TrimSpace(string(state)))
+			}
+		}
+		logs, err := backend.DirectOutput(ctx, "logs", "--tail", "60", container.ID)
+		if err != nil {
+			continue
+		}
+		for _, category := range []string{"permission denied", "Permission denied", "certificate verify failed", "could not translate host name", "password authentication failed", "Connection refused", "No such file or directory", "did not become ready", "OutOfMemoryError", "SQLState: 28P01", "SQLState: 08006"} {
+			if strings.Contains(logs, category) {
+				t.Logf("Core failure category: service=%s category=%s", container.Service, category)
+			}
+		}
 	}
 }
 

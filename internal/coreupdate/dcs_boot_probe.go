@@ -70,7 +70,7 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 					MemberID  json.Number `json:"member_id"`
 				} `json:"header"`
 				Leader   json.Number `json:"leader"`
-				IsLeader bool        `json:"isLeader"`
+				IsLeader *bool       `json:"isLeader"`
 				Version  string      `json:"version"`
 			} `json:"Status"`
 		}
@@ -99,10 +99,13 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		if expectedLeader != s.Leader.String() {
 			return errors.New("etcd recovered cluster has no common leader")
 		}
-		if s.IsLeader {
-			if s.Header.MemberID.String() != s.Leader.String() {
-				return errors.New("etcd self-reported leader differs from authenticated member identity")
-			}
+		isLeader := s.Header.MemberID.String() == s.Leader.String()
+		// Native etcd v3 StatusResponse omits isLeader. Derive it from the
+		// authenticated IDs; only validate a flag when a helper supplies it.
+		if s.IsLeader != nil && *s.IsLeader != isLeader {
+			return errors.New("etcd self-reported leader differs from authenticated member identity")
+		}
+		if isLeader {
 			leaders++
 		}
 	}

@@ -297,6 +297,14 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 			return QuadletProject{}, err
 		}
 	}
+	// Keep successful init exit evidence available for dependents and later
+	// start calls. Classification is complete only after all services render.
+	for service := range result.CompletedServices {
+		file := strings.TrimSuffix(result.ServiceUnits[service], ".service") + ".container"
+		if content, ok := result.Files[file]; ok {
+			result.Files[file] = content + "\n[Service]\nRemainAfterExit=yes\n"
+		}
+	}
 
 	return result, nil
 }
