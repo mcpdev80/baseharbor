@@ -41,7 +41,7 @@ func TestPatroniRollingRuntimeNeverMutatesForeignMember(t *testing.T) {
 	}
 	rt := &patroniRollingTestRuntime{digest: "sha256:" + strings.Repeat("a", 64)}
 	files := bhruntime.Files{HA: true, Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: env}
-	ops := &patroniCoreRollingOps{runtime: rt, files: files, journal: coreupdate.PatroniMemberJournal{Desired: coreupdate.Desired{Kind: coreupdate.SQL, Digest: rt.digest}}}
+	ops := &patroniCoreRollingOps{runtime: rt, files: files, journal: coreupdate.PatroniMemberJournal{Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: rt.digest}}}
 	if err := ops.Recreate(context.Background(), "other-project-member"); err == nil {
 		t.Fatal("foreign replica mutated")
 	}
