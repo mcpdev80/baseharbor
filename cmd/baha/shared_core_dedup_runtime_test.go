@@ -99,7 +99,7 @@ func verifySharedCoreDeduplicationFixture(t *testing.T, ctx context.Context, rt 
 				}
 				if c.Project == core.Project && strings.HasPrefix(c.Service, "postgres-member-") {
 					sql++
-				} else if c.Project == shared.Project && strings.Contains(c.Service, "postgres") && !strings.Contains(c.Service, "access") && !strings.Contains(c.Service, "ui") {
+				} else if c.Project == shared.Project && unexpectedSharedSQLDataService(c.Service) {
 					t.Fatal("shared application started a separate SQL deployment")
 				}
 				if c.Project == shared.Project && strings.HasPrefix(c.Service, "shared-valkey-") && !strings.Contains(c.Service, "access") && !strings.Contains(c.Service, "sentinel") && !strings.Contains(c.Service, "ui") {
@@ -176,4 +176,26 @@ func verifySharedCoreDeduplicationFixture(t *testing.T, ctx context.Context, rt 
 		t.Fatal("consumer destroy changed another application's data")
 	}
 	assertInventory("consumer-destroyed-core-retained", "")
+}
+
+func unexpectedSharedSQLDataService(service string) bool {
+	// Core and Shared auxiliary services deliberately share the installation
+	// project. The stable Core endpoint and admin toolbox are not data servers.
+	if service == "postgres" || service == "postgres-admin" || strings.HasSuffix(service, "-init") || strings.HasSuffix(service, "-access") || strings.HasSuffix(service, "-ui") {
+		return false
+	}
+	return strings.Contains(service, "postgres")
+}
+
+func TestSharedCoreInventorySeparatesSQLHelpersFromData(t *testing.T) {
+	for _, service := range []string{"postgres", "postgres-admin", "postgres-init", "shared-postgres-access", "shared-postgres-ui", "shared-valkey-core-shared-default"} {
+		if unexpectedSharedSQLDataService(service) {
+			t.Fatalf("helper/non-SQL service treated as another SQL deployment: %s", service)
+		}
+	}
+	for _, service := range []string{"shared-postgres-dev", "shared-postgres-core-member-1", "keycloak-db-postgres"} {
+		if !unexpectedSharedSQLDataService(service) {
+			t.Fatalf("unexpected SQL data service accepted: %s", service)
+		}
+	}
 }
