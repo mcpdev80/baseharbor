@@ -130,8 +130,9 @@ func TestNativeKeycloakHAInventoryRejectsMixedMemberVersions(t *testing.T) {
 		rt.containers = append(rt.containers, bhruntime.RuntimeContainer{Project: "owned-identity", Service: service, Running: true})
 	}
 	ops := &coreNativeRuntimeOps{runtime: rt, core: bhruntime.Files{HA: true}, identity: identityprovider.KeycloakFiles{Project: "owned-identity"}}
-	if _, err := ops.inspectNativeKeycloakMember(context.Background(), "keycloak-1"); err == nil || !strings.Contains(err.Error(), "disagree on image version") {
-		t.Fatalf("mixed Keycloak HA image versions must fail closed: %v", err)
+	mixed, err := ops.inspectNativeKeycloakMember(context.Background(), "keycloak-1")
+	if err != nil || len(mixed.Members) != 3 || mixed.Members[1].Version != "26.3.4" {
+		t.Fatalf("rolling Keycloak HA member versions must remain observable: %+v %v", mixed, err)
 	}
 	rt.versions["keycloak-2"] = "26.3.3"
 	state, err := ops.inspectNativeKeycloakMember(context.Background(), "keycloak-1")
