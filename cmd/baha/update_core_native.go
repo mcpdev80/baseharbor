@@ -417,6 +417,18 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			changed = true
 		}
 	}
+	// A restart can leave all three desired Spilo images running while
+	// the durable member journal still records an interrupted recovery.
+	// Never bypass that evidence through the binary-only no-change path.
+	if state.Spec.HA {
+		for _, delta := range plan.Deltas {
+			if delta.Installed.Kind == coreupdate.SQL && delta.Installed.Scope == "shared" && delta.Classification == coreupdate.NoChange {
+				pin := coreupdate.BackingPin{Role: "core-ha-postgresql", Version: delta.Desired.Version, Image: delta.Desired.Image, Digest: delta.Desired.Digest}
+				path := filepath.Join(stateRoot, "core-updates", safeVersionPathPart(release), "patroni-members.json")
+				if err := verifyCompletedPatroniJournal(ctx, state, release, pin, path); err != nil { return err }
+			}
+		}
+	}
 	if !changed {
 		return verifyCoreBinaryOnly(ctx, release)
 	}
