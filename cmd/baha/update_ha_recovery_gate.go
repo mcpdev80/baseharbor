@@ -55,6 +55,10 @@ func validateHAProviderPlan(plan coreupdate.Plan) error {
 		if delta.Classification == coreupdate.NoChange {
 			continue
 		}
+		if delta.Installed.Kind == coreupdate.SQL && delta.Installed.Scope == "shared" &&
+			delta.Installed.Instance == "postgres-member-1" && delta.Classification == coreupdate.BackupRequired {
+			continue // separately executed by the verified HA Patroni rolling coordinator
+		}
 		if delta.Installed.Kind != coreupdate.Secrets && delta.Installed.Kind != coreupdate.Identity {
 			return fmt.Errorf("UNSUPPORTED: HA backing provider %s must remain unchanged until its rolling member migration is explicitly requested", delta.Installed.Instance)
 		}

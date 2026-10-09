@@ -41,7 +41,7 @@ func TestPatroniRollingRuntimeNeverMutatesForeignMember(t *testing.T) {
 	}
 	rt := &patroniRollingTestRuntime{digest: "sha256:" + strings.Repeat("a", 64)}
 	files := bhruntime.Files{HA: true, Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: env}
-	ops := &patroniCoreRollingOps{runtime: rt, files: files, journal: coreupdate.PatroniMemberJournal{Desired: coreupdate.Desired{Kind: coreupdate.SQL, Digest: rt.digest}}}
+	ops := &patroniCoreRollingOps{runtime: rt, files: files, journal: coreupdate.PatroniMemberJournal{Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: rt.digest}}}
 	if err := ops.Recreate(context.Background(), "other-project-member"); err == nil {
 		t.Fatal("foreign replica mutated")
 	}
@@ -61,6 +61,12 @@ func TestPatroniRollingRuntimeNeverMutatesForeignMember(t *testing.T) {
 	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-2"); err == nil {
 		t.Fatal("image drift accepted")
 	}
+	rt.digest = "sha256:" + strings.Repeat("a", 64)
+	ops.journal.Desired.Image = "ghcr.io/zalando/spilo-18:4.1-p1"
+	if err := ops.VerifyMemberImage(context.Background(), "postgres-member-2"); err == nil {
+		t.Fatal("matching digest with foreign image reference accepted")
+	}
+	ops.journal.Desired.Image = "ghcr.io/zalando/spilo-18:4.1-p2"
 	if err := ops.Switchover(context.Background(), "postgres-member-1", "postgres-member-3"); err != nil {
 		t.Fatal(err)
 	}

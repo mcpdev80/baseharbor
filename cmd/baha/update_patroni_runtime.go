@@ -58,8 +58,8 @@ func (o *patroniCoreRollingOps) VerifyMemberImage(ctx context.Context, name stri
 	if i := strings.Index(digest, "@sha256:"); i >= 0 {
 		digest = digest[i+1:]
 	}
-	if digest != o.journal.Desired.Digest || strings.TrimSpace(identity.Reference) == "" {
-		return fmt.Errorf("Patroni member %s not running the desired immutable image", name)
+	if digest != o.journal.Desired.Digest || strings.TrimSpace(identity.Reference) != o.journal.Desired.Image {
+		return fmt.Errorf("Patroni member %s not running the desired immutable image and reference", name)
 	}
 	return nil
 }

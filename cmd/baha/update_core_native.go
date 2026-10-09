@@ -468,6 +468,18 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 		if err := prepareCoreHARecoveryEvidence(ctx, runtime, coreFiles, state, target.Name, release, journalDir); err != nil {
 			return err
 		}
+		for i := range plan.Deltas {
+			delta := plan.Deltas[i]
+			if delta.Installed.Kind != coreupdate.SQL || delta.Installed.Scope != "shared" || delta.Classification == coreupdate.NoChange {
+				continue
+			}
+			if err := rollOwnedCoreHAPostgres(ctx, runtime, coreFiles, delta, state.ID, target.Name, release, journalDir); err != nil {
+				return err
+			}
+			// Never send a live HA database through the generic quiesce/volume
+			// transaction: its members have been rolled and checked separately.
+			plan.Deltas[i].Classification = coreupdate.NoChange
+		}
 	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
 		installation: state.ID, issuer: state.IdentityIssuer, release: release, receiptPath: filepath.Join(journalDir, "receipts.json")}

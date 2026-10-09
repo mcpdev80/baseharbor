@@ -30,3 +30,21 @@ func TestHAPostgresPinFailsClosedOnDrift(t *testing.T) {
 		})
 	}
 }
+
+func TestHAPostgresPinOnlyAdmitsPinnedPatchUpgrade(t *testing.T) {
+	pin := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: digestB}
+	current := Realization{Kind: SQL, Installation: "core", Scope: "shared", Instance: "postgres-member-1", Owner: "baseharbor", Image: "ghcr.io/zalando/spilo-18:4.1-p1", Digest: digestA, Version: "4.1-p1"}
+	delta := ClassifyHAPostgresPin(current, pin)
+	if delta.Classification != BackupRequired || delta.Installed.Version != "18-spilo-4.1-p1" {
+		t.Fatalf("owned same-major patch must require native backup/rolling: %+v", delta)
+	}
+	current.Digest = ""
+	if got := ClassifyHAPostgresPin(current, pin); got.Classification != Unsupported {
+		t.Fatalf("unpinned HA rolling mutation admitted: %+v", got)
+	}
+	current.Image = "ghcr.io/zalando/spilo-18:4.2-p1"
+	current.Digest = digestA
+	if got := ClassifyHAPostgresPin(current, pin); got.Classification != Unsupported {
+		t.Fatalf("Spilo downgrade admitted: %+v", got)
+	}
+}
