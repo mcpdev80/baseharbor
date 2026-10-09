@@ -45,3 +45,20 @@ func TestNativeKeycloakMinorRequiresSingleOwnedMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnedTaggedImageAcceptsOnlyCanonicalDockerHubAliases(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(path, []byte("services:\n  postgres-member-1:\n    image: docker.io/library/postgres:18.0-alpine@"+digest+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, repository := range []string{"postgres", "library/postgres", "docker.io/library/postgres", "index.docker.io/library/postgres", "registry-1.docker.io/library/postgres"} {
+		ref, err := ownedTaggedImage(bhruntime.ImageIdentity{Reference: repository + "@" + digest, Digest: repository + "@" + digest}, path, "postgres-member-1")
+		if err != nil || ref != "docker.io/library/postgres:18.0-alpine" {
+			t.Fatalf("Docker Hub alias %q not resolved from owned immutable declaration: %q %v", repository, ref, err)
+		}
+	}
+	if _, err := ownedTaggedImage(bhruntime.ImageIdentity{Reference: "quay.io/library/postgres@" + digest, Digest: digest}, path, "postgres-member-1"); err == nil {
+		t.Fatal("foreign registry admitted as Docker Hub alias")
+	}
+}

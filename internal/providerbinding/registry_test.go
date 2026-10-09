@@ -34,6 +34,25 @@ func TestRuntimeBindingManagedIdentity(t *testing.T) {
 		t.Fatalf("owned inventory mismatch: %+v %v", got, err)
 	}
 }
+
+func TestRuntimeBindingNormalizesDockerRepositoryDigestWithoutAcceptingForeignRepository(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	reader := &fakeReader{containers: []bhruntime.RuntimeContainer{{Project: "core-owned", Service: "openbao", Running: true}}, identity: bhruntime.ImageIdentity{Reference: "docker.io/openbao/openbao:2.7.0@" + digest}}
+	binding := &RuntimeBinding{Reader: reader, Engine: "docker", Sources: map[providerupgrade.Provider]ManagedSource{providerupgrade.ProviderOpenBao: {Project: "core-owned", Service: "openbao"}}}
+	for _, observed := range []string{digest, "openbao/openbao@" + digest, "docker.io/openbao/openbao@" + digest} {
+		reader.identity.Digest = observed
+		identity, err := binding.InspectManaged(t.Context(), providerupgrade.ProviderOpenBao)
+		if err != nil || identity.Digest != digest {
+			t.Fatalf("valid immutable runtime digest %q rejected: %+v %v", observed, identity, err)
+		}
+	}
+	for _, observed := range []string{"foreign/openbao@" + digest, "sha256:" + strings.Repeat("g", 64), "openbao/openbao@sha256:short"} {
+		reader.identity.Digest = observed
+		if _, err := binding.InspectManaged(t.Context(), providerupgrade.ProviderOpenBao); err == nil {
+			t.Fatalf("invalid or foreign immutable runtime digest %q admitted", observed)
+		}
+	}
+}
 func TestRuntimeBindingForeignMissingUnhealthyAndUnpinned(t *testing.T) {
 	p := providerupgrade.ProviderOpenBao
 	cases := []struct {

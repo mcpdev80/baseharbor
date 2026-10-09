@@ -2,6 +2,7 @@ package providerbinding
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -70,8 +71,29 @@ func (r *RuntimeBinding) InspectManaged(ctx context.Context, p providerupgrade.P
 	if err != nil {
 		return RuntimeIdentity{}, fmt.Errorf("read verified provider image identity: %w", err)
 	}
-	if image.Reference == "" || !strings.HasPrefix(image.Digest, "sha256:") || len(image.Digest) != 71 {
+	digest := strings.TrimSpace(image.Digest)
+	if at := strings.IndexByte(digest, '@'); at >= 0 {
+		// Docker reports RepoDigests as repository@sha256; native Podman can
+		// report the bare digest. Both must identify the observed repository.
+		if imageRepository(digest[:at]) != imageRepository(image.Reference) {
+			return RuntimeIdentity{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "runtime image", errors.New("immutable image repository differs"))
+		}
+		digest = digest[at+1:]
+	}
+	_, digestErr := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+	if image.Reference == "" || !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 || digestErr != nil {
 		return RuntimeIdentity{}, providerupgrade.Wrap(providerupgrade.ErrorInvalidState, "runtime image", errors.New("immutable image digest unavailable"))
 	}
-	return RuntimeIdentity{Provider: p, Project: source.Project, Service: source.Service, Engine: r.Engine, Image: image.Reference, Digest: image.Digest, Owned: true}, nil
+	return RuntimeIdentity{Provider: p, Project: source.Project, Service: source.Service, Engine: r.Engine, Image: image.Reference, Digest: digest, Owned: true}, nil
+}
+
+func imageRepository(reference string) string {
+	reference = strings.SplitN(strings.TrimSpace(reference), "@", 2)[0]
+	if colon := strings.LastIndexByte(reference, ':'); colon > strings.LastIndexByte(reference, '/') {
+		reference = reference[:colon]
+	}
+	for _, prefix := range []string{"docker.io/", "index.docker.io/", "registry-1.docker.io/"} {
+		reference = strings.TrimPrefix(reference, prefix)
+	}
+	return reference
 }

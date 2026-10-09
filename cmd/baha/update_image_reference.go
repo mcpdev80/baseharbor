@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -47,8 +48,24 @@ func ownedTaggedImage(image bhruntime.ImageIdentity, compose, service string) (s
 	if i := strings.Index(digest, "@"); i >= 0 {
 		digest = digest[i+1:]
 	}
-	if tag <= strings.LastIndex(parts[0], "/") || base != parts[0][:tag] || ref != base+"@"+digest || parts[1] != digest {
-		return "", errors.New("canonical runtime image differs from owned provider pin")
+	if tag <= strings.LastIndex(parts[0], "/") || canonicalImageRepository(base) != canonicalImageRepository(parts[0][:tag]) || ref != base+"@"+digest || parts[1] != digest {
+		return "", fmt.Errorf("canonical runtime image differs from owned provider pin: observed=%s digest=%s declared=%s", ref, digest, declared)
 	}
 	return parts[0], nil
+}
+
+func canonicalImageRepository(repository string) string {
+	for _, prefix := range []string{"index.docker.io/", "registry-1.docker.io/"} {
+		if strings.HasPrefix(repository, prefix) {
+			return "docker.io/" + strings.TrimPrefix(repository, prefix)
+		}
+	}
+	first, _, hasSlash := strings.Cut(repository, "/")
+	if !hasSlash {
+		return "docker.io/library/" + repository
+	}
+	if !strings.ContainsAny(first, ".:") && first != "localhost" {
+		return "docker.io/" + repository
+	}
+	return repository
 }
