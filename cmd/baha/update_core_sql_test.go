@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
- "github.com/mcpdev80/baseharbor/internal/coreupdate"
- "github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"errors"
+	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,20 +66,25 @@ func TestNativeOpenBaoSQLVerificationProtectsCredentials(t *testing.T) {
 }
 
 type nativeAdapterImageRuntime struct {
- bhruntime.RuntimeProvider
- digest string
+	bhruntime.RuntimeProvider
+	digest string
 }
-func (r *nativeAdapterImageRuntime) ProjectServiceImageIdentity(context.Context,string,string)(bhruntime.ImageIdentity,error){
- return bhruntime.ImageIdentity{Reference:"quay.io/keycloak/keycloak:26.8.1",Digest:r.digest},nil
+
+func (r *nativeAdapterImageRuntime) ProjectServiceImageIdentity(context.Context, string, string) (bhruntime.ImageIdentity, error) {
+	return bhruntime.ImageIdentity{Reference: "quay.io/keycloak/keycloak:26.8.1", Digest: r.digest}, nil
 }
-func TestNativeProviderAdapterRejectsUnknownImageBeforeSemanticProbe(t *testing.T){
- d:=coreupdate.Delta{
-  Installed:coreupdate.Realization{Kind:coreupdate.Identity,Instance:"keycloak-1",Digest:"sha256:"+strings.Repeat("a",64),Version:"26.8.0"},
-  Desired:coreupdate.Desired{Kind:coreupdate.Identity,Digest:"sha256:"+strings.Repeat("b",64),Version:"26.8.1",Image:"quay.io/keycloak/keycloak:26.8.1"},
- }
- rt:=&nativeAdapterImageRuntime{digest:"sha256:"+strings.Repeat("c",64)}
- ops:=coreNativeRuntimeOps{runtime:rt,identity:identityprovider.KeycloakFiles{Project:"managed-keycloak"}}
- if err:=ops.verifyBoundProviderSemantics(context.Background(),d);err==nil{t.Fatal("unknown provider runtime digest accepted")}
- rt.digest=d.Installed.Digest
- if err:=ops.verifyBoundProviderSemantics(context.Background(),d);err!=nil{t.Fatalf("unmutated original image rejected for recovery: %v",err)}
+func TestNativeProviderAdapterRejectsUnknownImageBeforeSemanticProbe(t *testing.T) {
+	d := coreupdate.Delta{
+		Installed: coreupdate.Realization{Kind: coreupdate.Identity, Instance: "keycloak-1", Digest: "sha256:" + strings.Repeat("a", 64), Version: "26.8.0"},
+		Desired:   coreupdate.Desired{Kind: coreupdate.Identity, Digest: "sha256:" + strings.Repeat("b", 64), Version: "26.8.1", Image: "quay.io/keycloak/keycloak:26.8.1"},
+	}
+	rt := &nativeAdapterImageRuntime{digest: "sha256:" + strings.Repeat("c", 64)}
+	ops := coreNativeRuntimeOps{runtime: rt, identity: identityprovider.KeycloakFiles{Project: "managed-keycloak"}}
+	if err := ops.verifyBoundProviderSemantics(context.Background(), d); err == nil {
+		t.Fatal("unknown provider runtime digest accepted")
+	}
+	rt.digest = d.Installed.Digest
+	if err := ops.verifyBoundProviderSemantics(context.Background(), d); err != nil {
+		t.Fatalf("unmutated original image rejected for recovery: %v", err)
+	}
 }
