@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Task-first human CLI entry point `baha new`, repository-aware application lifecycle and Core/Target selection with `baha use`.
 - Target-aware machine, JSON and MCP integrations; guided Node enrollment and operator workflows.
 - Native provider-update admission, bounded SQL restore receipts and HA recovery orchestration.
-- Physical PostgreSQL basebackup, verified isolated extraction, etcd mTLS snapshot/restore and isolated three-member quorum boot.
+- Physical PostgreSQL basebackup/WAL recovery, safe restore into new owned volumes, authenticated etcd mTLS snapshot/restore, three-member quorum boot, live DCS cutover and SQL-marker rollback to the selected backup state.
 - Ownership-aware host-trust uninstallation with preservation of foreign certificates.
 - EN/DE CLI, recovery, Node and Console release-candidate documentation.
 
@@ -31,12 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Verified
 
-- Core SHA `67aec49dc9218d8f9ecbd26805df62eed4e99df3`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37945903026](https://github.com/mcpdev80/baseharbor/actions/runs/37945903026).
+- Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37945903026).
 - Console and Connector package-local checks have successful evidence in their respective PRs; exact joint-release acceptance remains outstanding.
 
 ### Known limitations / release blockers
 
-- Native live DCS fence/activate/commit cutover, coordinated PostgreSQL/live-DCS rollback and end-to-end HA rolling/fault-recovery are not release-qualified.
+- Native DCS cutover, PostgreSQL physical point-in-time backup-state recovery and same-image rolling/failure recovery passed isolated rootless Docker/Podman acceptance. Changed-image upgrade compatibility and plaintext DCS migration remain unqualified.
 - Real OpenBao/Keycloak state recovery and final Console/Node remote runtime acceptance are outstanding.
 - Demo and all dependent component pins must be synchronized with one final immutable Core SHA, then revalidated.
 - v0.4.24 has not been tagged, merged or published. This entry remains Unreleased until all release gates have passed and publication is authorized.
