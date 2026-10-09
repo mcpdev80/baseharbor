@@ -201,6 +201,9 @@ func (a *Adapter) Recover(ctx context.Context, req providerupgrade.Request, back
 	if err := a.ops.VerifyManagerAuth(ctx); err != nil {
 		return providerupgrade.Wrap(providerupgrade.ErrorRecoveryFailed, "openbao recovered auth", err)
 	}
+	if err := a.ops.VerifyAuthConfiguration(ctx); err != nil {
+		return providerupgrade.Wrap(providerupgrade.ErrorRecoveryFailed, "openbao recovered AppRole/policies", err)
+	}
 	if err := a.ops.VerifyApplicationAccess(ctx); err != nil {
 		return providerupgrade.Wrap(providerupgrade.ErrorRecoveryFailed, "openbao recovered application access", err)
 	}
