@@ -168,3 +168,16 @@ func TestRecoveryFailsWhenSemanticAccessIsNotRestored(t *testing.T) {
 		t.Fatalf("class=%q err=%v", providerupgrade.ClassOf(err), err)
 	}
 }
+
+func TestRecoveryRejectsMissingRestoredAppRolePolicies(t *testing.T) {
+	state := goodState()
+	state.Version = "2.7.0"
+	ops := &fakeOps{state: state, authErr: errors.New("AppRole or secret policy was not restored")}
+	err := New(ops).Recover(context.Background(), request(), goodBackup())
+	if providerupgrade.ClassOf(err) != providerupgrade.ErrorRecoveryFailed {
+		t.Fatalf("missing recovered AppRole/policy accepted: %v", err)
+	}
+	if ops.restoreCalls != 1 {
+		t.Fatalf("expected actual restore before authenticated recovery proof, got %d", ops.restoreCalls)
+	}
+}
