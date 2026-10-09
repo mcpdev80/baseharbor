@@ -482,7 +482,7 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	args = filtered
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") {
-			return usageError("unknown target delete option "+arg, "Run 'baha target delete --help'; target deletion does not accept --yes.")
+			return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME; target deletion does not accept --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
 		}
 	}
 	if len(args) != 1 {

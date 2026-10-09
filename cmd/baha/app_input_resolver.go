@@ -23,7 +23,7 @@ const (
 
 func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 	base := appInitOrConfigureCommand(store)
-	base.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [manifest options] [--workload-component NAME]... [--workload-source KIND:PATH]"
+	base.Usage = "baha app init --agents [--json] | baha app init [--quick] [--json] | baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [manifest options] [--workload-component NAME]... [--workload-source KIND:PATH]"
 	base.Long += " Deployment inputs are resolved through the reusable input resolver. --input supports automation-safe injection for declared non-secret inputs such as hostname, tls_mode and cert_dir. --agents creates or idempotently updates only the bounded BaseHarbor section in AGENTS.md."
 	baseRun := base.Run
 	base.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -41,6 +41,28 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		filtered, agents, err := extractAgentsOption(args)
 		if err != nil {
 			return err
+		}
+		if agents {
+			if len(filtered) != 0 {
+				return usageError("--agents cannot be combined with application initialization arguments", "Use baha app init --agents for documentation only; run baha app init separately to configure a deployment.")
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			changed, err := ensureBaseHarborAgentsSection(cwd)
+			if err != nil {
+				return err
+			}
+			if format == outputJSON {
+				return writeJSON(destination, map[string]any{"path": filepath.Join(cwd, "AGENTS.md"), "changed": changed})
+			}
+			if changed {
+				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added or updated")
+			} else {
+				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
+			}
+			return nil
 		}
 		forwarded, injected, err := extractDeclaredInputArgs(filtered)
 		if err != nil {
@@ -127,24 +149,11 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--input is available after an application contract exists", "Create baseharbor.yaml first with guided/quick init or deterministic manifest flags, then inject deployment inputs.")
 			}
 			if format == outputJSON {
-				if agents {
-					return usageError("--agents is a host guidance mode", "Use deterministic initialization JSON separately from host guidance generation.")
-				}
+
 				return appInitCommand().Run(ctx, append(forwarded, "--json"), destination, errOut)
 			}
 			if err := baseRun(ctx, forwarded, out, errOut); err != nil {
 				return err
-			}
-			if agents {
-				changed, err := ensureBaseHarborAgentsSection(cwd)
-				if err != nil {
-					return err
-				}
-				if changed {
-					fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added")
-				} else {
-					fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
-				}
 			}
 			return nil
 		}
@@ -162,17 +171,6 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		}
 		if err := runRepositoryRuntimeInitResolved(ctx, resolved, filepath.Dir(manifestPath), opts, out); err != nil {
 			return err
-		}
-		if agents {
-			changed, err := ensureBaseHarborAgentsSection(filepath.Dir(manifestPath))
-			if err != nil {
-				return err
-			}
-			if changed {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance added")
-			} else {
-				fmt.Fprintln(out, "AGENTS.md: BaseHarbor guidance already current")
-			}
 		}
 		if format == outputJSON {
 			return writeJSON(destination, map[string]any{"application": resolved.Manifest.Name, "environment": resolved.Manifest.Environment, "configured": true})

@@ -51,7 +51,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 		return targetMutationResult{}, err
 	}
 	if _, exists := cfg.Targets[name]; exists {
-		return targetMutationResult{}, fmt.Errorf("target %q already exists", name)
+		return targetMutationResult{}, machine.Wrap(machine.ErrorInternal, fmt.Errorf("target %q already exists", name), "Run baha target list to inspect existing targets, or choose another target name.", false)
 	}
 	if existing, exists := cfg.Access[accessName]; exists {
 		if existing.Provider != accessProvider || existing.Reference != reference {
