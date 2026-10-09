@@ -116,9 +116,9 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 	}
 	project := live.Project + "-dcs-recovery"
 	recoveryFiles := bhruntime.Files{Project: project, Compose: composePath, Env: live.Env, HA: true}
-	if err := rt.UpProject(ctx, project, composePath, live.Env); err != nil {
-		return fmt.Errorf("boot isolated etcd recovery cluster: %w", err)
-	}
+	// A failed Compose up may already have started a subset of recovered
+	// etcd members. Always tear down that isolated project, even when Up
+	// returns an error before the full cluster is ready.
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -126,6 +126,9 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 			retErr = errors.Join(retErr, fmt.Errorf("stop isolated etcd recovery cluster: %w", err))
 		}
 	}()
+	if err := rt.UpProject(ctx, project, composePath, live.Env); err != nil {
+		return fmt.Errorf("boot isolated etcd recovery cluster: %w", err)
+	}
 
 	recovered := tools
 	recovered.Files = recoveryFiles
