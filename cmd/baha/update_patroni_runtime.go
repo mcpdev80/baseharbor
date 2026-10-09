@@ -13,8 +13,8 @@ import (
 
 // patroniCoreRollingOps is the runtime-side adapter for the DCS-gated Core
 // state machine. Only owned Core member services may be force-recreated.
-// This adapter is NOT activated until the session-1B DCS recovery binding
-// provides verified snapshot and recovery evidence.
+// This adapter is activated only by rollOwnedCoreHAPostgres after native
+// physical backup and an authenticated, isolated-restore-verified DCS proof.
 type patroniCoreRollingOps struct {
 	runtime bhruntime.RuntimeProvider
 	files   bhruntime.Files
