@@ -151,16 +151,24 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 type sqlRestoreReplayRuntime struct {
 	bhruntime.RuntimeProvider
 	failSQL      bool
+	failDecode   bool
 	restores     int
 	afterSQL     func()
 	restoreArgs  []string
 	restoreInput string
 }
 
-func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, _, _ io.Writer, _ []string, args ...string) error {
+func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, stdout, _ io.Writer, _ []string, args ...string) error {
 	if len(args) > 0 && args[0] == "run" {
 		input, _ := io.ReadAll(stdin)
 		for _, arg := range args {
+			if arg == "--file=-" {
+				if r.failDecode {
+					return errors.New("injected archive decode failure")
+				}
+				_, err := io.WriteString(stdout, "CREATE SCHEMA public; ALTER SCHEMA public OWNER TO retained_owner;\n")
+				return err
+			}
 			if arg == "sh" {
 				r.restoreArgs = append([]string(nil), args...)
 				r.restoreInput = string(input)
@@ -206,12 +214,29 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationOrReplayUnknownCommi
 	if err := os.WriteFile(env, []byte("CORE_OWNED=changed\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	rt.failDecode = true
+	if err := spec.restore(context.Background(), ref); err == nil || !strings.Contains(err.Error(), "decode failed") {
+		t.Fatalf("invalid decoded archive reached SQL: %v", err)
+	}
+	if rt.restores != 0 {
+		t.Fatal("decode failure mutated SQL")
+	}
+	if _, err := os.Stat(filepath.Join(spec.Directory, spec.Name+"-restore.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("decode failure recorded a SQL mutation")
+	}
+	if files, _ := filepath.Glob(filepath.Join(spec.Directory, ".provider-restore-*.sql")); len(files) != 0 {
+		t.Fatal("private decoded SQL was retained")
+	}
+	rt.failDecode = false
 	if err := spec.restore(context.Background(), ref); err == nil {
 		t.Fatal("failed SQL restore returned success")
 	}
 	args := strings.Join(rt.restoreArgs, " ")
 	if !strings.Contains(args, "-- postgres private-operator /ca.pem openbao") || !strings.HasPrefix(rt.restoreInput, spec.RestorePassword+"\n") || strings.Contains(args, spec.RestorePassword) || strings.Contains(args, "--no-owner") || strings.Contains(args, "--no-acl") {
 		t.Fatal("operator recovery leaked credentials, lost database binding, or suppressed retained SQL ownership/ACLs")
+	}
+	if !strings.Contains(args, "psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 --file=-") || !strings.Contains(rt.restoreInput, "DROP SCHEMA %I CASCADE") || !strings.Contains(rt.restoreInput, "nspname !~ '^pg_'") || !strings.Contains(rt.restoreInput, "OWNER TO retained_owner") {
+		t.Fatal("provider schema replacement was not atomic, system-scoped or ownership-preserving")
 	}
 	data, err := os.ReadFile(env)
 	if err != nil {

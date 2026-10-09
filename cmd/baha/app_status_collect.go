@@ -152,7 +152,13 @@ func (c *applicationStatusCollection) collectManagedServiceChecks(ctx context.Co
 	c.collectDocumentDatabaseCheck(ctx)
 	c.collectManagementUICheck(ctx)
 	c.collectSecretsAndBrokerChecks(ctx)
-	for _, check := range collectProviderTopologyChecks(ctx, c.compose, c.resolved, c.files) {
+	verified := map[string]bool{}
+	for _, check := range c.result.Checks {
+		if check.OK && applicationTopologyProof(check.Name) != "" {
+			verified[check.Name] = true
+		}
+	}
+	for _, check := range collectProviderTopologyChecks(ctx, c.compose, c.resolved, c.files, verified) {
 		c.result.AddCheck(check.Name, check.OK, check.Detail)
 	}
 }

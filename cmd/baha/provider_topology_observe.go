@@ -25,7 +25,7 @@ type topologySource struct {
 
 // The same read-only observation is projected into status and doctor. Provider
 // projects remain separate from application workloads and helpers keep roles.
-func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) []application.StatusCheck {
+func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, verified ...map[string]bool) []application.StatusCheck {
 	m := resolved.Manifest
 	root, namespace := resolved.TargetStateRoot, resolved.Target.Name
 	sources := []topologySource{{name: "application", project: files.Project, compose: files.Compose, env: files.Env}}
@@ -82,8 +82,25 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 			continue
 		}
 		for _, o := range observations {
+			if source.name == "application" && o.RequestedHA && len(verified) > 0 && verified[0][o.Provider] {
+				o.SemanticProof = applicationTopologyProof(o.Provider)
+			}
 			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider+"/"+o.Instance), OK: o.Members > 0 || o.DeclaredMembers == 0, Detail: o.Detail()})
 		}
 	}
 	return result
+}
+
+// Only the existing authenticated cluster checks can contribute these proofs.
+// A healthy access proxy or a matching container count cannot do so.
+func applicationTopologyProof(provider string) string {
+	switch provider {
+	case "valkey":
+		return "valkey-primary-replicas-sentinel"
+	case "mongodb":
+		return "mongodb-primary-secondaries"
+	case "rabbitmq":
+		return "rabbitmq-cluster-membership"
+	}
+	return ""
 }

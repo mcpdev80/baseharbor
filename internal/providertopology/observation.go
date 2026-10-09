@@ -19,14 +19,31 @@ type Observation struct {
 	Members, DataMembers, Helpers    int
 	DeclaredMembers, DeclaredHelpers int
 	MemberNames, HelperNames         []string
+	SemanticProof                    string
 }
 
 func (o Observation) Detail() string {
-	active := o.Members > 1
+	redundant := o.Members > 1
+	active, failover, proof := "false", "false", "not-collected"
+	if redundant {
+		// Running processes establish redundancy, not replication or quorum.
+		active, failover = "unknown", "unknown"
+		if o.SemanticProof != "" && o.Members == o.DeclaredMembers {
+			active, proof = "true", o.SemanticProof
+			switch o.SemanticProof {
+			case "valkey-primary-replicas-sentinel", "mongodb-primary-secondaries":
+				o.Replication = strconv.Itoa(o.DataMembers - 1)
+				failover = "quorum-ready"
+			case "rabbitmq-cluster-membership":
+				o.Replication = "queue-policy-dependent"
+				failover = "cluster-ready-data-policy-dependent"
+			}
+		}
+	}
 	if o.DeclaredMembers <= 1 && o.Replication == "configured-not-proven" {
 		o.Replication = "0"
 	}
-	return fmt.Sprintf("provider=%s instance=%s ha-requested=%t ha-active=%t data-members=%d service-members=%d replicas=%s auxiliary-services=%d/%d configured-service-members=%d members=[%s] helpers=[%s] process-redundancy=%t failover-proof=not-collected host-failure-tolerance=false", o.Provider, o.Instance, o.RequestedHA, active, o.DataMembers, o.Members, o.Replication, o.Helpers, o.DeclaredHelpers, o.DeclaredMembers, strings.Join(o.MemberNames, ","), strings.Join(o.HelperNames, ","), active)
+	return fmt.Sprintf("provider=%s instance=%s ha-requested=%t ha-active=%s data-members=%d service-members=%d replicas=%s auxiliary-services=%d/%d configured-service-members=%d members=[%s] helpers=[%s] process-redundancy=%t replication-proof=%s failover-proof=%s host-failure-tolerance=false", o.Provider, o.Instance, o.RequestedHA, active, o.DataMembers, o.Members, o.Replication, o.Helpers, o.DeclaredHelpers, o.DeclaredMembers, strings.Join(o.MemberNames, ","), strings.Join(o.HelperNames, ","), redundant, proof, failover)
 }
 
 // Observe uses protected Compose ownership and the native running-service

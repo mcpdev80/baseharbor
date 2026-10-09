@@ -75,3 +75,22 @@ func TestIndependentLogicalInstancesAreNotReportedAsHA(t *testing.T) {
 		}
 	}
 }
+
+func TestRunningMembersRequireSemanticProofBeforeClaimingHA(t *testing.T) {
+	o := Observation{Provider: "valkey", Members: 3, DataMembers: 3, DeclaredMembers: 3, RequestedHA: true, Replication: "configured-not-proven"}
+	if detail := o.Detail(); !strings.Contains(detail, "ha-active=unknown") || strings.Contains(detail, "replicas=2") {
+		t.Fatalf("container counts claimed replicated HA: %s", detail)
+	}
+	o.SemanticProof = "valkey-primary-replicas-sentinel"
+	if detail := o.Detail(); !strings.Contains(detail, "ha-active=true") || !strings.Contains(detail, "replicas=2") || !strings.Contains(detail, "failover-proof=quorum-ready") {
+		t.Fatalf("native primary/replica/Sentinel proof not projected: %s", detail)
+	}
+	o.Members, o.DataMembers = 2, 2
+	if strings.Contains(o.Detail(), "ha-active=true") {
+		t.Fatal("partial inventory reused complete cluster proof")
+	}
+	o.Provider, o.Members, o.DataMembers, o.SemanticProof = "rabbitmq", 3, 3, "rabbitmq-cluster-membership"
+	if detail := o.Detail(); !strings.Contains(detail, "replicas=queue-policy-dependent") || strings.Contains(detail, "replicas=2") {
+		t.Fatalf("cluster membership claimed replication for every queue: %s", detail)
+	}
+}

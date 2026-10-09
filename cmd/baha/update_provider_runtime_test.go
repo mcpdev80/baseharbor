@@ -324,6 +324,11 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	}
 	checkApplication()
 	if ha {
+		if !observePatroniReplication(ctx, rt, files.Project, files.Compose, files.Env, "postgres-member") ||
+			!observePatroniReplication(ctx, rt, identity.Project, identity.Compose, identity.Env, "keycloak-db-member") {
+			t.Fatal("native Core/identity replication observation did not verify one primary and two replicas per SQL provider")
+		}
+		t.Log("Native status replication proof: Core PostgreSQL and identity SQL each have one primary and two health-verified replicas")
 		runHAOpenBaoUpgradeRecovery(t, ctx, ops, plan, engine, checkApplication, func() {
 			if err := platformopenbao.SetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER", []byte("post-backup-value")); err != nil {
 				t.Fatal(err)

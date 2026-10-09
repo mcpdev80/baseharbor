@@ -441,6 +441,25 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 		return err
 	}
 	defer archive.Close()
+	// A migrated provider can add foreign keys/views absent from the original
+	// archive. pg_restore --clean cannot drop their referenced old objects.
+	// Decode into an owner-only temporary file, then replace only this bound
+	// database's non-system schemas and restore ownership/ACLs in ONE transaction.
+	// Decode errors occur before the SQL-started receipt or any database mutation.
+	sql, err := os.CreateTemp(s.Directory, ".provider-restore-*.sql")
+	if err != nil {
+		return err
+	}
+	defer func() { sql.Close(); os.Remove(sql.Name()) }()
+	var diagnostics bytes.Buffer
+	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
+		archive, sql, &diagnostics, []string{s.Compose}, "run", "--rm", "--no-deps", "-T", s.Client,
+		"pg_restore", "--clean", "--if-exists", "--exit-on-error", "--file=-"); err != nil {
+		return fmt.Errorf("%s SQL recovery decode failed (%s)", s.Provider, classifyProviderRestoreFailure(diagnostics.String()))
+	}
+	if _, err := sql.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
 	if err := receipt.record(phase, "sql_started"); err != nil {
 		return err
 	}
@@ -451,11 +470,22 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	if s.RestoreUser != "" {
 		user, password = s.RestoreUser, s.RestorePassword
 	}
-	input := io.MultiReader(strings.NewReader(password+"\n"), archive)
-	var diagnostics bytes.Buffer
+	const resetOwnedSchemas = `DO $baseharbor_recovery$
+DECLARE owned_schema text;
+BEGIN
+  FOR owned_schema IN SELECT nspname FROM pg_namespace
+    WHERE nspname <> 'information_schema' AND nspname !~ '^pg_'
+  LOOP
+    EXECUTE format('DROP SCHEMA %I CASCADE', owned_schema);
+  END LOOP;
+END;
+$baseharbor_recovery$;
+`
+	input := io.MultiReader(strings.NewReader(password+"\n"+resetOwnedSchemas), sql)
+	diagnostics.Reset()
 	const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
-exec pg_restore --clean --if-exists --single-transaction --exit-on-error -h "$1" -U "$2" -d "$4"`
+exec psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 --file=- -h "$1" -U "$2" -d "$4"`
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 		input, io.Discard, &diagnostics, []string{s.Compose},
 		"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, user, s.CAFile, s.Database); err != nil {

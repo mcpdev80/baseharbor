@@ -5,22 +5,25 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 )
 
 type controlPlaneAvailability struct {
-	HA                 bool
-	PostgresMembers    int
-	PostgresEtcd       int
-	OpenBaoMembers     int
-	Helpers            int
-	ActualHA           bool
-	Satisfied          bool
-	IdentityMembers    int
-	IdentitySQLMembers int
-	IdentityEtcd       int
+	HA                          bool
+	PostgresMembers             int
+	PostgresEtcd                int
+	OpenBaoMembers              int
+	Helpers                     int
+	ActualHA                    bool
+	Satisfied                   bool
+	IdentityMembers             int
+	IdentitySQLMembers          int
+	IdentityEtcd                int
+	PostgresReplicationVerified bool
+	IdentityReplicationVerified bool
 }
 
 func collectControlPlaneAvailability(ctx context.Context, checks []health.Check) (controlPlaneAvailability, error) {
@@ -54,6 +57,12 @@ func collectControlPlaneAvailability(ctx context.Context, checks []health.Check)
 		return controlPlaneAvailability{}, err
 	}
 	report.observeIdentity(identityRunning)
+	if files.HA {
+		probeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		report.PostgresReplicationVerified = observePatroniReplication(probeCtx, runtimeProvider, files.Project, files.Compose, files.Env, "postgres-member")
+		report.IdentityReplicationVerified = observePatroniReplication(probeCtx, runtimeProvider, identity.Project, identity.Compose, identity.Env, "keycloak-db-member")
+	}
 	return report, nil
 }
 
@@ -134,8 +143,26 @@ func (r controlPlaneAvailability) Detail() string {
 	if replicas < 0 {
 		replicas = 0
 	}
-	topology := fmt.Sprintf(" ha-requested=%t ha-active=%t data-members=postgresql:%d,openbao-sql:shared configured-replicas=postgresql:%d,openbao-sql:0 auxiliary-services=%d openbao-service-members=%d replication-proof=not-collected process-failover-capable=%t", r.HA, r.ActualHA, r.PostgresMembers, replicas, r.Helpers, r.OpenBaoMembers, r.ActualHA)
+	active, proof, actualReplicas := "false", "not-applicable", "0"
+	identityProof, identityReplicas := "not-applicable", "0"
+	if r.HA {
+		proof, identityProof, actualReplicas, identityReplicas = "unverified", "unverified", "unknown", "unknown"
+		if r.PostgresReplicationVerified {
+			proof, actualReplicas = "native-primary-two-streaming-replicas", "2"
+		}
+		if r.IdentityReplicationVerified {
+			identityProof, identityReplicas = "native-primary-two-streaming-replicas", "2"
+		}
+		if r.ActualHA {
+			active = "unknown"
+			if r.PostgresReplicationVerified && r.IdentityReplicationVerified {
+				active = "true"
+			}
+		}
+	}
+	topology := fmt.Sprintf(" ha-requested=%t ha-active=%s data-members=postgresql:%d,openbao-sql:shared configured-replicas=postgresql:%d,openbao-sql:0 replicas=postgresql:%s auxiliary-services=%d openbao-service-members=%d replication-proof=%s process-failover-capable=%t failover-proof=not-collected", r.HA, active, r.PostgresMembers, replicas, actualReplicas, r.Helpers, r.OpenBaoMembers, proof, r.ActualHA)
 	topology += fmt.Sprintf(" identity-service-members=%d identity-sql-data-members=%d identity-etcd-members=%d", r.IdentityMembers, r.IdentitySQLMembers, r.IdentityEtcd)
+	topology += " identity-sql-replicas=" + identityReplicas + " identity-sql-replication-proof=" + identityProof
 	if !r.HA {
 		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied) + topology
 	}
