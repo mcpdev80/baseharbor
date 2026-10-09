@@ -515,10 +515,6 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			if haPin == nil {
 				return coreupdate.Plan{}, errors.New("missing Core HA PostgreSQL release pin")
 			}
-			digest := strings.TrimSpace(id.Digest)
-			if at := strings.Index(digest, "@sha256:"); at >= 0 {
-				digest = digest[at+1:]
-			}
 			classified, classifyErr := classifyOwnedHAPostgresRollingInventory(ctx, state, targetVersion, peerImages, *haPin)
 			if classifyErr != nil {
 				return coreupdate.Plan{}, classifyErr
