@@ -133,3 +133,22 @@ func TestRuntimeEtcdStatusRejectsInvalidUnsignedIdentities(t *testing.T) {
 		t.Fatalf("valid large unsigned etcd identity rejected: %v", err)
 	}
 }
+
+func TestValidateHAProviderPlanOnlyAdmitsOwnedSharedSQLRoll(t *testing.T) {
+	delta := coreupdate.Delta{
+		Installed: coreupdate.Realization{Kind: coreupdate.SQL, Scope: "shared", Instance: "postgres-member-1"},
+		Classification: coreupdate.BackupRequired,
+	}
+	if err := validateHAProviderPlan(coreupdate.Plan{Deltas: []coreupdate.Delta{delta}}); err != nil {
+		t.Fatalf("approved native HA rolling change rejected: %v", err)
+	}
+	delta.Installed.Scope = "backing"
+	if err := validateHAProviderPlan(coreupdate.Plan{Deltas: []coreupdate.Delta{delta}}); err == nil {
+		t.Fatal("unapproved HA backing SQL mutation admitted")
+	}
+	delta.Installed.Scope = "shared"
+	delta.Classification = coreupdate.Unsupported
+	if err := validateHAProviderPlan(coreupdate.Plan{Deltas: []coreupdate.Delta{delta}}); err == nil {
+		t.Fatal("unsupported native HA SQL migration admitted")
+	}
+}
