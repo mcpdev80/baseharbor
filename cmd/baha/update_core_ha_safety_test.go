@@ -80,3 +80,34 @@ func TestRecoveryEtcdComposeHasNoLiveVolumeAndRequiresMTLS(t *testing.T) {
 		t.Fatal("isolated recovery compose references live data volume or plaintext transport")
 	}
 }
+
+func TestRuntimeEtcdSnapshotRequiresSingleConsistentQuorumLeader(t *testing.T) {
+	healthy := []runtimeEtcdStatus{
+		{Endpoint: "https://postgres-etcd-1:2379", ClusterID: "100", MemberID: "11", LeaderID: "11", Revision: 10, IsLeader: true},
+		{Endpoint: "https://postgres-etcd-2:2379", ClusterID: "100", MemberID: "12", LeaderID: "11", Revision: 10},
+		{Endpoint: "https://postgres-etcd-3:2379", ClusterID: "100", MemberID: "13", LeaderID: "11", Revision: 10},
+	}
+	if err := verifyRuntimeEtcdQuorum(healthy); err != nil {
+		t.Fatalf("valid three-member etcd quorum rejected: %v", err)
+	}
+	for name, mutate := range map[string]func([]runtimeEtcdStatus){
+		"duplicate-member": func(s []runtimeEtcdStatus) { s[2].MemberID = "12" },
+		"split-leader":     func(s []runtimeEtcdStatus) { s[2].LeaderID = "12" },
+		"foreign-cluster":  func(s []runtimeEtcdStatus) { s[2].ClusterID = "200" },
+		"two-leaders":      func(s []runtimeEtcdStatus) { s[1].IsLeader = true },
+		"missing-leader":   func(s []runtimeEtcdStatus) { s[0].IsLeader = false },
+		"unknown-leader":   func(s []runtimeEtcdStatus) { for i := range s { s[i].LeaderID = "99" }; s[0].IsLeader = false },
+		"zero-member":      func(s []runtimeEtcdStatus) { s[1].MemberID = "0" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := append([]runtimeEtcdStatus(nil), healthy...)
+			mutate(invalid)
+			if err := verifyRuntimeEtcdQuorum(invalid); err == nil {
+				t.Fatalf("%s etcd quorum accepted", name)
+			}
+		})
+	}
+	if err := verifyRuntimeEtcdQuorum(healthy[:2]); err == nil {
+		t.Fatal("two etcd members accepted as complete recovery inventory")
+	}
+}
