@@ -17,15 +17,22 @@ func keycloakSingleDataLayerCompose() string {
         chown "$$uid:$$gid" /target/ca.pem /target/server.pem /target/server-key.pem
         chmod 0644 /target/ca.pem /target/server.pem
         chmod 0600 /target/server-key.pem
+        test ! -L /target-data/18 && test ! -L /target-data/18/docker
+        mkdir -p /target-data/18/docker
+        chown "$$uid:$$gid" /target-data /target-data/18 /target-data/18/docker
+        chmod 0700 /target-data/18 /target-data/18/docker
     volumes:
       - ./db-ha/runtime:/source:ro
       - keycloak-db-tls:/target
+      - keycloak-db-data:/target-data
     networks:
       identity-internal: {}
 
   keycloak-db:
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
+    user: "postgres"
+    read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
     depends_on:
@@ -35,6 +42,7 @@ func keycloakSingleDataLayerCompose() string {
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}
       POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/18/docker
     command:
       - postgres
       - -c
@@ -46,6 +54,9 @@ func keycloakSingleDataLayerCompose() string {
     volumes:
       - keycloak-db-data:/var/lib/postgresql
       - keycloak-db-tls:/run/baseharbor/db-tls:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=1777
+      - /var/run/postgresql:rw,noexec,nosuid,nodev,mode=3777
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 2s
