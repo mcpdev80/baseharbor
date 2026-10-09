@@ -53,6 +53,9 @@ func TestMixedPatroniInventoryOnlyResumesJournaledPatch(t *testing.T) {
 
 func TestCompletedPatroniInventoryRequiresEveryDurableReceipt(t *testing.T) {
 	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	state := coreinstallation.State{ID: "core", Spec: coreinstallation.Spec{HA: true}}
 	digest := "sha256:" + strings.Repeat("a", 64)
 	pin := coreupdate.BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: digest}
