@@ -35,6 +35,14 @@ func TestNativeKeycloakSQLVerificationUsesAppRoleAndTrustedTLS(t *testing.T) {
 		t.Fatal("Keycloak SQL auth failure accepted")
 	}
 	runtime.fail = false
+	runtime.response = "missing_keycloak_schema"
+	if err := ops.verifyKeycloakBackingSQL(context.Background()); err == nil {
+		t.Fatal("missing realm/client SQL schema accepted")
+	}
+	runtime.response = "1"
+	if err := ops.verifyKeycloakBackingSQL(context.Background()); err != nil {
+		t.Fatalf("valid Keycloak schema rejected: %v", err)
+	}
 	if err := os.WriteFile(env, []byte("BASEHARBOR_KEYCLOAK_DB_USER=keycloak\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
