@@ -49,3 +49,11 @@ func TestRepositoryVolumeObservationOutlivesAppStateAndRequiresConsent(t *testin
 		t.Fatalf("lost observation: %v %v", names, err)
 	}
 }
+
+func TestRepositoryVolumeInventorySeparatesManagedInfrastructure(t *testing.T) {
+	e := applicationDestroyExecution{existing: []bhruntime.ProjectResource{{Kind: "volume", Name: "generated-postgres"}}, repositoryVolumes: []bhruntime.RepositoryVolume{{Name: "repo-state"}, {Name: "generated-postgres"}}}
+	e.excludeManagedInfrastructureVolumes()
+	if len(e.repositoryVolumes) != 1 || e.repositoryVolumes[0].Name != "repo-state" {
+		t.Fatalf("incorrect preservation scope: %+v", e.repositoryVolumes)
+	}
+}
