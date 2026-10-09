@@ -191,6 +191,16 @@ func StageAndRollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate,
 	if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
+	// A failed live Patroni quorum check must not even rewrite Compose.
+	// Stage changes durable on-disk desired state; inspect the untouched
+	// cluster before crossing that boundary.
+	members, err := gate.Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect Patroni before immutable image staging: %w", err)
+	}
+	if _, _, err := VerifyPatroniQuorum(ctx, members, maxLag); err != nil {
+		return fmt.Errorf("Patroni pre-stage quorum: %w", err)
+	}
 	if err := images.Stage(); err != nil {
 		return fmt.Errorf("stage owned immutable Spilo images: %w", err)
 	}
