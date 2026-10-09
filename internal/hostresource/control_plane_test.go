@@ -25,7 +25,7 @@ func TestControlPlaneEstimateCoversShippedHAStartupTopologyWithoutClaimingCalibr
 			t.Fatalf("unmeasured budget claims calibration: %#v", component)
 		}
 		for _, role := range []string{"postgres-member-", "postgres-etcd-", "openbao-member-"} {
-			if strings.HasPrefix(component.Name, role) {
+			if strings.HasPrefix(component.Name, role) && component.Name != "postgres-etcd-recovery" {
 				counts[role]++
 			}
 		}
