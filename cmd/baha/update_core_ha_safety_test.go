@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -70,11 +72,30 @@ func TestRecoveryEtcdComposeHasNoLiveVolumeAndRequiresMTLS(t *testing.T) {
 		"gcr.io/etcd-development/etcd@sha256:"+strings.Repeat("a", 64),
 		"/tmp/baseharbor-recovery", "/tmp/baseharbor-pki",
 		[]string{"postgres-etcd-1", "postgres-etcd-2", "postgres-etcd-3"},
+		etcdRecoveryIdentity{User: "1001:1001", UserNS: "keep-id"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(data)
+	var model struct {
+		Services map[string]struct {
+			User    string   `yaml:"user"`
+			UserNS  string   `yaml:"userns_mode"`
+			Volumes []string `yaml:"volumes"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &model); err != nil {
+		t.Fatalf("generated recovery Compose is not valid YAML: %v", err)
+	}
+	if len(model.Services) != 4 {
+		t.Fatal("isolated recovery service count mismatch")
+	}
+	for name, service := range model.Services {
+		if service.User != "1001:1001" || service.UserNS != "keep-id" || len(service.Volumes) == 0 {
+			t.Fatalf("lost isolated bind namespace for %s", name)
+		}
+	}
 	for _, required := range []string{
 		"--client-cert-auth=true",
 		"--peer-client-cert-auth=true",

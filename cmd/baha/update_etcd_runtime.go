@@ -29,6 +29,7 @@ type runtimeEtcdTools struct {
 	ContainerKey    string
 	Members         []string
 	InitialCluster  string
+	Identity        etcdRecoveryIdentity
 }
 
 func (t runtimeEtcdTools) validate() error {
@@ -62,6 +63,9 @@ func (t runtimeEtcdTools) run(ctx context.Context, binary string, stdout, stderr
 		return err
 	}
 	uidgid := strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid())
+	if t.Identity.User != "" {
+		uidgid = t.Identity.User
+	}
 	runArgs := []string{"run", "--rm", "--no-deps", "--user", uidgid}
 	for _, bind := range binds {
 		if strings.TrimSpace(bind) == "" {

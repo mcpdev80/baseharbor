@@ -42,6 +42,7 @@ type quadletComposeService struct {
 	Profiles    []string                  `yaml:"profiles"`
 	User        string                    `yaml:"user"`
 	Hostname    string                    `yaml:"hostname"`
+	UserNSMode  string                    `yaml:"userns_mode"`
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
 	CapAdd      []string                  `yaml:"cap_add"`

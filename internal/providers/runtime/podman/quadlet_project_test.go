@@ -22,6 +22,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     restart: unless-stopped
     user: "postgres"
     hostname: postgres-member-1
+    userns_mode: keep-id
     read_only: true
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
@@ -88,6 +89,7 @@ networks:
 		"Image=docker.io/library/postgres:18-alpine",
 		"User=postgres",
 		"HostName=postgres-member-1",
+		"UserNS=keep-id",
 		"ReadOnly=true",
 		"DropCapability=all",
 		"AddCapability=NET_BIND_SERVICE",

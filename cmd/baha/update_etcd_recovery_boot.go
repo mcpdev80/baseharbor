@@ -15,11 +15,14 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
-func recoveryEtcdCompose(image, recoveryDir, pkiDir string, members []string) ([]byte, error) {
+func recoveryEtcdCompose(image, recoveryDir, pkiDir string, members []string, identity etcdRecoveryIdentity) ([]byte, error) {
 	if strings.TrimSpace(image) == "" || !filepath.IsAbs(recoveryDir) || !filepath.IsAbs(pkiDir) || len(members) != 3 {
 		return nil, errors.New("isolated etcd boot requires image, absolute recovery paths and three members")
 	}
 	uidgid := strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid())
+	if identity.User != "" {
+		uidgid = identity.User
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
 	for _, member := range members {
@@ -29,6 +32,9 @@ func recoveryEtcdCompose(image, recoveryDir, pkiDir string, members []string) ([
 		fmt.Fprintf(&b, "  %s:\n", member)
 		fmt.Fprintf(&b, "    image: %s\n", image)
 		fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(uidgid))
+		if identity.UserNS != "" {
+			fmt.Fprintf(&b, "    userns_mode: %s\n", strconv.Quote(identity.UserNS))
+		}
 		b.WriteString("    read_only: true\n")
 		b.WriteString("    cap_drop: [\"ALL\"]\n")
 		b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
@@ -50,20 +56,23 @@ func recoveryEtcdCompose(image, recoveryDir, pkiDir string, members []string) ([
 		b.WriteString("      - --peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem\n")
 		b.WriteString("      - --tls-min-version=TLS1.2\n")
 		b.WriteString("    volumes:\n")
-		fmt.Fprintf(&b, "      - %s:/etcd-data\n", strconv.Quote(filepath.Join(recoveryDir, member)))
-		fmt.Fprintf(&b, "      - %s:/run/baseharbor/etcd:ro\n", strconv.Quote(pkiDir))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(filepath.Join(recoveryDir, member)+":/etcd-data"))
+		fmt.Fprintf(&b, "      - %s\n", strconv.Quote(pkiDir+":/run/baseharbor/etcd:ro"))
 		b.WriteString("\n")
 	}
 	b.WriteString("  postgres-etcd-recovery:\n")
 	fmt.Fprintf(&b, "    image: %s\n", image)
 	b.WriteString("    profiles: [\"recovery\"]\n")
 	fmt.Fprintf(&b, "    user: %s\n", strconv.Quote(uidgid))
+	if identity.UserNS != "" {
+		fmt.Fprintf(&b, "    userns_mode: %s\n", strconv.Quote(identity.UserNS))
+	}
 	b.WriteString("    read_only: true\n")
 	b.WriteString("    cap_drop: [\"ALL\"]\n")
 	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
 	b.WriteString("    entrypoint: [\"/usr/local/bin/etcdctl\"]\n")
 	b.WriteString("    volumes:\n")
-	fmt.Fprintf(&b, "      - %s:/run/baseharbor/etcd:ro\n", strconv.Quote(pkiDir))
+	fmt.Fprintf(&b, "      - %s\n", strconv.Quote(pkiDir+":/run/baseharbor/etcd:ro"))
 	b.WriteString("    tmpfs:\n")
 	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev,mode=0700\n")
 	return []byte(b.String()), nil
@@ -106,7 +115,7 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 	}
 	pkiDir := filepath.Join(filepath.Dir(live.Compose), "providers", "postgresql", "runtime", "etcd-pki")
 	composePath := filepath.Join(filepath.Dir(recoveryDir), "etcd-recovery-compose.yaml")
-	compose, err := recoveryEtcdCompose(image, recoveryDir, pkiDir, tools.Members)
+	compose, err := recoveryEtcdCompose(image, recoveryDir, pkiDir, tools.Members, tools.Identity)
 	if err != nil {
 		return err
 	}

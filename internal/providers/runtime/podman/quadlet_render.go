@@ -324,6 +324,9 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 }
 
 func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeService) {
+	if mode := strings.TrimSpace(service.UserNSMode); mode != "" {
+		fmt.Fprintf(unit, "UserNS=%s\n", mode)
+	}
 	if user := strings.TrimSpace(service.User); user != "" {
 		userPart, groupPart, found := strings.Cut(user, ":")
 		fmt.Fprintf(unit, "User=%s\n", userPart)

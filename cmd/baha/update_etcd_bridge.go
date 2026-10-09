@@ -51,6 +51,11 @@ func buildCoreEtcdRecoveryBridge(ctx context.Context, rt bhruntime.RuntimeProvid
 		ContainerCA: "/run/baseharbor/etcd/ca.pem", ContainerCert: "/run/baseharbor/etcd/client.pem", ContainerKey: "/run/baseharbor/etcd/client-key.pem",
 		Members: members, InitialCluster: strings.Join(clusterParts, ","),
 	}
+	identity, err := inspectEtcdRecoveryIdentity(ctx, rt)
+	if err != nil {
+		return nil, fmt.Errorf("attest recovery user namespace: %w", err)
+	}
+	tools.Identity = identity
 	info, err := tools.attest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("discover authenticated Core etcd identity: %w", err)
