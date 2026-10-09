@@ -55,6 +55,17 @@ func rollOwnedCoreHAPostgres(ctx context.Context, rt bhruntime.RuntimeProvider, 
 		installation, target, bridge.Store.Identity.Cluster, release, 0); err != nil {
 		return fmt.Errorf("verified owned Patroni rolling migration failed; recovery evidence retained: %w", err)
 	}
-	_, err = ops.Inspect(ctx)
-	return err
+	members, err := ops.Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect rolled Patroni members: %w", err)
+	}
+	if _, _, err := coreupdate.VerifyPatroniQuorum(ctx, members, 0); err != nil {
+		return fmt.Errorf("final Patroni quorum after rolling upgrade: %w", err)
+	}
+	for _, name := range files.PostgresMembers() {
+		if err := ops.VerifyMemberImage(ctx, name); err != nil {
+			return fmt.Errorf("final Patroni member image verification: %w", err)
+		}
+	}
+	return nil
 }
