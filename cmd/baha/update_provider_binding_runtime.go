@@ -181,10 +181,18 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 			}
 			return o.ReconcilePinned(ctx, keycloakDelta)
 		},
-		StopHA: func(context.Context) error { return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding") },
-		ApplyHA: func(context.Context, string, string, string) error { return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding") },
-		ReplaceMember: func(context.Context, string, string, string, string) error { return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding") },
-		WaitMember: func(context.Context, string) error { return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding") },
+		StopHA: func(context.Context) error {
+			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		},
+		ApplyHA: func(context.Context, string, string, string) error {
+			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		},
+		ReplaceMember: func(context.Context, string, string, string, string) error {
+			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		},
+		WaitMember: func(context.Context, string) error {
+			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		},
 		WaitAll: func(ctx context.Context) error {
 			_, err := o.inspectNativeKeycloakMember(ctx, keycloakDelta.Installed.Instance)
 			return err
@@ -215,7 +223,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	registry, err := providerbinding.New(providerbinding.Dependencies{
 		Inventory: &providerbinding.RuntimeBinding{Reader: o.runtime, Engine: engine,
 			Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
-				providerupgrade.ProviderOpenBao: {Project: o.core.Project, Service: openBaoDelta.Installed.Instance},
+				providerupgrade.ProviderOpenBao:  {Project: o.core.Project, Service: openBaoDelta.Installed.Instance},
 				providerupgrade.ProviderKeycloak: {Project: o.identity.Project, Service: keycloakDelta.Installed.Instance},
 			}},
 		OpenBaoExecutor: o.runtime, OpenBaoFiles: o.core, OpenBaoHooks: openBaoHooks,
