@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
- "strconv"
+	"strconv"
 	"strings"
 
 	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
@@ -45,7 +45,7 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 	leaders := 0
 	memberIDs := map[string]bool{}
 	var expectedLeader string
- var recoveredClusterID string
+	var recoveredClusterID string
 	for _, endpoint := range p.Endpoints {
 		parsed, err := url.Parse(endpoint)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
