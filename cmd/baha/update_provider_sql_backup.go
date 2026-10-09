@@ -33,6 +33,8 @@ type providerSQLBackupSpec struct {
 	Database    string
 	Directory   string
 	Name        string
+	InstallationID string
+	Transaction string
 	Provider    providerupgrade.Provider
 	ConfigPaths []string
 }
@@ -40,7 +42,7 @@ type providerSQLBackupSpec struct {
 func (s providerSQLBackupSpec) validate() error {
 	if s.Runtime == nil || s.Project == "" || s.Compose == "" || s.Env == "" || s.Client == "" ||
 		s.Host == "" || s.CAFile == "" || s.User == "" || s.Password == "" || s.Database == "" ||
-		s.Directory == "" || s.Name == "" || s.Provider == "" {
+		s.Directory == "" || s.Name == "" || s.InstallationID == "" || s.Transaction == "" || s.Provider == "" {
 		return errors.New("provider SQL backup requires owned runtime, authenticated database identity and private destination")
 	}
 	return nil
@@ -63,7 +65,7 @@ func (s providerSQLBackupSpec) artifactBinding(version string) (string, error) {
 		return "", errors.New("provider backup has no version or configuration identity")
 	}
 	h := sha256.New()
-	for _, value := range []string{string(s.Provider), s.Project, s.Compose, s.Env, s.Host, s.Database, s.Name, version} {
+	for _, value := range []string{string(s.Provider), s.Project, s.Compose, s.Env, s.Host, s.Database, s.Name, s.InstallationID, s.Transaction, version} {
 		if value == "" || strings.ContainsRune(value, '\x00') {
 			return "", errors.New("invalid provider backup identity field")
 		}
