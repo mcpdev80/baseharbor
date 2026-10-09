@@ -8,21 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Task-first human CLI entry point `baha new`, repository-aware root facades for `init`, `list`, `inspect`, `backup`, `restore`, and context-sensitive help.
-- Core provider-update planner with release-pinned digest validation, ownership-aware scope classification, recovery and verification interfaces.
-- EN/DE CLI workflow documentation and draft release notes.
+- Task-first human CLI entry point `baha new`, repository-aware application lifecycle and Core/Target selection with `baha use`.
+- Target-aware machine, JSON and MCP integrations; guided Node enrollment and operator workflows.
+- Native provider-update admission, bounded SQL restore receipts and HA recovery orchestration.
+- Physical PostgreSQL basebackup, verified isolated extraction, etcd mTLS snapshot/restore and isolated three-member quorum boot.
+- Ownership-aware host-trust uninstallation with preservation of foreign certificates.
+- EN/DE CLI, recovery, Node and Console release-candidate documentation.
 
 ### Changed
 
-- `baha down` and `baha destroy` select application lifecycle inside repositories and installation lifecycle outside; `destroy --all` remains explicitly installation-wide.
-- `baha update --check` reports whether installed-Core provider reconciliation is available.
+- SQL and cache operations use `baha app sql` and `baha app cache`, not legacy provider-specific aliases.
+- Root-level `baha down` and `baha destroy` distinguish application repository context from installation-wide lifecycle.
+- `baha update --check` reports availability of admissible installed-Core provider reconciliation.
+- Connector and Console compatibility must be tied to immutable joint release SHAs rather than older integration receipts.
 
 ### Fixed
 
-- Application `down` rejects unrecognized options instead of misclassifying them as application names.
-- Binary-only self-update refuses an existing Core when SQL/Secrets/Identity reconciliation cannot be proven; existing Core remains untouched.
+- App `down` rejects unsupported options with typed errors.
+- Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
+- Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
+- PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
 
-**Release gate:** Provider-native Core updates, full CLI acceptance, final documentation consolidation, and pre-release/runtime evidence are still outstanding.
+### Verified
+
+- Core SHA `67aec49dc9218d8f9ecbd26805df62eed4e99df3`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37945903026](https://github.com/mcpdev80/baseharbor/actions/runs/37945903026).
+- Console and Connector package-local checks have successful evidence in their respective PRs; exact joint-release acceptance remains outstanding.
+
+### Known limitations / release blockers
+
+- Native live DCS fence/activate/commit cutover, coordinated PostgreSQL/live-DCS rollback and end-to-end HA rolling/fault-recovery are not release-qualified.
+- Real OpenBao/Keycloak state recovery and final Console/Node remote runtime acceptance are outstanding.
+- Demo and all dependent component pins must be synchronized with one final immutable Core SHA, then revalidated.
+- v0.4.24 has not been tagged, merged or published. This entry remains Unreleased until all release gates have passed and publication is authorized.
 
 ## [0.4.23] - Unreleased
 
