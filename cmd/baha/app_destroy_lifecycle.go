@@ -44,6 +44,7 @@ type applicationDestroyExecution struct {
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
 	replacedVolumes     []bhruntime.ProjectResource
+	repositoryVolumes   []bhruntime.RepositoryVolume
 	coreRuntime         bhruntime.RuntimeProvider
 	platformFiles       bhruntime.Files
 	destroyOpenBaoScope bool
@@ -132,6 +133,20 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks, preflight.Check{Name: "runtime orchestration", Run: func(ctx context.Context) error {
 			var err error
 			e.compose, err = detectRuntimeForApplication(ctx, e.resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityResourceOwnership)
+			return err
+		}})
+	}
+	if e.resolved.FromRepository {
+		checks = append(checks, preflight.Check{Name: "repository data volume inventory", Run: func(ctx context.Context) error {
+			inventory, ok := e.compose.(repositoryVolumeInventory)
+			if !ok {
+				return errors.New("selected runtime cannot inventory repository data volumes; destroy refused")
+			}
+			previous, err := e.previousRepositoryVolumeNames()
+			if err != nil {
+				return err
+			}
+			e.repositoryVolumes, err = inventory.InventoryRepositoryVolumes(ctx, application.WorkloadProjectNameForRuntime(m, e.files), previous...)
 			return err
 		}})
 	}
@@ -225,12 +240,25 @@ func (e *applicationDestroyExecution) inspectReclaimableReplacedInfrastructureVo
 		}
 		resources = append(resources, bhruntime.ProjectResource{Kind: "volume", Name: name})
 	}
-	return e.compose.InspectProjectResources(ctx, project, resources)
+	// Keep observed repository data out of infrastructure reclamation. Compose
+	// labels do not establish exclusive data ownership or recovery provenance.
+	protected := map[string]bool{}
+	for _, volume := range e.repositoryVolumes {
+		protected[volume.Name] = true
+	}
+	safe := resources[:0]
+	for _, resource := range resources {
+		if !protected[resource.Name] {
+			safe = append(safe, resource)
+		}
+	}
+	return e.compose.InspectProjectResources(ctx, project, safe)
 }
 
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
+	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 
 	if e.partialRuntime {
 		fmt.Fprintln(e.out, "  recovery:   generated runtime definition is incomplete; using ownership-verified cleanup")
@@ -302,7 +330,15 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 }
 
 func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Context) error {
+	if !e.confirmed {
+		return errors.New("application destroy requires explicit --yes consent; nothing was deleted")
+	}
 	m := e.manifest
+	if e.resolved.FromRepository {
+		if err := e.saveRepositoryVolumeObservation(); err != nil {
+			return err
+		}
+	}
 	if e.runtimeErr == nil {
 		if err := destroyManagedExposure(ctx, e.compose, m, e.files); err != nil {
 			return err
@@ -591,8 +627,26 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 
 	e.term.Section("Application")
 	e.term.Result("DELETED", "application", e.manifest.Name+" permanently deleted")
+	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 	if e.resolved.FromRepository {
 		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
 	}
 	return nil
+}
+
+type repositoryVolumeInventory interface {
+	InventoryRepositoryVolumes(context.Context, string, ...string) ([]bhruntime.RepositoryVolume, error)
+}
+
+func renderRepositoryVolumePreservation(out io.Writer, volumes []bhruntime.RepositoryVolume, engine string) {
+	for _, volume := range volumes {
+		fmt.Fprintf(out, "PRESERVED volume %s (Compose project: %s; BaseHarbor owner: %s)\n  %s\n", volume.Name, volume.Project, volume.Owner, volume.Reason)
+		if !volume.Shared && volume.Project != "" && (engine == "docker" || engine == "podman") {
+			// Quote engine-provided names as shell data, never interpolate as code.
+			name := "'" + strings.ReplaceAll(volume.Name, "'", "'\"'\"'") + "'"
+			fmt.Fprintf(out, "  Deliberate cleanup after verifying no other consumers and accepting data loss: %s volume rm -- %s\n", engine, name)
+		} else {
+			fmt.Fprintln(out, "  Inspect ownership and all consumers manually before considering cleanup.")
+		}
+	}
 }

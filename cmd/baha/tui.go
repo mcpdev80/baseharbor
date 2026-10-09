@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/health"
 )
 
 type tuiDoctorResult = applicationDoctorResult
@@ -20,11 +21,13 @@ type tuiDoctorResult = applicationDoctorResult
 type tuiApplicationStatusResult = applicationStatusResult
 
 type tuiStatusMsg struct {
-	coreView string
-	result   application.StatusResult
-	tls      *applicationTLSObservation
-	doctor   tuiDoctorResult
-	err      error
+	coreView   string
+	coreStatus string
+	coreDoctor string
+	result     application.StatusResult
+	tls        *applicationTLSObservation
+	doctor     tuiDoctorResult
+	err        error
 }
 
 type tuiModel struct {
@@ -41,6 +44,8 @@ type tuiModel struct {
 	reducedMotion bool
 	noColor       bool
 	coreView      string
+	coreStatus    string
+	coreDoctor    string
 	coreMode      bool
 }
 
@@ -103,15 +108,29 @@ func (m tuiModel) Init() tea.Cmd {
 func (m tuiModel) loadStatus() tea.Cmd {
 	return func() tea.Msg {
 		if m.coreMode {
-			target, err := effectiveTarget(m.ctx)
-			if err != nil {
-				return tuiStatusMsg{coreView: renderUnselectedCoreTUIView(currentDeviceResources(), renderConfiguredTargets(), err)}
-			}
-			status, err := inspectControlPlane(m.ctx)
-			if err != nil {
+			if err := authorizeCurrentMCPContext(m.ctx, "control-plane.doctor", "", "", ""); err != nil {
 				return tuiStatusMsg{err: err}
 			}
-			return tuiStatusMsg{coreView: currentDeviceResources() + "\n" + renderConfiguredTargets() + "\n" + renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderTargetApplicationInventory(target.Name) + "\n" + renderTargetRuntimeInventory(m.ctx, target.Name)}
+			checks := collectControlPlaneDoctorChecks(m.ctx)
+			msg := tuiStatusMsg{coreDoctor: renderCoreTUIDoctor(checks)}
+			target, err := effectiveTarget(m.ctx)
+			if err != nil {
+				msg.coreView = renderUnselectedCoreTUIView(currentDeviceResources(), renderConfiguredTargets(), err)
+				msg.coreStatus = "Core status unavailable: no active Target.\n" + renderConfiguredTargets() + "\nNext: baha target activate NAME\n"
+				return msg
+			}
+			msg.coreView = fmt.Sprintf("Current Core\nTarget       %s (%s)\nRuntime      %s\nAccess       %s\n", target.Name, targetSelectionOrigin(m.ctx), target.RuntimeProvider, target.AccessProvider) + currentDeviceResources() + "\n" + renderTargetApplicationInventory(target.Name)
+			status, err := inspectControlPlane(m.ctx)
+			if err != nil {
+				msg.coreStatus = "Core status unavailable: " + err.Error() + "\nNext: baha doctor --verbose\n"
+			} else {
+				if status.Installation != nil {
+					fmtCore := fmt.Sprintf("Core ID      %s\n", status.Installation.ID)
+					msg.coreView = fmtCore + msg.coreView
+				}
+				msg.coreStatus = renderCoreTUIStatus(target.Name, target.RuntimeProvider, target.AccessProvider, targetSelectionOrigin(m.ctx), status) + "\n" + renderConfiguredTargets()
+			}
+			return msg
 		}
 		status, err := collectTUIStatus(m.ctx, m.store)
 		if err != nil {
@@ -143,6 +162,8 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiStatusMsg:
 		m.loading = false
 		m.coreView = msg.coreView
+		m.coreStatus = msg.coreStatus
+		m.coreDoctor = msg.coreDoctor
 		m.result = msg.result
 		m.tls = msg.tls
 		m.doctor = msg.doctor
@@ -212,7 +233,8 @@ func (m tuiModel) View() tea.View {
 		b.WriteString(wrapTUIText(m.err.Error(), contentWidth-8))
 		b.WriteString("\n\nNext:\n  baha doctor --verbose\n")
 	case m.coreMode:
-		b.WriteString(wrapTUIBlock(m.coreView, contentWidth))
+		views := []string{m.coreView, m.coreStatus, m.coreDoctor}
+		b.WriteString(wrapTUIBlock(views[m.tab], contentWidth))
 	case m.tab == 0:
 		b.WriteString(renderTUISummary(m.result, contentWidth, success, failure))
 	case m.tab == 1:
@@ -514,4 +536,27 @@ func renderTargetApplicationInventory(targetName string) string {
 
 func renderUnselectedCoreTUIView(device, targets string, err error) string {
 	return device + "\n" + targets + "\nNo active Core Target: " + err.Error() + "\nNext: baha target list; baha target activate NAME"
+}
+
+// Uses the same read-only checks and repair classification as baha doctor.
+func renderCoreTUIDoctor(checks []health.Check) string {
+	var b strings.Builder
+	fmt.Fprintln(&b, "Core diagnosis")
+	for _, check := range checks {
+		state := "OK"
+		if !check.OK {
+			state = "FAILED"
+		}
+		fmt.Fprintf(&b, "%s  %s  %s\n", state, check.Name, check.Message)
+	}
+	findings := classifyDoctorFindings(checks)
+	for _, finding := range findings {
+		fmt.Fprintf(&b, "\nNext (%s): %s\n", finding.Class, finding.Action)
+	}
+	if len(checks) == 0 {
+		fmt.Fprintln(&b, "No checks available. Next: baha doctor --verbose")
+	} else if len(findings) == 0 {
+		fmt.Fprintln(&b, "\nREADY")
+	}
+	return b.String()
 }

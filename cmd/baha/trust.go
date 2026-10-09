@@ -54,6 +54,15 @@ func trustStatusCommand() *cli.Command {
 			if format == outputJSON {
 				return writeJSON(out, result)
 			}
+			if result.CoreState == "not_installed" || result.CoreState == "incomplete" {
+				fmt.Fprintf(out, "Core: %s; managed-local CA unavailable.\n", strings.ReplaceAll(result.CoreState, "_", " "))
+				fmt.Fprintf(out, "Recorded host trust anchors: %d\n", len(result.Anchors))
+				for _, anchor := range result.Anchors {
+					fmt.Fprintf(out, "PRESERVED  %s (%s; %s; trusted=%t)\n", anchor.Fingerprint, anchor.Backend, anchor.State, anchor.Trusted)
+				}
+				fmt.Fprintln(out, "Next: "+result.Next)
+				return nil
+			}
 			if !result.Managed {
 				fmt.Fprintln(out, "Host trust is operator-owned because the active OpenBao service-access PKI source is not managed-local.")
 				return nil

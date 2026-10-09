@@ -539,3 +539,53 @@ func runMaybePrivileged(ctx context.Context, name string, args ...string) error 
 		return nil
 	}
 }
+
+// InspectRecorded observes retained host anchors without requiring a live issuer.
+// Ownership records alone never prove that a certificate still exists or matches.
+type RecordedStatus struct {
+	Fingerprint string `json:"fingerprint"`
+	Backend     string `json:"backend"`
+	State       string `json:"state"`
+	Trusted     bool   `json:"trusted"`
+}
+
+func InspectRecorded(stateDir string) ([]RecordedStatus, error) {
+	records, err := StateRecords(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RecordedStatus, 0, len(records))
+	for _, record := range records {
+		status := RecordedStatus{Fingerprint: record.Fingerprint, Backend: record.Backend, State: "missing"}
+		info, err := os.Lstat(record.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			result = append(result, status)
+			continue
+		}
+		if err != nil {
+			return nil, errors.New("recorded host trust anchor is unreadable; inspect host trust permissions")
+		}
+		if !info.Mode().IsRegular() {
+			status.State = "unverified"
+			result = append(result, status)
+			continue
+		}
+		data, err := os.ReadFile(record.Path)
+		if err != nil {
+			return nil, errors.New("recorded host trust anchor is unreadable; inspect host trust permissions")
+		}
+		cert, fingerprint, err := ParseCA(data)
+		if err != nil || fingerprint != record.Fingerprint {
+			status.State = "unverified"
+			result = append(result, status)
+			continue
+		}
+		status.State = "verified"
+		status.Trusted, err = systemTrusted(cert)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, status)
+	}
+	return result, nil
+}
