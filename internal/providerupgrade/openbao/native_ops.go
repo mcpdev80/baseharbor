@@ -121,7 +121,19 @@ func (n *NativeOps) EnsureUnsealed(ctx context.Context) error {
 	if n.Hooks.Unseal == nil {
 		return errors.New("OpenBao unseal requires an authorized recovery hook")
 	}
-	return n.Hooks.Unseal(ctx)
+	if err := n.Hooks.Unseal(ctx); err != nil {
+		return err
+	}
+	// An accepted unseal request does not prove the provider actually recovered.
+	// Reinspect the owned runtime before allowing the update journal to advance.
+	state, err = n.Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("verify OpenBao state after unseal: %w", err)
+	}
+	if !state.Initialized || state.Sealed || !state.Healthy {
+		return errors.New("OpenBao remained sealed, uninitialized or unhealthy after recovery")
+	}
+	return nil
 }
 func (n *NativeOps) VerifyManagerAuth(ctx context.Context) error {
 	if n.Executor == nil {
