@@ -94,7 +94,7 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 	if err := os.WriteFile(config, []byte("SECRET=original\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	spec := providerSQLBackupSpec{Directory: dir, Name: "openbao", Provider: "openbao", Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: config, Host: "postgres", Database: "openbao", ConfigPaths: []string{config}}
+	spec := providerSQLBackupSpec{Directory: dir, Name: "openbao", Provider: "openbao", InstallationID: "core-A", Transaction: "0.4.24", Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: config, Host: "postgres", Database: "openbao", ConfigPaths: []string{config}}
 	if complete, err := spec.recoveryPairComplete(); err != nil || complete {
 		t.Fatalf("expected fresh pair: %v %t", err, complete)
 	}
@@ -132,4 +132,12 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 	if err != nil || one == foreign {
 		t.Fatal("foreign installation project reused recovery binding")
 	}
+	spec.Project = "owned"
+	spec.InstallationID = "core-B"
+	otherInstall, err := spec.artifactBinding("2.7.0")
+	if err != nil || one == otherInstall { t.Fatal("cross-installation SQL/config snapshot admitted") }
+	spec.InstallationID = "core-A"
+	spec.Transaction = "0.4.25"
+	otherTxn, err := spec.artifactBinding("2.7.0")
+	if err != nil || one == otherTxn { t.Fatal("cross-transaction SQL/config snapshot admitted") }
 }
