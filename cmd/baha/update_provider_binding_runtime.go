@@ -148,7 +148,7 @@ func (o *coreNativeRuntimeOps) waitKeycloakRollingMember(ctx context.Context, se
 					continue
 				}
 				found = true
-				if container.Running && strings.EqualFold(strings.TrimSpace(container.Health), "healthy") {
+				if container.Running && !strings.EqualFold(container.Health, "unhealthy") {
 					image, imageErr := o.runtime.ProjectServiceImageIdentity(bounded, o.identity.Project, service)
 					if imageErr == nil {
 						digest := image.Digest
