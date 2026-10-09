@@ -15,11 +15,11 @@ import (
 
 type openBaoSQLProbeRuntime struct {
 	bhruntime.RuntimeProvider
-	input   string
-	service string
-	args    []string
-	fail    bool
- response string
+	input    string
+	service  string
+	args     []string
+	fail     bool
+	response string
 }
 
 func (r *openBaoSQLProbeRuntime) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, service string, args ...string) (string, error) {
@@ -29,8 +29,10 @@ func (r *openBaoSQLProbeRuntime) ExecProjectInput(_ context.Context, _, _, _ str
 	if r.fail {
 		return "", errors.New("SQL authentication rejected")
 	}
-	if r.response != "" {return r.response,nil}
- return "1", nil
+	if r.response != "" {
+		return r.response, nil
+	}
+	return "1", nil
 }
 
 func TestNativeOpenBaoSQLVerificationProtectsCredentials(t *testing.T) {
