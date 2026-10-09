@@ -331,7 +331,9 @@ func (s providerSQLBackupSpec) restoreConfiguration(ctx context.Context) error {
 		if err != nil || !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0022 != 0 {
 			return errors.New("provider configuration destination changed during recovery")
 		}
-		if bytes.Equal(item.data, mustReadProviderRecoveryFile(item.path)) {
+		current, err := os.ReadFile(item.path)
+		if err != nil { return err }
+		if bytes.Equal(item.data, current) && st.Mode().Perm() == item.mode {
 			continue
 		}
 		tmp, err := os.CreateTemp(filepath.Dir(item.path), ".provider-recover-*")
