@@ -560,7 +560,8 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
-		args = append(args, "--fix")
+		// The authorized semantic repair invocation is the explicit mutation request.
+		args = append(args, "--fix", "--yes")
 		if err := executeApplicationRepairLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}

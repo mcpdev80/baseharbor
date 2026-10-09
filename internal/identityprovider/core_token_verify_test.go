@@ -31,3 +31,31 @@ func TestVerifyCoreUserInfoRejectsMissingAndForeignToken(t *testing.T) {
 		t.Fatal("missing token accepted")
 	}
 }
+
+func TestVerifyCoreAdminTokenRequiresNativeBearerAndExactEnabledOperator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer private-admin-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path != "/admin/realms/master/users" || r.URL.Query().Get("exact") != "true" {
+			t.Error("wrong native verification endpoint")
+			http.Error(w, "wrong endpoint", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Query().Get("username") == "managed-admin" {
+			io.WriteString(w, `[{"id":"admin-id","username":"managed-admin","enabled":true}]`)
+			return
+		}
+		io.WriteString(w, `[{"id":"foreign","username":"foreign-admin","enabled":false}]`)
+	}))
+	defer server.Close()
+	if err := verifyCoreAdminToken(context.Background(), server.Client(), server.URL, "private-admin-token", "managed-admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []struct{ token, user string }{{"wrong", "managed-admin"}, {"private-admin-token", "foreign-admin"}, {"", "managed-admin"}} {
+		if err := verifyCoreAdminToken(context.Background(), server.Client(), server.URL, input.token, input.user); err == nil {
+			t.Fatal("invalid native token or operator accepted")
+		}
+	}
+}

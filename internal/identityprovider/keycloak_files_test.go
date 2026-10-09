@@ -48,9 +48,9 @@ func TestKeycloakComposeInheritsManagementHTTPS(t *testing.T) {
 	}
 	for _, want := range []string{
 		"keycloak-db-tls-init:",
-		"PGROOT: /home/postgres/pgroot",
-		"PGDATA: /home/postgres/pgroot/data",
-		"keycloak-db-data-1:/home/postgres/pgroot",
+		"PGROOT: /home/postgres/pgdata/pgroot",
+		"PGDATA: /home/postgres/pgdata/pgroot/data",
+		"keycloak-db-data-1:/home/postgres/pgdata/pgroot",
 		"keycloak-db-tls:/run/baseharbor/db-tls:ro",
 		"uid=$$(id -u postgres); gid=$$(id -g postgres)",
 		"chown \"$$uid:$$gid\"",

@@ -385,7 +385,7 @@ func logProviderBaselineDiagnostics(t *testing.T, rt bhruntime.RuntimeProvider, 
 		return
 	}
 	for _, c := range inventory {
-		if c.Project != identity.Project || (c.Service != "keycloak-access" && c.Service != "keycloak-1") {
+		if c.Project != identity.Project || !strings.HasPrefix(c.Service, "keycloak-") {
 			continue
 		}
 		logs, err := backend.DirectOutput(ctx, "logs", "--tail", "100", c.ID)

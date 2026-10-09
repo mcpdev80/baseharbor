@@ -56,21 +56,3 @@ func TestKeycloakAdminLoginDoesNotRetryRejectedCredentials(t *testing.T) {
 		t.Fatalf("err=%v attempts=%d", err, attempts)
 	}
 }
-
-func TestKeycloakAdminLoginRequestsUserInfoScopes(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Error(err)
-		}
-		if r.Method != http.MethodPost || r.URL.Path != "/realms/master/protocol/openid-connect/token" || r.Form.Get("scope") != "openid profile" {
-			http.Error(w, "OIDC scopes required", http.StatusForbidden)
-			return
-		}
-		w.Write([]byte(`{"access_token":"oidc-token"}`))
-	}))
-	defer server.Close()
-	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client(), user: "operator", password: "fixture"}
-	if err := admin.login(context.Background()); err != nil || admin.token != "oidc-token" {
-		t.Fatalf("OIDC admin login failed: %v", err)
-	}
-}
