@@ -130,11 +130,16 @@ func (n *NativeOps) EnsureUnsealed(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("verify OpenBao state after unseal: %w", err)
 	}
+	return verifyRecoveredState(state)
+}
+
+func verifyRecoveredState(state State) error {
 	if !state.Initialized || state.Sealed || !state.Healthy {
 		return errors.New("OpenBao remained sealed, uninitialized or unhealthy after recovery")
 	}
 	return nil
 }
+
 func (n *NativeOps) VerifyManagerAuth(ctx context.Context) error {
 	if n.Executor == nil {
 		return errors.New("OpenBao executor is unavailable")
