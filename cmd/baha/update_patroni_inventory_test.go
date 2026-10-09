@@ -50,3 +50,30 @@ func TestMixedPatroniInventoryOnlyResumesJournaledPatch(t *testing.T) {
 		t.Fatal("verified member with old image admitted")
 	}
 }
+
+func TestCompletedPatroniInventoryRequiresEveryDurableReceipt(t *testing.T) {
+	root := t.TempDir()
+	state := coreinstallation.State{ID: "core", Spec: coreinstallation.Spec{HA: true}}
+	digest := "sha256:" + strings.Repeat("a", 64)
+	pin := coreupdate.BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: digest}
+	path := filepath.Join(root, "members.json")
+	ctx := context.Background()
+	if err := verifyCompletedPatroniJournal(ctx, state, "0.4.24", pin, path); err != nil {
+		t.Fatalf("unchanged installation without upgrade journal rejected: %v", err)
+	}
+	journal := coreupdate.PatroniMemberJournal{Path: path, Release: "0.4.24", Installation: state.ID, Scope: "shared", Desired: coreupdate.Desired{Kind: coreupdate.SQL, Image: pin.Image, Digest: pin.Digest, Version: pin.Version}}
+	if err := journal.Record(ctx, "postgres-member-1", "applying"); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyCompletedPatroniJournal(ctx, state, "0.4.24", pin, path); err == nil {
+		t.Fatal("incomplete upgraded members falsely accepted as fully reconciled")
+	}
+	for _, member := range []string{"postgres-member-1", "postgres-member-2", "postgres-member-3"} {
+		if err := journal.Record(ctx, member, "verified"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := verifyCompletedPatroniJournal(ctx, state, "0.4.24", pin, path); err != nil {
+		t.Fatalf("all verified members rejected: %v", err)
+	}
+}
