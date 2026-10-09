@@ -35,6 +35,10 @@ func verifyCoreHADCSSecurity(files bhruntime.Files) error {
 		"--peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem",
 		"postgres-etcd-recovery:",
 		"PATRONI_ETCD3_PROTOCOL: https",
+		"ETCD3_PROTOCOL: https",
+		"ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem",
+		"ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem",
+		"ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem",
 	} {
 		if !strings.Contains(text, required) {
 			return fmt.Errorf("UNSUPPORTED: managed HA DCS is missing required security contract %q", required)

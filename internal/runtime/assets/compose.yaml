@@ -71,6 +71,10 @@ services:
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      ETCD3_PROTOCOL: https
+      ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PATRONI_ETCD3_PROTOCOL: https
       PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
       PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
@@ -112,6 +116,10 @@ services:
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      ETCD3_PROTOCOL: https
+      ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PATRONI_ETCD3_PROTOCOL: https
       PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
       PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
@@ -153,6 +161,10 @@ services:
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
       PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      ETCD3_PROTOCOL: https
+      ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PATRONI_ETCD3_PROTOCOL: https
       PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
       PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem

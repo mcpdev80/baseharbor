@@ -330,6 +330,20 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 
 func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	text := string(composeYAML)
+	// Spilo builds Patroni's DCS configuration from ETCD3_ placeholders.
+	// PATRONI_ETCD3_ alone leaves the generated client on plaintext HTTP.
+	for key, value := range map[string]string{
+		"PROTOCOL": "https",
+		"CACERT":   "/run/baseharbor/tls-runtime/etcd-ca.pem",
+		"CERT":     "/run/baseharbor/tls-runtime/etcd-client.pem",
+		"KEY":      "/run/baseharbor/tls-runtime/etcd-client-key.pem",
+	} {
+		for _, prefix := range []string{"ETCD3_", "PATRONI_ETCD3_"} {
+			if got := strings.Count(text, "\n      "+prefix+key+": "+value+"\n"); got != 3 {
+				t.Fatalf("Spilo %s%s appears %d times, want 3", prefix, key, got)
+			}
+		}
+	}
 	const hosts = `      ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"`
 	if got := strings.Count(text, hosts); got != 3 {
 		t.Fatalf("Spilo ETCD3_HOSTS appears %d times, want exactly 3", got)
