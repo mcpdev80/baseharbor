@@ -136,7 +136,7 @@ func TestRuntimeEtcdStatusRejectsInvalidUnsignedIdentities(t *testing.T) {
 
 func TestValidateHAProviderPlanOnlyAdmitsOwnedSharedSQLRoll(t *testing.T) {
 	delta := coreupdate.Delta{
-		Installed: coreupdate.Realization{Kind: coreupdate.SQL, Scope: "shared", Instance: "postgres-member-1"},
+		Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Scope: "shared", Instance: "postgres-member-1"},
 		Classification: coreupdate.BackupRequired,
 	}
 	if err := validateHAProviderPlan(coreupdate.Plan{Deltas: []coreupdate.Delta{delta}}); err != nil {
