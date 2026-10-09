@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+ "strconv"
 	"strings"
 
 	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
@@ -44,6 +45,7 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 	leaders := 0
 	memberIDs := map[string]bool{}
 	var expectedLeader string
+ var recoveredClusterID string
 	for _, endpoint := range p.Endpoints {
 		parsed, err := url.Parse(endpoint)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -79,10 +81,23 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		}
 		s := status[0].Status
 		revision, err := s.Header.Revision.Int64()
-		if err != nil || revision < snapshot.Revision || s.Header.ClusterID.String() != id.Cluster || s.Version != snapshot.Version || s.Leader.String() == "" || s.Leader.String() == "0" {
-			return errors.New("etcd recovery identity, version, leader or revision mismatch")
+		if err != nil || revision < snapshot.Revision || s.Version != snapshot.Version || s.Leader.String() == "" || s.Leader.String() == "0" {
+			return errors.New("etcd recovery version, leader or revision mismatch")
 		}
-		if _, err := s.Header.MemberID.Int64(); err != nil || s.Header.MemberID.String() == "0" || memberIDs[s.Header.MemberID.String()] {
+		// etcdutl snapshot restore creates a NEW etcd cluster and member IDs.
+		// Comparing the recovered cluster ID to the snapshot's old cluster ID
+		// would reject every correctly isolated restoration.
+		restoredID := s.Header.ClusterID.String()
+		if cid, err := strconv.ParseUint(restoredID, 10, 64); err != nil || cid == 0 || restoredID == id.Cluster {
+			return errors.New("recovered etcd cluster identity is missing or was not rotated")
+		}
+		if recoveredClusterID == "" {
+			recoveredClusterID = restoredID
+		} else if recoveredClusterID != restoredID {
+			return errors.New("isolated etcd endpoints disagree on recovered cluster identity")
+		}
+		memberID, memberErr := strconv.ParseUint(s.Header.MemberID.String(), 10, 64)
+		if memberErr != nil || memberID == 0 || memberIDs[s.Header.MemberID.String()] {
 			return errors.New("etcd member identity is missing or duplicated")
 		}
 		memberIDs[s.Header.MemberID.String()] = true
