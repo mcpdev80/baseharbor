@@ -96,6 +96,19 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("    networks:\n      identity-internal: {}\n\n")
 	}
 
+	b.WriteString("  keycloak-db-etcd-recovery:\n")
+	fmt.Fprintf(&b, "    image: %s\n", keycloakEtcdImage)
+	b.WriteString("    profiles: [\"recovery\"]\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    entrypoint: [\"/usr/local/bin/etcdctl\"]\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./db-ha/etcd-pki:/run/baseharbor/etcd:ro\n")
+	b.WriteString("    tmpfs:\n")
+	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev,mode=0700\n")
+	b.WriteString("    networks:\n      identity-internal: {}\n\n")
+
 	b.WriteString("  keycloak-db-tls-init:\n")
 	fmt.Fprintf(&b, "    image: %s\n", keycloakPostgresImage)
 	b.WriteString("    restart: \"no\"\n")
