@@ -116,7 +116,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			"Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
 	}
 	m := e.manifest
-	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
+	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
@@ -469,6 +469,16 @@ func (e *applicationDestroyExecution) cleanupKeycloakIdentity(ctx context.Contex
 func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {
 	if !e.resolved.FromRepository {
 		return nil
+	}
+	registered, err := logsprovider.ApplicationRegisteredAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest)
+	if err != nil {
+		return fmt.Errorf("inspect application log registration before cleanup: %w", err)
+	}
+	if !registered {
+		if err := logsprovider.RemoveWorkloadOverride(e.files); err != nil {
+			return err
+		}
+		return logsprovider.RemoveProviderSourceOverride(e.files)
 	}
 	if e.platformFiles.Compose == "" {
 		var err error

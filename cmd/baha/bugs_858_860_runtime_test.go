@@ -43,6 +43,19 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	t.Logf("engine: %s", run("version", "--format", "{{.Client.Version}}"))
+	if engine == "podman" {
+		// BaseHarbor's XDG isolation must not relocate Podman's image/overlay
+		// storage into the state snapshot or create a different engine per case.
+		graph := run("info", "--format", "{{.Store.GraphRoot}}")
+		runroot := run("info", "--format", "{{.Store.RunRoot}}")
+		driver := run("info", "--format", "{{.Store.GraphDriverName}}")
+		storage := filepath.Join(t.TempDir(), "storage.conf")
+		if err := os.WriteFile(storage, []byte(fmt.Sprintf("[storage]\ndriver = %q\ngraphroot = %q\nrunroot = %q\n", driver, graph, runroot)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("CONTAINERS_STORAGE_CONF", storage)
+	}
+
 	run("pull", "docker.io/library/alpine:3.23")
 	for _, mode := range []string{"configured", "core-present", "deployed-workload", "partial-core", "partial-secret-core", "orphan-gateway"} {
 		t.Run(mode, func(t *testing.T) {
@@ -147,7 +160,7 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 			}
 			// Documentation-only execution must leave both host state and native
 			// resources byte-for-byte/inventory-identical, even for registered apps.
-			roots := []string{repo, os.Getenv("XDG_CONFIG_HOME"), os.Getenv("XDG_DATA_HOME"), os.Getenv("BASEHARBOR_STATE_DIR")}
+			roots := []string{repo, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "baseharbor"), filepath.Join(os.Getenv("XDG_DATA_HOME"), "baseharbor"), os.Getenv("BASEHARBOR_STATE_DIR")}
 			before := snapshotBugState(t, roots...)
 			containersBefore := run("container", "ls", "-a", "--format", "{{.Names}}")
 			for i := 0; i < 2; i++ {

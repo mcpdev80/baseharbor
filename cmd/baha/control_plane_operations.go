@@ -161,6 +161,17 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 			return append(checks, health.Check{Name: "runtime-config", OK: false, Message: "selected Target runtime state is unreadable; inspect the installation before retrying"})
 		}
 		if state == "not_installed" {
+			if provider, runtimeErr := detectRuntimeForTarget(ctx, target); runtimeErr == nil {
+				resources, inventoryErr := provider.ListOwnedProjectResources(ctx, targetRuntimeProjectName(target))
+				if inventoryErr != nil {
+					return append(checks, health.Check{Name: "runtime-config", OK: false, Message: "Core absence could not be verified; inspect runtime ownership before retrying"})
+				}
+				if len(resources) > 0 {
+					state = "incomplete"
+				}
+			}
+		}
+		if state == "not_installed" {
 			return append(checks, health.Check{Name: "core-deployment", OK: true, Message: "NOT DEPLOYED: this Target has no materialized Core; use baha up when ready to install it"})
 		}
 		if state == "incomplete" {
