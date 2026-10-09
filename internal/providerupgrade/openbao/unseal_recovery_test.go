@@ -4,9 +4,9 @@ import "testing"
 
 func TestPostUnsealRecoveryMustBeObserved(t *testing.T) {
 	cases := []struct {
-		name string
+		name  string
 		state State
-		ok bool
+		ok    bool
 	}{
 		{"healthy", State{Initialized: true, Healthy: true, Sealed: false}, true},
 		{"still-sealed", State{Initialized: true, Healthy: false, Sealed: true}, false},
@@ -16,7 +16,9 @@ func TestPostUnsealRecoveryMustBeObserved(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := verifyRecoveredState(tc.state)
-			if (err == nil) != tc.ok { t.Fatalf("unexpected recovered OpenBao admission: %v", err) }
+			if (err == nil) != tc.ok {
+				t.Fatalf("unexpected recovered OpenBao admission: %v", err)
+			}
 		})
 	}
 }
