@@ -74,6 +74,17 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: source.err.Error()})
 			continue
 		}
+		declared, err := providertopology.ServiceNames(source.compose)
+		if err != nil {
+			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
+			continue
+		}
+		// SQL-only Shared consumers have a protected empty module: their
+		// physical members are observed from the Core source below. Compose
+		// cannot query an empty service graph; it is not a failed provider.
+		if len(declared) == 0 {
+			continue
+		}
 		running, err := runtime.RunningServicesProject(ctx, source.project, source.compose, source.env)
 		if err != nil {
 			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
