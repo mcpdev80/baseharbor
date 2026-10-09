@@ -50,6 +50,10 @@ func classifyOwnedHAPostgresRollingInventory(ctx context.Context, state coreinst
 		return coreupdate.Delta{}, err
 	}
 	journalPath := filepath.Join(root, "core-updates", safeVersionPathPart(release), "patroni-members.json")
+	return classifyMixedHAPostgresWithJournal(ctx, state, release, images, pin, journalPath)
+}
+
+func classifyMixedHAPostgresWithJournal(ctx context.Context, state coreinstallation.State, release string, images []bhruntime.ImageIdentity, pin coreupdate.BackingPin, journalPath string) (coreupdate.Delta, error) {
 	if _, err := os.Lstat(journalPath); err != nil {
 		return coreupdate.Delta{}, fmt.Errorf("mixed Patroni versions without durable member journal: %w", err)
 	}
