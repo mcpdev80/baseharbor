@@ -420,9 +420,6 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if !changed {
 		return verifyCoreBinaryOnly(ctx, release)
 	}
-	if state.Spec.HA {
-		return errors.New("HA Core provider change UNSUPPORTED: verified rolling Spilo/Patroni backup, replica checks and recovery are required; no mutation attempted")
-	}
 	coreFiles, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return err
@@ -436,8 +433,12 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 		return err
 	}
 	openBaoMembers := coreFiles.OpenBaoMembers()
-	if len(openBaoMembers) != 1 {
-		return errors.New("single-Core OpenBao upgrade requires exactly one owned member")
+	expectedOpenBaoMembers := 1
+	if state.Spec.HA {
+		expectedOpenBaoMembers = 3
+	}
+	if len(openBaoMembers) != expectedOpenBaoMembers {
+		return fmt.Errorf("OpenBao managed topology requires %d owned member(s), got %d", expectedOpenBaoMembers, len(openBaoMembers))
 	}
 	// Require live ownership and immutable image identity for both provider
 	// adapters before any native update journal, backup or mutation is touched.
@@ -459,6 +460,14 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	}
 	if err := os.Chmod(journalDir, 0700); err != nil {
 		return err
+	}
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
+		}
+		if err := prepareCoreHARecoveryEvidence(ctx, runtime, coreFiles, state, target.Name, release, journalDir); err != nil {
+			return err
+		}
 	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
 		installation: state.ID, issuer: state.IdentityIssuer, release: release, receiptPath: filepath.Join(journalDir, "receipts.json")}
@@ -531,10 +540,12 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 			return fmt.Errorf("Core HA Patroni quorum not verified: %w", quorumErr)
 		}
 	}
-	for _, d := range plan.Deltas {
-		if state.Spec.HA && d.Classification != coreupdate.NoChange {
-			return fmt.Errorf("HA Core provider %s requires a verified rolling migration (UNSUPPORTED): %s", d.Installed.Instance, d.Reason)
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
 		}
+	}
+	for _, d := range plan.Deltas {
 		switch d.Classification {
 		case coreupdate.NoChange, coreupdate.BackupRequired, coreupdate.MigrationRequired:
 		default:
