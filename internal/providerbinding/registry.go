@@ -132,7 +132,6 @@ func (r *Registry) Preflight(ctx context.Context, provider providerupgrade.Provi
 	return adapter, assessment, nil
 }
 
- 
 // NewFor constructs only the selected installed provider. It does not require
 // an unrelated provider to exist and never supplies fallback or fake Core hooks.
 func NewFor(provider providerupgrade.Provider, deps Dependencies) (*Registry, error) {
@@ -154,9 +153,9 @@ func NewFor(provider providerupgrade.Provider, deps Dependencies) (*Registry, er
 		}
 		result.providers[provider] = openbao.New(&openbao.NativeOps{
 			Executor: deps.OpenBaoExecutor,
-			Files: deps.OpenBaoFiles,
-			Owner: "baseharbor",
-			Hooks: h,
+			Files:    deps.OpenBaoFiles,
+			Owner:    "baseharbor",
+			Hooks:    h,
 		})
 	case providerupgrade.ProviderKeycloak:
 		h := deps.KeycloakHooks
@@ -173,11 +172,11 @@ func NewFor(provider providerupgrade.Provider, deps Dependencies) (*Registry, er
 			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "keycloak hooks", errors.New("owned SQL snapshot, HA lifecycle, realm, OIDC token and restore hooks are required"))
 		}
 		result.providers[provider] = keycloak.New(&keycloak.NativeOps{
-			DataDir: deps.KeycloakDataDir,
-			Namespace: deps.KeycloakNamespace,
+			DataDir:        deps.KeycloakDataDir,
+			Namespace:      deps.KeycloakNamespace,
 			InstallationID: deps.KeycloakInstallationID,
 			ExpectedIssuer: deps.KeycloakIssuer,
-			Hooks: h,
+			Hooks:          h,
 		})
 	default:
 		return nil, providerupgrade.Wrap(providerupgrade.ErrorUnsupportedPath, "provider factory", errors.New("unsupported provider"))
