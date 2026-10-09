@@ -156,3 +156,25 @@ func TestDCSCutoverRejectsUnsafeLockParentWithoutCreatingLock(t *testing.T) {
 		t.Fatalf("cutover mutated runtime before safe lock: %v", ops.calls)
 	}
 }
+
+func TestDCSCutoverReceiptBindingCannotBeRepartitioned(t *testing.T) {
+	a := DCSRecoveryEvidence{Installation: `core\x00zone`, Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	b := a
+	b.Installation = "core"
+	b.Target = `zone\x00target`
+	first, err := dcsCutoverBinding(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := dcsCutoverBinding(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("DCS recovery receipt can be rebound by repartitioning identity fields")
+	}
+	b.Target = "zone\x00target"
+	if _, err := dcsCutoverBinding(b); err == nil {
+		t.Fatal("embedded NUL in DCS identity accepted")
+	}
+}
