@@ -24,6 +24,41 @@ func UnregisterApplication(ctx context.Context, runtime Runtime, issuer servicea
 	return UnregisterApplicationAt(ctx, runtime, issuer, dataDir, "", m)
 }
 
+// ApplicationRegisteredAt checks the existing collector ownership registry
+// without materializing provider or trust state. Retained state without its
+// registry is incomplete, rather than evidence of an undeployed application.
+func ApplicationRegisteredAt(dataDir, namespace string, m application.Manifest) (bool, error) {
+	p, err := PlacementForAt(dataDir, namespace, m)
+	if err != nil || p.Scope == capability.ScopeExternal {
+		return false, err
+	}
+	files := providerFiles(p)
+	registrations, err := readRegistrations(files.Registrations)
+	if errors.Is(err, os.ErrNotExist) {
+		entries, readErr := os.ReadDir(files.Dir)
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return false, readErr
+		}
+		if len(entries) > 0 {
+			return false, errors.New("log collector state is incomplete; inspect the retained provider registration before retrying destroy")
+		}
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return hasApplicationRegistration(registrations, m), nil
+}
+
+func hasApplicationRegistration(registrations []Registration, m application.Manifest) bool {
+	for _, registration := range registrations {
+		if registration.Application == m.Name && registration.Environment == m.Environment {
+			return true
+		}
+	}
+	return false
+}
+
 func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest) error {
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil || p.Scope == capability.ScopeExternal {
@@ -37,14 +72,7 @@ func UnregisterApplicationAt(ctx context.Context, runtime Runtime, issuer servic
 	if err != nil {
 		return err
 	}
-	registered := false
-	for _, registration := range existing {
-		if registration.Application == m.Name && registration.Environment == m.Environment {
-			registered = true
-			break
-		}
-	}
-	if !registered {
+	if !hasApplicationRegistration(existing, m) {
 		return nil
 	}
 	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, false)

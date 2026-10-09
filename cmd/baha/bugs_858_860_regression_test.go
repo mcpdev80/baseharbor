@@ -221,6 +221,9 @@ func TestDestroyWithoutCoreRemovesRecordAndIsIdempotent(t *testing.T) {
 		if err := execution.cleanupDevelopmentCanonicalRoutes(context.Background()); err != nil {
 			t.Fatal(err)
 		}
+		if err := execution.cleanupProviderState(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		if err := execution.removeApplicationState(); err != nil {
 			t.Fatal(err)
 		}
@@ -304,7 +307,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 			if tc.name != "runtime" && strings.Contains(out.String(), "baha doctor") {
 				t.Fatal(out.String())
 			}
-			if tc.next == "" && strings.Contains(out.String(), "Next:") {
+			if tc.next == "" && (strings.Contains(out.String(), "Next:") || machine.Classify(classifyMachineCLIError(tc.err)).Next != "") {
 				t.Fatal(out.String())
 			}
 			classified := classifyMachineCLIError(tc.err)
@@ -320,6 +323,20 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 			}
 		})
 	}
+	// Exercise UUID validation through the real repository command as well.
+	m, repo := bugApplicationRepository(t)
+	if err := os.WriteFile(filepath.Join(repo, application.RepositoryManifestName), []byte(strings.ReplaceAll(m.YAML(), m.ApplicationID, "123")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	out.Reset()
+	commandErr := runWithIO(context.Background(), []string{"--no-input", "app", "init"}, &out, &out)
+	formatCLIError(&out, commandErr)
+	if cli.ExitCode(commandErr) != 1 || !strings.Contains(out.String(), "lowercase UUIDv4") || strings.Contains(out.String(), "baha doctor") {
+		t.Fatalf("UUID CLI: %v: %s", commandErr, out.String())
+	}
+	t.Chdir(t.TempDir())
+
 	for _, args := range [][]string{{"down", "--yes"}, {"target", "delete", "demo", "--yes"}, {"app", "down", "--yes"}} {
 		out.Reset()
 		err := runWithIO(context.Background(), args, &out, &out)

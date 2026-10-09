@@ -142,7 +142,7 @@ func Classify(err error) *Error {
 	case errors.Is(err, os.ErrNotExist):
 		return Wrap(ErrorNotFound, err, "Verify the referenced file or resource exists and retry.", false)
 	default:
-		return Wrap(ErrorInternal, fmt.Errorf("%w", err), "Inspect the error and run baha doctor for additional diagnostics.", false)
+		return Wrap(ErrorInternal, fmt.Errorf("%w", err), "", false)
 	}
 }
 
