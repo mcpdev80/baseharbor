@@ -28,8 +28,9 @@ func verifiedNativeHAPostgresDelta(delta coreupdate.Delta) coreupdate.Delta {
 func rollOwnedCoreHAPostgres(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, delta coreupdate.Delta, installation, target, release, journalDir string) error {
 	if rt == nil || !files.HA || files.Project == "" || files.Compose == "" ||
 		installation == "" || target == "" || release == "" || journalDir == "" ||
-		delta.Installed.Kind != coreupdate.SQL || delta.Installed.Scope != "shared" ||
-		delta.Installed.Instance != "postgres-member-1" ||
+		delta.Installed.Kind != coreupdate.SQL || delta.Desired.Kind != coreupdate.SQL ||
+		delta.Installed.Owner != "baseharbor" || delta.Installed.Installation != installation ||
+		delta.Installed.Scope != "shared" || delta.Installed.Instance != "postgres-member-1" ||
 		delta.Classification != coreupdate.BackupRequired {
 		return errors.New("UNSUPPORTED: unowned or unadmitted Core HA PostgreSQL migration")
 	}
