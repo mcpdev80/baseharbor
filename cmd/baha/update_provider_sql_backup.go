@@ -129,8 +129,17 @@ func (s providerSQLBackupSpec) capture(ctx context.Context, version string) (pro
 	if err := s.validate(); err != nil {
 		return providerupgrade.BackupRef{}, err
 	}
-	if _, err := s.recoveryPairComplete(); err != nil {
-		return providerupgrade.BackupRef{}, err
+	complete, err := s.recoveryPairComplete()
+	if err != nil { return providerupgrade.BackupRef{}, err }
+	if complete {
+		// Journal resume must never overwrite the existing SQL/configuration
+		// pair with a snapshot of an already partially upgraded provider.
+		binding, err := s.artifactBinding(version)
+		if err != nil { return providerupgrade.BackupRef{}, err }
+		ref := providerupgrade.BackupRef{Provider:s.Provider, ID:s.Name, Version:version, CreatedAt:time.Now().UTC(), Verified:true,
+			Metadata:map[string]string{"database_verified":"true", "configuration_verified":"true", "format":"pg_dump-custom-v1", "binding":binding}}
+		if err := s.verify(ctx, ref); err != nil { return providerupgrade.BackupRef{}, err }
+		return ref, nil
 	}
 	environment, err := s.environment()
 	if err != nil {
