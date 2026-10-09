@@ -112,3 +112,30 @@ func TestNativeRecoveryUsesActualOwnerDataLayer(t *testing.T) {
 		t.Fatalf("checked-in Core Postgres mount not recoverable: %q %v", volume, err)
 	}
 }
+
+type keycloakVersionProbeRuntime struct {
+	fakeNativeCoreRuntime
+	versions map[string]string
+}
+
+func (r *keycloakVersionProbeRuntime) ProjectServiceImageIdentity(_ context.Context, _, service string) (bhruntime.ImageIdentity, error) {
+	return bhruntime.ImageIdentity{Reference: "quay.io/keycloak/keycloak:" + r.versions[service], Digest: "sha256:" + strings.Repeat("a", 64)}, nil
+}
+
+func TestNativeKeycloakHAInventoryRejectsMixedMemberVersions(t *testing.T) {
+	rt := &keycloakVersionProbeRuntime{versions: map[string]string{
+		"keycloak-1": "26.3.3", "keycloak-2": "26.3.4", "keycloak-3": "26.3.3",
+	}}
+	for _, service := range []string{"keycloak-1", "keycloak-2", "keycloak-3"} {
+		rt.containers = append(rt.containers, bhruntime.RuntimeContainer{Project: "owned-identity", Service: service, Running: true})
+	}
+	ops := &coreNativeRuntimeOps{runtime: rt, core: bhruntime.Files{HA: true}, identity: identityprovider.KeycloakFiles{Project: "owned-identity"}}
+	if _, err := ops.inspectNativeKeycloakMember(context.Background(), "keycloak-1"); err == nil || !strings.Contains(err.Error(), "disagree on image version") {
+		t.Fatalf("mixed Keycloak HA image versions must fail closed: %v", err)
+	}
+	rt.versions["keycloak-2"] = "26.3.3"
+	state, err := ops.inspectNativeKeycloakMember(context.Background(), "keycloak-1")
+	if err != nil || len(state.Members) != 3 || state.Version != "26.3.3" {
+		t.Fatalf("uniform healthy Keycloak HA members rejected: %+v %v", state, err)
+	}
+}
