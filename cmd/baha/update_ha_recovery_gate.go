@@ -89,6 +89,9 @@ func prepareCoreHARecoveryEvidence(ctx context.Context, rt bhruntime.RuntimeProv
 	if err := captureOwnedPatroniBackup(ctx, rt, files, filepath.Join(journalDir, "patroni-recovery")); err != nil {
 		return fmt.Errorf("capture verified Patroni physical recovery point: %w", err)
 	}
+	if err := prepareOwnedPatroniPhysicalRestore(ctx, journalDir); err != nil {
+		return fmt.Errorf("materialize and verify isolated PostgreSQL physical recovery data: %w", err)
+	}
 	bridge, err := buildCoreEtcdRecoveryBridge(ctx, rt, files, state.ID, targetName, release, journalDir)
 	if err != nil {
 		return fmt.Errorf("bind etcd DCS recovery adapter: %w", err)

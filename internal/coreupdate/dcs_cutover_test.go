@@ -14,6 +14,44 @@ type fakeDCSSwitchover struct {
 	fail  string
 }
 
+type cutoverBootCountingDCS struct {
+	fakeDCS
+	boots  int
+	active bool
+}
+
+func (d *cutoverBootCountingDCS) VerifyRestorable(context.Context, DCSRecoveryEvidence) error {
+	d.boots++
+	if d.active {
+		return errors.New("active data directory cannot be booted as isolated cluster")
+	}
+	return nil
+}
+
+func TestDCSCutoverResumeDoesNotBootActiveDataDirectories(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	dcs := &cutoverBootCountingDCS{fakeDCS: fakeDCS{valid: true}}
+	ops := &fakeDCSSwitchover{fail: "quorum"}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	if err := RunVerifiedDCSCutover(context.Background(), dcs, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("failed quorum accepted")
+	}
+	dcs.active = true
+	ops.fail = ""
+	for i := 0; i < 2; i++ {
+		if err := RunVerifiedDCSCutover(context.Background(), dcs, ev, "core", "target", "cluster", "0.4.24", ops, journal); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if dcs.boots != 1 {
+		t.Fatalf("activated data booted again: %d", dcs.boots)
+	}
+}
+
 func (o *fakeDCSSwitchover) FenceOldDCS(context.Context) error {
 	o.calls = append(o.calls, "fence")
 	if o.fail == "fence" {

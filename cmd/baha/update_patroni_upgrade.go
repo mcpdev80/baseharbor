@@ -45,6 +45,9 @@ func rollOwnedCoreHAPostgres(ctx context.Context, rt bhruntime.RuntimeProvider, 
 	if err := verifyCoreHADCSSecurity(files); err != nil {
 		return err
 	}
+	if err := prepareOwnedPatroniPhysicalRestore(ctx, journalDir); err != nil {
+		return fmt.Errorf("verify isolated physical PostgreSQL restore before rolling mutation: %w", err)
+	}
 	bridge, err := buildCoreEtcdRecoveryBridge(ctx, rt, files, installation, target, release, journalDir)
 	if err != nil {
 		return fmt.Errorf("bind authenticated HA PostgreSQL DCS: %w", err)

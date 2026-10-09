@@ -31,6 +31,18 @@ var ErrDCSUnsupported = errors.New("UNSUPPORTED: durable etcd DCS snapshot and v
 var ErrDCSInvalidEvidence = errors.New("invalid etcd DCS recovery evidence")
 
 func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, target, cluster, release string) error {
+	if err := validateDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
+		return err
+	}
+	if err := adapter.VerifyRestorable(ctx, evidence); err != nil {
+		return fmt.Errorf("etcd snapshot recovery verification failed: %w", err)
+	}
+	return nil
+}
+
+// Snapshot validation is safe after activation. Isolated boot verification
+// must not restart data directories that now belong to the active quorum.
+func validateDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence DCSRecoveryEvidence, installation, target, cluster, release string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -42,9 +54,6 @@ func VerifyDCSEvidence(ctx context.Context, adapter DCSRecoveryAdapter, evidence
 	}
 	if err := adapter.Validate(ctx, evidence); err != nil {
 		return fmt.Errorf("etcd snapshot validation failed: %w", err)
-	}
-	if err := adapter.VerifyRestorable(ctx, evidence); err != nil {
-		return fmt.Errorf("etcd snapshot recovery verification failed: %w", err)
 	}
 	return nil
 }

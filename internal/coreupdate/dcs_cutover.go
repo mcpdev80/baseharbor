@@ -136,7 +136,7 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	if ops == nil {
 		return ErrDCSUnsupported
 	}
-	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
+	if err := validateDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
 	binding, err := dcsCutoverBinding(evidence)
@@ -174,6 +174,9 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 		return errors.New("UNSUPPORTED: interrupted DCS commit requires operator reconciliation before replay")
 	}
 	if phase == "" {
+		if err := adapter.VerifyRestorable(ctx, evidence); err != nil {
+			return fmt.Errorf("isolated DCS recovery proof before fencing: %w", err)
+		}
 		if err := journal.record("", "prepared"); err != nil {
 			return err
 		}

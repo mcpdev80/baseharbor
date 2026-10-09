@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -31,6 +32,7 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 	tr := tar.NewReader(f)
 	required := map[string]bool{"PG_VERSION": false, "backup_label": false, "global/pg_control": false}
 	count := 0
+	seen := map[string]bool{}
 	for {
 		h, e := tr.Next()
 		if errors.Is(e, io.EOF) {
@@ -40,6 +42,13 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 			return fmt.Errorf("invalid native PostgreSQL tar archive: %w", e)
 		}
 		name := strings.TrimPrefix(h.Name, "./")
+		if err := verifyPostgresArchiveEntry(h, name); err != nil {
+			return err
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate PostgreSQL backup entry %q", name)
+		}
+		seen[name] = true
 		if name == "tablespace_map" {
 			return errors.New("additional PostgreSQL tablespaces require a multi-archive backup; streaming stdout backup unsupported")
 		}
@@ -66,6 +75,23 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 		if !ok {
 			return fmt.Errorf("PostgreSQL native backup missing %s", name)
 		}
+	}
+	return nil
+}
+
+// Native stdout backups admit only directories and regular files. External
+// tablespaces, links and devices cannot be recovered into this data directory.
+func verifyPostgresArchiveEntry(h *tar.Header, name string) error {
+	clean := strings.TrimSuffix(name, "/")
+	if clean == "" || clean == "." || path.IsAbs(clean) || path.Clean(clean) != clean ||
+		clean == ".." || strings.HasPrefix(clean, "../") || strings.ContainsAny(clean, "\\\x00") {
+		return fmt.Errorf("unsafe PostgreSQL backup path %q", name)
+	}
+	if h.Typeflag != tar.TypeDir && h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeRegA {
+		return fmt.Errorf("unsupported PostgreSQL backup entry type for %q", name)
+	}
+	if h.Size < 0 || h.Mode&07000 != 0 {
+		return fmt.Errorf("unsafe PostgreSQL backup entry metadata for %q", name)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -42,6 +43,19 @@ func streamPatroniBasebackup(ctx context.Context, rt bhruntime.RuntimeProvider, 
 		return fmt.Errorf("native Patroni physical backup failed: %w", err)
 	}
 	return nil
+}
+
+func prepareOwnedPatroniPhysicalRestore(ctx context.Context, journalDir string) error {
+	point := coreupdate.StreamRecoveryPoint{Directory: filepath.Join(journalDir, "patroni-recovery"), Name: "core-spilo-basebackup"}
+	destination := filepath.Join(journalDir, "patroni-isolated-restore")
+	if _, err := os.Lstat(destination); errors.Is(err, os.ErrNotExist) {
+		if err := coreupdate.RestorePostgresBasebackup(ctx, point, "18", destination); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	return coreupdate.VerifyPostgresBasebackupRestore(ctx, point, "18", destination)
 }
 
 // captureOwnedPatroniBackup never runs on an unverifiable cluster; it writes a
