@@ -112,6 +112,8 @@ func TestNativeKeycloakAdapterUpgradeAdmission(t *testing.T){
   Classification:coreupdate.BackupRequired,
  }
  if err:=ops.admitNativeProviderTransition(context.Background(),d);err!=nil{t.Fatalf("safe Keycloak patch rejected: %v",err)}
+ d.Desired.Version="26.8.0"
+ if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("same-version digest mutation escaped backup-aware adapter admission")}
  d.Desired.Version="26.9.0"
  if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("unreviewed Keycloak minor upgrade accepted")}
  d.Desired.Version="26.8.1"
