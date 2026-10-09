@@ -171,3 +171,65 @@ func TestStagePatroniRefusesComposeMutationWithoutQuorum(t *testing.T) {
 		t.Fatalf("Spilo Compose mutated before Patroni pre-stage quorum: %s", got)
 	}
 }
+
+type incompleteOldPrimaryRoll struct {
+	*fakeClusterRoll
+	needsImage bool
+}
+func (f *incompleteOldPrimaryRoll) VerifyMemberImage(ctx context.Context, name string) error {
+	if name == "pg1" && f.needsImage {
+		return errors.New("old primary still runs original image")
+	}
+	return f.fakeClusterRoll.VerifyMemberImage(ctx, name)
+}
+func (f *incompleteOldPrimaryRoll) Recreate(ctx context.Context, name string) error {
+	if name != "pg1" {
+		return errors.New("unexpected member replacement")
+	}
+	if err := f.fakeClusterRoll.Recreate(ctx, name); err != nil {
+		return err
+	}
+	f.needsImage = false
+	return nil
+}
+func TestPatroniResumeRecreatesOnlyFormerPrimaryAfterVerifiedPromotion(t *testing.T) {
+	members := []PatroniMemberState{
+		{Name: "pg1", Replica: true, Healthy: true},
+		{Name: "pg2", Primary: true, Healthy: true},
+		{Name: "pg3", Replica: true, Healthy: true},
+	}
+	gate := &incompleteOldPrimaryRoll{fakeClusterRoll: &fakeClusterRoll{
+		resumablePatroniFake: resumablePatroniFake{
+			fakePatroniRoll: fakePatroniRoll{members: members},
+			steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"},
+		},
+	}, needsImage: true}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	if err := RollPatroniCluster(context.Background(), gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err != nil {
+		t.Fatal(err)
+	}
+	actions := strings.Join(gate.calls, ",")
+	if strings.Count(actions, "recreate:pg1") != 1 || strings.Contains(actions, "switch:") || gate.steps["pg1"] != "verified" {
+		t.Fatalf("interrupted old-primary reconciliation unsafe: actions=%s states=%+v", actions, gate.steps)
+	}
+}
+func TestPatroniResumeRejectsMultipleAmbiguousReplicaJournals(t *testing.T) {
+	members := []PatroniMemberState{
+		{Name: "pg1", Replica: true, Healthy: true},
+		{Name: "pg2", Primary: true, Healthy: true},
+		{Name: "pg3", Replica: true, Healthy: true},
+	}
+	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{
+		fakePatroniRoll: fakePatroniRoll{members: members},
+		steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verify_failed"},
+	}}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	if err := RollPatroniCluster(context.Background(), gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err == nil {
+		t.Fatal("multiple incomplete members accepted")
+	}
+	for _, action := range gate.calls {
+		if strings.HasPrefix(action, "switch:") || strings.HasPrefix(action, "recreate:") {
+			t.Fatalf("ambiguous replica recovery performed mutation: %v", gate.calls)
+		}
+	}
+}
