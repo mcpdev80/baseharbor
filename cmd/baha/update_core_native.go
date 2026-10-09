@@ -70,65 +70,93 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 	return nil
 }
 
-func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State,error) {
- members,err:=o.runtime.ListRuntimeContainers(ctx)
- if err!=nil{return keycloakadapter.State{},err}
- found:=0
- for _,member:=range members{
-  if member.Project!=o.identity.Project||member.Service!=service{continue}
-  found++
-  if !member.Running||strings.EqualFold(member.Health,"unhealthy"){return keycloakadapter.State{},errors.New("Keycloak managed member not healthy")}
- }
- if found!=1{return keycloakadapter.State{},errors.New("Keycloak single topology requires exactly one owned member")}
- image,err:=o.runtime.ProjectServiceImageIdentity(ctx,o.identity.Project,service)
- if err!=nil{return keycloakadapter.State{},err}
- ref:=strings.Split(image.Reference,"@")[0]
- index:=strings.LastIndex(ref,":")
- if index<0||index==len(ref)-1{return keycloakadapter.State{},errors.New("Keycloak runtime image version is not observable")}
- version:=ref[index+1:]
- return keycloakadapter.State{Version:version,Owner:"baseharbor",Topology:keycloakadapter.TopologySingle,Healthy:true,
-  DatabaseType:"postgresql",Members:[]keycloakadapter.Member{{Name:service,Version:version,Ready:true}}},nil
+func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State, error) {
+	members, err := o.runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		return keycloakadapter.State{}, err
+	}
+	found := 0
+	for _, member := range members {
+		if member.Project != o.identity.Project || member.Service != service {
+			continue
+		}
+		found++
+		if !member.Running || strings.EqualFold(member.Health, "unhealthy") {
+			return keycloakadapter.State{}, errors.New("Keycloak managed member not healthy")
+		}
+	}
+	if found != 1 {
+		return keycloakadapter.State{}, errors.New("Keycloak single topology requires exactly one owned member")
+	}
+	image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, service)
+	if err != nil {
+		return keycloakadapter.State{}, err
+	}
+	ref := strings.Split(image.Reference, "@")[0]
+	index := strings.LastIndex(ref, ":")
+	if index < 0 || index == len(ref)-1 {
+		return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
+	}
+	version := ref[index+1:]
+	return keycloakadapter.State{Version: version, Owner: "baseharbor", Topology: keycloakadapter.TopologySingle, Healthy: true,
+		DatabaseType: "postgresql", Members: []keycloakadapter.Member{{Name: service, Version: version, Ready: true}}}, nil
 }
 
 // admitNativeProviderTransition delegates conservative single-Core patch upgrades
 // to the actual OpenBao/Keycloak adapter Preflight contracts while the original
 // installation is still running. Snapshot and mutation remain journal-owned.
-func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context,d coreupdate.Delta) error {
- if d.Classification==coreupdate.NoChange{return nil}
- request:=providerupgrade.Request{CurrentVersion:d.Installed.Version,TargetVersion:d.Desired.Version,
-  TargetImage:d.Desired.Image,TargetDigest:d.Desired.Digest}
- patchOnly:=func(_ context.Context,from,to string)error{
-  old,err:=providerupgrade.ParseVersion(from);if err!=nil{return err}
-  next,err:=providerupgrade.ParseVersion(to);if err!=nil{return err}
-  if !old.SameMinor(next)||old.Compare(next)>=0{return errors.New("UNSUPPORTED: native provider upgrade requires a strictly newer patch within the same major/minor")}
-  return nil
- }
- switch d.Installed.Kind {
- case coreupdate.Secrets:
-  adapter:=baoAdapter.New(&baoAdapter.NativeOps{Executor:o.runtime,Files:o.core,Owner:"baseharbor",
-   Hooks:baoAdapter.RuntimeHooks{UpgradePath:patchOnly}})
-  assessment,err:=adapter.Preflight(ctx,request)
-  if err!=nil{return err}
-  if assessment.Classification!=providerupgrade.ClassificationSupported||!assessment.BackupRequired{
-   return errors.New("UNSUPPORTED: OpenBao mutation requires verified provider-adapter backup admission")
-  }
-  return nil
- case coreupdate.Identity:
-  adapter:=keycloakadapter.New(&keycloakadapter.NativeOps{
-   DataDir:o.dataDir,Namespace:o.target,InstallationID:o.installation,ExpectedIssuer:o.issuer,
-   Hooks:keycloakadapter.CoreHooks{
-    Inspect:func(ctx context.Context)(keycloakadapter.State,error){return o.inspectNativeKeycloakMember(ctx,d.Installed.Instance)},
-    Compatibility:patchOnly,
-   },
-  })
-  assessment,err:=adapter.Preflight(ctx,request)
-  if err!=nil{return err}
-  if assessment.Classification!=providerupgrade.ClassificationSupported||!assessment.BackupRequired{
-   return errors.New("UNSUPPORTED: Keycloak mutation requires verified provider-adapter backup admission")
-  }
-  return nil
- }
- return nil
+func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context, d coreupdate.Delta) error {
+	if d.Classification == coreupdate.NoChange {
+		return nil
+	}
+	request := providerupgrade.Request{CurrentVersion: d.Installed.Version, TargetVersion: d.Desired.Version,
+		TargetImage: d.Desired.Image, TargetDigest: d.Desired.Digest}
+	patchOnly := func(_ context.Context, from, to string) error {
+		old, err := providerupgrade.ParseVersion(from)
+		if err != nil {
+			return err
+		}
+		next, err := providerupgrade.ParseVersion(to)
+		if err != nil {
+			return err
+		}
+		if !old.SameMinor(next) || old.Compare(next) >= 0 {
+			return errors.New("UNSUPPORTED: native provider upgrade requires a strictly newer patch within the same major/minor")
+		}
+		return nil
+	}
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		adapter := baoAdapter.New(&baoAdapter.NativeOps{Executor: o.runtime, Files: o.core, Owner: "baseharbor",
+			Hooks: baoAdapter.RuntimeHooks{UpgradePath: patchOnly}})
+		assessment, err := adapter.Preflight(ctx, request)
+		if err != nil {
+			return err
+		}
+		if assessment.Classification != providerupgrade.ClassificationSupported || !assessment.BackupRequired {
+			return errors.New("UNSUPPORTED: OpenBao mutation requires verified provider-adapter backup admission")
+		}
+		return nil
+	case coreupdate.Identity:
+		adapter := keycloakadapter.New(&keycloakadapter.NativeOps{
+			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
+			Hooks: keycloakadapter.CoreHooks{
+				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
+					return o.inspectNativeKeycloakMember(ctx, d.Installed.Instance)
+				},
+				Compatibility: patchOnly,
+			},
+		})
+		assessment, err := adapter.Preflight(ctx, request)
+		if err != nil {
+			return err
+		}
+		if assessment.Classification != providerupgrade.ClassificationSupported || !assessment.BackupRequired {
+			return errors.New("UNSUPPORTED: Keycloak mutation requires verified provider-adapter backup admission")
+		}
+		return nil
+	}
+	return nil
 }
 
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
@@ -270,7 +298,9 @@ func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context,
 		ops := &keycloakadapter.NativeOps{
 			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
 			Hooks: keycloakadapter.CoreHooks{
-				Inspect:func(ctx context.Context)(keycloakadapter.State,error){return o.inspectNativeKeycloakMember(ctx,service)},
+				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
+					return o.inspectNativeKeycloakMember(ctx, service)
+				},
 				VerifySQL: o.verifyKeycloakBackingSQL,
 				VerifyRealms: func(ctx context.Context) error {
 					return identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer)
