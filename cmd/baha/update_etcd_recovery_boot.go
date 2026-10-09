@@ -150,9 +150,13 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 		// retry its authenticated status probe within a bounded window.
 		probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		var probeErr error
+		var status runtimeEtcdStatus
 		for {
 			out.Reset()
 			probeErr = recovered.run(probeCtx, "/usr/local/bin/etcdctl", &out, io.Discard, nil, args...)
+			if probeErr == nil {
+				status, probeErr = parseRuntimeEtcdStatus([]byte(out.String()))
+			}
 			if probeErr == nil {
 				break
 			}
@@ -164,10 +168,6 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 			}
 		}
 		cancel()
-		status, err := parseRuntimeEtcdStatus([]byte(out.String()))
-		if err != nil {
-			return err
-		}
 		if status.Endpoint != endpoint || status.ClusterID == "" || status.ClusterID == snapshot.ClusterID ||
 			status.Revision < snapshot.Revision || status.Version != snapshot.Version ||
 			status.MemberID == "" || status.LeaderID == "" || status.LeaderID == "0" {
