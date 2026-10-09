@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
