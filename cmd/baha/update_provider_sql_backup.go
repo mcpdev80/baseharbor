@@ -445,6 +445,8 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	// archive. pg_restore --clean cannot drop their referenced old objects.
 	// Decode into an owner-only temporary file, then replace only this bound
 	// database's non-system schemas and restore ownership/ACLs in ONE transaction.
+	// The schema reset already removes old objects; archive SQL must not issue
+	// a second cleanup against schemas/tables that no longer exist.
 	// Decode errors occur before the SQL-started receipt or any database mutation.
 	sql, err := os.CreateTemp(s.Directory, ".provider-restore-*.sql")
 	if err != nil {
@@ -454,7 +456,7 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	var diagnostics bytes.Buffer
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 		archive, sql, &diagnostics, []string{s.Compose}, "run", "--rm", "--no-deps", "-T", s.Client,
-		"pg_restore", "--clean", "--if-exists", "--exit-on-error", "--file=-"); err != nil {
+		"pg_restore", "--exit-on-error", "--file=-"); err != nil {
 		return fmt.Errorf("%s SQL recovery decode failed (%s)", s.Provider, classifyProviderRestoreFailure(diagnostics.String()))
 	}
 	if _, err := sql.Seek(0, io.SeekStart); err != nil {

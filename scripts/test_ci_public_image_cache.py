@@ -16,6 +16,12 @@ class PublicImageCacheTests(unittest.TestCase):
         self.assertEqual(cache.public_source('/v2/openbao/openbao/blobs/' + digest),
                          ('ghcr.io', 'openbao/openbao', 'blobs/' + digest))
 
+    def test_native_mirror_namespace_query_is_admitted_only_for_docker_hub(self):
+        route = '/v2/library/postgres/manifests/latest'
+        self.assertEqual(cache.public_source(route + '?ns=docker.io'), cache.public_source(route))
+        for query in ['ns=private.example', 'ns=docker.io&token=secret', 'ns=docker.io&ns=docker.io']:
+            self.assertIsNone(cache.public_source(route + '?' + query))
+
     def test_foreign_repositories_traversal_upload_and_queries_are_rejected(self):
         for path in ['/v2/private/secrets/manifests/latest', '/v2/library/../private/manifests/latest',
                      '/v2/library/postgres/blobs/uploads/', '/v2/library/postgres/manifests/latest?token=private',

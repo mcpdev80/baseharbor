@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import socket
 import threading
+import time
+import urllib.parse
 import urllib.error
 import urllib.request
 
@@ -20,6 +22,10 @@ TOKEN_LOCK = threading.Lock()
 
 
 def public_source(path):
+    parsed = urllib.parse.urlsplit(path)
+    if parsed.query not in {'', 'ns=docker.io'} or parsed.fragment or parsed.scheme or parsed.netloc:
+        return None
+    path = parsed.path
     match = re.fullmatch(r'/v2/(library/[a-z0-9][a-z0-9._-]*|openbao/openbao)/(manifests/([a-zA-Z0-9._-]+|sha256:[0-9a-f]{64})|blobs/sha256:[0-9a-f]{64})', path)
     if not match:
         return None
@@ -51,6 +57,24 @@ def verified_manifest(body, digest):
     return actual
 
 
+class PublicImageServer(ThreadingHTTPServer):
+    request_queue_size = 64
+    daemon_threads = True
+
+
+def open_public(request):
+    for attempt in range(3):
+        try:
+            return urllib.request.urlopen(request, timeout=60)
+        except urllib.error.HTTPError as error:
+            if error.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 2:
+                raise
+        time.sleep(attempt + 1)
+
+
 class PublicImageHandler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass  # Neither anonymous bearer tokens nor upstream URLs enter logs.
@@ -76,12 +100,12 @@ class PublicImageHandler(BaseHTTPRequestHandler):
             request = urllib.request.Request('https://' + host + '/v2/' + repository + '/' + suffix,
                 method=method, headers={'Authorization': 'Bearer ' + public_token(host, repository), 'Accept': ACCEPT})
             try:
-                response = urllib.request.urlopen(request, timeout=60)
+                response = open_public(request)
             except urllib.error.HTTPError as error:
                 if error.code != 401:
                     raise
                 request.add_header('Authorization', 'Bearer ' + public_token(host, repository, refresh=True))
-                response = urllib.request.urlopen(request, timeout=60)
+                response = open_public(request)
             with response:
                 manifest = suffix.startswith('manifests/')
                 body = response.read(4 * 1024 * 1024 + 1) if manifest and method == 'GET' else None
@@ -104,8 +128,10 @@ class PublicImageHandler(BaseHTTPRequestHandler):
                         while chunk := response.read(1024 * 1024):
                             self.wfile.write(chunk)
         except urllib.error.HTTPError as error:
+            print('public-cache upstream-http', host, repository, suffix.split('/')[0], error.code, flush=True)
             self.send_error(error.code, 'public image unavailable')
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError) as error:
+            print('public-cache verification-or-network', host, repository, suffix.split('/')[0], type(error).__name__, flush=True)
             self.send_error(502, 'public image cache verification failed')
 
 
@@ -121,7 +147,7 @@ def main():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
             route.connect(('1.1.1.1', 443))
             host = route.getsockname()[0]
-    server = ThreadingHTTPServer((host, 0), PublicImageHandler)
+    server = PublicImageServer((host, 0), PublicImageHandler)
     Path(args.endpoint_file).write_text('http://' + host + ':' + str(server.server_port) + '\n')
     server.serve_forever()
 

@@ -390,7 +390,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: provider-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/provider-versions
+          path: |
+            ${{ runner.temp }}/provider-versions
+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
           if-no-files-found: warn
           retention-days: 90
 
@@ -430,7 +432,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ha-openbao-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ha-openbao-versions
+          path: |
+            ${{ runner.temp }}/ha-openbao-versions
+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
           if-no-files-found: warn
           retention-days: 90
 

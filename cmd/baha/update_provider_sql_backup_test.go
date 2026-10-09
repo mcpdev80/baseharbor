@@ -162,6 +162,9 @@ func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ str
 	if len(args) > 0 && args[0] == "run" {
 		input, _ := io.ReadAll(stdin)
 		for _, arg := range args {
+			if arg == "--clean" || arg == "--if-exists" {
+				return errors.New("archive cleanup after schema reset would address missing relations")
+			}
 			if arg == "--file=-" {
 				if r.failDecode {
 					return errors.New("injected archive decode failure")
