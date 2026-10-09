@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -490,10 +491,36 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		if err != nil {
 			return coreupdate.Plan{}, fmt.Errorf("inspect Core %s runtime image: %w", item.kind, err)
 		}
-		ref := strings.TrimSpace(id.Reference)
+		ref := strings.SplitN(strings.TrimSpace(id.Reference), "@", 2)[0]
 		pos := strings.LastIndex(ref, ":")
 		if pos <= strings.LastIndex(ref, "/") {
-			return coreupdate.Plan{}, fmt.Errorf("Core %s runtime version is not explicit", item.kind)
+			compose := ""
+			if item.kind == coreupdate.Identity {
+				target, resolveErr := effectiveTarget(ctx)
+				if resolveErr != nil {
+					return coreupdate.Plan{}, resolveErr
+				}
+				dataDir, resolveErr := targetDataRoot(target)
+				if resolveErr != nil {
+					return coreupdate.Plan{}, resolveErr
+				}
+				files, resolveErr := identityprovider.ExistingCoreRuntimeFiles(dataDir, state.Spec.Target)
+				if resolveErr != nil {
+					return coreupdate.Plan{}, resolveErr
+				}
+				compose = files.Compose
+			} else {
+				files, resolveErr := existingTargetRuntimeFiles(ctx)
+				if resolveErr != nil {
+					return coreupdate.Plan{}, resolveErr
+				}
+				compose = files.Compose
+			}
+			ref, err = ownedTaggedImage(id, compose, item.service)
+			if err != nil {
+				return coreupdate.Plan{}, err
+			}
+			pos = strings.LastIndex(ref, ":")
 		}
 		v := ref[pos+1:]
 		peerImages := []bhruntime.ImageIdentity{id}
@@ -577,14 +604,16 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			}
 		}
 	}
-	dbRef := strings.TrimSpace(dbImage.Reference)
+	dbRef := strings.SplitN(strings.TrimSpace(dbImage.Reference), "@", 2)[0]
 	dbDigest := strings.TrimSpace(dbImage.Digest)
 	if at := strings.Index(dbDigest, "@sha256:"); at >= 0 {
 		dbDigest = dbDigest[at+1:]
 	}
 	dbClass := coreupdate.Unsupported
 	dbReason := "Keycloak backing SQL version change needs verified provider-native recovery"
-	if dbRef == keycloakBacking.Image && dbDigest == keycloakBacking.Digest && dbDigest != "" {
+	wantDBRepository := keycloakBacking.Image[:strings.LastIndex(keycloakBacking.Image, ":")]
+	if dbDigest == keycloakBacking.Digest && (dbRef == keycloakBacking.Image || dbImage.Reference == wantDBRepository+"@"+dbDigest) {
+		dbRef = keycloakBacking.Image
 		dbClass = coreupdate.NoChange
 		dbReason = ""
 	}

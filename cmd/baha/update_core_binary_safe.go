@@ -19,6 +19,17 @@ import (
 // A Core with deployments or any data-bearing delta must use the future native
 // provider lifecycle; treating those as binary-only is unsafe.
 func verifyUnchangedCoreForBinaryUpdate(ctx context.Context, selectedRelease string) error {
+	return verifyUnchangedCore(ctx, selectedRelease, false)
+}
+
+// Provider reconciliation has already admitted and verified owned application
+// scopes. Its final inventory check must retain those deployments rather than
+// applying the deliberately narrower binary-only admission rule.
+func verifyReconciledCore(ctx context.Context, selectedRelease string) error {
+	return verifyUnchangedCore(ctx, selectedRelease, true)
+}
+
+func verifyUnchangedCore(ctx context.Context, selectedRelease string, reconciled bool) error {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
@@ -38,7 +49,7 @@ func verifyUnchangedCoreForBinaryUpdate(ctx context.Context, selectedRelease str
 	if err != nil {
 		return fmt.Errorf("inspect application registry: %w", err)
 	}
-	if len(registrations) > 0 {
+	if len(registrations) > 0 && !reconciled {
 		return errors.New("Core has registered deployments; provider-native application/isolated inventory reconciliation is required")
 	}
 	rt, err := detectRuntimeForTarget(ctx, target)
@@ -49,7 +60,7 @@ func verifyUnchangedCoreForBinaryUpdate(ctx context.Context, selectedRelease str
 	if err != nil {
 		return err
 	}
-	if len(plan.Deltas) != 4 {
+	if !reconciled && len(plan.Deltas) != 4 {
 		return fmt.Errorf("binary-only Core update requires exactly four verified shared/backing providers, found %d", len(plan.Deltas))
 	}
 	for _, delta := range plan.Deltas {
@@ -73,6 +84,23 @@ func verifyUnchangedCoreForBinaryUpdate(ctx context.Context, selectedRelease str
 	}
 	if err := identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer); err != nil {
 		return fmt.Errorf("Core identity semantics failed: %w", err)
+	}
+	if reconciled {
+		identity, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target.Name)
+		if err != nil {
+			return err
+		}
+		ops := &coreNativeRuntimeOps{runtime: rt, core: files, identity: identity, dataDir: dataDir, target: target.Name, installation: state.ID, issuer: state.IdentityIssuer}
+		if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {
+			return err
+		}
+		if err := ops.verifyOpenBaoBackingSQL(ctx); err != nil {
+			return err
+		}
+		if err := ops.verifyKeycloakBackingSQL(ctx); err != nil {
+			return err
+		}
+		return identityprovider.VerifyCoreOperatorTokenFlow(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
 	}
 	return nil
 }

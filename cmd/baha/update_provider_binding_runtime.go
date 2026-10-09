@@ -56,6 +56,15 @@ func patchProviderUpgradePath(_ context.Context, from, to string) error {
 	return nil
 }
 
+// A reviewed adjacent minor transition requires an offline single-member
+// migration and its verified SQL/configuration backup. HA remains patch-only.
+func (o *coreNativeRuntimeOps) keycloakUpgradePath(ctx context.Context, from, to string) error {
+	if !o.core.HA && from == "26.7.5" && to == "26.8.0" {
+		return nil
+	}
+	return patchProviderUpgradePath(ctx, from, to)
+}
+
 func (o *coreNativeRuntimeOps) stopSelected(ctx context.Context, files bhruntime.Files, services ...string) error {
 	environment, err := bhruntime.RuntimeEnvironment(files)
 	if err != nil {
@@ -316,7 +325,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
 			return o.inspectNativeKeycloakMember(ctx, keycloakDelta.Installed.Instance)
 		},
-		Compatibility: patchProviderUpgradePath,
+		Compatibility: o.keycloakUpgradePath,
 		Backup: func(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
 			return keycloakBackup.capture(ctx, version)
 		},

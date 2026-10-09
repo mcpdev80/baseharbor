@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Verified
 
-- Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37945903026).
+- Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37954182113).
 - Console and Connector package-local checks have successful evidence in their respective PRs; exact joint-release acceptance remains outstanding.
 
 ### Known limitations / release blockers

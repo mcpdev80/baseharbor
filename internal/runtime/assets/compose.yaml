@@ -266,7 +266,7 @@ services:
         done
 
   openbao-member-1:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
     user: "100"
     read_only: true
@@ -295,7 +295,7 @@ services:
       - secrets
 
   openbao-member-2:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
     user: "100"
     read_only: true
@@ -324,7 +324,7 @@ services:
       - secrets
 
   openbao-member-3:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
     user: "100"
     read_only: true
@@ -380,7 +380,7 @@ services:
           - openbao
 
   openbao-admin:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.1
     restart: unless-stopped
     user: "100"
     read_only: true

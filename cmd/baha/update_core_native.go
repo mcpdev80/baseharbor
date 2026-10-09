@@ -114,7 +114,10 @@ func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, 
 		if err != nil {
 			return keycloakadapter.State{}, err
 		}
-		ref := strings.Split(image.Reference, "@")[0]
+		ref, err := ownedTaggedImage(image, o.identity.Compose, expected)
+		if err != nil {
+			return keycloakadapter.State{}, err
+		}
 		index := strings.LastIndex(ref, ":")
 		if index < 0 || index == len(ref)-1 {
 			return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
@@ -140,24 +143,10 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
 	}
 	request := providerupgrade.Request{CurrentVersion: d.Installed.Version, TargetVersion: d.Desired.Version,
 		TargetImage: d.Desired.Image, TargetDigest: d.Desired.Digest}
-	patchOnly := func(_ context.Context, from, to string) error {
-		old, err := providerupgrade.ParseVersion(from)
-		if err != nil {
-			return err
-		}
-		next, err := providerupgrade.ParseVersion(to)
-		if err != nil {
-			return err
-		}
-		if !old.SameMinor(next) || old.Compare(next) >= 0 {
-			return errors.New("UNSUPPORTED: native provider upgrade requires a strictly newer patch within the same major/minor")
-		}
-		return nil
-	}
 	switch d.Installed.Kind {
 	case coreupdate.Secrets:
 		adapter := baoAdapter.New(&baoAdapter.NativeOps{Executor: o.runtime, Files: o.core, Owner: "baseharbor",
-			Hooks: baoAdapter.RuntimeHooks{UpgradePath: patchOnly}})
+			Hooks: baoAdapter.RuntimeHooks{UpgradePath: patchProviderUpgradePath}})
 		assessment, err := adapter.Preflight(ctx, request)
 		if err != nil {
 			return err
@@ -173,7 +162,7 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
 				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
 					return o.inspectNativeKeycloakMember(ctx, d.Installed.Instance)
 				},
-				Compatibility: patchOnly,
+				Compatibility: o.keycloakUpgradePath,
 			},
 		})
 		assessment, err := adapter.Preflight(ctx, request)
@@ -242,6 +231,9 @@ func (o *coreNativeRuntimeOps) ReconcilePinned(ctx context.Context, d coreupdate
 	if err := o.runtime.UpProject(ctx, project, compose, env); err != nil {
 		return err
 	}
+	if err := o.resumeSQLDependents(ctx, d); err != nil {
+		return err
+	}
 	return o.verifyImage(ctx, d, true)
 }
 func (o *coreNativeRuntimeOps) ReconcileOriginal(ctx context.Context, d coreupdate.Delta) error {
@@ -249,7 +241,21 @@ func (o *coreNativeRuntimeOps) ReconcileOriginal(ctx context.Context, d coreupda
 	if err := o.runtime.UpProject(ctx, project, compose, env); err != nil {
 		return err
 	}
+	if err := o.resumeSQLDependents(ctx, d); err != nil {
+		return err
+	}
 	return o.verifyImage(ctx, d, false)
+}
+
+func (o *coreNativeRuntimeOps) resumeSQLDependents(ctx context.Context, d coreupdate.Delta) error {
+	if d.Installed.Kind != coreupdate.SQL || d.Installed.Scope != "shared" || o.core.HA {
+		return nil
+	}
+	path, _, err := resolveTargetRecoveryFile(ctx, "")
+	if err != nil {
+		return err
+	}
+	return platformopenbao.Unseal(ctx, o.runtime, o.core, path)
 }
 func (o *coreNativeRuntimeOps) verifyImage(ctx context.Context, d coreupdate.Delta, pinned bool) error {
 	project, _, _ := o.files(d)
@@ -539,7 +545,7 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	}); err != nil {
 		return err
 	}
-	return verifyCoreBinaryOnly(ctx, release)
+	return verifyReconciledCore(ctx, release)
 }
 
 func preflightNativeCoreUpgrade(ctx context.Context, release string) error {

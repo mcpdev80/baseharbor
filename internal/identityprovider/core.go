@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -19,11 +20,29 @@ import (
 func ExistingCoreRuntimeFiles(dataDir, namespace string) (KeycloakFiles, error) {
 	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
 	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
-	dir, _, err := keycloakStateIdentity(spec, placement, dataDir, namespace)
+	dir, project, err := keycloakStateIdentity(spec, placement, dataDir, namespace)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	return existingCoreKeycloakFiles(dir)
+	files, err := existingCoreKeycloakFiles(dir)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	compose := filepath.Join(dir, "compose.yaml")
+	info, err := os.Lstat(compose)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return KeycloakFiles{}, errors.New("Core Identity Compose must be a protected regular non-symlink file")
+	}
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(spec, namespace, placement)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	files.Project, files.Compose = project, compose
+	files.ConsumerNetwork, files.InternalNetwork = consumer, consumer+"-internal"
+	return files, nil
 }
 
 // EnsureCoreIdentity realizes installation Identity through the existing native

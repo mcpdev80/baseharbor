@@ -414,7 +414,7 @@ func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
 func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
 	for _, wanted := range []string{
-		"docker.io/openbao/openbao:2.7.0",
+		"docker.io/openbao/openbao:2.7.1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
 		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",

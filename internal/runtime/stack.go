@@ -345,7 +345,7 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 		"  openbao-member-1:\n",
 		"  openbao-member-2:\n",
 		"  openbao-member-3:\n",
-		"docker.io/openbao/openbao:2.7.0",
+		"docker.io/openbao/openbao:2.7.1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BAO_CLUSTER_ADDR: https://openbao-member-1:8201",
 		"  openbao:\n",
