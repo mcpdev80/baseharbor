@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -55,8 +56,11 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 		sources = append(sources, topologySource{"traces", p.Project, f.Compose, f.Env, e})
 	}
 	if application.HasIdentity(m) {
-		f, e := identityprovider.ExistingCoreRuntimeFiles(root, namespace)
-		sources = append(sources, topologySource{"identity", f.Project, f.Compose, f.Env, e})
+		provider, e := application.IdentityProviderForDeployment()
+		if e == nil && provider.Kind == capability.ProviderKeycloak {
+			f, e := identityprovider.ExistingKeycloakFilesAt(m, root, namespace)
+			sources = append(sources, topologySource{"identity", f.Project, f.Compose, f.Env, e})
+		}
 	}
 	var result []application.StatusCheck
 	for _, source := range sources {

@@ -21,9 +21,13 @@ func CheckRuntimeTopology(files RuntimeFiles, m Manifest) error {
 	if err != nil {
 		return err
 	}
+	groups := RuntimeTopologyGroups(m)
 	check := func(base string, wanted int, postgres bool) error {
 		actual := 0
 		for name := range services {
+			if group, known := groups[name]; known && group != groups[base] {
+				continue
+			}
 			if name == base {
 				actual++
 				continue

@@ -129,7 +129,7 @@ func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.C
 	checks = appendHostTrustOwnershipDoctor(checks)
 	report, err := collectControlPlaneAvailability(ctx, checks)
 	if err != nil {
-		return checks
+		return append(checks, health.Check{Name: "control-plane-ha", OK: false, Message: "real Core provider topology unavailable: " + err.Error()})
 	}
 	return append(checks, health.Check{
 		Name:    "control-plane-ha",

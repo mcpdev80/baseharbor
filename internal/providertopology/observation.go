@@ -132,10 +132,15 @@ func classifyRole(name, image string, command any) (provider, component, replica
 		member = strings.Contains(image, "loki:") && !auxiliary
 		return "loki", "logs", "configured-not-proven", member, member
 	case strings.Contains(image, "tempo:") || strings.HasPrefix(name, "tempo"):
+		if strings.Contains(image, "redpandadata/redpanda:") {
+			return "tempo-kafka", "traces", "configured-not-proven", !auxiliary, !auxiliary
+		}
 		member = strings.Contains(image, "tempo:") && !auxiliary
 		text := fmt.Sprint(command)
 		data = member && (name == "tempo" || strings.Contains(text, "live-store") || strings.Contains(text, "block-builder"))
 		return "tempo", "traces", "configured-not-proven", data, member
+	case strings.Contains(image, "redpandadata/redpanda:"):
+		return "tempo-kafka", "traces", "configured-not-proven", !auxiliary, !auxiliary
 	}
 	return "", "", "", false, false
 }

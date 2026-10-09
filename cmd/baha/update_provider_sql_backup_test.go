@@ -150,16 +150,20 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 
 type sqlRestoreReplayRuntime struct {
 	bhruntime.RuntimeProvider
-	failSQL  bool
-	restores int
-	afterSQL func()
+	failSQL      bool
+	restores     int
+	afterSQL     func()
+	restoreArgs  []string
+	restoreInput string
 }
 
 func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, _, _ io.Writer, _ []string, args ...string) error {
 	if len(args) > 0 && args[0] == "run" {
-		_, _ = io.Copy(io.Discard, stdin)
+		input, _ := io.ReadAll(stdin)
 		for _, arg := range args {
 			if arg == "sh" {
+				r.restoreArgs = append([]string(nil), args...)
+				r.restoreInput = string(input)
 				r.restores++
 				if r.failSQL {
 					return errors.New("injected pg_restore failure")
@@ -184,6 +188,7 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationOrReplayUnknownCommi
 	}
 	rt := &sqlRestoreReplayRuntime{failSQL: true}
 	spec := providerSQLBackupSpec{Runtime: rt, Project: "owned-core", Compose: filepath.Join(dir, "compose.yaml"), Env: env, Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "secret", Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao", Provider: providerupgrade.ProviderOpenBao, Target: "target-A", InstallationID: "core-A", Transaction: "0.4.24", ConfigPaths: []string{env}}
+	spec.RestoreUser, spec.RestorePassword = "private-operator", "operator-recovery-password"
 	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error {
 		_, e := io.WriteString(w, "mock custom SQL archive")
 		return e
@@ -203,6 +208,10 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationOrReplayUnknownCommi
 	}
 	if err := spec.restore(context.Background(), ref); err == nil {
 		t.Fatal("failed SQL restore returned success")
+	}
+	args := strings.Join(rt.restoreArgs, " ")
+	if !strings.Contains(args, "-- postgres private-operator /ca.pem openbao") || !strings.HasPrefix(rt.restoreInput, spec.RestorePassword+"\n") || strings.Contains(args, spec.RestorePassword) || strings.Contains(args, "--no-owner") || strings.Contains(args, "--no-acl") {
+		t.Fatal("operator recovery leaked credentials, lost database binding, or suppressed retained SQL ownership/ACLs")
 	}
 	data, err := os.ReadFile(env)
 	if err != nil {

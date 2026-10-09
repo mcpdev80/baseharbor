@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
@@ -24,6 +26,17 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_LOKI_HA_ACCEPTANCE") != "1" {
 		t.Skip("Loki HA acceptance requires BASEHARBOR_LOKI_HA_ACCEPTANCE=1")
 	}
+	runLokiHARuntimeAcceptance(t, false)
+}
+
+func TestLokiComponentOverrideRuntimeAcceptanceInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_PROVIDER_TOPOLOGY_ACCEPTANCE") != "1" {
+		t.Skip("isolated component topology acceptance is not enabled")
+	}
+	runLokiHARuntimeAcceptance(t, true)
+}
+
+func runLokiHARuntimeAcceptance(t *testing.T, componentOverride bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
 	defer cancel()
 
@@ -33,10 +46,18 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	dataDir := filepath.Join(t.TempDir(), "data")
 	namespace := "loki-ha-acceptance"
+	if componentOverride {
+		namespace += "-component"
+	}
 	t.Setenv(application.LogsEnabledEnv, "true")
 
 	m := application.WithLogsCollection(application.New("loki-ha-ci", "test", false, false, false), "application")
 	m.HA = true
+	if componentOverride {
+		yes, no := true, false
+		m.HA = false
+		m.Availability = map[string]availability.Override{"logs": {HA: &yes}, "object_storage": {HA: &no}}
+	}
 	issuer := serviceissuer.New(t)
 	driver := logs.NewDriverAt(runtime, m, issuer, dataDir, namespace)
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
@@ -50,6 +71,28 @@ func TestLokiHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	if err := driver.Provision(ctx, resource, binding); err != nil {
 		t.Fatalf("provision Loki HA: %v", err)
+	}
+	if componentOverride {
+		inventory, err := runtime.ListRuntimeContainers(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodes := 0
+		for _, c := range inventory {
+			if c.Project == bhruntime.SharedProjectName(namespace) && c.Running && strings.HasPrefix(c.Service, "seaweedfs-node-") {
+				nodes++
+			}
+		}
+		if nodes != 1 {
+			t.Fatalf("Loki component HA implicitly enabled object-storage HA: native data members=%d, want 1", nodes)
+		}
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			if err := objectstorage.DestroySharedProviderAt(cleanup, runtime, dataDir, namespace); err != nil {
+				t.Errorf("owned object-storage destroy: %v", err)
+			}
+		}()
 	}
 	defer func() {
 		_ = logs.DestroyProviderAt(context.Background(), runtime, dataDir, namespace, m)

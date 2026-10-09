@@ -3,19 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 )
 
 type controlPlaneAvailability struct {
-	HA              bool
-	PostgresMembers int
-	PostgresEtcd    int
-	OpenBaoMembers  int
-	Helpers         int
-	ActualHA        bool
-	Satisfied       bool
+	HA                 bool
+	PostgresMembers    int
+	PostgresEtcd       int
+	OpenBaoMembers     int
+	Helpers            int
+	ActualHA           bool
+	Satisfied          bool
+	IdentityMembers    int
+	IdentitySQLMembers int
+	IdentityEtcd       int
 }
 
 func collectControlPlaneAvailability(ctx context.Context, checks []health.Check) (controlPlaneAvailability, error) {
@@ -35,7 +40,49 @@ func collectControlPlaneAvailability(ctx context.Context, checks []health.Check)
 	if err != nil {
 		return controlPlaneAvailability{}, err
 	}
-	return evaluateControlPlaneAvailability(running, checks, files.HA), nil
+	report := evaluateControlPlaneAvailability(running, checks, files.HA)
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return controlPlaneAvailability{}, err
+	}
+	identity, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target.Name)
+	if err != nil {
+		return controlPlaneAvailability{}, err
+	}
+	identityRunning, err := runtimeProvider.RunningServicesProject(ctx, identity.Project, identity.Compose, identity.Env)
+	if err != nil {
+		return controlPlaneAvailability{}, err
+	}
+	report.observeIdentity(identityRunning)
+	return report, nil
+}
+
+func (r *controlPlaneAvailability) observeIdentity(running []string) {
+	member := func(name, prefix string) bool {
+		n, err := strconv.Atoi(strings.TrimPrefix(name, prefix))
+		return strings.HasPrefix(name, prefix) && err == nil && n > 0
+	}
+	for _, name := range running {
+		switch {
+		case member(name, "keycloak-db-member-") || name == "keycloak-db" && !r.HA:
+			// In HA keycloak-db is the stable SQL proxy, not a data member.
+			if name != "keycloak-db" || !r.HA {
+				r.IdentitySQLMembers++
+			}
+		case member(name, "keycloak-db-etcd-"):
+			r.IdentityEtcd++
+		case member(name, "keycloak-"):
+			r.IdentityMembers++
+		case strings.HasPrefix(name, "keycloak-"):
+			r.Helpers++
+		}
+	}
+	identitySatisfied := r.IdentityMembers == 1 && r.IdentitySQLMembers == 1 && r.IdentityEtcd == 0
+	if r.HA {
+		identitySatisfied = r.IdentityMembers >= 2 && r.IdentitySQLMembers >= 2 && r.IdentityEtcd >= 2
+	}
+	r.Satisfied = r.Satisfied && identitySatisfied
+	r.ActualHA = r.ActualHA && r.IdentityMembers >= 2 && r.IdentitySQLMembers >= 2 && r.IdentityEtcd >= 2
 }
 
 func evaluateControlPlaneAvailability(running []string, checks []health.Check, ha bool) controlPlaneAvailability {
@@ -88,6 +135,7 @@ func (r controlPlaneAvailability) Detail() string {
 		replicas = 0
 	}
 	topology := fmt.Sprintf(" ha-requested=%t ha-active=%t data-members=postgresql:%d,openbao-sql:shared configured-replicas=postgresql:%d,openbao-sql:0 auxiliary-services=%d openbao-service-members=%d replication-proof=not-collected process-failover-capable=%t", r.HA, r.ActualHA, r.PostgresMembers, replicas, r.Helpers, r.OpenBaoMembers, r.ActualHA)
+	topology += fmt.Sprintf(" identity-service-members=%d identity-sql-data-members=%d identity-etcd-members=%d", r.IdentityMembers, r.IdentitySQLMembers, r.IdentityEtcd)
 	if !r.HA {
 		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied) + topology
 	}

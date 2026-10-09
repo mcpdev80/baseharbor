@@ -21,26 +21,31 @@ import (
 )
 
 type providerSQLBackupSpec struct {
-	Runtime        bhruntime.RuntimeProvider
-	Project        string
-	Compose        string
-	Env            string
-	Client         string
-	Host           string
-	CAFile         string
-	User           string
-	Password       string
-	Database       string
-	Directory      string
-	Name           string
-	InstallationID string
-	Target         string
-	Transaction    string
-	Provider       providerupgrade.Provider
-	ConfigPaths    []string
+	Runtime         bhruntime.RuntimeProvider
+	Project         string
+	Compose         string
+	Env             string
+	Client          string
+	Host            string
+	CAFile          string
+	User            string
+	Password        string
+	RestoreUser     string
+	RestorePassword string
+	Database        string
+	Directory       string
+	Name            string
+	InstallationID  string
+	Target          string
+	Transaction     string
+	Provider        providerupgrade.Provider
+	ConfigPaths     []string
 }
 
 func (s providerSQLBackupSpec) validate() error {
+	if (s.RestoreUser == "") != (s.RestorePassword == "") {
+		return errors.New("provider SQL operator recovery identity is incomplete")
+	}
 	if s.Runtime == nil || s.Project == "" || s.Compose == "" || s.Env == "" || s.Client == "" ||
 		s.Host == "" || s.CAFile == "" || s.User == "" || s.Password == "" || s.Database == "" ||
 		s.Directory == "" || s.Name == "" || s.InstallationID == "" || s.Target == "" || s.Transaction == "" || s.Provider == "" {
@@ -159,7 +164,7 @@ func (s providerSQLBackupSpec) capture(ctx context.Context, version string) (pro
 	if err := s.streamPoint().Capture(ctx, func(ctx context.Context, dest io.Writer) error {
 		const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
-exec pg_dump --format=custom --compress=6 --no-owner --no-acl -h "$1" -U "$2" -d "$4"`
+exec pg_dump --format=custom --compress=6 -h "$1" -U "$2" -d "$4"`
 		return s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 			strings.NewReader(s.Password+"\n"), dest, io.Discard, []string{s.Compose},
 			"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database)
@@ -439,14 +444,21 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	if err := receipt.record(phase, "sql_started"); err != nil {
 		return err
 	}
-	input := io.MultiReader(strings.NewReader(s.Password+"\n"), archive)
+	// Restore the complete provider database, including its bootstrap-owned
+	// extensions, with the retained private operator identity. Preserve archive
+	// ownership/ACLs so provider and application roles never gain admin rights.
+	user, password := s.User, s.Password
+	if s.RestoreUser != "" {
+		user, password = s.RestoreUser, s.RestorePassword
+	}
+	input := io.MultiReader(strings.NewReader(password+"\n"), archive)
 	var diagnostics bytes.Buffer
 	const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
-exec pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error -h "$1" -U "$2" -d "$4"`
+exec pg_restore --clean --if-exists --single-transaction --exit-on-error -h "$1" -U "$2" -d "$4"`
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 		input, io.Discard, &diagnostics, []string{s.Compose},
-		"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database); err != nil {
+		"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, user, s.CAFile, s.Database); err != nil {
 		// Even an error can follow an accepted server COMMIT. Keep sql_started
 		// until the database outcome is reconciled; never blindly repeat SQL.
 		return fmt.Errorf("%s SQL recovery outcome requires reconciliation (%s): %w", s.Provider, classifyProviderRestoreFailure(diagnostics.String()), err)

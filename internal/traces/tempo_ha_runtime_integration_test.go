@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
@@ -22,6 +24,17 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_TEMPO_HA_ACCEPTANCE") != "1" {
 		t.Skip("Tempo HA acceptance requires BASEHARBOR_TEMPO_HA_ACCEPTANCE=1")
 	}
+	runTempoHARuntimeAcceptance(t, false)
+}
+
+func TestTempoComponentOverrideRuntimeAcceptanceInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_PROVIDER_TOPOLOGY_ACCEPTANCE") != "1" {
+		t.Skip("isolated component topology acceptance is not enabled")
+	}
+	runTempoHARuntimeAcceptance(t, true)
+}
+
+func runTempoHARuntimeAcceptance(t *testing.T, componentOverride bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -31,10 +44,18 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	}
 	dataDir := filepath.Join(t.TempDir(), "data")
 	namespace := "tempo-ha-acceptance"
+	if componentOverride {
+		namespace += "-component"
+	}
 	t.Setenv(application.TracesEnabledEnv, "true")
 
 	m := application.WithOTLPTelemetry(application.New("tempo-ha-ci", "test", false, false, false), "traces")
 	m.HA = true
+	if componentOverride {
+		yes, no := true, false
+		m.HA = false
+		m.Availability = map[string]availability.Override{"traces": {HA: &yes}, "telemetry": {HA: &yes}, "object_storage": {HA: &no}}
+	}
 	issuer := serviceissuer.New(t)
 
 	traceResource := capability.Resource{
@@ -63,6 +84,32 @@ func TestTempoHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 			t.Fatalf("provision Tempo HA: %v\n%s", err, detail)
 		}
 		t.Fatalf("provision Tempo HA: %v", err)
+	}
+	if componentOverride {
+		storage, err := objectstorage.ExistingProviderFilesAt(dataDir, namespace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inventory, err := runtime.ListRuntimeContainers(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodes := 0
+		for _, c := range inventory {
+			if c.Project == storage.Project && c.Running && strings.HasPrefix(c.Service, "seaweedfs-node-") {
+				nodes++
+			}
+		}
+		if nodes != 1 {
+			t.Fatalf("Tempo component HA implicitly enabled object-storage HA: native data members=%d, want 1", nodes)
+		}
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			if err := objectstorage.DestroySharedProviderAt(cleanup, runtime, dataDir, namespace); err != nil {
+				t.Errorf("owned object-storage destroy: %v", err)
+			}
+		}()
 	}
 	defer func() {
 		_ = traces.DestroyAllSharedProvidersAt(context.Background(), runtime, dataDir, namespace)

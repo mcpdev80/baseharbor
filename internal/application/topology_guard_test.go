@@ -54,3 +54,15 @@ func TestSharedValkeyRejectsExistingMemberCountChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRetainedIndependentNumericInstanceIsNotAReplica(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "application")
+	m := WithCacheInstances(New("demo", "dev", false, false, false), "one", "one-2")
+	files := RuntimeFiles{Compose: filepath.Join(t.TempDir(), "compose.yaml")}
+	if err := os.WriteFile(files.Compose, []byte("services:\n  valkey-one: {}\n  valkey-one-2: {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckRuntimeTopology(files, m); err != nil {
+		t.Fatalf("independent logical instances misclassified as replication: %v", err)
+	}
+}

@@ -210,7 +210,8 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	keycloakUser := identityEnv["BASEHARBOR_KEYCLOAK_DB_USER"]
 	keycloakPassword := identityEnv["BASEHARBOR_KEYCLOAK_DB_PASSWORD"]
 	keycloakDatabase := identityEnv["BASEHARBOR_KEYCLOAK_DB_NAME"]
-	if keycloakUser == "" || keycloakPassword == "" || keycloakDatabase == "" {
+	keycloakOperatorPassword := identityEnv["BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD"]
+	if keycloakUser == "" || keycloakPassword == "" || keycloakDatabase == "" || keycloakOperatorPassword == "" || credentials.PostgresInternalUser == "" || credentials.PostgresInternalPassword == "" {
 		return coreupdate.BoundProviderTransaction{}, errors.New("Keycloak protected SQL credentials are incomplete")
 	}
 
@@ -226,6 +227,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		Runtime: o.runtime, Project: o.core.Project, Compose: o.core.Compose, Env: o.core.Env,
 		Client: "postgres-admin", Host: "postgres", CAFile: "/run/baseharbor/postgres-ca/ca.pem",
 		User: credentials.OpenBaoDBUser, Password: credentials.OpenBaoDBPassword, Database: "openbao",
+		RestoreUser: credentials.PostgresInternalUser, RestorePassword: credentials.PostgresInternalPassword,
 		Directory: backupDir, Name: "openbao", InstallationID: o.installation, Target: o.target, Transaction: o.release, Provider: providerupgrade.ProviderOpenBao,
 		ConfigPaths: []string{o.core.Env, platformopenbao.AdminCredentialsPath(o.core), filepath.Join(filepath.Dir(o.core.Compose), "providers", "openbao", "runtime", "openbao.hcl")},
 	}
@@ -233,6 +235,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		Runtime: o.runtime, Project: o.identity.Project, Compose: o.identity.Compose, Env: o.identity.Env,
 		Client: "keycloak-db-init", Host: "keycloak-db", CAFile: "/run/baseharbor/db-tls/ca.pem",
 		User: keycloakUser, Password: keycloakPassword, Database: keycloakDatabase,
+		RestoreUser: "postgres", RestorePassword: keycloakOperatorPassword,
 		Directory: backupDir, Name: "keycloak", InstallationID: o.installation, Target: o.target, Transaction: o.release, Provider: providerupgrade.ProviderKeycloak,
 		ConfigPaths: []string{o.identity.Env, o.identity.Compose},
 	}
@@ -314,6 +317,9 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 				return err
 			}
 			if err := o.ReconcileOriginal(ctx, openBaoDelta); err != nil {
+				return err
+			}
+			if err := waitForOpenBaoExecReady(ctx, o.runtime, o.core); err != nil {
 				return err
 			}
 			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")

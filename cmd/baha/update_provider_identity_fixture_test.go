@@ -112,6 +112,11 @@ func providerFixtureIdentity(t *testing.T, ctx context.Context, o *coreNativeRun
 	}
 	admin(http.MethodPost, "/users/"+userID+"/role-mappings/realm", []map[string]any{roleObject}, http.StatusNoContent)
 	check = func() {
+		_, userJSON := admin(http.MethodGet, "/users/"+userID, nil, http.StatusOK)
+		var user map[string]any
+		if json.Unmarshal(userJSON, &user) != nil || user["username"] != username || user["firstName"] != "Fixture" {
+			t.Fatal("Keycloak native user profile not preserved or restored")
+		}
 		access := token("baseharbor", clientID, username, password)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/realms/baseharbor/protocol/openid-connect/userinfo", nil)
 		if err != nil {
@@ -152,7 +157,20 @@ func providerFixtureIdentity(t *testing.T, ctx context.Context, o *coreNativeRun
 		}
 	}
 	changeUser = func() {
-		admin(http.MethodPut, "/users/"+userID, map[string]any{"username": username + "-after-backup", "enabled": true}, http.StatusNoContent)
+		// Username editing is intentionally disabled by the installed realm.
+		// Mutate an editable profile field using the complete retained native
+		// representation, then prove recovery restores the original SQL state.
+		_, data := admin(http.MethodGet, "/users/"+userID, nil, http.StatusOK)
+		var user map[string]any
+		if json.Unmarshal(data, &user) != nil {
+			t.Fatal("Keycloak native user profile unreadable")
+		}
+		user["firstName"] = "AfterBackup"
+		admin(http.MethodPut, "/users/"+userID, user, http.StatusNoContent)
+		_, data = admin(http.MethodGet, "/users/"+userID, nil, http.StatusOK)
+		if json.Unmarshal(data, &user) != nil || user["firstName"] != "AfterBackup" {
+			t.Fatal("controlled native user profile mutation did not take effect")
+		}
 	}
 	check()
 	t.Log("Native Keycloak client, user, role mapping, OAuth token and authenticated userinfo fixture verified")
