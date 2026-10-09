@@ -222,6 +222,13 @@ func parseRuntimeEtcdSnapshotStatus(data []byte) (runtimeEtcdSnapshotStatus, err
 	return status, nil
 }
 
+func verifyRuntimeEtcdSnapshotRevision(attested, snapshot int64) error {
+	if attested <= 0 || snapshot < attested {
+		return errors.New("snapshot revision predates authenticated cluster revision")
+	}
+	return nil
+}
+
 func (t runtimeEtcdTools) Snapshot(ctx context.Context, dest io.Writer) (etcdbackup.SnapshotInfo, error) {
 	if dest == nil {
 		return etcdbackup.SnapshotInfo{}, errors.New("etcd snapshot destination required")
@@ -266,8 +273,8 @@ func (t runtimeEtcdTools) Snapshot(ctx context.Context, dest io.Writer) (etcdbac
 	// A live cluster can advance between the quorum probe and the
 	// consistent maintenance snapshot. A newer snapshot is expected;
 	// an older one would miss state already observed during attestation.
-	if status.Revision < attested.Revision {
-		return etcdbackup.SnapshotInfo{}, errors.New("snapshot revision predates authenticated cluster revision")
+	if err := verifyRuntimeEtcdSnapshotRevision(attested.Revision, status.Revision); err != nil {
+		return etcdbackup.SnapshotInfo{}, err
 	}
 	f, err := os.Open(archive)
 	if err != nil {
