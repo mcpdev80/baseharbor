@@ -168,8 +168,8 @@ func issueLeaves(f Files, serverNames []string, ca *x509.Certificate, caKey *ecd
 	client := &x509.Certificate{
 		SerialNumber: clientSerial,
 		Subject:      pkix.Name{CommonName: "baseharbor-etcd-recovery-client"},
-		NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(leafLifetime),
-		KeyUsage: x509.KeyUsageDigitalSignature,
+		NotBefore:    now.Add(-5 * time.Minute), NotAfter: now.Add(leafLifetime),
+		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 	clientDER, err := x509.CreateCertificate(rand.Reader, client, ca, &clientKey.PublicKey, caKey)
