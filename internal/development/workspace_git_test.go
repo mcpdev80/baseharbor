@@ -278,15 +278,15 @@ func TestWorkspaceGitCheckDoesNotMutate(t *testing.T) {
 
 func workspaceGitModel(path string) (SourceModel, WorkspaceMapping) {
 	return SourceModel{
-			SchemaVersion: SourceModelVersion,
-			Application:   "demo",
-			Sources:       []SourceDefinition{{ID: "app-source", Type: SourceRepository, Repository: "file://fixture", Ref: "main"}},
-			Components:    []ComponentSource{{Component: "app", Source: "app-source"}},
-		}, WorkspaceMapping{
-			SchemaVersion: WorkspaceMappingVersion,
-			Application:   "demo",
-			Sources:       map[string]string{"app-source": path},
-		}
+		SchemaVersion: SourceModelVersion,
+		Application:   "demo",
+		Sources:       []SourceDefinition{{ID: "app-source", Type: SourceRepository, Repository: "file://fixture", Ref: "main"}},
+		Components:    []ComponentSource{{Component: "app", Source: "app-source"}},
+	}, WorkspaceMapping{
+		SchemaVersion: WorkspaceMappingVersion,
+		Application:   "demo",
+		Sources:       map[string]string{"app-source": path},
+	}
 }
 
 func createWorkspaceGitFixture(t *testing.T) (remote, local, peer string) {

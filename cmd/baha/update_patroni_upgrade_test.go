@@ -36,8 +36,8 @@ func TestVerifiedHAPostgresDeltaPreservesStrictNoChangeIdentity(t *testing.T) {
 
 func TestOwnedCoreHAPostgresRollRejectsForeignOrWrongInstallationBeforeRuntime(t *testing.T) {
 	delta := coreupdate.Delta{
-		Installed: coreupdate.Realization{Kind: coreupdate.SQL, Installation: "core-1", Scope: "shared", Instance: "postgres-member-1", Owner: "foreign"},
-		Desired: coreupdate.Desired{Kind: coreupdate.SQL},
+		Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Installation: "core-1", Scope: "shared", Instance: "postgres-member-1", Owner: "foreign"},
+		Desired:        coreupdate.Desired{Kind: coreupdate.SQL},
 		Classification: coreupdate.BackupRequired,
 	}
 	files := bhruntime.Files{HA: true, Project: "core", Compose: "/tmp/core.yaml"}

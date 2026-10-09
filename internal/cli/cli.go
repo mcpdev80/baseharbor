@@ -18,21 +18,21 @@ type RunFunc func(context.Context, []string, io.Writer, io.Writer) error
 
 // Command describes one CLI command. Commands can be nested arbitrarily.
 type Command struct {
-	Name     string
-	Hidden   bool
-	Aliases  []string
-	Summary  string
-	Usage    string
-	Long     string
-	Examples []string
-	Run      RunFunc
-	Children []*Command
+	Name       string
+	Hidden     bool
+	Aliases    []string
+	Summary    string
+	Usage      string
+	Long       string
+	Examples   []string
+	Run        RunFunc
+	Children   []*Command
 	HelpGroups []HelpGroup
 }
 
 // HelpGroup prioritizes task-oriented commands without hiding advanced commands.
 type HelpGroup struct {
-	Title string
+	Title    string
 	Commands []string
 }
 
@@ -265,7 +265,9 @@ func (c *Command) renderHelp(w io.Writer) {
 			seen := make(map[string]bool)
 			byName := make(map[string]*Command, len(c.Children))
 			for _, child := range c.Children {
-				if !child.Hidden { byName[child.Name] = child }
+				if !child.Hidden {
+					byName[child.Name] = child
+				}
 			}
 			for _, group := range c.HelpGroups {
 				var children []*Command
@@ -277,25 +279,35 @@ func (c *Command) renderHelp(w io.Writer) {
 				}
 				if len(children) > 0 {
 					fmt.Fprintf(w, "\\n%s:\\n", group.Title)
-					for _, child := range children { writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name)) }
+					for _, child := range children {
+						writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name))
+					}
 				}
 			}
 			var advanced []*Command
 			for _, child := range c.Children {
-				if !child.Hidden && !seen[child.Name] { advanced = append(advanced, child) }
+				if !child.Hidden && !seen[child.Name] {
+					advanced = append(advanced, child)
+				}
 			}
 			if len(advanced) > 0 {
 				fmt.Fprintln(w, "\\nAdvanced and operator commands:")
-				for _, child := range advanced { writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name)) }
+				for _, child := range advanced {
+					writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name))
+				}
 			}
 		} else {
 			fmt.Fprintln(w, "\\nCommands:")
 			nameWidth := 0
 			for _, child := range c.Children {
-				if !child.Hidden && len(child.Name) > nameWidth { nameWidth = len(child.Name) }
+				if !child.Hidden && len(child.Name) > nameWidth {
+					nameWidth = len(child.Name)
+				}
 			}
 			for _, child := range c.Children {
-				if child.Hidden { continue }
+				if child.Hidden {
+					continue
+				}
 				prefix := fmt.Sprintf("  %-*s  ", nameWidth, child.Name)
 				writeWrapped(w, child.Summary, width, prefix)
 			}
