@@ -70,6 +70,26 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 	return nil
 }
 
+func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State,error) {
+ members,err:=o.runtime.ListRuntimeContainers(ctx)
+ if err!=nil{return keycloakadapter.State{},err}
+ found:=0
+ for _,member:=range members{
+  if member.Project!=o.identity.Project||member.Service!=service{continue}
+  found++
+  if !member.Running||strings.EqualFold(member.Health,"unhealthy"){return keycloakadapter.State{},errors.New("Keycloak managed member not healthy")}
+ }
+ if found!=1{return keycloakadapter.State{},errors.New("Keycloak single topology requires exactly one owned member")}
+ image,err:=o.runtime.ProjectServiceImageIdentity(ctx,o.identity.Project,service)
+ if err!=nil{return keycloakadapter.State{},err}
+ ref:=strings.Split(image.Reference,"@")[0]
+ index:=strings.LastIndex(ref,":")
+ if index<0||index==len(ref)-1{return keycloakadapter.State{},errors.New("Keycloak runtime image version is not observable")}
+ version:=ref[index+1:]
+ return keycloakadapter.State{Version:version,Owner:"baseharbor",Topology:keycloakadapter.TopologySingle,Healthy:true,
+  DatabaseType:"postgresql",Members:[]keycloakadapter.Member{{Name:service,Version:version,Ready:true}}},nil
+}
+
 // admitNativeProviderTransition delegates conservative single-Core patch upgrades
 // to the actual OpenBao/Keycloak adapter Preflight contracts while the original
 // installation is still running. Snapshot and mutation remain journal-owned.
@@ -90,7 +110,15 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
   _,err:=adapter.Preflight(ctx,request)
   return err
  case coreupdate.Identity:
-  return errors.New("UNSUPPORTED: Keycloak transition needs an installation-backed native adapter inventory")
+  adapter:=keycloakadapter.New(&keycloakadapter.NativeOps{
+   DataDir:o.dataDir,Namespace:o.target,InstallationID:o.installation,ExpectedIssuer:o.issuer,
+   Hooks:keycloakadapter.CoreHooks{
+    Inspect:func(ctx context.Context)(keycloakadapter.State,error){return o.inspectNativeKeycloakMember(ctx,d.Installed.Instance)},
+    Compatibility:patchOnly,
+   },
+  })
+  _,err:=adapter.Preflight(ctx,request)
+  return err
  }
  return nil
 }
@@ -100,9 +128,9 @@ func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Pl
 		return fmt.Errorf("Core runtime update requires four owned SQL/Secrets/Identity/Keycloak-backing realizations")
 	}
 	for _, d := range plan.Deltas {
-		if d.Installed.Kind == coreupdate.Secrets {
+		if d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
 			if err := o.admitNativeProviderTransition(ctx, d); err != nil {
-				return fmt.Errorf("OpenBao provider-adapter upgrade admission: %w", err)
+				return fmt.Errorf("%s provider-adapter upgrade admission: %w", d.Installed.Kind, err)
 			}
 		}
 	}
@@ -234,33 +262,7 @@ func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context,
 		ops := &keycloakadapter.NativeOps{
 			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
 			Hooks: keycloakadapter.CoreHooks{
-				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
-					members, err := o.runtime.ListRuntimeContainers(ctx)
-					if err != nil {
-						return keycloakadapter.State{}, err
-					}
-					found := 0
-					for _, member := range members {
-						if member.Project != o.identity.Project || member.Service != service {
-							continue
-						}
-						found++
-						if !member.Running || strings.EqualFold(member.Health, "unhealthy") {
-							return keycloakadapter.State{}, errors.New("Keycloak managed member not healthy")
-						}
-					}
-					if found != 1 {
-						return keycloakadapter.State{}, errors.New("Keycloak single topology requires exactly one owned member")
-					}
-					ref := strings.Split(identity.Reference, "@")[0]
-					index := strings.LastIndex(ref, ":")
-					if index < 0 || index == len(ref)-1 {
-						return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
-					}
-					version := ref[index+1:]
-					return keycloakadapter.State{Version: version, Owner: "baseharbor", Topology: keycloakadapter.TopologySingle, Healthy: true,
-						DatabaseType: "postgresql", Members: []keycloakadapter.Member{{Name: service, Version: version, Ready: true}}}, nil
-				},
+				Inspect:func(ctx context.Context)(keycloakadapter.State,error){return o.inspectNativeKeycloakMember(ctx,service)},
 				VerifySQL: o.verifyKeycloakBackingSQL,
 				VerifyRealms: func(ctx context.Context) error {
 					return identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer)
