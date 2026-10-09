@@ -133,6 +133,7 @@ func (t runtimeEtcdTools) attest(ctx context.Context) (etcdbackup.SnapshotInfo, 
 		return etcdbackup.SnapshotInfo{}, err
 	}
 	var result etcdbackup.SnapshotInfo
+	statuses := make([]runtimeEtcdStatus, 0, len(t.Endpoints))
 	for _, endpoint := range t.Endpoints {
 		var out strings.Builder
 		args := append([]string{"--endpoints=" + endpoint}, t.tlsArgs()...)
@@ -150,11 +151,48 @@ func (t runtimeEtcdTools) attest(ctx context.Context) (etcdbackup.SnapshotInfo, 
 		if result.ClusterID != "" && (result.ClusterID != status.ClusterID || result.Version != status.Version) {
 			return etcdbackup.SnapshotInfo{}, errors.New("etcd endpoints disagree on cluster identity or version")
 		}
+		statuses = append(statuses, status)
 		if result.Revision == 0 || status.Revision < result.Revision {
 			result = etcdbackup.SnapshotInfo{ClusterID: status.ClusterID, Version: status.Version, Revision: status.Revision}
 		}
 	}
+	if err := verifyRuntimeEtcdQuorum(statuses); err != nil {
+		return etcdbackup.SnapshotInfo{}, err
+	}
 	return result, nil
+}
+
+// verifyRuntimeEtcdQuorum refuses an authenticated but split-brain or
+// duplicated endpoint inventory before a DCS recovery point can be captured.
+func verifyRuntimeEtcdQuorum(statuses []runtimeEtcdStatus) error {
+	if len(statuses) != 3 {
+		return errors.New("etcd DCS requires three authenticated quorum members")
+	}
+	members := map[string]bool{}
+	leader, cluster := "", ""
+	leaders := 0
+	for _, status := range statuses {
+		if status.MemberID == "" || status.MemberID == "0" || status.ClusterID == "" || status.ClusterID == "0" ||
+			status.LeaderID == "" || status.LeaderID == "0" || status.Revision <= 0 || members[status.MemberID] {
+			return errors.New("etcd DCS quorum has invalid or duplicate member identity")
+		}
+		members[status.MemberID] = true
+		if cluster == "" {
+			cluster, leader = status.ClusterID, status.LeaderID
+		} else if cluster != status.ClusterID || leader != status.LeaderID {
+			return errors.New("etcd DCS quorum disagrees on cluster or leader")
+		}
+		if status.IsLeader {
+			if status.MemberID != leader {
+				return errors.New("etcd DCS leader identity is inconsistent")
+			}
+			leaders++
+		}
+	}
+	if leaders != 1 || !members[leader] {
+		return errors.New("etcd DCS quorum lacks exactly one owned leader")
+	}
+	return nil
 }
 
 type runtimeEtcdSnapshotStatus struct {
