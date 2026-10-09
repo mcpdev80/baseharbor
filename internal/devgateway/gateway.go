@@ -235,6 +235,49 @@ func routeNetworkSet(routes []Route) map[string]struct{} {
 	return result
 }
 
+// OwnerRoutesPresent is a read-only teardown preflight. Missing registration is
+// safe only when no gateway projection or owned runtime resources remain.
+// Other owners' valid registrations never authorize reconciliation for this app.
+func OwnerRoutesPresent(ctx context.Context, runtime Runtime, target, owner string) (bool, error) {
+	files, err := FilesFor(target)
+	if err != nil {
+		return false, err
+	}
+	current, err := loadState(files.State)
+	if err == nil {
+		for _, route := range current.Routes {
+			if route.Owner == owner {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	entries, err := os.ReadDir(files.Dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	if len(entries) > 0 {
+		return false, errors.New("development gateway registration is missing but retained state exists; run baha doctor before retrying destroy")
+	}
+	inventory, ok := runtime.(interface {
+		ListOwnedProjectResources(context.Context, string) ([]bhruntime.ProjectResource, error)
+	})
+	if !ok {
+		return false, errors.New("development gateway absence cannot be verified by this runtime")
+	}
+	resources, err := inventory.ListOwnedProjectResources(ctx, files.Project)
+	if err != nil {
+		return false, fmt.Errorf("inspect development gateway ownership: %w", err)
+	}
+	if len(resources) > 0 {
+		return false, errors.New("development gateway resources remain without their registration; repair the gateway state before retrying destroy")
+	}
+	return false, nil
+}
+
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
 	groups := make([]OwnerRoutes, 0, len(owners))
 	for _, owner := range owners {

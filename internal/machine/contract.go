@@ -129,6 +129,11 @@ func Classify(err error) *Error {
 			return Wrap(ErrorPolicyDenied, err, "Review permissions or policy and retry.", false)
 		}
 	}
+	var actionable interface{ NextAction() string }
+	if errors.As(err, &actionable) {
+		return Wrap(ErrorInternal, err, actionable.NextAction(), false)
+	}
+
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return Wrap(ErrorTimeout, err, "Retry after confirming the local runtime and providers are responsive.", true)

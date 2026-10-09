@@ -71,7 +71,11 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	checks := collectControlPlaneDoctorChecks(ctx)
 	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
-		fmt.Fprintln(out, "\nREADY")
+		if controlPlaneNotDeployed(checks) {
+			fmt.Fprintln(out, "\nNOT DEPLOYED")
+		} else {
+			fmt.Fprintln(out, "\nREADY")
+		}
 		return nil
 	}
 

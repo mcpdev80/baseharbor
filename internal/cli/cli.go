@@ -38,8 +38,9 @@ type HelpGroup struct {
 
 // UsageError represents invalid user input. Callers should exit with code 2.
 type UsageError struct {
-	Message string
-	Hint    string
+	NoSuggestions bool `json:"-"`
+	Message       string
+	Hint          string
 }
 
 func (e *UsageError) Error() string { return e.Message }
@@ -172,7 +173,7 @@ func (c *Command) decorateUsageError(args []string, err error) error {
 		return nil
 	}
 	var usage *UsageError
-	if !errors.As(err, &usage) || !strings.Contains(strings.ToLower(usage.Message), "unknown") {
+	if !errors.As(err, &usage) || usage.NoSuggestions || !strings.Contains(strings.ToLower(usage.Message), "unknown") {
 		return err
 	}
 	known := c.knownFlags()

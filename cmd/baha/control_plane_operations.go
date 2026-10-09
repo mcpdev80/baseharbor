@@ -122,7 +122,16 @@ func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, e
 		result.Checks = append(result.Checks, publicControlPlaneCheck{Name: check.Name, Ready: check.OK})
 		result.Ready = result.Ready && check.OK
 	}
+	result.Ready = result.Ready && !controlPlaneNotDeployed(checks)
 	return result, nil
+}
+func controlPlaneNotDeployed(checks []health.Check) bool {
+	for _, check := range checks {
+		if check.Name == "core-deployment" && check.OK {
+			return true
+		}
+	}
+	return false
 }
 func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	// health.Doctor includes legacy default-local runtime probes. Drop those
@@ -132,6 +141,31 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	target, targetErr := effectiveTarget(ctx)
 	if targetErr != nil {
 		return append(checks, health.Check{Name: "target-selection", OK: false, Message: targetErr.Error()})
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		state, stateErr := managedTrustCoreState(ctx)
+		if stateErr == nil && state == "not_installed" {
+			root, rootErr := targetRuntimeStateRoot(target)
+			if rootErr != nil {
+				stateErr = rootErr
+			} else {
+				entries, readErr := os.ReadDir(root)
+				if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+					stateErr = readErr
+				} else if len(entries) > 0 {
+					state = "incomplete"
+				}
+			}
+		}
+		if stateErr != nil {
+			return append(checks, health.Check{Name: "runtime-config", OK: false, Message: "selected Target runtime state is unreadable; inspect the installation before retrying"})
+		}
+		if state == "not_installed" {
+			return append(checks, health.Check{Name: "core-deployment", OK: true, Message: "NOT DEPLOYED: this Target has no materialized Core; use baha up when ready to install it"})
+		}
+		if state == "incomplete" {
+			return append(checks, health.Check{Name: "runtime-config", OK: false, Message: "Core installation is incomplete; inspect retained installation state before retrying baha up"})
+		}
 	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
 		_, runtimeErr := detectRuntimeForTarget(ctx, target)

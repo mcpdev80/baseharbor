@@ -169,6 +169,38 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 				var err error
+				if e.runtimeErr != nil && len(e.existing) == 0 {
+					state, err := managedTrustCoreState(selected)
+					if err != nil {
+						return err
+					}
+					if state == "not_installed" {
+						root, err := targetRuntimeStateRoot(e.resolved.Target)
+						if err != nil {
+							return err
+						}
+						entries, err := os.ReadDir(root)
+						if err != nil && !errors.Is(err, os.ErrNotExist) {
+							return err
+						}
+						if len(entries) > 0 {
+							return errors.New("Core cleanup state is incomplete; inspect retained state before retrying destroy")
+						}
+						resources, err := e.compose.ListOwnedProjectResources(ctx, targetRuntimeProjectName(e.resolved.Target))
+						if err != nil {
+							return err
+						}
+						if len(resources) > 0 {
+							return errors.New("Core resources remain without runtime state; repair ownership state before retrying destroy")
+						}
+						if _, err := os.Stat(e.files.Bindings); err == nil {
+							return errors.New("application bindings remain without a Core; repair cleanup state before retrying destroy")
+						} else if !errors.Is(err, os.ErrNotExist) {
+							return err
+						}
+						return nil
+					}
+				}
 				e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 				if err != nil {
 					return err
@@ -505,12 +537,20 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 	if !devaccess.Enabled(e.manifest.Environment) {
 		return nil
 	}
+	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
+	present, err := devgateway.OwnerRoutesPresent(ctx, e.compose, e.resolved.Target.Name, appOwner)
+	if err != nil {
+		return fmt.Errorf("inspect development gateway before cleanup: %w", err)
+	}
+	if !present {
+		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
+		return nil
+	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
 	}
 	issuer := openbao.NewServiceIssuer(e.compose, files)
-	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
 	if err := devgateway.RemoveOwners(
 		ctx,
 		e.compose,
