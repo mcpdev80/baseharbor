@@ -24,5 +24,20 @@ func ClassifyHAPostgresPin(installed Realization, pin BackingPin) Delta {
 		delta.Classification = NoChange
 		delta.Reason = ""
 	}
+	// Allow only a pinned, same-PostgreSQL-major Spilo patch transition.
+	// The caller must still run StageAndRollPatroniCluster with physical
+	// recovery and verified DCS evidence before touching any member.
+	if installed.Kind == SQL && installed.Owner == "baseharbor" &&
+		installed.Scope == "shared" && installed.Instance == "postgres-member-1" &&
+		validDigest(digest) && validDigest(pin.Digest) &&
+		strings.HasPrefix(installed.Image, "ghcr.io/zalando/spilo-18:") {
+		tag := strings.TrimPrefix(installed.Image, "ghcr.io/zalando/spilo-18:")
+		previous := BackingPin{Role: pin.Role, Version: "18-spilo-" + tag, Image: installed.Image, Digest: digest}
+		if safeSpiloTransition(previous, pin) && (installed.Image != pin.Image || digest != pin.Digest) {
+			delta.Installed.Version = previous.Version
+			delta.Classification = BackupRequired
+			delta.Reason = "verified HA Spilo rolling update requires physical backup, DCS checkpoint and member journal"
+		}
+	}
 	return delta
 }
