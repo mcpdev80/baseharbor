@@ -216,23 +216,6 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 		t.Fatal(err)
 	}
 	ops := &coreNativeRuntimeOps{runtime: rt, core: files, identity: identity, dataDir: dataDir, target: target.Name, installation: state.ID, issuer: state.IdentityIssuer, release: "v0.4.24"}
-	plan, err := inspectCoreRuntimePlan(ctx, "v0.4.24", state, rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, kind := range []coreupdate.ProviderKind{coreupdate.SQL, coreupdate.Secrets, coreupdate.Identity} {
-		d, err := providerDelta(plan, kind)
-		if ha && kind != coreupdate.Secrets {
-			if err != nil || d.Classification != coreupdate.NoChange {
-				t.Fatalf("HA gate must only upgrade OpenBao: %s %+v %v", kind, d, err)
-			}
-			continue
-		}
-		if err != nil || d.Classification == coreupdate.NoChange || d.Classification == coreupdate.Unsupported {
-			t.Fatalf("missing genuine %s version delta: %+v %v", kind, d, err)
-		}
-		t.Logf("Provider version transition: %s %s -> %s, source digest=%s target digest=%s", kind, d.Installed.Version, d.Desired.Version, d.Installed.Digest, d.Desired.Digest)
-	}
 	// A real registered SQL/Secrets application makes semantic checks non-vacuous.
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
 	manifest := application.New("provider-upgrade-acceptance", "dev", true, false, true)
@@ -274,6 +257,57 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 		if err != nil || !bytes.Equal(value, secretValue) {
 			t.Fatal("application AppRole cannot read preserved secret")
 		}
+	}
+	// Finish productive bootstrap/application authoring before selecting the
+	// previous pinned image baseline. Trust initialization can reconcile Core
+	// images; it must not erase the real delta immediately before update.
+	selected := append([]string(nil), files.OpenBaoMembers()...)
+	images := map[string]string{}
+	for _, member := range files.OpenBaoMembers() {
+		images[member] = providerBaselineBao
+	}
+	if !ha {
+		selected = append(selected, "postgres-member-1")
+		images["postgres-member-1"] = providerBaselineSQL
+	}
+	environment, err := bhruntime.RuntimeEnvironment(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, selected, files.Compose); err != nil {
+		t.Fatal(err)
+	}
+	if err := setProviderBaseline(files.Compose, images); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, filepath.Dir(files.Compose), environment, selected, files.Compose); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForControlPlanePostgresMemberReady(ctx, rt, files, "postgres-member-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForOpenBaoExecReady(ctx, rt, files); err != nil {
+		t.Fatal(err)
+	}
+	if err := platformopenbao.Unseal(ctx, rt, files, opts.RecoveryFile); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := inspectCoreRuntimePlan(ctx, "v0.4.24", state, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []coreupdate.ProviderKind{coreupdate.SQL, coreupdate.Secrets, coreupdate.Identity} {
+		d, err := providerDelta(plan, kind)
+		if ha && kind != coreupdate.Secrets {
+			if err != nil || d.Classification != coreupdate.NoChange {
+				t.Fatalf("HA gate must only upgrade OpenBao: %s %+v %v", kind, d, err)
+			}
+			continue
+		}
+		if err != nil || d.Classification == coreupdate.NoChange || d.Classification == coreupdate.Unsupported {
+			t.Fatalf("missing genuine %s version delta: %+v %v", kind, d, err)
+		}
+		t.Logf("Provider version transition: %s %s -> %s, source digest=%s target digest=%s", kind, d.Installed.Version, d.Desired.Version, d.Installed.Digest, d.Desired.Digest)
 	}
 	checkApplication()
 	if ha {

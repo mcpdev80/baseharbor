@@ -1,10 +1,13 @@
 package identityprovider
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestKeycloakHAEtcdUsesMutualTLS(t *testing.T) {
@@ -33,5 +36,29 @@ func TestKeycloakHAEtcdUsesMutualTLS(t *testing.T) {
 	}
 	if strings.Contains(compose, "--listen-client-urls=http://") || strings.Contains(compose, "=http://keycloak-db-etcd-") {
 		t.Fatal("plaintext etcd transport remains in Keycloak HA compose")
+	}
+	var document struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte("services:\n"+compose), &document); err != nil {
+		t.Fatal(err)
+	}
+	for ordinal := 1; ordinal <= 3; ordinal++ {
+		name := fmt.Sprintf("keycloak-db-member-%d", ordinal)
+		environment := document.Services[name].Environment
+		for suffix, expected := range map[string]string{
+			"PROTOCOL": "https",
+			"CACERT":   "/run/baseharbor/etcd-runtime/ca.pem",
+			"CERT":     "/run/baseharbor/etcd-runtime/client.pem",
+			"KEY":      "/run/baseharbor/etcd-runtime/client-key.pem",
+		} {
+			for _, prefix := range []string{"ETCD3_", "PATRONI_ETCD3_"} {
+				if actual := environment[prefix+suffix]; actual != expected {
+					t.Errorf("%s %s%s = %q; require %q through Spilo generation and Patroni launch", name, prefix, suffix, actual, expected)
+				}
+			}
+		}
 	}
 }

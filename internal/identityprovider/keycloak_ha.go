@@ -152,6 +152,12 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      PGROOT: /home/postgres/pgdata/pgroot\n")
 		b.WriteString("      PGDATA: /home/postgres/pgdata/pgroot/data\n")
 		fmt.Fprintf(&b, "      ETCD3_HOSTS: %s\n", strconv.Quote("'"+strings.ReplaceAll(etcdHosts, ",", "','")+"'"))
+		// Spilo builds Patroni's configuration from ETCD3_* before launching it.
+		// Set both forms so that generation cannot replace mutual TLS with HTTP.
+		b.WriteString("      ETCD3_PROTOCOL: https\n")
+		b.WriteString("      ETCD3_CACERT: /run/baseharbor/etcd-runtime/ca.pem\n")
+		b.WriteString("      ETCD3_CERT: /run/baseharbor/etcd-runtime/client.pem\n")
+		b.WriteString("      ETCD3_KEY: /run/baseharbor/etcd-runtime/client-key.pem\n")
 		b.WriteString("      PATRONI_ETCD3_HOSTS: " + etcdHosts + "\n")
 		b.WriteString("      PATRONI_ETCD3_PROTOCOL: https\n")
 		b.WriteString("      PATRONI_ETCD3_CACERT: /run/baseharbor/etcd-runtime/ca.pem\n")
