@@ -61,7 +61,7 @@ func (o *coreNativeRuntimeOps) stopSelected(ctx context.Context, files bhruntime
 	if err != nil {
 		return err
 	}
-	return o.runtime.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, []string{files.Compose}, services...)
+	return o.runtime.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, services, files.Compose)
 }
 
 func providerMemberMutations(delta coreupdate.Delta, services []string) map[string]coreupdate.Delta {
@@ -258,7 +258,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 			}
 			for _, member := range o.core.OpenBaoMembers() {
 				if err := o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, o.core.Project, filepath.Dir(o.core.Compose),
-					environment, []string{o.core.Compose}, member); err != nil {
+					environment, []string{member}, o.core.Compose); err != nil {
 					return fmt.Errorf("roll OpenBao member %s: %w", member, err)
 				}
 				// OpenBao may restart sealed. Unseal each restarted member before
@@ -361,7 +361,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 				return err
 			}
 			return o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, identityRuntime.Project, filepath.Dir(identityRuntime.Compose),
-				environment, []string{identityRuntime.Compose}, member)
+				environment, []string{member}, identityRuntime.Compose)
 		},
 		WaitMember: func(ctx context.Context, member string) error {
 			return o.waitKeycloakRollingMember(ctx, member, keycloakDelta.Desired.Digest)
