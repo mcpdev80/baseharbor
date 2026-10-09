@@ -176,6 +176,7 @@ type incompleteOldPrimaryRoll struct {
 	*fakeClusterRoll
 	needsImage bool
 }
+
 func (f *incompleteOldPrimaryRoll) VerifyMemberImage(ctx context.Context, name string) error {
 	if name == "pg1" && f.needsImage {
 		return errors.New("old primary still runs original image")
@@ -201,7 +202,7 @@ func TestPatroniResumeRecreatesOnlyFormerPrimaryAfterVerifiedPromotion(t *testin
 	gate := &incompleteOldPrimaryRoll{fakeClusterRoll: &fakeClusterRoll{
 		resumablePatroniFake: resumablePatroniFake{
 			fakePatroniRoll: fakePatroniRoll{members: members},
-			steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"},
+			steps:           map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verified"},
 		},
 	}, needsImage: true}
 	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
@@ -221,7 +222,7 @@ func TestPatroniResumeRejectsMultipleAmbiguousReplicaJournals(t *testing.T) {
 	}
 	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{
 		fakePatroniRoll: fakePatroniRoll{members: members},
-		steps: map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verify_failed"},
+		steps:           map[string]string{"pg1": "applying", "pg2": "verified", "pg3": "verify_failed"},
 	}}
 	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
 	if err := RollPatroniCluster(context.Background(), gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err == nil {
