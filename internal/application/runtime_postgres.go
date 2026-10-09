@@ -46,6 +46,12 @@ func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
+	if err := validateProviderAvailabilityIntent(m); err != nil {
+		return err
+	}
+	if len(SQLInstanceNames(m)) > 0 && !UsesSharedPostgreSQL(m) && ComponentHA(m, "sql") {
+		return fmt.Errorf("%w: application-scoped PostgreSQL is single-instance; select native shared placement for HA", ErrUnsupportedService)
+	}
 	if !HasManagedRuntimeServices(m) {
 		if m.Services.Secrets {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)

@@ -295,6 +295,10 @@ jobs:
           cache: false
       - name: Build exact Core runtime image
         run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Prepare native Keycloak database image before bounded readiness checks
+        if: matrix.runtime == 'podman'
+        timeout-minutes: 10
+        run: podman pull ghcr.io/zalando/spilo-18:4.1-p2
       - name: Verify explicit topology, native inventory, reconciliation and affected HA paths
         shell: bash
         run: |

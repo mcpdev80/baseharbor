@@ -26,6 +26,9 @@ func (m Manifest) Validate() error {
 	if err := AvailabilityIntent(m).Validate(); err != nil {
 		return err
 	}
+	if err := validateProviderAvailabilityIntent(m); err != nil {
+		return err
+	}
 	seenConsumptions := map[string]struct{}{}
 	for _, consumption := range m.Consumes {
 		if err := consumption.Validate(m.ApplicationID); err != nil {

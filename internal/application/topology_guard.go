@@ -83,3 +83,33 @@ func checkSharedValkeyTopology(state sharedBackendState, m Manifest) error {
 	}
 	return nil
 }
+
+// RuntimeTopologyGroups keeps independent logical instances separate from
+// replica ordinals in status/doctor, including names ending in a number.
+func RuntimeTopologyGroups(m Manifest) map[string]string {
+	groups := map[string]string{}
+	for _, instance := range ValkeyInstanceNames(m) {
+		root := valkeyAvailabilityComponent(m, instance) + "/" + instance
+		base := runtimeServiceName("valkey", instance)
+		groups[base] = root
+		groups[sharedValkeyService(m, instance)] = root
+		for n := 0; n < valkeyMemberCount(m, instance); n++ {
+			groups[valkeyMemberServiceName(instance, n)] = root
+			groups[valkeySentinelServiceName(instance, n)] = root
+			app := sharedBackendAppState{Application: m.Name, Environment: m.Environment}
+			groups[sharedValkeyMemberServiceName(app, instance, n)] = root
+			groups[sharedValkeySentinelServiceName(app, instance, n)] = root
+		}
+	}
+	for _, instance := range SQLInstanceNames(m) {
+		groups[runtimeServiceName("postgres", instance)] = "sql/" + instance
+	}
+	groups[sharedPostgresService(m.Environment)] = "sql/environment-" + m.Environment
+	for _, instance := range RabbitMQInstanceNames(m) {
+		groups[runtimeServiceName("rabbitmq", instance)] = "messaging/" + instance
+	}
+	for _, instance := range DocumentDatabaseInstanceNames(m) {
+		groups[runtimeServiceName("mongodb", instance)] = "document_database/" + instance
+	}
+	return groups
+}

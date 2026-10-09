@@ -188,6 +188,9 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 }
 
 func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, storage *objectstorage.PlatformBucket) (ProviderFiles, Placement, error) {
+	if application.ComponentHA(m, "traces") && storage == nil {
+		return ProviderFiles{}, Placement{}, errors.New("Tempo HA requires an explicitly prepared object-storage binding")
+	}
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, Placement{}, err
@@ -307,11 +310,18 @@ func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issu
 		err   error
 	)
 	if application.ComponentHA(m, "traces") {
+		placement, err := PlacementForAt(dataDir, namespace, m)
+		if err != nil {
+			return Placement{}, err
+		}
+		if err := providertopology.RequireVariant(filepath.Join(placement.Dir, "compose.yaml"), "tempo", "tempo-distributor-1", true); err != nil {
+			return Placement{}, err
+		}
 		storageRuntime, ok := runtime.(objectstorage.Runtime)
 		if !ok {
 			return Placement{}, errors.New("Tempo HA requires runtime object-storage administration support")
 		}
-		bucket, bucketErr := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, issuer, dataDir, namespace, "tempo")
+		bucket, bucketErr := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, issuer, dataDir, namespace, "tempo", application.AvailabilityIntent(m).Resolve("object_storage"))
 		if bucketErr != nil {
 			return Placement{}, fmt.Errorf("prepare Tempo HA object storage: %w", bucketErr)
 		}

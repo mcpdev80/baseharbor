@@ -181,3 +181,39 @@ func TestRecoveryRejectsMissingRestoredAppRolePolicies(t *testing.T) {
 		t.Fatalf("expected actual restore before authenticated recovery proof, got %d", ops.restoreCalls)
 	}
 }
+
+type sealedRestartOps struct {
+	fakeOps
+	order []string
+}
+
+func (f *sealedRestartOps) ApplyTarget(_ context.Context, version, _, _ string) error {
+	f.order = append(f.order, "apply")
+	f.state.Version = version
+	f.state.Sealed = true
+	f.state.Healthy = false
+	return nil
+}
+func (f *sealedRestartOps) EnsureUnsealed(context.Context) error {
+	f.order = append(f.order, "unseal")
+	f.state.Sealed = false
+	f.state.Healthy = true
+	return nil
+}
+func (f *sealedRestartOps) WaitHealthy(context.Context) error {
+	f.order = append(f.order, "healthy")
+	if f.state.Sealed || !f.state.Healthy {
+		return errors.New("sealed restart cannot be healthy")
+	}
+	return nil
+}
+func TestAuthorizedUnsealPrecedesHealthyReadinessAfterRestart(t *testing.T) {
+	ops := &sealedRestartOps{fakeOps: fakeOps{state: goodState()}}
+	backup := providerupgrade.BackupRef{Provider: providerupgrade.ProviderOpenBao, ID: "verified-owned-backup", Version: goodState().Version, Verified: true, CreatedAt: time.Now()}
+	if err := New(ops).Execute(context.Background(), request(), backup); err != nil {
+		t.Fatalf("normal sealed restart failed: %v", err)
+	}
+	if len(ops.order) != 3 || ops.order[0] != "apply" || ops.order[1] != "unseal" || ops.order[2] != "healthy" {
+		t.Fatalf("restart authorization order: %v", ops.order)
+	}
+}

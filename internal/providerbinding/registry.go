@@ -183,3 +183,30 @@ func NewFor(provider providerupgrade.Provider, deps Dependencies) (*Registry, er
 	}
 	return result, nil
 }
+
+// ResolveRecovery is only for a verified-backup recovery hook. It checks the
+// fixed native adapter binding and retained protected source, without requiring
+// the failed service to be healthy before it can be restored.
+func (r *Registry) ResolveRecovery(ctx context.Context, p providerupgrade.Provider, req providerupgrade.Request) (providerupgrade.Adapter, RuntimeIdentity, error) {
+	if r == nil || r.inventory == nil {
+		return nil, RuntimeIdentity{}, errors.New("owned recovery registry unavailable")
+	}
+	adapter, exists := r.providers[p]
+	if !exists {
+		return nil, RuntimeIdentity{}, errors.New("unknown recovery provider")
+	}
+	inventory, ok := r.inventory.(interface {
+		InspectRecovery(context.Context, providerupgrade.Provider, providerupgrade.Request) (RuntimeIdentity, error)
+	})
+	if !ok {
+		return nil, RuntimeIdentity{}, errors.New("protected native recovery inventory unavailable")
+	}
+	identity, err := inventory.InspectRecovery(ctx, p, req)
+	if err != nil {
+		return nil, RuntimeIdentity{}, err
+	}
+	if identity.Provider != p || !identity.Owned || identity.Project == "" || identity.Service == "" || identity.Image == "" || len(identity.Digest) != 71 {
+		return nil, RuntimeIdentity{}, errors.New("unverified retained recovery identity")
+	}
+	return adapter, identity, nil
+}

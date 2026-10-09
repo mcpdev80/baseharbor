@@ -3,6 +3,7 @@ package providertopology
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/availability"
@@ -13,6 +14,7 @@ import (
 // explicitly not reported as replicated datasets.
 type Observation struct {
 	Provider, Component, Replication string
+	Instance                         string
 	RequestedHA                      bool
 	Members, DataMembers, Helpers    int
 	DeclaredMembers, DeclaredHelpers int
@@ -24,12 +26,12 @@ func (o Observation) Detail() string {
 	if o.DeclaredMembers <= 1 && o.Replication == "configured-not-proven" {
 		o.Replication = "0"
 	}
-	return fmt.Sprintf("provider=%s ha-requested=%t ha-active=%t data-members=%d service-members=%d replicas=%s auxiliary-services=%d/%d configured-service-members=%d members=[%s] helpers=[%s] process-redundancy=%t failover-proof=not-collected host-failure-tolerance=false", o.Provider, o.RequestedHA, active, o.DataMembers, o.Members, o.Replication, o.Helpers, o.DeclaredHelpers, o.DeclaredMembers, strings.Join(o.MemberNames, ","), strings.Join(o.HelperNames, ","), active)
+	return fmt.Sprintf("provider=%s instance=%s ha-requested=%t ha-active=%t data-members=%d service-members=%d replicas=%s auxiliary-services=%d/%d configured-service-members=%d members=[%s] helpers=[%s] process-redundancy=%t failover-proof=not-collected host-failure-tolerance=false", o.Provider, o.Instance, o.RequestedHA, active, o.DataMembers, o.Members, o.Replication, o.Helpers, o.DeclaredHelpers, o.DeclaredMembers, strings.Join(o.MemberNames, ","), strings.Join(o.HelperNames, ","), active)
 }
 
 // Observe uses protected Compose ownership and the native running-service
 // inventory. It never infers membership from the total container count.
-func Observe(compose string, running []string, intent availability.Intent) ([]Observation, error) {
+func Observe(compose string, running []string, intent availability.Intent, explicitGroups ...map[string]string) ([]Observation, error) {
 	services, err := ServiceNames(compose)
 	if err != nil {
 		return nil, err
@@ -37,6 +39,10 @@ func Observe(compose string, running []string, intent availability.Intent) ([]Ob
 	live := map[string]bool{}
 	for _, name := range running {
 		live[name] = true
+	}
+	groupNames := map[string]string{}
+	if len(explicitGroups) > 0 {
+		groupNames = explicitGroups[0]
 	}
 	groups := map[string]*Observation{}
 	for name, raw := range services {
@@ -49,10 +55,18 @@ func Observe(compose string, running []string, intent availability.Intent) ([]Ob
 		if provider == "" {
 			continue
 		}
-		o := groups[provider]
+		instance := provider
+		if provider == "postgresql" || provider == "valkey" || provider == "rabbitmq" || provider == "mongodb" {
+			instance = datastoreRoot(name, services, groupNames)
+			if strings.HasPrefix(instance, "key_value/") {
+				component = "key_value"
+			}
+		}
+		key := provider + "/" + instance
+		o := groups[key]
 		if o == nil {
-			o = &Observation{Provider: provider, Component: component, Replication: replication, RequestedHA: intent.Resolve(component).HA}
-			groups[provider] = o
+			o = &Observation{Provider: provider, Instance: instance, Component: component, Replication: replication, RequestedHA: intent.Resolve(component).HA}
+			groups[key] = o
 		}
 		if member {
 			o.DeclaredMembers++
@@ -79,12 +93,14 @@ func Observe(compose string, running []string, intent availability.Intent) ([]Ob
 		sort.Strings(o.HelperNames)
 		result = append(result, *o)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Provider < result[j].Provider })
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Provider+result[i].Instance < result[j].Provider+result[j].Instance
+	})
 	return result, nil
 }
 
 func classifyRole(name, image string, command any) (provider, component, replication string, data, member bool) {
-	auxiliary := strings.HasSuffix(name, "-admin") || strings.HasSuffix(name, "-init") || strings.Contains(name, "-access") || strings.Contains(name, "-sentinel") || strings.Contains(name, "-etcd-")
+	auxiliary := strings.HasSuffix(name, "-admin") || strings.HasSuffix(name, "-init") || strings.Contains(name, "-access") || strings.Contains(name, "-sentinel") || strings.Contains(name, "-etcd-") || strings.HasSuffix(name, "-ui") || strings.Contains(name, "pgadmin") || strings.Contains(name, "cache-ui") || strings.Contains(name, "redisinsight")
 	switch {
 	case strings.HasPrefix(name, "seaweedfs-"):
 		return "seaweedfs", "object_storage", "configured-not-proven", strings.HasPrefix(name, "seaweedfs-node-"), strings.HasPrefix(name, "seaweedfs-node-")
@@ -98,12 +114,12 @@ func classifyRole(name, image string, command any) (provider, component, replica
 		return "keycloak-sql", "identity", "configured-not-proven", member, member
 	case strings.Contains(image, "keycloak:"):
 		return "keycloak", "identity", "0-shared-sql", false, !auxiliary
-	case strings.Contains(image, "postgres:") || strings.Contains(image, "spilo-") || strings.HasPrefix(name, "postgres") || strings.HasPrefix(name, "shared-postgres"):
+	case strings.Contains(image, "pgadmin") || strings.Contains(name, "pgadmin") || strings.Contains(image, "postgres:") || strings.Contains(image, "spilo-") || strings.HasPrefix(name, "postgres") || strings.HasPrefix(name, "shared-postgres"):
 		member = !auxiliary && (strings.Contains(image, "postgres:") || strings.Contains(image, "spilo-"))
 		return "postgresql", "sql", "configured-not-proven", member, member
 	case strings.Contains(image, "openbao:") || strings.HasPrefix(name, "openbao"):
 		return "openbao", "secrets", "0-shared-sql", false, !auxiliary && strings.Contains(image, "openbao:")
-	case strings.Contains(image, "valkey:") || strings.HasPrefix(name, "valkey") || strings.HasPrefix(name, "shared-valkey"):
+	case strings.Contains(name, "cache-ui") || strings.Contains(image, "redisinsight") || strings.Contains(image, "valkey:") || strings.HasPrefix(name, "valkey") || strings.HasPrefix(name, "shared-valkey"):
 		member = !auxiliary && strings.Contains(image, "valkey:")
 		return "valkey", "cache", "configured-not-proven", member, member
 	case strings.Contains(image, "rabbitmq:") || strings.HasPrefix(name, "rabbitmq"):
@@ -122,4 +138,32 @@ func classifyRole(name, image string, command any) (provider, component, replica
 		return "tempo", "traces", "configured-not-proven", data, member
 	}
 	return "", "", "", false, false
+}
+
+func datastoreRoot(name string, services map[string]any, explicit map[string]string) string {
+	if root, exists := explicit[name]; exists {
+		return root
+	}
+	// Member and etcd names have an unambiguous provider-owned ordinal.
+	for _, marker := range []string{"-member-", "-etcd-", "-sentinel-"} {
+		if i := strings.LastIndex(name, marker); i >= 0 {
+			if n, err := strconv.Atoi(name[i+len(marker):]); err == nil && n > 0 {
+				return datastoreRoot(name[:i], services, explicit)
+			}
+		}
+	}
+	for _, suffix := range []string{"-access", "-admin", "-init", "-sentinel", "-ui"} {
+		if strings.HasSuffix(name, suffix) {
+			return datastoreRoot(strings.TrimSuffix(name, suffix), services, explicit)
+		}
+	}
+	if i := strings.LastIndex(name, "-"); i >= 0 {
+		if n, err := strconv.Atoi(name[i+1:]); err == nil && n > 1 {
+			base := name[:i]
+			if _, exists := services[base]; exists {
+				return datastoreRoot(base, services, explicit)
+			}
+		}
+	}
+	return name
 }

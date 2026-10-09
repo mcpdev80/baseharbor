@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -21,8 +22,11 @@ type RuntimeReader interface {
 // ManagedSource names only existing, installation-owned Core services.
 // Names are configuration/evidence selectors, never user-supplied mutation targets.
 type ManagedSource struct {
-	Project string
-	Service string
+	Project        string
+	Service        string
+	Compose        string
+	OriginalImage  string
+	OriginalDigest string
 }
 
 // RuntimeBinding verifies ownership from live project/service labels and
@@ -96,4 +100,69 @@ func imageRepository(reference string) string {
 		reference = strings.TrimPrefix(reference, prefix)
 	}
 	return reference
+}
+
+// InspectRecovery validates protected installation-owned source state when
+// selected stop has legitimately removed a failed runtime container. Recovery
+// still requires an exact original/target digest and a verified backup receipt.
+func (r *RuntimeBinding) InspectRecovery(ctx context.Context, p providerupgrade.Provider, req providerupgrade.Request) (RuntimeIdentity, error) {
+	if r == nil || r.Reader == nil {
+		return RuntimeIdentity{}, errors.New("owned recovery runtime is required")
+	}
+	source, exists := r.Sources[p]
+	if !exists || source.Project == "" || source.Service == "" || source.Compose == "" || source.OriginalImage == "" || source.OriginalDigest == "" {
+		return RuntimeIdentity{}, errors.New("protected recovery source identity unavailable")
+	}
+	services, err := providertopology.ServiceNames(source.Compose)
+	if err != nil {
+		return RuntimeIdentity{}, err
+	}
+	spec, ok := services[source.Service].(map[string]any)
+	if !ok {
+		return RuntimeIdentity{}, errors.New("retained recovery service identity unavailable")
+	}
+	image, _ := spec["image"].(string)
+	allowed := func(image, digest string) bool {
+		if at := strings.Index(digest, "@sha256:"); at >= 0 {
+			digest = digest[at+1:]
+		}
+		return (digest == source.OriginalDigest && imageRepository(image) == imageRepository(source.OriginalImage)) || (digest == req.TargetDigest && imageRepository(image) == imageRepository(req.TargetImage))
+	}
+	validPin := func(digest string) bool {
+		if !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 {
+			return false
+		}
+		_, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+		return err == nil
+	}
+	if !validPin(source.OriginalDigest) || !validPin(req.TargetDigest) {
+		return RuntimeIdentity{}, errors.New("invalid recovery source digest")
+	}
+	at := strings.Index(image, "@sha256:")
+	if at < 0 || !allowed(image, image[at+1:]) {
+		return RuntimeIdentity{}, errors.New("retained recovery image does not match the inventoried original or approved target")
+	}
+	containers, err := r.Reader.ListRuntimeContainers(ctx)
+	if err != nil {
+		return RuntimeIdentity{}, err
+	}
+	count := 0
+	for _, c := range containers {
+		if c.Project == source.Project && c.Service == source.Service {
+			count++
+		}
+	}
+	if count > 1 {
+		return RuntimeIdentity{}, errors.New("ambiguous retained recovery container identity")
+	}
+	if count == 1 {
+		native, err := r.Reader.ProjectServiceImageIdentity(ctx, source.Project, source.Service)
+		if err != nil {
+			return RuntimeIdentity{}, err
+		}
+		if !allowed(native.Reference, native.Digest) {
+			return RuntimeIdentity{}, errors.New("foreign replacement recovery image rejected")
+		}
+	}
+	return RuntimeIdentity{Provider: p, Project: source.Project, Service: source.Service, Engine: r.Engine, Image: image, Digest: image[at+1:], Owned: true}, nil
 }

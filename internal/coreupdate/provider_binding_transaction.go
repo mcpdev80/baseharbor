@@ -232,7 +232,14 @@ func (t BoundProviderTransaction) Hooks() Hooks {
 			if err != nil {
 				return err
 			}
-			adapter, _, err := t.Registry.Resolve(ctx, provider)
+			var adapter providerupgrade.Adapter
+			if registry, ok := t.Registry.(interface {
+				ResolveRecovery(context.Context, providerupgrade.Provider, providerupgrade.Request) (providerupgrade.Adapter, providerbinding.RuntimeIdentity, error)
+			}); ok {
+				adapter, _, err = registry.ResolveRecovery(ctx, provider, req)
+			} else {
+				adapter, _, err = t.Registry.Resolve(ctx, provider)
+			}
 			if err != nil {
 				return err
 			}

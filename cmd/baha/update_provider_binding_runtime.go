@@ -259,7 +259,10 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 				return err
 			}
 			if !o.core.HA {
-				return o.ReconcilePinned(ctx, openBaoDelta)
+				if err := o.ReconcilePinned(ctx, openBaoDelta); err != nil {
+					return err
+				}
+				return waitForOpenBaoExecReady(ctx, o.runtime, o.core)
 			}
 			environment, err := bhruntime.RuntimeEnvironment(o.core)
 			if err != nil {
@@ -405,8 +408,8 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	registry, err := providerbinding.New(providerbinding.Dependencies{
 		Inventory: &providerbinding.RuntimeBinding{Reader: o.runtime, Engine: engine,
 			Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
-				providerupgrade.ProviderOpenBao:  {Project: o.core.Project, Service: openBaoDelta.Installed.Instance},
-				providerupgrade.ProviderKeycloak: {Project: o.identity.Project, Service: keycloakDelta.Installed.Instance},
+				providerupgrade.ProviderOpenBao:  {Project: o.core.Project, Service: openBaoDelta.Installed.Instance, Compose: o.core.Compose, OriginalImage: openBaoDelta.Installed.Image, OriginalDigest: openBaoDelta.Installed.Digest},
+				providerupgrade.ProviderKeycloak: {Project: o.identity.Project, Service: keycloakDelta.Installed.Instance, Compose: o.identity.Compose, OriginalImage: keycloakDelta.Installed.Image, OriginalDigest: keycloakDelta.Installed.Digest},
 			}},
 		OpenBaoExecutor: o.runtime, OpenBaoFiles: o.core, OpenBaoHooks: openBaoHooks,
 		KeycloakDataDir: o.dataDir, KeycloakNamespace: o.target, KeycloakInstallationID: o.installation, KeycloakIssuer: o.issuer, KeycloakHooks: keycloakHooks,

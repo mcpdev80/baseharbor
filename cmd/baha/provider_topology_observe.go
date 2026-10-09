@@ -32,7 +32,7 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 		f := application.SharedBackendFilesAt(root, namespace, m.Environment)
 		sources = append(sources, topologySource{name: "shared-backends", project: f.Project, compose: f.Compose, env: f.Env})
 	}
-	if application.HasObjectStorage(m) {
+	if application.HasObjectStorage(m) || application.ComponentHA(m, "logs") || application.ComponentHA(m, "traces") {
 		f, e := objectstorage.ExistingProviderFilesAt(root, namespace)
 		sources = append(sources, topologySource{"object-storage", f.Project, f.Compose, f.Env, e})
 	}
@@ -72,13 +72,13 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
 			continue
 		}
-		observations, err := providertopology.Observe(source.compose, running, application.AvailabilityIntent(m))
+		observations, err := providertopology.Observe(source.compose, running, application.AvailabilityIntent(m), application.RuntimeTopologyGroups(m))
 		if err != nil {
 			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
 			continue
 		}
 		for _, o := range observations {
-			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider), OK: o.Members > 0, Detail: o.Detail()})
+			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider+"/"+o.Instance), OK: o.Members > 0 || o.DeclaredMembers == 0, Detail: o.Detail()})
 		}
 	}
 	return result

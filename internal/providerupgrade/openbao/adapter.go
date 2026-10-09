@@ -149,11 +149,13 @@ func (a *Adapter) Execute(ctx context.Context, req providerupgrade.Request, back
 	if err := a.ops.ApplyTarget(ctx, req.TargetVersion, req.TargetImage, req.TargetDigest); err != nil {
 		return providerupgrade.Wrap(providerupgrade.ErrorApplyFailed, "openbao apply", err)
 	}
-	if err := a.ops.WaitHealthy(ctx); err != nil {
-		return providerupgrade.Wrap(providerupgrade.ErrorApplyFailed, "openbao health", err)
-	}
+	// A provider restart can be initialized but sealed. Authorized unseal
+	// must precede the healthy-and-unsealed readiness requirement.
 	if err := a.ops.EnsureUnsealed(ctx); err != nil {
 		return providerupgrade.Wrap(providerupgrade.ErrorApplyFailed, "openbao unseal", err)
+	}
+	if err := a.ops.WaitHealthy(ctx); err != nil {
+		return providerupgrade.Wrap(providerupgrade.ErrorApplyFailed, "openbao health", err)
 	}
 	return nil
 }

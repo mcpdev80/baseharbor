@@ -133,6 +133,9 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 }
 
 func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode, storage *objectstorage.PlatformBucket) (ProviderFiles, error) {
+	if application.ComponentHA(m, "logs") && storage == nil {
+		return ProviderFiles{}, errors.New("Loki HA requires an explicitly prepared object-storage binding")
+	}
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err

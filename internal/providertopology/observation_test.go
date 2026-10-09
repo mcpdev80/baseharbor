@@ -52,3 +52,26 @@ func TestObservationSeparatesDataHelpersAndIndependentTSDBs(t *testing.T) {
 		t.Fatalf("Sentinel/access counted as data: %#v", valkey)
 	}
 }
+
+func TestIndependentLogicalInstancesAreNotReportedAsHA(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	source := `services:
+  valkey-one: {image: docker.io/valkey/valkey:9}
+  valkey-one-2: {image: docker.io/valkey/valkey:9}
+  valkey-one-access: {image: docker.io/library/haproxy:3}
+  valkey-one-2-access: {image: docker.io/library/haproxy:3}
+`
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	groups := map[string]string{"valkey-one": "cache/one", "valkey-one-2": "key_value/one-2"}
+	result, err := Observe(path, []string{"valkey-one", "valkey-one-2", "valkey-one-access", "valkey-one-2-access"}, availability.Intent{}, groups)
+	if err != nil || len(result) != 2 {
+		t.Fatalf("independent instance inventory: %#v %v", result, err)
+	}
+	for _, o := range result {
+		if o.DataMembers != 1 || o.Helpers != 1 || strings.Contains(o.Detail(), "ha-active=true") {
+			t.Fatalf("independent instance counted as replica: %#v", o)
+		}
+	}
+}

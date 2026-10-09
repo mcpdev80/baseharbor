@@ -152,6 +152,46 @@ func TestSeaweedFSDefaultTopologyRuntimeAcceptanceInCI(t *testing.T) {
 			}
 			waitSeaweedFSHAReady(t, ctx, driver, resource, binding, dataDir, namespace)
 
+			// Changing intent on an existing datastore must fail before native
+			// containers, credentials, buckets or retained Compose are rewritten.
+			inventory, err = runtime.ListRuntimeContainers(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := app
+			changed.Availability = map[string]availability.Override{"object_storage": {HA: &yes}}
+			if scenario.members > 1 {
+				changed.Availability["object_storage"] = availability.Override{HA: &no}
+			}
+			changedDriver := NewDriverAt(runtime, changed, appFiles, issuer, dataDir, namespace)
+			if _, _, _, err := changedDriver.EnsureSharedProvider(ctx); err == nil {
+				t.Fatal("existing datastore accepted an implicit topology migration")
+			}
+			retained, err := os.ReadFile(files.Compose)
+			if err != nil || string(retained) != string(composeBefore) {
+				t.Fatal("rejected topology migration modified retained Compose")
+			}
+			inventoryAfter, err := runtime.ListRuntimeContainers(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, before := range inventory {
+				if before.Project != files.Project || !before.Running {
+					continue
+				}
+				found := false
+				for _, after := range inventoryAfter {
+					if after.ID == before.ID && after.Project == before.Project && after.Service == before.Service && after.Running {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("rejected migration replaced or stopped owned service %s", before.Service)
+				}
+			}
+			waitSeaweedFSHAReady(t, ctx, driver, resource, binding, dataDir, namespace)
+			t.Logf("native topology qualified: data members=%d, authenticated S3/readiness/rotation/repeated up/destroy; existing topology transition rejected", actual)
+
 		})
 	}
 }

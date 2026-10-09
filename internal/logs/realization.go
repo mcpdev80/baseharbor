@@ -13,6 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -81,11 +82,22 @@ func (r *runtimeLokiRealization) ensureProviderFiles(ctx context.Context) (Provi
 	if !application.ComponentHA(r.app, "logs") {
 		return EnsureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode)
 	}
+	p, err := PlacementForAt(dataDir, r.namespace, r.app)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	single := "loki"
+	if p.Scope == capability.ScopeApplication {
+		single = "baseharbor-internal-loki"
+	}
+	if err := providertopology.RequireVariant(providerFiles(p).Compose, single, "loki-1", true); err != nil {
+		return ProviderFiles{}, err
+	}
 	storageRuntime, ok := r.runtime.(objectstorage.Runtime)
 	if !ok {
 		return ProviderFiles{}, errors.New("Loki HA requires runtime object-storage administration support")
 	}
-	bucket, err := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, r.issuer, dataDir, r.namespace, "loki")
+	bucket, err := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, r.issuer, dataDir, r.namespace, "loki", application.AvailabilityIntent(r.app).Resolve("object_storage"))
 	if err != nil {
 		return ProviderFiles{}, fmt.Errorf("prepare Loki HA object storage: %w", err)
 	}
