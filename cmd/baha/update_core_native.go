@@ -73,35 +73,59 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 }
 
 func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State, error) {
-	members, err := o.runtime.ListRuntimeContainers(ctx)
+	services := []string{service}
+	topology := keycloakadapter.TopologySingle
+	if o.core.HA {
+		services = []string{"keycloak-1", "keycloak-2", "keycloak-3"}
+		topology = keycloakadapter.TopologyHA
+	}
+	containers, err := o.runtime.ListRuntimeContainers(ctx)
 	if err != nil {
 		return keycloakadapter.State{}, err
 	}
-	found := 0
-	for _, member := range members {
-		if member.Project != o.identity.Project || member.Service != service {
+	running := map[string]bool{}
+	for _, container := range containers {
+		if container.Project != o.identity.Project {
 			continue
 		}
-		found++
-		if !member.Running || strings.EqualFold(member.Health, "unhealthy") {
-			return keycloakadapter.State{}, errors.New("Keycloak managed member not healthy")
+		for _, expected := range services {
+			if container.Service != expected {
+				continue
+			}
+			if running[expected] {
+				return keycloakadapter.State{}, fmt.Errorf("duplicate Keycloak managed member %s", expected)
+			}
+			if !container.Running || strings.EqualFold(container.Health, "unhealthy") {
+				return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s not healthy", expected)
+			}
+			running[expected] = true
 		}
 	}
-	if found != 1 {
-		return keycloakadapter.State{}, errors.New("Keycloak single topology requires exactly one owned member")
+	members := make([]keycloakadapter.Member, 0, len(services))
+	stateVersion := ""
+	for _, expected := range services {
+		if !running[expected] {
+			return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s is not running", expected)
+		}
+		image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, expected)
+		if err != nil {
+			return keycloakadapter.State{}, err
+		}
+		ref := strings.Split(image.Reference, "@")[0]
+		index := strings.LastIndex(ref, ":")
+		if index < 0 || index == len(ref)-1 {
+			return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
+		}
+		version := ref[index+1:]
+		if stateVersion == "" {
+			stateVersion = version
+		}
+		members = append(members, keycloakadapter.Member{Name: expected, Version: version, Ready: true})
 	}
-	image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, service)
-	if err != nil {
-		return keycloakadapter.State{}, err
-	}
-	ref := strings.Split(image.Reference, "@")[0]
-	index := strings.LastIndex(ref, ":")
-	if index < 0 || index == len(ref)-1 {
-		return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
-	}
-	version := ref[index+1:]
-	return keycloakadapter.State{Version: version, Owner: "baseharbor", Topology: keycloakadapter.TopologySingle, Healthy: true,
-		DatabaseType: "postgresql", Members: []keycloakadapter.Member{{Name: service, Version: version, Ready: true}}}, nil
+	return keycloakadapter.State{
+		Version: stateVersion, Owner: "baseharbor", Topology: topology, Healthy: true,
+		DatabaseType: "postgresql", Members: members,
+	}, nil
 }
 
 // admitNativeProviderTransition delegates conservative single-Core patch upgrades
