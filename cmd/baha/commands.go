@@ -18,7 +18,7 @@ func rootCommand() *cli.Command {
 		switch child.Name {
 		case "init":
 			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]"
+			initCmd.Usage = "baha app init --agents [--json] | baha app init [--quick] [--json] | baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]"
 			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
 			appCmd.Children[i] = initCmd
 		case "show":
@@ -71,7 +71,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "init",
 			Summary: "Initialize or adopt the application in the current repository",
-			Usage:   "baha init [--quick] [--json] [--agents] [--input NAME=VALUE]... [--yes]",
+			Usage:   "baha init --agents [--json] | baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]",
 			Long:    "Canonical application initialization. Reuses the same repository inspection, guided input resolution and Core bootstrap as application initialization; explicit flags remain available for non-interactive use.",
 			Run:     appInitWithInputResolverCommand(store).Run,
 		},

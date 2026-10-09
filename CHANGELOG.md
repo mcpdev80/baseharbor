@@ -29,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
 - PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
 - Implicit HA removed from default provider topology; native HA requires explicit intent, component overrides remain authoritative and existing installations cannot silently change membership.
+- Shared providers are owned once per Core/Target: Keycloak and Shared SQL consumers reuse Core PostgreSQL with separate databases/users; Shared Valkey uses isolated ACL users and key namespaces. Empty SQL-only consumer modules do not masquerade as physical providers (#857).
+- Configured-only application destruction verifies absent Core/gateway resources and preserves foreign/shared data. `app init --agents` updates only bounded guidance, including JSON/non-TTY use; precise error hints and Doctor distinguish uninstalled Core from broken retained state (#858–#860).
 - Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
 - Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
 
