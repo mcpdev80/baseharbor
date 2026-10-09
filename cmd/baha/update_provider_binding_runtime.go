@@ -71,7 +71,6 @@ func providerMemberMutations(delta coreupdate.Delta, services []string) map[stri
 		}
 		memberDelta := delta
 		memberDelta.Installed.Instance = service
-		memberDelta.Desired.Instance = service
 		mutations[service] = memberDelta
 	}
 	return mutations
