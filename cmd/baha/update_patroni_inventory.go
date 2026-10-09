@@ -43,7 +43,7 @@ func classifyOwnedHAPostgresRollingInventory(ctx context.Context, state coreinst
 		return coreupdate.Delta{}, err
 	}
 	if target.Name != state.Spec.Target || target.RuntimeProvider != state.Spec.Runtime {
-		return coreupdate.Delta{}, errors.New("HA PostgreSQL members disagree with selected target ownership")
+		return coreupdate.Delta{}, errors.New("HA PostgreSQL peer image identity disagrees with selected target ownership")
 	}
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
