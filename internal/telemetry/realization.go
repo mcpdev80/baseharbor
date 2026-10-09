@@ -58,9 +58,9 @@ func (r *runtimeOTLPRealization) SetTraceBackend(endpoint, network string) {
 func (r *runtimeOTLPRealization) providerFiles(ctx context.Context, ensure bool) (ProviderFiles, error) {
 	if ensure {
 		if r.dataDir != "" && r.dataDir != "." {
-			return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, r.issuer, r.traceEndpoint, r.traceNetwork, r.app.Environment, r.dataDir, r.namespace)
+			return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, r.issuer, r.traceEndpoint, r.traceNetwork, r.app.Environment, r.dataDir, r.namespace, application.AvailabilityIntent(r.app).Resolve("telemetry"))
 		}
-		return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, r.issuer, r.traceEndpoint, r.traceNetwork, r.app.Environment)
+		return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, r.issuer, r.traceEndpoint, r.traceNetwork, r.app.Environment, application.AvailabilityIntent(r.app).Resolve("telemetry"))
 	}
 	if r.dataDir != "" && r.dataDir != "." {
 		return ExistingProviderFilesAt(r.dataDir, r.namespace)

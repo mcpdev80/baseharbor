@@ -404,7 +404,7 @@ func TestProviderFilesTrustManagedRuntimeCAForHTTPSMetrics(t *testing.T) {
 
 func TestProviderComposeUsesNativeTLSMaterial(t *testing.T) {
 	rendered := providerComposeYAMLWithProviderNetworks(
-		Placement{Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
+		Placement{Members: 2, Scope: capability.ScopeShared, Project: "baseharbor-metrics", Volume: "baseharbor-prometheus-data"},
 		nil,
 		nil,
 		false,
@@ -488,7 +488,6 @@ func TestUnregisterSharedApplicationReconcilesServiceAccessProjection(t *testing
 	text := string(compose)
 	for _, want := range []string{
 		"prometheus-1:",
-		"prometheus-2:",
 		"/members/service-access/runtime:/run/baseharbor/tls:ro",
 		"--web.config.file=/etc/prometheus/web-config.yml",
 		"prometheus-access:",

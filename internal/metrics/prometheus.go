@@ -24,6 +24,7 @@ const (
 )
 
 type Placement struct {
+	Members int
 	Scope   capability.ProviderScope
 	Project string
 	Network string

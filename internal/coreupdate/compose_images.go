@@ -63,7 +63,7 @@ func RewriteOwnedComposeImages(source []byte, mutations map[string]Delta) ([]byt
 			}
 			found = true
 			img := service.Content[j+1]
-			if img.Kind != yaml.ScalarNode || img.Value != delta.Installed.Image {
+			if img.Kind != yaml.ScalarNode || (img.Value != delta.Installed.Image && img.Value != delta.Installed.Image+"@"+delta.Installed.Digest) {
 				return nil, fmt.Errorf("Compose service %s image differs from inventoried provider", name)
 			}
 			img.Tag = "!!str"

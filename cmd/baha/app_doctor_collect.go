@@ -114,6 +114,14 @@ func (c *applicationDoctorCollector) runChecks(ctx context.Context) {
 	checks = c.appendBackendChecks(checks)
 	checks = c.appendSecretChecks(checks)
 	c.results, c.ok = preflight.Run(checkCtx, checks)
+	if c.compose != nil && c.runtimeErr == nil {
+		for _, check := range collectProviderTopologyChecks(checkCtx, c.compose, c.resolved, c.files) {
+			c.results = append(c.results, preflight.Result{Name: check.Name, OK: check.OK, Detail: check.Detail})
+			if !check.OK {
+				c.ok = false
+			}
+		}
+	}
 }
 
 func (c *applicationDoctorCollector) baseChecks() []preflight.Check {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ import (
 // the Loki runtime, the stable query endpoint is verified, and only then is the
 // previous SeaweedFS identity retired.
 func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
-	if !d.app.HA {
+	if !application.ComponentHA(d.app, "logs") {
 		return errors.New("Loki platform-storage credential rotation requires HA mode")
 	}
 	if d.runtime == nil || d.issuer == nil {
@@ -124,7 +125,7 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 		return err
 	}
 	spec := lokiAccessSpec()
-	if d.app.HA {
+	if application.ComponentHA(d.app, "logs") {
 		spec.HealthURI = "/ready"
 		spec.Upstream = ""
 		spec.Upstreams = []string{"http://loki-1:3100", "http://loki-2:3100", "http://loki-3:3100"}
@@ -141,7 +142,7 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 		if err := d.runtime.ConfigProject(ctx, placement.Project, files.Compose, files.Env); err != nil {
 			return err
 		}
-		if err := reconcileLokiAccessRuntime(ctx, d.runtime, placement, files, spec.ServiceName, d.app.HA); err != nil {
+		if err := reconcileLokiAccessRuntime(ctx, d.runtime, placement, files, spec.ServiceName, application.ComponentHA(d.app, "logs")); err != nil {
 			return err
 		}
 		if _, err := executor.ExecProject(ctx, placement.Project, files.Compose, files.Env, spec.ServiceName,

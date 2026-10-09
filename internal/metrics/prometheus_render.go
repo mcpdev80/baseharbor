@@ -145,10 +145,15 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 			fmt.Fprintf(&b, "      provider-%d: {}\n", i)
 		}
 	}
-	renderMember("prometheus-1", "prometheus-data-1")
-	renderMember("prometheus-2", "prometheus-data-2")
+	members := placement.Members
+	if members < 1 {
+		members = 1
+	}
+	for n := 1; n <= members; n++ {
+		renderMember(fmt.Sprintf("prometheus-%d", n), fmt.Sprintf("prometheus-data-%d", n))
+	}
 
-	accessSpec := prometheusHAAccessSpec(filepath.Join(placement.Dir, "members", "service-access", "runtime", "ca.pem"))
+	accessSpec := prometheusHAAccessSpec(filepath.Join(placement.Dir, "members", "service-access", "runtime", "ca.pem"), members)
 	if placement.Scope == capability.ScopeApplication {
 		accessSpec.ServiceName = "baseharbor-internal-prometheus-access"
 	}
@@ -166,7 +171,9 @@ func providerComposeYAMLWithProviderNetworksAndAccess(placement Placement, regis
 
 	b.WriteString("\nvolumes:\n")
 	fmt.Fprintf(&b, "  prometheus-data-1:\n    name: %s\n", strconv.Quote(placement.Volume))
-	fmt.Fprintf(&b, "  prometheus-data-2:\n    name: %s\n", strconv.Quote(placement.Volume+"-replica-2"))
+	for n := 2; n <= members; n++ {
+		fmt.Fprintf(&b, "  prometheus-data-%d:\n    name: %s\n", n, strconv.Quote(fmt.Sprintf("%s-replica-%d", placement.Volume, n)))
+	}
 	for i, registration := range registrations {
 		if registration.RuntimeVolume != "" {
 			fmt.Fprintf(&b, "  runtime-targets-%d:\n    external: true\n    name: %s\n", i, strconv.Quote(registration.RuntimeVolume))

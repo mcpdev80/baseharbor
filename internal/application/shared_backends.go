@@ -141,6 +141,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err != nil {
 		return false, err
 	}
+	if err := checkSharedValkeyTopology(state, m); err != nil {
+		return false, err
+	}
 	if err := selectSharedPostgresTopology(&state, m); err != nil {
 		return false, err
 	}

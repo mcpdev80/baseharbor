@@ -1,5 +1,9 @@
 package application
 
+func ComponentHA(m Manifest, component string) bool {
+	return AvailabilityIntent(m).Resolve(component).HA
+}
+
 // managedHAMemberCount resolves runtime-only member cardinality from the
 // provider-neutral availability intent. Provider/member names never enter the
 // portable application contract.

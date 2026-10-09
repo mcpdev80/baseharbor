@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -39,7 +40,7 @@ func EnsurePlatformBucketAt(ctx context.Context, runtime Runtime, issuer service
 	if logicalName == "" {
 		return PlatformBucket{}, errors.New("platform object-storage bucket name is required")
 	}
-	files, _, _, err := EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, namespace)
+	files, _, _, err := EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, namespace, availability.Requirement{Component: "object_storage", HA: true})
 	if err != nil {
 		return PlatformBucket{}, err
 	}

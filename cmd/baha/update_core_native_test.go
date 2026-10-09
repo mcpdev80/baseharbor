@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,9 +35,24 @@ func (f *fakeNativeCoreRuntime) ProjectServiceImageIdentity(context.Context, str
 	return f.image, nil
 }
 
+func (f *fakeNativeCoreRuntime) VerifyOwnedVolumeQuiesced(_ context.Context, project, volume string) error {
+	if volume != "owned-core-postgres-data-1" {
+		return errors.New("wrong recovery volume")
+	}
+	for _, c := range f.containers {
+		if c.Project == project && c.Running {
+			return errors.New("active volume consumer")
+		}
+	}
+	return nil
+}
+
 func TestNativeCoreQuiesceRefusesActiveWriters(t *testing.T) {
 	runtime := &fakeNativeCoreRuntime{containers: []bhruntime.RuntimeContainer{{Project: "owned-core", Service: "postgres-member-1", Running: true}}}
-	ops := &coreNativeRuntimeOps{runtime: runtime, core: bhruntime.Files{Project: "owned-core", Compose: "core.yaml", Env: "core.env"}}
+	ops := &coreNativeRuntimeOps{runtime: runtime, core: bhruntime.Files{Project: "owned-core", Compose: filepath.Join(t.TempDir(), "core.yaml"), Env: "core.env"}}
+	if err := os.WriteFile(ops.core.Compose, []byte("services:\n  postgres-member-1:\n    volumes: [postgres-data-1:/var/lib/postgresql/data]\nvolumes:\n  postgres-data-1:\n    name: owned-core-postgres-data-1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	delta := coreupdate.Delta{Installed: coreupdate.Realization{Kind: coreupdate.SQL, Instance: "postgres-member-1"}}
 	if err := ops.Quiesce(context.Background(), delta); err == nil {
 		t.Fatal("active writer treated as quiesced")

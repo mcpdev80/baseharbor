@@ -212,19 +212,20 @@ func (o *coreNativeRuntimeOps) Quiesce(ctx context.Context, d coreupdate.Delta) 
 	if err := o.runtime.StopProject(ctx, project, compose, env); err != nil {
 		return fmt.Errorf("stop owned Core provider project %s: %w", project, err)
 	}
-	return o.verifyQuiesced(ctx, project, "")
-}
-func (o *coreNativeRuntimeOps) verifyQuiesced(ctx context.Context, project, volume string) error {
-	containers, err := o.runtime.ListRuntimeContainers(ctx)
+	volume, err := coreupdate.ResolveOwnedServiceVolume(compose, nativeRecoveryService(d), project)
 	if err != nil {
 		return err
 	}
-	for _, c := range containers {
-		if c.Project == project && c.Running {
-			return fmt.Errorf("Core volume %s project %s still has active service %s", volume, project, c.Service)
-		}
+	return o.verifyQuiesced(ctx, project, volume)
+}
+func (o *coreNativeRuntimeOps) verifyQuiesced(ctx context.Context, project, volume string) error {
+	verifier, ok := o.runtime.(interface {
+		VerifyOwnedVolumeQuiesced(context.Context, string, string) error
+	})
+	if !ok || volume == "" {
+		return errors.New("native runtime must verify actual owned-volume consumers before backup or restore")
 	}
-	return nil
+	return verifier.VerifyOwnedVolumeQuiesced(ctx, project, volume)
 }
 func (o *coreNativeRuntimeOps) ReconcilePinned(ctx context.Context, d coreupdate.Delta) error {
 	project, compose, env := o.files(d)

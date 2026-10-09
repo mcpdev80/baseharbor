@@ -78,7 +78,7 @@ func (r *runtimeLokiRealization) ensureProviderFiles(ctx context.Context) (Provi
 			return ProviderFiles{}, err
 		}
 	}
-	if !r.app.HA {
+	if !application.ComponentHA(r.app, "logs") {
 		return EnsureProviderFilesForModeAt(ctx, r.issuer, dataDir, r.namespace, r.app, r.mode)
 	}
 	storageRuntime, ok := r.runtime.(objectstorage.Runtime)
@@ -243,7 +243,7 @@ func lokiHTTPClient(m application.Manifest, files ProviderFiles) (*http.Client, 
 		return nil, err
 	}
 	client = withLokiHostHeader(client, policy.ServerName)
-	if m.HA {
+	if application.ComponentHA(m, "logs") {
 		client.Timeout = 30 * time.Second
 	}
 	return client, nil

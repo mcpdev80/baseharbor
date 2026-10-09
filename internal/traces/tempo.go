@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
@@ -198,6 +199,13 @@ func ensureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		return ProviderFiles{}, p, err
 	}
 	files := ProviderFiles{Dir: p.Dir, Compose: filepath.Join(p.Dir, "compose.yaml"), Env: filepath.Join(p.Dir, "runtime.env"), Config: filepath.Join(p.Dir, "tempo.yaml")}
+	if err := providertopology.RequireVariant(files.Compose, "tempo", "tempo-distributor-1", application.ComponentHA(m, "traces")); err != nil {
+		return ProviderFiles{}, Placement{}, err
+	}
+	req := application.AvailabilityIntent(m).Resolve("traces")
+	if req.Instances > 0 && ((req.HA && req.Instances != 2) || (!req.HA && req.Instances != 1)) {
+		return ProviderFiles{}, Placement{}, errors.New("Tempo native topology cannot satisfy the requested instance override")
+	}
 	port := ""
 	if data, err := os.ReadFile(files.Env); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -298,7 +306,7 @@ func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issu
 		p     Placement
 		err   error
 	)
-	if m.HA {
+	if application.ComponentHA(m, "traces") {
 		storageRuntime, ok := runtime.(objectstorage.Runtime)
 		if !ok {
 			return Placement{}, errors.New("Tempo HA requires runtime object-storage administration support")

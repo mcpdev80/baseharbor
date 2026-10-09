@@ -58,3 +58,18 @@ func TestRewriteOwnedComposeRejectsForgedUnsafeClassifications(t *testing.T) {
 		t.Fatal("Postgres major transition accepted")
 	}
 }
+
+func TestRewritePinnedInstalledProviderRequiresExactInventoriedDigest(t *testing.T) {
+	d := Delta{Installed: Realization{Kind: Secrets, Installation: "c", Scope: "shared", Instance: "openbao-member-1", Owner: "baseharbor", Image: "docker.io/openbao/openbao:2.7.0", Version: "2.7.0", Digest: digestA}, Desired: Desired{Kind: Secrets, Image: "docker.io/openbao/openbao:2.7.1", Version: "2.7.1", Digest: digestB}, Classification: BackupRequired}
+	for _, digest := range []string{digestA, digestB} {
+		source := []byte("services:\n  openbao-member-1:\n    image: docker.io/openbao/openbao:2.7.0@" + digest + "\n")
+		result, err := RewriteOwnedComposeImages(source, map[string]Delta{"openbao-member-1": d})
+		if digest == digestA {
+			if err != nil || !strings.Contains(string(result), "2.7.1@"+digestB) {
+				t.Fatalf("verified pin rejected: %v", err)
+			}
+		} else if err == nil {
+			t.Fatal("stale installed digest accepted")
+		}
+	}
+}

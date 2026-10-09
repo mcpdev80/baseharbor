@@ -81,6 +81,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	}
 
 	files := RuntimeFilesFor(store, m)
+	if err := CheckRuntimeTopology(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
 	}

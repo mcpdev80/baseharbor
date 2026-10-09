@@ -18,6 +18,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -124,6 +125,13 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 		ConsumerNetwork: consumer,
 		InternalNetwork: consumer + "-internal",
 	}
+	req := application.AvailabilityIntent(app).Resolve("identity")
+	if req.Instances > 0 && ((req.HA && req.Instances != 3) || (!req.HA && req.Instances != 1)) {
+		return KeycloakFiles{}, errors.New("Keycloak native topology cannot satisfy the requested instance override")
+	}
+	if _, err := providertopology.ResolveMembers(files.Compose, "keycloak", 3, req); err != nil {
+		return KeycloakFiles{}, err
+	}
 	values, err := readProtectedEnv(files.Env)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return KeycloakFiles{}, err
@@ -134,7 +142,7 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	// An existing HA data layer must never be implicitly replaced by a
 	// single-node PostgreSQL topology (or vice versa).
 	desiredTopology := "single"
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		desiredTopology = "ha"
 	}
 	if previous := values["BASEHARBOR_KEYCLOAK_TOPOLOGY"]; previous != "" && previous != desiredTopology {
@@ -165,7 +173,7 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		reserved := map[int]struct{}{publicPort: {}}
 		for ordinal := 1; ordinal <= 3; ordinal++ {
 			key := fmt.Sprintf("BASEHARBOR_KEYCLOAK_ETCD_PORT_%d", ordinal)
@@ -257,7 +265,7 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 		return KeycloakFiles{}, err
 	}
 	upstreams := []string{"https://keycloak-1:8443"}
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		upstreams = append(upstreams, "https://keycloak-2:8443", "https://keycloak-3:8443")
 	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
@@ -302,7 +310,7 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
 	files.PublicAccess = publicAccess
 	files.AdminAccess = adminAccess
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		if err := ensureKeycloakPostgresHA(files.Dir); err != nil {
 			return KeycloakFiles{}, fmt.Errorf("prepare Keycloak HA database routing: %w", err)
 		}
@@ -448,21 +456,21 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 
 	var b strings.Builder
 	b.WriteString("services:\n")
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		b.WriteString(keycloakHADataLayerCompose())
 	} else {
 		b.WriteString(keycloakSingleDataLayerCompose())
 	}
 	b.WriteString(member("keycloak-1"))
 	b.WriteString("\n")
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		b.WriteString(member("keycloak-2"))
 		b.WriteString("\n")
 		b.WriteString(member("keycloak-3"))
 		b.WriteString("\n")
 	}
 	upstreams := []string{"https://keycloak-1:8443"}
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		upstreams = append(upstreams, "https://keycloak-2:8443", "https://keycloak-3:8443")
 	}
 	frontendSpec := serviceaccess.HTTPGatewaySpec{
@@ -481,7 +489,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
 	}
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
 	b.WriteString("\nvolumes:\n")
-	if app.HA {
+	if application.ComponentHA(app, "identity") {
 		b.WriteString(keycloakHAVolumesCompose())
 	} else {
 		b.WriteString(keycloakSingleVolumesCompose())

@@ -13,6 +13,8 @@ type controlPlaneAvailability struct {
 	PostgresMembers int
 	PostgresEtcd    int
 	OpenBaoMembers  int
+	Helpers         int
+	ActualHA        bool
 	Satisfied       bool
 }
 
@@ -65,9 +67,15 @@ func evaluateControlPlaneAvailability(running []string, checks []health.Check, h
 		PostgresEtcd:    count("postgres-etcd", 3),
 		OpenBaoMembers:  count("openbao-member", 3),
 	}
+	for _, helper := range []string{"postgres", "postgres-admin", "postgres-init", "openbao", "openbao-admin"} {
+		if _, ok := runningSet[helper]; ok {
+			report.Helpers++
+		}
+	}
 	postgresSatisfied := report.PostgresMembers >= 2 && report.PostgresEtcd >= 2 && checkOK("postgres")
 	openBaoSatisfied := report.OpenBaoMembers >= 2 && checkOK("openbao")
 	report.Satisfied = postgresSatisfied && openBaoSatisfied
+	report.ActualHA = report.Satisfied
 	if !ha {
 		report.Satisfied = report.PostgresMembers == 1 && report.PostgresEtcd == 0 && report.OpenBaoMembers == 1 && checkOK("postgres") && checkOK("openbao")
 	}
@@ -75,8 +83,13 @@ func evaluateControlPlaneAvailability(running []string, checks []health.Check, h
 }
 
 func (r controlPlaneAvailability) Detail() string {
+	replicas := r.PostgresMembers - 1
+	if replicas < 0 {
+		replicas = 0
+	}
+	topology := fmt.Sprintf(" ha-requested=%t ha-active=%t data-members=postgresql:%d,openbao-sql:shared configured-replicas=postgresql:%d,openbao-sql:0 auxiliary-services=%d openbao-service-members=%d replication-proof=not-collected process-failover-capable=%t", r.HA, r.ActualHA, r.PostgresMembers, replicas, r.Helpers, r.OpenBaoMembers, r.ActualHA)
 	if !r.HA {
-		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied)
+		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied) + topology
 	}
 	return fmt.Sprintf(
 		"requested=ha resolved=postgresql:3,openbao:3 failure-domain=runtime-host host-failure-tolerance=false running=postgresql:%d/3,etcd:%d/3,openbao:%d/3 satisfied=%t",
@@ -84,5 +97,5 @@ func (r controlPlaneAvailability) Detail() string {
 		r.PostgresEtcd,
 		r.OpenBaoMembers,
 		r.Satisfied,
-	)
+	) + topology
 }

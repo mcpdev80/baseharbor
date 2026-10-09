@@ -440,15 +440,16 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 		return err
 	}
 	input := io.MultiReader(strings.NewReader(s.Password+"\n"), archive)
+	var diagnostics bytes.Buffer
 	const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
 exec pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error -h "$1" -U "$2" -d "$4"`
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
-		input, io.Discard, io.Discard, []string{s.Compose},
+		input, io.Discard, &diagnostics, []string{s.Compose},
 		"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database); err != nil {
 		// Even an error can follow an accepted server COMMIT. Keep sql_started
 		// until the database outcome is reconciled; never blindly repeat SQL.
-		return fmt.Errorf("%s SQL recovery outcome requires reconciliation: %w", s.Provider, err)
+		return fmt.Errorf("%s SQL recovery outcome requires reconciliation (%s): %w", s.Provider, classifyProviderRestoreFailure(diagnostics.String()), err)
 	}
 	if err := receipt.record("sql_started", "sql_restored"); err != nil {
 		return err
@@ -457,4 +458,15 @@ exec pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --e
 		return fmt.Errorf("%s configuration recovery after SQL restore: %w", s.Provider, err)
 	}
 	return receipt.record("sql_restored", "recovered")
+}
+
+// Return only fixed error classes; native database diagnostics can contain
+// protected row values and must never enter operator output or receipts.
+func classifyProviderRestoreFailure(diagnostics string) string {
+	for _, class := range []string{"must be owner of extension", "must be owner of schema", "must be owner of table", "permission denied", "unsupported version", "input file does not appear to be a valid archive", "could not read from input file", "connection refused", "database system is starting up"} {
+		if strings.Contains(strings.ToLower(diagnostics), class) {
+			return class
+		}
+	}
+	return "native restore failed; protected diagnostics withheld"
 }

@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,54 @@ import (
 )
 
 const recoveryHelperImage = "docker.io/library/alpine:3.22"
+
+// VerifyOwnedVolumeQuiesced checks actual native mounts across all projects.
+// Unrelated services may share a project label without sharing this datastore;
+// a foreign container mounting the datastore still prevents recovery.
+func (c Compose) VerifyOwnedVolumeQuiesced(ctx context.Context, project, volume string) error {
+	if project == "" || volume == "" {
+		return errors.New("owned volume identity required for quiescence verification")
+	}
+	owned, err := c.InspectProjectResource(ctx, project, ProjectResource{Kind: "volume", Name: volume})
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return errors.New("recovery datastore volume is not owned by the selected project")
+	}
+	listed, err := c.directOutput(ctx, "container", "ls", "-q")
+	if err != nil {
+		return err
+	}
+	ids := strings.Fields(listed)
+	if len(ids) == 0 {
+		return nil
+	}
+	args := append([]string{"container", "inspect", "--format", `{{json .Mounts}}`}, ids...)
+	output, err := c.directOutput(ctx, args...)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != len(ids) {
+		return errors.New("incomplete running container mount inventory")
+	}
+	for _, line := range lines {
+		var mounts []struct{ Type, Name string }
+		if err := json.Unmarshal([]byte(line), &mounts); err != nil {
+			return errors.New("invalid running container mount inventory")
+		}
+		for _, mount := range mounts {
+			if mount.Type == "volume" && mount.Name == "" {
+				return errors.New("running volume mount has no native identity")
+			}
+			if mount.Type == "volume" && mount.Name == volume {
+				return fmt.Errorf("owned recovery volume %s still has an active container consumer", volume)
+			}
+		}
+	}
+	return nil
+}
 
 // SeedOwnedVolume streams a verified native archive into an empty replacement
 // volume. It never deletes data and refuses a partial or previously used volume.

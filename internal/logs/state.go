@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
@@ -146,6 +147,17 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		return ProviderFiles{}, err
 	}
 	files := providerFiles(p)
+	single := "loki"
+	if p.Scope == capability.ScopeApplication {
+		single = "baseharbor-internal-loki"
+	}
+	if err := providertopology.RequireVariant(files.Compose, single, "loki-1", application.ComponentHA(m, "logs")); err != nil {
+		return ProviderFiles{}, err
+	}
+	req := application.AvailabilityIntent(m).Resolve("logs")
+	if req.Instances > 0 && ((req.HA && req.Instances != 3) || (!req.HA && req.Instances != 1)) {
+		return ProviderFiles{}, errors.New("Loki native topology cannot satisfy the requested instance override")
+	}
 	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, true)
 	if err != nil {
 		return ProviderFiles{}, err
