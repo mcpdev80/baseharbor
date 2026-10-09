@@ -10,6 +10,18 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+// verifiedNativeHAPostgresDelta may only be used after the native HA
+// coordinator has verified quorum and all three target image identities.
+// It satisfies central NoChange's strict immutable installed/desired match.
+func verifiedNativeHAPostgresDelta(delta coreupdate.Delta) coreupdate.Delta {
+	delta.Installed.Image = delta.Desired.Image
+	delta.Installed.Digest = delta.Desired.Digest
+	delta.Installed.Version = delta.Desired.Version
+	delta.Classification = coreupdate.NoChange
+	delta.Reason = ""
+	return delta
+}
+
 // rollOwnedCoreHAPostgres is the only admitted mutation for an owned HA SQL
 // delta. It verifies durable physical and isolated DCS recovery before
 // staging the new Spilo image or replacing any Patroni member.
