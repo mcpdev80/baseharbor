@@ -486,6 +486,7 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			return coreupdate.Plan{}, fmt.Errorf("Core %s runtime version is not explicit", item.kind)
 		}
 		v := ref[pos+1:]
+		peerImages := []bhruntime.ImageIdentity{id}
 		if state.Spec.HA {
 			base := strings.TrimSuffix(item.service, "1")
 			for ordinal := 2; ordinal <= 3; ordinal++ {
@@ -494,7 +495,9 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 				if peerErr != nil {
 					return coreupdate.Plan{}, fmt.Errorf("inspect required HA %s peer %s: %w", item.kind, peer, peerErr)
 				}
-				if peerIdentity.Reference != id.Reference || peerIdentity.Digest != id.Digest {
+				if item.kind == coreupdate.SQL {
+					peerImages = append(peerImages, peerIdentity)
+				} else if peerIdentity.Reference != id.Reference || peerIdentity.Digest != id.Digest {
 					return coreupdate.Plan{}, fmt.Errorf("HA %s peer %s image identity disagrees with primary realization", item.kind, peer)
 				}
 			}
@@ -516,10 +519,11 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 			if at := strings.Index(digest, "@sha256:"); at >= 0 {
 				digest = digest[at+1:]
 			}
-			backing = append(backing, coreupdate.ClassifyHAPostgresPin(
-				coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "shared", Instance: item.service, Owner: "baseharbor", Image: ref, Digest: digest, Version: v},
-				*haPin,
-			))
+			classified, classifyErr := classifyOwnedHAPostgresRollingInventory(ctx, state, targetVersion, peerImages, *haPin)
+			if classifyErr != nil {
+				return coreupdate.Plan{}, classifyErr
+			}
+			backing = append(backing, classified)
 			continue
 		}
 
