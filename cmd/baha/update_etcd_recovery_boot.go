@@ -145,9 +145,25 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 		var out strings.Builder
 		args := append([]string{"--endpoints=" + endpoint}, recovered.tlsArgs()...)
 		args = append(args, "endpoint", "status", "--write-out=json")
-		if err := recovered.run(ctx, "/usr/local/bin/etcdctl", &out, io.Discard, nil, args...); err != nil {
-			return fmt.Errorf("isolated etcd endpoint %s not ready: %w", endpoint, err)
+		// Compose Up only confirms processes were launched. After restoring
+		// three WAL snapshots an endpoint may need time to elect a leader;
+		// retry its authenticated status probe within a bounded window.
+		probeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		var probeErr error
+		for {
+			out.Reset()
+			probeErr = recovered.run(probeCtx, "/usr/local/bin/etcdctl", &out, io.Discard, nil, args...)
+			if probeErr == nil {
+				break
+			}
+			select {
+			case <-probeCtx.Done():
+				cancel()
+				return fmt.Errorf("isolated etcd endpoint %s not ready after bounded retries: %v: %w", endpoint, probeErr, probeCtx.Err())
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
+		cancel()
 		status, err := parseRuntimeEtcdStatus([]byte(out.String()))
 		if err != nil {
 			return err
