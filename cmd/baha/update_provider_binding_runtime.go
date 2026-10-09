@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
@@ -61,6 +63,70 @@ func (o *coreNativeRuntimeOps) stopSelected(ctx context.Context, files bhruntime
 	return o.runtime.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, []string{files.Compose}, services...)
 }
 
+func providerMemberMutations(delta coreupdate.Delta, services []string) map[string]coreupdate.Delta {
+	mutations := make(map[string]coreupdate.Delta, len(services))
+	for _, service := range services {
+		if strings.TrimSpace(service) == "" {
+			continue
+		}
+		memberDelta := delta
+		memberDelta.Installed.Instance = service
+		memberDelta.Desired.Instance = service
+		mutations[service] = memberDelta
+	}
+	return mutations
+}
+
+func (o *coreNativeRuntimeOps) waitKeycloakRollingMember(ctx context.Context, service, expectedDigest string) error {
+	if service == "" || expectedDigest == "" {
+		return errors.New("Keycloak rolling readiness requires member and pinned digest")
+	}
+	bounded, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		containers, err := o.runtime.ListRuntimeContainers(bounded)
+		if err == nil {
+			found := false
+			for _, container := range containers {
+				if container.Project != o.identity.Project || container.Service != service {
+					continue
+				}
+				found = true
+				if container.Running && !strings.EqualFold(container.Health, "unhealthy") {
+					image, imageErr := o.runtime.ProjectServiceImageIdentity(bounded, o.identity.Project, service)
+					if imageErr == nil {
+						digest := image.Digest
+						if index := strings.Index(digest, "@sha256:"); index >= 0 {
+							digest = digest[index+1:]
+						}
+						if digest == expectedDigest {
+							return nil
+						}
+						lastErr = fmt.Errorf("member %s digest %s does not match target", service, digest)
+					} else {
+						lastErr = imageErr
+					}
+				} else {
+					lastErr = fmt.Errorf("member %s is not running/healthy", service)
+				}
+			}
+			if !found {
+				lastErr = fmt.Errorf("member %s is not present in owned project", service)
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-bounded.Done():
+			return fmt.Errorf("Keycloak rolling member %s did not become ready: %v: %w", service, lastErr, bounded.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
 func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context, plan coreupdate.Plan, journalDir, engine string) (coreupdate.BoundProviderTransaction, error) {
 	openBaoDelta, err := providerDelta(plan, coreupdate.Secrets)
 	if err != nil {
@@ -110,8 +176,12 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	}
 	openBaoCompose := coreupdate.ComposeCheckpoint{Path: o.core.Compose, Directory: filepath.Join(journalDir, "compose-backups")}
 	keycloakCompose := coreupdate.ComposeCheckpoint{Path: o.identity.Compose, Directory: filepath.Join(journalDir, "compose-backups")}
-	openBaoMutations := map[string]coreupdate.Delta{openBaoDelta.Installed.Instance: openBaoDelta}
-	keycloakMutations := map[string]coreupdate.Delta{keycloakDelta.Installed.Instance: keycloakDelta}
+	openBaoMutations := providerMemberMutations(openBaoDelta, o.core.OpenBaoMembers())
+	keycloakServices := []string{keycloakDelta.Installed.Instance}
+	if o.core.HA {
+		keycloakServices = []string{"keycloak-1", "keycloak-2", "keycloak-3"}
+	}
+	keycloakMutations := providerMemberMutations(keycloakDelta, keycloakServices)
 
 	openBaoHooks := baoAdapter.RuntimeHooks{
 		UpgradePath: patchProviderUpgradePath,
@@ -182,16 +252,40 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 			return o.ReconcilePinned(ctx, keycloakDelta)
 		},
 		StopHA: func(context.Context) error {
-			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+			return errors.New("UNSUPPORTED: non-rolling Keycloak HA replacement is not admitted")
 		},
 		ApplyHA: func(context.Context, string, string, string) error {
-			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+			return errors.New("UNSUPPORTED: non-rolling Keycloak HA replacement is not admitted")
 		},
-		ReplaceMember: func(context.Context, string, string, string, string) error {
-			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		ReplaceMember: func(ctx context.Context, member, version, image, digest string) error {
+			if !o.core.HA {
+				return errors.New("Keycloak rolling member replacement requires HA topology")
+			}
+			if version != keycloakDelta.Desired.Version || image != keycloakDelta.Desired.Image || digest != keycloakDelta.Desired.Digest {
+				return errors.New("Keycloak rolling target differs from journaled Core delta")
+			}
+			allowed := false
+			for _, expected := range keycloakServices {
+				if member == expected {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return errors.New("Keycloak rolling member is not owned by the managed HA topology")
+			}
+			if err := keycloakCompose.Stage(keycloakMutations); err != nil {
+				return err
+			}
+			environment, err := bhruntime.RuntimeEnvironment(identityRuntime)
+			if err != nil {
+				return err
+			}
+			return o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, identityRuntime.Project, filepath.Dir(identityRuntime.Compose),
+				environment, []string{identityRuntime.Compose}, member)
 		},
-		WaitMember: func(context.Context, string) error {
-			return errors.New("UNSUPPORTED: Keycloak HA adapter requires rolling runtime binding")
+		WaitMember: func(ctx context.Context, member string) error {
+			return o.waitKeycloakRollingMember(ctx, member, keycloakDelta.Desired.Digest)
 		},
 		WaitAll: func(ctx context.Context) error {
 			_, err := o.inspectNativeKeycloakMember(ctx, keycloakDelta.Installed.Instance)
@@ -208,7 +302,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 			if version != keycloakDelta.Installed.Version {
 				return errors.New("Keycloak recovery version differs from journaled original")
 			}
-			if err := o.stopSelected(ctx, identityRuntime, keycloakDelta.Installed.Instance); err != nil {
+			if err := o.stopSelected(ctx, identityRuntime, keycloakServices...); err != nil {
 				return err
 			}
 			if err := keycloakBackup.restore(ctx, ref); err != nil {
