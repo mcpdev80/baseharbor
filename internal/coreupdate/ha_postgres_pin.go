@@ -33,7 +33,7 @@ func ClassifyHAPostgresPin(installed Realization, pin BackingPin) Delta {
 		strings.HasPrefix(installed.Image, "ghcr.io/zalando/spilo-18:") {
 		tag := strings.TrimPrefix(installed.Image, "ghcr.io/zalando/spilo-18:")
 		previous := BackingPin{Role: pin.Role, Version: "18-spilo-" + tag, Image: installed.Image, Digest: digest}
-		if safeSpiloTransition(previous, pin) && (installed.Image != pin.Image || digest != pin.Digest) {
+		if previous.Version != pin.Version && safeSpiloTransition(previous, pin) && installed.Image != pin.Image {
 			delta.Installed.Version = previous.Version
 			delta.Classification = BackupRequired
 			delta.Reason = "verified HA Spilo rolling update requires physical backup, DCS checkpoint and member journal"
