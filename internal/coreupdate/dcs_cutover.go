@@ -115,6 +115,19 @@ func (j DCSCutoverJournal) record(previous, next string) error {
 	return handle.Sync()
 }
 
+// dcsCutoverBinding uses unambiguous NUL separators. The prior literal
+// backslash-x-zero-zero separator could collide with user-controlled names.
+func dcsCutoverBinding(evidence DCSRecoveryEvidence) (string, error) {
+	fields := []string{evidence.Installation, evidence.Target, evidence.Cluster, evidence.Release, evidence.SnapshotID, evidence.SHA256}
+	for _, field := range fields {
+		if field == "" || strings.ContainsRune(field, '\x00') {
+			return "", errors.New("invalid DCS cutover identity field")
+		}
+	}
+	digest := sha256.Sum256([]byte(strings.Join(fields, "\x00")))
+	return hex.EncodeToString(digest[:]), nil
+}
+
 // RunVerifiedDCSCutover MUST only run after PostgreSQL physical recovery and
 // immutable DCS snapshot validation. A resumed 'prepared' state is ambiguous:
 // an interrupted fence may already be active, so require operator recovery.
@@ -126,8 +139,11 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	if err := VerifyDCSEvidence(ctx, adapter, evidence, installation, target, cluster, release); err != nil {
 		return err
 	}
-	identity := sha256.Sum256([]byte(evidence.Installation + "\\x00" + evidence.Target + "\\x00" + evidence.Cluster + "\\x00" + evidence.Release + "\\x00" + evidence.SnapshotID + "\\x00" + evidence.SHA256))
-	journal.binding = hex.EncodeToString(identity[:])
+	binding, err := dcsCutoverBinding(evidence)
+	if err != nil {
+		return err
+	}
+	journal.binding = binding
 	// Validate the private, non-symlink parent before creating even the
 	// exclusive lock. A writable foreign directory is not a safe lock root.
 	if journal.Path == "" {
