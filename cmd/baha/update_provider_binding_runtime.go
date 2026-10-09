@@ -261,6 +261,16 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 					environment, []string{o.core.Compose}, member); err != nil {
 					return fmt.Errorf("roll OpenBao member %s: %w", member, err)
 				}
+				// OpenBao may restart sealed. Unseal each restarted member before
+				// waiting for the unsealed-version readiness gate; deferring
+				// unseal until after the full roll would deadlock on a sealed node.
+				recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
+				if err != nil {
+					return err
+				}
+				if err := platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath); err != nil {
+					return fmt.Errorf("unseal OpenBao after rolling member %s: %w", member, err)
+				}
 				if err := o.waitOpenBaoRollingMember(ctx, member, openBaoDelta.Desired.Version, openBaoDelta.Desired.Digest); err != nil {
 					return err
 				}
