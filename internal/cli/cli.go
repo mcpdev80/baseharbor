@@ -278,7 +278,7 @@ func (c *Command) renderHelp(w io.Writer) {
 					}
 				}
 				if len(children) > 0 {
-					fmt.Fprintf(w, "\\n%s:\\n", group.Title)
+					fmt.Fprintf(w, "\n%s:\n", group.Title)
 					for _, child := range children {
 						writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name))
 					}
@@ -291,13 +291,13 @@ func (c *Command) renderHelp(w io.Writer) {
 				}
 			}
 			if len(advanced) > 0 {
-				fmt.Fprintln(w, "\\nAdvanced and operator commands:")
+				fmt.Fprintln(w, "\nAdvanced and operator commands:")
 				for _, child := range advanced {
 					writeWrapped(w, child.Summary, width, fmt.Sprintf("  %-14s  ", child.Name))
 				}
 			}
 		} else {
-			fmt.Fprintln(w, "\\nCommands:")
+			fmt.Fprintln(w, "\nCommands:")
 			nameWidth := 0
 			for _, child := range c.Children {
 				if !child.Hidden && len(child.Name) > nameWidth {
