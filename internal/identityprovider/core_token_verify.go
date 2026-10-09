@@ -47,7 +47,15 @@ func verifyCoreUserInfo(ctx context.Context, client *http.Client, adminURL, toke
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return errors.New("Keycloak bearer token rejected by OIDC userinfo")
+		reason := "unspecified"
+		challenge := response.Header.Get("WWW-Authenticate")
+		for _, code := range []string{"insufficient_scope", "invalid_token", "invalid_request"} {
+			if strings.Contains(challenge, code) {
+				reason = code
+				break
+			}
+		}
+		return fmt.Errorf("Keycloak bearer token rejected by OIDC userinfo: HTTP %d (%s)", response.StatusCode, reason)
 	}
 	var identity struct {
 		Subject  string `json:"sub"`

@@ -78,6 +78,17 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if os.Getenv("BASEHARBOR_PROVIDER_UPGRADE_ACCEPTANCE") != "1" {
 		t.Skip("requires isolated rootless Docker/Podman provider acceptance")
 	}
+	runCoreProviderVersionsRuntimeAcceptance(t, false)
+}
+
+func TestCoreHAOpenBaoVersionsRuntimeAcceptance(t *testing.T) {
+	if os.Getenv("BASEHARBOR_HA_OPENBAO_UPGRADE_ACCEPTANCE") != "1" {
+		t.Skip("requires isolated rootless HA OpenBao upgrade acceptance")
+	}
+	runCoreProviderVersionsRuntimeAcceptance(t, true)
+}
+
+func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	engine := os.Getenv("BASEHARBOR_TEST_RUNTIME")
 	if engine == "" {
 		engine = "docker"
@@ -143,10 +154,10 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
+	opts := runtimeUpOptions{Yes: true, HA: ha, ControlPlaneOnly: true, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
 	var files bhruntime.Files
 	var output runtimeAcceptanceOutput
-	state, err := coreinstallation.Run(ctx, root, coreinstallation.Spec{Target: target.Name, Runtime: engine, MachineRole: coreinstallation.Development}, coreinstallation.Steps{
+	state, err := coreinstallation.Run(ctx, root, coreinstallation.Spec{Target: target.Name, Runtime: engine, MachineRole: coreinstallation.Development, HA: ha}, coreinstallation.Steps{
 		Preflight: func(context.Context, coreinstallation.State) error { return nil },
 		SQL: func(ctx context.Context, _ coreinstallation.State) error {
 			if err := runtimeUpGuidedProviders(ctx, strings.NewReader(""), &output, opts); err != nil {
@@ -161,11 +172,19 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			selected := []string{"postgres-member-1", "openbao-member-1"}
+			selected := append([]string(nil), files.OpenBaoMembers()...)
+			images := map[string]string{}
+			for _, member := range files.OpenBaoMembers() {
+				images[member] = providerBaselineBao
+			}
+			if !ha {
+				selected = append(selected, "postgres-member-1")
+				images["postgres-member-1"] = providerBaselineSQL
+			}
 			if err := rt.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), env, selected, files.Compose); err != nil {
 				return err
 			}
-			if err := setProviderBaseline(files.Compose, map[string]string{"postgres-member-1": providerBaselineSQL, "openbao-member-1": providerBaselineBao}); err != nil {
+			if err := setProviderBaseline(files.Compose, images); err != nil {
 				return err
 			}
 			if err := rt.UpProjectFilesSelectedForceRecreateNoBuild(ctx, files.Project, filepath.Dir(files.Compose), env, selected, files.Compose); err != nil {
@@ -180,6 +199,9 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 			return ensureRepositoryOpenBaoReady(ctx, strings.NewReader(""), &output, io.Discard, opts)
 		},
 		Identity: func(ctx context.Context, s coreinstallation.State) (string, error) {
+			if ha {
+				return identityprovider.EnsureCoreIdentity(ctx, rt, platformopenbao.NewServiceIssuer(rt, files), dataDir, target.Name, s.ID, true)
+			}
 			return identityprovider.EnsureCoreIdentity(ctx, baselineIdentityRuntime{rt}, platformopenbao.NewServiceIssuer(rt, files), dataDir, target.Name, s.ID)
 		},
 		Verify: func(ctx context.Context, s coreinstallation.State) error {
@@ -200,6 +222,12 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	}
 	for _, kind := range []coreupdate.ProviderKind{coreupdate.SQL, coreupdate.Secrets, coreupdate.Identity} {
 		d, err := providerDelta(plan, kind)
+		if ha && kind != coreupdate.Secrets {
+			if err != nil || d.Classification != coreupdate.NoChange {
+				t.Fatalf("HA gate must only upgrade OpenBao: %s %+v %v", kind, d, err)
+			}
+			continue
+		}
 		if err != nil || d.Classification == coreupdate.NoChange || d.Classification == coreupdate.Unsupported {
 			t.Fatalf("missing genuine %s version delta: %+v %v", kind, d, err)
 		}
@@ -248,6 +276,14 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 		}
 	}
 	checkApplication()
+	if ha {
+		runHAOpenBaoUpgradeRecovery(t, ctx, ops, plan, engine, checkApplication, func() {
+			if err := platformopenbao.SetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER", []byte("post-backup-value")); err != nil {
+				t.Fatal(err)
+			}
+		})
+		return
+	}
 	checkIdentity, changeIdentityUser := providerFixtureIdentity(t, ctx, ops)
 	beforeSQL := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num")
 	providerFixtureSQL(t, ctx, ops, false, "CREATE TABLE public.baseharbor_upgrade_marker(value text NOT NULL); INSERT INTO public.baseharbor_upgrade_marker VALUES ('before-upgrade')")
@@ -404,4 +440,57 @@ func providerFixtureSQLCredentials(t *testing.T, ctx context.Context, files bhru
 		t.Fatal("provider fixture SQL failed")
 	}
 	return strings.TrimSpace(result.String())
+}
+
+// Only the changed HA OpenBao adapter is qualified here. SQL/DCS cutover
+// evidence remains attached to its prior green run and is not repeated.
+func runHAOpenBaoUpgradeRecovery(t *testing.T, ctx context.Context, ops *coreNativeRuntimeOps, plan coreupdate.Plan, engine string, checkApplication, changeSecret func()) {
+	t.Helper()
+	if len(ops.core.OpenBaoMembers()) != 3 {
+		t.Fatal("HA gate requires three OpenBao members")
+	}
+	d, err := providerDelta(plan, coreupdate.Secrets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryDir := filepath.Join(t.TempDir(), "ha-openbao-recovery")
+	ops.receiptPath = filepath.Join(recoveryDir, "receipts.json")
+	bound, err := ops.buildBoundProviderTransaction(ctx, plan, recoveryDir, engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks := bound.Hooks()
+	if err := hooks.RecoveryPoint(ctx, d); err != nil {
+		t.Fatalf("HA OpenBao verified SQL backup: %v", err)
+	}
+	if err := reconcileNativeCoreProviders(ctx, "v0.4.24"); err != nil {
+		t.Fatalf("productive HA OpenBao rolling upgrade: %v", err)
+	}
+	for _, member := range ops.core.OpenBaoMembers() {
+		if err := ops.waitOpenBaoRollingMember(ctx, member, d.Desired.Version, d.Desired.Digest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkApplication()
+	t.Log("All three HA OpenBao members upgraded to pinned image, initialized and unsealed; real application SQL/AppRole/KV access preserved")
+	changeSecret()
+	if err := ops.stopSelected(ctx, ops.core, ops.core.OpenBaoMembers()...); err != nil {
+		t.Fatal(err)
+	}
+	if err := hooks.Verify(ctx, d); err == nil {
+		t.Fatal("stopped HA OpenBao escaped verification")
+	}
+	if err := hooks.Recover(ctx, d, "verify_failed"); err != nil {
+		t.Fatalf("productive HA OpenBao SQL/config/image recovery: %v", err)
+	}
+	for _, member := range ops.core.OpenBaoMembers() {
+		if err := ops.waitOpenBaoRollingMember(ctx, member, d.Installed.Version, d.Installed.Digest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkApplication()
+	if err := ops.VerifySemantics(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("HA OpenBao failure recovery restored original pinned image on all three members, SQL-backed KV state and real application access")
 }
