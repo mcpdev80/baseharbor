@@ -38,6 +38,18 @@ services:
       - postgres-etcd-data-3:/etcd-data
       - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
 
+  postgres-etcd-recovery:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    profiles: ["recovery"]
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/usr/local/bin/etcdctl"]
+    volumes:
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700
+
   postgres-member-1:
     image: ghcr.io/zalando/spilo-18:4.1-p2
     hostname: postgres-member-1
