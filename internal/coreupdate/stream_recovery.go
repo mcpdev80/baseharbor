@@ -71,6 +71,19 @@ func (p StreamRecoveryPoint) Verify() error {
 	return nil
 }
 
+// OpenVerified opens the immutable backup only after checksum, ownership and
+// regular-file validation. Callers must close the returned handle.
+func (p StreamRecoveryPoint) OpenVerified() (*os.File, error) {
+	if err := p.Verify(); err != nil {
+		return nil, err
+	}
+	path, _, err := p.paths()
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(path)
+}
+
 func (p StreamRecoveryPoint) Capture(ctx context.Context, source func(context.Context, io.Writer) error) error {
 	path, checksumPath, err := p.paths()
 	if err != nil {
