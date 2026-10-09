@@ -115,10 +115,10 @@ func createAll(f Files, serverNames []string) error {
 	}
 	ca := &x509.Certificate{
 		SerialNumber: serial,
-		Subject: pkix.Name{CommonName: "BaseHarbor etcd DCS CA"},
-		NotBefore: now.Add(-5 * time.Minute),
-		NotAfter: now.Add(caLifetime),
-		IsCA: true, BasicConstraintsValid: true,
+		Subject:      pkix.Name{CommonName: "BaseHarbor etcd DCS CA"},
+		NotBefore:    now.Add(-5 * time.Minute),
+		NotAfter:     now.Add(caLifetime),
+		IsCA:         true, BasicConstraintsValid: true,
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
@@ -146,11 +146,11 @@ func issueLeaves(f Files, serverNames []string, ca *x509.Certificate, caKey *ecd
 	}
 	server := &x509.Certificate{
 		SerialNumber: serverSerial,
-		Subject: pkix.Name{CommonName: "baseharbor-etcd-member"},
-		NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(leafLifetime),
-		DNSNames: append([]string(nil), serverNames...),
+		Subject:      pkix.Name{CommonName: "baseharbor-etcd-member"},
+		NotBefore:    now.Add(-5 * time.Minute), NotAfter: now.Add(leafLifetime),
+		DNSNames:    append([]string(nil), serverNames...),
 		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
-		KeyUsage: x509.KeyUsageDigitalSignature,
+		KeyUsage:    x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
 	serverDER, err := x509.CreateCertificate(rand.Reader, server, ca, &serverKey.PublicKey, caKey)
@@ -167,7 +167,7 @@ func issueLeaves(f Files, serverNames []string, ca *x509.Certificate, caKey *ecd
 	}
 	client := &x509.Certificate{
 		SerialNumber: clientSerial,
-		Subject: pkix.Name{CommonName: "baseharbor-etcd-recovery-client"},
+		Subject:      pkix.Name{CommonName: "baseharbor-etcd-recovery-client"},
 		NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(leafLifetime),
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
