@@ -58,6 +58,28 @@ func TestNativeOneOffRejectsUnboundedOptionsAndUndeclaredServices(t *testing.T) 
 	}
 }
 
+func TestNativeOneOffSQLStreamsAcceptNoTTYWithoutAllocatingTerminal(t *testing.T) {
+	for _, option := range []string{"-T", "--no-TTY"} {
+		request, err := parseNativeOneOff([]string{"--rm", "--no-deps", option, "sql-tool", "pg_restore", "--list"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		model := quadletComposeProject{Services: map[string]quadletComposeService{"sql-tool": {Image: "postgres:18"}}, Networks: map[string]quadletComposeResource{"default": {}}}
+		args, _, _, err := nativeOneOffArgs("core", "/owned/compose.yaml", model, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, arg := range args {
+			if arg == "-t" || arg == "--tty" || arg == option {
+				t.Fatal("non-TTY SQL backup/restore was assigned a terminal or unsupported native flag")
+			}
+		}
+		if got := strings.Join(args, " "); !strings.Contains(got, "run --rm -i") || !strings.Contains(got, "pg_restore --list") {
+			t.Fatalf("SQL stream or command lost: %s", got)
+		}
+	}
+}
+
 func TestNativeOneOffOverridesMountWithoutPublishingPortsOrStartingDependencies(t *testing.T) {
 	model := quadletComposeProject{Services: map[string]quadletComposeService{"tool": {
 		Image: "tool:1", Volumes: []string{"original:/data", "./pki:/pki:ro"}, Ports: []string{"5432:5432"},

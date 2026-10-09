@@ -45,7 +45,7 @@ func VerifyUpgradeManagerPolicyAndAppRole(ctx context.Context, executor Executor
 	}
 	capsJSON, err := execWithToken(ctx, executor, files, token, "exec bao token capabilities -format=json sys/policies/acl/baseharbor-app-upgrade-probe")
 	if err != nil {
-		return errors.New("OpenBao manager application-policy authorization failed")
+		return errors.New("OpenBao manager application-policy authorization failed: manager policy must permit update on sys/capabilities-self; reconcile the policy with an authorized administrator before retrying")
 	}
 	if err := verifyUpgradePolicyCapabilities(capsJSON); err != nil {
 		return err

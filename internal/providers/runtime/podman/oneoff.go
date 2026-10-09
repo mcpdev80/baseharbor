@@ -31,6 +31,9 @@ func parseNativeOneOff(args []string) (nativeOneOffRequest, error) {
 			rm = true
 		case "--no-deps":
 			noDeps = true
+		case "-T", "--no-TTY":
+			// Native one-off tools already use stdin without allocating a TTY;
+			// preserve byte-exact SQL dump/restore streams from Compose callers.
 		case "--user", "--entrypoint", "-v", "--volume":
 			if len(args) == 0 || args[0] == "" {
 				return r, errors.New("missing native one-off option value")
