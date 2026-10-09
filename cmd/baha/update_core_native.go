@@ -532,6 +532,9 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 		if filesErr != nil {
 			return fmt.Errorf("inspect HA Core runtime files: %w", filesErr)
 		}
+		if securityErr := verifyCoreHADCSSecurity(files); securityErr != nil {
+			return securityErr
+		}
 		members, inspectErr := inspectPatroniMembers(ctx, runtime, files)
 		if inspectErr != nil {
 			return fmt.Errorf("inspect HA Patroni members: %w", inspectErr)
