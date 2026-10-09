@@ -137,3 +137,22 @@ func TestDCSCutoverNeverReplaysAmbiguousCommittedPhase(t *testing.T) {
 		t.Fatalf("ambiguous commit was automatically replayed: %v", ops.calls[before:])
 	}
 }
+
+func TestDCSCutoverRejectsUnsafeLockParentWithoutCreatingLock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "cutover")
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, DCSCutoverJournal{Path: path}); err == nil {
+		t.Fatal("unsafe lock root admitted")
+	}
+	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("foreign lock root was modified: %v", err)
+	}
+	if len(ops.calls) != 0 {
+		t.Fatalf("cutover mutated runtime before safe lock: %v", ops.calls)
+	}
+}
