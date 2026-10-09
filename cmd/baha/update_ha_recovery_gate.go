@@ -100,8 +100,12 @@ func prepareCoreHARecoveryEvidence(ctx context.Context, rt bhruntime.RuntimeProv
 	if err != nil {
 		return fmt.Errorf("bind etcd DCS recovery adapter: %w", err)
 	}
-	if _, err := (coreupdate.DCSCheckpoint{Path: filepath.Join(journalDir, "dcs-recovery.json")}).Acquire(ctx, bridge, state.ID, targetName, bridge.Store.Identity.Cluster, release); err != nil {
+	ev, err := (coreupdate.DCSCheckpoint{Path: filepath.Join(journalDir, "dcs-recovery.json")}).Acquire(ctx, bridge, state.ID, targetName, bridge.Store.Identity.Cluster, release)
+	if err != nil {
 		return fmt.Errorf("capture and verify etcd DCS recovery evidence: %w", err)
+	}
+	if err := captureCoreHARecoverySource(ctx, rt, files, journalDir, leader, ev); err != nil {
+		return err
 	}
 	after, err := inspectPatroniMembers(ctx, rt, files)
 	if err != nil {

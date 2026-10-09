@@ -20,6 +20,9 @@ type EtcdDCSBridge struct {
 	// VerifyRecoveredCluster must attest isolated etcd startup, authenticated
 	// cluster identity, quorum and Patroni DCS readiness. File presence is insufficient.
 	VerifyRecoveredCluster func(context.Context, etcdbackup.Identity, etcdbackup.SnapshotInfo) error
+	// LiveRestore is bound only by an explicit, lifecycle-locked recovery
+	// request. Ordinary snapshot validation never authorizes live replacement.
+	LiveRestore func(context.Context, DCSRecoveryEvidence) error
 }
 
 func (b *EtcdDCSBridge) evidence(m etcdbackup.Metadata) DCSRecoveryEvidence {
@@ -94,6 +97,9 @@ func (b *EtcdDCSBridge) Restore(ctx context.Context, ev DCSRecoveryEvidence) err
 	}
 	if err := b.Validate(ctx, ev); err != nil {
 		return err
+	}
+	if b.LiveRestore != nil {
+		return b.LiveRestore(ctx, ev)
 	}
 	// Destructive live-cluster replacement is never implied by this API.
 	return errors.New("UNSUPPORTED: online DCS replacement requires fenced member lifecycle and isolated restore cutover proof")

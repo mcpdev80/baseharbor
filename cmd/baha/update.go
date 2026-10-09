@@ -63,6 +63,7 @@ type selfUpdateCheck struct {
 
 type selfUpdateOptions struct {
 	Check   bool
+	Recover bool
 	Yes     bool
 	Channel string
 	Version string
@@ -72,8 +73,8 @@ func updateCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "update",
 		Summary: "Safely inspect or update BaseHarbor itself",
-		Usage:   "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]",
-		Long:    "Checks or installs published BaseHarbor releases. Stable is the default channel; prereleases are considered only when --channel rc or an explicit prerelease --version is supplied. Mutation requires --yes, verifies release checksums and the candidate binary before replacement, retains a recovery binary, and verifies the updated CLI/runtime before reporting success.",
+		Usage:   "baha update [--check] [--yes] [--channel stable|rc | --version VERSION] [--recover]",
+		Long:    "Checks or installs published BaseHarbor releases. Stable is the default channel; prereleases are considered only when --channel rc or an explicit prerelease --version is supplied. Mutation requires --yes, verifies release checksums and the candidate binary before replacement, retains a recovery binary, and verifies the updated CLI/runtime before reporting success. --recover --version VERSION --yes explicitly restores the owned Core HA PostgreSQL and DCS to that update's verified backup point, retains displaced volumes, and does not replace the CLI. Transactions after that backup point are not included.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "update")
 			if err != nil {
@@ -86,6 +87,10 @@ func updateCommand() *cli.Command {
 			opts, err := parseSelfUpdateOptions(args)
 			if err != nil {
 				return err
+			}
+			if opts.Recover {
+				fmt.Fprintln(out, "Restoring owned Core HA PostgreSQL and DCS to the selected update backup point; newer transactions are not part of that point. Displaced data volumes are retained.")
+				return recoverNativeCoreHA(ctx, opts.Version, out)
 			}
 			check, err := inspectSelfUpdate(ctx, version, opts)
 			if err != nil {
@@ -112,6 +117,8 @@ func parseSelfUpdateOptions(args []string) (selfUpdateOptions, error) {
 	channelSet := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--recover":
+			opts.Recover = true
 		case "--check":
 			opts.Check = true
 		case "--yes", "-y":
@@ -141,6 +148,9 @@ func parseSelfUpdateOptions(args []string) (selfUpdateOptions, error) {
 	}
 	if opts.Check && opts.Yes {
 		return selfUpdateOptions{}, usageError("--check and --yes cannot be combined", "Use --check for a read-only inspection or --yes to perform the update.")
+	}
+	if opts.Recover && (!opts.Yes || opts.Check || opts.Version == "" || channelSet) {
+		return selfUpdateOptions{}, usageError("HA point-in-time recovery requires --recover --version VERSION --yes", "Recovery restores the selected update backup point, retains displaced volumes, and does not update the CLI.")
 	}
 	return opts, nil
 }

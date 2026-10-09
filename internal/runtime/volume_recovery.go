@@ -5,11 +5,47 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
 
 const recoveryHelperImage = "docker.io/library/alpine:3.22"
+
+// SeedOwnedVolume streams a verified native archive into an empty replacement
+// volume. It never deletes data and refuses a partial or previously used volume.
+// The caller supplies the inventoried, digest-pinned image containing GNU tar.
+func (c Compose) SeedOwnedVolume(ctx context.Context, project, volume, image, subdir, owner string, archive io.Reader) error {
+	if project == "" || volume == "" || !strings.Contains(image, "@sha256:") || archive == nil ||
+		(subdir != "pgdata" && subdir != "") {
+		return errors.New("invalid owned replacement volume seed")
+	}
+	for _, part := range strings.Split(owner, ":") {
+		if part == "" || strings.Trim(part, "0123456789") != "" {
+			return errors.New("invalid replacement volume owner")
+		}
+	}
+	owned, err := c.InspectProjectResource(ctx, project, ProjectResource{Kind: "volume", Name: volume})
+	if err != nil || !owned {
+		return fmt.Errorf("replacement volume ownership unverified: %s: %w", volume, err)
+	}
+	const script = `test -z "$(find /data -mindepth 1 -maxdepth 1 -print -quit)"
+destination=/data
+if [ -n "$1" ]; then destination=/data/$1; mkdir "$destination"; fi
+tar --no-same-owner -C "$destination" -xf -
+chmod 0700 /data "$destination"
+chown -R "$2" /data
+sync`
+	cmd := exec.CommandContext(ctx, c.command, "run", "--rm", "-i", "--read-only", "--cap-drop", "ALL",
+		"--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--security-opt", "no-new-privileges:true",
+		"-v", volume+":/data", "--entrypoint", "/bin/sh", image, "-ceu", script, "--", subdir, owner)
+	cmd.Stdin = archive
+	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("seed empty owned replacement volume %s: %w", volume, err)
+	}
+	return nil
+}
 
 func (c Compose) ExportOwnedVolume(ctx context.Context, project, volume string) ([]byte, error) {
 	project = strings.TrimSpace(project)

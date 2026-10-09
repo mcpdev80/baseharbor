@@ -145,7 +145,7 @@ func TestSelfUpdateCommandIsDiscoverableAndMutationRequiresConfirmation(t *testi
 			continue
 		}
 		updateFound = true
-		if child.Usage != "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]" {
+		if child.Usage != "baha update [--check] [--yes] [--channel stable|rc | --version VERSION] [--recover]" {
 			t.Fatalf("unexpected update usage: %s", child.Usage)
 		}
 

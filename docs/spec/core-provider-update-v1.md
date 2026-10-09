@@ -29,6 +29,16 @@ A PostgreSQL major version change is currently unsupported by the generic planne
 7. Resume incomplete owned state idempotently. Never promise rollback for irreversible data migrations.
 8. Report success only when every affected realization and Core semantics verify successfully.
 
+## Explicit HA point recovery
+
+`baha update --recover --version VERSION --yes` restores the selected owned Core's PostgreSQL and etcd DCS to the verified update backup point. It does not install a release or replace the CLI. Transactions after that backup point are not included; an update failure never triggers this data rewind automatically.
+
+Recovery holds the Core lifecycle lock, validates Core/Target/release identity, checks immutable physical and DCS artifacts, and rejects credential/environment drift. PostgreSQL writers are stopped before the old DCS. The new DCS starts from the verified isolated restore; the PostgreSQL primary is seeded through a stream into a separate owned volume, and replicas rebuild into separate empty volumes. Actual mounts, mTLS DCS identity/quorum, SQL authentication, Patroni health and replication must verify before commit. Original volumes and the prior manifest are retained.
+
+A committed replay verifies the active cluster without recreating members or replaying extraction. Ambiguous fencing, partial volume seeding or interrupted commit requires reconciliation; it never reactivates both old and new data. A subsequent update uses a new transaction directory without renaming the active DCS bind directories. Existing plaintext DCS installations and PostgreSQL major migrations remain unsupported.
+
+The isolated acceptance gate exercises replica-first replacement and switchover with the same pinned image, a failed replica, real PostgreSQL WAL/SQL restoration, live DCS cutover, original-volume preservation and committed replay. This does not by itself certify compatibility of another Spilo/PostgreSQL image or a full provider-version migration.
+
 ## Human and machine parity
 
 `baha update --check`, human update output, JSON, MCP and protected HTTP must be projections of the same plan/result domain. The existing self-update implementation only handles binary/release assets and MUST NOT report a complete Core upgrade until the provider update integration and semantic verification are present.

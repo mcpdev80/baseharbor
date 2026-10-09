@@ -29,6 +29,16 @@ Ein PostgreSQL-Major-Upgrade bleibt für den allgemeinen Planer nicht unterstüt
 7. Unvollständige eigene Zustände idempotent fortsetzen. Kein Rollback-Versprechen für irreversible Datenmigrationen.
 8. Erfolg erst nach Verifikation aller betroffenen Realisierungen melden.
 
+## Explizite HA-Wiederherstellung
+
+`baha update --recover --version VERSION --yes` stellt PostgreSQL und den etcd-DCS des ausgewählten eigenen Cores auf den verifizierten Update-Backup-Zeitpunkt zurück. Dabei wird weder ein Release installiert noch die CLI ersetzt. Transaktionen nach diesem Backup-Zeitpunkt sind nicht enthalten; ein Updatefehler löst diese Datenrücksetzung niemals automatisch aus.
+
+Die Wiederherstellung hält den Core-Lifecycle-Lock, prüft Core-/Target-/Release-Identität und unveränderliche physische sowie DCS-Artefakte und lehnt veränderte Credentials beziehungsweise Umgebungswerte ab. PostgreSQL-Schreiber werden vor dem alten DCS gestoppt. Der neue DCS startet aus dem verifizierten isolierten Restore; die PostgreSQL-Primary wird per Stream in ein separates eigenes Volume eingespielt, Replikas werden in separaten leeren Volumes neu aufgebaut. Tatsächliche Mounts, mTLS-DCS-Identität und Quorum, SQL-Authentifizierung, Patroni-Gesundheit und Replikation müssen vor dem Commit verifiziert sein. Originalvolumes und bisheriges Manifest bleiben erhalten.
+
+Ein Wiederanlauf nach abgeschlossenem Commit verifiziert den aktiven Cluster ohne Member-Neuerstellung oder erneute Extraktion. Mehrdeutiges Fencing, teilweise eingespielte Volumes oder ein unterbrochener Commit erfordern Abgleich; alte und neue Daten werden niemals gleichzeitig reaktiviert. Ein späteres Update verwendet ein neues Transaktionsverzeichnis, ohne die aktiven DCS-Bind-Verzeichnisse umzubenennen. Bestehende Klartext-DCS-Installationen und PostgreSQL-Major-Migrationen bleiben nicht unterstützt.
+
+Das isolierte Acceptance-Gate prüft Replica-first-Neuerstellung und Switchover mit demselben gepinnten Image, eine ausgefallene Replika, tatsächliche PostgreSQL-WAL-/SQL-Wiederherstellung, Live-DCS-Cutover, Originalvolume-Erhalt und Wiederanlauf nach Commit. Dies zertifiziert für sich allein weder die Kompatibilität eines anderen Spilo-/PostgreSQL-Images noch eine vollständige Provider-Versionsmigration.
+
 ## Human- und Machine-Parität
 
 `baha update --check`, CLI-Ausgabe, JSON, MCP und geschütztes HTTP müssen dieselbe Plan-/Ergebnisdomäne abbilden. Das bisherige Self-Update für Binary-/Release-Artefakte darf ohne Provider-Update-Integration kein vollständiges Core-Upgrade behaupten.
