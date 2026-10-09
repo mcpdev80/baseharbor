@@ -122,6 +122,8 @@ func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, 
 		version := ref[index+1:]
 		if stateVersion == "" {
 			stateVersion = version
+		} else if version != stateVersion {
+			return keycloakadapter.State{}, fmt.Errorf("Keycloak managed HA members disagree on image version: %s reports %s, expected %s", expected, version, stateVersion)
 		}
 		members = append(members, keycloakadapter.Member{Name: expected, Version: version, Ready: true})
 	}
