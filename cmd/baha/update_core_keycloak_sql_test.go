@@ -24,7 +24,7 @@ func TestNativeKeycloakSQLVerificationUsesAppRoleAndTrustedTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	argv := strings.Join(runtime.args, " ")
-	if runtime.service != "keycloak-db" || !strings.Contains(argv, "verify-full") || !strings.Contains(argv, "keycloak_app") || !strings.Contains(argv, "keycloak") || !strings.Contains(runtime.input, password) {
+	if runtime.service != "keycloak-db" || !strings.Contains(argv, "verify-full") || !strings.Contains(argv, "keycloak_app") || !strings.Contains(argv, "public.realm") || !strings.Contains(argv, "public.client") || !strings.Contains(runtime.input, password) {
 		t.Fatalf("Keycloak owned TLS SQL probe missing: service=%s args=%v", runtime.service, runtime.args)
 	}
 	if strings.Contains(argv, password) {
