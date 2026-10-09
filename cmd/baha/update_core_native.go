@@ -107,8 +107,12 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
  case coreupdate.Secrets:
   adapter:=baoAdapter.New(&baoAdapter.NativeOps{Executor:o.runtime,Files:o.core,Owner:"baseharbor",
    Hooks:baoAdapter.RuntimeHooks{UpgradePath:patchOnly}})
-  _,err:=adapter.Preflight(ctx,request)
-  return err
+  assessment,err:=adapter.Preflight(ctx,request)
+  if err!=nil{return err}
+  if assessment.Classification!=providerupgrade.ClassificationSupported||!assessment.BackupRequired{
+   return errors.New("UNSUPPORTED: OpenBao mutation requires verified provider-adapter backup admission")
+  }
+  return nil
  case coreupdate.Identity:
   adapter:=keycloakadapter.New(&keycloakadapter.NativeOps{
    DataDir:o.dataDir,Namespace:o.target,InstallationID:o.installation,ExpectedIssuer:o.issuer,
@@ -117,8 +121,12 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
     Compatibility:patchOnly,
    },
   })
-  _,err:=adapter.Preflight(ctx,request)
-  return err
+  assessment,err:=adapter.Preflight(ctx,request)
+  if err!=nil{return err}
+  if assessment.Classification!=providerupgrade.ClassificationSupported||!assessment.BackupRequired{
+   return errors.New("UNSUPPORTED: Keycloak mutation requires verified provider-adapter backup admission")
+  }
+  return nil
  }
  return nil
 }
