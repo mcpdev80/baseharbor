@@ -476,9 +476,15 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			if err := rollOwnedCoreHAPostgres(ctx, runtime, coreFiles, delta, state.ID, target.Name, release, journalDir); err != nil {
 				return err
 			}
-			// Never send a live HA database through the generic quiesce/volume
-			// transaction: its members have been rolled and checked separately.
+			// The native rolling coordinator has verified all live target
+			// images and quorum. Reflect that proven realization before the
+			// central journal checks the strict NoChange identity invariant.
+			// Never send live HA SQL through generic quiesce/volume recovery.
+			plan.Deltas[i].Installed.Image = delta.Desired.Image
+			plan.Deltas[i].Installed.Digest = delta.Desired.Digest
+			plan.Deltas[i].Installed.Version = delta.Desired.Version
 			plan.Deltas[i].Classification = coreupdate.NoChange
+			plan.Deltas[i].Reason = ""
 		}
 	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
