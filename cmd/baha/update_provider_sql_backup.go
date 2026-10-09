@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"context"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -198,6 +199,59 @@ func (s providerSQLBackupSpec) verifyConfigurationArchive() error {
 	return nil
 }
 
+// restoreConfiguration replays only the original, explicitly bound file list.
+// Verify the entire archive before replacing any file. Each replacement is
+// written privately and atomically renamed, so an interrupted run can replay
+// the same verified archive without trusting current provider configuration.
+func (s providerSQLBackupSpec) restoreConfiguration(ctx context.Context) error {
+	if err := s.verifyConfigurationArchive(); err != nil { return err }
+	archive, err := s.configPoint().OpenVerified()
+	if err != nil { return err }
+	defer archive.Close()
+	tr := tar.NewReader(archive)
+	type entry struct { path string; data []byte; mode os.FileMode }
+	entries := make([]entry, 0, len(s.ConfigPaths))
+	for i, path := range s.ConfigPaths {
+		if err := ctx.Err(); err != nil { return err }
+		header, err := tr.Next()
+		if err != nil { return fmt.Errorf("missing provider configuration entry %d: %w", i, err) }
+		if header.Name != strconv.Itoa(i) || header.Typeflag != tar.TypeReg || header.Size < 0 || header.Size > 4<<20 || header.Mode & 0022 != 0 { return errors.New("unsafe provider configuration archive member") }
+		if !filepath.IsAbs(path) { return errors.New("provider configuration destination must be absolute") }
+		st, err := os.Lstat(path)
+		if err != nil { return err }
+		if !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0022 != 0 { return errors.New("foreign provider configuration destination") }
+		data, err := io.ReadAll(io.LimitReader(tr, 4<<20+1))
+		if err != nil { return err }
+		if int64(len(data)) != header.Size { return errors.New("incomplete provider configuration content") }
+		entries = append(entries, entry{path: path, data: data, mode: st.Mode().Perm()})
+	}
+	if _, err := tr.Next(); !errors.Is(err, io.EOF) { return errors.New("unexpected trailing provider configuration entry") }
+	for _, item := range entries {
+		if err := ctx.Err(); err != nil { return err }
+		st, err := os.Lstat(item.path)
+		if err != nil || !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0022 != 0 { return errors.New("provider configuration destination changed during recovery") }
+		if bytes.Equal(item.data, mustReadProviderRecoveryFile(item.path)) { continue }
+		tmp, err := os.CreateTemp(filepath.Dir(item.path), ".provider-recover-*")
+		if err != nil { return err }
+		defer os.Remove(tmp.Name())
+		if err := tmp.Chmod(item.mode); err != nil { tmp.Close(); return err }
+		if _, err := tmp.Write(item.data); err != nil { tmp.Close(); return err }
+		if err := tmp.Sync(); err != nil { tmp.Close(); return err }
+		if err := tmp.Close(); err != nil { return err }
+		if err := os.Rename(tmp.Name(), item.path); err != nil { return err }
+		d, err := os.Open(filepath.Dir(item.path))
+		if err != nil { return err }
+		err = d.Sync(); d.Close()
+		if err != nil { return err }
+	}
+	return nil
+}
+
+func mustReadProviderRecoveryFile(path string) []byte {
+	data, _ := os.ReadFile(path)
+	return data
+}
+
 func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.BackupRef) error {
 	if err := s.verify(ctx, ref); err != nil {
 		return err
@@ -220,5 +274,6 @@ exec pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error -h "$1" 
 		"run", "--rm", "--no-deps", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database); err != nil {
 		return fmt.Errorf("%s SQL recovery failed: %w", s.Provider, err)
 	}
+	if err := s.restoreConfiguration(ctx); err != nil { return fmt.Errorf("%s configuration recovery after SQL restore: %w", s.Provider, err) }
 	return nil
 }
