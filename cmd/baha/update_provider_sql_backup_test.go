@@ -44,3 +44,25 @@ func TestProviderConfigurationRestoreReplaysAndRejectsTampering(t *testing.T) {
  if err:=spec.restoreConfiguration(context.Background());err==nil{t.Fatal("tampered archive accepted")}
  if _,err:=os.Stat(filepath.Join(dir,"missing"));!errors.Is(err,os.ErrNotExist){t.Fatal(err)}
 }
+
+func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil { t.Fatal(err) }
+	config := filepath.Join(dir, "core.env")
+	if err := os.WriteFile(config, []byte("SECRET=original\n"), 0600); err != nil { t.Fatal(err) }
+	spec := providerSQLBackupSpec{Directory: dir, Name: "openbao", Provider: "openbao", Project: "owned", Compose: filepath.Join(dir,"compose.yaml"), Env:config, Host:"postgres", Database:"openbao", ConfigPaths: []string{config}}
+	if complete, err := spec.recoveryPairComplete(); err != nil || complete { t.Fatalf("expected fresh pair: %v %t",err,complete) }
+	if err := os.WriteFile(filepath.Join(dir, "openbao-sql.backup"), []byte("partial"), 0600); err != nil { t.Fatal(err) }
+	if _, err := spec.recoveryPairComplete(); err == nil { t.Fatal("partial SQL/config pair accepted") }
+	if err := os.Remove(filepath.Join(dir, "openbao-sql.backup")); err != nil { t.Fatal(err) }
+	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error { _,err:=io.WriteString(w,"SQL archive bytes");return err }); err != nil { t.Fatal(err) }
+	if err := spec.captureConfiguration(context.Background()); err != nil { t.Fatal(err) }
+	if complete, err := spec.recoveryPairComplete(); err != nil || !complete { t.Fatalf("completed pair rejected: %v %t",err,complete) }
+	one, err := spec.artifactBinding("2.7.0")
+	if err != nil { t.Fatal(err) }
+	two, err := spec.artifactBinding("2.7.1")
+	if err != nil || one == two { t.Fatal("provider original version not bound to SQL/config pair") }
+	spec.Project = "foreign"
+	foreign, err := spec.artifactBinding("2.7.0")
+	if err != nil || one == foreign { t.Fatal("foreign installation project reused recovery binding") }
+}
