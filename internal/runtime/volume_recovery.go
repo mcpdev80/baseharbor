@@ -17,7 +17,7 @@ const recoveryHelperImage = "docker.io/library/alpine:3.22"
 // The caller supplies the inventoried, digest-pinned image containing GNU tar.
 func (c Compose) SeedOwnedVolume(ctx context.Context, project, volume, image, subdir, owner string, archive io.Reader) error {
 	if project == "" || volume == "" || !strings.Contains(image, "@sha256:") || archive == nil ||
-		(subdir != "pgdata" && subdir != "") {
+		(subdir != "data" && subdir != "pgdata" && subdir != "") {
 		return errors.New("invalid owned replacement volume seed")
 	}
 	for _, part := range strings.Split(owner, ":") {
@@ -39,6 +39,7 @@ sync`
 	cmd := exec.CommandContext(ctx, c.command, "run", "--rm", "-i", "--read-only", "--cap-drop", "ALL",
 		"--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--security-opt", "no-new-privileges:true",
 		"-v", volume+":/data", "--entrypoint", "/bin/sh", image, "-ceu", script, "--", subdir, owner)
+	cmd.Env = runtimeCommandEnv(c.command)
 	cmd.Stdin = archive
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
@@ -121,6 +122,7 @@ func (c Compose) directBinary(ctx context.Context, input []byte, args ...string)
 		return nil, ErrRuntimeNotFound
 	}
 	cmd := exec.CommandContext(ctx, c.command, args...)
+	cmd.Env = runtimeCommandEnv(c.command)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}

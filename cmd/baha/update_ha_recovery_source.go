@@ -18,8 +18,20 @@ import (
 )
 
 type coreHARecoverySource struct {
-	Evidence                                                                         coreupdate.DCSRecoveryEvidence
-	ComposeSHA, EnvSHA, PostgresSHA, PostgresImage, EtcdImage, Leader, PostgresOwner string
+	Evidence                                                                                             coreupdate.DCSRecoveryEvidence
+	ComposeSHA, EnvSHA, PostgresSHA, PostgresImage, EtcdImage, Leader, PostgresOwner, PostgresDataSubdir string
+}
+
+func postgresRecoveryDataSubdir(root, data string) (string, error) {
+	if root != "/home/postgres/pgdata/pgroot" {
+		return "", errors.New("unverified PostgreSQL volume root")
+	}
+	for _, subdir := range []string{"data", "pgdata"} {
+		if data == root+"/"+subdir {
+			return subdir, nil
+		}
+	}
+	return "", errors.New("PostgreSQL data directory is outside the supported owned volume layout")
 }
 
 func privateRecoveryFile(path string) ([]byte, error) {
@@ -73,6 +85,9 @@ func loadCoreHARecoverySource(journal, installation, target, release string) (co
 	}
 	if source.Leader != "postgres-member-1" && source.Leader != "postgres-member-2" && source.Leader != "postgres-member-3" {
 		return source, nil, errors.New("foreign recovery leader")
+	}
+	if source.PostgresDataSubdir != "data" && source.PostgresDataSubdir != "pgdata" {
+		return source, nil, errors.New("unverified PostgreSQL recovery data directory")
 	}
 	owner := strings.Split(source.PostgresOwner, ":")
 	if len(owner) != 2 {
@@ -154,11 +169,23 @@ func captureCoreHARecoverySource(ctx context.Context, rt bhruntime.RuntimeProvid
 		}
 		ids = append(ids, strconv.Itoa(id))
 	}
+	layout, err := rt.ExecProject(ctx, files.Project, files.Compose, files.Env, leader, "python3", "-c", "import os; print(os.environ.get('PGROOT','')); print(os.environ.get('PGDATA',''))")
+	if err != nil {
+		return err
+	}
+	paths := strings.Split(strings.TrimSpace(layout), "\n")
+	if len(paths) != 2 {
+		return errors.New("unverified PostgreSQL data layout")
+	}
+	subdir, err := postgresRecoveryDataSubdir(paths[0], paths[1])
+	if err != nil {
+		return err
+	}
 	digest, err := postgresRecoveryDigest(journal)
 	if err != nil {
 		return err
 	}
-	s := coreHARecoverySource{Evidence: ev, ComposeSHA: recoveryDigest(compose), EnvSHA: recoveryDigest(environment), PostgresSHA: digest, PostgresImage: pgImage, EtcdImage: etcdImage, Leader: leader, PostgresOwner: strings.Join(ids, ":")}
+	s := coreHARecoverySource{Evidence: ev, ComposeSHA: recoveryDigest(compose), EnvSHA: recoveryDigest(environment), PostgresSHA: digest, PostgresImage: pgImage, EtcdImage: etcdImage, Leader: leader, PostgresOwner: strings.Join(ids, ":"), PostgresDataSubdir: subdir}
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err

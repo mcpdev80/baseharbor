@@ -233,3 +233,21 @@ func TestHARecoveryRejectsUnrelatedProviderDrift(t *testing.T) {
 		t.Fatal("unrelated provider rollback admitted")
 	}
 }
+
+func TestHARecoveryBindsActualSpiloDataDirectory(t *testing.T) {
+	root := "/home/postgres/pgdata/pgroot"
+	for _, subdir := range []string{"data", "pgdata"} {
+		got, err := postgresRecoveryDataSubdir(root, root+"/"+subdir)
+		if err != nil || got != subdir {
+			t.Fatalf("valid runtime layout: %q %v", got, err)
+		}
+	}
+	for _, data := range []string{root, root + "/../data", "/foreign/data", root + "/data/other"} {
+		if _, err := postgresRecoveryDataSubdir(root, data); err == nil {
+			t.Fatalf("foreign layout accepted: %s", data)
+		}
+	}
+	if _, err := postgresRecoveryDataSubdir("/foreign", "/foreign/data"); err == nil {
+		t.Fatal("foreign root accepted")
+	}
+}

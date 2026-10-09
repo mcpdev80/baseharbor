@@ -299,7 +299,7 @@ func (o *nativeHACutover) ActivateIsolated(ctx context.Context, ev coreupdate.DC
 		if err != nil {
 			return err
 		}
-		err = seeder.SeedOwnedVolume(ctx, o.files.Project, o.volumes[o.source.Leader], o.source.PostgresImage, "pgdata", o.source.PostgresOwner, f)
+		err = seeder.SeedOwnedVolume(ctx, o.files.Project, o.volumes[o.source.Leader], o.source.PostgresImage, o.source.PostgresDataSubdir, o.source.PostgresOwner, f)
 		f.Close()
 		if err != nil {
 			return err
@@ -361,6 +361,29 @@ func (o *nativeHACutover) VerifyNewQuorum(ctx context.Context, ev coreupdate.DCS
 	}
 }
 
+// Report only fixed filesystem paths, states and error categories; no SQL,
+// credentials, Patroni configuration or arbitrary server messages are emitted.
+const haRecoveryPrimaryDiagnostic = `import os, glob, json, urllib.request
+root=os.environ['PGROOT']
+data=os.environ['PGDATA']
+try:
+ d=json.load(urllib.request.urlopen('http://127.0.0.1:8008/patroni',timeout=3))
+ print('patroni',json.dumps({k:d.get(k) for k in ('state','role','timeline')}))
+except Exception: print('patroni-status-unavailable')
+for name in ('','pgdata','pgdata/PG_VERSION','pgdata/postgresql.conf','pgdata/postgresql.base.conf','pgdata/pg_hba.conf','pgdata/pg_ident.conf','pgdata/backup_label','pgdata/recovery.signal','pgdata/standby.signal','pg_log'):
+ p=os.path.join(data,name[7:]) if name.startswith('pgdata/') else (data if name=='pgdata' else os.path.join(root,name))
+ try:
+  st=os.stat(p); print('path',name,oct(st.st_mode & 0o777),st.st_uid,st.st_gid)
+ except OSError: print('missing',name)
+patterns=('Permission denied','No such file or directory','could not locate a valid checkpoint record','database system identifier differs','recovery ended before configured recovery target','PANIC','FATAL','postgresql.conf','postgresql.base.conf','pg_hba.conf','pg_ident.conf','pg_wal','backup_label')
+for p in glob.glob(root+'/pg_log/*'):
+ try:
+  with open(p,'rb') as f:
+   f.seek(max(0,os.fstat(f.fileno()).st_size-131072)); data=f.read().decode('utf-8','replace')
+  print('log-categories',json.dumps([v for v in patterns if v in data]))
+ except OSError: print('log-unreadable')
+`
+
 func (o *nativeHACutover) VerifyPatroniDCS(ctx context.Context) error {
 	if err := o.VerifyFenced(ctx); err != nil {
 		return err
@@ -378,7 +401,10 @@ func (o *nativeHACutover) VerifyPatroniDCS(ctx context.Context) error {
 		}
 		select {
 		case <-bounded.Done():
-			return fmt.Errorf("restored PostgreSQL primary not ready: %w", err)
+			diagnosticCtx, diagnosticCancel := context.WithTimeout(ctx, 15*time.Second)
+			diagnostic, _ := o.runtime.ExecProject(diagnosticCtx, o.files.Project, o.files.Compose, o.files.Env, o.source.Leader, "python3", "-c", haRecoveryPrimaryDiagnostic)
+			diagnosticCancel()
+			return fmt.Errorf("restored PostgreSQL primary not ready: %w; diagnostics: %s", err, diagnostic)
 		case <-time.After(time.Second):
 		}
 	}
