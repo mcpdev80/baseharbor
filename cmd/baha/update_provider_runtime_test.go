@@ -128,6 +128,7 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 		defer stop()
 		if t.Failed() {
 			logCoreBootstrapFailure(t, rt, target.Name, engine)
+			logProviderBaselineDiagnostics(t, rt, target.Name, engine)
 		}
 		_ = runWithIO(cleanup, []string{"app", "destroy", "--yes"}, io.Discard, io.Discard)
 		if err := runtimeDestroy(cleanup, []string{"--yes"}, io.Discard); err != nil {
@@ -284,6 +285,47 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("Real provider upgrades and controlled failure recovery passed; no production resources used")
+}
+
+func logProviderBaselineDiagnostics(t *testing.T, rt bhruntime.RuntimeProvider, target, engine string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	inventory, err := rt.ListRuntimeContainers(ctx)
+	if err != nil {
+		return
+	}
+	backend := bhruntime.NewCLIBackend(engine)
+	dataDir, err := targetDataRoot(mustEffectiveTestTarget(t, ctx))
+	if err != nil {
+		return
+	}
+	identity, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target)
+	if err != nil {
+		return
+	}
+	values, err := bhruntime.RuntimeEnvironment(bhruntime.Files{Env: identity.Env})
+	if err != nil {
+		return
+	}
+	for _, c := range inventory {
+		if c.Project != identity.Project || (c.Service != "keycloak-access" && c.Service != "keycloak-1") {
+			continue
+		}
+		logs, err := backend.DirectOutput(ctx, "logs", "--tail", "100", c.ID)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(logs, "\n") {
+			lower := strings.ToLower(line)
+			if !strings.Contains(lower, "error") && !strings.Contains(lower, "warn") && !strings.Contains(lower, "tls") && !strings.Contains(lower, "started") {
+				continue
+			}
+			// These are bootstrap diagnostics before any operator token request;
+			// protected environment values are still removed before publication.
+			t.Logf("Provider bootstrap diagnostic %s: %s", c.Service, sanitizeWorkloadDiagnostic(line, values))
+		}
+	}
 }
 
 func providerFixtureSQL(t *testing.T, ctx context.Context, o *coreNativeRuntimeOps, identity bool, sql string) string {
