@@ -217,14 +217,14 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		Runtime: o.runtime, Project: o.core.Project, Compose: o.core.Compose, Env: o.core.Env,
 		Client: "postgres-admin", Host: "postgres", CAFile: "/run/baseharbor/postgres-ca/ca.pem",
 		User: credentials.OpenBaoDBUser, Password: credentials.OpenBaoDBPassword, Database: "openbao",
-		Directory: backupDir, Name: "openbao", Provider: providerupgrade.ProviderOpenBao,
+		Directory: backupDir, Name: "openbao", InstallationID: o.installation, Transaction: o.release, Provider: providerupgrade.ProviderOpenBao,
 		ConfigPaths: []string{o.core.Env, platformopenbao.AdminCredentialsPath(o.core), filepath.Join(filepath.Dir(o.core.Compose), "providers", "openbao", "runtime", "openbao.hcl")},
 	}
 	keycloakBackup := providerSQLBackupSpec{
 		Runtime: o.runtime, Project: o.identity.Project, Compose: o.identity.Compose, Env: o.identity.Env,
 		Client: "keycloak-db-init", Host: "keycloak-db", CAFile: "/run/baseharbor/db-tls/ca.pem",
 		User: keycloakUser, Password: keycloakPassword, Database: keycloakDatabase,
-		Directory: backupDir, Name: "keycloak", Provider: providerupgrade.ProviderKeycloak,
+		Directory: backupDir, Name: "keycloak", InstallationID: o.installation, Transaction: o.release, Provider: providerupgrade.ProviderKeycloak,
 		ConfigPaths: []string{o.identity.Env, o.identity.Compose},
 	}
 	openBaoCompose := coreupdate.ComposeCheckpoint{Path: o.core.Compose, Directory: filepath.Join(journalDir, "compose-backups")}
