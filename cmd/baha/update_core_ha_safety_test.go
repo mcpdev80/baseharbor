@@ -96,8 +96,13 @@ func TestRuntimeEtcdSnapshotRequiresSingleConsistentQuorumLeader(t *testing.T) {
 		"foreign-cluster":  func(s []runtimeEtcdStatus) { s[2].ClusterID = "200" },
 		"two-leaders":      func(s []runtimeEtcdStatus) { s[1].IsLeader = true },
 		"missing-leader":   func(s []runtimeEtcdStatus) { s[0].IsLeader = false },
-		"unknown-leader":   func(s []runtimeEtcdStatus) { for i := range s { s[i].LeaderID = "99" }; s[0].IsLeader = false },
-		"zero-member":      func(s []runtimeEtcdStatus) { s[1].MemberID = "0" },
+		"unknown-leader": func(s []runtimeEtcdStatus) {
+			for i := range s {
+				s[i].LeaderID = "99"
+			}
+			s[0].IsLeader = false
+		},
+		"zero-member": func(s []runtimeEtcdStatus) { s[1].MemberID = "0" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			invalid := append([]runtimeEtcdStatus(nil), healthy...)
