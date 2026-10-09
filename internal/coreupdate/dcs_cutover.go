@@ -140,6 +140,11 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	if err != nil {
 		return err
 	}
+	// The previous invocation may have completed CommitCutover before its
+	// committed receipt reached disk. Never blindly repeat that action.
+	if phase == "verified" {
+		return errors.New("UNSUPPORTED: interrupted DCS commit requires operator reconciliation before replay")
+	}
 	if phase == "" {
 		if err := journal.record("", "prepared"); err != nil {
 			return err
