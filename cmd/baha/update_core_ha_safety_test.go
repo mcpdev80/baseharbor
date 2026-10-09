@@ -116,3 +116,20 @@ func TestRuntimeEtcdSnapshotRequiresSingleConsistentQuorumLeader(t *testing.T) {
 		t.Fatal("two etcd members accepted as complete recovery inventory")
 	}
 }
+
+func TestRuntimeEtcdStatusRejectsInvalidUnsignedIdentities(t *testing.T) {
+	cases := []string{
+		`{"header":{"cluster_id":"invalid","member_id":2,"revision":9},"leader":2,"version":"3.7.2"}`,
+		`{"header":{"cluster_id":0,"member_id":2,"revision":9},"leader":2,"version":"3.7.2"}`,
+		`{"header":{"cluster_id":1,"member_id":-2,"revision":9},"leader":2,"version":"3.7.2"}`,
+		`{"header":{"cluster_id":1,"member_id":2,"revision":9},"leader":18446744073709551616,"version":"3.7.2"}`,
+	}
+	for _, status := range cases {
+		if _, err := parseRuntimeEtcdStatus([]byte(`[{"Endpoint":"https://postgres-etcd-1:2379","Status":` + status + `}]`)); err == nil {
+			t.Fatalf("invalid etcd numeric identity accepted: %s", status)
+		}
+	}
+	if _, err := parseRuntimeEtcdStatus([]byte(`[{"Endpoint":"https://postgres-etcd-1:2379","Status":{"header":{"cluster_id":18446744073709551615,"member_id":18446744073709551614,"revision":9},"leader":18446744073709551614,"version":"3.7.2"}}]`)); err != nil {
+		t.Fatalf("valid large unsigned etcd identity rejected: %v", err)
+	}
+}
