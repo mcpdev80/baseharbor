@@ -40,6 +40,24 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' }}
 
 jobs:
+  shared_provider_contracts:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[provider-contracts]') }}
+    name: Shared provider unit and contract verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify all Go contracts and static analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./...
+          go vet ./...
+
   focused:
     if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') }}
     name: ${{ inputs.gate }}

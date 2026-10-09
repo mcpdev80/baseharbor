@@ -31,6 +31,17 @@ func TestSharedIdentityUsesExactlyOneCoreSQLDependency(t *testing.T) {
 			if err != nil || canonical["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] != first.PublicURL {
 				t.Fatal("application reconciliation changed the installation identity authority")
 			}
+			const retainedAuthority = "https://installation-authority.localhost:8443"
+			if err := SetKeycloakCanonicalURL(first, retainedAuthority); err != nil {
+				t.Fatal(err)
+			}
+			if err := setApplicationKeycloakCanonicalURL(first, "https://another-application.localhost"); err != nil {
+				t.Fatal(err)
+			}
+			retained, err := readProtectedEnv(first.Env)
+			if err != nil || retained["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] != retainedAuthority {
+				t.Fatal("Shared consumer changed a retained installation authority")
+			}
 			app.Name, app.Environment = "second", "test"
 			placement.SharingBoundary = "team-b"
 			second, err := ensureKeycloakFilesForPlacement(context.Background(), app, issuer, root, "local", placement)

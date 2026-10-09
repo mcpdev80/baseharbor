@@ -181,14 +181,14 @@ func verifySharedCoreDeduplicationFixture(t *testing.T, ctx context.Context, rt 
 func unexpectedSharedSQLDataService(service string) bool {
 	// Core and Shared auxiliary services deliberately share the installation
 	// project. The stable Core endpoint and admin toolbox are not data servers.
-	if service == "postgres" || service == "postgres-admin" || strings.HasSuffix(service, "-init") || strings.HasSuffix(service, "-access") || strings.HasSuffix(service, "-ui") {
+	if service == "postgres" || service == "postgres-admin" || strings.HasPrefix(service, "postgres-etcd-") || strings.HasSuffix(service, "-init") || strings.HasSuffix(service, "-access") || strings.HasSuffix(service, "-ui") {
 		return false
 	}
 	return strings.Contains(service, "postgres")
 }
 
 func TestSharedCoreInventorySeparatesSQLHelpersFromData(t *testing.T) {
-	for _, service := range []string{"postgres", "postgres-admin", "postgres-init", "shared-postgres-access", "shared-postgres-ui", "shared-valkey-core-shared-default"} {
+	for _, service := range []string{"postgres", "postgres-admin", "postgres-init", "postgres-etcd-1", "postgres-etcd-3", "shared-postgres-access", "shared-postgres-ui", "shared-valkey-core-shared-default"} {
 		if unexpectedSharedSQLDataService(service) {
 			t.Fatalf("helper/non-SQL service treated as another SQL deployment: %s", service)
 		}

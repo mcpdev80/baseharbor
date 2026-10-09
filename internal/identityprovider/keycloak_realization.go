@@ -199,7 +199,14 @@ func localKeycloakTargetName(namespace string) string {
 // reconciliation must preserve the installation and master realm authority.
 func setApplicationKeycloakCanonicalURL(files KeycloakFiles, publicBase string) error {
 	if files.SharedSQL != nil {
-		publicBase = files.PublicURL
+		values, err := readProtectedEnv(files.Env)
+		if err != nil {
+			return err
+		}
+		publicBase = values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"]
+		if strings.TrimSpace(publicBase) == "" {
+			publicBase = files.PublicURL
+		}
 	}
 	return SetKeycloakCanonicalURL(files, publicBase)
 }

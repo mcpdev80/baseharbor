@@ -288,6 +288,13 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Shared Identity owns a logical database on this physical SQL provider.
+	// Stop its connection pool before intentionally resetting the SQL baseline.
+	if !ha && identity.SharedSQL != nil {
+		if err := rt.StopProject(ctx, identity.Project, identity.Compose, identity.Env); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := rt.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, selected, files.Compose); err != nil {
 		t.Fatal(err)
 	}
@@ -305,6 +312,11 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	}
 	if err := platformopenbao.Unseal(ctx, rt, files, opts.RecoveryFile); err != nil {
 		t.Fatal(err)
+	}
+	if !ha && identity.SharedSQL != nil {
+		if err := identityprovider.NewKeycloakLifecycle(rt).Apply(ctx, identity); err != nil {
+			t.Fatalf("restart retained Identity after SQL baseline reset: %v", err)
+		}
 	}
 	plan, err := inspectCoreRuntimePlan(ctx, "v0.4.24", state, rt, identity)
 	if err != nil {
