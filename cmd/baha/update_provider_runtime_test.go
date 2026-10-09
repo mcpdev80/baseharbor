@@ -243,7 +243,20 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 		t.Fatal(err)
 	}
 	applicationSQL := func(sql string) string {
-		return providerFixtureSQLCredentials(t, ctx, ops.core, rt, "postgres-admin", "postgres", "/run/baseharbor/postgres-ca/ca.pem", appBinding.Username, appBinding.Password, appBinding.Database, sql)
+		// Registered applications use their owned shared backend, not Core's
+		// private SQL database. Authenticate with the actual binding and CA.
+		shared := application.SharedBackendFilesAt(dataDir, target.Name, manifest.Environment)
+		ca, err := os.ReadFile(appBinding.CertificatesPath)
+		if err != nil {
+			t.Fatal("application SQL trust unavailable")
+		}
+		const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGCONNECT_TIMEOUT=5\ntrust=$(mktemp /tmp/provider-acceptance-ca.XXXXXX) || exit 1\ntrap 'rm -f \"$trust\"' EXIT\ncat >\"$trust\"\nexport PGSSLROOTCERT=\"$trust\"\npsql -h postgres-access -U \"$1\" -d \"$2\" -Atqc \"$3\" -v ON_ERROR_STOP=1"
+		input := append([]byte(appBinding.Password+"\n"), ca...)
+		result, err := rt.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, input, "shared-postgres-dev", "sh", "-ec", script, "--", appBinding.Username, appBinding.Database, sql)
+		if err != nil {
+			t.Fatal("registered application SQL binding verification failed")
+		}
+		return strings.TrimSpace(result)
 	}
 	applicationSQL("CREATE TABLE public.provider_upgrade_marker(value text NOT NULL); INSERT INTO public.provider_upgrade_marker VALUES ('application-retained')")
 	checkApplication := func() {
@@ -394,6 +407,51 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	}
 	checkApplication()
 	checkIdentity()
+	// Exercise Single PostgreSQL failure recovery through the same native
+	// recovery hook used by the productive mixed-provider transaction. Its
+	// verified archive and Compose checkpoint were captured by that command.
+	sqlDelta, err := providerDelta(plan, coreupdate.SQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journalDir, err := coreUpdateJournal(stateRoot, "v0.4.24", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volume, err := coreupdate.ResolveOwnedServiceVolume(files.Compose, "postgres-member-1", files.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets := coreupdate.NativeProviderAssets{
+		Recovery: coreupdate.VolumeRecovery{Runtime: rt, Directory: filepath.Join(journalDir, "backups"), Project: files.Project, Volume: volume, VerifyQuiesced: ops.verifyQuiesced},
+		Compose:  coreupdate.ComposeCheckpoint{Path: files.Compose, Directory: filepath.Join(journalDir, "compose-backups")},
+	}
+	providerFixtureSQL(t, ctx, ops, false, "UPDATE public.baseharbor_upgrade_marker SET value='after-backup'")
+	if err := ops.stopSelected(ctx, files, "postgres-member-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ops.VerifySemantics(ctx, sqlDelta); err == nil {
+		t.Fatal("stopped PostgreSQL escaped verification")
+	}
+	if err := assets.Recover(ctx, sqlDelta, ops); err != nil {
+		t.Fatalf("productive Single PostgreSQL original-volume/image recovery: %v", err)
+	}
+	if err := ops.verifyImage(ctx, sqlDelta, false); err != nil {
+		t.Fatal(err)
+	}
+	if version := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num"); version != beforeSQL {
+		t.Fatal("PostgreSQL recovery did not restore original actual version")
+	}
+	if got := providerFixtureSQL(t, ctx, ops, false, "SELECT value FROM public.baseharbor_upgrade_marker"); got != "before-upgrade" {
+		t.Fatal("PostgreSQL recovery did not rewind post-backup transactions")
+	}
+	checkApplication()
+	checkIdentity()
+	t.Log("Single PostgreSQL failure recovery restored verified original volume, image/version and backup-time data; native backing roles and application access retained")
 	t.Log("Real provider upgrades and controlled failure recovery passed; no production resources used")
 }
 

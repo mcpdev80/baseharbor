@@ -80,19 +80,7 @@ func RunMixedProviderUpdates(ctx context.Context, plan Plan, journalPath string,
 				return bound.Recover(ctx, d, state)
 			}
 			a := assets[JournalKey(d)]
-			if err := ops.Quiesce(ctx, d); err != nil {
-				return err
-			}
-			if err := a.Recovery.Recover(ctx, d); err != nil {
-				return err
-			}
-			if err := a.Compose.Restore(map[string]Delta{d.Installed.Instance: d}); err != nil {
-				return err
-			}
-			if err := ops.ReconcileOriginal(ctx, d); err != nil {
-				return err
-			}
-			return ops.VerifySemantics(ctx, d)
+			return a.Recover(ctx, d, ops)
 		},
 		Record: ops.Record,
 	}

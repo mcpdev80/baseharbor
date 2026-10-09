@@ -22,6 +22,27 @@ type NativeProviderAssets struct {
 	Compose  ComposeCheckpoint
 }
 
+// Recover restores the verified owned volume and original image before native
+// reconciliation and semantic checks. Both native transaction drivers use it.
+func (a NativeProviderAssets) Recover(ctx context.Context, d Delta, ops NativeProviderOps) error {
+	if ops == nil || a.Recovery.Runtime == nil || a.Recovery.VerifyQuiesced == nil || a.Compose.Path == "" || a.Compose.Directory == "" {
+		return errors.New("native provider recovery requires complete owned assets and lifecycle operations")
+	}
+	if err := ops.Quiesce(ctx, d); err != nil {
+		return err
+	}
+	if err := a.Recovery.Recover(ctx, d); err != nil {
+		return err
+	}
+	if err := a.Compose.Restore(map[string]Delta{d.Installed.Instance: d}); err != nil {
+		return err
+	}
+	if err := ops.ReconcileOriginal(ctx, d); err != nil {
+		return err
+	}
+	return ops.VerifySemantics(ctx, d)
+}
+
 // RunNativeProviderUpdates wires immutable provider-volume recovery, atomic
 // pinned Compose staging, provider-native lifecycle and semantic verification
 // into the durable journal. A missing hook or per-provider asset fails before
@@ -54,19 +75,7 @@ func RunNativeProviderUpdates(ctx context.Context, plan Plan, journalPath string
 		},
 		Recover: func(ctx context.Context, d Delta, _ string) error {
 			a := assets[JournalKey(d)]
-			if err := ops.Quiesce(ctx, d); err != nil {
-				return err
-			}
-			if err := a.Recovery.Recover(ctx, d); err != nil {
-				return err
-			}
-			if err := a.Compose.Restore(map[string]Delta{d.Installed.Instance: d}); err != nil {
-				return err
-			}
-			if err := ops.ReconcileOriginal(ctx, d); err != nil {
-				return err
-			}
-			return ops.VerifySemantics(ctx, d)
+			return a.Recover(ctx, d, ops)
 		},
 		Apply: func(ctx context.Context, d Delta) error {
 			a := assets[JournalKey(d)]
