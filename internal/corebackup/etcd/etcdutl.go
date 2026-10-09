@@ -86,7 +86,11 @@ func (e IsolatedEtcdutl) RestoreIsolated(ctx context.Context, archive, destinati
 	}
 	// No sh, no credentials, no live etcd data directory. Restore creates an
 	// isolated target that must be tested before any cutover.
-	args := []string{"snapshot", "restore", archive, "--data-dir", destination, "--name", e.MemberName, "--initial-cluster", e.InitialCluster, "--initial-advertise-peer-urls", e.InitialAdvertisePeerURLs}
+	token, err := RecoveryClusterToken(ctx, archive, identity)
+	if err != nil {
+		return err
+	}
+	args := []string{"snapshot", "restore", archive, "--data-dir", destination, "--name", e.MemberName, "--initial-cluster", e.InitialCluster, "--initial-advertise-peer-urls", e.InitialAdvertisePeerURLs, "--initial-cluster-token", token}
 	cmd := exec.CommandContext(ctx, e.Binary, args...)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
 	cmd.Stdout = nil

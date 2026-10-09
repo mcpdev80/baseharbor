@@ -107,7 +107,7 @@ func parseRuntimeEtcdStatus(data []byte) (runtimeEtcdStatus, error) {
 			} `json:"header"`
 			Leader   json.Number `json:"leader"`
 			Version  string      `json:"version"`
-			IsLeader bool        `json:"isLeader"`
+			IsLeader *bool       `json:"isLeader"`
 		} `json:"Status"`
 	}
 	dec := json.NewDecoder(strings.NewReader(string(data)))
@@ -130,10 +130,17 @@ func parseRuntimeEtcdStatus(data []byte) (runtimeEtcdStatus, error) {
 			return runtimeEtcdStatus{}, errors.New("invalid unsigned etcd cluster/member/leader identity")
 		}
 	}
+	// The etcd v3 StatusResponse reports leader/member IDs, not an isLeader
+	// field. Compute leadership from those authenticated IDs. If an optional
+	// helper supplies the field, reject contradictory evidence.
+	isLeader := rows[0].Status.Header.MemberID == rows[0].Status.Leader
+	if rows[0].Status.IsLeader != nil && *rows[0].Status.IsLeader != isLeader {
+		return runtimeEtcdStatus{}, errors.New("etcd leader flag contradicts authenticated member identity")
+	}
 	return runtimeEtcdStatus{
 		Endpoint: rows[0].Endpoint, ClusterID: rows[0].Status.Header.ClusterID.String(),
 		MemberID: rows[0].Status.Header.MemberID.String(), LeaderID: rows[0].Status.Leader.String(),
-		Revision: revision, Version: rows[0].Status.Version, IsLeader: rows[0].Status.IsLeader,
+		Revision: revision, Version: rows[0].Status.Version, IsLeader: isLeader,
 	}, nil
 }
 
@@ -253,7 +260,7 @@ func (t runtimeEtcdTools) Snapshot(ctx context.Context, dest io.Writer) (etcdbac
 	}
 	archive := filepath.Join(scratch, "snapshot.db")
 	bind := scratch + ":/recovery"
-	args := append([]string{"--endpoints=" + strings.Join(t.Endpoints, ",")}, t.tlsArgs()...)
+	args := append([]string{"--endpoints=" + t.Endpoints[0]}, t.tlsArgs()...)
 	args = append(args, "snapshot", "save", "/recovery/snapshot.db")
 	if err := t.run(ctx, "/usr/local/bin/etcdctl", io.Discard, io.Discard, []string{bind}, args...); err != nil {
 		return etcdbackup.SnapshotInfo{}, fmt.Errorf("etcd maintenance snapshot failed: %w", err)
@@ -314,6 +321,10 @@ func (t runtimeEtcdTools) RestoreIsolated(ctx context.Context, archive, destinat
 	}
 	archiveDir := filepath.Dir(archive)
 	archiveName := filepath.Base(archive)
+	token, err := etcdbackup.RecoveryClusterToken(ctx, archive, identity)
+	if err != nil {
+		return err
+	}
 	binds := []string{archiveDir + ":/snapshot:ro", destination + ":/restore"}
 	for _, member := range t.Members {
 		args := []string{
@@ -321,6 +332,7 @@ func (t runtimeEtcdTools) RestoreIsolated(ctx context.Context, archive, destinat
 			"--data-dir", "/restore/" + member,
 			"--name", member,
 			"--initial-cluster", t.InitialCluster,
+			"--initial-cluster-token", token,
 			"--initial-advertise-peer-urls", "https://" + member + ":2380",
 		}
 		if err := t.run(ctx, "/usr/local/bin/etcdutl", io.Discard, io.Discard, binds, args...); err != nil {

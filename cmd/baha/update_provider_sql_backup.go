@@ -34,6 +34,7 @@ type providerSQLBackupSpec struct {
 	Directory      string
 	Name           string
 	InstallationID string
+	Target         string
 	Transaction    string
 	Provider       providerupgrade.Provider
 	ConfigPaths    []string
@@ -42,7 +43,7 @@ type providerSQLBackupSpec struct {
 func (s providerSQLBackupSpec) validate() error {
 	if s.Runtime == nil || s.Project == "" || s.Compose == "" || s.Env == "" || s.Client == "" ||
 		s.Host == "" || s.CAFile == "" || s.User == "" || s.Password == "" || s.Database == "" ||
-		s.Directory == "" || s.Name == "" || s.InstallationID == "" || s.Transaction == "" || s.Provider == "" {
+		s.Directory == "" || s.Name == "" || s.InstallationID == "" || s.Target == "" || s.Transaction == "" || s.Provider == "" {
 		return errors.New("provider SQL backup requires owned runtime, authenticated database identity and private destination")
 	}
 	return nil
@@ -71,6 +72,10 @@ func (s providerSQLBackupSpec) artifactBinding(version string) (string, error) {
 		}
 		_, _ = io.WriteString(h, value+"\x00")
 	}
+	if s.Target == "" || strings.ContainsRune(s.Target, '\x00') {
+		return "", errors.New("invalid provider recovery target")
+	}
+	_, _ = io.WriteString(h, s.Target+"\x00")
 	for _, path := range s.ConfigPaths {
 		if !filepath.IsAbs(path) {
 			return "", errors.New("unbound provider backup configuration path")
@@ -157,7 +162,7 @@ export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
 exec pg_dump --format=custom --compress=6 --no-owner --no-acl -h "$1" -U "$2" -d "$4"`
 		return s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 			strings.NewReader(s.Password+"\n"), dest, io.Discard, []string{s.Compose},
-			"run", "--rm", "--no-deps", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database)
+			"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database)
 	}); err != nil {
 		return providerupgrade.BackupRef{}, fmt.Errorf("%s SQL backup: %w", s.Provider, err)
 	}
@@ -261,7 +266,7 @@ func (s providerSQLBackupSpec) verify(ctx context.Context, ref providerupgrade.B
 	defer archive.Close()
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 		archive, io.Discard, io.Discard, []string{s.Compose},
-		"run", "--rm", "--no-deps", s.Client, "pg_restore", "--list", "-"); err != nil {
+		"run", "--rm", "--no-deps", "-T", s.Client, "pg_restore", "--list"); err != nil {
 		return fmt.Errorf("%s SQL archive structure verification failed: %w", s.Provider, err)
 	}
 	return s.verifyConfigurationArchive()
@@ -405,6 +410,23 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	if err := s.verify(ctx, ref); err != nil {
 		return err
 	}
+	receipt := providerRestoreReceipt{Path: filepath.Join(s.Directory, s.Name+"-restore.json"), Binding: ref.Metadata["binding"]}
+	phase, err := receipt.load()
+	if err != nil {
+		return err
+	}
+	if phase == "sql_started" || phase == "sql_failed" {
+		return errors.New("BLOCKED: interrupted SQL restore has an unknown commit outcome; reconcile the database before replay")
+	}
+	if phase == "recovered" {
+		return nil
+	}
+	if phase == "sql_restored" {
+		if err := s.restoreConfiguration(ctx); err != nil {
+			return err
+		}
+		return receipt.record("sql_restored", "recovered")
+	}
 	environment, err := s.environment()
 	if err != nil {
 		return err
@@ -414,17 +436,25 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 		return err
 	}
 	defer archive.Close()
+	if err := receipt.record(phase, "sql_started"); err != nil {
+		return err
+	}
 	input := io.MultiReader(strings.NewReader(s.Password+"\n"), archive)
 	const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
-exec pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error -h "$1" -U "$2" -d "$4" -`
+exec pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error -h "$1" -U "$2" -d "$4"`
 	if err := s.Runtime.RunProjectFilesEnv(ctx, s.Project, filepath.Dir(s.Compose), environment,
 		input, io.Discard, io.Discard, []string{s.Compose},
-		"run", "--rm", "--no-deps", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database); err != nil {
-		return fmt.Errorf("%s SQL recovery failed: %w", s.Provider, err)
+		"run", "--rm", "--no-deps", "-T", s.Client, "sh", "-ec", script, "--", s.Host, s.User, s.CAFile, s.Database); err != nil {
+		// Even an error can follow an accepted server COMMIT. Keep sql_started
+		// until the database outcome is reconciled; never blindly repeat SQL.
+		return fmt.Errorf("%s SQL recovery outcome requires reconciliation: %w", s.Provider, err)
+	}
+	if err := receipt.record("sql_started", "sql_restored"); err != nil {
+		return err
 	}
 	if err := s.restoreConfiguration(ctx); err != nil {
 		return fmt.Errorf("%s configuration recovery after SQL restore: %w", s.Provider, err)
 	}
-	return nil
+	return receipt.record("sql_restored", "recovered")
 }

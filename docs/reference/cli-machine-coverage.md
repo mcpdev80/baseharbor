@@ -125,6 +125,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha tui` | presentation |  |  | Human interactive presentation; its product actions require individual semantic coverage. |
 | `baha up` | semantic | CLI -o json / typed MCP result | baseharbor.control-plane.up | Control-plane-only mode maps here. Repository application mode additionally uses app.configure and apply; host trust installation uses trust.install with approval. |
 | `baha update` | semantic | CLI -o json / typed MCP result | baseharbor.release.check | --check maps to release.check. Installing replaces the execution-host binary and is explicitly excluded from MCP; use the host operator CLI with --yes. |
+| `baha use` | presentation |  |  | Persists local user selection; machine clients supply explicit target arguments on each semantic operation. |
 | `baha version` | presentation |  |  | Executable build identity is provided by agent describe and MCP initialization. |
 | `baha whoami` | semantic | CLI -o json / typed MCP result | baseharbor.operator.identity |  |
 | `baha workspace` | presentation |  |  | Canonical interactive presentation of the same workspace.init/map operations. |

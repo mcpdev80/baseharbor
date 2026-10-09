@@ -94,7 +94,9 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	cmd := exec.CommandContext(ctx, s.Etcdctl, "snapshot", "save", archive)
 	cmd.Env = []string{
 		"PATH=/usr/bin:/bin", "ETCDCTL_API=3",
-		"ETCDCTL_ENDPOINTS=" + strings.Join(s.Endpoints, ","),
+		// Maintenance.Snapshot streams from one member, after all configured
+		// endpoints have attested the owning cluster.
+		"ETCDCTL_ENDPOINTS=" + s.Endpoints[0],
 		"ETCDCTL_CACERT=" + s.TLS.CA,
 		"ETCDCTL_CERT=" + s.TLS.Cert,
 		"ETCDCTL_KEY=" + s.TLS.Key,
@@ -133,8 +135,8 @@ func (s EtcdctlSource) Snapshot(ctx context.Context, dest io.Writer) (SnapshotIn
 	}
 	// The owning Core must supply attested cluster ID and etcd version from
 	// authenticated etcd status. Snapshot bytes alone cannot attest membership.
-	if status.Revision > attested.Revision {
-		return SnapshotInfo{}, errors.New("snapshot revision exceeds authenticated cluster revision")
+	if status.Revision < attested.Revision {
+		return SnapshotInfo{}, errors.New("snapshot revision predates authenticated cluster revision")
 	}
 	return SnapshotInfo{ClusterID: attested.ClusterID, Version: attested.Version, Revision: status.Revision}, nil
 }

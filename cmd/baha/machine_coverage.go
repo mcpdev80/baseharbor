@@ -128,6 +128,7 @@ var cliPresentationCommands = map[string]string{
 	"baha app workspace":     "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
 	"baha workspace":         "Canonical interactive presentation of the same workspace.init/map operations.",
 	"baha target activate":   "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
+	"baha use":               "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
 	"baha target deactivate": "Clears persisted local user selection; machine clients omit explicit target to resolve configured defaults.",
 	"baha":                   "Root help and routing; use semantic operations for product actions.",
 	"baha agent describe":    "Machine registry/discovery itself, rather than a product mutation.",

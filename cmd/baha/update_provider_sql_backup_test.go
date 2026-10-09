@@ -96,7 +96,7 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 	if err := os.WriteFile(config, []byte("SECRET=original\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	spec := providerSQLBackupSpec{Directory: dir, Name: "openbao", Provider: "openbao", InstallationID: "core-A", Transaction: "0.4.24", Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: config, Host: "postgres", Database: "openbao", ConfigPaths: []string{config}}
+	spec := providerSQLBackupSpec{Directory: dir, Name: "openbao", Provider: "openbao", Target: "target-A", InstallationID: "core-A", Transaction: "0.4.24", Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: config, Host: "postgres", Database: "openbao", ConfigPaths: []string{config}}
 	if complete, err := spec.recoveryPairComplete(); err != nil || complete {
 		t.Fatalf("expected fresh pair: %v %t", err, complete)
 	}
@@ -152,6 +152,7 @@ type sqlRestoreReplayRuntime struct {
 	bhruntime.RuntimeProvider
 	failSQL  bool
 	restores int
+	afterSQL func()
 }
 
 func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, _, _ io.Writer, _ []string, args ...string) error {
@@ -163,13 +164,16 @@ func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ str
 				if r.failSQL {
 					return errors.New("injected pg_restore failure")
 				}
+				if r.afterSQL != nil {
+					r.afterSQL()
+				}
 			}
 		}
 		return nil
 	}
 	return errors.New("unexpected restore runtime operation")
 }
-func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBoth(t *testing.T) {
+func TestProviderSQLRestoreFailureDoesNotChangeConfigurationOrReplayUnknownCommit(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -179,7 +183,7 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBot
 		t.Fatal(err)
 	}
 	rt := &sqlRestoreReplayRuntime{failSQL: true}
-	spec := providerSQLBackupSpec{Runtime: rt, Project: "owned-core", Compose: filepath.Join(dir, "compose.yaml"), Env: env, Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "secret", Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao", Provider: providerupgrade.ProviderOpenBao, InstallationID: "core-A", Transaction: "0.4.24", ConfigPaths: []string{env}}
+	spec := providerSQLBackupSpec{Runtime: rt, Project: "owned-core", Compose: filepath.Join(dir, "compose.yaml"), Env: env, Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "secret", Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao", Provider: providerupgrade.ProviderOpenBao, Target: "target-A", InstallationID: "core-A", Transaction: "0.4.24", ConfigPaths: []string{env}}
 	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error {
 		_, e := io.WriteString(w, "mock custom SQL archive")
 		return e
@@ -208,6 +212,16 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBot
 		t.Fatal("configuration changed despite failed SQL restore")
 	}
 	rt.failSQL = false
+	if err := spec.restore(context.Background(), ref); err == nil || !strings.Contains(err.Error(), "unknown commit outcome") {
+		t.Fatalf("ambiguous SQL outcome replayed: %v", err)
+	}
+	if rt.restores != 1 {
+		t.Fatal("destructive SQL repeated before database reconciliation")
+	}
+	// Simulate an operator proving rollback before resetting this receipt.
+	if err := os.Remove(filepath.Join(spec.Directory, spec.Name+"-restore.json")); err != nil {
+		t.Fatal(err)
+	}
 	if err := spec.restore(context.Background(), ref); err != nil {
 		t.Fatalf("idempotent paired recovery rejected: %v", err)
 	}
@@ -220,6 +234,12 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBot
 	}
 	if rt.restores != 2 {
 		t.Fatalf("expected two SQL restore attempts, got %d", rt.restores)
+	}
+	if err := spec.restore(context.Background(), ref); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restores != 2 {
+		t.Fatal("completed SQL restore was destructively replayed")
 	}
 }
 
@@ -236,7 +256,7 @@ func TestProviderCaptureResumeNeverOverwritesExistingRecoveryPair(t *testing.T) 
 	spec := providerSQLBackupSpec{Runtime: rt, Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: env,
 		Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "credential",
 		Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao",
-		Provider: providerupgrade.ProviderOpenBao, InstallationID: "core-1", Transaction: "0.4.24", ConfigPaths: []string{env}}
+		Provider: providerupgrade.ProviderOpenBao, Target: "target-A", InstallationID: "core-1", Transaction: "0.4.24", ConfigPaths: []string{env}}
 	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error {
 		_, err := io.WriteString(w, "original SQL archive")
 		return err
@@ -266,5 +286,63 @@ func TestProviderCaptureResumeNeverOverwritesExistingRecoveryPair(t *testing.T) 
 	again, err := spec.artifactBinding("2.7.0")
 	if err != nil || firstBinding != again {
 		t.Fatalf("recovery evidence changed during resume: %v", err)
+	}
+}
+
+func TestProviderConfigurationRetryDoesNotRepeatCommittedSQL(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	env := filepath.Join(dir, "provider.env")
+	config := filepath.Join(dir, "provider.hcl")
+	for _, path := range []string{env, config} {
+		if err := os.WriteFile(path, []byte("ORIGINAL=yes\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt := &sqlRestoreReplayRuntime{}
+	spec := providerSQLBackupSpec{Runtime: rt, Project: "core-owned", Compose: filepath.Join(dir, "compose.yaml"), Env: env, Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "secret", Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao", Provider: providerupgrade.ProviderOpenBao, Target: "target-A", InstallationID: "core-A", Transaction: "0.4.24", ConfigPaths: []string{env, config}}
+	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error {
+		_, err := io.WriteString(w, "mock custom SQL archive")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := spec.captureConfiguration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := spec.artifactBinding("2.7.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := providerupgrade.BackupRef{Provider: spec.Provider, ID: spec.Name, Version: "2.7.0", Verified: true, Metadata: map[string]string{"database_verified": "true", "configuration_verified": "true", "format": "pg_dump-custom-v1", "binding": binding}}
+	rt.afterSQL = func() {
+		if err := os.Chmod(config, 0666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := spec.restore(context.Background(), ref); err == nil {
+		t.Fatal("unsafe configuration destination accepted")
+	}
+	receipt := providerRestoreReceipt{Path: filepath.Join(spec.Directory, spec.Name+"-restore.json"), Binding: binding}
+	if phase, err := receipt.load(); err != nil || phase != "sql_restored" {
+		t.Fatalf("committed SQL step lost: %q %v", phase, err)
+	}
+	if err := os.Chmod(config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := spec.restore(context.Background(), ref); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restores != 1 {
+		t.Fatalf("configuration retry repeated SQL %d times", rt.restores)
+	}
+	if phase, err := receipt.load(); err != nil || phase != "recovered" {
+		t.Fatalf("configuration recovery not journaled: %q %v", phase, err)
+	}
+	spec.Target = "target-B"
+	if err := spec.restore(context.Background(), ref); err == nil {
+		t.Fatal("cross-target restore receipt reused")
 	}
 }

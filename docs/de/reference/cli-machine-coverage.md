@@ -139,3 +139,4 @@ Die technische Registry und ihre Befehle, Flags, Operationskennungen und maschin
 | `baha workspace show` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.show |  |
 | `baha workspace status` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.status |  |
 | `baha workspace update` | semantisch | CLI -o json / typisiertes MCP-Ergebnis | baseharbor.workspace.update |  |
+| `baha use` | Darstellung |  |  | Speichert die aktive Core- oder Target-Auswahl für diesen Benutzer; Machine-Clients übergeben Targets ausdrücklich pro Operation. |

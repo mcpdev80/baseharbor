@@ -55,6 +55,14 @@ func TestRuntimeEtcdStatusParsesIdentityAndLeader(t *testing.T) {
 	if _, err := parseRuntimeEtcdStatus([]byte(`[{"Endpoint":"http://x:2379","Status":{"header":{"cluster_id":1,"member_id":1,"revision":0},"leader":0,"version":""}}]`)); err == nil {
 		t.Fatal("incomplete etcd status accepted")
 	}
+	// Actual etcd StatusResponse has no isLeader field.
+	status, err = parseRuntimeEtcdStatus([]byte(`[{"Endpoint":"https://postgres-etcd-1:2379","Status":{"header":{"cluster_id":1234,"member_id":11,"revision":99},"leader":11,"version":"3.7.2","isLearner":false}}]`))
+	if err != nil || !status.IsLeader {
+		t.Fatalf("native etcd leader was not recognized: %+v %v", status, err)
+	}
+	if _, err := parseRuntimeEtcdStatus([]byte(`[{"Endpoint":"https://postgres-etcd-1:2379","Status":{"header":{"cluster_id":1234,"member_id":11,"revision":99},"leader":11,"version":"3.7.2","isLeader":false}}]`)); err == nil {
+		t.Fatal("contradictory helper leader flag accepted")
+	}
 }
 
 func TestRecoveryEtcdComposeHasNoLiveVolumeAndRequiresMTLS(t *testing.T) {
