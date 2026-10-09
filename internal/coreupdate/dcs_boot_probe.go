@@ -87,20 +87,12 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		// etcdutl snapshot restore creates a NEW etcd cluster and member IDs.
 		// Comparing the recovered cluster ID to the snapshot's old cluster ID
 		// would reject every correctly isolated restoration.
-		restoredID := s.Header.ClusterID.String()
-		if cid, err := strconv.ParseUint(restoredID, 10, 64); err != nil || cid == 0 || restoredID == id.Cluster {
-			return errors.New("recovered etcd cluster identity is missing or was not rotated")
+		if err := validateRecoveredEtcdClusterID(id.Cluster, s.Header.ClusterID.String(), &recoveredClusterID); err != nil {
+			return err
 		}
-		if recoveredClusterID == "" {
-			recoveredClusterID = restoredID
-		} else if recoveredClusterID != restoredID {
-			return errors.New("isolated etcd endpoints disagree on recovered cluster identity")
+		if err := validateRecoveredEtcdMemberID(s.Header.MemberID.String(), memberIDs); err != nil {
+			return err
 		}
-		memberID, memberErr := strconv.ParseUint(s.Header.MemberID.String(), 10, 64)
-		if memberErr != nil || memberID == 0 || memberIDs[s.Header.MemberID.String()] {
-			return errors.New("etcd member identity is missing or duplicated")
-		}
-		memberIDs[s.Header.MemberID.String()] = true
 		if expectedLeader == "" {
 			expectedLeader = s.Leader.String()
 		}
@@ -117,5 +109,30 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 	if err := p.VerifyPatroniDCS(ctx); err != nil {
 		return fmt.Errorf("recovered Patroni DCS state unverified: %w", err)
 	}
+	return nil
+}
+
+func validateRecoveredEtcdClusterID(original, recovered string, expected *string) error {
+	id, err := strconv.ParseUint(recovered, 10, 64)
+	if err != nil || id == 0 || recovered == original {
+		return errors.New("recovered etcd cluster identity is missing or was not rotated")
+	}
+	if expected == nil {
+		return errors.New("recovered etcd cluster identity has no receipt destination")
+	}
+	if *expected == "" {
+		*expected = recovered
+	} else if *expected != recovered {
+		return errors.New("isolated etcd endpoints disagree on recovered cluster identity")
+	}
+	return nil
+}
+
+func validateRecoveredEtcdMemberID(raw string, seen map[string]bool) error {
+	memberID, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || memberID == 0 || seen[raw] {
+		return errors.New("etcd member identity is missing or duplicated")
+	}
+	seen[raw] = true
 	return nil
 }
