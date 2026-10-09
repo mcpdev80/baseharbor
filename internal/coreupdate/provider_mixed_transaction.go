@@ -96,6 +96,18 @@ func RunMixedProviderUpdates(ctx context.Context, plan Plan, journalPath string,
 		},
 		Record: ops.Record,
 	}
+	// A failed preflight must not trigger rollback of a provider that was
+	// already interrupted before this invocation. Preserve its journal and
+	// require explicit verified recovery rather than running recovery hooks
+	// against a runtime whose ownership/preflight just failed.
+	before, err := LoadJournal(journalPath, plan.Release)
+	if err != nil {
+		return err
+	}
+	prior := make(map[string]string, len(before.Steps))
+	for key, state := range before.Steps {
+		prior[key] = state
+	}
 	if err := ExecuteJournaled(ctx, plan, journalPath, hooks); err == nil {
 		return nil
 	} else {
@@ -108,6 +120,12 @@ func RunMixedProviderUpdates(ctx context.Context, plan Plan, journalPath string,
 		for _, delta := range plan.Deltas {
 			status := journal.Steps[JournalKey(delta)]
 			if status != "applying" && status != "apply_failed" && status != "verify_failed" {
+				continue
+			}
+			// Only recover mutations entered during this invocation. An
+			// existing interrupted state can only be handled after successful
+			// preflight and explicit recovery admission on a subsequent run.
+			if previous := prior[JournalKey(delta)]; previous == "applying" || previous == "apply_failed" || previous == "verify_failed" {
 				continue
 			}
 			if recoverErr := hooks.Recover(rollbackCtx, delta, status); recoverErr != nil {
