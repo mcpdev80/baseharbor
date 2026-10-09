@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"go.yaml.in/yaml/v3"
@@ -154,6 +155,40 @@ func TestKeycloakSingleGatewayOmitsAbsentHAMembers(t *testing.T) {
 	for _, peer := range []string{"  keycloak-2:", "  keycloak-3:"} {
 		if !strings.Contains(ha, peer) {
 			t.Fatalf("HA gateway missing %s", peer)
+		}
+	}
+}
+
+func TestKeycloakNativeTLSReloadMeetsProviderMinimum(t *testing.T) {
+	for _, ha := range []bool{false, true} {
+		app := application.New("reload-contract", "prod", false, false, false)
+		app.HA = ha
+		source := keycloakCompose(app, KeycloakFiles{Project: "owned", ConsumerNetwork: "owned-consumer", InternalNetwork: "owned-internal"})
+		var doc struct {
+			Services map[string]struct {
+				Command []string `yaml:"command"`
+			} `yaml:"services"`
+		}
+		if err := yaml.Unmarshal([]byte(source), &doc); err != nil {
+			t.Fatal(err)
+		}
+		for service, entry := range doc.Services {
+			if service != "keycloak-1" && service != "keycloak-2" && service != "keycloak-3" {
+				continue
+			}
+			found := false
+			for _, arg := range entry.Command {
+				if value, ok := strings.CutPrefix(arg, "--https-certificates-reload-period="); ok {
+					interval, err := time.ParseDuration(value)
+					if err != nil || interval <= 30*time.Second {
+						t.Fatalf("%s cannot start with TLS reload %q: %v", service, value, err)
+					}
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("%s missing native certificate reload contract", service)
+			}
 		}
 	}
 }

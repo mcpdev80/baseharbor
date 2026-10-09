@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -66,6 +67,9 @@ func (l keycloakRuntimeLifecycle) Apply(ctx context.Context, files KeycloakFiles
 func (l keycloakRuntimeLifecycle) Destroy(ctx context.Context, files KeycloakFiles) error {
 	return l.runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env)
 }
+
+// Keycloak requires a TLS reload interval strictly above 30 seconds.
+const keycloakCertificateReloadPeriod = 35 * time.Second
 
 type KeycloakFiles struct {
 	Dir                string
@@ -411,7 +415,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - --https-port=%d
       - --https-certificate-file=/run/baseharbor/tls/server.pem
       - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
-      - --https-certificates-reload-period=5s
+      - --https-certificates-reload-period=%s
       - --proxy-headers=xforwarded
 %s      - --health-enabled=true
       - --metrics-enabled=true
@@ -439,7 +443,7 @@ func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
       - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
     networks:
       identity-internal: {}
-`, name, KeycloakImage, keycloakHTTPSPort, hostnameCommand, name, hostnameEnvironment)
+`, name, KeycloakImage, keycloakHTTPSPort, keycloakCertificateReloadPeriod.String(), hostnameCommand, name, hostnameEnvironment)
 	}
 
 	var b strings.Builder

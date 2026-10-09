@@ -157,7 +157,7 @@ The default domain is `baha.localhost` and remains configurable per Target. The 
 
 CLI, JSON and MCP are adapters over the same semantic core. No interface may bypass policy, ownership, verification or secret safety.
 
-For normative behavior, use [Specs](../spec/README.md). For design rationale, use [ADRs](../decisions/).
+For normative behavior, use [Specs](../spec/README.md). For design rationale, use [ADRs](../decisions/index.md).
 
 
 ## Documentation boundaries

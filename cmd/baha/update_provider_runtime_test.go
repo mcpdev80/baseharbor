@@ -217,6 +217,38 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {
 		t.Fatal(err)
 	}
+	resolved, appBinding, err := resolveAccessBinding(ctx, application.DefaultStore(), "", "postgres", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appFiles, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appIdentity := platformopenbao.ApplicationIdentity{Name: manifest.Name, Environment: manifest.Environment}
+	appCredentials := platformopenbao.ApplicationCredentialsPath(appFiles.Dir)
+	secretValue := []byte("provider-acceptance-before-upgrade")
+	if err := platformopenbao.SetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	applicationSQL := func(sql string) string {
+		return providerFixtureSQLCredentials(t, ctx, ops.core, rt, "postgres-admin", "postgres", "/run/baseharbor/postgres-ca/ca.pem", appBinding.Username, appBinding.Password, appBinding.Database, sql)
+	}
+	applicationSQL("CREATE TABLE public.provider_upgrade_marker(value text NOT NULL); INSERT INTO public.provider_upgrade_marker VALUES ('application-retained')")
+	checkApplication := func() {
+		if applicationSQL("SELECT value FROM public.provider_upgrade_marker") != "application-retained" {
+			t.Fatal("application SQL data or credentials lost")
+		}
+		if applicationSQL("SELECT CASE WHEN NOT rolsuper AND NOT rolcreaterole AND NOT rolcreatedb THEN 'least-privilege' ELSE 'unsafe' END FROM pg_roles WHERE rolname=current_user") != "least-privilege" {
+			t.Fatal("application SQL role gained administrative privileges")
+		}
+		value, err := platformopenbao.GetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER")
+		if err != nil || !bytes.Equal(value, secretValue) {
+			t.Fatal("application AppRole cannot read preserved secret")
+		}
+	}
+	checkApplication()
+	checkIdentity, changeIdentityUser := providerFixtureIdentity(t, ctx, ops)
 	beforeSQL := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num")
 	providerFixtureSQL(t, ctx, ops, false, "CREATE TABLE public.baseharbor_upgrade_marker(value text NOT NULL); INSERT INTO public.baseharbor_upgrade_marker VALUES ('before-upgrade')")
 	providerFixtureSQL(t, ctx, ops, true, "CREATE TABLE public.baseharbor_upgrade_marker(value text NOT NULL); INSERT INTO public.baseharbor_upgrade_marker VALUES ('before-upgrade')")
@@ -238,6 +270,7 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if err := reconcileNativeCoreProviders(ctx, "v0.4.24"); err != nil {
 		t.Fatalf("productive provider reconciliation: %v", err)
 	}
+	checkIdentity()
 	afterSQL := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num")
 	if beforeSQL == afterSQL {
 		t.Fatal("PostgreSQL image change did not change actual server version")
@@ -250,16 +283,21 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {
 		t.Fatal(err)
 	}
+	checkApplication()
 	t.Logf("PostgreSQL actual version %s -> %s; registered SQL/Secrets application retained", beforeSQL, afterSQL)
 	// Fail real services, then use the same production Recover hooks, not fake Ops.
 	for _, kind := range []coreupdate.ProviderKind{coreupdate.Identity, coreupdate.Secrets} {
 		d, _ := providerDelta(plan, kind)
 		if kind == coreupdate.Identity {
+			changeIdentityUser()
 			providerFixtureSQL(t, ctx, ops, true, "UPDATE public.baseharbor_upgrade_marker SET value='after-backup'")
 			if err := ops.stopSelected(ctx, bhruntime.Files{Project: identity.Project, Compose: identity.Compose, Env: identity.Env}, "keycloak-1"); err != nil {
 				t.Fatal(err)
 			}
 		} else {
+			if err := platformopenbao.SetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER", []byte("post-backup-value")); err != nil {
+				t.Fatal(err)
+			}
 			if err := ops.stopSelected(ctx, files, files.OpenBaoMembers()...); err != nil {
 				t.Fatal(err)
 			}
@@ -284,6 +322,8 @@ func TestCoreProviderVersionsRuntimeAcceptance(t *testing.T) {
 	if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {
 		t.Fatal(err)
 	}
+	checkApplication()
+	checkIdentity()
 	t.Log("Real provider upgrades and controlled failure recovery passed; no production resources used")
 }
 
@@ -318,10 +358,13 @@ func logProviderBaselineDiagnostics(t *testing.T, rt bhruntime.RuntimeProvider, 
 		}
 		for _, line := range strings.Split(logs, "\n") {
 			lower := strings.ToLower(line)
+			if strings.Contains(lower, "\"request\"") || strings.Contains(lower, "token") || strings.Contains(lower, "password") {
+				continue
+			}
 			if !strings.Contains(lower, "error") && !strings.Contains(lower, "warn") && !strings.Contains(lower, "tls") && !strings.Contains(lower, "started") {
 				continue
 			}
-			// These are bootstrap diagnostics before any operator token request;
+			// Exclude credential and request records from provider diagnostics;
 			// protected environment values are still removed before publication.
 			t.Logf("Provider bootstrap diagnostic %s: %s", c.Service, sanitizeWorkloadDiagnostic(line, values))
 		}
@@ -346,13 +389,18 @@ func providerFixtureSQL(t *testing.T, ctx context.Context, o *coreNativeRuntimeO
 		}
 		user, password, database = values["BASEHARBOR_KEYCLOAK_DB_USER"], values["BASEHARBOR_KEYCLOAK_DB_PASSWORD"], values["BASEHARBOR_KEYCLOAK_DB_NAME"]
 	}
+	return providerFixtureSQLCredentials(t, ctx, files, o.runtime, client, host, ca, user, password, database, sql)
+}
+
+func providerFixtureSQLCredentials(t *testing.T, ctx context.Context, files bhruntime.Files, rt bhruntime.RuntimeProvider, client, host, ca, user, password, database, sql string) string {
+	t.Helper()
 	values, err := bhruntime.RuntimeEnvironment(files)
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=\"$1\" PGCONNECT_TIMEOUT=5\nexec psql -h \"$2\" -U \"$3\" -d \"$4\" -Atqc \"$5\" -v ON_ERROR_STOP=1"
 	var result bytes.Buffer
-	if err := o.runtime.RunProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values, strings.NewReader(password+"\n"), &result, io.Discard, []string{files.Compose}, "run", "--rm", "--no-deps", client, "sh", "-ec", script, "--", ca, host, user, database, sql); err != nil {
+	if err := rt.RunProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values, strings.NewReader(password+"\n"), &result, io.Discard, []string{files.Compose}, "run", "--rm", "--no-deps", client, "sh", "-ec", script, "--", ca, host, user, database, sql); err != nil {
 		t.Fatal("provider fixture SQL failed")
 	}
 	return strings.TrimSpace(result.String())

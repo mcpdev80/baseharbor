@@ -1,10 +1,10 @@
 # Core provider update contract — v0.4.24
 
-Status: **implementation in progress**. This document describes required behavior, not proof of a supported end-to-end provider upgrade.
+Status: **implemented; real-version runtime qualification pending**. This document describes required behavior, not proof of a supported end-to-end provider upgrade.
 
 ## Authority and boundaries
 
-A selected BaseHarbor release must own immutable provider image digests, versions, compatibility metadata and the complete SQL / Secrets / Identity reference set. No mutable `latest` resolution is permitted. The current provider pin constants in runtime/identity assets are not yet a versioned release manifest.
+A selected BaseHarbor release must own immutable provider image digests, versions, compatibility metadata and the complete SQL / Secrets / Identity reference set. No mutable `latest` resolution is permitted. The immutable catalog is embedded in `internal/coreupdate/releases/v0.4.24.json`; runtime inventory must match the selected catalog, including dedicated Keycloak backing SQL.
 
 The Core update domain is implemented in `internal/coreupdate`. It operates on **owned realizations**, not merely provider types: installation, placement scope, instance and owner form the identity. An external or foreign provider must not be changed automatically.
 
@@ -57,3 +57,7 @@ The isolated acceptance gate exercises replica-first replacement and switchover 
 - Evidence bound to the release candidate SHA and provider digests
 
 The initial planner and hook tests prove only contract behavior; **they do not qualify the real provider mutation paths**.
+
+## Native provider admission
+
+OpenBao accepts strictly newer patches in the same major/minor stream; the candidate targets 2.7.1. Keycloak follows that same patch rule for HA. The explicitly admitted single-Core 26.7.5 → 26.8.0 path stops/recreates the one member and uses verified SQL/configuration backup and recovery. Other minor/major paths are refused before mutation. A completed native transaction verifies the unchanged immutable inventory and registered application Secret scopes; the narrower binary-only admission rule is not reused to reject those already verified applications.

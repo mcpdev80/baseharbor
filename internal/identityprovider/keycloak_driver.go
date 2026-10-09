@@ -468,7 +468,7 @@ func reloadKeycloakDatabaseCertificates(ctx context.Context, runtime KeycloakRun
 }
 
 func waitKeycloakNativeCertificateReload(ctx context.Context) error {
-	timer := time.NewTimer(12 * time.Second)
+	timer := time.NewTimer(2*keycloakCertificateReloadPeriod + 2*time.Second)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

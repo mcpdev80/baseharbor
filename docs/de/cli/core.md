@@ -61,3 +61,9 @@ Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/c
 
 
 Technische Bezeichner: `ha: true`, `baha app doctor`, `baha app new orders-api --stack go --http --sql`, `preserved`, `results`.
+
+## Provider-Update und Point-Recovery
+
+`baha update --check` prüft ein veröffentlichtes Release, ohne Provider zu verändern. Ein unterstütztes Update benötigt `--yes`, unveränderliche Image-Identitäten und verifizierte Recovery-Punkte. v0.4.24 bleibt Unreleased; diese Befehle veröffentlichen keinen Kandidaten.
+
+`baha update --recover --version VERSION --yes` stellt den eigenen HA-PostgreSQL-/DCS-Zustand ausdrücklich zum verifizierten Backup-Punkt dieses Updates wieder her und bewahrt verdrängte Volumes. Die CLI wird nicht ersetzt. Transaktionen nach dem Backup-Punkt gehen verloren; ein Update-Fehler löst diesen Rücksprung nie automatisch aus. Unklare Commit-/Fencing-Zustände benötigen Reconciliation. Topologie- und Versionsgrenzen stehen im [Provider-Update-Vertrag](../spec/core-provider-update-v1.md).

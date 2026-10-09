@@ -1,10 +1,10 @@
 # Core-Provider-Updates – Vertrag v0.4.24
 
-Status: **Implementierung in Arbeit**. Diese Seite definiert gefordertes Verhalten, keinen Nachweis eines produktiv unterstützten Komplett-Upgrades.
+Status: **implementiert; Runtime-Abnahme echter Versionswechsel ausstehend**. Diese Seite definiert gefordertes Verhalten, keinen Nachweis eines produktiv unterstützten Komplett-Upgrades.
 
 ## Zuständigkeit und Grenzen
 
-Das ausgewählte BaseHarbor-Release besitzt die unveränderlichen Provider-Image-Digests, Versionen, Kompatibilitätsmetadaten und den Referenzsatz für SQL, Secrets und Identity. Eine dynamische `latest`-Auflösung ist untersagt. Aktuelle Pin-Konstanten sind noch kein versioniertes Release-Manifest.
+Das ausgewählte BaseHarbor-Release besitzt die unveränderlichen Provider-Image-Digests, Versionen, Kompatibilitätsmetadaten und den Referenzsatz für SQL, Secrets und Identity. Eine dynamische `latest`-Auflösung ist untersagt. Der unveränderliche Katalog ist in `internal/coreupdate/releases/v0.4.24.json` eingebettet; das Runtime-Inventar muss einschließlich des eigenen Keycloak-Backing-SQL zum ausgewählten Katalog passen.
 
 Die Domäne `internal/coreupdate` arbeitet auf **eigenen Realisierungen**. Installation, Placement-Scope, Instanz und Eigentümer bestimmen die Identität. Fremde beziehungsweise externe Provider dürfen nicht automatisch geändert werden.
 
@@ -57,3 +57,7 @@ Das isolierte Acceptance-Gate prüft Replica-first-Neuerstellung und Switchover 
 - Evidence an Release-SHA und Provider-Digests gebunden.
 
 Anfängliche Planer-/Hook-Tests beweisen nur den Vertrag, **nicht** die realen Provider-Mutationspfade.
+
+## Native Provider-Zulassung
+
+OpenBao akzeptiert ausschließlich neuere Patches desselben Major-/Minor-Zweigs; der Kandidat verwendet 2.7.1. Keycloak folgt für HA derselben Patch-Regel. Der explizit zugelassene Single-Core-Pfad 26.7.5 → 26.8.0 stoppt und ersetzt das einzelne Mitglied und verwendet verifizierte SQL-/Konfigurationsbackups sowie Recovery. Andere Minor-/Major-Pfade werden vor jeder Änderung abgewiesen. Eine abgeschlossene native Transaktion prüft das unveränderte unveränderliche Inventar und die Secret-Scopes registrierter Anwendungen; die engere Zulassungsregel für reine Binary-Updates weist diese bereits verifizierten Anwendungen nicht erneut ab.
