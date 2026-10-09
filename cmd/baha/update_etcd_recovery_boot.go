@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -198,33 +197,15 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 		return errors.New("isolated etcd recovery cluster does not have three unique members and one leader")
 	}
 
-	var keys strings.Builder
+	// Leader and member keys are leased and may expire while the isolated
+	// recovery cluster has no Patroni processes. Prove the durable namespace
+	// instead; live Patroni readiness is a separate post-cutover gate.
+	var state strings.Builder
 	args := append([]string{"--endpoints=" + recovered.Endpoints[0]}, recovered.tlsArgs()...)
 	prefix := "/service/" + patroniScope + "/"
-	args = append(args, "get", prefix, "--prefix", "--keys-only")
-	if err := recovered.run(ctx, "/usr/local/bin/etcdctl", &keys, io.Discard, nil, args...); err != nil {
+	args = append(args, "get", prefix, "--prefix", "--write-out=json")
+	if err := recovered.run(ctx, "/usr/local/bin/etcdctl", &state, io.Discard, nil, args...); err != nil {
 		return fmt.Errorf("read restored Patroni DCS scope: %w", err)
 	}
-	var keyList []string
-	for _, line := range strings.Split(keys.String(), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			keyList = append(keyList, line)
-		}
-	}
-	sort.Strings(keyList)
-	hasLeader := false
-	hasMember := false
-	for _, key := range keyList {
-		if key == prefix+"leader" {
-			hasLeader = true
-		}
-		if strings.HasPrefix(key, prefix+"members/") {
-			hasMember = true
-		}
-	}
-	if !hasLeader || !hasMember {
-		return errors.New("restored etcd quorum lacks Patroni leader/member DCS state")
-	}
-	return nil
+	return verifyRestoredPatroniNamespace([]byte(state.String()), prefix)
 }

@@ -63,9 +63,6 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 			if err := gate.VerifyMemberImage(ctx, replica); err != nil {
 				return err
 			}
-			if err := gate.Record(ctx, replica, "verified"); err != nil {
-				return err
-			}
 		case "":
 			if err := VerifyDCSEvidence(ctx, dcs, evidence, installation, target, cluster, release); err != nil {
 				return err
@@ -89,14 +86,18 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 			if err := gate.VerifyMemberImage(ctx, replica); err != nil {
 				return err
 			}
-			if err := gate.Record(ctx, replica, "verified"); err != nil {
-				return err
-			}
 		default:
 			return fmt.Errorf("unsupported Patroni journal state %s", state)
 		}
 		if err := WaitForPatroniQuorum(ctx, gate, leader, maxLag, 30*time.Second); err != nil {
 			return err
+		}
+		// Image identity alone does not prove that PostgreSQL has rejoined.
+		// Persist completion only after the member and its replay lag are ready.
+		if state != "verified" {
+			if err := gate.Record(ctx, replica, "verified"); err != nil {
+				return err
+			}
 		}
 	}
 	candidate := replicas[0]
@@ -176,7 +177,10 @@ func resumePatroniAfterSwitchover(ctx context.Context, gate PatroniSwitchoverGat
 		}
 	}
 	if former == "" {
-		return errors.New("UNSUPPORTED: missing old-primary switchover journal identity")
+		// The last member receipt may have reached disk before the caller's
+		// overall success receipt. All three images and roles were rechecked;
+		// completing this replay must not trigger another switchover.
+		return WaitForPatroniQuorum(ctx, gate, leader, maxLag, 30*time.Second)
 	}
 	if err := gate.VerifyRecovery(ctx); err != nil {
 		return err

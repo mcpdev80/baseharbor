@@ -389,6 +389,14 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
+	// Serialize against bootstrap and all other provider-update releases before
+	// reading installation state or inventory. Member journals are receipts,
+	// not locks: concurrent callers must never recreate the same replica.
+	unlock, err := coreinstallation.AcquireLifecycleLock(stateRoot)
+	if err != nil {
+		return fmt.Errorf("Core lifecycle operation already active or lock unavailable: %w", err)
+	}
+	defer unlock()
 	state, err := coreinstallation.Load(stateRoot)
 	if err != nil {
 		return err

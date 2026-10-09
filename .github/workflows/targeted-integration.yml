@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - 'runtime-validation/ha/**'
+      - 'work/v0.4.24-core-ha-updates'
   workflow_dispatch:
     inputs:
       gate:
@@ -180,7 +181,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   core_bootstrap:
-    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') }}
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || github.ref_name == 'work/v0.4.24-core-ha-updates') }}
     name: Core bootstrap · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45

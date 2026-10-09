@@ -234,3 +234,68 @@ func TestPatroniResumeRejectsMultipleAmbiguousReplicaJournals(t *testing.T) {
 		}
 	}
 }
+
+func TestPatroniCompletedRollReplayHasNoMemberMutation(t *testing.T) {
+	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{
+		fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{
+			{Name: "pg1", Primary: true, Healthy: true},
+			{Name: "pg2", Replica: true, Healthy: true},
+			{Name: "pg3", Replica: true, Healthy: true},
+		}}, steps: map[string]string{},
+	}}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	if err := RollPatroniCluster(context.Background(), gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err != nil {
+		t.Fatal(err)
+	}
+	gate.calls = nil
+	if err := RollPatroniCluster(context.Background(), gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err != nil {
+		t.Fatalf("replay after all member receipts: %v", err)
+	}
+	for _, action := range gate.calls {
+		if strings.HasPrefix(action, "recreate:") || strings.HasPrefix(action, "switch:") || strings.HasPrefix(action, "verified:") {
+			t.Fatalf("completed replay mutated member or receipt: %v", gate.calls)
+		}
+	}
+}
+
+type replicaNotReadyRoll struct {
+	*fakeClusterRoll
+	cancel context.CancelFunc
+}
+
+func (f *replicaNotReadyRoll) Recreate(ctx context.Context, name string) error {
+	if err := f.fakeClusterRoll.Recreate(ctx, name); err != nil {
+		return err
+	}
+	for i := range f.members {
+		if f.members[i].Name == name {
+			f.members[i].Healthy = false
+		}
+	}
+	f.cancel()
+	return nil
+}
+
+func TestPatroniReplicaReceiptRequiresReadyQuorum(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	gate := &replicaNotReadyRoll{fakeClusterRoll: &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{
+		fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{
+			{Name: "pg1", Primary: true, Healthy: true},
+			{Name: "pg2", Replica: true, Healthy: true},
+			{Name: "pg3", Replica: true, Healthy: true},
+		}}, steps: map[string]string{},
+	}}, cancel: cancel}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "backup", SHA256: strings.Repeat("a", 64)}
+	if err := RollPatroniCluster(ctx, gate, fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", 0); err == nil {
+		t.Fatal("unready restarted replica accepted")
+	}
+	if gate.steps["pg2"] != "applying" || gate.steps["pg3"] != "" {
+		t.Fatalf("member completion persisted before readiness: %v", gate.steps)
+	}
+	for _, action := range gate.calls {
+		if strings.HasPrefix(action, "switch:") || action == "recreate:pg3" {
+			t.Fatalf("continued after lost readiness: %v", gate.calls)
+		}
+	}
+}
