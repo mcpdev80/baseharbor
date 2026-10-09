@@ -8,21 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Task-first human CLI entry point `baha new`, repository-aware root facades for `init`, `list`, `inspect`, `backup`, `restore`, and context-sensitive help.
-- Core provider-update planner with release-pinned digest validation, ownership-aware scope classification, recovery and verification interfaces.
-- EN/DE CLI workflow documentation and draft release notes.
+- Task-first human CLI entry point `baha new`, repository-aware application lifecycle and Core/Target selection with `baha use`.
+- Target-aware machine, JSON and MCP integrations; guided Node enrollment and operator workflows.
+- Native provider-update admission, bounded SQL restore receipts and HA recovery orchestration.
+- Physical PostgreSQL basebackup/WAL recovery, safe restore into new owned volumes, authenticated etcd mTLS snapshot/restore, three-member quorum boot, live DCS cutover and SQL-marker rollback to the selected backup state.
+- Ownership-aware host-trust uninstallation with preservation of foreign certificates.
+- EN/DE CLI, recovery, Node and Console release-candidate documentation.
 
 ### Changed
 
-- `baha down` and `baha destroy` select application lifecycle inside repositories and installation lifecycle outside; `destroy --all` remains explicitly installation-wide.
-- `baha update --check` reports whether installed-Core provider reconciliation is available.
+- SQL and cache operations use `baha app sql` and `baha app cache`, not legacy provider-specific aliases.
+- Root-level `baha down` and `baha destroy` distinguish application repository context from installation-wide lifecycle.
+- `baha update --check` reports availability of admissible installed-Core provider reconciliation.
+- Connector and Console compatibility must be tied to immutable joint release SHAs rather than older integration receipts.
 
 ### Fixed
 
-- Application `down` rejects unrecognized options instead of misclassifying them as application names.
-- Binary-only self-update refuses an existing Core when SQL/Secrets/Identity reconciliation cannot be proven; existing Core remains untouched.
+- App `down` rejects unsupported options with typed errors.
+- Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
+- Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
+- PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
+- Implicit HA removed from default provider topology; native HA requires explicit intent, component overrides remain authoritative and existing installations cannot silently change membership.
+- Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
+- Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
 
-**Release gate:** Provider-native Core updates, full CLI acceptance, final documentation consolidation, and pre-release/runtime evidence are still outstanding.
+### Verified
+
+- Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37954182113).
+- Prior complete native Console/Connector Docker/Podman integration passed in [Actions 37968583370](https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/37968583370); the final immutable candidate matrix and exact-source evidence are tracked in PR #837.
+
+### Support boundaries and acceptance requirements
+
+- Native DCS cutover, PostgreSQL physical point-in-time backup-state recovery and same-image rolling/failure recovery passed isolated rootless Docker/Podman acceptance. Changed-image upgrade compatibility and plaintext DCS migration remain unqualified.
+- Real provider-version/state recovery and final Console/Node remote runtime acceptance require successful targeted native evidence for the selected source inputs.
+- Application-scoped PostgreSQL HA and cross-host failure tolerance remain unsupported; shared PostgreSQL HA remains supported.
+- Demo and all dependent component pins must be synchronized with one final immutable Core SHA, then revalidated.
+- v0.4.24 has not been tagged, merged or published. This entry remains Unreleased until all release gates have passed and publication is authorized.
 
 ## [0.4.23] - Unreleased
 

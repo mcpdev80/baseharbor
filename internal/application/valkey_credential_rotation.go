@@ -19,6 +19,9 @@ type valkeyCredentialRotationMaterial struct {
 }
 
 func RotateValkeyCredential(ctx context.Context, runtime bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, m Manifest, files RuntimeFiles, instance string) error {
+	if UsesSharedValkey(m) {
+		return errors.New("shared Valkey credential rotation requires an explicit Core consumer transaction; application-scoped rotation cannot alter the shared provider")
+	}
 	if runtime == nil {
 		return errors.New("Valkey credential rotation requires a runtime provider")
 	}

@@ -18,6 +18,11 @@ on:
         description: Exact baseharbor-demo commit SHA to validate
         required: true
         type: string
+      consumer_ref:
+        description: Optional exact v0.4.24 Connector candidate SHA; defaults to the reviewed integration branch
+        required: false
+        default: ''
+        type: string
       only_gates:
         description: Optional comma-separated exact gate IDs to execute; complete approval still requires all proofs
         required: false
@@ -43,6 +48,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       candidate_sha: ${{ steps.release.outputs.candidate_sha }}
       demo_ref: ${{ steps.release.outputs.demo_ref }}
+      consumer_ref: ${{ steps.release.outputs.consumer_ref }}
       adoption: ${{ steps.resume.outputs.adoption }}
       adoption_count: ${{ steps.resume.outputs.adoption_count }}
       static: ${{ steps.resume.outputs.static }}
@@ -83,6 +89,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DEMO_REF: ${{ inputs.demo_ref }}
+          INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -116,26 +124,35 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
-          demo_ref_file="docs/releases/${tag}.demo-ref"
-          test -s "$demo_ref_file" || {
-            echo "Exact demo revision file is missing: $demo_ref_file" >&2
-            exit 1
-          }
-          pinned_demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
-          [[ "$pinned_demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "Pinned demo revision must be an exact 40-character commit SHA, got: $pinned_demo_ref" >&2
-            exit 1
-          }
+          if [ "$tag" = v0.4.24 ]; then
+            python3 scripts/ecosystem_release_pins.py --core "$(git rev-parse HEAD)" \
+              --connector "$INPUT_CONSUMER_REF" --demo "$INPUT_DEMO_REF" \
+              --output "docs/releases/$tag.consumer-pins.json" > "$RUNNER_TEMP/v024-consumers.json"
+            pinned_demo_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/v024-consumers.json")"
+            consumer_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["connector_ref"])' "$RUNNER_TEMP/v024-consumers.json")"
+            echo "consumer_ref=$consumer_ref" >> "$GITHUB_OUTPUT"
+          else
+            demo_ref_file="docs/releases/${tag}.demo-ref"
+            test -s "$demo_ref_file" || {
+              echo "Exact demo revision file is missing: $demo_ref_file" >&2
+              exit 1
+            }
+            pinned_demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+            [[ "$pinned_demo_ref" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Pinned demo revision must be an exact 40-character commit SHA, got: $pinned_demo_ref" >&2
+              exit 1
+            }
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]] || {
-              echo "Demo revision must be an exact 40-character commit SHA, got: $INPUT_DEMO_REF" >&2
-              exit 1
-            }
-            test "$INPUT_DEMO_REF" = "$pinned_demo_ref" || {
-              echo "Requested demo revision does not match $demo_ref_file." >&2
-              exit 1
-            }
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]] || {
+                echo "Demo revision must be an exact 40-character commit SHA, got: $INPUT_DEMO_REF" >&2
+                exit 1
+              }
+              test "$INPUT_DEMO_REF" = "$pinned_demo_ref" || {
+                echo "Requested demo revision does not match $demo_ref_file." >&2
+                exit 1
+              }
+            fi
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -189,6 +206,7 @@ jobs:
           python scripts/test_targeted_atomic_plan.py
           python scripts/test_private_consumer_evidence.py
           python scripts/test_public_consumer_evidence.py
+          python scripts/test_ecosystem_release_pins.py
           python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
 
@@ -279,10 +297,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', steps.release.outputs.tag) }}
           CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
           DEMO_REF: ${{ steps.release.outputs.demo_ref }}
           TAG: ${{ steps.release.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ steps.release.outputs.consumer_ref }}
           ONLY_GATES: ${{ inputs.only_gates }}
         run: |
           set -euo pipefail
@@ -1071,6 +1090,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-integration.py
           --gate integration/static/public-contracts
@@ -1110,6 +1130,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-integration.py
           --gate integration/static/configuration-policy
@@ -1149,6 +1170,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-integration.py
           --gate integration/static/browser-terminal
@@ -1193,6 +1215,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-integration.py
           --gate integration/docker/core-bootstrap
@@ -1236,6 +1259,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-integration.py
           --gate integration/podman/core-bootstrap
@@ -1262,13 +1286,26 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
+      - name: Resolve exact v0.4.24 consumer source bindings
+        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
+          --output docs/releases/v0.4.24.consumer-pins.json
+
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', needs.source.outputs.tag) }}
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-private-integration.py
           --gate integration/docker/remote-target
@@ -1295,13 +1332,26 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
+      - name: Resolve exact v0.4.24 consumer source bindings
+        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
+          --output docs/releases/v0.4.24.consumer-pins.json
+
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', needs.source.outputs.tag) }}
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-private-integration.py
           --gate integration/podman/remote-target
@@ -1328,13 +1378,26 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
+      - name: Resolve exact v0.4.24 consumer source bindings
+        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
+          --output docs/releases/v0.4.24.consumer-pins.json
+
       - name: Authenticate full pinned private consumer qualification
         env:
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', needs.source.outputs.tag) }}
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
           python scripts/pre-release-private-integration.py
           --gate integration/static/live-console
@@ -1364,6 +1427,18 @@ jobs:
       - name: Install evidence parser
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
+      - name: Resolve exact v0.4.24 consumer source bindings
+        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
+          --output docs/releases/v0.4.24.consumer-pins.json
+
       - name: Verify every required input-bound proof and create release approval
         id: approval
         if: >-
@@ -1375,10 +1450,11 @@ jobs:
           (needs.reference_journey.result == 'success' || (needs.reference_journey.result == 'skipped' && needs.source.outputs.journey_count == '0'))
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', needs.source.outputs.tag) }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: |
           set -euo pipefail
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/approval-demo"

@@ -46,6 +46,12 @@ func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
 }
 
 func CheckSupportedRuntimeServices(m Manifest) error {
+	if err := validateProviderAvailabilityIntent(m); err != nil {
+		return err
+	}
+	if len(SQLInstanceNames(m)) > 0 && !UsesSharedPostgreSQL(m) && ComponentHA(m, "sql") {
+		return fmt.Errorf("%w: application-scoped PostgreSQL is single-instance; select native shared placement for HA", ErrUnsupportedService)
+	}
 	if !HasManagedRuntimeServices(m) {
 		if m.Services.Secrets {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
@@ -81,6 +87,9 @@ func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store
 	}
 
 	files := RuntimeFilesFor(store, m)
+	if err := CheckRuntimeTopology(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
 	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
 		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
 	}
@@ -704,7 +713,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range ValkeyInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST", "USER", "KEY_PREFIX"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}

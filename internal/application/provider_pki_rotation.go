@@ -20,6 +20,9 @@ const (
 )
 
 func RotateManagedProviderPKI(ctx context.Context, runtime bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, m Manifest, files RuntimeFiles, kind ManagedProviderPKIKind, instance string) error {
+	if kind == ManagedProviderPKIValkey && UsesSharedValkey(m) {
+		return errors.New("shared Valkey PKI belongs to Core; application-scoped rotation cannot replace its provider trust")
+	}
 	if runtime == nil {
 		return errors.New("managed provider PKI rotation requires a runtime provider")
 	}

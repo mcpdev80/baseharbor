@@ -10,7 +10,7 @@ import (
 
 func renderCaddyfile(routes []Route, listenPort int) string {
 	var b strings.Builder
-	b.WriteString("{\n  auto_https off\n}\n")
+	b.WriteString("{\n  auto_https off\n  log {\n    sampling {\n      interval 1m\n      first 3\n      thereafter 100\n    }\n  }\n}\n")
 	renderListener := func(port int) {
 		fmt.Fprintf(&b, "\n:%d {\n  tls /gateway/server.pem /gateway/server-key.pem\n", port)
 		for i, route := range routes {

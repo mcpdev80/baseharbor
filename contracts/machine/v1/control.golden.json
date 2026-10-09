@@ -352,6 +352,15 @@
             "mcp_tool": "baseharbor.trust.install"
           },
           {
+            "id": "trust.uninstall",
+            "description": "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.trust.uninstall"
+          },
+          {
             "id": "app.stop",
             "description": "Stop owned application runtime while preserving persistent data.",
             "safety": "mutating",
@@ -404,6 +413,51 @@
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.secret.tls-set"
+          },
+          {
+            "id": "node.add",
+            "description": "Create a remote node Target and write a protected one-use enrollment bundle without returning credential material.",
+            "safety": "mutating",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.node.add"
+          },
+          {
+            "id": "node.connect",
+            "description": "Consume a protected local enrollment bundle and install the rootless Node Connector service.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.node.connect"
+          },
+          {
+            "id": "node.list",
+            "description": "List configured remote connector nodes without credential material.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.node.list"
+          },
+          {
+            "id": "node.status",
+            "description": "Inspect persisted Core enrollment status for one remote node.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.node.status"
+          },
+          {
+            "id": "node.disconnect",
+            "description": "Revoke a remote node identity before removing its empty Target registration.",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.node.disconnect"
           },
           {
             "id": "target.create",

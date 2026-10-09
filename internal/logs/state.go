@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
@@ -68,6 +69,9 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	}
 	switch p.Scope {
 	case capability.ScopeShared:
+		if err := bhruntime.CheckSharedProviderIdentity(dataDir, "loki"); err != nil {
+			return Placement{}, err
+		}
 		project := bhruntime.SharedProjectName(namespace)
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
@@ -75,13 +79,6 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		legacyProject := providerProject
 		if prefix != "" {
 			legacyProject = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
-		}
-		if p.SharingBoundary != "" {
-			token := application.ProviderPlacementNameToken(p.SharingBoundary)
-			dir = filepath.Join(dir, token)
-			legacyProject += "-" + token
-			lokiVolume += "-" + token
-			alloyVolume += "-" + token
 		}
 		network := legacyProject + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
@@ -132,6 +129,9 @@ func EnsureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 }
 
 func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, m application.Manifest, mode bhruntime.LogCollectionMode, storage *objectstorage.PlatformBucket) (ProviderFiles, error) {
+	if application.ComponentHA(m, "logs") && storage == nil {
+		return ProviderFiles{}, errors.New("Loki HA requires an explicitly prepared object-storage binding")
+	}
 	p, err := PlacementForAt(dataDir, namespace, m)
 	if err != nil {
 		return ProviderFiles{}, err
@@ -146,6 +146,17 @@ func ensureProviderFilesForModeAt(ctx context.Context, issuer serviceaccess.Issu
 		return ProviderFiles{}, err
 	}
 	files := providerFiles(p)
+	single := "loki"
+	if p.Scope == capability.ScopeApplication {
+		single = "baseharbor-internal-loki"
+	}
+	if err := providertopology.RequireVariant(files.Compose, single, "loki-1", application.ComponentHA(m, "logs")); err != nil {
+		return ProviderFiles{}, err
+	}
+	req := application.AvailabilityIntent(m).Resolve("logs")
+	if req.Instances > 0 && ((req.HA && req.Instances != 3) || (!req.HA && req.Instances != 1)) {
+		return ProviderFiles{}, errors.New("Loki native topology cannot satisfy the requested instance override")
+	}
 	registrations, err := reconcileRegistrationAt(files.Registrations, m, namespace, true)
 	if err != nil {
 		return ProviderFiles{}, err

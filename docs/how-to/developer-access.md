@@ -150,3 +150,8 @@ Workload commands are routed through BaseHarbor's Compose runtime boundary and u
 - Workload access is limited to services selected by the application contract.
 - Missing or ambiguous resource instances fail clearly instead of guessing.
 - Test/prod require the configured OIDC operator boundary; trusted-local dev does not. Advanced approval, JIT elevation and break-glass governance remain future policy layers.
+
+
+### Next.js upstream port mismatch (P0 #844)
+
+A generated Next.js application declares `exposure.http.port: 8080`. The Compose workload must also listen on `PORT=8080`, publish `8080:8080`, declare `EXPOSE 8080` and probe `http://127.0.0.1:8080/healthz`. A healthy container on port 3000 does not prove the declared upstream on port 8080 is reachable. HTTP 502/503/504 from the canonical development gateway means the application upstream is unavailable, not necessarily that its HTTPS hostname or gateway route is missing. Check listener, declared exposure and Target network before modifying route state. Do not expose internal Caddyfile or gateway state paths in user-visible diagnostics.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+	"go.yaml.in/yaml/v3"
 )
 
 type sharedValkeyRegistrationRuntime struct {
@@ -35,12 +35,84 @@ func (r *sharedValkeyRegistrationRuntime) ExecProject(_ context.Context, _, _, _
 	return "PONG", nil
 }
 
-func (r *sharedValkeyRegistrationRuntime) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, args ...string) (string, error) {
-	if strings.Contains(strings.Join(args, " "), "__baseharbor_verify__") {
+func (r *sharedValkeyRegistrationRuntime) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, service string, args ...string) (string, error) {
+	r.ready[service] = true
+	if strings.Contains(strings.Join(args, " "), "ACL LOAD") {
+		return "OK", nil
+	}
+	if strings.Contains(strings.Join(args, " "), "owned-namespace-removed") {
+		return "owned-namespace-removed", nil
+	}
+	if strings.Contains(strings.Join(args, " "), "INFO replication") {
+		return "role:master\n", nil
+	}
+	if strings.Contains(strings.Join(args, " "), " SET ") {
 		r.durableWrites++
 		return "durable", nil
 	}
+	if strings.Contains(strings.Join(args, " "), " GET ") {
+		return "NOPERM forbidden key", nil
+	}
 	return "PONG", nil
+}
+
+func TestSharedValkeyTwoApplicationsAcrossEnvironmentsKeepOneProvider(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderValkey), "shared")
+	root := t.TempDir()
+	store := Store{Root: filepath.Join(root, "apps"), Namespace: "registration"}
+	issuer := newSharedCoreTestIssuer(t, root, store.Namespace, false)
+	runtime := &sharedValkeyRegistrationRuntime{ready: map[string]bool{}}
+	apps := []Manifest{New("first", "dev", false, true, false), New("second", "test", false, true, false)}
+	var resources []sharedValkeyResource
+	for _, m := range apps {
+		files, err := EnsureRuntime(context.Background(), issuer, store, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ReconcileReferenceProviderRegistryAt(root, m); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReconcileSharedBackends(context.Background(), runtime, issuer, root, store.Namespace, m, files); err != nil {
+			t.Fatal(err)
+		}
+		shared := SharedBackendFilesAt(root, store.Namespace, m.Environment)
+		state, err := loadSharedBackendState(shared.State, m.Environment)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resources = append(resources, state.Applications[sharedBackendApplicationKey(m)].Cache[defaultServiceInstance])
+		data, err := os.ReadFile(shared.Compose)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var graph struct {
+			Services map[string]any `yaml:"services"`
+			Volumes  map[string]any `yaml:"volumes"`
+		}
+		if err := yaml.Unmarshal(data, &graph); err != nil {
+			t.Fatal(err)
+		}
+		if len(graph.Services) != 2 || len(graph.Volumes) != 1 {
+			t.Fatalf("additional consumer created physical data/helper resources: services=%d volumes=%d", len(graph.Services), len(graph.Volumes))
+		}
+	}
+	if resources[0].Username == resources[1].Username || resources[0].KeyPrefix == resources[1].KeyPrefix || resources[0].CredentialReference == resources[1].CredentialReference {
+		t.Fatal("shared consumers reused an ACL user, namespace or credential")
+	}
+	if err := ReleaseSharedBackendApplication(context.Background(), runtime, root, store.Namespace, apps[0]); err != nil {
+		t.Fatal(err)
+	}
+	shared := SharedBackendFilesAt(root, store.Namespace, apps[1].Environment)
+	state, err := loadSharedBackendState(shared.State, apps[1].Environment)
+	if err != nil || len(state.Applications) != 1 || state.ValkeyAdminCredential == "" || state.ValkeyMembers != 1 {
+		t.Fatal("consumer destroy removed Core provider or another registration")
+	}
+	if state.Applications[sharedBackendApplicationKey(apps[1])].Cache[defaultServiceInstance] != resources[1] {
+		t.Fatal("consumer destroy changed another consumer's bindings")
+	}
+	if err := VerifySharedValkey(context.Background(), runtime, root, store.Namespace, apps[1]); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
@@ -70,7 +142,7 @@ func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
 			if _, err := store.Create(m); err != nil {
 				t.Fatal(err)
 			}
-			issuer := serviceissuer.New(t)
+			issuer := newSharedCoreTestIssuer(t, root, store.Namespace, false)
 			files, err := EnsureRuntime(context.Background(), issuer, store, m)
 			if err != nil {
 				t.Fatal(err)
@@ -115,13 +187,13 @@ func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
 				if values[valkeyRuntimeKey(instance, "PASSWORD")] != password {
 					t.Fatalf("binding credential differs for %s", instance)
 				}
-				if values[valkeyContainerHostKey(instance)] != sharedValkeyAccessAlias(m, instance) {
+				if values[valkeyContainerHostKey(instance)] != coreSharedValkeyAccessAlias() {
 					t.Fatalf("binding endpoint differs for %s", instance)
 				}
 				if _, err := os.Stat(values[valkeyTLSCAKey(instance)]); err != nil {
 					t.Fatalf("TLS projection for %s: %v", instance, err)
 				}
-				if !runtime.ready[sharedValkeyService(m, instance)] {
+				if !runtime.ready[sharedValkeyMemberServiceName(coreSharedValkeyApp(state), defaultServiceInstance, 0)] {
 					t.Fatalf("readiness not verified for %s", instance)
 				}
 			}
@@ -130,7 +202,7 @@ func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
 			}
 			wantWrites := 0
 			if tc.durable {
-				wantWrites = 1
+				wantWrites = 2
 			}
 			if runtime.durableWrites != wantWrites {
 				t.Fatalf("durable write/read probes=%d want=%d", runtime.durableWrites, wantWrites)

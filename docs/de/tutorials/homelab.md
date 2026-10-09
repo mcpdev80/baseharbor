@@ -3,10 +3,10 @@
 Minimaler Aufbau:
 
 ```text
-Entwicklungsrechner
+Developer PC
   -> BaseHarbor Core + Console
        -> Node Connector
-            -> Remote-Podman-VM
+            -> remote Podman node
 ```
 
 ## 1. Core-VM
@@ -73,19 +73,19 @@ Dasselbe Target kann über die Console bedient werden.
 Diesen Prompt einer KI mit verbundenem BaseHarbor-MCP geben:
 
 ```text
-Arbeite ausschließlich über die BaseHarbor-MCP-Tools.
+Work only through the BaseHarbor MCP tools.
 
-Prüfe zuerst Core, Target, Application und Status.
-Nutze zuerst Read-only-Tools und erstelle vor Änderungen einen Plan.
+First inspect the current Core, Target, application and status.
+Use read-only tools first and create a plan before mutation.
 
 Target: app-node-01
 
-Greife niemals direkt auf Docker, Podman oder den Node Connector zu.
-Umgehe niemals BaseHarbor-Policy, Ownership, Preflight oder Verifikation.
-Gib keine Secrets aus.
+Do not access Docker, Podman or the Node Connector directly.
+Do not bypass BaseHarbor policy, ownership, preflight or verification.
+Do not expose secrets.
 
-Wenn eine Änderung nötig ist, erkläre sie kurz und warte auf Freigabe.
-Prüfe nach jeder Änderung Status/Doctor/Evidence und melde das Ergebnis.
+If a mutation is needed, explain the planned change briefly and wait for approval.
+After each mutation, verify status/doctor/evidence and report the result.
 ```
 
 Der BaseHarbor Core bleibt autoritativ. Console und MCP sind Clients; der Node Connector ist nur der begrenzte Remote-Target-Access-Pfad.

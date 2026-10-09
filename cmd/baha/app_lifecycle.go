@@ -34,7 +34,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			}
 			for _, arg := range filtered {
 				if strings.HasPrefix(arg, "-") {
-					return usageError("unknown option "+arg, "Run 'baha down --help' for available options; down preserves persistent data and does not require --yes.")
+					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and does not require --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
 				}
 			}
 			args = filtered
@@ -203,7 +203,7 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Name:    "destroy",
 		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows an ownership-verified destruction plan. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
+		Long:    "Shows an ownership-verified destruction plan and individually lists retained repository Compose data volumes. --yes authorizes managed infrastructure removal, not deletion of repository data. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			return executeApplicationDestroyLifecycle(ctx, store, args, out, errOut)
 		},

@@ -235,6 +235,49 @@ func routeNetworkSet(routes []Route) map[string]struct{} {
 	return result
 }
 
+// OwnerRoutesPresent is a read-only teardown preflight. Missing registration is
+// safe only when no gateway projection or owned runtime resources remain.
+// Other owners' valid registrations never authorize reconciliation for this app.
+func OwnerRoutesPresent(ctx context.Context, runtime Runtime, target, owner string) (bool, error) {
+	files, err := FilesFor(target)
+	if err != nil {
+		return false, err
+	}
+	current, err := loadState(files.State)
+	if err == nil {
+		for _, route := range current.Routes {
+			if route.Owner == owner {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	entries, err := os.ReadDir(files.Dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	if len(entries) > 0 {
+		return false, errors.New("development gateway registration is missing but retained state exists; run baha doctor before retrying destroy")
+	}
+	inventory, ok := runtime.(interface {
+		ListOwnedProjectResources(context.Context, string) ([]bhruntime.ProjectResource, error)
+	})
+	if !ok {
+		return false, errors.New("development gateway absence cannot be verified by this runtime")
+	}
+	resources, err := inventory.ListOwnedProjectResources(ctx, files.Project)
+	if err != nil {
+		return false, fmt.Errorf("inspect development gateway ownership: %w", err)
+	}
+	if len(resources) > 0 {
+		return false, errors.New("development gateway resources remain without their registration; repair the gateway state before retrying destroy")
+	}
+	return false, nil
+}
+
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
 	groups := make([]OwnerRoutes, 0, len(owners))
 	for _, owner := range owners {
@@ -565,9 +608,21 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 	}
 	client := &http.Client{Transport: transport}
 	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
-		return fmt.Errorf("%s: %w", route.Host, err)
+		return routeVerificationFailure(route.Host, err)
 	}
 	return nil
+}
+
+func routeVerificationFailure(host string, err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, status := range []string{"502", "503", "504"} {
+		if strings.Contains(err.Error(), "browser surface final response is HTTP "+status) {
+			return fmt.Errorf("%s: application upstream unavailable (HTTP %s); verify the workload listener matches exposure.http.port and the selected Target network is reachable", host, status)
+		}
+	}
+	return fmt.Errorf("%s: %w", host, err)
 }
 
 func Verify(ctx context.Context, target string) error {

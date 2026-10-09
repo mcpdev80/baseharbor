@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -98,9 +100,9 @@ func NewDriverWithRealization(realization OTLPRealization, app application.Manif
 
 func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
 	if d.dataDir != "" && d.dataDir != "." {
-		return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, d.dataDir, d.namespace)
+		return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, d.dataDir, d.namespace, application.AvailabilityIntent(d.app).Resolve("telemetry"))
 	}
-	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment)
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, application.AvailabilityIntent(d.app).Resolve("telemetry"))
 }
 
 func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
@@ -288,16 +290,20 @@ func EnsureProviderFilesWithTraceBackend(ctx context.Context, issuer serviceacce
 	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, issuer, traceEndpoint, traceNetwork, "dev")
 }
 
-func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment string) (ProviderFiles, error) {
+func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment string, intent ...availability.Requirement) (ProviderFiles, error) {
 	dataDir, err := bhruntime.DataDir("")
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, issuer, traceEndpoint, traceNetwork, environment, dataDir, "")
+	return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, issuer, traceEndpoint, traceNetwork, environment, dataDir, "", intent...)
 }
 
-func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment, dataDir, namespace string) (ProviderFiles, error) {
+func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment, dataDir, namespace string, intent ...availability.Requirement) (ProviderFiles, error) {
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
+	members, err := providertopology.ResolveMembers(filepath.Join(dir, "compose.yaml"), "otel-collector", 2, intent...)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create OpenTelemetry Collector provider state: %w", err)
 	}
@@ -351,13 +357,13 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	memberPolicy := accessPolicy
 	memberPolicy.AuthenticationRequired = true
 	memberPolicy.Authentication = serviceaccess.AuthenticationMTLS
-	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "otel-collector", "otel-collector-1", "otel-collector-2")
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), append([]string{"otel-collector"}, providertopology.Names("otel-collector", members)...)...)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
 	accessSpec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:               "otel-collector-access",
-		Upstreams:                 []string{"https://otel-collector-1:4318", "https://otel-collector-2:4318"},
+		Upstreams:                 collectorUpstreams(members),
 		UpstreamTrustFile:         memberTLS.Material.CA,
 		UpstreamServerName:        "otel-collector",
 		UpstreamClientCertificate: memberTLS.Material.ClientCertificate,
@@ -372,7 +378,7 @@ func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, is
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network)), 0o600); err != nil {
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network, members)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
 	return files, nil
@@ -448,7 +454,11 @@ func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access se
 	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string) string {
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string, requested ...int) string {
+	members := 1
+	if len(requested) > 0 {
+		members = requested[0]
+	}
 	var memberNetworks = "      telemetry:\n        aliases:\n          - otel-collector-metrics\n"
 	var gatewayNetworks = []string{"telemetry"}
 	var networkDecl string
@@ -476,8 +486,9 @@ func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string,
 	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	b.WriteString(member("otel-collector-1"))
-	b.WriteString(member("otel-collector-2"))
+	for _, name := range providertopology.Names("otel-collector", members) {
+		b.WriteString(member(name))
+	}
 	spec := serviceaccess.HTTPGatewaySpec{
 		ServiceName:               "otel-collector-access",
 		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
@@ -794,4 +805,12 @@ func appendFixed64(dst []byte, field int, value uint64) []byte {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], value)
 	return append(dst, buf[:]...)
+}
+
+func collectorUpstreams(members int) []string {
+	var upstreams []string
+	for _, name := range providertopology.Names("otel-collector", members) {
+		upstreams = append(upstreams, "https://"+name+":4318")
+	}
+	return upstreams
 }

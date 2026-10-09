@@ -1,10 +1,10 @@
 # Core provider update contract — v0.4.24
 
-Status: **implementation in progress**. This document describes required behavior, not proof of a supported end-to-end provider upgrade.
+Status: **implemented; real-version runtime qualification pending**. This document describes required behavior, not proof of a supported end-to-end provider upgrade.
 
 ## Authority and boundaries
 
-A selected BaseHarbor release must own immutable provider image digests, versions, compatibility metadata and the complete SQL / Secrets / Identity reference set. No mutable `latest` resolution is permitted. The current provider pin constants in runtime/identity assets are not yet a versioned release manifest.
+A selected BaseHarbor release must own immutable provider image digests, versions, compatibility metadata and the complete SQL / Secrets / Identity reference set. No mutable `latest` resolution is permitted. The immutable catalog is embedded in `internal/coreupdate/releases/v0.4.24.json`; runtime inventory must match the selected catalog, including dedicated Keycloak backing SQL.
 
 The Core update domain is implemented in `internal/coreupdate`. It operates on **owned realizations**, not merely provider types: installation, placement scope, instance and owner form the identity. An external or foreign provider must not be changed automatically.
 
@@ -29,6 +29,16 @@ A PostgreSQL major version change is currently unsupported by the generic planne
 7. Resume incomplete owned state idempotently. Never promise rollback for irreversible data migrations.
 8. Report success only when every affected realization and Core semantics verify successfully.
 
+## Explicit HA point recovery
+
+`baha update --recover --version VERSION --yes` restores the selected owned Core's PostgreSQL and etcd DCS to the verified update backup point. It does not install a release or replace the CLI. Transactions after that backup point are not included; an update failure never triggers this data rewind automatically.
+
+Recovery holds the Core lifecycle lock, validates Core/Target/release identity, checks immutable physical and DCS artifacts, and rejects credential/environment drift. PostgreSQL writers are stopped before the old DCS. The new DCS starts from the verified isolated restore; the PostgreSQL primary is seeded through a stream into a separate owned volume, and replicas rebuild into separate empty volumes. Actual mounts, mTLS DCS identity/quorum, SQL authentication, Patroni health and replication must verify before commit. Original volumes and the prior manifest are retained.
+
+A committed replay verifies the active cluster without recreating members or replaying extraction. Ambiguous fencing, partial volume seeding or interrupted commit requires reconciliation; it never reactivates both old and new data. A subsequent update uses a new transaction directory without renaming the active DCS bind directories. Existing plaintext DCS installations and PostgreSQL major migrations remain unsupported.
+
+The isolated acceptance gate exercises replica-first replacement and switchover with the same pinned image, a failed replica, real PostgreSQL WAL/SQL restoration, live DCS cutover, original-volume preservation and committed replay. This does not by itself certify compatibility of another Spilo/PostgreSQL image or a full provider-version migration.
+
 ## Human and machine parity
 
 `baha update --check`, human update output, JSON, MCP and protected HTTP must be projections of the same plan/result domain. The existing self-update implementation only handles binary/release assets and MUST NOT report a complete Core upgrade until the provider update integration and semantic verification are present.
@@ -47,3 +57,9 @@ A PostgreSQL major version change is currently unsupported by the generic planne
 - Evidence bound to the release candidate SHA and provider digests
 
 The initial planner and hook tests prove only contract behavior; **they do not qualify the real provider mutation paths**.
+
+## Native provider admission
+
+The manager AppRole deliberately excludes OpenBao's default policy. Its scoped manager policy must grant `update` on `sys/capabilities-self` so preflight can inspect its own application-policy rights. No authority to inspect other tokens is granted. Existing installations whose manager policy lacks this endpoint must have an authorized administrator reconcile that narrow policy before upgrading; Core refuses before provider mutation and never recreates a root token or silently broadens its authority.
+
+OpenBao accepts strictly newer patches in the same major/minor stream; the candidate targets 2.7.1. Keycloak follows that same patch rule for HA. The explicitly admitted single-Core 26.7.5 → 26.8.0 path stops/recreates the one member and uses verified SQL/configuration backup and recovery. Other minor/major paths are refused before mutation. A completed native transaction verifies the unchanged immutable inventory and registered application Secret scopes; the narrower binary-only admission rule is not reused to reject those already verified applications.

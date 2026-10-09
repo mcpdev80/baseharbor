@@ -32,6 +32,26 @@ def commitment(value):
     return 'sha256:' + hashlib.sha256(raw).hexdigest()
 
 
+def source_origin(role, gate, pin):
+    """Bind a source either to its own run or the complete joint browser run."""
+    if (not isinstance(pin, dict) or set(pin) not in
+            ({'repository', 'commit', 'workflow'}, {'repository', 'commit', 'workflow', 'origin'}) or
+            pin.get('repository') != REPOSITORIES[role] or pin.get('workflow') != WORKFLOW or
+            not isinstance(pin.get('commit'), str) or not re.fullmatch('[0-9a-f]{40}', pin['commit'])):
+        raise ValueError('private consumer source commitment differs')
+    if 'origin' not in pin:
+        return pin['repository'], pin['commit'], gate, role
+    origin = pin['origin']
+    if (gate != 'integration/static/live-console' or not isinstance(origin, dict) or
+            set(origin) != {'repository', 'commit', 'gate'} or
+            origin['repository'] != REPOSITORIES['connector'] or
+            origin['gate'] != 'integration/docker/remote-target' or
+            not isinstance(origin['commit'], str) or not re.fullmatch('[0-9a-f]{40}', origin['commit']) or
+            (role == 'connector' and origin['commit'] != pin['commit'])):
+        raise ValueError('joint browser origin differs from reviewed complete Connector gate')
+    return origin['repository'], origin['commit'], origin['gate'], 'connector'
+
+
 def load_private_pins(path, public=False):
     # This file contains private source identities, never authentication tokens.
     # Reject symlinks and group/world access before opening it.
@@ -137,12 +157,9 @@ class PrivateEvidenceVerifier:
             self.verify_role(role, key, pins[role], advertised[role], candidate, demo)
 
     def verify_role(self, role, gate, pin, advertised, candidate, demo):
-        if (not isinstance(pin, dict) or set(pin) != {'repository', 'commit', 'workflow'} or
-                pin.get('repository') != REPOSITORIES[role] or pin.get('workflow') != WORKFLOW or
-                not isinstance(pin.get('commit'), str) or not re.fullmatch('[0-9a-f]{40}', pin['commit']) or
-                advertised != commitment(pin)):
+        repository, source, origin_gate, origin_role = source_origin(role, gate, pin)
+        if advertised != commitment(pin):
             raise ValueError('private consumer source commitment differs')
-        repository, source = pin['repository'], pin['commit']
         runs = self.api.pages(repository,
                               'actions/workflows/release-integration.yml/runs?per_page=100&head_sha=' + source,
                               'workflow_runs')
@@ -161,7 +178,7 @@ class PrivateEvidenceVerifier:
             raise ValueError('latest private consumer run is not completed')
         jobs = self.api.pages(repository,
                               'actions/runs/' + str(run['id']) + '/jobs?per_page=100&filter=all', 'jobs')
-        matching_jobs = [job for job in jobs if job.get('name') == 'Integration · ' + gate and
+        matching_jobs = [job for job in jobs if job.get('name') == 'Integration · ' + origin_gate and
                          job.get('run_attempt') == attempt]
         if len(matching_jobs) != 1:
             raise ValueError('latest private consumer attempt needs one qualification job')
@@ -169,7 +186,7 @@ class PrivateEvidenceVerifier:
         if (job.get('head_sha') != source or type(job.get('id')) is not int or
                 job.get('status') != 'completed' or job.get('conclusion') != 'success'):
             raise ValueError('latest private consumer qualification job did not succeed')
-        name = 'private-integration-' + gate.replace('/', '-') + '-' + str(run['id']) + '-' + str(attempt)
+        name = 'private-integration-' + origin_gate.replace('/', '-') + '-' + str(run['id']) + '-' + str(attempt)
         artifacts = self.api.pages(repository,
                                    'actions/runs/' + str(run['id']) + '/artifacts?per_page=100', 'artifacts')
         matches = [artifact for artifact in artifacts if artifact.get('name') == name]
@@ -181,10 +198,12 @@ class PrivateEvidenceVerifier:
             raise ValueError('private consumer artifact source binding differs')
         receipt, _ = self.read_archive(self.api.archive(repository, artifact), artifact.get('digest'))
         expected = {'schema': SCHEMA, 'repository': repository, 'consumer_commit': source,
-                    'core_commit': candidate, 'demo_commit': demo, 'role': role, 'gate': gate,
+                    'core_commit': candidate, 'demo_commit': demo, 'role': origin_role, 'gate': origin_gate,
                     'workflow_run_id': str(run['id']), 'workflow_run_attempt': attempt,
                     'job_id': job['id'], 'result': 'success', 'cleanup_result': 'success',
                     'release_eligible': True, 'production_authority': True}
+        if 'origin' in pin and role == 'console':
+            expected['console_commit'] = pin['commit']
         if (any(receipt.get(field) != value or type(receipt.get(field)) is not type(value)
                 for field, value in expected.items()) or
                 not isinstance(receipt.get('qualifications'), dict) or

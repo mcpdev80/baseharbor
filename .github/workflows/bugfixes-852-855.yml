@@ -1,0 +1,47 @@
+name: Bugs 852–855 targeted acceptance
+on:
+  push:
+    branches: [work/v0.4.24-bugfixes-852-855]
+    paths:
+      - 'cmd/baha/**'
+      - 'internal/cli/**'
+      - 'internal/hosttrust/**'
+      - 'internal/runtime/repository_volume*'
+      - '.github/workflows/bugfixes-852-855.yml'
+permissions:
+  contents: read
+concurrency:
+  group: bugfixes-852-855-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  runtime:
+    name: Targeted bugs · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_BUGFIX_RUNTIME: ${{ matrix.runtime }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare isolated rootless engine
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Focused regressions and runtime fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bugs-852-855"
+          go test -p 2 -json ./cmd/baha ./internal/runtime ./internal/cli ./internal/hosttrust -run 'Test.*(RepositoryVolume|TrustStatus|TrustCoreState|RecordedStatus|HelpSectionNewlines|EntireCLIHelp|TUI|Completion)' -count=1 -timeout 10m 2>&1 | tee "$RUNNER_TEMP/bugs-852-855/tests.jsonl"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bugs-852-855-${{ matrix.runtime }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/bugs-852-855
+          retention-days: 30

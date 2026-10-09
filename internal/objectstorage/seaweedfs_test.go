@@ -117,16 +117,17 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 		"- -s3=true",
 		"- -s3.iam=true",
 		"- -s3.iam.readOnly=false",
-		"- -master.peers=seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333",
-		"- -master.defaultReplication=100",
-		"- -filer.defaultReplicaPlacement=100",
+		"- -master.peers=seaweedfs-node-1:9333",
+		"- -master.defaultReplication=000",
+		"- -filer.defaultReplicaPlacement=000",
 		"seaweedfs-node-1:",
-		"seaweedfs-node-2:",
-		"seaweedfs-node-3:",
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Fatalf("SeaweedFS IAM compose missing %q:\n%s", want, composeText)
 		}
+	}
+	if strings.Contains(composeText, "seaweedfs-node-2") || strings.Contains(composeText, "seaweedfs-node-3") {
+		t.Fatal("default provider created HA replicas")
 	}
 	if strings.Contains(composeText, "AWS_ACCESS_KEY_ID") || strings.Contains(composeText, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("provider compose contains global S3 credentials:\n%s", composeText)
@@ -135,8 +136,8 @@ func TestEnsureProviderFilesUsesIAMWithoutGlobalS3Credentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(caddyfile), "reverse_proxy http://seaweedfs-node-1:8333 http://seaweedfs-node-2:8333 http://seaweedfs-node-3:8333") {
-		t.Fatalf("SeaweedFS stable frontend is not configured with all HA S3 members:\n%s", string(caddyfile))
+	if !strings.Contains(string(caddyfile), "reverse_proxy http://seaweedfs-node-1:8333") {
+		t.Fatalf("SeaweedFS stable frontend is not configured with single S3 member:\n%s", string(caddyfile))
 	}
 }
 
@@ -221,10 +222,10 @@ func TestSeaweedFSManagementUIUsesHardenedWritableTmpfs(t *testing.T) {
 		},
 	}
 	got := providerComposeWithManagementUI(base, access)
-	if count := strings.Count(got, "/tmp:rw,noexec,nosuid,nodev"); count < 5 {
-		t.Fatalf("SeaweedFS HA compose has %d hardened /tmp mounts, want at least 5:\n%s", count, got)
+	if count := strings.Count(got, "/tmp:rw,noexec,nosuid,nodev"); count < 3 {
+		t.Fatalf("SeaweedFS HA compose has %d hardened /tmp mounts, want at least 3:\n%s", count, got)
 	}
-	for _, service := range []string{"seaweedfs-admin-1:", "seaweedfs-admin-2:"} {
+	for _, service := range []string{"seaweedfs-admin-1:"} {
 		index := strings.Index(got, service)
 		if index < 0 {
 			t.Fatalf("management UI service %s missing", service)

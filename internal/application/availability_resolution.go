@@ -18,6 +18,9 @@ func ResolveAvailability(m Manifest, runtimeProvider string, runtimeSupport avai
 	if err := AvailabilityIntent(m).Validate(); err != nil {
 		return AvailabilityResolution{}, err
 	}
+	if err := validateProviderAvailabilityIntent(m); err != nil {
+		return AvailabilityResolution{}, err
+	}
 	intent := AvailabilityIntent(m)
 	var out AvailabilityResolution
 
@@ -44,6 +47,12 @@ func ResolveAvailability(m Manifest, runtimeProvider string, runtimeSupport avai
 		support, err := capability.AvailabilitySupportForProvider(provider.Kind)
 		if err != nil {
 			return out, err
+		}
+		if err := capability.ValidateAvailabilityMembers(provider.Kind, req); err != nil {
+			return out, err
+		}
+		if provider.Kind == capability.ProviderPostgreSQL && !UsesSharedPostgreSQL(m) {
+			support = availability.Support{Level: availability.Unsupported, Limits: "application-scoped PostgreSQL is single-instance; select native shared placement for HA"}
 		}
 		result, err := availability.Negotiate(req, string(provider.Kind), support)
 		if strings.TrimSpace(requirement.Name) != "" && requirement.Name != "default" {

@@ -78,7 +78,7 @@ func validateSingleControlPlane(rendered string) (string, error) {
 			return "", fmt.Errorf("single control-plane contains forbidden cluster/storage: %s", forbidden)
 		}
 	}
-	for _, required := range []string{"docker.io/library/postgres:18-alpine", "docker.io/openbao/openbao:2.7.0", "ssl=on", "ssl_key_file=/tmp/server-key.pem", "hba_file=", "no-new-privileges:true", "postgres-data-1:/var/lib/postgresql", "./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro"} {
+	for _, required := range []string{"docker.io/library/postgres:18-alpine", "docker.io/openbao/openbao:2.7.1", "ssl=on", "ssl_key_file=/tmp/server-key.pem", "hba_file=", "no-new-privileges:true", "postgres-data-1:/var/lib/postgresql", "./providers/openbao/runtime/openbao.hcl:/run/baseharbor/openbao/openbao.hcl:ro"} {
 		if !strings.Contains(rendered, required) {
 			return "", fmt.Errorf("single control-plane lacks security/storage projection: %s", required)
 		}

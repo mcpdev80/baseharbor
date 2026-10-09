@@ -30,11 +30,19 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
+	sharedSQL, err := existingKeycloakCoreSQL(values)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if placement.Scope == capability.ScopeShared {
+		placement.SharingBoundary = "core"
+		app.Name, app.Environment = "core", "prod"
+	}
 	publicPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	consumer, err := application.IdentityProviderNetworkName(app, namespace)
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(app, namespace, placement)
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
@@ -68,6 +76,7 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 		canonicalPublicURL = devgateway.URLForTarget(namespace, host)
 	}
 	return KeycloakFiles{
+		SharedSQL:          sharedSQL,
 		Dir:                dir,
 		Compose:            filepath.Join(dir, "compose.yaml"),
 		Env:                envPath,

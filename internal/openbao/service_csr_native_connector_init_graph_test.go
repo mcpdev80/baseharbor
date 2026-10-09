@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -120,9 +121,28 @@ func (f *nativeConnectorFixture) quadletInitGraph(t *testing.T, ctx context.Cont
 				}
 				t.Fatal("generated init dependency qualification differs", err)
 			}
-			services, err := runtime.ObserveProject(ctx, name)
+			// A deliberately expired failed-init request can retire its mTLS
+			// session. Wait only for a fresh authenticated read; never replay Apply.
+			observe, stopObserve := context.WithTimeout(ctx, 30*time.Second)
+			services, err := runtime.ObserveProject(observe, name)
+			for errors.Is(err, targetsession.ErrUnavailable) && observe.Err() == nil {
+				timer := time.NewTimer(200 * time.Millisecond)
+				select {
+				case <-observe.Done():
+					timer.Stop()
+				case <-timer.C:
+				}
+				services, err = runtime.ObserveProject(observe, name)
+			}
+			stopObserve()
 			if err != nil {
 				t.Fatal("generated init graph observation failed", err)
+			}
+			if scenario == "failed" {
+				status, statusErr := exec.CommandContext(ctx, "systemctl", "--user", "show", strings.TrimSuffix(graph.InitUnits[0], ".container")+".service", "--property=ExecMainStatus", "--value").Output()
+				if statusErr != nil || strings.TrimSpace(string(status)) != "17" {
+					t.Fatal("failed init did not actually exit 17", statusErr)
+				}
 			}
 			appRunning := false
 			for _, service := range services {

@@ -1,0 +1,116 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
+	"github.com/mcpdev80/baseharbor/internal/traces"
+)
+
+type topologySource struct {
+	name, project, compose, env string
+	err                         error
+}
+
+// The same read-only observation is projected into status and doctor. Provider
+// projects remain separate from application workloads and helpers keep roles.
+func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles, verified ...map[string]bool) []application.StatusCheck {
+	m := resolved.Manifest
+	root, namespace := resolved.TargetStateRoot, resolved.Target.Name
+	sources := []topologySource{{name: "application", project: files.Project, compose: files.Compose, env: files.Env}}
+	if application.HasSharedBackends(m) {
+		f := application.SharedBackendFilesAt(root, namespace, m.Environment)
+		sources = append(sources, topologySource{name: "shared-backends", project: f.Project, compose: f.Compose, env: f.Env})
+		if core, found, err := application.SharedCoreSQLFilesAt(root, namespace, m); found || err != nil {
+			sources = append(sources, topologySource{name: "core-shared", project: core.Project, compose: core.Compose, env: core.Env, err: err})
+		}
+	}
+	if application.HasObjectStorage(m) || application.ComponentHA(m, "logs") || application.ComponentHA(m, "traces") {
+		f, e := objectstorage.ExistingProviderFilesAt(root, namespace)
+		sources = append(sources, topologySource{"object-storage", f.Project, f.Compose, f.Env, e})
+	}
+	if application.HasOTLPTelemetry(m) {
+		f, e := telemetry.ExistingProviderFilesAt(root, namespace)
+		sources = append(sources, topologySource{"telemetry", f.Project, f.Compose, f.Env, e})
+	}
+	if application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) {
+		f, e := metricsprovider.ExistingProviderFilesAt(root, namespace, m)
+		p, pe := metricsprovider.PlacementForAt(root, namespace, m)
+		sources = append(sources, topologySource{"metrics", p.Project, f.Compose, f.Env, errors.Join(e, pe)})
+	}
+	if application.HasLogsCollection(m) {
+		f, e := logsprovider.ExistingProviderFilesAt(root, namespace, m)
+		p, pe := logsprovider.PlacementForAt(root, namespace, m)
+		sources = append(sources, topologySource{"logs", p.Project, f.Compose, f.Env, errors.Join(e, pe)})
+	}
+	if application.HasTraceSignal(m) {
+		f, p, e := traces.ExistingProviderFilesAt(root, namespace, m)
+		sources = append(sources, topologySource{"traces", p.Project, f.Compose, f.Env, e})
+	}
+	if application.HasIdentity(m) {
+		provider, e := application.IdentityProviderForDeployment()
+		if e == nil && provider.Kind == capability.ProviderKeycloak {
+			f, e := identityprovider.ExistingKeycloakFilesAt(m, root, namespace)
+			sources = append(sources, topologySource{"identity", f.Project, f.Compose, f.Env, e})
+		}
+	}
+	var result []application.StatusCheck
+	for _, source := range sources {
+		if errors.Is(source.err, os.ErrNotExist) {
+			continue
+		} // External/unmaterialized providers have their own semantic checks.
+		if source.err != nil {
+			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: source.err.Error()})
+			continue
+		}
+		running, err := runtime.RunningServicesProject(ctx, source.project, source.compose, source.env)
+		if err != nil {
+			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
+			continue
+		}
+		observations, err := providertopology.Observe(source.compose, running, application.AvailabilityIntent(m), application.RuntimeTopologyGroups(m))
+		if err != nil {
+			result = append(result, application.StatusCheck{Name: source.name + "-topology", Detail: err.Error()})
+			continue
+		}
+		for _, o := range observations {
+			if source.name == "application" && o.RequestedHA && len(verified) > 0 && verified[0][o.Provider] {
+				o.SemanticProof = applicationTopologyProof(o.Provider)
+			}
+			detail := o.Detail()
+			if source.name == "core-shared" || source.name == "shared-backends" {
+				detail += " physical-owner=core placement=shared consumer=" + m.Name + "/" + m.Environment
+			}
+			if source.name == "application" {
+				detail += " physical-owner=" + m.Name + "/" + m.Environment + " placement=application"
+			}
+			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider+"/"+o.Instance), OK: o.Members > 0 || o.DeclaredMembers == 0, Detail: detail})
+		}
+	}
+	return result
+}
+
+// Only the existing authenticated cluster checks can contribute these proofs.
+// A healthy access proxy or a matching container count cannot do so.
+func applicationTopologyProof(provider string) string {
+	switch provider {
+	case "valkey":
+		return "valkey-primary-replicas-sentinel"
+	case "mongodb":
+		return "mongodb-primary-secondaries"
+	case "rabbitmq":
+		return "rabbitmq-cluster-membership"
+	}
+	return ""
+}

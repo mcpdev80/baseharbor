@@ -1,0 +1,218 @@
+package coreupdate
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type fakeDCSSwitchover struct {
+	calls []string
+	fail  string
+}
+
+type cutoverBootCountingDCS struct {
+	fakeDCS
+	boots  int
+	active bool
+}
+
+func (d *cutoverBootCountingDCS) VerifyRestorable(context.Context, DCSRecoveryEvidence) error {
+	d.boots++
+	if d.active {
+		return errors.New("active data directory cannot be booted as isolated cluster")
+	}
+	return nil
+}
+
+func TestDCSCutoverResumeDoesNotBootActiveDataDirectories(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	dcs := &cutoverBootCountingDCS{fakeDCS: fakeDCS{valid: true}}
+	ops := &fakeDCSSwitchover{fail: "quorum"}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	if err := RunVerifiedDCSCutover(context.Background(), dcs, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("failed quorum accepted")
+	}
+	dcs.active = true
+	ops.fail = ""
+	for i := 0; i < 2; i++ {
+		if err := RunVerifiedDCSCutover(context.Background(), dcs, ev, "core", "target", "cluster", "0.4.24", ops, journal); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if dcs.boots != 1 {
+		t.Fatalf("activated data booted again: %d", dcs.boots)
+	}
+}
+
+func (o *fakeDCSSwitchover) FenceOldDCS(context.Context) error {
+	o.calls = append(o.calls, "fence")
+	if o.fail == "fence" {
+		return errors.New("fault")
+	}
+	return nil
+}
+func (o *fakeDCSSwitchover) VerifyFenced(context.Context) error {
+	o.calls = append(o.calls, "verify_fence")
+	if o.fail == "verify_fence" {
+		return errors.New("fault")
+	}
+	return nil
+}
+func (o *fakeDCSSwitchover) ActivateIsolated(context.Context, DCSRecoveryEvidence) error {
+	o.calls = append(o.calls, "activate")
+	if o.fail == "activate" {
+		return errors.New("fault")
+	}
+	return nil
+}
+func (o *fakeDCSSwitchover) VerifyNewQuorum(context.Context, DCSRecoveryEvidence) error {
+	o.calls = append(o.calls, "quorum")
+	if o.fail == "quorum" {
+		return errors.New("fault")
+	}
+	return nil
+}
+func (o *fakeDCSSwitchover) VerifyPatroniDCS(context.Context) error {
+	o.calls = append(o.calls, "patroni")
+	if o.fail == "patroni" {
+		return errors.New("fault")
+	}
+	return nil
+}
+func (o *fakeDCSSwitchover) CommitCutover(context.Context, DCSRecoveryEvidence) error {
+	o.calls = append(o.calls, "commit")
+	if o.fail == "commit" {
+		return errors.New("fault")
+	}
+	return nil
+}
+
+func TestDCSCutoverFencesBeforeActivationAndResumes(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{}
+	err := RunVerifiedDCSCutover(context.Background(), nil, ev, "core", "target", "cluster", "0.4.24", ops, journal)
+	if !errors.Is(err, ErrDCSUnsupported) || len(ops.calls) != 0 {
+		t.Fatalf("unverified snapshot triggered mutations: %v %v", err, ops.calls)
+	}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err != nil {
+		t.Fatal(err)
+	}
+	order := strings.Join(ops.calls, ",")
+	if !strings.HasPrefix(order, "fence,verify_fence,verify_fence,activate,quorum,patroni,commit") {
+		t.Fatalf("unsafe order: %s", order)
+	}
+	other := ev
+	other.SnapshotID = "second-valid-snapshot"
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, other, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("different snapshot resumed fenced cutover")
+	}
+	if phase, err := journal.load(); err != nil || phase != "committed" {
+		t.Fatalf("cutover not durable: %s %v", phase, err)
+	}
+	before := len(ops.calls)
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range ops.calls[before:] {
+		if call == "fence" || call == "activate" || call == "verify_fence" || call == "commit" {
+			t.Fatalf("resumed committed cutover replayed obsolete operation: %v", ops.calls[before:])
+		}
+	}
+	if got := strings.Join(ops.calls[before:], ","); got != "quorum,patroni" {
+		t.Fatalf("committed recovery must validate active DCS and Patroni only, got %s", got)
+	}
+}
+func TestDCSCutoverRefusesAmbiguousFence(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{fail: "fence"}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("failed fence allowed progress")
+	}
+	ops.fail = ""
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("ambiguous previous fence retried")
+	}
+	if strings.Contains(strings.Join(ops.calls, ","), "activate") {
+		t.Fatal("new DCS activated without fence proof")
+	}
+}
+
+func TestDCSCutoverNeverReplaysAmbiguousCommittedPhase(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{fail: "commit"}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("failed commit accepted")
+	}
+	before := len(ops.calls)
+	ops.fail = ""
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil || !strings.Contains(err.Error(), "operator reconciliation") {
+		t.Fatalf("ambiguous committed phase replay accepted: %v", err)
+	}
+	if len(ops.calls) != before {
+		t.Fatalf("ambiguous commit was automatically replayed: %v", ops.calls[before:])
+	}
+}
+
+func TestDCSCutoverRejectsUnsafeLockParentWithoutCreatingLock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "cutover")
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, DCSCutoverJournal{Path: path}); err == nil {
+		t.Fatal("unsafe lock root admitted")
+	}
+	if _, err := os.Lstat(path + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("foreign lock root was modified: %v", err)
+	}
+	if len(ops.calls) != 0 {
+		t.Fatalf("cutover mutated runtime before safe lock: %v", ops.calls)
+	}
+}
+
+func TestDCSCutoverReceiptBindingCannotBeRepartitioned(t *testing.T) {
+	a := DCSRecoveryEvidence{Installation: `core\x00zone`, Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	b := a
+	b.Installation = "core"
+	b.Target = `zone\x00target`
+	first, err := dcsCutoverBinding(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := dcsCutoverBinding(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("DCS recovery receipt can be rebound by repartitioning identity fields")
+	}
+	b.Target = "zone\x00target"
+	if _, err := dcsCutoverBinding(b); err == nil {
+		t.Fatal("embedded NUL in DCS identity accepted")
+	}
+}

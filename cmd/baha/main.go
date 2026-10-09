@@ -224,9 +224,13 @@ func formatCLIErrorVerbose(w io.Writer, err error, verbose bool) {
 		}
 		return
 	}
-	fmt.Fprintln(w, "\nNext:")
-	fmt.Fprintln(w, "  baha doctor")
-	fmt.Fprintln(w, "  Retry with --verbose for diagnostic runtime details.")
+
+	var actionable interface{ NextAction() string }
+	if errors.As(err, &actionable) && actionable.NextAction() != "" {
+		fmt.Fprintln(w, "\nNext:")
+		fmt.Fprintf(w, "  %s\n", actionable.NextAction())
+	}
+
 }
 
 func hasVerboseArgument(args []string) bool {

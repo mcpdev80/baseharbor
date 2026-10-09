@@ -21,3 +21,28 @@ Target, Runtime, Placement, Zugangsdaten und generierter Deployment-Zustand land
 Das Portal besitzt Login/RBAC, Plugins, Repository-Credentials, Veröffentlichung und Ausführungs-Policy. BaseHarbor erhält keine Portal-Credentials und ruft keine Catalog-API auf. Evidence verwendet `baseharbor.evidence/v1` mit Soll-, erzwungenem, beobachtetem und verifiziertem Zustand, kein Backstage-Sonderformat.
 
 Core enthält keinen Backstage-SDK, Node-Runtime, Template-Interpreter oder `${{ ... }}`-Evaluator. [Integrationsvertrag (EN)](https://mcpdev80.github.io/baseharbor/how-to/backstage/).
+
+
+## Ergänzende technische Beispiele
+
+```text
+baseharbor.app.new
+```
+
+```json
+{
+  "name": "catalog-api",
+  "stack": "go",
+  "capabilities": [
+    "exposure.http",
+    "database.sql",
+    "cache.key-value"
+  ],
+  "emit_backstage": true,
+  "backstage_owner": "platform-team"
+}
+```
+
+```text
+baseharbor.evidence/v1
+```

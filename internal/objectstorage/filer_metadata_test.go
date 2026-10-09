@@ -55,7 +55,11 @@ func metadataProbeFiles(t *testing.T) ProviderFiles {
 	if err := os.WriteFile(env, []byte("PROBE=test\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return ProviderFiles{Dir: dir, Env: env, Compose: filepath.Join(dir, "compose.yaml"), Project: "metadata-proof"}
+	compose := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(compose, []byte("services:\n  seaweedfs-node-1: {}\n  seaweedfs-node-2: {}\n  seaweedfs-node-3: {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return ProviderFiles{Dir: dir, Env: env, Compose: compose, Project: "metadata-proof"}
 }
 
 func TestFilerMetadataProofDetectsReachableReaderWithMissingPeer(t *testing.T) {

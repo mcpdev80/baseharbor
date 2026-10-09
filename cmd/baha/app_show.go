@@ -13,26 +13,27 @@ import (
 )
 
 type overviewResource struct {
-	Name  string
-	State string
+	Name  string `json:"name"`
+	State string `json:"state"`
 }
 
 type applicationOverview struct {
-	Name            string
-	Environment     string
-	ManifestPath    string
-	Ready           bool
-	Postgres        []overviewResource
-	Valkey          []overviewResource
-	Workload        repositoryWorkloadStatus
-	SecretsDeclared bool
-	SecretsRequired int
-	SecretsReady    int
-	SecretsState    string
-	BrokerState     string
-	TelemetryState  string
+	ContractVersion string                        `json:"contract_version"`
+	Name            string                        `json:"name"`
+	Environment     string                        `json:"environment"`
+	ManifestPath    string                        `json:"manifest_path,omitempty"`
+	Ready           bool                          `json:"ready"`
+	Postgres        []overviewResource            `json:"postgres"`
+	Valkey          []overviewResource            `json:"valkey"`
+	Workload        repositoryWorkloadStatus      `json:"workload"`
+	SecretsDeclared bool                          `json:"secrets_declared"`
+	SecretsRequired int                           `json:"secrets_required"`
+	SecretsReady    int                           `json:"secrets_ready"`
+	SecretsState    string                        `json:"secrets_state"`
+	BrokerState     string                        `json:"broker_state"`
+	TelemetryState  string                        `json:"telemetry_state"`
 	LastRecovery    *application.RecoveryMetadata `json:"last_recovery,omitempty"`
-	LastBackup      *application.BackupMetadata
+	LastBackup      *application.BackupMetadata   `json:"last_backup,omitempty"`
 }
 
 func appShowCommand(store application.Store) *cli.Command {
@@ -70,12 +71,15 @@ func inspectApplicationOverview(ctx context.Context, resolved resolvedApplicatio
 	}
 	m := resolved.Manifest
 	overview := applicationOverview{
-		Name:           m.Name,
-		Environment:    m.Environment,
-		Ready:          true,
-		SecretsState:   "not declared",
-		BrokerState:    "not declared",
-		TelemetryState: "not declared",
+		ContractVersion: "v1",
+		Postgres:        []overviewResource{},
+		Valkey:          []overviewResource{},
+		Name:            m.Name,
+		Environment:     m.Environment,
+		Ready:           true,
+		SecretsState:    "not declared",
+		BrokerState:     "not declared",
+		TelemetryState:  "not declared",
 	}
 	if resolved.FromRepository {
 		overview.ManifestPath = resolved.ManifestPath

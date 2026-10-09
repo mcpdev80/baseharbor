@@ -88,6 +88,18 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 	}
 	rendered := renderComposeForProfile(resourceProject, ha)
 	composePath := filepath.Join(stateDir, composeName)
+	if ha {
+		if existing, readErr := os.ReadFile(composePath); readErr == nil {
+			text := string(existing)
+			if strings.Contains(text, "--listen-client-urls=http://") ||
+				strings.Contains(text, "--listen-peer-urls=http://") ||
+				strings.Contains(text, "=http://postgres-etcd-") {
+				return Files{}, errors.New("UNSUPPORTED: existing plaintext etcd HA topology requires an explicit fenced mTLS migration; refusing automatic DCS rewrite")
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return Files{}, fmt.Errorf("inspect existing HA DCS transport: %w", readErr)
+		}
+	}
 	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
 	}
@@ -333,7 +345,7 @@ func renderSecureControlPlaneOpenBao(rendered string) (string, error) {
 		"  openbao-member-1:\n",
 		"  openbao-member-2:\n",
 		"  openbao-member-3:\n",
-		"docker.io/openbao/openbao:2.7.0",
+		"docker.io/openbao/openbao:2.7.1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BAO_CLUSTER_ADDR: https://openbao-member-1:8201",
 		"  openbao:\n",

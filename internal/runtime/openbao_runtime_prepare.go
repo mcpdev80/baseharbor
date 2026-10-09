@@ -32,6 +32,11 @@ func prepareOpenBaoStorage(stateDir, envPath string, ha bool) error {
 	if err := ensureBootstrapPostgresTLS(stateDir); err != nil {
 		return fmt.Errorf("prepare PostgreSQL bootstrap trust: %w", err)
 	}
+	if ha {
+		if err := ensureBootstrapEtcdTLS(stateDir); err != nil {
+			return err
+		}
+	}
 	if err := ensureBootstrapOpenBaoTLS(stateDir); err != nil {
 		return fmt.Errorf("prepare OpenBao bootstrap trust: %w", err)
 	}

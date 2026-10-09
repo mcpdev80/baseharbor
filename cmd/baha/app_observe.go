@@ -348,7 +348,7 @@ func renderApplicationDoctor(
 				state = "FAILED"
 			}
 			detail := ""
-			if !result.OK || term.Verbose() {
+			if !result.OK || term.Verbose() || strings.HasSuffix(result.Name, "-topology") {
 				detail = doctorHumanDetail(term, result)
 			}
 			term.Result(state, result.Name, detail)

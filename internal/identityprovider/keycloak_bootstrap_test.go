@@ -22,7 +22,7 @@ type selectedKeycloakBootstrapRuntime struct {
 
 func TestKeycloakBootstrapIncludesGeneratedDatabaseDependencies(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "compose.yaml")
-	if err := os.WriteFile(path, []byte(keycloakCompose(application.New("demo", "dev", false, false, false), KeycloakFiles{})), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(keycloakCompose(application.WithHA(application.New("demo", "dev", false, false, false), true), KeycloakFiles{})), 0600); err != nil {
 		t.Fatal(err)
 	}
 	services, err := keycloakBootstrapServices(path)
@@ -40,6 +40,9 @@ func TestKeycloakBootstrapIncludesGeneratedDatabaseDependencies(t *testing.T) {
 	}
 	if selected["keycloak-2"] || selected["keycloak-3"] {
 		t.Fatal("initial phase permits competing database migrations")
+	}
+	if selected["keycloak-db-etcd-recovery"] {
+		t.Fatal("normal bootstrap selected an inactive recovery-profile utility")
 	}
 }
 
@@ -101,5 +104,26 @@ func TestKeycloakBootstrapAuthenticatesBeforeStartingAdditionalMembers(t *testin
 				t.Fatalf("failed bootstrap activated additional members: checks=%d calls=%v err=%v", checks, runtime.started, err)
 			}
 		})
+	}
+}
+
+func TestKeycloakSingleBootstrapDependencies(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(path, []byte(keycloakCompose(application.New("demo", "prod", false, false, false), KeycloakFiles{})), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := keycloakBootstrapServices(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"keycloak-1": true, "keycloak-access": true, "keycloak-db-tls-init": true, "keycloak-db": true, "keycloak-db-init": true}
+	for _, name := range selected {
+		if !want[name] {
+			t.Errorf("unexpected single boot service %s", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("missing single boot dependency %s", missing)
 	}
 }

@@ -50,7 +50,7 @@ func valkeyConnectionURL(values map[string]string, instance string) (string, err
 	}
 	u := &url.URL{
 		Scheme: "rediss",
-		User:   url.UserPassword("", password),
+		User:   url.UserPassword(values[valkeyRuntimeKey(instance, "USER")], password),
 		Host:   net.JoinHostPort(loopbackHost, port),
 		Path:   "/0",
 	}

@@ -35,7 +35,7 @@ func TestControlPlaneDefaultSingleAndExplicitHAPreserveProfileThroughTLS(t *test
 				wanted := 7
 				volumes := 1
 				if ha {
-					wanted = 14
+					wanted = 15
 					volumes = 6
 				}
 				if len(spec.Services) != wanted || len(spec.Volumes) != volumes {

@@ -25,7 +25,7 @@ func TestControlPlaneEstimateCoversShippedHAStartupTopologyWithoutClaimingCalibr
 			t.Fatalf("unmeasured budget claims calibration: %#v", component)
 		}
 		for _, role := range []string{"postgres-member-", "postgres-etcd-", "openbao-member-"} {
-			if strings.HasPrefix(component.Name, role) {
+			if strings.HasPrefix(component.Name, role) && component.Name != "postgres-etcd-recovery" {
 				counts[role]++
 			}
 		}
@@ -38,7 +38,7 @@ func TestControlPlaneEstimateCoversShippedHAStartupTopologyWithoutClaimingCalibr
 			t.Fatalf("HA role %s has %d members", role, count)
 		}
 	}
-	if len(counts) != 3 || len(actual) != 14 || estimate.EstimatedBytes <= 448*MiB || estimate.Confidence != ConfidenceEstimated {
+	if len(counts) != 3 || len(actual) != 15 || estimate.EstimatedBytes <= 448*MiB || estimate.Confidence != ConfidenceEstimated {
 		t.Fatalf("incorrect HA plan: %#v", estimate)
 	}
 }

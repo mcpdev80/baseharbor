@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/availability"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func TestResolveAvailabilityFailsBeforeMutationForUnsupportedRuntimeHA(t *testing.T) {
@@ -40,5 +41,29 @@ func TestResolveAvailabilityAllowsExplicitNonHAException(t *testing.T) {
 	}
 	if len(got.Results) != 1 || !got.Results[0].Satisfied || got.Results[0].RequiredHA {
 		t.Fatalf("resolution = %#v", got)
+	}
+}
+
+func TestProviderIntentMatchesNativeHAAndRejectsUnsupportedMemberOverrides(t *testing.T) {
+	m := New("demo", "dev", true, false, false)
+	enabled := true
+	disabled := false
+	m.Availability = map[string]availability.Override{"sql": {HA: &enabled, Instances: 5}}
+	result, err := ResolveAvailability(m, "docker", availability.Support{Level: availability.Unsupported})
+	if err != nil || len(result.Results) != 1 || result.Results[0].EffectiveInstances != 5 {
+		t.Fatalf("native shared SQL HA contract drift: %#v %v", result, err)
+	}
+	m.Availability["sql"] = availability.Override{HA: &disabled, Instances: 3}
+	if _, err := ResolveAvailability(m, "docker", availability.Support{Level: availability.Unsupported}); err == nil {
+		t.Fatal("non-HA provider silently negotiated multiple members")
+	}
+	m.Availability["sql"] = availability.Override{HA: &enabled, Instances: 2}
+	if _, err := ResolveAvailability(m, "docker", availability.Support{Level: availability.Unsupported}); err == nil {
+		t.Fatal("unsupported even datastore quorum negotiated")
+	}
+	m.Availability["sql"] = availability.Override{HA: &enabled}
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	if _, err := ResolveAvailability(m, "docker", availability.Support{Level: availability.Unsupported}); err == nil {
+		t.Fatal("single-only application SQL silently advertised as native HA")
 	}
 }
