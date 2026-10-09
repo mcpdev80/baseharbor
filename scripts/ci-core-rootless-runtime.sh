@@ -11,6 +11,17 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 printf 'XDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n' "$XDG_RUNTIME_DIR" "$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
 
+# Only public image content is cached; native manifests remain digest-verified.
+cache_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-public-image-cache.py"
+cache_endpoint="$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.endpoint"
+python3 "$cache_script" --endpoint-file "$cache_endpoint" > "$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.log" 2>&1 &
+for _ in $(seq 1 40); do
+  [ -s "$cache_endpoint" ] && break
+  sleep 0.25
+done
+test -s "$cache_endpoint"
+export BASEHARBOR_CI_PUBLIC_IMAGE_CACHE="$(cat "$cache_endpoint")"
+
 case "$runtime" in
   docker)
     if ! command -v dockerd-rootless-setuptool.sh >/dev/null; then
@@ -35,7 +46,8 @@ config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) /
 config.parent.mkdir(parents=True, exist_ok=True)
 settings = json.loads(config.read_text()) if config.exists() else {}
 mirrors = settings.get('registry-mirrors', [])
-settings['registry-mirrors'] = ['https://mirror.gcr.io'] + [v for v in mirrors if v != 'https://mirror.gcr.io']
+added = ['https://mirror.gcr.io', os.environ['BASEHARBOR_CI_PUBLIC_IMAGE_CACHE']]
+settings['registry-mirrors'] = added + [v for v in mirrors if v not in added]
 config.write_text(json.dumps(settings) + '\n')
 PY
     dockerd-rootless-setuptool.sh install --force
@@ -45,6 +57,26 @@ PY
     ;;
   podman)
     sudo apt-get install -y podman
+    mkdir -p "$HOME/.config/containers/registries.conf.d"
+    cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
+    cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF
+[[registry]]
+prefix = "docker.io"
+location = "docker.io"
+[[registry.mirror]]
+location = "mirror.gcr.io"
+[[registry.mirror]]
+location = "$cache_location"
+insecure = true
+[[registry]]
+prefix = "docker.io/library"
+location = "docker.io/library"
+[[registry.mirror]]
+location = "mirror.gcr.io/library"
+[[registry.mirror]]
+location = "$cache_location/library"
+insecure = true
+EOF
     podman info --format '{{.Host.Security.Rootless}}'
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
