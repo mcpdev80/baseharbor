@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -74,6 +75,59 @@ func providerMemberMutations(delta coreupdate.Delta, services []string) map[stri
 		mutations[service] = memberDelta
 	}
 	return mutations
+}
+
+func (o *coreNativeRuntimeOps) waitOpenBaoRollingMember(ctx context.Context, service, expectedVersion, expectedDigest string) error {
+	if service == "" || expectedVersion == "" || expectedDigest == "" {
+		return errors.New("OpenBao rolling readiness requires member, version and pinned digest")
+	}
+	bounded, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	const statusScript = `rc=0
+BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || rc=$?
+if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit 0; fi
+exit "$rc"`
+	var lastErr error
+	for {
+		image, imageErr := o.runtime.ProjectServiceImageIdentity(bounded, o.core.Project, service)
+		if imageErr == nil {
+			digest := image.Digest
+			if index := strings.Index(digest, "@sha256:"); index >= 0 {
+				digest = digest[index+1:]
+			}
+			if digest == expectedDigest {
+				output, probeErr := o.runtime.ExecProject(bounded, o.core.Project, o.core.Compose, o.core.Env, service, "sh", "-c", statusScript)
+				if probeErr == nil {
+					var state struct {
+						Version     string `json:"version"`
+						Initialized bool   `json:"initialized"`
+						Sealed      bool   `json:"sealed"`
+					}
+					if jsonErr := json.Unmarshal([]byte(output), &state); jsonErr == nil &&
+						state.Version == expectedVersion && state.Initialized && !state.Sealed {
+						return nil
+					} else if jsonErr != nil {
+						lastErr = jsonErr
+					} else {
+						lastErr = fmt.Errorf("member %s state version=%s initialized=%t sealed=%t", service, state.Version, state.Initialized, state.Sealed)
+					}
+				} else {
+					lastErr = probeErr
+				}
+			} else {
+				lastErr = fmt.Errorf("member %s digest %s does not match target", service, digest)
+			}
+		} else {
+			lastErr = imageErr
+		}
+		select {
+		case <-bounded.Done():
+			return fmt.Errorf("OpenBao rolling member %s did not become healthy: %v: %w", service, lastErr, bounded.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (o *coreNativeRuntimeOps) waitKeycloakRollingMember(ctx context.Context, service, expectedDigest string) error {
@@ -195,7 +249,23 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 			if err := openBaoCompose.Stage(openBaoMutations); err != nil {
 				return err
 			}
-			return o.ReconcilePinned(ctx, openBaoDelta)
+			if !o.core.HA {
+				return o.ReconcilePinned(ctx, openBaoDelta)
+			}
+			environment, err := bhruntime.RuntimeEnvironment(o.core)
+			if err != nil {
+				return err
+			}
+			for _, member := range o.core.OpenBaoMembers() {
+				if err := o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, o.core.Project, filepath.Dir(o.core.Compose),
+					environment, []string{o.core.Compose}, member); err != nil {
+					return fmt.Errorf("roll OpenBao member %s: %w", member, err)
+				}
+				if err := o.waitOpenBaoRollingMember(ctx, member, openBaoDelta.Desired.Version, openBaoDelta.Desired.Digest); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 		Unseal: func(ctx context.Context) error {
 			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
