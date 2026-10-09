@@ -67,13 +67,13 @@ func (s providerSQLBackupSpec) artifactBinding(version string) (string, error) {
 		if value == "" || strings.ContainsRune(value, '\x00') {
 			return "", errors.New("invalid provider backup identity field")
 		}
-		_, _ = io.WriteString(h, value+"\\x00")
+		_, _ = io.WriteString(h, value+"\x00")
 	}
 	for _, path := range s.ConfigPaths {
 		if !filepath.IsAbs(path) {
 			return "", errors.New("unbound provider backup configuration path")
 		}
-		_, _ = io.WriteString(h, path+"\\x00")
+		_, _ = io.WriteString(h, path+"\x00")
 	}
 	for _, point := range []coreupdate.StreamRecoveryPoint{s.streamPoint(), s.configPoint()} {
 		file, err := point.OpenVerified()
