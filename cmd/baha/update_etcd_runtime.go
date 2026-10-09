@@ -263,8 +263,11 @@ func (t runtimeEtcdTools) Snapshot(ctx context.Context, dest io.Writer) (etcdbac
 	if err != nil {
 		return etcdbackup.SnapshotInfo{}, err
 	}
-	if status.Revision > attested.Revision {
-		return etcdbackup.SnapshotInfo{}, errors.New("snapshot revision exceeds authenticated cluster revision")
+	// A live cluster can advance between the quorum probe and the
+	// consistent maintenance snapshot. A newer snapshot is expected;
+	// an older one would miss state already observed during attestation.
+	if status.Revision < attested.Revision {
+		return etcdbackup.SnapshotInfo{}, errors.New("snapshot revision predates authenticated cluster revision")
 	}
 	f, err := os.Open(archive)
 	if err != nil {
