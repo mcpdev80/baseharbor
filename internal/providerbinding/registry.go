@@ -131,3 +131,56 @@ func (r *Registry) Preflight(ctx context.Context, provider providerupgrade.Provi
 	}
 	return adapter, assessment, nil
 }
+
+ 
+// NewFor constructs only the selected installed provider. It does not require
+// an unrelated provider to exist and never supplies fallback or fake Core hooks.
+func NewFor(provider providerupgrade.Provider, deps Dependencies) (*Registry, error) {
+	if deps.Inventory == nil {
+		return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "runtime inventory", errors.New("Core RuntimeProvider inventory is required"))
+	}
+	result := &Registry{
+		providers: make(map[providerupgrade.Provider]providerupgrade.Adapter, 1),
+		inventory: deps.Inventory,
+	}
+	switch provider {
+	case providerupgrade.ProviderOpenBao:
+		h := deps.OpenBaoHooks
+		if deps.OpenBaoExecutor == nil || deps.OpenBaoFiles.Project == "" || deps.OpenBaoFiles.Compose == "" || deps.OpenBaoFiles.Env == "" {
+			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "openbao runtime", errors.New("existing managed OpenBao executor and Core runtime files are required"))
+		}
+		if h.UpgradePath == nil || h.Backup == nil || h.VerifyBackup == nil || h.Apply == nil || h.Unseal == nil || h.VerifyAuth == nil || h.VerifyApps == nil || h.Restore == nil {
+			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "openbao hooks", errors.New("owned snapshot, reconcile, identity, application-access and recovery hooks are required"))
+		}
+		result.providers[provider] = openbao.New(&openbao.NativeOps{
+			Executor: deps.OpenBaoExecutor,
+			Files: deps.OpenBaoFiles,
+			Owner: "baseharbor",
+			Hooks: h,
+		})
+	case providerupgrade.ProviderKeycloak:
+		h := deps.KeycloakHooks
+		if deps.KeycloakDataDir == "" || deps.KeycloakInstallationID == "" || deps.KeycloakIssuer == "" {
+			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "keycloak runtime", errors.New("installed Keycloak Core directory, identity and issuer are required"))
+		}
+		if _, err := identityprovider.ExistingCoreRuntimeFiles(deps.KeycloakDataDir, deps.KeycloakNamespace); err != nil {
+			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "keycloak ownership", err)
+		}
+		if h.Inspect == nil || h.Compatibility == nil || h.Backup == nil || h.VerifyBackup == nil ||
+			h.ApplySingle == nil || h.StopHA == nil || h.ApplyHA == nil || h.ReplaceMember == nil ||
+			h.WaitMember == nil || h.WaitAll == nil || h.VerifySQL == nil || h.VerifyRealms == nil ||
+			h.VerifyTokens == nil || h.Restore == nil {
+			return nil, providerupgrade.Wrap(providerupgrade.ErrorDependency, "keycloak hooks", errors.New("owned SQL snapshot, HA lifecycle, realm, OIDC token and restore hooks are required"))
+		}
+		result.providers[provider] = keycloak.New(&keycloak.NativeOps{
+			DataDir: deps.KeycloakDataDir,
+			Namespace: deps.KeycloakNamespace,
+			InstallationID: deps.KeycloakInstallationID,
+			ExpectedIssuer: deps.KeycloakIssuer,
+			Hooks: h,
+		})
+	default:
+		return nil, providerupgrade.Wrap(providerupgrade.ErrorUnsupportedPath, "provider factory", errors.New("unsupported provider"))
+	}
+	return result, nil
+}
