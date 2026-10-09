@@ -115,6 +115,8 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 	form := url.Values{}
 	form.Set("grant_type", "password")
 	form.Set("client_id", "admin-cli")
+	// UserInfo requires an OpenID Connect token and profile claims.
+	form.Set("scope", "openid profile")
 	form.Set("username", a.user)
 	form.Set("password", a.password)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.endpoint, "/")+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
