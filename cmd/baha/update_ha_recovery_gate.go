@@ -4,12 +4,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
+	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+func verifyCoreHADCSSecurity(files bhruntime.Files) error {
+	if !files.HA || files.Compose == "" {
+		return errors.New("HA DCS security verification requires managed HA runtime files")
+	}
+	data, err := os.ReadFile(files.Compose)
+	if err != nil {
+		return err
+	}
+	text := string(data)
+	for _, forbidden := range []string{"--listen-client-urls=http://", "--listen-peer-urls=http://", "=http://postgres-etcd-"} {
+		if strings.Contains(text, forbidden) {
+			return errors.New("UNSUPPORTED: existing plaintext etcd HA topology requires explicit fenced mTLS migration")
+		}
+	}
+	for _, required := range []string{
+		"--client-cert-auth=true",
+		"--peer-client-cert-auth=true",
+		"--trusted-ca-file=/run/baseharbor/etcd/ca.pem",
+		"--peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem",
+		"postgres-etcd-recovery:",
+		"PATRONI_ETCD3_PROTOCOL: https",
+	} {
+		if !strings.Contains(text, required) {
+			return fmt.Errorf("UNSUPPORTED: managed HA DCS is missing required security contract %q", required)
+		}
+	}
+	pkiDir := filepath.Join(filepath.Dir(files.Compose), "providers", "postgresql", "runtime", "etcd-pki")
+	_, err = (etcdbackup.TLSFiles{
+		CA: filepath.Join(pkiDir, "ca.pem"), Cert: filepath.Join(pkiDir, "client.pem"), Key: filepath.Join(pkiDir, "client-key.pem"),
+	}).Config()
+	if err != nil {
+		return fmt.Errorf("managed HA DCS recovery mTLS identity invalid: %w", err)
+	}
+	return nil
+}
 
 func validateHAProviderPlan(plan coreupdate.Plan) error {
 	for _, delta := range plan.Deltas {
@@ -31,6 +70,9 @@ func validateHAProviderPlan(plan coreupdate.Plan) error {
 func prepareCoreHARecoveryEvidence(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, state coreinstallation.State, targetName, release, journalDir string) error {
 	if rt == nil || !files.HA {
 		return errors.New("HA recovery evidence requires an owned HA Core runtime")
+	}
+	if err := verifyCoreHADCSSecurity(files); err != nil {
+		return err
 	}
 	before, err := inspectPatroniMembers(ctx, rt, files)
 	if err != nil {
