@@ -610,15 +610,17 @@ func inspectCoreRuntimePlan(ctx context.Context, targetVersion string, state cor
 		dbDigest = dbDigest[at+1:]
 	}
 	dbClass := coreupdate.Unsupported
+	dbVersion := dbRef
 	dbReason := "Keycloak backing SQL version change needs verified provider-native recovery"
 	wantDBRepository := keycloakBacking.Image[:strings.LastIndex(keycloakBacking.Image, ":")]
 	if dbDigest == keycloakBacking.Digest && (dbRef == keycloakBacking.Image || dbImage.Reference == wantDBRepository+"@"+dbDigest) {
 		dbRef = keycloakBacking.Image
+		dbVersion = keycloakBacking.Version
 		dbClass = coreupdate.NoChange
 		dbReason = ""
 	}
 	backing = append(backing, coreupdate.Delta{
-		Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "backing", Instance: dbService, Owner: "baseharbor", Image: dbRef, Digest: dbDigest, Version: dbRef},
+		Installed:      coreupdate.Realization{Kind: coreupdate.SQL, Installation: state.ID, Scope: "backing", Instance: dbService, Owner: "baseharbor", Image: dbRef, Digest: dbDigest, Version: dbVersion},
 		Desired:        coreupdate.Desired{Kind: coreupdate.SQL, Image: keycloakBacking.Image, Digest: keycloakBacking.Digest, Version: keycloakBacking.Version},
 		Classification: dbClass, Reason: dbReason,
 	})

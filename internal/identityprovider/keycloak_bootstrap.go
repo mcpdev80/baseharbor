@@ -47,7 +47,9 @@ func keycloakBootstrapServices(compose string) ([]string, error) {
 		return nil, err
 	}
 	var document struct {
-		Services map[string]yaml.Node `yaml:"services"`
+		Services map[string]struct {
+			Profiles []string `yaml:"profiles"`
+		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(data, &document); err != nil {
 		return nil, err
@@ -65,8 +67,8 @@ func keycloakBootstrapServices(compose string) ([]string, error) {
 		return nil, errors.New("Keycloak HA bootstrap graph is incomplete")
 	}
 	var selected []string
-	for name := range document.Services {
-		if name != "keycloak-2" && name != "keycloak-3" {
+	for name, service := range document.Services {
+		if name != "keycloak-2" && name != "keycloak-3" && len(service.Profiles) == 0 {
 			selected = append(selected, name)
 		}
 	}

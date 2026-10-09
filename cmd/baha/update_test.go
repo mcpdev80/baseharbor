@@ -272,6 +272,7 @@ func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
 			t.Fatalf("unverified provider inventory %+v", d)
 		}
 	}
+	assertPinnedKeycloakBackingNoChangeIdentity(t, state, images, plan)
 	delete(images, idProject+"/keycloak-1")
 	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil {
 		t.Fatal("accepted incomplete Identity runtime inventory")
@@ -315,6 +316,33 @@ func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing Spilo backing delta")
+	}
+	assertPinnedKeycloakBackingNoChangeIdentity(t, state, images, plan)
+}
+
+func assertPinnedKeycloakBackingNoChangeIdentity(t *testing.T, state coreinstallation.State, images map[string]bhruntime.ImageIdentity, plan coreupdate.Plan) {
+	t.Helper()
+	for _, delta := range plan.Deltas {
+		if delta.Installed.Scope != "backing" {
+			continue
+		}
+		project := bhruntime.SharedProjectName(state.Spec.Target + "-core")
+		services := []string{delta.Installed.Instance}
+		if state.Spec.HA {
+			services = []string{"keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"}
+		}
+		for _, service := range services {
+			images[project+"/"+service] = bhruntime.ImageIdentity{Reference: delta.Desired.Image, Digest: delta.Desired.Digest}
+		}
+	}
+	pinned, err := inspectCoreRuntimePlan(t.Context(), "0.4.24", state, updateInventoryRuntime{images: images})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, delta := range pinned.Deltas {
+		if delta.Installed.Scope == "backing" && (delta.Classification != coreupdate.NoChange || delta.Installed.Image != delta.Desired.Image || delta.Installed.Digest != delta.Desired.Digest || delta.Installed.Version != delta.Desired.Version) {
+			t.Fatalf("unchanged immutable Keycloak backing cannot satisfy native transaction invariant: %+v", delta)
+		}
 	}
 }
 

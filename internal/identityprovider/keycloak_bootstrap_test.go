@@ -41,6 +41,9 @@ func TestKeycloakBootstrapIncludesGeneratedDatabaseDependencies(t *testing.T) {
 	if selected["keycloak-2"] || selected["keycloak-3"] {
 		t.Fatal("initial phase permits competing database migrations")
 	}
+	if selected["keycloak-db-etcd-recovery"] {
+		t.Fatal("normal bootstrap selected an inactive recovery-profile utility")
+	}
 }
 
 func (r *selectedKeycloakBootstrapRuntime) UpProjectFilesSelected(_ context.Context, project, dir string, env map[string]string, services []string, files ...string) error {

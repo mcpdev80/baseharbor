@@ -186,7 +186,7 @@ func ensureRepositoryOpenBaoReady(ctx context.Context, in io.Reader, out, errOut
 	if err != nil {
 		return err
 	}
-	state, err := platformopenbao.Inspect(checkCtx, compose, files)
+	state, err := waitForOpenBaoStateReady(checkCtx, compose, files)
 	if err != nil {
 		return err
 	}
