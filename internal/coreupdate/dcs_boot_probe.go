@@ -100,8 +100,14 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 			return errors.New("etcd recovered cluster has no common leader")
 		}
 		if s.IsLeader {
+			if s.Header.MemberID.String() != s.Leader.String() {
+				return errors.New("etcd self-reported leader differs from authenticated member identity")
+			}
 			leaders++
 		}
+	}
+	if !memberIDs[expectedLeader] {
+		return errors.New("etcd advertised leader is not among restored members")
 	}
 	if leaders != 1 {
 		return errors.New("isolated etcd cluster must have exactly one leader and three healthy endpoints")
