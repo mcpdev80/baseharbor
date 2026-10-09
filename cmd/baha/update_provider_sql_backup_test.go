@@ -169,7 +169,7 @@ func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ str
 				if r.failDecode {
 					return errors.New("injected archive decode failure")
 				}
-				_, err := io.WriteString(stdout, "CREATE SCHEMA public; ALTER SCHEMA public OWNER TO retained_owner;\n")
+				_, err := io.WriteString(stdout, "-- Name: public; Type: SCHEMA; Schema: -; Owner: retained_owner\n-- *not* creating schema, since initdb creates it\nALTER SCHEMA public OWNER TO retained_owner;\n")
 				return err
 			}
 			if arg == "sh" {
@@ -238,7 +238,7 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationOrReplayUnknownCommi
 	if !strings.Contains(args, "-- postgres private-operator /ca.pem openbao") || !strings.HasPrefix(rt.restoreInput, spec.RestorePassword+"\n") || strings.Contains(args, spec.RestorePassword) || strings.Contains(args, "--no-owner") || strings.Contains(args, "--no-acl") {
 		t.Fatal("operator recovery leaked credentials, lost database binding, or suppressed retained SQL ownership/ACLs")
 	}
-	if !strings.Contains(args, "psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 --file=-") || !strings.Contains(rt.restoreInput, "DROP SCHEMA %I CASCADE") || !strings.Contains(rt.restoreInput, "nspname !~ '^pg_'") || !strings.Contains(rt.restoreInput, "OWNER TO retained_owner") {
+	if !strings.Contains(args, "psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 --file=-") || !strings.Contains(rt.restoreInput, "DROP SCHEMA %I CASCADE") || !strings.Contains(rt.restoreInput, "nspname !~ '^pg_'") || !strings.Contains(rt.restoreInput, "OWNER TO retained_owner") || !strings.Contains(rt.restoreInput, "CREATE SCHEMA public AUTHORIZATION pg_database_owner;") {
 		t.Fatal("provider schema replacement was not atomic, system-scoped or ownership-preserving")
 	}
 	data, err := os.ReadFile(env)
@@ -381,5 +381,23 @@ func TestProviderConfigurationRetryDoesNotRepeatCommittedSQL(t *testing.T) {
 	spec.Target = "target-B"
 	if err := spec.restore(context.Background(), ref); err == nil {
 		t.Fatal("cross-target restore receipt reused")
+	}
+}
+
+func TestProviderArchivePublicSchemaInitializationPreservesNativeDefinitions(t *testing.T) {
+	for _, tc := range []struct {
+		name, sql  string
+		initialize bool
+	}{
+		{"native builtin", "-- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner\n--\n\n-- *not* creating schema, since initdb creates it\n", true},
+		{"custom public", "-- Name: public; Type: SCHEMA; Schema: -; Owner: retained_owner\nCREATE SCHEMA public;\n", false},
+		{"quoted custom", "-- Name: public; Type: SCHEMA; Schema: -; Owner: retained_owner\nCREATE SCHEMA \"public\";\n", false},
+		{"empty older archive", "-- PostgreSQL database dump complete\n", true},
+		{"data cannot change schema decision", "-- Data for Name: app; Type: TABLE DATA; Schema: public; Owner: retained_owner\n-- Name: public; Type: SCHEMA; Schema: -; Owner: retained_owner\nCREATE SCHEMA public;\n", true},
+	} {
+		got, err := providerArchiveNeedsDefaultPublicSchema(strings.NewReader(tc.sql))
+		if err != nil || got != tc.initialize {
+			t.Fatalf("%s: initialize=%v err=%v", tc.name, got, err)
+		}
 	}
 }

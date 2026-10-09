@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -462,6 +463,13 @@ func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.
 	if _, err := sql.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
+	initializePublic, err := providerArchiveNeedsDefaultPublicSchema(sql)
+	if err != nil {
+		return err
+	}
+	if _, err := sql.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
 	if err := receipt.record(phase, "sql_started"); err != nil {
 		return err
 	}
@@ -483,7 +491,13 @@ BEGIN
 END;
 $baseharbor_recovery$;
 `
-	input := io.MultiReader(strings.NewReader(password+"\n"+resetOwnedSchemas), sql)
+	initialSchema := ""
+	if initializePublic {
+		// pg_dump intentionally omits CREATE for initdb's built-in public
+		// schema. The archive still restores its original ownership and ACLs.
+		initialSchema = "CREATE SCHEMA public AUTHORIZATION pg_database_owner;\n"
+	}
+	input := io.MultiReader(strings.NewReader(password+"\n"+resetOwnedSchemas+initialSchema), sql)
 	diagnostics.Reset()
 	const script = `IFS= read -r PGPASSWORD || exit 1
 export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT="$3" PGCONNECT_TIMEOUT=10
@@ -513,4 +527,37 @@ func classifyProviderRestoreFailure(diagnostics string) string {
 		}
 	}
 	return "native restore failed; protected diagnostics withheld"
+}
+
+// Inspect pg_restore's public-schema TOC definition before any table data.
+// Recreated/custom public schemas have CREATE in the archive and must not be
+// pre-created. Built-in public schemas rely on initdb; empty older archives can
+// omit that entry entirely. No SQL/data is exposed in diagnostics.
+func providerArchiveNeedsDefaultPublicSchema(sql io.Reader) (bool, error) {
+	reader := bufio.NewReader(sql)
+	publicDefinition := false
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return false, fmt.Errorf("provider archive schema inspection failed")
+		}
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "-- Data for Name:") {
+			return true, nil
+		}
+		if strings.HasPrefix(line, "-- Name:") {
+			publicDefinition = strings.HasPrefix(line, "-- Name: public; Type: SCHEMA; Schema: -; Owner:")
+		}
+		if publicDefinition {
+			if line == "-- *not* creating schema, since initdb creates it" {
+				return true, nil
+			}
+			if line == "CREATE SCHEMA public;" || line == `CREATE SCHEMA "public";` {
+				return false, nil
+			}
+		}
+		if err == io.EOF {
+			return true, nil
+		}
+	}
 }

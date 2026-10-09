@@ -571,6 +571,25 @@ func runHAOpenBaoUpgradeRecovery(t *testing.T, ctx context.Context, ops *coreNat
 	if err := hooks.RecoveryPoint(ctx, d); err != nil {
 		t.Fatalf("HA OpenBao verified SQL backup: %v", err)
 	}
+	// Application assertions write real SQL/KV data. Wait for those writes to
+	// reach every standby before the existing strict zero-lag admission guard.
+	quorumCtx, quorumCancel := context.WithTimeout(ctx, 90*time.Second)
+	defer quorumCancel()
+	for {
+		members, err := inspectPatroniMembers(quorumCtx, ops.runtime, ops.core)
+		ready := err == nil && len(members) == 3
+		for _, member := range members {
+			ready = ready && member.Healthy && (!member.Replica || member.ReplayLag == 0)
+		}
+		if ready {
+			break
+		}
+		select {
+		case <-quorumCtx.Done():
+			t.Fatal("native HA SQL writes did not reach all healthy standbys before upgrade admission")
+		case <-time.After(2 * time.Second):
+		}
+	}
 	if err := reconcileNativeCoreProviders(ctx, "v0.4.24"); err != nil {
 		t.Fatalf("productive HA OpenBao rolling upgrade: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"strconv"
 )
 
 // Observe only native health-role assertions and the owned cluster inventory.
@@ -26,11 +27,14 @@ func inspectPatroniReplication(ctx context.Context, rt bhruntime.RuntimeProvider
 	var cluster struct {
 		Members []struct {
 			Name, Role, State string
-			Lag               *int64
+			Lag               json.RawMessage
 		}
 	}
-	if json.Unmarshal([]byte(output), &cluster) != nil || len(cluster.Members) != 3 {
-		return fmt.Errorf("cluster inventory incomplete")
+	if json.Unmarshal([]byte(output), &cluster) != nil {
+		return fmt.Errorf("cluster inventory format invalid")
+	}
+	if len(cluster.Members) != 3 {
+		return fmt.Errorf("cluster inventory incomplete: members=%d", len(cluster.Members))
 	}
 	expected := map[string]bool{}
 	for i := 1; i <= 3; i++ {
@@ -47,7 +51,7 @@ func inspectPatroniReplication(ctx context.Context, rt bhruntime.RuntimeProvider
 		case member.Role == "leader" && member.State == "running":
 			leaders++
 			endpoint = "primary"
-		case (member.Role == "replica" || member.Role == "sync_standby" || member.Role == "quorum_standby") && (member.State == "running" || member.State == "streaming") && member.Lag != nil && *member.Lag >= 0:
+		case (member.Role == "replica" || member.Role == "sync_standby" || member.Role == "quorum_standby") && (member.State == "running" || member.State == "streaming") && nativeReplicaLagKnown(member.Lag):
 			replicas++
 			endpoint = "replica"
 		default:
@@ -62,4 +66,22 @@ func inspectPatroniReplication(ctx context.Context, rt bhruntime.RuntimeProvider
 		return fmt.Errorf("cluster primary/replica membership differs")
 	}
 	return nil
+}
+
+// A leader may publish a textual/unknown lag; only follower lag is relevant.
+// Numeric JSON strings occur in older native REST representations.
+func nativeReplicaLagKnown(raw json.RawMessage) bool {
+	var lag int64
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	if json.Unmarshal(raw, &lag) == nil {
+		return lag >= 0
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	return err == nil && parsed >= 0
 }

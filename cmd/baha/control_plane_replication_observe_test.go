@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -55,6 +56,15 @@ func TestCoreReplicationObservationRecognizesOnlyHealthVerifiedStandbys(t *testi
 			if observePatroniReplication(context.Background(), rt, "owned", "compose", "env", "postgres-member") {
 				t.Fatal("unhealthy standby supplied proof")
 			}
+		}
+	}
+}
+
+func TestNativeReplicaLagRejectsUnknownAndMissingObservations(t *testing.T) {
+	for _, raw := range []string{"0", "12", `"0"`, `"12"`, `"unknown"`, "null", "", "-1", `"-1"`} {
+		want := raw == "0" || raw == "12" || raw == `"0"` || raw == `"12"`
+		if got := nativeReplicaLagKnown(json.RawMessage(raw)); got != want {
+			t.Fatalf("lag %q got=%v want=%v", raw, got, want)
 		}
 	}
 }
