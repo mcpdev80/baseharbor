@@ -56,12 +56,12 @@ func verifyUnchangedCore(ctx context.Context, selectedRelease string, reconciled
 	if err != nil {
 		return err
 	}
-	plan, err := inspectCoreRuntimePlan(ctx, selectedRelease, state, rt)
+	plan, err := inspectSelectedCoreRuntimePlan(ctx, selectedRelease, state, rt)
 	if err != nil {
 		return err
 	}
-	if !reconciled && len(plan.Deltas) != 4 {
-		return fmt.Errorf("binary-only Core update requires exactly four verified shared/backing providers, found %d", len(plan.Deltas))
+	if !reconciled && len(plan.Deltas) != 3 {
+		return fmt.Errorf("binary-only Core update requires exactly three verified shared physical providers, found %d", len(plan.Deltas))
 	}
 	for _, delta := range plan.Deltas {
 		if delta.Classification != coreupdate.NoChange {

@@ -20,6 +20,7 @@ import (
 const sharedBackendStateVersion = 3
 
 type sharedBackendState struct {
+	CoreSQL                       *bhruntime.Files                 `json:"core_sql,omitempty"`
 	Version                       int                              `json:"version"`
 	Environment                   string                           `json:"environment"`
 	PostgresMembers               int                              `json:"postgres_members,omitempty"`
@@ -77,12 +78,7 @@ type SharedBackendFiles struct {
 }
 
 func SharedBackendNetworkName(namespace, environment string) string {
-	base := bhruntime.SharedResourceProjectName(namespace)
-	env := sharedBackendToken(environment)
-	if env == "" {
-		env = "dev"
-	}
-	return base + "-" + env + "-backends"
+	return bhruntime.ControlPlaneNetworkName(bhruntime.SharedResourceProjectName(namespace))
 }
 
 func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendFiles {
@@ -141,11 +137,34 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err != nil {
 		return false, err
 	}
+	dependency, ok := issuer.(bhruntime.CoreDependencyProvider)
+	if !ok {
+		return false, errors.New("shared backends require the existing selected Core provider")
+	}
+	core, err := dependency.CoreRuntimeFiles()
+	if err != nil {
+		return false, err
+	}
+	if state.CoreSQL == nil && (state.PostgresAdminCredential != "" || len(state.Applications) > 0) {
+		return false, errors.New("retained shared backends use a separate provider; explicit backup-verified migration is required and currently unsupported; existing resources are retained")
+	}
+	if state.CoreSQL != nil && (state.CoreSQL.Project != core.Project || state.CoreSQL.Compose != core.Compose || state.CoreSQL.Env != core.Env) {
+		return false, errors.New("shared backend Core binding changed; explicit migration is required")
+	}
+	state.CoreSQL = &core
 	if err := checkSharedValkeyTopology(state, m); err != nil {
 		return false, err
 	}
-	if err := selectSharedPostgresTopology(&state, m); err != nil {
-		return false, err
+	if UsesSharedPostgreSQL(m) {
+		requirement := AvailabilityIntent(m).Resolve("sql")
+		members := 1
+		if core.HA {
+			members = 3
+		}
+		if requirement.HA && !core.HA || requirement.Instances > 0 && requirement.Instances != members {
+			return false, errors.New("shared PostgreSQL intent differs from the existing Core topology; explicitly select a matching Core or application placement")
+		}
+		state.PostgresMembers = members
 	}
 	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {
 		return false, fmt.Errorf("create shared backend state: %w", err)
@@ -168,31 +187,42 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 
 	if UsesSharedPostgreSQL(m) {
-		if state.PostgresAdminCredential == "" {
-			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
+		if state.CoreSQL == nil {
+			if state.PostgresAdminCredential == "" {
+				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
+				if err != nil {
+					return false, err
+				}
+				state.PostgresAdminCredential = ref
+			}
+			if state.PostgresSuperuserCredential == "" {
+				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-superuser", "")
+				if err != nil {
+					return false, err
+				}
+				state.PostgresSuperuserCredential = ref
+			}
+			if state.PostgresMembers > 1 && state.PostgresReplicationCredential == "" {
+				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
+				if err != nil {
+					return false, err
+				}
+				state.PostgresReplicationCredential = ref
+			}
+			if state.PostgresHostPort == 0 {
+				state.PostgresHostPort, err = allocateLoopbackPort(nil)
+				if err != nil {
+					return false, err
+				}
+			}
+		} else {
+			coreValues, err := bhruntime.RuntimeEnvironment(core)
 			if err != nil {
 				return false, err
 			}
-			state.PostgresAdminCredential = ref
-		}
-		if state.PostgresSuperuserCredential == "" {
-			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-superuser", "")
+			state.PostgresHostPort, err = strconv.Atoi(coreValues["BASEHARBOR_POSTGRES_PORT"])
 			if err != nil {
-				return false, err
-			}
-			state.PostgresSuperuserCredential = ref
-		}
-		if state.PostgresMembers > 1 && state.PostgresReplicationCredential == "" {
-			ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
-			if err != nil {
-				return false, err
-			}
-			state.PostgresReplicationCredential = ref
-		}
-		if state.PostgresHostPort == 0 {
-			state.PostgresHostPort, err = allocateLoopbackPort(nil)
-			if err != nil {
-				return false, err
+				return false, errors.New("shared Core SQL endpoint is invalid")
 			}
 		}
 		for _, instance := range SQLInstanceNames(m) {
@@ -216,7 +246,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			values[postgresRuntimeKey(instance, "USER")] = username
 			values[postgresRuntimeKey(instance, "PASSWORD")] = password
 			values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
-			values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
+			values[postgresContainerHostKey(instance)] = "postgres"
 		}
 	}
 
@@ -267,21 +297,23 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err := renderSharedBackendRuntime(shared, state); err != nil {
 		return false, err
 	}
-	if err := compose.ConfigProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
-		return false, fmt.Errorf("validate shared backend runtime: %w", err)
-	}
-	if err := compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
-		return false, fmt.Errorf("start shared backend runtime: %w", err)
+	if sharedBackendHasRuntimeServices(state) {
+		if err := compose.ConfigProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+			return false, fmt.Errorf("validate shared backend runtime: %w", err)
+		}
+		if err := compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+			return false, fmt.Errorf("start shared backend runtime: %w", err)
+		}
 	}
 	if UsesSharedPostgreSQL(m) {
-		if err := waitSharedPostgresReady(ctx, compose, shared, m.Environment); err != nil {
-			return false, err
-		}
-		if err := ensureSharedPostgresAdminIdentity(ctx, compose, shared, m.Environment); err != nil {
-			return false, err
-		}
-		if err := reconcileSharedPostgresApplication(ctx, compose, shared, app); err != nil {
-			return false, err
+		for _, resource := range app.SQL {
+			password, err := readSharedBackendCredential(shared.Dir, resource.CredentialReference)
+			if err != nil {
+				return false, err
+			}
+			if err := bhruntime.EnsureCoreSQLConsumer(ctx, compose, core, resource.Database, resource.Username, password, "baseharbor:shared:application:"+appKey+":"+resource.Database); err != nil {
+				return false, err
+			}
 		}
 	}
 	if UsesSharedValkey(m) {
@@ -343,6 +375,9 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 	if err != nil {
 		return err
 	}
+	if state.CoreSQL != nil {
+		return verifyCoreSharedPostgreSQL(ctx, compose, shared, state, m)
+	}
 	appKey := sharedBackendApplicationKey(m)
 	app, ok := state.Applications[appKey]
 	if !ok {
@@ -392,7 +427,7 @@ func verifySharedPostgresStateOwnership(state sharedBackendState, ownerKey strin
 		return fmt.Errorf("shared PostgreSQL owner %q is not registered", ownerKey)
 	}
 	adminCredential := strings.TrimSpace(state.PostgresAdminCredential)
-	if adminCredential == "" {
+	if adminCredential == "" && state.CoreSQL == nil {
 		return errors.New("shared PostgreSQL provider administrator credential reference is missing")
 	}
 	seenDB := map[string]string{}
@@ -403,13 +438,19 @@ func verifySharedPostgresStateOwnership(state sharedBackendState, ownerKey strin
 			database := strings.TrimSpace(resource.Database)
 			username := strings.TrimSpace(resource.Username)
 			credential := filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(resource.CredentialReference))))
+			if state.CoreSQL != nil {
+				manifest := Manifest{Name: registered.Application, Environment: registered.Environment}
+				if key != sharedBackendApplicationKey(manifest) || database != sharedPostgresDatabaseName(manifest, instance) || username != sharedPostgresRoleName(manifest, instance) {
+					return errors.New("shared SQL resource does not match its canonical consumer identity")
+				}
+			}
 			if database == "" || username == "" || credential == "" || credential == "." {
 				return fmt.Errorf("shared PostgreSQL resource %s has incomplete ownership metadata", resourceKey)
 			}
 			if username == "baseharbor_admin" {
 				return fmt.Errorf("shared PostgreSQL resource %s illegally references provider administrator role", resourceKey)
 			}
-			if database == "postgres" || database == "template0" || database == "template1" {
+			if database == "postgres" || database == "template0" || database == "template1" || database == "openbao" || database == "baseharbor_identity" {
 				return fmt.Errorf("shared PostgreSQL resource %s illegally references provider database %q", resourceKey, database)
 			}
 			if credential == filepath.ToSlash(filepath.Clean(filepath.FromSlash(adminCredential))) {
@@ -442,6 +483,17 @@ type sharedPostgresExecRuntime interface {
 }
 
 func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPostgresExecRuntime, shared SharedBackendFiles, environment string, resource sharedPostgresResource) error {
+	state, err := loadSharedBackendState(shared.State, environment)
+	if err != nil {
+		return err
+	}
+	if state.CoreSQL != nil {
+		executor, ok := compose.(bhruntime.SQLConsumerExecutor)
+		if !ok {
+			return errors.New("shared SQL ownership requires protected native execution")
+		}
+		return verifyCoreSQLResourceOwnership(ctx, executor, state, resource)
+	}
 	query := fmt.Sprintf("SELECT r.rolname FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba WHERE d.datname=%s", quotePostgresLiteral(resource.Database))
 	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
 	if err != nil {
@@ -716,6 +768,16 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 		}
 		for _, instance := range instances {
 			resource := app.SQL[instance]
+			if state.CoreSQL != nil {
+				query := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid();\nDROP DATABASE %s;\nDROP ROLE %s;\n", quotePostgresLiteral(resource.Database), quotePostgresIdent(resource.Database), quotePostgresIdent(resource.Username))
+				if _, err := sharedCoreSQLQuery(ctx, compose, *state.CoreSQL, "", "", "postgres", query); err != nil {
+					return err
+				}
+				if err := removeSharedBackendCredential(shared.Dir, resource.CredentialReference); err != nil {
+					return err
+				}
+				continue
+			}
 			terminate := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid()", quotePostgresLiteral(resource.Database))
 			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
 				return fmt.Errorf("terminate shared PostgreSQL connections for %s: %w", instance, err)
@@ -758,7 +820,7 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 	if err := renderSharedBackendRuntime(shared, state); err != nil {
 		return err
 	}
-	if len(state.Applications) == 0 && state.PostgresAdminCredential == "" {
+	if !sharedBackendHasRuntimeServices(state) {
 		return nil
 	}
 	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)

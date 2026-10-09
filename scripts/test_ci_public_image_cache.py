@@ -19,6 +19,9 @@ class PublicImageCacheTests(unittest.TestCase):
         self.assertEqual(cache.public_source('/v2/chrislusf/seaweedfs/manifests/4.47'),
                          ('ghcr.io', 'chrislusf/seaweedfs', 'manifests/4.47'))
 
+        self.assertEqual(cache.public_source('/v2/valkey/valkey/manifests/9.1.2-alpine'),
+                         ('ghcr.io', 'valkey-io/valkey', 'manifests/9.1.2-alpine'))
+
     def test_native_mirror_namespace_query_is_admitted_only_for_docker_hub(self):
         route = '/v2/library/postgres/manifests/latest'
         self.assertEqual(cache.public_source(route + '?ns=docker.io'), cache.public_source(route))

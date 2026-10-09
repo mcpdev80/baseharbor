@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,27 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
+
+// Native adapter for logical Core SQL bindings; semantic ownership checks
+// remain independent of the provider's project execution vocabulary.
+func sharedCoreSQLQuery(ctx context.Context, executor bhruntime.SQLConsumerExecutor, core bhruntime.Files, user, password, database, query string) (string, error) {
+	if user == "" {
+		credentials, err := bhruntime.LoadControlPlaneCredentials(core)
+		if err != nil {
+			return "", err
+		}
+		user, password = credentials.PostgresInternalUser, credentials.PostgresInternalPassword
+	}
+	if password == "" || strings.ContainsAny(password, "\r\n\x00") {
+		return "", errors.New("shared SQL credential is invalid")
+	}
+	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem PGCONNECT_TIMEOUT=5\nexec psql --no-psqlrc -h postgres -p 5432 -U \"$1\" -d \"$2\" -At --set=ON_ERROR_STOP=1 --file=-"
+	out, err := executor.ExecProjectInput(ctx, core.Project, core.Compose, core.Env, []byte(password+"\n"+query+"\n"), "postgres-admin", "sh", "-ec", script, "--", user, database)
+	if err != nil {
+		return "", errors.New("shared Core SQL query failed; protected consumer data is retained")
+	}
+	return strings.TrimSpace(out), nil
+}
 
 func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, m Manifest) error {
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -211,7 +233,11 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 
 	var b strings.Builder
-	b.WriteString("services:\n")
+	if sharedBackendHasRuntimeServices(state) {
+		b.WriteString("services:\n")
+	} else {
+		b.WriteString("services: {}\n")
+	}
 	hasPostgres := state.PostgresAdminCredential != ""
 	if !hasPostgres {
 		for _, app := range state.Applications {
@@ -221,6 +247,7 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 			}
 		}
 	}
+	hasPostgres = hasPostgres && state.CoreSQL == nil
 	if hasPostgres {
 		writeSharedPostgresCompose(&b, state)
 	}
@@ -261,8 +288,23 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
 	fmt.Fprintf(&b, "    name: %s\n", files.Network)
+	if state.CoreSQL != nil {
+		b.WriteString("    external: true\n")
+	}
 	writeSharedValkeyHANetworks(&b, state, appKeys)
 	return os.WriteFile(files.Compose, []byte(b.String()), 0o600)
+}
+
+func sharedBackendHasRuntimeServices(state sharedBackendState) bool {
+	if state.CoreSQL == nil && state.PostgresAdminCredential != "" || sharedBackendPostgresUIRequested(state) || sharedBackendCacheUIRequested(state) {
+		return true
+	}
+	for _, app := range state.Applications {
+		if len(app.Cache) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func writeSharedPostgresUICompose(b *strings.Builder) {

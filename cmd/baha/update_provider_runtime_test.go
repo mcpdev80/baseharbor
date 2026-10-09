@@ -245,14 +245,13 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	applicationSQL := func(sql string) string {
 		// Registered applications use their owned shared backend, not Core's
 		// private SQL database. Authenticate with the actual binding and CA.
-		shared := application.SharedBackendFilesAt(dataDir, target.Name, manifest.Environment)
 		ca, err := os.ReadFile(appBinding.CertificatesPath)
 		if err != nil {
 			t.Fatal("application SQL trust unavailable")
 		}
-		const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGCONNECT_TIMEOUT=5\ntrust=$(mktemp /tmp/provider-acceptance-ca.XXXXXX) || exit 1\ntrap 'rm -f \"$trust\"' EXIT\ncat >\"$trust\"\nexport PGSSLROOTCERT=\"$trust\"\npsql -h postgres-access -U \"$1\" -d \"$2\" -Atqc \"$3\" -v ON_ERROR_STOP=1"
+		const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGCONNECT_TIMEOUT=5\ntrust=$(mktemp /tmp/provider-acceptance-ca.XXXXXX) || exit 1\ntrap 'rm -f \"$trust\"' EXIT\ncat >\"$trust\"\nexport PGSSLROOTCERT=\"$trust\"\npsql -h postgres -U \"$1\" -d \"$2\" -Atqc \"$3\" -v ON_ERROR_STOP=1"
 		input := append([]byte(appBinding.Password+"\n"), ca...)
-		result, err := rt.ExecProjectInput(ctx, shared.Project, shared.Compose, shared.Env, input, "shared-postgres-dev", "sh", "-ec", script, "--", appBinding.Username, appBinding.Database, sql)
+		result, err := rt.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, "postgres-admin", "sh", "-ec", script, "--", appBinding.Username, appBinding.Database, sql)
 		if err != nil {
 			t.Fatal("registered application SQL binding verification failed")
 		}
@@ -305,7 +304,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	if err := platformopenbao.Unseal(ctx, rt, files, opts.RecoveryFile); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := inspectCoreRuntimePlan(ctx, "v0.4.24", state, rt)
+	plan, err := inspectCoreRuntimePlan(ctx, "v0.4.24", state, rt, identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,21 +324,23 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	checkApplication()
 	if ha {
 		// Readiness of the access proxy can precede all followers becoming ready.
-		proofCtx, proofCancel := context.WithTimeout(ctx, 90*time.Second)
+		proofCtx, proofCancel := context.WithTimeout(ctx, 4*time.Minute)
 		defer proofCancel()
 		for {
 			coreProof := inspectPatroniReplication(proofCtx, rt, files.Project, files.Compose, files.Env, "postgres-member")
-			identityProof := inspectPatroniReplication(proofCtx, rt, identity.Project, identity.Compose, identity.Env, "keycloak-db-member")
-			if coreProof == nil && identityProof == nil {
+			if identity.SharedSQL == nil || identity.SharedSQL.Project != files.Project {
+				t.Fatal("Identity does not consume the existing Core SQL cluster")
+			}
+			if coreProof == nil {
 				break
 			}
 			select {
 			case <-proofCtx.Done():
-				t.Fatalf("native replication proof: Core=%v; identity=%v", coreProof, identityProof)
+				t.Fatalf("native replication proof for the shared Core SQL cluster: %v", coreProof)
 			case <-time.After(2 * time.Second):
 			}
 		}
-		t.Log("Native status replication proof: Core PostgreSQL and identity SQL each have one primary and two health-verified replicas")
+		t.Log("Native status replication proof: one shared Core PostgreSQL cluster has one primary and two health-verified replicas; Identity consumes its isolated database")
 		runHAOpenBaoUpgradeRecovery(t, ctx, ops, plan, engine, checkApplication, func() {
 			if err := platformopenbao.SetApplicationSecret(ctx, rt, files, appIdentity, appCredentials, "UPGRADE_MARKER", []byte("post-backup-value")); err != nil {
 				t.Fatal(err)
@@ -351,24 +352,27 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	beforeSQL := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num")
 	providerFixtureSQL(t, ctx, ops, false, "CREATE TABLE public.baseharbor_upgrade_marker(value text NOT NULL); INSERT INTO public.baseharbor_upgrade_marker VALUES ('before-upgrade')")
 	providerFixtureSQL(t, ctx, ops, true, "CREATE TABLE public.baseharbor_upgrade_marker(value text NOT NULL); INSERT INTO public.baseharbor_upgrade_marker VALUES ('before-upgrade')")
-	// Save separate native adapter backups for controlled real failure/recovery.
-	recoveryDir := filepath.Join(t.TempDir(), "provider-recovery")
-	ops.receiptPath = filepath.Join(recoveryDir, "receipts.json")
-	bound, err := ops.buildBoundProviderTransaction(ctx, plan, recoveryDir, engine)
+	// The productive command captures each provider's recovery point in its
+	// actual ordered journal. In particular OpenBao's Compose snapshot follows
+	// the committed SQL image change; an unrelated pre-command snapshot would
+	// correctly fail the Compose foreign-modification guard during recovery.
+	if err := reconcileNativeCoreProviders(ctx, "v0.4.24"); err != nil {
+		t.Fatalf("productive provider reconciliation: %v", err)
+	}
+	stateRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journalDir, err := coreUpdateJournal(stateRoot, "v0.4.24", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops.receiptPath = filepath.Join(journalDir, "receipts.json")
+	bound, err := ops.buildBoundProviderTransaction(ctx, plan, journalDir, engine)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hooks := bound.Hooks()
-	for _, kind := range []coreupdate.ProviderKind{coreupdate.Secrets, coreupdate.Identity} {
-		d, _ := providerDelta(plan, kind)
-		if err := hooks.RecoveryPoint(ctx, d); err != nil {
-			t.Fatalf("%s verified native SQL backup: %v", kind, err)
-		}
-	}
-	// The full productive command path owns ordering, snapshots and durable journals.
-	if err := reconcileNativeCoreProviders(ctx, "v0.4.24"); err != nil {
-		t.Fatalf("productive provider reconciliation: %v", err)
-	}
 	checkIdentity()
 	afterSQL := providerFixtureSQL(t, ctx, ops, false, "SHOW server_version_num")
 	if beforeSQL == afterSQL {
@@ -427,14 +431,6 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	// recovery hook used by the productive mixed-provider transaction. Its
 	// verified archive and Compose checkpoint were captured by that command.
 	sqlDelta, err := providerDelta(plan, coreupdate.SQL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stateRoot, err := targetRuntimeStateRoot(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	journalDir, err := coreUpdateJournal(stateRoot, "v0.4.24", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,6 +528,10 @@ func providerFixtureSQL(t *testing.T, ctx context.Context, o *coreNativeRuntimeO
 			t.Fatal(err)
 		}
 		user, password, database = values["BASEHARBOR_KEYCLOAK_DB_USER"], values["BASEHARBOR_KEYCLOAK_DB_PASSWORD"], values["BASEHARBOR_KEYCLOAK_DB_NAME"]
+		if o.identity.SharedSQL != nil {
+			files = o.core
+			client, host, ca = "postgres-admin", "postgres", "/run/baseharbor/postgres-ca/ca.pem"
+		}
 	}
 	return providerFixtureSQLCredentials(t, ctx, files, o.runtime, client, host, ca, user, password, database, sql)
 }

@@ -243,7 +243,7 @@ func TestApplicationScopedPlacementIsIsolated(t *testing.T) {
 	}
 }
 
-func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
+func TestSharedPlacementBoundariesReuseOnePhysicalProvider(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv(application.MetricsEnabledEnv, "true")
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPrometheus), "shared")
@@ -264,8 +264,8 @@ func TestSharedPlacementBoundaryGetsIndependentProviderState(t *testing.T) {
 	if a.Project != b.Project || a.Project != "bh-local-shared" {
 		t.Fatalf("sharing boundaries must share operator-visible project: a=%#v b=%#v", a, b)
 	}
-	if a.Volume == b.Volume || a.Dir == b.Dir {
-		t.Fatalf("sharing boundary state is not isolated: a=%#v b=%#v", a, b)
+	if a.Volume != b.Volume || a.Dir != b.Dir {
+		t.Fatalf("logical sharing boundaries provisioned duplicate physical providers: a=%#v b=%#v", a, b)
 	}
 	if a.Scope != capability.ScopeShared || b.Scope != capability.ScopeShared {
 		t.Fatalf("unexpected scopes: a=%s b=%s", a.Scope, b.Scope)
@@ -307,15 +307,15 @@ func TestDestroyAllSharedProvidersIncludesSharingBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(instances) != 3 {
-		t.Fatalf("shared provider instances=%d want=3: %#v", len(instances), instances)
+	if len(instances) != 1 {
+		t.Fatalf("shared provider instances=%d want=1: %#v", len(instances), instances)
 	}
 
 	runtime := &recordingRuntime{}
 	if err := DestroyAllSharedProviders(context.Background(), runtime); err != nil {
 		t.Fatal(err)
 	}
-	if len(runtime.destroyed) != 3 {
+	if len(runtime.destroyed) != 1 {
 		t.Fatalf("destroyed projects=%#v", runtime.destroyed)
 	}
 	if runtime.missingState {

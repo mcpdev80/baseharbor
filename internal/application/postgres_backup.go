@@ -53,13 +53,20 @@ func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime,
 			" --exclude-extension=pg_stat_statements --exclude-extension=pg_stat_kcache"+
 			" --exclude-extension=set_user --exclude-extension=pg_mon"+
 			" -h postgres-access -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
+		execution, service := shared, sharedPostgresService(m.Environment)
+		if state.CoreSQL != nil {
+			execution.Project, execution.Compose, execution.Env = state.CoreSQL.Project, state.CoreSQL.Compose, state.CoreSQL.Env
+			service = "postgres-admin"
+			command = strings.Replace(command, "export PGPASSWORD;", "export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem;", 1)
+			command = strings.Replace(command, "-h postgres-access", "-h postgres", 1)
+		}
 		out, err := runtime.ExecProjectInput(
 			ctx,
-			shared.Project,
-			shared.Compose,
-			shared.Env,
+			execution.Project,
+			execution.Compose,
+			execution.Env,
 			[]byte(password+"\n"),
-			sharedPostgresService(m.Environment),
+			service,
 			"sh", "-ec", command,
 		)
 		if err != nil {
@@ -140,13 +147,20 @@ func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRunti
 		}
 		restoreInput := append([]byte(password+"\n"), byInstance[instance]...)
 		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h postgres-access -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
+		execution, service := shared, sharedPostgresService(m.Environment)
+		if state.CoreSQL != nil {
+			execution.Project, execution.Compose, execution.Env = state.CoreSQL.Project, state.CoreSQL.Compose, state.CoreSQL.Env
+			service = "postgres-admin"
+			command = strings.Replace(command, "export PGPASSWORD;", "export PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem;", 1)
+			command = strings.Replace(command, "-h postgres-access", "-h postgres", 1)
+		}
 		if _, err := runtime.ExecProjectInput(
 			ctx,
-			shared.Project,
-			shared.Compose,
-			shared.Env,
+			execution.Project,
+			execution.Compose,
+			execution.Env,
 			restoreInput,
-			sharedPostgresService(m.Environment),
+			service,
 			"sh", "-ec", command,
 		); err != nil {
 			return fmt.Errorf("restore shared postgres instance %s: %w", instance, err)

@@ -24,6 +24,7 @@ type controlPlaneAvailability struct {
 	IdentityEtcd                int
 	PostgresReplicationVerified bool
 	IdentityReplicationVerified bool
+	IdentitySQLSharedCore       bool
 }
 
 func collectControlPlaneAvailability(ctx context.Context, checks []health.Check) (controlPlaneAvailability, error) {
@@ -56,12 +57,20 @@ func collectControlPlaneAvailability(ctx context.Context, checks []health.Check)
 	if err != nil {
 		return controlPlaneAvailability{}, err
 	}
+	report.IdentitySQLSharedCore = identity.SharedSQL != nil && identity.SharedSQL.Project == files.Project && identity.SharedSQL.Compose == files.Compose
 	report.observeIdentity(identityRunning)
 	if files.HA {
 		probeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		report.PostgresReplicationVerified = observePatroniReplication(probeCtx, runtimeProvider, files.Project, files.Compose, files.Env, "postgres-member")
-		report.IdentityReplicationVerified = observePatroniReplication(probeCtx, runtimeProvider, identity.Project, identity.Compose, identity.Env, "keycloak-db-member")
+		if report.IdentitySQLSharedCore {
+			report.IdentityReplicationVerified = report.PostgresReplicationVerified
+		} else {
+			report.IdentityReplicationVerified = observePatroniReplication(probeCtx, runtimeProvider, identity.Project, identity.Compose, identity.Env, "keycloak-db-member")
+		}
+	}
+	if !report.IdentitySQLSharedCore {
+		report.Satisfied = false
 	}
 	return report, nil
 }
@@ -90,8 +99,18 @@ func (r *controlPlaneAvailability) observeIdentity(running []string) {
 	if r.HA {
 		identitySatisfied = r.IdentityMembers >= 2 && r.IdentitySQLMembers >= 2 && r.IdentityEtcd >= 2
 	}
+	if r.IdentitySQLSharedCore {
+		identitySatisfied = r.IdentityMembers == 1 && r.PostgresMembers == 1 && r.IdentitySQLMembers == 0 && r.IdentityEtcd == 0
+		if r.HA {
+			identitySatisfied = r.IdentityMembers >= 2 && r.PostgresMembers >= 2 && r.PostgresEtcd >= 2 && r.IdentitySQLMembers == 0 && r.IdentityEtcd == 0
+		}
+	}
 	r.Satisfied = r.Satisfied && identitySatisfied
-	r.ActualHA = r.ActualHA && r.IdentityMembers >= 2 && r.IdentitySQLMembers >= 2 && r.IdentityEtcd >= 2
+	if r.IdentitySQLSharedCore {
+		r.ActualHA = r.ActualHA && r.IdentityMembers >= 2 && identitySatisfied
+	} else {
+		r.ActualHA = r.ActualHA && r.IdentityMembers >= 2 && r.IdentitySQLMembers >= 2 && r.IdentityEtcd >= 2
+	}
 }
 
 func evaluateControlPlaneAvailability(running []string, checks []health.Check, ha bool) controlPlaneAvailability {
@@ -162,6 +181,11 @@ func (r controlPlaneAvailability) Detail() string {
 	}
 	topology := fmt.Sprintf(" ha-requested=%t ha-active=%s data-members=postgresql:%d,openbao-sql:shared configured-replicas=postgresql:%d,openbao-sql:0 replicas=postgresql:%s auxiliary-services=%d openbao-service-members=%d replication-proof=%s process-failover-capable=%t failover-proof=not-collected", r.HA, active, r.PostgresMembers, replicas, actualReplicas, r.Helpers, r.OpenBaoMembers, proof, r.ActualHA)
 	topology += fmt.Sprintf(" identity-service-members=%d identity-sql-data-members=%d identity-etcd-members=%d", r.IdentityMembers, r.IdentitySQLMembers, r.IdentityEtcd)
+	if r.IdentitySQLSharedCore {
+		topology += " identity-sql-placement=shared-core identity-sql-owner=core identity-sql-independent-providers=0"
+	} else if r.IdentitySQLMembers > 0 {
+		topology += " identity-sql-placement=legacy-dedicated shared-independent-sql-providers=2 migration=required migration-supported=false"
+	}
 	topology += " identity-sql-replicas=" + identityReplicas + " identity-sql-replication-proof=" + identityProof
 	if !r.HA {
 		return fmt.Sprintf("requested=single resolved=postgresql:1,openbao:1 failover=false running=postgresql:%d/1,etcd:%d/0,openbao:%d/1 satisfied=%t", r.PostgresMembers, r.PostgresEtcd, r.OpenBaoMembers, r.Satisfied) + topology

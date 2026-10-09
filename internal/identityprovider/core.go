@@ -133,6 +133,10 @@ func existingCoreKeycloakFiles(dir string) (KeycloakFiles, error) {
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
+	sharedSQL, err := existingKeycloakCoreSQL(values)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
 	port, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
 	if err != nil {
 		return KeycloakFiles{}, err
@@ -146,5 +150,5 @@ func existingCoreKeycloakFiles(dir string) (KeycloakFiles, error) {
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	return KeycloakFiles{Dir: dir, Env: filepath.Join(dir, "runtime.env"), PublicPort: port, AdminPort: port, PublicURL: "https://" + keycloakPublicHost + ":" + strconv.Itoa(port), AdminURL: "https://127.0.0.1:" + strconv.Itoa(port), PublicAccess: serviceaccess.HTTPGatewayFiles{Material: material}, AdminAccess: serviceaccess.HTTPGatewayFiles{Material: material}}, nil
+	return KeycloakFiles{SharedSQL: sharedSQL, Dir: dir, Env: filepath.Join(dir, "runtime.env"), PublicPort: port, AdminPort: port, PublicURL: "https://" + keycloakPublicHost + ":" + strconv.Itoa(port), AdminURL: "https://127.0.0.1:" + strconv.Itoa(port), PublicAccess: serviceaccess.HTTPGatewayFiles{Material: material}, AdminAccess: serviceaccess.HTTPGatewayFiles{Material: material}}, nil
 }

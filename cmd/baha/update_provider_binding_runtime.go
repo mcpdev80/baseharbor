@@ -21,15 +21,30 @@ import (
 )
 
 func corePlanOnly(plan coreupdate.Plan) (coreupdate.Plan, error) {
-	if len(plan.Deltas) < 4 {
-		return coreupdate.Plan{}, errors.New("incomplete managed Core/backing provider realization")
-	}
-	for _, d := range plan.Deltas[4:] {
-		if d.Classification != coreupdate.NoChange {
+	result := coreupdate.Plan{Release: plan.Release}
+	seen := map[coreupdate.ProviderKind]bool{}
+	backing := false
+	for _, d := range plan.Deltas {
+		if d.Installed.Scope == "shared" {
+			if seen[d.Installed.Kind] || d.Installed.Kind != coreupdate.SQL && d.Installed.Kind != coreupdate.Secrets && d.Installed.Kind != coreupdate.Identity {
+				return coreupdate.Plan{}, errors.New("duplicate or unsupported shared Core provider")
+			}
+			seen[d.Installed.Kind] = true
+			result.Deltas = append(result.Deltas, d)
+		} else if d.Installed.Scope == "backing" {
+			if backing || d.Installed.Kind != coreupdate.SQL {
+				return coreupdate.Plan{}, errors.New("duplicate or unsupported retained Core SQL backing")
+			}
+			backing = true
+			result.Deltas = append(result.Deltas, d)
+		} else if d.Classification != coreupdate.NoChange {
 			return coreupdate.Plan{}, fmt.Errorf("application-isolated provider %s requires its own verified migration before shared Core update: %s", d.Installed.Instance, d.Reason)
 		}
 	}
-	return coreupdate.Plan{Release: plan.Release, Deltas: append([]coreupdate.Delta(nil), plan.Deltas[:4]...)}, nil
+	if !seen[coreupdate.SQL] || !seen[coreupdate.Secrets] || !seen[coreupdate.Identity] {
+		return coreupdate.Plan{}, errors.New("incomplete managed Core provider realization")
+	}
+	return result, nil
 }
 
 func providerDelta(plan coreupdate.Plan, kind coreupdate.ProviderKind) (coreupdate.Delta, error) {
@@ -211,7 +226,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	keycloakPassword := identityEnv["BASEHARBOR_KEYCLOAK_DB_PASSWORD"]
 	keycloakDatabase := identityEnv["BASEHARBOR_KEYCLOAK_DB_NAME"]
 	keycloakOperatorPassword := identityEnv["BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD"]
-	if keycloakUser == "" || keycloakPassword == "" || keycloakDatabase == "" || keycloakOperatorPassword == "" || credentials.PostgresInternalUser == "" || credentials.PostgresInternalPassword == "" {
+	if keycloakUser == "" || keycloakPassword == "" || keycloakDatabase == "" || o.identity.SharedSQL == nil && keycloakOperatorPassword == "" || credentials.PostgresInternalUser == "" || credentials.PostgresInternalPassword == "" {
 		return coreupdate.BoundProviderTransaction{}, errors.New("Keycloak protected SQL credentials are incomplete")
 	}
 
@@ -238,6 +253,14 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		RestoreUser: "postgres", RestorePassword: keycloakOperatorPassword,
 		Directory: backupDir, Name: "keycloak", InstallationID: o.installation, Target: o.target, Transaction: o.release, Provider: providerupgrade.ProviderKeycloak,
 		ConfigPaths: []string{o.identity.Env, o.identity.Compose},
+	}
+	if o.identity.SharedSQL != nil {
+		if o.identity.SharedSQL.Project != o.core.Project || o.identity.SharedSQL.Compose != o.core.Compose || o.identity.SharedSQL.Env != o.core.Env {
+			return coreupdate.BoundProviderTransaction{}, errors.New("Identity SQL dependency does not match the selected Core")
+		}
+		keycloakBackup.Project, keycloakBackup.Compose, keycloakBackup.Env = o.core.Project, o.core.Compose, o.core.Env
+		keycloakBackup.Client, keycloakBackup.Host, keycloakBackup.CAFile = "postgres-admin", "postgres", "/run/baseharbor/postgres-ca/ca.pem"
+		keycloakBackup.RestoreUser, keycloakBackup.RestorePassword = credentials.PostgresInternalUser, credentials.PostgresInternalPassword
 	}
 	openBaoCompose := coreupdate.ComposeCheckpoint{Path: o.core.Compose, Directory: filepath.Join(journalDir, "compose-backups")}
 	keycloakCompose := coreupdate.ComposeCheckpoint{Path: o.identity.Compose, Directory: filepath.Join(journalDir, "compose-backups")}

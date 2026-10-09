@@ -153,17 +153,13 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	}
 	switch p.Scope {
 	case capability.ScopeShared:
+		if err := bhruntime.CheckSharedProviderIdentity(dataDir, "tempo"); err != nil {
+			return Placement{}, err
+		}
 		project := bhruntime.SharedProjectName(namespace)
 		network := "baseharbor-" + prefix + "traces"
 		volume := "baseharbor-" + prefix + "tempo-data"
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "tempo", "shared")
-		if p.SharingBoundary != "" {
-			token := application.ProviderPlacementNameToken(p.SharingBoundary)
-			project += "-" + token
-			network += "-" + token
-			volume += "-" + token
-			dir = filepath.Join(dir, token)
-		}
 		return Placement{Scope: p.Scope, Project: project, Network: network, Volume: volume, Dir: dir, SharingBoundary: p.SharingBoundary}, nil
 	case capability.ScopeApplication:
 		suffix := prefix + m.Name + "-" + m.Environment

@@ -11,39 +11,50 @@ import (
 	"strconv"
 	"strings"
 
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
 func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, shared SharedBackendFiles, m Manifest, state *sharedBackendState, files RuntimeFiles, values map[string]string) error {
 	if UsesSharedPostgreSQL(m) {
-		policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
-		if err != nil {
-			return err
-		}
-		root := filepath.Join(shared.Dir, "postgresql")
-		policy.ServerName = sharedPostgresAlias()
-		memberNames := []string{sharedPostgresAlias(), sharedPostgresService(m.Environment), "127.0.0.1"}
-		for ordinal := 1; ordinal <= sharedPostgresMemberCount(*state); ordinal++ {
-			memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
-		}
-		material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
-		if err != nil {
-			return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
-		}
-		if err := projectPostgresServerMaterial(root, material); err != nil {
-			return err
-		}
-		if sharedPostgresMemberCount(*state) > 1 {
-			if err := writeSharedPostgresHAProxyConfig(root, m.Environment, sharedPostgresMemberCount(*state)); err != nil {
-				return err
+		if state.CoreSQL != nil {
+			for _, instance := range SQLInstanceNames(m) {
+				ca, err := projectBackendCA(files, "postgres", instance, bhruntime.CorePostgresCA(*state.CoreSQL))
+				if err != nil {
+					return err
+				}
+				values[postgresTLSCAKey(instance)] = ca
 			}
-		}
-		for _, instance := range SQLInstanceNames(m) {
-			ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+		} else {
+			policy, err := serviceaccess.Resolve(m.Environment, "postgresql", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
 			}
-			values[postgresTLSCAKey(instance)] = ca
+			root := filepath.Join(shared.Dir, "postgresql")
+			policy.ServerName = sharedPostgresAlias()
+			memberNames := []string{sharedPostgresAlias(), sharedPostgresService(m.Environment), "127.0.0.1"}
+			for ordinal := 1; ordinal <= sharedPostgresMemberCount(*state); ordinal++ {
+				memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
+			}
+			material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
+			if err != nil {
+				return fmt.Errorf("prepare shared PostgreSQL TLS: %w", err)
+			}
+			if err := projectPostgresServerMaterial(root, material); err != nil {
+				return err
+			}
+			if sharedPostgresMemberCount(*state) > 1 {
+				if err := writeSharedPostgresHAProxyConfig(root, m.Environment, sharedPostgresMemberCount(*state)); err != nil {
+					return err
+				}
+			}
+			for _, instance := range SQLInstanceNames(m) {
+				ca, err := projectBackendCA(files, "postgres", instance, material.CA)
+				if err != nil {
+					return err
+				}
+				values[postgresTLSCAKey(instance)] = ca
+			}
 		}
 	}
 
@@ -203,15 +214,21 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 	if err := writeUIRuntimeProjection(filepath.Join(dir, "password"), []byte(state.ManagementPassword+"\n")); err != nil {
 		return err
 	}
-	postgresPolicy, err := serviceaccess.Resolve(state.Environment, "postgresql", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return err
+	ca, host := "", sharedPostgresAlias()
+	if state.CoreSQL != nil {
+		ca, host = bhruntime.CorePostgresCA(*state.CoreSQL), "postgres"
+	} else {
+		postgresPolicy, err := serviceaccess.Resolve(state.Environment, "postgresql", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return err
+		}
+		postgresMaterial, err := serviceaccess.ExistingTLSMaterial(postgresPolicy, filepath.Join(shared.Dir, "postgresql", "service-access", "pki"))
+		if err != nil {
+			return err
+		}
+		ca = postgresMaterial.CA
 	}
-	postgresMaterial, err := serviceaccess.ExistingTLSMaterial(postgresPolicy, filepath.Join(shared.Dir, "postgresql", "service-access", "pki"))
-	if err != nil {
-		return err
-	}
-	if err := projectUIReadableFile(postgresMaterial.CA, filepath.Join(dir, "postgres.ca.pem")); err != nil {
+	if err := projectUIReadableFile(ca, filepath.Join(dir, "postgres.ca.pem")); err != nil {
 		return err
 	}
 	var pgpass strings.Builder
@@ -232,13 +249,13 @@ func refreshSharedPostgresManagementUIConfig(shared SharedBackendFiles, state sh
 			if err != nil {
 				return fmt.Errorf("load shared PostgreSQL UI credential for %s/%s/%s: %w", app.Application, app.Environment, instance, err)
 			}
-			fmt.Fprintf(&pgpass, "%s:5432:*:%s:%s\n", sharedPostgresAlias(), resource.Username, password)
+			fmt.Fprintf(&pgpass, "%s:5432:*:%s:%s\n", host, resource.Username, password)
 			label := app.Application
 			if instance != defaultServiceInstance {
 				label += " / " + instance
 			}
 			serverMap[strconv.Itoa(index)] = map[string]any{
-				"Name": label, "Group": "BaseHarbor", "Host": sharedPostgresAlias(), "Port": 5432,
+				"Name": label, "Group": "BaseHarbor", "Host": host, "Port": 5432,
 				"MaintenanceDB": resource.Database, "Username": resource.Username, "SSLMode": "verify-ca",
 				"PassFile": "/run/baseharbor/pgpass",
 				"ConnectionParameters": map[string]any{

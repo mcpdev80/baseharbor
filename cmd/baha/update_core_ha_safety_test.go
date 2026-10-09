@@ -15,7 +15,7 @@ func TestCorePlanOnlyAllowsStableApplicationProviders(t *testing.T) {
 		{Installed: coreupdate.Realization{Kind: coreupdate.SQL, Scope: "shared", Instance: "postgres"}, Classification: coreupdate.NoChange},
 		{Installed: coreupdate.Realization{Kind: coreupdate.Secrets, Scope: "shared", Instance: "openbao"}, Classification: coreupdate.BackupRequired},
 		{Installed: coreupdate.Realization{Kind: coreupdate.Identity, Scope: "shared", Instance: "keycloak-1"}, Classification: coreupdate.BackupRequired},
-		{Installed: coreupdate.Realization{Kind: coreupdate.SQL, Scope: "shared", Instance: "keycloak-db"}, Classification: coreupdate.NoChange},
+		{Installed: coreupdate.Realization{Kind: coreupdate.SQL, Scope: "backing", Instance: "keycloak-db"}, Classification: coreupdate.NoChange},
 		{Installed: coreupdate.Realization{Kind: coreupdate.Secrets, Scope: "application", Instance: "app-openbao"}, Classification: coreupdate.NoChange},
 	}
 	plan, err := corePlanOnly(coreupdate.Plan{Release: "v0.4.24", Deltas: base})

@@ -55,7 +55,18 @@ func inspectPatroniReplication(ctx context.Context, rt bhruntime.RuntimeProvider
 			replicas++
 			endpoint = "replica"
 		default:
-			return fmt.Errorf("cluster member role, state or lag not ready")
+			role, state := "unknown", "unknown"
+			for _, allowed := range []string{"leader", "replica", "sync_standby", "quorum_standby", "standby_leader"} {
+				if member.Role == allowed {
+					role = allowed
+				}
+			}
+			for _, allowed := range []string{"running", "streaming", "starting", "stopped", "creating replica", "start failed", "crashed"} {
+				if member.State == allowed {
+					state = allowed
+				}
+			}
+			return fmt.Errorf("cluster member %s not ready: role=%s state=%s lag-known=%t", member.Name, role, state, nativeReplicaLagKnown(member.Lag))
 		}
 		probe := "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/" + endpoint + "',timeout=3).close()"
 		if _, err := rt.ExecProject(ctx, project, compose, env, member.Name, "python3", "-c", probe); err != nil {

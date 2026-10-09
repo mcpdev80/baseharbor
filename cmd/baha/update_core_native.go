@@ -62,6 +62,17 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 	if user == "" || password == "" || database == "" {
 		return errors.New("Keycloak SQL owner credentials are incomplete")
 	}
+	if o.identity.SharedSQL != nil {
+		if o.identity.SharedSQL.Project != o.core.Project || o.identity.SharedSQL.Compose != o.core.Compose {
+			return errors.New("Identity SQL is not bound to the selected Core")
+		}
+		const sharedScript = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem PGCONNECT_TIMEOUT=5\nexec psql --no-psqlrc -h postgres -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN '1' ELSE 'missing_keycloak_schema' END\" -v ON_ERROR_STOP=1"
+		out, err := o.runtime.ExecProjectInput(ctx, o.core.Project, o.core.Compose, o.core.Env, []byte(password+"\n"), "postgres-admin", "sh", "-ec", sharedScript, "--", user, database)
+		if err != nil || strings.TrimSpace(out) != "1" {
+			return errors.New("Keycloak shared Core SQL authentication/schema verification failed")
+		}
+		return nil
+	}
 	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN '1' ELSE 'missing_keycloak_schema' END\" -v ON_ERROR_STOP=1"
 	var output strings.Builder
 	if err := o.runtime.RunProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values,
@@ -178,8 +189,12 @@ func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context
 }
 
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
-	if len(plan.Deltas) != 4 {
-		return fmt.Errorf("Core runtime update requires four owned SQL/Secrets/Identity/Keycloak-backing realizations")
+	wanted := 4
+	if o.identity.SharedSQL != nil {
+		wanted = 3
+	}
+	if len(plan.Deltas) != wanted {
+		return fmt.Errorf("Core runtime update requires %d owned physical SQL/Secrets/Identity realizations", wanted)
 	}
 	for _, d := range plan.Deltas {
 		if d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
@@ -208,6 +223,11 @@ func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Pl
 	return nil
 }
 func (o *coreNativeRuntimeOps) Quiesce(ctx context.Context, d coreupdate.Delta) error {
+	if d.Installed.Kind == coreupdate.SQL && d.Installed.Scope == "shared" && o.identity.SharedSQL != nil {
+		if err := o.runtime.StopProject(ctx, o.identity.Project, o.identity.Compose, o.identity.Env); err != nil {
+			return errors.New("quiesce shared Identity before Core SQL mutation failed")
+		}
+	}
 	project, compose, env := o.files(d)
 	if err := o.runtime.StopProject(ctx, project, compose, env); err != nil {
 		return fmt.Errorf("stop owned Core provider project %s: %w", project, err)
@@ -256,7 +276,15 @@ func (o *coreNativeRuntimeOps) resumeSQLDependents(ctx context.Context, d coreup
 	if err != nil {
 		return err
 	}
-	return platformopenbao.Unseal(ctx, o.runtime, o.core, path)
+	if err := platformopenbao.Unseal(ctx, o.runtime, o.core, path); err != nil {
+		return err
+	}
+	if o.identity.SharedSQL != nil {
+		// Reuse the protected existing SQL binding; never regenerate credentials
+		// or provision a dependency during upgrade/recovery.
+		return o.runtime.UpProject(ctx, o.identity.Project, o.identity.Compose, o.identity.Env)
+	}
+	return nil
 }
 func (o *coreNativeRuntimeOps) verifyImage(ctx context.Context, d coreupdate.Delta, pinned bool) error {
 	project, _, _ := o.files(d)
@@ -415,7 +443,7 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := inspectCoreRuntimePlan(ctx, release, state, runtime)
+	plan, err := inspectSelectedCoreRuntimePlan(ctx, release, state, runtime)
 	if err != nil {
 		return err
 	}
@@ -569,7 +597,7 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := inspectCoreRuntimePlan(ctx, release, state, runtime)
+	plan, err := inspectSelectedCoreRuntimePlan(ctx, release, state, runtime)
 	if err != nil {
 		return err
 	}

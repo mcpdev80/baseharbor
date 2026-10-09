@@ -10,7 +10,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 type sharedValkeyRegistrationRuntime struct {
@@ -70,7 +69,7 @@ func TestSharedValkeyRegistersCacheAndDurableInstances(t *testing.T) {
 			if _, err := store.Create(m); err != nil {
 				t.Fatal(err)
 			}
-			issuer := serviceissuer.New(t)
+			issuer := newSharedCoreTestIssuer(t, root, store.Namespace, false)
 			files, err := EnsureRuntime(context.Background(), issuer, store, m)
 			if err != nil {
 				t.Fatal(err)

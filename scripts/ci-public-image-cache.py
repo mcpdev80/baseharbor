@@ -26,12 +26,14 @@ def public_source(path):
     if parsed.query not in {'', 'ns=docker.io'} or parsed.fragment or parsed.scheme or parsed.netloc:
         return None
     path = parsed.path
-    match = re.fullmatch(r'/v2/(library/[a-z0-9][a-z0-9._-]*|openbao/openbao|chrislusf/seaweedfs)/(manifests/([a-zA-Z0-9._-]+|sha256:[0-9a-f]{64})|blobs/sha256:[0-9a-f]{64})', path)
+    match = re.fullmatch(r'/v2/(library/[a-z0-9][a-z0-9._-]*|openbao/openbao|chrislusf/seaweedfs|valkey/valkey)/(manifests/([a-zA-Z0-9._-]+|sha256:[0-9a-f]{64})|blobs/sha256:[0-9a-f]{64})', path)
     if not match:
         return None
     repository, suffix = match.group(1), match.group(2)
     if repository.startswith('library/'):
         return 'public.ecr.aws', 'docker/' + repository, suffix
+    if repository == 'valkey/valkey':
+        repository = 'valkey-io/valkey'
     return 'ghcr.io', repository, suffix
 
 

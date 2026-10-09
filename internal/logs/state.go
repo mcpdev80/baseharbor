@@ -69,6 +69,9 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	}
 	switch p.Scope {
 	case capability.ScopeShared:
+		if err := bhruntime.CheckSharedProviderIdentity(dataDir, "loki"); err != nil {
+			return Placement{}, err
+		}
 		project := bhruntime.SharedProjectName(namespace)
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "loki", "shared")
 		lokiVolume := "baseharbor-loki-data"
@@ -76,13 +79,6 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 		legacyProject := providerProject
 		if prefix != "" {
 			legacyProject = "baseharbor-logs-" + strings.TrimSuffix(prefix, "-")
-		}
-		if p.SharingBoundary != "" {
-			token := application.ProviderPlacementNameToken(p.SharingBoundary)
-			dir = filepath.Join(dir, token)
-			legacyProject += "-" + token
-			lokiVolume += "-" + token
-			alloyVolume += "-" + token
 		}
 		network := legacyProject + "-internal"
 		return Placement{Scope: p.Scope, Project: project, Network: network, Dir: dir, LokiVolume: lokiVolume, AlloyVolume: alloyVolume, SharingBoundary: p.SharingBoundary}, nil
