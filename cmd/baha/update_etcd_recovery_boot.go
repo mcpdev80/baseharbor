@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -119,7 +120,7 @@ func verifyRuntimeRecoveredEtcdCluster(ctx context.Context, rt bhruntime.Runtime
 		return fmt.Errorf("boot isolated etcd recovery cluster: %w", err)
 	}
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), coreRecoveryCleanupTimeout)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := rt.DownProject(cleanupCtx, project, composePath, live.Env); err != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("stop isolated etcd recovery cluster: %w", err))
