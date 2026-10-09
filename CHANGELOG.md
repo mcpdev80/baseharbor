@@ -28,16 +28,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
 - Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
 - PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
+- Implicit HA removed from default provider topology; native HA requires explicit intent, component overrides remain authoritative and existing installations cannot silently change membership.
+- Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
+- Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
 
 ### Verified
 
 - Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37954182113).
-- Console and Connector package-local checks have successful evidence in their respective PRs; exact joint-release acceptance remains outstanding.
+- Prior complete native Console/Connector Docker/Podman integration passed in [Actions 37968583370](https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/37968583370); the final immutable candidate matrix and exact-source evidence are tracked in PR #837.
 
-### Known limitations / release blockers
+### Support boundaries and acceptance requirements
 
 - Native DCS cutover, PostgreSQL physical point-in-time backup-state recovery and same-image rolling/failure recovery passed isolated rootless Docker/Podman acceptance. Changed-image upgrade compatibility and plaintext DCS migration remain unqualified.
-- Real OpenBao/Keycloak state recovery and final Console/Node remote runtime acceptance are outstanding.
+- Real provider-version/state recovery and final Console/Node remote runtime acceptance require successful targeted native evidence for the selected source inputs.
+- Application-scoped PostgreSQL HA and cross-host failure tolerance remain unsupported; shared PostgreSQL HA remains supported.
 - Demo and all dependent component pins must be synchronized with one final immutable Core SHA, then revalidated.
 - v0.4.24 has not been tagged, merged or published. This entry remains Unreleased until all release gates have passed and publication is authorized.
 
