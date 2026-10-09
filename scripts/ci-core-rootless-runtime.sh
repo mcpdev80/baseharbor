@@ -26,6 +26,18 @@ case "$runtime" in
       sudo apt-get install -y "docker-ce-rootless-extras=$extras_version"
     fi
     command -v dockerd-rootless-setuptool.sh
+    # Cache public Docker Hub layers on this isolated rootless CI daemon.
+    # Docker still verifies requested content digests and falls back to origin.
+    python3 - <<'PY'
+import json, os
+from pathlib import Path
+config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'docker' / 'daemon.json'
+config.parent.mkdir(parents=True, exist_ok=True)
+settings = json.loads(config.read_text()) if config.exists() else {}
+mirrors = settings.get('registry-mirrors', [])
+settings['registry-mirrors'] = ['https://mirror.gcr.io'] + [v for v in mirrors if v != 'https://mirror.gcr.io']
+config.write_text(json.dumps(settings) + '\n')
+PY
     dockerd-rootless-setuptool.sh install --force
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
     printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"

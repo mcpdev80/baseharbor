@@ -355,14 +355,14 @@ jobs:
           retention-days: 90
 
   core_provider_versions:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[provider-runtime]') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[provider-runtime]') || contains(github.event.head_commit.message, '[provider-docker-runtime]')) }}
     name: Provider versions and SQL recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[provider-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:provider-versions
@@ -395,14 +395,14 @@ jobs:
           retention-days: 90
 
   core_ha_openbao_versions:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[bao-ha-runtime]') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]')) }}
     name: HA OpenBao versions and SQL recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[bao-ha-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:ha-openbao-versions
