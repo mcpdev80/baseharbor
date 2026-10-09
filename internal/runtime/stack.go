@@ -88,6 +88,18 @@ func EnsureFilesForProjectAndResources(stateDir, project, resourceProject string
 	}
 	rendered := renderComposeForProfile(resourceProject, ha)
 	composePath := filepath.Join(stateDir, composeName)
+	if ha {
+		if existing, readErr := os.ReadFile(composePath); readErr == nil {
+			text := string(existing)
+			if strings.Contains(text, "--listen-client-urls=http://") ||
+				strings.Contains(text, "--listen-peer-urls=http://") ||
+				strings.Contains(text, "=http://postgres-etcd-") {
+				return Files{}, errors.New("UNSUPPORTED: existing plaintext etcd HA topology requires an explicit fenced mTLS migration; refusing automatic DCS rewrite")
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return Files{}, fmt.Errorf("inspect existing HA DCS transport: %w", readErr)
+		}
+	}
 	if err := os.WriteFile(composePath, []byte(rendered), 0o600); err != nil {
 		return Files{}, fmt.Errorf("write compose file: %w", err)
 	}
