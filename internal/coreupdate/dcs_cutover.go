@@ -128,6 +128,18 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	}
 	identity := sha256.Sum256([]byte(evidence.Installation + "\\x00" + evidence.Target + "\\x00" + evidence.Cluster + "\\x00" + evidence.Release + "\\x00" + evidence.SnapshotID + "\\x00" + evidence.SHA256))
 	journal.binding = hex.EncodeToString(identity[:])
+	// Validate the private, non-symlink parent before creating even the
+	// exclusive lock. A writable foreign directory is not a safe lock root.
+	if journal.Path == "" {
+		return errors.New("durable DCS cutover journal path required")
+	}
+	parent, parentErr := os.Lstat(filepath.Dir(journal.Path))
+	if parentErr != nil {
+		return parentErr
+	}
+	if !parent.IsDir() || parent.Mode().Perm()&0077 != 0 {
+		return errors.New("DCS cutover lock directory must be owner-only")
+	}
 	lock, lockErr := os.OpenFile(journal.Path+".lock", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if lockErr != nil {
 		return fmt.Errorf("exclusive DCS cutover lock unavailable: %w", lockErr)
