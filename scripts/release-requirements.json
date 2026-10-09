@@ -2,7 +2,8 @@
   "schema": "baseharbor.release-requirements/v1",
   "releases": [
     "v0.4.22",
-    "v0.4.23"
+    "v0.4.23",
+    "v0.4.24"
   ],
   "gates": [
     {
@@ -13,7 +14,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -28,7 +30,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -43,7 +46,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -58,7 +62,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -73,7 +78,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -89,7 +95,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -105,7 +112,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -121,7 +129,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -137,7 +146,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -153,7 +163,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -169,7 +180,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -185,7 +197,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -201,7 +214,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -217,7 +231,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -233,7 +248,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -249,7 +265,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -265,7 +282,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -281,7 +299,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -297,7 +316,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -313,7 +333,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -329,7 +350,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -345,7 +367,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -361,7 +384,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -377,7 +401,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -393,7 +418,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -409,7 +435,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -425,7 +452,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -441,7 +469,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -457,7 +486,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -473,7 +503,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -489,7 +520,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -505,7 +537,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -521,7 +554,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -537,7 +571,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -553,7 +588,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -569,7 +605,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -585,7 +622,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -601,7 +639,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -617,7 +656,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -633,7 +673,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -649,7 +690,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -664,7 +706,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -679,7 +722,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -694,7 +738,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -709,7 +754,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -724,7 +770,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -739,7 +786,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -754,7 +802,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -769,7 +818,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -784,7 +834,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -799,7 +850,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -814,7 +866,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -829,7 +882,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -845,7 +899,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -861,7 +916,8 @@
       ],
       "required_for": [
         "v0.4.22",
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -875,7 +931,8 @@
         "integration_public_contracts"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core"
@@ -888,7 +945,8 @@
         "integration_configuration_policy"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core"
@@ -901,7 +959,8 @@
         "integration_browser_terminal"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core"
@@ -914,7 +973,8 @@
         "integration_remote_target_docker"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -928,7 +988,8 @@
         "integration_remote_target_podman"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -942,7 +1003,8 @@
         "integration_live_console"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ],
       "dependencies": [
         "core",
@@ -961,7 +1023,8 @@
         "core"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ]
     },
     {
@@ -974,7 +1037,8 @@
         "core"
       ],
       "required_for": [
-        "v0.4.23"
+        "v0.4.23",
+        "v0.4.24"
       ]
     }
   ]

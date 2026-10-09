@@ -4,6 +4,7 @@ import unittest
 
 import private_evidence_access_preflight as preflight
 from private_consumer_evidence import QUALIFICATIONS, REPOSITORIES, WORKFLOW
+from ecosystem_release_pins import resolve_pins
 
 
 def pins():
@@ -31,6 +32,31 @@ class API:
 
 
 class PrivateAccessTests(unittest.TestCase):
+    def test_joint_public_browser_origin_requires_only_connector_artifacts(self):
+        import hashlib
+        core, connector, console, demo = (letter * 40 for letter in 'abcd')
+        candidate = {'schema': 'baseharbor.ecosystem-candidate/v1', 'release': '0.4.24',
+                     'core': core, 'console': console, 'demo': demo}
+        config = resolve_pins(core, connector, candidate,
+                              {k: candidate[k] for k in ['schema', 'release', 'core', 'demo']}, core)['gates']
+
+        class PublicAPI(API):
+            public = True
+
+            def pages(self, repository, path, field):
+                self.calls.append((repository, path))
+                if repository != REPOSITORIES['connector']:
+                    raise AssertionError('Console proof comes from the exact joint Connector origin')
+                return [{'id': 1, 'expired': False, 'workflow_run': {'head_sha': connector},
+                         'digest': 'sha256:' + hashlib.sha256(b'PKarchive').hexdigest()}]
+
+            def archive(self, repository, artifact):
+                return b'PKarchive'
+
+        result = preflight.check_access(config, PublicAPI())
+        self.assertTrue(result['actions_access'])
+        self.assertFalse(result['release_approved'])
+
     def test_source_and_actions_read_access_do_not_approve_release(self):
         api = API()
         result = preflight.check_access(pins(), api)

@@ -60,4 +60,6 @@ Anfängliche Planer-/Hook-Tests beweisen nur den Vertrag, **nicht** die realen P
 
 ## Native Provider-Zulassung
 
+Die Manager-AppRole schließt die OpenBao-Default-Policy bewusst aus. Ihre begrenzte Manager-Policy muss `update` auf `sys/capabilities-self` erlauben, damit die Vorprüfung die eigenen Rechte für Anwendungspolicies prüfen kann. Rechte zur Prüfung fremder Tokens werden nicht vergeben. Bei bestehenden Installationen ohne diesen Endpoint muss ein berechtigter Administrator die eng begrenzte Policy vor dem Upgrade abgleichen. Core lehnt vor Provider-Änderungen ab und erzeugt weder einen neuen Root-Token noch erweitert es stillschweigend seine Rechte.
+
 OpenBao akzeptiert ausschließlich neuere Patches desselben Major-/Minor-Zweigs; der Kandidat verwendet 2.7.1. Keycloak folgt für HA derselben Patch-Regel. Der explizit zugelassene Single-Core-Pfad 26.7.5 → 26.8.0 stoppt und ersetzt das einzelne Mitglied und verwendet verifizierte SQL-/Konfigurationsbackups sowie Recovery. Andere Minor-/Major-Pfade werden vor jeder Änderung abgewiesen. Eine abgeschlossene native Transaktion prüft das unveränderte unveränderliche Inventar und die Secret-Scopes registrierter Anwendungen; die engere Zulassungsregel für reine Binary-Updates weist diese bereits verifizierten Anwendungen nicht erneut ab.

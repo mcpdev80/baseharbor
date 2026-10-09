@@ -60,4 +60,6 @@ The initial planner and hook tests prove only contract behavior; **they do not q
 
 ## Native provider admission
 
+The manager AppRole deliberately excludes OpenBao's default policy. Its scoped manager policy must grant `update` on `sys/capabilities-self` so preflight can inspect its own application-policy rights. No authority to inspect other tokens is granted. Existing installations whose manager policy lacks this endpoint must have an authorized administrator reconcile that narrow policy before upgrading; Core refuses before provider mutation and never recreates a root token or silently broadens its authority.
+
 OpenBao accepts strictly newer patches in the same major/minor stream; the candidate targets 2.7.1. Keycloak follows that same patch rule for HA. The explicitly admitted single-Core 26.7.5 → 26.8.0 path stops/recreates the one member and uses verified SQL/configuration backup and recovery. Other minor/major paths are refused before mutation. A completed native transaction verifies the unchanged immutable inventory and registered application Secret scopes; the narrower binary-only admission rule is not reused to reject those already verified applications.

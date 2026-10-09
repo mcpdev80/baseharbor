@@ -88,6 +88,12 @@ class FakeAPI:
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_v024_keeps_the_complete_v023_required_gate_surface(self):
+        previous = resume.local_requirements('v0.4.23')
+        current = resume.local_requirements('v0.4.24')
+        self.assertEqual(len(current), 63)
+        self.assertEqual(previous, current)
+
     def test_selection_limits_execution_without_approving_deferred_requirements(self):
         original = {'required': ['atomic/static/mcp', 'integration/docker/remote-target'],
                     'pending': {'atomic/static/mcp': 'missing', 'integration/docker/remote-target': 'failed'},
@@ -342,6 +348,16 @@ class GitFingerprintTests(unittest.TestCase):
     def test_missing_new_candidate_inventory_is_rejected(self):
         with self.assertRaises(ValueError):
             self.inputs.requirements(self.p, 'v0.4.23')
+
+    def test_v024_demo_owns_exact_core_pin_without_circular_core_demo_ref(self):
+        (self.demo / 'baseharbor-core.ref').write_text(self.p + '\n')
+        demo = self.commit(self.demo)
+        inputs = resume.GitInputs(self.product, self.demo, demo)
+        self.assertEqual(inputs.pin(self.p, 'v0.4.24'), demo)
+        with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+            inputs.pin('f' * 40, 'v0.4.24')
+        with self.assertRaises(ValueError):
+            resume.GitInputs(self.product, self.demo, 'work/mutable').pin(self.p, 'v0.4.24')
 
     def test_publication_handoff_allows_prose_and_rejects_workflow_auth_and_inventory(self):
         spec = importlib.util.spec_from_file_location('handoff', pathlib.Path(resume.__file__).with_name('release-handoff.py'))

@@ -102,8 +102,9 @@ def digest(value):
 
 
 class GitInputs:
-    def __init__(self, product, demo):
+    def __init__(self, product, demo, demo_ref=None):
         self.product, self.demo = pathlib.Path(product), pathlib.Path(demo)
+        self.demo_ref = demo_ref
 
     @functools.lru_cache(maxsize=None)
     def objects(self, repo, commit):
@@ -165,6 +166,15 @@ class GitInputs:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
     def pin(self, candidate, tag):
+        if tag == 'v0.4.24':
+            # Consumers can pin an existing Core SHA; Core cannot also embed
+            # their future commit without a circular Git object dependency.
+            if not isinstance(self.demo_ref, str) or not re.fullmatch('[0-9a-f]{40}', self.demo_ref):
+                raise ValueError('v0.4.24 requires an exact resolved Demo commit')
+            actual = command(['git', 'show', self.demo_ref + ':baseharbor-core.ref'], self.demo).decode().strip()
+            if actual != candidate:
+                raise ValueError('Demo immutable Core pin differs from candidate')
+            return self.demo_ref
         return command(['git', 'show', candidate + ':docs/releases/' + tag + '.demo-ref'],
                        self.product).decode().strip()
 
@@ -403,7 +413,7 @@ def main():
     if args.only_gates and args.mode != 'plan':
         raise ValueError('gate selection is permitted only when planning execution')
     api = GitHub(args.repository)
-    inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo)
+    inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo, args.demo)
     requirements = inputs.requirements(args.candidate, args.tag)
     private_verifier = private_verifier_from_environment(read_archive)
     current = int(os.environ['GITHUB_RUN_ID'])
@@ -437,6 +447,11 @@ def main():
                     'gate_count': len(requirements), 'requirements_digest': digest(requirements),
                     'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
                     'coverage_digest': digest(coverage)}
+        if args.tag == 'v0.4.24':
+            consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
+            if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
+                raise ValueError('v0.4.24 requires an immutable complete consumer origin')
+            approval['consumer_ref'] = consumer_ref
         (args.output / 'release-approved.json').write_text(json.dumps(approval, indent=2) + '\n')
     else:
         jobs = inputs.workflow(args.candidate)
