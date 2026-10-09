@@ -89,9 +89,12 @@ func TestDCSCutoverFencesBeforeActivationAndResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, call := range ops.calls[before:] {
-		if call == "fence" || call == "activate" {
-			t.Fatalf("resumed committed cutover replayed mutation: %v", ops.calls[before:])
+		if call == "fence" || call == "activate" || call == "verify_fence" || call == "commit" {
+			t.Fatalf("resumed committed cutover replayed obsolete operation: %v", ops.calls[before:])
 		}
+	}
+	if got := strings.Join(ops.calls[before:], ","); got != "quorum,patroni" {
+		t.Fatalf("committed recovery must validate active DCS and Patroni only, got %s", got)
 	}
 }
 func TestDCSCutoverRefusesAmbiguousFence(t *testing.T) {
