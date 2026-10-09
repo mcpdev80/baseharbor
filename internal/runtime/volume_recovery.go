@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const recoveryHelperImage = "docker.io/library/alpine:3.22"
+const recoveryHelperImage = "docker.io/library/alpine:3.24"
 
 func (c Compose) ExportOwnedVolume(ctx context.Context, project, volume string) ([]byte, error) {
 	project = strings.TrimSpace(project)
