@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestCorePlanOnlyAllowsStableApplicationProviders(t *testing.T) {
@@ -168,6 +169,25 @@ func TestRuntimeEtcdSnapshotRevisionMustNotPrecedeAttestedQuorum(t *testing.T) {
 		err := verifyRuntimeEtcdSnapshotRevision(tc.attested, tc.snapshot)
 		if (err == nil) != tc.valid {
 			t.Fatalf("snapshot revision %d after attested %d: accepted=%v, want %v", tc.snapshot, tc.attested, err == nil, tc.valid)
+		}
+	}
+}
+
+func TestRuntimeEtcdRecoveryImageRequiresCompleteDigest(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	ref := "gcr.io/etcd-development/etcd:v3.7.2"
+	for _, identity := range []bhruntime.ImageIdentity{
+		{Reference: ref, Digest: digest},
+		{Reference: ref, Digest: ref + "@" + digest},
+	} {
+		got, err := runtimePinnedImage(identity)
+		if err != nil || got != ref+"@"+digest {
+			t.Fatalf("valid immutable recovery image rejected: %q %v", got, err)
+		}
+	}
+	for _, bad := range []string{"sha256:abc", "sha256:" + strings.Repeat("z", 64), "sha256:" + strings.Repeat("a", 63), "other@sha256:123"} {
+		if value, err := runtimePinnedImage(bhruntime.ImageIdentity{Reference: ref, Digest: bad}); err == nil {
+			t.Fatalf("malformed etcd image identity admitted: %s", value)
 		}
 	}
 }
