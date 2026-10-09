@@ -90,36 +90,47 @@ func TestNativeProviderAdapterRejectsUnknownImageBeforeSemanticProbe(t *testing.
 }
 
 type nativeKeycloakAdmissionRuntime struct {
- bhruntime.RuntimeProvider
- containers []bhruntime.RuntimeContainer
- image bhruntime.ImageIdentity
+	bhruntime.RuntimeProvider
+	containers []bhruntime.RuntimeContainer
+	image      bhruntime.ImageIdentity
 }
-func (r *nativeKeycloakAdmissionRuntime) ListRuntimeContainers(context.Context)([]bhruntime.RuntimeContainer,error){
- return r.containers,nil
+
+func (r *nativeKeycloakAdmissionRuntime) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
+	return r.containers, nil
 }
-func (r *nativeKeycloakAdmissionRuntime) ProjectServiceImageIdentity(context.Context,string,string)(bhruntime.ImageIdentity,error){
- return r.image,nil
+func (r *nativeKeycloakAdmissionRuntime) ProjectServiceImageIdentity(context.Context, string, string) (bhruntime.ImageIdentity, error) {
+	return r.image, nil
 }
-func TestNativeKeycloakAdapterUpgradeAdmission(t *testing.T){
- r:=&nativeKeycloakAdmissionRuntime{
-  containers:[]bhruntime.RuntimeContainer{{Project:"identity-project",Service:"keycloak-1",Running:true,Health:"healthy"}},
-  image:bhruntime.ImageIdentity{Reference:"quay.io/keycloak/keycloak:26.8.0",Digest:"sha256:"+strings.Repeat("a",64)},
- }
- ops:=coreNativeRuntimeOps{runtime:r,identity:identityprovider.KeycloakFiles{Project:"identity-project"}}
- d:=coreupdate.Delta{
-  Installed:coreupdate.Realization{Kind:coreupdate.Identity,Instance:"keycloak-1",Version:"26.8.0",Digest:r.image.Digest},
-  Desired:coreupdate.Desired{Kind:coreupdate.Identity,Version:"26.8.1",Image:"quay.io/keycloak/keycloak:26.8.1",Digest:"sha256:"+strings.Repeat("b",64)},
-  Classification:coreupdate.BackupRequired,
- }
- if err:=ops.admitNativeProviderTransition(context.Background(),d);err!=nil{t.Fatalf("safe Keycloak patch rejected: %v",err)}
- d.Desired.Version="26.8.0"
- if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("same-version digest mutation escaped backup-aware adapter admission")}
- d.Desired.Version="26.9.0"
- if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("unreviewed Keycloak minor upgrade accepted")}
- d.Desired.Version="26.8.1"
- r.containers=append(r.containers,r.containers[0])
- if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("duplicate Keycloak member accepted")}
- r.containers=r.containers[:1]
- r.image.Reference="quay.io/keycloak/keycloak:26.7.9"
- if err:=ops.admitNativeProviderTransition(context.Background(),d);err==nil{t.Fatal("stale Keycloak version accepted")}
+func TestNativeKeycloakAdapterUpgradeAdmission(t *testing.T) {
+	r := &nativeKeycloakAdmissionRuntime{
+		containers: []bhruntime.RuntimeContainer{{Project: "identity-project", Service: "keycloak-1", Running: true, Health: "healthy"}},
+		image:      bhruntime.ImageIdentity{Reference: "quay.io/keycloak/keycloak:26.8.0", Digest: "sha256:" + strings.Repeat("a", 64)},
+	}
+	ops := coreNativeRuntimeOps{runtime: r, identity: identityprovider.KeycloakFiles{Project: "identity-project"}}
+	d := coreupdate.Delta{
+		Installed:      coreupdate.Realization{Kind: coreupdate.Identity, Instance: "keycloak-1", Version: "26.8.0", Digest: r.image.Digest},
+		Desired:        coreupdate.Desired{Kind: coreupdate.Identity, Version: "26.8.1", Image: "quay.io/keycloak/keycloak:26.8.1", Digest: "sha256:" + strings.Repeat("b", 64)},
+		Classification: coreupdate.BackupRequired,
+	}
+	if err := ops.admitNativeProviderTransition(context.Background(), d); err != nil {
+		t.Fatalf("safe Keycloak patch rejected: %v", err)
+	}
+	d.Desired.Version = "26.8.0"
+	if err := ops.admitNativeProviderTransition(context.Background(), d); err == nil {
+		t.Fatal("same-version digest mutation escaped backup-aware adapter admission")
+	}
+	d.Desired.Version = "26.9.0"
+	if err := ops.admitNativeProviderTransition(context.Background(), d); err == nil {
+		t.Fatal("unreviewed Keycloak minor upgrade accepted")
+	}
+	d.Desired.Version = "26.8.1"
+	r.containers = append(r.containers, r.containers[0])
+	if err := ops.admitNativeProviderTransition(context.Background(), d); err == nil {
+		t.Fatal("duplicate Keycloak member accepted")
+	}
+	r.containers = r.containers[:1]
+	r.image.Reference = "quay.io/keycloak/keycloak:26.7.9"
+	if err := ops.admitNativeProviderTransition(context.Background(), d); err == nil {
+		t.Fatal("stale Keycloak version accepted")
+	}
 }
