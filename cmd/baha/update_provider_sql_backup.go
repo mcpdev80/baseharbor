@@ -94,10 +94,32 @@ func (s providerSQLBackupSpec) artifactBinding(version string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// recoveryPairComplete avoids mixing a SQL snapshot from an interrupted
+// transaction with freshly captured configuration from a later runtime state.
+func (s providerSQLBackupSpec) recoveryPairComplete() (bool, error) {
+	files := []string{
+		filepath.Join(s.Directory, s.Name+"-sql.backup"),
+		filepath.Join(s.Directory, s.Name+"-sql.backup.sha256"),
+		filepath.Join(s.Directory, s.Name+"-config.backup"),
+		filepath.Join(s.Directory, s.Name+"-config.backup.sha256"),
+	}
+	present := 0
+	for _, path := range files {
+		st, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) { continue }
+		if err != nil { return false, err }
+		if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 { return false, errors.New("unsafe provider recovery artifact") }
+		present++
+	}
+	if present != 0 && present != len(files) { return false, errors.New("incomplete SQL/configuration backup pair from interrupted capture") }
+	return present == len(files), nil
+}
+
 func (s providerSQLBackupSpec) capture(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
 	if err := s.validate(); err != nil {
 		return providerupgrade.BackupRef{}, err
 	}
+	if _, err := s.recoveryPairComplete(); err != nil { return providerupgrade.BackupRef{}, err }
 	environment, err := s.environment()
 	if err != nil {
 		return providerupgrade.BackupRef{}, err
@@ -296,7 +318,7 @@ func (s providerSQLBackupSpec) restoreConfiguration(ctx context.Context) error {
 		if int64(len(data)) != header.Size {
 			return errors.New("incomplete provider configuration content")
 		}
-		entries = append(entries, entry{path: path, data: data, mode: st.Mode().Perm()})
+		entries = append(entries, entry{path: path, data: data, mode: os.FileMode(header.Mode) & 0777})
 	}
 	if _, err := tr.Next(); !errors.Is(err, io.EOF) {
 		return errors.New("unexpected trailing provider configuration entry")
@@ -346,11 +368,6 @@ func (s providerSQLBackupSpec) restoreConfiguration(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func mustReadProviderRecoveryFile(path string) []byte {
-	data, _ := os.ReadFile(path)
-	return data
 }
 
 func (s providerSQLBackupSpec) restore(ctx context.Context, ref providerupgrade.BackupRef) error {
