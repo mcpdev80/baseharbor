@@ -152,3 +152,22 @@ func TestValidateHAProviderPlanOnlyAdmitsOwnedSharedSQLRoll(t *testing.T) {
 		t.Fatal("unsupported native HA SQL migration admitted")
 	}
 }
+
+func TestRuntimeEtcdSnapshotRevisionMustNotPrecedeAttestedQuorum(t *testing.T) {
+	for _, tc := range []struct {
+		attested, snapshot int64
+		valid              bool
+	}{
+		{100, 100, true},
+		{100, 101, true},
+		{100, 200, true},
+		{100, 99, false},
+		{100, 0, false},
+		{0, 100, false},
+	} {
+		err := verifyRuntimeEtcdSnapshotRevision(tc.attested, tc.snapshot)
+		if (err == nil) != tc.valid {
+			t.Fatalf("snapshot revision %d after attested %d: accepted=%v, want %v", tc.snapshot, tc.attested, err == nil, tc.valid)
+		}
+	}
+}
