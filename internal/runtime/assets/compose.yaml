@@ -5,9 +5,12 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-1", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-1:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-1:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-1", "--data-dir=/etcd-data", "--listen-client-urls=https://0.0.0.0:2379", "--advertise-client-urls=https://postgres-etcd-1:2379", "--listen-peer-urls=https://0.0.0.0:2380", "--initial-advertise-peer-urls=https://postgres-etcd-1:2380", "--initial-cluster=postgres-etcd-1=https://postgres-etcd-1:2380,postgres-etcd-2=https://postgres-etcd-2:2380,postgres-etcd-3=https://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new", "--cert-file=/run/baseharbor/etcd/server.pem", "--key-file=/run/baseharbor/etcd/server-key.pem", "--client-cert-auth=true", "--trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--peer-cert-file=/run/baseharbor/etcd/server.pem", "--peer-key-file=/run/baseharbor/etcd/server-key.pem", "--peer-client-cert-auth=true", "--peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--tls-min-version=TLS1.2"]
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_ETCD_PORT_1:-12379}:2379"
     volumes:
       - postgres-etcd-data-1:/etcd-data
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
 
   postgres-etcd-2:
     image: gcr.io/etcd-development/etcd:v3.7.2
@@ -15,9 +18,12 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-2", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-2:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-2:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-2", "--data-dir=/etcd-data", "--listen-client-urls=https://0.0.0.0:2379", "--advertise-client-urls=https://postgres-etcd-2:2379", "--listen-peer-urls=https://0.0.0.0:2380", "--initial-advertise-peer-urls=https://postgres-etcd-2:2380", "--initial-cluster=postgres-etcd-1=https://postgres-etcd-1:2380,postgres-etcd-2=https://postgres-etcd-2:2380,postgres-etcd-3=https://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new", "--cert-file=/run/baseharbor/etcd/server.pem", "--key-file=/run/baseharbor/etcd/server-key.pem", "--client-cert-auth=true", "--trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--peer-cert-file=/run/baseharbor/etcd/server.pem", "--peer-key-file=/run/baseharbor/etcd/server-key.pem", "--peer-client-cert-auth=true", "--peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--tls-min-version=TLS1.2"]
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_ETCD_PORT_2:-22379}:2379"
     volumes:
       - postgres-etcd-data-2:/etcd-data
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
 
   postgres-etcd-3:
     image: gcr.io/etcd-development/etcd:v3.7.2
@@ -25,9 +31,24 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-3", "--data-dir=/etcd-data", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://postgres-etcd-3:2379", "--listen-peer-urls=http://0.0.0.0:2380", "--initial-advertise-peer-urls=http://postgres-etcd-3:2380", "--initial-cluster=postgres-etcd-1=http://postgres-etcd-1:2380,postgres-etcd-2=http://postgres-etcd-2:2380,postgres-etcd-3=http://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new"]
+    command: ["/usr/local/bin/etcd", "--name=postgres-etcd-3", "--data-dir=/etcd-data", "--listen-client-urls=https://0.0.0.0:2379", "--advertise-client-urls=https://postgres-etcd-3:2379", "--listen-peer-urls=https://0.0.0.0:2380", "--initial-advertise-peer-urls=https://postgres-etcd-3:2380", "--initial-cluster=postgres-etcd-1=https://postgres-etcd-1:2380,postgres-etcd-2=https://postgres-etcd-2:2380,postgres-etcd-3=https://postgres-etcd-3:2380", "--initial-cluster-token=baseharbor-postgres", "--initial-cluster-state=new", "--cert-file=/run/baseharbor/etcd/server.pem", "--key-file=/run/baseharbor/etcd/server-key.pem", "--client-cert-auth=true", "--trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--peer-cert-file=/run/baseharbor/etcd/server.pem", "--peer-key-file=/run/baseharbor/etcd/server-key.pem", "--peer-client-cert-auth=true", "--peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem", "--tls-min-version=TLS1.2"]
+    ports:
+      - "127.0.0.1:${BASEHARBOR_POSTGRES_ETCD_PORT_3:-32379}:2379"
     volumes:
       - postgres-etcd-data-3:/etcd-data
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
+
+  postgres-etcd-recovery:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    profiles: ["recovery"]
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/usr/local/bin/etcdctl"]
+    volumes:
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700
 
   postgres-member-1:
     image: ghcr.io/zalando/spilo-18:4.1-p2
@@ -39,6 +60,9 @@ services:
       - |
         install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -46,6 +70,11 @@ services:
       PGROOT: /home/postgres/pgdata/pgroot
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
+      PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      PATRONI_ETCD3_PROTOCOL: https
+      PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      PATRONI_ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
@@ -60,6 +89,7 @@ services:
       - postgres-data-1:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
       - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd-source:ro
 
   postgres-member-2:
     image: ghcr.io/zalando/spilo-18:4.1-p2
@@ -71,6 +101,9 @@ services:
       - |
         install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -78,6 +111,11 @@ services:
       PGROOT: /home/postgres/pgdata/pgroot
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
+      PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      PATRONI_ETCD3_PROTOCOL: https
+      PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      PATRONI_ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
@@ -92,6 +130,7 @@ services:
       - postgres-data-2:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
       - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd-source:ro
 
   postgres-member-3:
     image: ghcr.io/zalando/spilo-18:4.1-p2
@@ -103,6 +142,9 @@ services:
       - |
         install -d -o postgres -g postgres -m 0700 /run/baseharbor/tls-runtime
         install -o postgres -g postgres -m 0600 /run/baseharbor/tls-source/server-key.pem /run/baseharbor/tls-runtime/server-key.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/tls-runtime/etcd-ca.pem
+        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/tls-runtime/etcd-client.pem
+        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/tls-runtime/etcd-client-key.pem
         exec /bin/sh /launch.sh
     environment:
       SPILO_PROVIDER: local
@@ -110,6 +152,11 @@ services:
       PGROOT: /home/postgres/pgdata/pgroot
       PGVERSION: "18"
       ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"
+      PATRONI_ETCD3_HOSTS: "postgres-etcd-1:2379,postgres-etcd-2:2379,postgres-etcd-3:2379"
+      PATRONI_ETCD3_PROTOCOL: https
+      PATRONI_ETCD3_CACERT: /run/baseharbor/tls-runtime/etcd-ca.pem
+      PATRONI_ETCD3_CERT: /run/baseharbor/tls-runtime/etcd-client.pem
+      PATRONI_ETCD3_KEY: /run/baseharbor/tls-runtime/etcd-client-key.pem
       PGUSER_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_USER:-postgres}
       PGPASSWORD_SUPERUSER: ${BASEHARBOR_POSTGRES_INTERNAL_PASSWORD}
       PGUSER_STANDBY: ${BASEHARBOR_POSTGRES_REPLICATION_USER:-baseharbor_replication}
@@ -124,6 +171,7 @@ services:
       - postgres-data-3:/home/postgres/pgdata/pgroot
       - ./providers/postgresql/runtime/server-cert.pem:/run/baseharbor/tls/server-cert.pem:ro
       - ./providers/postgresql/runtime/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro
+      - ./providers/postgresql/runtime/etcd-pki:/run/baseharbor/etcd-source:ro
 
   postgres:
     image: docker.io/library/haproxy:3.2.23-alpine

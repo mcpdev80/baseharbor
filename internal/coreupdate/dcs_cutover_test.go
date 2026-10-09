@@ -89,9 +89,12 @@ func TestDCSCutoverFencesBeforeActivationAndResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, call := range ops.calls[before:] {
-		if call == "fence" || call == "activate" {
-			t.Fatalf("resumed committed cutover replayed mutation: %v", ops.calls[before:])
+		if call == "fence" || call == "activate" || call == "verify_fence" || call == "commit" {
+			t.Fatalf("resumed committed cutover replayed obsolete operation: %v", ops.calls[before:])
 		}
+	}
+	if got := strings.Join(ops.calls[before:], ","); got != "quorum,patroni" {
+		t.Fatalf("committed recovery must validate active DCS and Patroni only, got %s", got)
 	}
 }
 func TestDCSCutoverRefusesAmbiguousFence(t *testing.T) {
@@ -111,5 +114,26 @@ func TestDCSCutoverRefusesAmbiguousFence(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(ops.calls, ","), "activate") {
 		t.Fatal("new DCS activated without fence proof")
+	}
+}
+
+func TestDCSCutoverNeverReplaysAmbiguousCommittedPhase(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := DCSCutoverJournal{Path: filepath.Join(dir, "cutover")}
+	ev := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "snapshot", SHA256: strings.Repeat("a", 64)}
+	ops := &fakeDCSSwitchover{fail: "commit"}
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil {
+		t.Fatal("failed commit accepted")
+	}
+	before := len(ops.calls)
+	ops.fail = ""
+	if err := RunVerifiedDCSCutover(context.Background(), fakeDCS{valid: true}, ev, "core", "target", "cluster", "0.4.24", ops, journal); err == nil || !strings.Contains(err.Error(), "operator reconciliation") {
+		t.Fatalf("ambiguous committed phase replay accepted: %v", err)
+	}
+	if len(ops.calls) != before {
+		t.Fatalf("ambiguous commit was automatically replayed: %v", ops.calls[before:])
 	}
 }

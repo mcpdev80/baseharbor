@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/dcspki"
 )
 
 const (
@@ -18,6 +20,9 @@ func ensureKeycloakPostgresHA(dir string) error {
 	root := filepath.Join(dir, "db-ha")
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err
+	}
+	if _, err := dcspki.Ensure(filepath.Join(root, "etcd-pki"), []string{"keycloak-db-etcd-1", "keycloak-db-etcd-2", "keycloak-db-etcd-3"}); err != nil {
+		return fmt.Errorf("prepare Keycloak PostgreSQL DCS mTLS: %w", err)
 	}
 	const cfg = `global
   log stdout format raw local0
@@ -51,7 +56,7 @@ backend primary
 }
 
 func keycloakHADataLayerCompose() string {
-	const etcdCluster = "keycloak-db-etcd-1=http://keycloak-db-etcd-1:2380,keycloak-db-etcd-2=http://keycloak-db-etcd-2:2380,keycloak-db-etcd-3=http://keycloak-db-etcd-3:2380"
+	const etcdCluster = "keycloak-db-etcd-1=https://keycloak-db-etcd-1:2380,keycloak-db-etcd-2=https://keycloak-db-etcd-2:2380,keycloak-db-etcd-3=https://keycloak-db-etcd-3:2380"
 	const etcdHosts = "keycloak-db-etcd-1:2379,keycloak-db-etcd-2:2379,keycloak-db-etcd-3:2379"
 
 	var b strings.Builder
@@ -67,17 +72,42 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      - /usr/local/bin/etcd\n")
 		fmt.Fprintf(&b, "      - --name=%s\n", name)
 		b.WriteString("      - --data-dir=/etcd-data\n")
-		b.WriteString("      - --listen-client-urls=http://0.0.0.0:2379\n")
-		fmt.Fprintf(&b, "      - --advertise-client-urls=http://%s:2379\n", name)
-		b.WriteString("      - --listen-peer-urls=http://0.0.0.0:2380\n")
-		fmt.Fprintf(&b, "      - --initial-advertise-peer-urls=http://%s:2380\n", name)
+		b.WriteString("      - --listen-client-urls=https://0.0.0.0:2379\n")
+		fmt.Fprintf(&b, "      - --advertise-client-urls=https://%s:2379\n", name)
+		b.WriteString("      - --listen-peer-urls=https://0.0.0.0:2380\n")
+		fmt.Fprintf(&b, "      - --initial-advertise-peer-urls=https://%s:2380\n", name)
 		fmt.Fprintf(&b, "      - --initial-cluster=%s\n", etcdCluster)
 		b.WriteString("      - --initial-cluster-token=baseharbor-keycloak-db\n")
 		b.WriteString("      - --initial-cluster-state=new\n")
+		b.WriteString("      - --cert-file=/run/baseharbor/etcd/server.pem\n")
+		b.WriteString("      - --key-file=/run/baseharbor/etcd/server-key.pem\n")
+		b.WriteString("      - --client-cert-auth=true\n")
+		b.WriteString("      - --trusted-ca-file=/run/baseharbor/etcd/ca.pem\n")
+		b.WriteString("      - --peer-cert-file=/run/baseharbor/etcd/server.pem\n")
+		b.WriteString("      - --peer-key-file=/run/baseharbor/etcd/server-key.pem\n")
+		b.WriteString("      - --peer-client-cert-auth=true\n")
+		b.WriteString("      - --peer-trusted-ca-file=/run/baseharbor/etcd/ca.pem\n")
+		b.WriteString("      - --tls-min-version=TLS1.2\n")
+		b.WriteString("    ports:\n")
+		fmt.Fprintf(&b, "      - \"127.0.0.1:${BASEHARBOR_KEYCLOAK_ETCD_PORT_%d}:2379\"\n", ordinal)
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(&b, "      - keycloak-db-etcd-data-%d:/etcd-data\n", ordinal)
+		b.WriteString("      - ./db-ha/etcd-pki:/run/baseharbor/etcd:ro\n")
 		b.WriteString("    networks:\n      identity-internal: {}\n\n")
 	}
+
+	b.WriteString("  keycloak-db-etcd-recovery:\n")
+	fmt.Fprintf(&b, "    image: %s\n", keycloakEtcdImage)
+	b.WriteString("    profiles: [\"recovery\"]\n")
+	b.WriteString("    read_only: true\n")
+	b.WriteString("    cap_drop: [\"ALL\"]\n")
+	b.WriteString("    security_opt: [\"no-new-privileges:true\"]\n")
+	b.WriteString("    entrypoint: [\"/usr/local/bin/etcdctl\"]\n")
+	b.WriteString("    volumes:\n")
+	b.WriteString("      - ./db-ha/etcd-pki:/run/baseharbor/etcd:ro\n")
+	b.WriteString("    tmpfs:\n")
+	b.WriteString("      - /tmp:rw,noexec,nosuid,nodev,mode=0700\n")
+	b.WriteString("    networks:\n      identity-internal: {}\n\n")
 
 	b.WriteString("  keycloak-db-tls-init:\n")
 	fmt.Fprintf(&b, "    image: %s\n", keycloakPostgresImage)
@@ -107,6 +137,14 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("    depends_on:\n")
 		b.WriteString("      keycloak-db-tls-init:\n")
 		b.WriteString("        condition: service_completed_successfully\n")
+		b.WriteString("    entrypoint: [\"/bin/sh\", \"-ec\"]\n")
+		b.WriteString("    command:\n")
+		b.WriteString("      - |\n")
+		b.WriteString("        install -d -o postgres -g postgres -m 0700 /run/baseharbor/etcd-runtime\n")
+		b.WriteString("        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/ca.pem /run/baseharbor/etcd-runtime/ca.pem\n")
+		b.WriteString("        install -o postgres -g postgres -m 0644 /run/baseharbor/etcd-source/client.pem /run/baseharbor/etcd-runtime/client.pem\n")
+		b.WriteString("        install -o postgres -g postgres -m 0600 /run/baseharbor/etcd-source/client-key.pem /run/baseharbor/etcd-runtime/client-key.pem\n")
+		b.WriteString("        exec /bin/sh /launch.sh\n")
 		b.WriteString("    environment:\n")
 		b.WriteString("      SPILO_PROVIDER: local\n")
 		b.WriteString("      SCOPE: baseharbor-keycloak-db\n")
@@ -114,6 +152,11 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      PGROOT: /home/postgres/pgroot\n")
 		b.WriteString("      PGDATA: /home/postgres/pgroot/data\n")
 		fmt.Fprintf(&b, "      ETCD3_HOSTS: %s\n", strconv.Quote("'"+strings.ReplaceAll(etcdHosts, ",", "','")+"'"))
+		b.WriteString("      PATRONI_ETCD3_HOSTS: " + etcdHosts + "\n")
+		b.WriteString("      PATRONI_ETCD3_PROTOCOL: https\n")
+		b.WriteString("      PATRONI_ETCD3_CACERT: /run/baseharbor/etcd-runtime/ca.pem\n")
+		b.WriteString("      PATRONI_ETCD3_CERT: /run/baseharbor/etcd-runtime/client.pem\n")
+		b.WriteString("      PATRONI_ETCD3_KEY: /run/baseharbor/etcd-runtime/client-key.pem\n")
 		b.WriteString("      PGUSER_SUPERUSER: postgres\n")
 		b.WriteString("      PGPASSWORD_SUPERUSER: ${BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD}\n")
 		b.WriteString("      PGUSER_STANDBY: keycloak_replication\n")
@@ -123,9 +166,12 @@ func keycloakHADataLayerCompose() string {
 		b.WriteString("      SSL_PRIVATE_KEY_FILE: /run/baseharbor/db-tls/server-key.pem\n")
 		b.WriteString("      SSL_TEST_RELOAD: \"true\"\n")
 		fmt.Fprintf(&b, "      SPILO_CONFIGURATION: %s\n", strconv.Quote(fmt.Sprintf(`{"name":"%s","postgresql":{"connect_address":"%s:5432"},"restapi":{"connect_address":"%s:8008"}}`, name, name, name)))
+		b.WriteString("    tmpfs:\n")
+		b.WriteString("      - /run/baseharbor/etcd-runtime:rw,noexec,nosuid,nodev,mode=0700\n")
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(&b, "      - keycloak-db-data-%d:/home/postgres/pgroot\n", ordinal)
 		b.WriteString("      - keycloak-db-tls:/run/baseharbor/db-tls:ro\n")
+		b.WriteString("      - ./db-ha/etcd-pki:/run/baseharbor/etcd-source:ro\n")
 		b.WriteString("    networks:\n      identity-internal: {}\n\n")
 	}
 

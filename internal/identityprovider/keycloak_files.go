@@ -161,6 +161,29 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
+	if app.HA {
+		reserved := map[int]struct{}{publicPort: {}}
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			key := fmt.Sprintf("BASEHARBOR_KEYCLOAK_ETCD_PORT_%d", ordinal)
+			if strings.TrimSpace(values[key]) != "" {
+				port, err := parseIdentityPort(values[key])
+				if err != nil {
+					return KeycloakFiles{}, fmt.Errorf("%s: %w", key, err)
+				}
+				if _, duplicate := reserved[port]; duplicate {
+					return KeycloakFiles{}, fmt.Errorf("%s duplicates an existing Keycloak listener", key)
+				}
+				reserved[port] = struct{}{}
+				continue
+			}
+			port, err := allocateIdentityPort(reserved)
+			if err != nil {
+				return KeycloakFiles{}, err
+			}
+			reserved[port] = struct{}{}
+			values[key] = strconv.Itoa(port)
+		}
+	}
 	// Native Keycloak HTTPS serves both BaseHarbor's OIDC and administrative
 	// control paths on one loopback listener. Keep the legacy environment key
 	// synchronized for state compatibility without allocating a second port.

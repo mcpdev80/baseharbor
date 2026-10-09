@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -63,46 +63,72 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 		return errors.New("Keycloak SQL owner credentials are incomplete")
 	}
 	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN '1' ELSE 'missing_keycloak_schema' END\" -v ON_ERROR_STOP=1"
-	output, err := o.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(password+"\n"), "keycloak-db", "sh", "-ec", script, "--", user, database)
-	if err != nil {
+	var output strings.Builder
+	if err := o.runtime.RunProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values,
+		strings.NewReader(password+"\n"), &output, io.Discard, []string{files.Compose},
+		"run", "--rm", "--no-deps", "keycloak-db-init", "sh", "-ec", script, "--", user, database); err != nil {
 		return fmt.Errorf("Keycloak managed SQL user cannot authenticate over TLS: %w", err)
 	}
-	if strings.TrimSpace(output) != "1" {
+	if strings.TrimSpace(output.String()) != "1" {
 		return errors.New("Keycloak SQL realm/client schema not verified")
 	}
 	return nil
 }
 
 func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State, error) {
-	members, err := o.runtime.ListRuntimeContainers(ctx)
+	services := []string{service}
+	topology := keycloakadapter.TopologySingle
+	if o.core.HA {
+		services = []string{"keycloak-1", "keycloak-2", "keycloak-3"}
+		topology = keycloakadapter.TopologyHA
+	}
+	containers, err := o.runtime.ListRuntimeContainers(ctx)
 	if err != nil {
 		return keycloakadapter.State{}, err
 	}
-	found := 0
-	for _, member := range members {
-		if member.Project != o.identity.Project || member.Service != service {
+	running := map[string]bool{}
+	for _, container := range containers {
+		if container.Project != o.identity.Project {
 			continue
 		}
-		found++
-		if !member.Running || strings.EqualFold(member.Health, "unhealthy") {
-			return keycloakadapter.State{}, errors.New("Keycloak managed member not healthy")
+		for _, expected := range services {
+			if container.Service != expected {
+				continue
+			}
+			if running[expected] {
+				return keycloakadapter.State{}, fmt.Errorf("duplicate Keycloak managed member %s", expected)
+			}
+			if !container.Running || strings.EqualFold(container.Health, "unhealthy") {
+				return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s not healthy", expected)
+			}
+			running[expected] = true
 		}
 	}
-	if found != 1 {
-		return keycloakadapter.State{}, errors.New("Keycloak single topology requires exactly one owned member")
+	members := make([]keycloakadapter.Member, 0, len(services))
+	stateVersion := ""
+	for _, expected := range services {
+		if !running[expected] {
+			return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s is not running", expected)
+		}
+		image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, expected)
+		if err != nil {
+			return keycloakadapter.State{}, err
+		}
+		ref := strings.Split(image.Reference, "@")[0]
+		index := strings.LastIndex(ref, ":")
+		if index < 0 || index == len(ref)-1 {
+			return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
+		}
+		version := ref[index+1:]
+		if stateVersion == "" {
+			stateVersion = version
+		}
+		members = append(members, keycloakadapter.Member{Name: expected, Version: version, Ready: true})
 	}
-	image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, service)
-	if err != nil {
-		return keycloakadapter.State{}, err
-	}
-	ref := strings.Split(image.Reference, "@")[0]
-	index := strings.LastIndex(ref, ":")
-	if index < 0 || index == len(ref)-1 {
-		return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
-	}
-	version := ref[index+1:]
-	return keycloakadapter.State{Version: version, Owner: "baseharbor", Topology: keycloakadapter.TopologySingle, Healthy: true,
-		DatabaseType: "postgresql", Members: []keycloakadapter.Member{{Name: service, Version: version, Ready: true}}}, nil
+	return keycloakadapter.State{
+		Version: stateVersion, Owner: "baseharbor", Topology: topology, Healthy: true,
+		DatabaseType: "postgresql", Members: members,
+	}, nil
 }
 
 // admitNativeProviderTransition delegates conservative single-Core patch upgrades
@@ -285,14 +311,7 @@ func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context,
 					return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
 				},
 				VerifyApps: func(ctx context.Context) error {
-					records, err := deployment.ListDeployments(o.target)
-					if err != nil {
-						return err
-					}
-					if len(records) != 0 {
-						return errors.New("application secret-scoped authorizations must be verified before provider upgrade")
-					}
-					return nil
+					return o.verifyOwnedApplicationSecretScopes(ctx)
 				},
 			},
 		}
@@ -377,13 +396,6 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("refusing provider upgrade for unready or mismatched owned Core")
 	}
-	deployed, err := deployment.ListDeployments(target.Name)
-	if err != nil {
-		return err
-	}
-	if len(deployed) > 0 {
-		return errors.New("Core provider upgrade requires application-isolated migration plan for registered deployments")
-	}
 	runtime, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
@@ -392,8 +404,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	if len(plan.Deltas) != 4 {
-		return errors.New("incomplete managed Core/backing provider realization")
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
 	}
 	changed := false
 	for _, d := range plan.Deltas {
@@ -406,9 +419,6 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	}
 	if !changed {
 		return verifyCoreBinaryOnly(ctx, release)
-	}
-	if state.Spec.HA {
-		return errors.New("HA Core provider change UNSUPPORTED: verified rolling Spilo/Patroni backup, replica checks and recovery are required; no mutation attempted")
 	}
 	coreFiles, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
@@ -423,8 +433,12 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 		return err
 	}
 	openBaoMembers := coreFiles.OpenBaoMembers()
-	if len(openBaoMembers) != 1 {
-		return errors.New("single-Core OpenBao upgrade requires exactly one owned member")
+	expectedOpenBaoMembers := 1
+	if state.Spec.HA {
+		expectedOpenBaoMembers = 3
+	}
+	if len(openBaoMembers) != expectedOpenBaoMembers {
+		return fmt.Errorf("OpenBao managed topology requires %d owned member(s), got %d", expectedOpenBaoMembers, len(openBaoMembers))
 	}
 	// Require live ownership and immutable image identity for both provider
 	// adapters before any native update journal, backup or mutation is touched.
@@ -447,11 +461,23 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err := os.Chmod(journalDir, 0700); err != nil {
 		return err
 	}
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
+		}
+		if err := prepareCoreHARecoveryEvidence(ctx, runtime, coreFiles, state, target.Name, release, journalDir); err != nil {
+			return err
+		}
+	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
 		installation: state.ID, issuer: state.IdentityIssuer, release: release, receiptPath: filepath.Join(journalDir, "receipts.json")}
+	bound, err := ops.buildBoundProviderTransaction(ctx, plan, journalDir, target.RuntimeProvider)
+	if err != nil {
+		return fmt.Errorf("bind provider adapter transaction: %w", err)
+	}
 	assets := map[string]coreupdate.NativeProviderAssets{}
 	for _, d := range plan.Deltas {
-		if d.Classification == coreupdate.NoChange {
+		if d.Classification == coreupdate.NoChange || d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
 			continue
 		}
 		project, compose, _ := ops.files(d)
@@ -465,7 +491,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			Compose:  coreupdate.ComposeCheckpoint{Path: compose, Directory: filepath.Join(journalDir, "compose-backups")},
 		}
 	}
-	if err := coreupdate.RunNativeProviderUpdates(ctx, plan, filepath.Join(journalDir, "journal.json"), ops, assets); err != nil {
+	if err := coreupdate.RunMixedProviderUpdates(ctx, plan, filepath.Join(journalDir, "journal.json"), ops, assets, bound.Hooks(), func(d coreupdate.Delta) bool {
+		return d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity
+	}); err != nil {
 		return err
 	}
 	return verifyCoreBinaryOnly(ctx, release)
@@ -487,13 +515,6 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("Core installation not owned and ready for provider upgrade")
 	}
-	records, err := deployment.ListDeployments(target.Name)
-	if err != nil {
-		return err
-	}
-	if len(records) > 0 {
-		return errors.New("Core provider upgrade blocked until registered application-scoped provider migrations can be verified")
-	}
 	runtime, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
@@ -502,13 +523,17 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	if len(plan.Deltas) != 4 {
-		return errors.New("incomplete SQL/Secrets/Identity/backing inventory")
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
 	}
 	if state.Spec.HA {
 		files, filesErr := existingTargetRuntimeFiles(ctx)
 		if filesErr != nil {
 			return fmt.Errorf("inspect HA Core runtime files: %w", filesErr)
+		}
+		if securityErr := verifyCoreHADCSSecurity(files); securityErr != nil {
+			return securityErr
 		}
 		members, inspectErr := inspectPatroniMembers(ctx, runtime, files)
 		if inspectErr != nil {
@@ -518,10 +543,12 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 			return fmt.Errorf("Core HA Patroni quorum not verified: %w", quorumErr)
 		}
 	}
-	for _, d := range plan.Deltas {
-		if state.Spec.HA && d.Classification != coreupdate.NoChange {
-			return fmt.Errorf("HA Core provider %s requires a verified rolling migration (UNSUPPORTED): %s", d.Installed.Instance, d.Reason)
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
 		}
+	}
+	for _, d := range plan.Deltas {
 		switch d.Classification {
 		case coreupdate.NoChange, coreupdate.BackupRequired, coreupdate.MigrationRequired:
 		default:

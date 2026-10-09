@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	etcdbackup "github.com/mcpdev80/baseharbor/internal/corebackup/etcd"
@@ -44,6 +45,7 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 	leaders := 0
 	memberIDs := map[string]bool{}
 	var expectedLeader string
+	var recoveredClusterID string
 	for _, endpoint := range p.Endpoints {
 		parsed, err := url.Parse(endpoint)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -79,13 +81,18 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 		}
 		s := status[0].Status
 		revision, err := s.Header.Revision.Int64()
-		if err != nil || revision < snapshot.Revision || s.Header.ClusterID.String() != id.Cluster || s.Version != snapshot.Version || s.Leader.String() == "" || s.Leader.String() == "0" {
-			return errors.New("etcd recovery identity, version, leader or revision mismatch")
+		if err != nil || revision < snapshot.Revision || s.Version != snapshot.Version || s.Leader.String() == "" || s.Leader.String() == "0" {
+			return errors.New("etcd recovery version, leader or revision mismatch")
 		}
-		if _, err := s.Header.MemberID.Int64(); err != nil || s.Header.MemberID.String() == "0" || memberIDs[s.Header.MemberID.String()] {
-			return errors.New("etcd member identity is missing or duplicated")
+		// etcdutl snapshot restore creates a NEW etcd cluster and member IDs.
+		// Comparing the recovered cluster ID to the snapshot's old cluster ID
+		// would reject every correctly isolated restoration.
+		if err := validateRecoveredEtcdClusterID(id.Cluster, s.Header.ClusterID.String(), &recoveredClusterID); err != nil {
+			return err
 		}
-		memberIDs[s.Header.MemberID.String()] = true
+		if err := validateRecoveredEtcdMemberID(s.Header.MemberID.String(), memberIDs); err != nil {
+			return err
+		}
 		if expectedLeader == "" {
 			expectedLeader = s.Leader.String()
 		}
@@ -93,8 +100,14 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 			return errors.New("etcd recovered cluster has no common leader")
 		}
 		if s.IsLeader {
+			if s.Header.MemberID.String() != s.Leader.String() {
+				return errors.New("etcd self-reported leader differs from authenticated member identity")
+			}
 			leaders++
 		}
+	}
+	if !memberIDs[expectedLeader] {
+		return errors.New("etcd advertised leader is not among restored members")
 	}
 	if leaders != 1 {
 		return errors.New("isolated etcd cluster must have exactly one leader and three healthy endpoints")
@@ -102,5 +115,30 @@ func (p EtcdBootProbe) Verify(ctx context.Context, id etcdbackup.Identity, snaps
 	if err := p.VerifyPatroniDCS(ctx); err != nil {
 		return fmt.Errorf("recovered Patroni DCS state unverified: %w", err)
 	}
+	return nil
+}
+
+func validateRecoveredEtcdClusterID(original, recovered string, expected *string) error {
+	id, err := strconv.ParseUint(recovered, 10, 64)
+	if err != nil || id == 0 || recovered == original {
+		return errors.New("recovered etcd cluster identity is missing or was not rotated")
+	}
+	if expected == nil {
+		return errors.New("recovered etcd cluster identity has no receipt destination")
+	}
+	if *expected == "" {
+		*expected = recovered
+	} else if *expected != recovered {
+		return errors.New("isolated etcd endpoints disagree on recovered cluster identity")
+	}
+	return nil
+}
+
+func validateRecoveredEtcdMemberID(raw string, seen map[string]bool) error {
+	memberID, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || memberID == 0 || seen[raw] {
+		return errors.New("etcd member identity is missing or duplicated")
+	}
+	seen[raw] = true
 	return nil
 }

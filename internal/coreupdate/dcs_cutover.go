@@ -140,6 +140,11 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 	if err != nil {
 		return err
 	}
+	// The previous invocation may have completed CommitCutover before its
+	// committed receipt reached disk. Never blindly repeat that action.
+	if phase == "verified" {
+		return errors.New("UNSUPPORTED: interrupted DCS commit requires operator reconciliation before replay")
+	}
 	if phase == "" {
 		if err := journal.record("", "prepared"); err != nil {
 			return err
@@ -157,6 +162,14 @@ func RunVerifiedDCSCutover(ctx context.Context, adapter DCSRecoveryAdapter, evid
 		phase = "fenced"
 	} else if phase == "prepared" {
 		return errors.New("UNSUPPORTED: interrupted DCS fencing requires operator verification; refusing automatic dual-primary cutover")
+	}
+	if phase == "committed" {
+		// A completed cutover must validate the active cluster, not require
+		// obsolete fencing state from the already retired old cluster.
+		if err := ops.VerifyNewQuorum(ctx, evidence); err != nil {
+			return fmt.Errorf("committed DCS quorum no longer healthy: %w", err)
+		}
+		return ops.VerifyPatroniDCS(ctx)
 	}
 	if err := ops.VerifyFenced(ctx); err != nil {
 		return fmt.Errorf("DCS fence evidence lost: %w", err)

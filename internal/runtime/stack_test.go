@@ -338,7 +338,7 @@ func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	if got := strings.Count(text, scope); got != 3 {
 		t.Fatalf("SCOPE appears %d times, want exactly 3", got)
 	}
-	if got := strings.Count(text, "ETCD3_HOSTS:"); got != 3 {
+	if got := strings.Count(text, "\n      ETCD3_HOSTS:"); got != 3 {
 		t.Fatalf("Spilo runtime must configure ETCD3_HOSTS exactly three times, got %d", got)
 	}
 	const pgroot = "      PGROOT: /home/postgres/pgdata/pgroot\n"
