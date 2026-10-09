@@ -195,6 +195,7 @@ func rootCommand() *cli.Command {
 		stackCommand(),
 		workspaceNamespaceCommand(),
 		targetCommand(),
+		useTargetCommand(),
 		nodeCommand(),
 		devCommand(),
 		configCommand(),
