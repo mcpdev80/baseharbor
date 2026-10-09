@@ -41,6 +41,7 @@ type quadletComposeService struct {
 	DependsOn   quadletDependencies       `yaml:"depends_on"`
 	Profiles    []string                  `yaml:"profiles"`
 	User        string                    `yaml:"user"`
+	Hostname    string                    `yaml:"hostname"`
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
 	CapAdd      []string                  `yaml:"cap_add"`

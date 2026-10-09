@@ -308,6 +308,9 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 
 	unit.WriteString("\n[Container]\n")
 	fmt.Fprintf(unit, "Image=%s\nContainerName=%s\n", image, containerName)
+	if hostname := strings.TrimSpace(service.Hostname); hostname != "" {
+		fmt.Fprintf(unit, "HostName=%s\n", hostname)
+	}
 	if strings.HasPrefix(image, "localhost/baseharbor-") {
 		unit.WriteString("Pull=never\n")
 	}

@@ -49,7 +49,9 @@ func VerifyPostgresBasebackup(p StreamRecoveryPoint, major string) error {
 			return fmt.Errorf("duplicate PostgreSQL backup entry %q", name)
 		}
 		seen[name] = true
-		if name == "tablespace_map" {
+		// PostgreSQL emits this marker even without additional tablespaces.
+		// Only an empty regular map is safe for the single stdout archive.
+		if name == "tablespace_map" && (h.Size != 0 || h.Typeflag == tar.TypeDir) {
 			return errors.New("additional PostgreSQL tablespaces require a multi-archive backup; streaming stdout backup unsupported")
 		}
 		if _, ok := required[name]; ok {

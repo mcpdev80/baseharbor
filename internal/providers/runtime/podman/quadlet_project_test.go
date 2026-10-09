@@ -21,6 +21,7 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
     user: "postgres"
+    hostname: postgres-member-1
     read_only: true
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
@@ -86,6 +87,7 @@ networks:
 	for _, want := range []string{
 		"Image=docker.io/library/postgres:18-alpine",
 		"User=postgres",
+		"HostName=postgres-member-1",
 		"ReadOnly=true",
 		"DropCapability=all",
 		"AddCapability=NET_BIND_SERVICE",
