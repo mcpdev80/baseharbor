@@ -70,9 +70,41 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 	return nil
 }
 
+// admitNativeProviderTransition delegates conservative single-Core patch upgrades
+// to the actual OpenBao/Keycloak adapter Preflight contracts while the original
+// installation is still running. Snapshot and mutation remain journal-owned.
+func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context,d coreupdate.Delta) error {
+ if d.Classification==coreupdate.NoChange{return nil}
+ request:=providerupgrade.Request{CurrentVersion:d.Installed.Version,TargetVersion:d.Desired.Version,
+  TargetImage:d.Desired.Image,TargetDigest:d.Desired.Digest}
+ patchOnly:=func(_ context.Context,from,to string)error{
+  old,err:=providerupgrade.ParseVersion(from);if err!=nil{return err}
+  next,err:=providerupgrade.ParseVersion(to);if err!=nil{return err}
+  if !old.SameMinor(next)||old.Compare(next)>=0{return errors.New("UNSUPPORTED: native provider upgrade requires a strictly newer patch within the same major/minor")}
+  return nil
+ }
+ switch d.Installed.Kind {
+ case coreupdate.Secrets:
+  adapter:=baoAdapter.New(&baoAdapter.NativeOps{Executor:o.runtime,Files:o.core,Owner:"baseharbor",
+   Hooks:baoAdapter.RuntimeHooks{UpgradePath:patchOnly}})
+  _,err:=adapter.Preflight(ctx,request)
+  return err
+ case coreupdate.Identity:
+  return errors.New("UNSUPPORTED: Keycloak transition needs an installation-backed native adapter inventory")
+ }
+ return nil
+}
+
 func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
 	if len(plan.Deltas) != 4 {
 		return fmt.Errorf("Core runtime update requires four owned SQL/Secrets/Identity/Keycloak-backing realizations")
+	}
+	for _, d := range plan.Deltas {
+		if d.Installed.Kind == coreupdate.Secrets {
+			if err := o.admitNativeProviderTransition(ctx, d); err != nil {
+				return fmt.Errorf("OpenBao provider-adapter upgrade admission: %w", err)
+			}
+		}
 	}
 	for _, files := range []struct{ project, compose, env string }{{o.core.Project, o.core.Compose, o.core.Env}, {o.identity.Project, o.identity.Compose, o.identity.Env}} {
 		if err := o.runtime.ConfigProject(ctx, files.project, files.compose, files.env); err != nil {
