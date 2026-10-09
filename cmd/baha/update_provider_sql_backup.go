@@ -21,22 +21,22 @@ import (
 )
 
 type providerSQLBackupSpec struct {
-	Runtime     bhruntime.RuntimeProvider
-	Project     string
-	Compose     string
-	Env         string
-	Client      string
-	Host        string
-	CAFile      string
-	User        string
-	Password    string
-	Database    string
-	Directory   string
-	Name        string
+	Runtime        bhruntime.RuntimeProvider
+	Project        string
+	Compose        string
+	Env            string
+	Client         string
+	Host           string
+	CAFile         string
+	User           string
+	Password       string
+	Database       string
+	Directory      string
+	Name           string
 	InstallationID string
-	Transaction string
-	Provider    providerupgrade.Provider
-	ConfigPaths []string
+	Transaction    string
+	Provider       providerupgrade.Provider
+	ConfigPaths    []string
 }
 
 func (s providerSQLBackupSpec) validate() error {
