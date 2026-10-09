@@ -15,9 +15,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/providerbinding"
+	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
 	keycloakadapter "github.com/mcpdev80/baseharbor/internal/providerupgrade/keycloak"
 	baoAdapter "github.com/mcpdev80/baseharbor/internal/providerupgrade/openbao"
-	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -145,75 +145,102 @@ func (o *coreNativeRuntimeOps) verifyImage(ctx context.Context, d coreupdate.Del
 	}
 	return nil
 }
+
 // verifyBoundProviderSemantics delegates post-upgrade validation to the
 // integrated Session-1C adapters after the native runner has confirmed its
 // immutable image. During rollback the original digest remains valid and the
 // existing Core semantic checks are still mandatory.
 func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context, d coreupdate.Delta) error {
- var project,service string
- switch d.Installed.Kind {
- case coreupdate.Secrets:
-  project,service=o.core.Project,d.Installed.Instance
- case coreupdate.Identity:
-  project,service=o.identity.Project,d.Installed.Instance
- default:
-  return nil
- }
- identity,err:=o.runtime.ProjectServiceImageIdentity(ctx,project,service)
- if err!=nil{return err}
- digest:=identity.Digest
- if index:=strings.Index(digest,"@sha256:");index>=0{digest=digest[index+1:]}
- if digest==d.Installed.Digest{return nil}
- if digest!=d.Desired.Digest{return errors.New("provider semantics cannot verify an unrecognized runtime image digest")}
- request:=providerupgrade.Request{
-  CurrentVersion:d.Installed.Version,TargetVersion:d.Desired.Version,
-  TargetImage:d.Desired.Image,TargetDigest:d.Desired.Digest,
- }
- switch d.Installed.Kind {
- case coreupdate.Secrets:
-  ops:=&baoAdapter.NativeOps{Executor:o.runtime,Files:o.core,Owner:"baseharbor",
-   Hooks:baoAdapter.RuntimeHooks{
-    VerifyAuth:func(ctx context.Context)error{return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx,o.runtime,o.core)},
-    VerifyApps:func(ctx context.Context)error{
-     records,err:=deployment.ListDeployments(o.target)
-     if err!=nil{return err}
-     if len(records)!=0{return errors.New("application secret-scoped authorizations must be verified before provider upgrade")}
-     return nil
-    },
-   },
-  }
-  return baoAdapter.New(ops).Verify(ctx,request)
- case coreupdate.Identity:
-  ops:=&keycloakadapter.NativeOps{
-   DataDir:o.dataDir,Namespace:o.target,InstallationID:o.installation,ExpectedIssuer:o.issuer,
-   Hooks:keycloakadapter.CoreHooks{
-    Inspect:func(ctx context.Context)(keycloakadapter.State,error){
-     members,err:=o.runtime.ListRuntimeContainers(ctx)
-     if err!=nil{return keycloakadapter.State{},err}
-     found:=0
-     for _,member:=range members{
-      if member.Project!=o.identity.Project||member.Service!=service{continue}
-      found++
-      if !member.Running||strings.EqualFold(member.Health,"unhealthy"){
-       return keycloakadapter.State{},errors.New("Keycloak managed member not healthy")
-      }
-     }
-     if found!=1{return keycloakadapter.State{},errors.New("Keycloak single topology requires exactly one owned member")}
-     ref:=strings.Split(identity.Reference,"@")[0]
-     index:=strings.LastIndex(ref,":")
-     if index<0||index==len(ref)-1{return keycloakadapter.State{},errors.New("Keycloak runtime image version is not observable")}
-     version:=ref[index+1:]
-     return keycloakadapter.State{Version:version,Owner:"baseharbor",Topology:keycloakadapter.TopologySingle,Healthy:true,
-      DatabaseType:"postgresql",Members:[]keycloakadapter.Member{{Name:service,Version:version,Ready:true}}},nil
-    },
-    VerifySQL:o.verifyKeycloakBackingSQL,
-    VerifyRealms:func(ctx context.Context)error{return identityprovider.VerifyCoreIdentity(ctx,o.dataDir,o.target,o.installation,o.issuer)},
-    VerifyTokens:func(ctx context.Context)error{return identityprovider.VerifyCoreOperatorTokenFlow(ctx,o.dataDir,o.target,o.installation,o.issuer)},
-   },
-  }
-  return keycloakadapter.New(ops).Verify(ctx,request)
- }
- return nil
+	var project, service string
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		project, service = o.core.Project, d.Installed.Instance
+	case coreupdate.Identity:
+		project, service = o.identity.Project, d.Installed.Instance
+	default:
+		return nil
+	}
+	identity, err := o.runtime.ProjectServiceImageIdentity(ctx, project, service)
+	if err != nil {
+		return err
+	}
+	digest := identity.Digest
+	if index := strings.Index(digest, "@sha256:"); index >= 0 {
+		digest = digest[index+1:]
+	}
+	if digest == d.Installed.Digest {
+		return nil
+	}
+	if digest != d.Desired.Digest {
+		return errors.New("provider semantics cannot verify an unrecognized runtime image digest")
+	}
+	request := providerupgrade.Request{
+		CurrentVersion: d.Installed.Version, TargetVersion: d.Desired.Version,
+		TargetImage: d.Desired.Image, TargetDigest: d.Desired.Digest,
+	}
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		ops := &baoAdapter.NativeOps{Executor: o.runtime, Files: o.core, Owner: "baseharbor",
+			Hooks: baoAdapter.RuntimeHooks{
+				VerifyAuth: func(ctx context.Context) error {
+					return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
+				},
+				VerifyApps: func(ctx context.Context) error {
+					records, err := deployment.ListDeployments(o.target)
+					if err != nil {
+						return err
+					}
+					if len(records) != 0 {
+						return errors.New("application secret-scoped authorizations must be verified before provider upgrade")
+					}
+					return nil
+				},
+			},
+		}
+		return baoAdapter.New(ops).Verify(ctx, request)
+	case coreupdate.Identity:
+		ops := &keycloakadapter.NativeOps{
+			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
+			Hooks: keycloakadapter.CoreHooks{
+				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
+					members, err := o.runtime.ListRuntimeContainers(ctx)
+					if err != nil {
+						return keycloakadapter.State{}, err
+					}
+					found := 0
+					for _, member := range members {
+						if member.Project != o.identity.Project || member.Service != service {
+							continue
+						}
+						found++
+						if !member.Running || strings.EqualFold(member.Health, "unhealthy") {
+							return keycloakadapter.State{}, errors.New("Keycloak managed member not healthy")
+						}
+					}
+					if found != 1 {
+						return keycloakadapter.State{}, errors.New("Keycloak single topology requires exactly one owned member")
+					}
+					ref := strings.Split(identity.Reference, "@")[0]
+					index := strings.LastIndex(ref, ":")
+					if index < 0 || index == len(ref)-1 {
+						return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
+					}
+					version := ref[index+1:]
+					return keycloakadapter.State{Version: version, Owner: "baseharbor", Topology: keycloakadapter.TopologySingle, Healthy: true,
+						DatabaseType: "postgresql", Members: []keycloakadapter.Member{{Name: service, Version: version, Ready: true}}}, nil
+				},
+				VerifySQL: o.verifyKeycloakBackingSQL,
+				VerifyRealms: func(ctx context.Context) error {
+					return identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer)
+				},
+				VerifyTokens: func(ctx context.Context) error {
+					return identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer)
+				},
+			},
+		}
+		return keycloakadapter.New(ops).Verify(ctx, request)
+	}
+	return nil
 }
 
 func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate.Delta) error {
