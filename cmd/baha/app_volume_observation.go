@@ -68,3 +68,22 @@ func (e *applicationDestroyExecution) saveRepositoryVolumeObservation() error {
 	}
 	return os.Rename(file.Name(), path)
 }
+
+// Generated managed infrastructure has its own verified destroy contract. Only
+// repository data belongs in the preservation list; never promise retention of
+// a volume that the generated module actually removes.
+func (e *applicationDestroyExecution) excludeManagedInfrastructureVolumes() {
+	managed := map[string]bool{}
+	for _, resource := range e.existing {
+		if resource.Kind == "volume" {
+			managed[resource.Name] = true
+		}
+	}
+	data := e.repositoryVolumes[:0]
+	for _, volume := range e.repositoryVolumes {
+		if !managed[volume.Name] {
+			data = append(data, volume)
+		}
+	}
+	e.repositoryVolumes = data
+}

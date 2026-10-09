@@ -74,10 +74,14 @@ func TestRepositoryVolumeDestroyRuntimeAcceptance(t *testing.T) {
 	args = append(args, "-v", names[4]+":/external", image, "sleep", "300")
 	run(args...)
 	run("run", "-d", "--name", other+"-app", "--label", "com.docker.compose.project="+other, "--label", "io.podman.compose.project="+other, "--label", "com.docker.compose.service=other", "-v", names[1]+":/shared", image, "sleep", "300")
+	run("exec", project+"-app", "sh", "-c", "echo retained-app-data > /data0/marker")
 	backend := bhruntime.NewCLIBackend(path)
 	var provider bhruntime.RuntimeProvider = &dockerprovider.Provider{Compose: backend}
 	if engine == "podman" {
 		provider = &podmanprovider.Provider{Compose: backend}
+	}
+	if err := provider.DestroyOwnedProjectResources(ctx, project, []bhruntime.ProjectResource{{Kind: "volume", Name: names[4]}}); err == nil {
+		t.Fatal("foreign volume deletion was authorized")
 	}
 	volumes, err := backend.InventoryRepositoryVolumes(ctx, project)
 	if err != nil {
@@ -113,6 +117,9 @@ func TestRepositoryVolumeDestroyRuntimeAcceptance(t *testing.T) {
 	}
 	if strings.Contains(run("container", "ls", "-a", "--format", "{{.Names}}"), project+"-app") {
 		t.Fatal("app container retained")
+	}
+	if marker := run("run", "--rm", "-v", names[0]+":/data:ro", image, "cat", "/data/marker"); marker != "retained-app-data" {
+		t.Fatalf("data marker lost: %q", marker)
 	}
 	// Real second destroy must succeed and project-labelled data remains inventoried.
 	if err := execution.destroyRuntimeResources(ctx); err != nil {
