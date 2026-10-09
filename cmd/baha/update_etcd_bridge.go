@@ -43,7 +43,7 @@ func buildCoreEtcdRecoveryBridge(ctx context.Context, rt bhruntime.RuntimeProvid
 	}
 	tools := runtimeEtcdTools{
 		Runtime: rt, Files: files, Service: coreEtcdRecoveryService, Endpoints: endpoints,
-		ScratchDir: filepath.Join(journalDir, "dcs-scratch"),
+		ScratchDir:  filepath.Join(journalDir, "dcs-scratch"),
 		ContainerCA: "/run/baseharbor/etcd/ca.pem", ContainerCert: "/run/baseharbor/etcd/client.pem", ContainerKey: "/run/baseharbor/etcd/client-key.pem",
 		Members: members, InitialCluster: strings.Join(clusterParts, ","),
 	}
