@@ -225,26 +225,46 @@ func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBot
 
 func TestProviderCaptureResumeNeverOverwritesExistingRecoveryPair(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil { t.Fatal(err) }
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	env := filepath.Join(dir, "provider.env")
-	if err := os.WriteFile(env, []byte("OWNER=core\n"), 0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(env, []byte("OWNER=core\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	rt := &sqlRestoreReplayRuntime{}
 	spec := providerSQLBackupSpec{Runtime: rt, Project: "owned", Compose: filepath.Join(dir, "compose.yaml"), Env: env,
-		Client:"pgclient", Host:"postgres", CAFile:"/ca.pem", User:"owner", Password:"credential",
-		Database:"openbao", Directory: filepath.Join(dir,"backup"), Name:"openbao",
-		Provider:providerupgrade.ProviderOpenBao, InstallationID:"core-1", Transaction:"0.4.24", ConfigPaths:[]string{env}}
+		Client: "pgclient", Host: "postgres", CAFile: "/ca.pem", User: "owner", Password: "credential",
+		Database: "openbao", Directory: filepath.Join(dir, "backup"), Name: "openbao",
+		Provider: providerupgrade.ProviderOpenBao, InstallationID: "core-1", Transaction: "0.4.24", ConfigPaths: []string{env}}
 	if err := spec.streamPoint().Capture(context.Background(), func(_ context.Context, w io.Writer) error {
 		_, err := io.WriteString(w, "original SQL archive")
 		return err
-	}); err != nil { t.Fatal(err) }
-	if err := spec.captureConfiguration(context.Background()); err != nil { t.Fatal(err) }
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := spec.captureConfiguration(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	firstBinding, err := spec.artifactBinding("2.7.0")
-	if err != nil { t.Fatal(err) }
-	if err := os.WriteFile(env, []byte("OWNER=mutated\n"), 0600); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(env, []byte("OWNER=mutated\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	ref, err := spec.capture(context.Background(), "2.7.0")
-	if err != nil { t.Fatal(err) }
-	if ref.Metadata["binding"] != firstBinding { t.Fatal("resume replaced the original recovery pair") }
-	if rt.restores != 0 { t.Fatal("capture resume invoked SQL mutation") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.Metadata["binding"] != firstBinding {
+		t.Fatal("resume replaced the original recovery pair")
+	}
+	if rt.restores != 0 {
+		t.Fatal("capture resume invoked SQL mutation")
+	}
 	again, err := spec.artifactBinding("2.7.0")
-	if err != nil || firstBinding != again { t.Fatalf("recovery evidence changed during resume: %v", err) }
+	if err != nil || firstBinding != again {
+		t.Fatalf("recovery evidence changed during resume: %v", err)
+	}
 }
