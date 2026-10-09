@@ -370,13 +370,6 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("refusing provider upgrade for unready or mismatched owned Core")
 	}
-	deployed, err := deployment.ListDeployments(target.Name)
-	if err != nil {
-		return err
-	}
-	if len(deployed) > 0 {
-		return errors.New("Core provider upgrade requires application-isolated migration plan for registered deployments")
-	}
 	runtime, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
@@ -385,8 +378,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	if len(plan.Deltas) != 4 {
-		return errors.New("incomplete managed Core/backing provider realization")
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
 	}
 	changed := false
 	for _, d := range plan.Deltas {
@@ -442,9 +436,13 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
 		installation: state.ID, issuer: state.IdentityIssuer, release: release, receiptPath: filepath.Join(journalDir, "receipts.json")}
+	bound, err := ops.buildBoundProviderTransaction(ctx, plan, journalDir, target.RuntimeProvider)
+	if err != nil {
+		return fmt.Errorf("bind provider adapter transaction: %w", err)
+	}
 	assets := map[string]coreupdate.NativeProviderAssets{}
 	for _, d := range plan.Deltas {
-		if d.Classification == coreupdate.NoChange {
+		if d.Classification == coreupdate.NoChange || d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
 			continue
 		}
 		project, compose, _ := ops.files(d)
@@ -458,7 +456,9 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			Compose:  coreupdate.ComposeCheckpoint{Path: compose, Directory: filepath.Join(journalDir, "compose-backups")},
 		}
 	}
-	if err := coreupdate.RunNativeProviderUpdates(ctx, plan, filepath.Join(journalDir, "journal.json"), ops, assets); err != nil {
+	if err := coreupdate.RunMixedProviderUpdates(ctx, plan, filepath.Join(journalDir, "journal.json"), ops, assets, bound.Hooks(), func(d coreupdate.Delta) bool {
+		return d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity
+	}); err != nil {
 		return err
 	}
 	return verifyCoreBinaryOnly(ctx, release)
@@ -480,13 +480,6 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
 		return errors.New("Core installation not owned and ready for provider upgrade")
 	}
-	records, err := deployment.ListDeployments(target.Name)
-	if err != nil {
-		return err
-	}
-	if len(records) > 0 {
-		return errors.New("Core provider upgrade blocked until registered application-scoped provider migrations can be verified")
-	}
 	runtime, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {
 		return err
@@ -495,8 +488,9 @@ func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
 	if err != nil {
 		return err
 	}
-	if len(plan.Deltas) != 4 {
-		return errors.New("incomplete SQL/Secrets/Identity/backing inventory")
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
 	}
 	if state.Spec.HA {
 		files, filesErr := existingTargetRuntimeFiles(ctx)
