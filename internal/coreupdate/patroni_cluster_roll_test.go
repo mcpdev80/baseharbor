@@ -134,3 +134,40 @@ func TestStageAndRollPatroniClusterRecoveryBeforeImageMutation(t *testing.T) {
 		t.Fatalf("DCS snapshot must be captured exactly once: %d", fake.snapshots)
 	}
 }
+
+func TestStagePatroniRefusesComposeMutationWithoutQuorum(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "core.yaml")
+	original := "services:\n  postgres-member-1:\n    image: spilo:old\n  postgres-member-2:\n    image: spilo:old\n  postgres-member-3:\n    image: spilo:old\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p1", Image: "spilo:old", Digest: digestA}
+	after := BackingPin{Role: "core-ha-postgresql", Version: "18-spilo-4.1-p2", Image: "spilo:new", Digest: digestB}
+	evidence := DCSRecoveryEvidence{Installation: "core", Target: "target", Cluster: "cluster", Release: "0.4.24", SnapshotID: "s1", SHA256: strings.Repeat("a", 64)}
+	gate := &fakeClusterRoll{resumablePatroniFake: resumablePatroniFake{
+		fakePatroniRoll: fakePatroniRoll{members: []PatroniMemberState{
+			{Name: "pg1", Primary: true, Healthy: true},
+			{Name: "pg2", Replica: true, Healthy: false},
+			{Name: "pg3", Replica: true, Healthy: true},
+		}},
+		steps: map[string]string{},
+	}}
+	err := StageAndRollPatroniCluster(context.Background(), gate, &fakeDurableDCS{evidence: evidence},
+		DCSCheckpoint{Path: filepath.Join(dir, "dcs.json")},
+		HAPostgresComposeCheckpoint{Path: path, Directory: filepath.Join(dir, "compose-backups"), Previous: before, Desired: after},
+		"core", "target", "cluster", "0.4.24", 0)
+	if err == nil {
+		t.Fatal("unhealthy Patroni quorum admitted")
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != original {
+		t.Fatalf("Spilo Compose mutated before Patroni pre-stage quorum: %s", got)
+	}
+}
