@@ -36,15 +36,15 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 	if err != nil {
 		return err
 	}
-	// A verified *current* leader may have been the candidate in a previous
-	// interrupted switchover. Without a durable original-leader transaction
-	// identity, continuing could start a second switchover on another timeline.
+	// An already-upgraded leader can be the verified candidate from an
+	// interrupted switchover. Reconcile only the single old primary that
+	// is now a replica; NEVER issue another switchover in that case.
 	leaderState, err := gate.StepState(ctx, leader)
 	if err != nil {
 		return err
 	}
 	if leaderState != "" {
-		return errors.New("UNSUPPORTED: current leader already has upgrade journal state; reconcile original switchover before resume")
+		return resumePatroniAfterSwitchover(ctx, gate, leader, replicas, leaderState, maxLag)
 	}
 	for _, replica := range replicas {
 		state, err := gate.StepState(ctx, replica)
@@ -142,6 +142,60 @@ func RollPatroniCluster(ctx context.Context, gate PatroniSwitchoverGate, dcs DCS
 		return fmt.Errorf("Patroni leader drift after old primary reconciliation: %w", err)
 	}
 	return gate.Record(ctx, leader, "verified")
+}
+
+// resumePatroniAfterSwitchover requires a unique old-primary journal marker,
+// two already-verified images and a healthy promoted leader. Recreating the
+// former leader is safe only after it is observed as a replica; no second
+// switchover is permitted on an unknown timeline.
+func resumePatroniAfterSwitchover(ctx context.Context, gate PatroniSwitchoverGate, leader string, replicas []string, leaderState string, maxLag int64) error {
+	if leaderState != "verified" || len(replicas) != 2 {
+		return errors.New("UNSUPPORTED: current leader already has upgrade journal state; reconcile original switchover before resume")
+	}
+	if err := gate.VerifyMemberImage(ctx, leader); err != nil {
+		return err
+	}
+	former := ""
+	for _, replica := range replicas {
+		state, err := gate.StepState(ctx, replica)
+		if err != nil {
+			return err
+		}
+		switch state {
+		case "verified":
+			if err := gate.VerifyMemberImage(ctx, replica); err != nil {
+				return err
+			}
+		case "applying", "apply_failed", "verify_failed":
+			if former != "" {
+				return errors.New("UNSUPPORTED: multiple interrupted Patroni replicas; manual reconciliation required")
+			}
+			former = replica
+		default:
+			return errors.New("UNSUPPORTED: interrupted Patroni leader timeline is ambiguous")
+		}
+	}
+	if former == "" {
+		return errors.New("UNSUPPORTED: missing old-primary switchover journal identity")
+	}
+	if err := gate.VerifyRecovery(ctx); err != nil {
+		return err
+	}
+	if err := WaitForPatroniQuorum(ctx, gate, leader, maxLag, 30*time.Second); err != nil {
+		return fmt.Errorf("promoted Patroni leader is unverified: %w", err)
+	}
+	if err := gate.VerifyMemberImage(ctx, former); err != nil {
+		if err := gate.Recreate(ctx, former); err != nil {
+			return fmt.Errorf("recreate verified old-primary replica %s: %w", former, err)
+		}
+	}
+	if err := gate.VerifyMemberImage(ctx, former); err != nil {
+		return err
+	}
+	if err := WaitForPatroniQuorum(ctx, gate, leader, maxLag, 30*time.Second); err != nil {
+		return fmt.Errorf("leader drift on interrupted Patroni recovery: %w", err)
+	}
+	return gate.Record(ctx, former, "verified")
 }
 
 func verifiedPatroniSnapshot(ctx context.Context, gate PatroniRollingGate, maxLag int64) (string, []string, error) {
