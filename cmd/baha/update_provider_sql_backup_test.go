@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestProviderConfigurationRestoreReplaysAndRejectsTampering(t *testing.T) {
@@ -140,4 +142,44 @@ func TestProviderBackupPairRejectsPartialCaptureAndBindsBothStreams(t *testing.T
 	spec.Transaction = "0.4.25"
 	otherTxn, err := spec.artifactBinding("2.7.0")
 	if err != nil || one == otherTxn { t.Fatal("cross-transaction SQL/config snapshot admitted") }
+}
+
+type sqlRestoreReplayRuntime struct {
+	bhruntime.RuntimeProvider
+	failSQL bool
+	restores int
+}
+func (r *sqlRestoreReplayRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, _, _ io.Writer, _ []string, args ...string) error {
+	if len(args) > 0 && args[0] == "run" {
+		_, _ = io.Copy(io.Discard, stdin)
+		for _, arg := range args {
+			if arg == "sh" {
+				r.restores++
+				if r.failSQL { return errors.New("injected pg_restore failure") }
+			}
+		}
+		return nil
+	}
+	return errors.New("unexpected restore runtime operation")
+}
+func TestProviderSQLRestoreFailureDoesNotChangeConfigurationAndResumeRestoresBoth(t *testing.T) {
+	dir:=t.TempDir()
+	if err:=os.Chmod(dir,0700);err!=nil{t.Fatal(err)}
+	env:=filepath.Join(dir,"owned.env")
+	if err:=os.WriteFile(env,[]byte("CORE_OWNED=yes\n"),0600);err!=nil{t.Fatal(err)}
+	rt:=&sqlRestoreReplayRuntime{failSQL:true}
+	spec:=providerSQLBackupSpec{Runtime:rt,Project:"owned-core",Compose:filepath.Join(dir,"compose.yaml"),Env:env,Client:"pgclient",Host:"postgres",CAFile:"/ca.pem",User:"owner",Password:"secret",Database:"openbao",Directory:filepath.Join(dir,"backup"),Name:"openbao",Provider:providerupgrade.ProviderOpenBao,InstallationID:"core-A",Transaction:"0.4.24",ConfigPaths:[]string{env}}
+	if err:=spec.streamPoint().Capture(context.Background(),func(_ context.Context,w io.Writer)error{_,e:=io.WriteString(w,"mock custom SQL archive");return e});err!=nil{t.Fatal(err)}
+	if err:=spec.captureConfiguration(context.Background());err!=nil{t.Fatal(err)}
+	binding,err:=spec.artifactBinding("2.7.0");if err!=nil{t.Fatal(err)}
+	ref:=providerupgrade.BackupRef{Provider:spec.Provider,ID:spec.Name,Version:"2.7.0",Verified:true,Metadata:map[string]string{"database_verified":"true","configuration_verified":"true","format":"pg_dump-custom-v1","binding":binding}}
+	if err:=os.WriteFile(env,[]byte("CORE_OWNED=changed\n"),0600);err!=nil{t.Fatal(err)}
+	if err:=spec.restore(context.Background(),ref);err==nil{t.Fatal("failed SQL restore returned success")}
+	data,err:=os.ReadFile(env);if err!=nil{t.Fatal(err)}
+	if string(data)!="CORE_OWNED=changed\n"{t.Fatal("configuration changed despite failed SQL restore")}
+	rt.failSQL=false
+	if err:=spec.restore(context.Background(),ref);err!=nil{t.Fatalf("idempotent paired recovery rejected: %v",err)}
+	data,err=os.ReadFile(env);if err!=nil{t.Fatal(err)}
+	if string(data)!="CORE_OWNED=yes\n"{t.Fatalf("configuration recovery missing after SQL replay: %q",data)}
+	if rt.restores!=2 {t.Fatalf("expected two SQL restore attempts, got %d",rt.restores)}
 }
