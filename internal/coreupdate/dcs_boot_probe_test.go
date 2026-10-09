@@ -30,20 +30,34 @@ func TestDCSBootProbeRequiresThreeEndpointsAndPatroniProof(t *testing.T) {
 
 func TestRecoveredEtcdClusterUsesFreshQuorumIdentity(t *testing.T) {
 	var observed string
-	const source="9223372036854775808"
-	const recovered="18446744073709551615"
-	if err:=validateRecoveredEtcdClusterID(source,recovered,&observed);err!=nil{t.Fatal(err)}
-	if observed!=recovered{t.Fatalf("wrong recovered cluster ID %s",observed)}
-	if err:=validateRecoveredEtcdClusterID(source,recovered,&observed);err!=nil{t.Fatal(err)}
-	for _,foreign:=range []string{source,"0","invalid","18446744073709551616","18446744073709551614"}{
-		if err:=validateRecoveredEtcdClusterID(source,foreign,&observed);err==nil{t.Fatalf("invalid recovered cluster %s accepted",foreign)}
+	const source = "9223372036854775808"
+	const recovered = "18446744073709551615"
+	if err := validateRecoveredEtcdClusterID(source, recovered, &observed); err != nil {
+		t.Fatal(err)
+	}
+	if observed != recovered {
+		t.Fatalf("wrong recovered cluster ID %s", observed)
+	}
+	if err := validateRecoveredEtcdClusterID(source, recovered, &observed); err != nil {
+		t.Fatal(err)
+	}
+	for _, foreign := range []string{source, "0", "invalid", "18446744073709551616", "18446744073709551614"} {
+		if err := validateRecoveredEtcdClusterID(source, foreign, &observed); err == nil {
+			t.Fatalf("invalid recovered cluster %s accepted", foreign)
+		}
 	}
 }
 func TestRecoveredEtcdMemberIDsAreUniqueUint64(t *testing.T) {
-	seen:=map[string]bool{}
-	if err:=validateRecoveredEtcdMemberID("18446744073709551615",seen);err!=nil{t.Fatal(err)}
-	if err:=validateRecoveredEtcdMemberID("9223372036854775809",seen);err!=nil{t.Fatal(err)}
-	for _,bad:=range []string{"18446744073709551615","0","","-1","18446744073709551616"}{
-		if err:=validateRecoveredEtcdMemberID(bad,seen);err==nil{t.Fatalf("invalid etcd member %s accepted",bad)}
+	seen := map[string]bool{}
+	if err := validateRecoveredEtcdMemberID("18446744073709551615", seen); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRecoveredEtcdMemberID("9223372036854775809", seen); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"18446744073709551615", "0", "", "-1", "18446744073709551616"} {
+		if err := validateRecoveredEtcdMemberID(bad, seen); err == nil {
+			t.Fatalf("invalid etcd member %s accepted", bad)
+		}
 	}
 }
