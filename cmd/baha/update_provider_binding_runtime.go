@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"os"\n\t"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
@@ -60,7 +60,7 @@ func (o *coreNativeRuntimeOps) stopSelected(ctx context.Context, files bhruntime
 	return o.runtime.StopProjectFilesSelected(ctx, files.Project, filepath.Dir(files.Compose), environment, []string{files.Compose}, services...)
 }
 
-func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context, plan coreupdate.Plan, journalDir string) (coreupdate.BoundProviderTransaction, error) {
+func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context, plan coreupdate.Plan, journalDir, engine string) (coreupdate.BoundProviderTransaction, error) {
 	openBaoDelta, err := providerDelta(plan, coreupdate.Secrets)
 	if err != nil {
 		return coreupdate.BoundProviderTransaction{}, err
@@ -85,7 +85,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		return coreupdate.BoundProviderTransaction{}, errors.New("Keycloak protected SQL credentials are incomplete")
 	}
 
-	backupDir := filepath.Join(journalDir, "provider-native")
+	backupDir := filepath.Join(journalDir, "provider-native")\n\treceiptDir := filepath.Join(journalDir, "provider-receipts")\n\tif err := os.MkdirAll(receiptDir, 0o700); err != nil {\n\t\treturn coreupdate.BoundProviderTransaction{}, err\n\t}\n\tif err := os.Chmod(receiptDir, 0o700); err != nil {\n\t\treturn coreupdate.BoundProviderTransaction{}, err\n\t}
 	openBaoBackup := providerSQLBackupSpec{
 		Runtime: o.runtime, Project: o.core.Project, Compose: o.core.Compose, Env: o.core.Env,
 		Client: "postgres-admin", Host: "postgres", CAFile: "/run/baseharbor/postgres-ca/ca.pem",
@@ -205,7 +205,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		},
 	}
 	registry, err := providerbinding.New(providerbinding.Dependencies{
-		Inventory: &providerbinding.RuntimeBinding{Reader: o.runtime, Engine: "",
+		Inventory: &providerbinding.RuntimeBinding{Reader: o.runtime, Engine: engine,
 			Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
 				providerupgrade.ProviderOpenBao: {Project: o.core.Project, Service: openBaoDelta.Installed.Instance},
 				providerupgrade.ProviderKeycloak: {Project: o.identity.Project, Service: keycloakDelta.Installed.Instance},
@@ -219,5 +219,5 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	// RuntimeBinding requires the concrete engine identity. It is already
 	// verified by reconcileNativeCoreProviders; copy it into the registry source.
 	_ = ctx
-	return coreupdate.BoundProviderTransaction{Registry: registry, BackupDirectory: filepath.Join(journalDir, "provider-receipts"), RecordExternal: o.Record}, nil
+	return coreupdate.BoundProviderTransaction{Registry: registry, BackupDirectory: receiptDir, RecordExternal: o.Record}, nil
 }
