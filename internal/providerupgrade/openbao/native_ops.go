@@ -116,7 +116,7 @@ func (n *NativeOps) EnsureUnsealed(ctx context.Context) error {
 		return err
 	}
 	if state.Initialized && !state.Sealed {
-		return nil
+		return verifyRecoveredState(state)
 	}
 	if n.Hooks.Unseal == nil {
 		return errors.New("OpenBao unseal requires an authorized recovery hook")
