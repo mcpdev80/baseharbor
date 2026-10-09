@@ -50,12 +50,12 @@ jobs:
 
     steps:
       - name: Checkout requested ref
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -196,11 +196,11 @@ jobs:
       BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -214,7 +214,7 @@ jobs:
           go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: core-bootstrap-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/core-bootstrap
@@ -258,10 +258,10 @@ jobs:
           podman version
 
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -325,12 +325,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout requested ref
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -371,11 +371,11 @@ jobs:
       BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -388,7 +388,7 @@ jobs:
           go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
       - name: Retain focused bug hunt evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: bug-hunt-templates-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bug-hunt

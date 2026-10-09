@@ -114,7 +114,7 @@ services:
       \ endpoint did not become SQL-ready for initialization\" >&2\n    exit 1\n \
       \ fi\n  sleep 1\ndone\n"
   openbao-member-1:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315
     restart: unless-stopped
     user: '100'
     read_only: true
@@ -175,7 +175,7 @@ services:
         aliases:
         - openbao
   openbao-admin:
-    image: docker.io/openbao/openbao:2.7.0
+    image: docker.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315
     restart: unless-stopped
     user: '100'
     read_only: true
