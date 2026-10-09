@@ -106,12 +106,20 @@ func (s providerSQLBackupSpec) recoveryPairComplete() (bool, error) {
 	present := 0
 	for _, path := range files {
 		st, err := os.Lstat(path)
-		if errors.Is(err, os.ErrNotExist) { continue }
-		if err != nil { return false, err }
-		if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 { return false, errors.New("unsafe provider recovery artifact") }
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 {
+			return false, errors.New("unsafe provider recovery artifact")
+		}
 		present++
 	}
-	if present != 0 && present != len(files) { return false, errors.New("incomplete SQL/configuration backup pair from interrupted capture") }
+	if present != 0 && present != len(files) {
+		return false, errors.New("incomplete SQL/configuration backup pair from interrupted capture")
+	}
 	return present == len(files), nil
 }
 
@@ -119,7 +127,9 @@ func (s providerSQLBackupSpec) capture(ctx context.Context, version string) (pro
 	if err := s.validate(); err != nil {
 		return providerupgrade.BackupRef{}, err
 	}
-	if _, err := s.recoveryPairComplete(); err != nil { return providerupgrade.BackupRef{}, err }
+	if _, err := s.recoveryPairComplete(); err != nil {
+		return providerupgrade.BackupRef{}, err
+	}
 	environment, err := s.environment()
 	if err != nil {
 		return providerupgrade.BackupRef{}, err
@@ -332,7 +342,9 @@ func (s providerSQLBackupSpec) restoreConfiguration(ctx context.Context) error {
 			return errors.New("provider configuration destination changed during recovery")
 		}
 		current, err := os.ReadFile(item.path)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if bytes.Equal(item.data, current) && st.Mode().Perm() == item.mode {
 			continue
 		}
