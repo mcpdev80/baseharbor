@@ -475,7 +475,7 @@ exec pg_restore --clean --if-exists --single-transaction --exit-on-error -h "$1"
 // Return only fixed error classes; native database diagnostics can contain
 // protected row values and must never enter operator output or receipts.
 func classifyProviderRestoreFailure(diagnostics string) string {
-	for _, class := range []string{"must be owner of extension", "must be owner of schema", "must be owner of table", "permission denied", "unsupported version", "input file does not appear to be a valid archive", "could not read from input file", "connection refused", "database system is starting up"} {
+	for _, class := range []string{"must be owner of extension", "must be owner of schema", "must be owner of table", "permission denied", "unsupported version", "input file does not appear to be a valid archive", "could not read from input file", "connection refused", "database system is starting up", "other objects depend on it", "cannot drop", "already exists", "does not exist", "unexpected end of file", "authentication failed", "no password supplied", "no pg_hba.conf entry", "unrecognized configuration parameter", "could not execute query", "could not open input file", "could not read from input file", "could not connect to server"} {
 		if strings.Contains(strings.ToLower(diagnostics), class) {
 			return class
 		}

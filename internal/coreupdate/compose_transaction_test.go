@@ -17,6 +17,15 @@ func TestComposeCheckpointStagesReplaysAndRestores(t *testing.T) {
 	delta := Delta{Installed: Realization{Kind: Secrets, Installation: "c", Scope: "shared", Instance: "openbao-member-1", Owner: "baseharbor", Image: "openbao:2.6.0", Version: "2.6.0", Digest: digestA}, Desired: Desired{Kind: Secrets, Image: "openbao:2.7.0", Version: "2.7.0", Digest: digestB}, Classification: BackupRequired}
 	selected := map[string]Delta{"openbao-member-1": delta}
 	tx := ComposeCheckpoint{Path: path, Directory: filepath.Join(dir, "checkpoints")}
+	if err := tx.Capture(selected); err != nil {
+		t.Fatal(err)
+	}
+	if before, err := os.ReadFile(path); err != nil || !bytes.Equal(before, original) {
+		t.Fatal("backup capture mutated the installed provider")
+	}
+	if err := tx.Capture(selected); err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Stage(selected); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +82,9 @@ func TestComposeCheckpointRefusesForeignEditsAndSymlink(t *testing.T) {
 	}
 	if err := tx.Stage(selected); err == nil {
 		t.Fatal("staged over foreign operator edit")
+	}
+	if err := tx.Capture(selected); err == nil {
+		t.Fatal("captured foreign operator edit as original")
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

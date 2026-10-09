@@ -251,6 +251,9 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	openBaoHooks := baoAdapter.RuntimeHooks{
 		UpgradePath: patchProviderUpgradePath,
 		Backup: func(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
+			if err := openBaoCompose.Capture(openBaoMutations); err != nil {
+				return providerupgrade.BackupRef{}, err
+			}
 			return openBaoBackup.capture(ctx, version)
 		},
 		VerifyBackup: openBaoBackup.verify,
@@ -336,6 +339,9 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		},
 		Compatibility: o.keycloakUpgradePath,
 		Backup: func(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
+			if err := keycloakCompose.Capture(keycloakMutations); err != nil {
+				return providerupgrade.BackupRef{}, err
+			}
 			return keycloakBackup.capture(ctx, version)
 		},
 		VerifyBackup: keycloakBackup.verify,

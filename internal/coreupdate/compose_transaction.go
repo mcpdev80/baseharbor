@@ -98,6 +98,44 @@ func atomicReplaceOwnerFile(path string, data []byte) error {
 	return d.Sync()
 }
 
+// Capture preserves the original image realization together with a native
+// database backup, without applying the upgrade. Recovery remains possible
+// even when another journal subsequently performs the provider mutation.
+func (c ComposeCheckpoint) Capture(mutations map[string]Delta) error {
+	checkpoint, err := c.checkpointName(mutations)
+	if err != nil {
+		return err
+	}
+	current, err := readVerifiedCompose(c.Path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(c.Directory, 0700); err != nil {
+		return err
+	}
+	if err := os.Chmod(c.Directory, 0700); err != nil {
+		return err
+	}
+	original, err := readVerifiedCompose(checkpoint)
+	if errors.Is(err, os.ErrNotExist) {
+		if _, err := RewriteOwnedComposeImages(current, mutations); err != nil {
+			return err
+		}
+		return writeExclusive(checkpoint, current)
+	}
+	if err != nil {
+		return err
+	}
+	pinned, err := RewriteOwnedComposeImages(original, mutations)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, original) && !bytes.Equal(current, pinned) {
+		return errors.New("Compose differs from both pre-upgrade and pinned state; refusing backup overwrite")
+	}
+	return nil
+}
+
 // Stage preserves the original Compose atomically before writing the new,
 // immutable image-pinned realization. A replay verifies the prior checkpoint
 // rather than creating a second backup from possibly mutated Compose.
