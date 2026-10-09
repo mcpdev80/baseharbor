@@ -86,7 +86,14 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 		return coreupdate.BoundProviderTransaction{}, errors.New("Keycloak protected SQL credentials are incomplete")
 	}
 
-	backupDir := filepath.Join(journalDir, "provider-native")\n\treceiptDir := filepath.Join(journalDir, "provider-receipts")\n\tif err := os.MkdirAll(receiptDir, 0o700); err != nil {\n\t\treturn coreupdate.BoundProviderTransaction{}, err\n\t}\n\tif err := os.Chmod(receiptDir, 0o700); err != nil {\n\t\treturn coreupdate.BoundProviderTransaction{}, err\n\t}
+	backupDir := filepath.Join(journalDir, "provider-native")
+	receiptDir := filepath.Join(journalDir, "provider-receipts")
+	if err := os.MkdirAll(receiptDir, 0o700); err != nil {
+		return coreupdate.BoundProviderTransaction{}, err
+	}
+	if err := os.Chmod(receiptDir, 0o700); err != nil {
+		return coreupdate.BoundProviderTransaction{}, err
+	}
 	openBaoBackup := providerSQLBackupSpec{
 		Runtime: o.runtime, Project: o.core.Project, Compose: o.core.Compose, Env: o.core.Env,
 		Client: "postgres-admin", Host: "postgres", CAFile: "/run/baseharbor/postgres-ca/ca.pem",
