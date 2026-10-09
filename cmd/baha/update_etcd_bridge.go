@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -18,16 +19,19 @@ func runtimePinnedImage(identity bhruntime.ImageIdentity) (string, error) {
 	if ref == "" || digest == "" {
 		return "", errors.New("runtime image identity is not digest pinned")
 	}
-	if at := strings.Index(digest, "@sha256:"); at >= 0 {
-		return digest, nil
+	if at := strings.LastIndex(digest, "@sha256:"); at >= 0 {
+		digest = digest[at+1:]
 	}
-	if strings.HasPrefix(digest, "sha256:") {
-		if at := strings.Index(ref, "@"); at >= 0 {
-			ref = ref[:at]
-		}
-		return ref + "@" + digest, nil
+	if !strings.HasPrefix(digest, "sha256:") || len(digest) != len("sha256:")+64 {
+		return "", errors.New("runtime etcd image requires a full sha256 digest")
 	}
-	return "", errors.New("runtime image digest format is unsupported")
+	if _, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:")); err != nil {
+		return "", fmt.Errorf("invalid runtime etcd image digest: %w", err)
+	}
+	if at := strings.Index(ref, "@"); at >= 0 {
+		ref = ref[:at]
+	}
+	return ref + "@" + digest, nil
 }
 
 func buildCoreEtcdRecoveryBridge(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, installation, target, release, journalDir string) (*coreupdate.EtcdDCSBridge, error) {
