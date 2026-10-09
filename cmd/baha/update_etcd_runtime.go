@@ -33,7 +33,7 @@ type runtimeEtcdTools struct {
 
 func (t runtimeEtcdTools) validate() error {
 	if t.Runtime == nil || !t.Files.HA || t.Files.Project == "" || t.Files.Compose == "" || t.Files.Env == "" ||
-		t.Service == "" || len(t.Endpoints) != 3 || t.ExpectedCluster == "" || t.ScratchDir == "" ||
+		t.Service == "" || len(t.Endpoints) != 3 || t.ScratchDir == "" ||
 		t.ContainerCA == "" || t.ContainerCert == "" || t.ContainerKey == "" || len(t.Members) != 3 ||
 		t.InitialCluster == "" {
 		return errors.New("runtime etcd recovery requires explicit HA runtime, mTLS identity and three-member topology")
@@ -144,7 +144,7 @@ func (t runtimeEtcdTools) attest(ctx context.Context) (etcdbackup.SnapshotInfo, 
 		if err != nil {
 			return etcdbackup.SnapshotInfo{}, err
 		}
-		if status.Endpoint != endpoint || status.ClusterID != t.ExpectedCluster {
+		if status.Endpoint != endpoint || (t.ExpectedCluster != "" && status.ClusterID != t.ExpectedCluster) {
 			return etcdbackup.SnapshotInfo{}, errors.New("foreign etcd endpoint or cluster identity")
 		}
 		if result.ClusterID != "" && (result.ClusterID != status.ClusterID || result.Version != status.Version) {
