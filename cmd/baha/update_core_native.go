@@ -480,11 +480,7 @@ func reconcileNativeCoreProviders(ctx context.Context, release string) error {
 			// images and quorum. Reflect that proven realization before the
 			// central journal checks the strict NoChange identity invariant.
 			// Never send live HA SQL through generic quiesce/volume recovery.
-			plan.Deltas[i].Installed.Image = delta.Desired.Image
-			plan.Deltas[i].Installed.Digest = delta.Desired.Digest
-			plan.Deltas[i].Installed.Version = delta.Desired.Version
-			plan.Deltas[i].Classification = coreupdate.NoChange
-			plan.Deltas[i].Reason = ""
+			plan.Deltas[i] = verifiedNativeHAPostgresDelta(delta)
 		}
 	}
 	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
