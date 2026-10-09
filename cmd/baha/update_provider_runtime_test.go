@@ -218,7 +218,8 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	ops := &coreNativeRuntimeOps{runtime: rt, core: files, identity: identity, dataDir: dataDir, target: target.Name, installation: state.ID, issuer: state.IdentityIssuer, release: "v0.4.24"}
 	// A real registered SQL/Secrets application makes semantic checks non-vacuous.
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
-	manifest := application.New("provider-upgrade-acceptance", "dev", true, false, true)
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeShared))
+	manifest := application.WithHA(application.New("provider-upgrade-acceptance", "dev", true, true, true), ha)
 	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -258,6 +259,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 		return strings.TrimSpace(result)
 	}
 	applicationSQL("CREATE TABLE public.provider_upgrade_marker(value text NOT NULL); INSERT INTO public.provider_upgrade_marker VALUES ('application-retained')")
+	verifySharedCoreDeduplicationFixture(t, ctx, rt, target.Name, dataDir, files, identity, resolved.Store, manifest, appFiles)
 	checkApplication := func() {
 		if applicationSQL("SELECT value FROM public.provider_upgrade_marker") != "application-retained" {
 			t.Fatal("application SQL data or credentials lost")

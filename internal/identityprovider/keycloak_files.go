@@ -124,6 +124,9 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 		if err != nil {
 			return KeycloakFiles{}, err
 		}
+		if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
+			return KeycloakFiles{}, errors.New("shared Identity dependency does not belong to the selected Core/Target")
+		}
 		coreSQL = &core
 		if err := rejectLegacySharedIdentity(dataDir); err != nil {
 			return KeycloakFiles{}, err

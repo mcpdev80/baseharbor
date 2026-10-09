@@ -73,7 +73,7 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 	if err != nil {
 		return KeycloakInstance{}, err
 	}
-	if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+	if err := setApplicationKeycloakCanonicalURL(files, publicBase); err != nil {
 		return KeycloakInstance{}, err
 	}
 	if cleaner, ok := r.runtime.(legacyServiceCleaner); ok {
@@ -193,6 +193,15 @@ func localKeycloakTargetName(namespace string) string {
 		return value
 	}
 	return "local"
+}
+
+// Shared application realms use their own frontendUrl attribute. Their
+// reconciliation must preserve the installation and master realm authority.
+func setApplicationKeycloakCanonicalURL(files KeycloakFiles, publicBase string) error {
+	if files.SharedSQL != nil {
+		publicBase = files.PublicURL
+	}
+	return SetKeycloakCanonicalURL(files, publicBase)
 }
 
 func localKeycloakPublicBaseURL(app application.Manifest, namespace string, runtime KeycloakRuntime, files KeycloakFiles) (string, error) {

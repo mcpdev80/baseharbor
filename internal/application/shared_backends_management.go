@@ -62,11 +62,18 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 		app := state.Applications[sharedBackendApplicationKey(m)]
 		for _, instance := range ValkeyInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
-			policy, err := serviceaccess.Resolve(m.Environment, "valkey", serviceaccess.AuthenticationNative)
+			gatewayApp, gatewayInstance := app, instance
+			policyEnvironment := m.Environment
+			if state.ValkeyAdminCredential != "" {
+				policyEnvironment = "prod"
+				gatewayApp, gatewayInstance = coreSharedValkeyApp(*state), defaultServiceInstance
+				root = filepath.Join(shared.Dir, "valkey", "core", defaultServiceInstance)
+			}
+			policy, err := serviceaccess.Resolve(policyEnvironment, "valkey", serviceaccess.AuthenticationNative)
 			if err != nil {
 				return err
 			}
-			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedValkeyGatewaySpec(app, instance))
+			_, err = serviceaccess.EnsureTCPGateway(ctx, issuer, policy, root, sharedValkeyGatewaySpec(gatewayApp, gatewayInstance))
 			if err != nil {
 				return fmt.Errorf("prepare shared Valkey TLS for %s: %w", instance, err)
 			}
@@ -306,6 +313,11 @@ func refreshSharedCacheManagementUIConfig(shared SharedBackendFiles, state share
 		return err
 	}
 	var connections []map[string]any
+	if state.ValkeyAdminCredential != "" {
+		// This protected, authenticated management UI is Core operator access.
+		// Application bindings continue to use restricted namespace logins.
+		state.Applications = map[string]sharedBackendAppState{"core/shared": coreSharedValkeyApp(state)}
+	}
 	appKeys := sortedSharedBackendApplicationKeys(state)
 	for _, key := range appKeys {
 		app := state.Applications[key]

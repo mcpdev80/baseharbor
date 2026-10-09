@@ -713,7 +713,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 		}
 	}
 	for _, instance := range ValkeyInstanceNames(m) {
-		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST"} {
+		for _, suffix := range []string{"PASSWORD", "HOST_PORT", "TLS_CA_FILE", "CONTAINER_HOST", "USER", "KEY_PREFIX"} {
 			key := valkeyRuntimeKey(instance, suffix)
 			fmt.Fprintf(&b, "%s=%s\n", key, values[key])
 		}

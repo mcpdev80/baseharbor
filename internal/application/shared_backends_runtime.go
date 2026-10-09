@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -37,6 +38,27 @@ func sharedCoreSQLQuery(ctx context.Context, executor bhruntime.SQLConsumerExecu
 }
 
 func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, m Manifest) error {
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return err
+	}
+	if state.ValkeyAdminCredential != "" {
+		waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			err := verifyCoreSharedValkey(waitCtx, provideroperation.New(compose, shared.Project, shared.Compose, shared.Env), shared, state, m)
+			if err == nil {
+				return nil
+			}
+			select {
+			case <-waitCtx.Done():
+				return err
+			case <-ticker.C:
+			}
+		}
+	}
 	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -78,6 +100,40 @@ func waitSharedValkeyReady(ctx context.Context, compose bhruntime.RuntimeProvide
 			}
 		}
 		ticker.Stop()
+	}
+	return nil
+}
+
+func reconcileCoreSharedValkeyACL(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, state sharedBackendState) error {
+	if state.ValkeyAdminCredential == "" {
+		return nil
+	}
+	password, err := readSharedBackendCredential(shared.Dir, state.ValkeyAdminCredential)
+	if err != nil {
+		return err
+	}
+	op := provideroperation.New(compose, shared.Project, shared.Compose, shared.Env)
+	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for ordinal := 0; ordinal < state.ValkeyMembers; ordinal++ {
+		service := sharedValkeyMemberServiceName(coreSharedValkeyApp(state), defaultServiceInstance, ordinal)
+		const script = "IFS= read -r password || exit 1; export VALKEYCLI_AUTH=\"$password\"; exec valkey-cli --no-auth-warning --raw ACL LOAD"
+		for {
+			out, err := op.RunSensitive(waitCtx, service, []byte(password+"\n"), "sh", "-ec", script)
+			if err == nil {
+				if strings.TrimSpace(out) != "OK" {
+					return errors.New("shared Valkey consumer ACL reload failed; provider state and data are retained")
+				}
+				break
+			}
+			select {
+			case <-waitCtx.Done():
+				return errors.New("shared Valkey consumer ACL reload readiness timed out; provider state and data are retained")
+			case <-ticker.C:
+			}
+		}
 	}
 	return nil
 }
@@ -175,6 +231,16 @@ func reconcileSharedPostgresApplication(ctx context.Context, compose bhruntime.R
 
 func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendState) error {
 	var env strings.Builder
+	if state.ValkeyAdminCredential != "" {
+		password, err := readSharedBackendCredential(files.Dir, state.ValkeyAdminCredential)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&env, "%s=%s\n%s=%d\n", sharedValkeyPasswordEnvFor("core", "shared", defaultServiceInstance), password, sharedValkeyPortEnvFor("core", "shared", defaultServiceInstance), state.ValkeyHostPort)
+		if err := writeCoreSharedValkeyACL(files, state); err != nil {
+			return err
+		}
+	}
 	if state.PostgresAdminCredential != "" {
 		password, err := readSharedBackendCredential(files.Dir, state.PostgresAdminCredential)
 		if err != nil {
@@ -257,15 +323,19 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	if sharedBackendCacheUIRequested(state) {
 		writeSharedCacheUICompose(&b)
 	}
-	for _, key := range appKeys {
-		app := state.Applications[key]
-		instances := make([]string, 0, len(app.Cache))
-		for instance := range app.Cache {
-			instances = append(instances, instance)
-		}
-		sort.Strings(instances)
-		for _, instance := range instances {
-			writeSharedValkeyCompose(&b, app, instance)
+	if state.ValkeyAdminCredential != "" {
+		writeSharedValkeyCompose(&b, coreSharedValkeyApp(state), defaultServiceInstance)
+	} else {
+		for _, key := range appKeys {
+			app := state.Applications[key]
+			instances := make([]string, 0, len(app.Cache))
+			for instance := range app.Cache {
+				instances = append(instances, instance)
+			}
+			sort.Strings(instances)
+			for _, instance := range instances {
+				writeSharedValkeyCompose(&b, app, instance)
+			}
 		}
 	}
 	b.WriteString("volumes:\n")
@@ -277,12 +347,20 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 			}
 		}
 	}
-	for _, key := range appKeys {
-		app := state.Applications[key]
-		for instance, resource := range app.Cache {
-			for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
-				volume := sharedValkeyMemberVolumeName(app, instance, ordinal)
-				fmt.Fprintf(&b, "  %s:\n    name: %s-%s-%s\n", volume, files.ResourceProject, sharedBackendToken(state.Environment), volume)
+	if state.ValkeyAdminCredential != "" {
+		app := coreSharedValkeyApp(state)
+		for ordinal := 0; ordinal < state.ValkeyMembers; ordinal++ {
+			volume := sharedValkeyMemberVolumeName(app, defaultServiceInstance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s-%s\n", volume, files.ResourceProject, volume)
+		}
+	} else {
+		for _, key := range appKeys {
+			app := state.Applications[key]
+			for instance, resource := range app.Cache {
+				for ordinal := 0; ordinal < sharedValkeyMemberCount(resource); ordinal++ {
+					volume := sharedValkeyMemberVolumeName(app, instance, ordinal)
+					fmt.Fprintf(&b, "  %s:\n    name: %s-%s-%s\n", volume, files.ResourceProject, sharedBackendToken(state.Environment), volume)
+				}
 			}
 		}
 	}
@@ -296,7 +374,7 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 }
 
 func sharedBackendHasRuntimeServices(state sharedBackendState) bool {
-	if state.CoreSQL == nil && state.PostgresAdminCredential != "" || sharedBackendPostgresUIRequested(state) || sharedBackendCacheUIRequested(state) {
+	if state.ValkeyAdminCredential != "" || state.CoreSQL == nil && state.PostgresAdminCredential != "" || sharedBackendPostgresUIRequested(state) || sharedBackendCacheUIRequested(state) {
 		return true
 	}
 	for _, app := range state.Applications {
@@ -551,6 +629,9 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("          printf 'masterauth %s\\n' \"$$VALKEY_PASSWORD\"\n")
 		b.WriteString("          printf 'appendonly yes\\n'\n")
 		b.WriteString("          printf 'dir /data\\n'\n")
+		if app.Application == "core" && app.Environment == "shared" {
+			b.WriteString("          printf 'aclfile /run/baseharbor/consumer-acl.conf\\n'\n")
+		}
 		fmt.Fprintf(b, "          printf 'replica-announce-ip %s\\n'\n", service)
 		if ordinal > 0 {
 			b.WriteString("          printf 'replicaof %s 6379\\n' \"$$primary_ip\"\n")
@@ -559,6 +640,9 @@ func writeSharedValkeyCompose(b *strings.Builder, app sharedBackendAppState, ins
 		b.WriteString("        exec valkey-server /tmp/valkey.conf\n")
 		b.WriteString("    volumes:\n")
 		fmt.Fprintf(b, "      - %s:/data\n", sharedValkeyMemberVolumeName(app, instance, ordinal))
+		if app.Application == "core" && app.Environment == "shared" {
+			b.WriteString("      - ./valkey/core/default/consumer-acl.conf:/run/baseharbor/consumer-acl.conf:ro\n")
+		}
 		b.WriteString("    networks:\n      shared-backend: {}\n")
 		if count > 1 {
 			fmt.Fprintf(b, "      %s: {}\n", haNetwork)

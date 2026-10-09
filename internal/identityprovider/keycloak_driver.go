@@ -496,7 +496,7 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		if err != nil {
 			return KeycloakFiles{}, err
 		}
-		if err := SetKeycloakCanonicalURL(files, publicBase); err != nil {
+		if err := setApplicationKeycloakCanonicalURL(files, publicBase); err != nil {
 			return KeycloakFiles{}, err
 		}
 		if err := r.lifecycle.Validate(ctx, files); err != nil {

@@ -32,6 +32,9 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 	if application.HasSharedBackends(m) {
 		f := application.SharedBackendFilesAt(root, namespace, m.Environment)
 		sources = append(sources, topologySource{name: "shared-backends", project: f.Project, compose: f.Compose, env: f.Env})
+		if core, found, err := application.SharedCoreSQLFilesAt(root, namespace, m); found || err != nil {
+			sources = append(sources, topologySource{name: "core-shared", project: core.Project, compose: core.Compose, env: core.Env, err: err})
+		}
 	}
 	if application.HasObjectStorage(m) || application.ComponentHA(m, "logs") || application.ComponentHA(m, "traces") {
 		f, e := objectstorage.ExistingProviderFilesAt(root, namespace)
@@ -85,7 +88,14 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 			if source.name == "application" && o.RequestedHA && len(verified) > 0 && verified[0][o.Provider] {
 				o.SemanticProof = applicationTopologyProof(o.Provider)
 			}
-			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider+"/"+o.Instance), OK: o.Members > 0 || o.DeclaredMembers == 0, Detail: o.Detail()})
+			detail := o.Detail()
+			if source.name == "core-shared" || source.name == "shared-backends" {
+				detail += " physical-owner=core placement=shared consumer=" + m.Name + "/" + m.Environment
+			}
+			if source.name == "application" {
+				detail += " physical-owner=" + m.Name + "/" + m.Environment + " placement=application"
+			}
+			result = append(result, application.StatusCheck{Name: fmt.Sprintf("%s/%s-topology", source.name, o.Provider+"/"+o.Instance), OK: o.Members > 0 || o.DeclaredMembers == 0, Detail: detail})
 		}
 	}
 	return result

@@ -82,6 +82,9 @@ func appRedisCommand(store application.Store) *cli.Command {
 				return err
 			}
 			cmd := exec.CommandContext(ctx, path, "--tls", "--cacert", binding.CertificatesPath, "-h", binding.Host, "-p", binding.Port)
+			if binding.Username != "" {
+				cmd.Args = append(cmd.Args, "--user", binding.Username)
+			}
 			cmd.Env = replaceProcessEnv("REDISCLI_AUTH", binding.Password)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, errOut
 			fmt.Fprintf(errOut, "Connecting to %s Valkey instance %s...\n", resolved.Manifest.Name, binding.Instance)

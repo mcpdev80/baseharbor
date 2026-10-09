@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/provideroperation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -21,6 +22,9 @@ const sharedBackendStateVersion = 3
 
 type sharedBackendState struct {
 	CoreSQL                       *bhruntime.Files                 `json:"core_sql,omitempty"`
+	ValkeyAdminCredential         string                           `json:"valkey_admin_credential,omitempty"`
+	ValkeyMembers                 int                              `json:"valkey_members,omitempty"`
+	ValkeyHostPort                int                              `json:"valkey_host_port,omitempty"`
 	Version                       int                              `json:"version"`
 	Environment                   string                           `json:"environment"`
 	PostgresMembers               int                              `json:"postgres_members,omitempty"`
@@ -62,6 +66,8 @@ type SharedPostgresResourceObservation struct {
 }
 
 type sharedValkeyResource struct {
+	Username            string `json:"username,omitempty"`
+	KeyPrefix           string `json:"key_prefix,omitempty"`
 	CredentialReference string `json:"credential_reference"`
 	HostPort            int    `json:"host_port"`
 	Instances           int    `json:"instances,omitempty"`
@@ -82,11 +88,21 @@ func SharedBackendNetworkName(namespace, environment string) string {
 }
 
 func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendFiles {
-	env := sharedBackendToken(environment)
-	if env == "" {
-		env = "dev"
-	}
+	env := "core"
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "shared-backends", env)
+	network := SharedBackendNetworkName(namespace, environment)
+	// Retained bindings remain readable for backup and authorized cleanup.
+	// Reconciliation rejects their implicit conversion before any mutation.
+	if _, err := os.Lstat(filepath.Join(dir, "state.json")); errors.Is(err, os.ErrNotExist) {
+		legacy := sharedBackendToken(environment)
+		legacyDir := filepath.Join(filepath.Dir(dir), legacy)
+		if legacy != "" && legacy != "core" {
+			if _, err := os.Lstat(filepath.Join(legacyDir, "state.json")); err == nil {
+				dir = legacyDir
+				network = bhruntime.SharedResourceProjectName(namespace) + "-" + legacy + "-backends"
+			}
+		}
+	}
 	return SharedBackendFiles{
 		Dir:             dir,
 		Compose:         filepath.Join(dir, "compose.yaml"),
@@ -94,8 +110,23 @@ func SharedBackendFilesAt(dataDir, namespace, environment string) SharedBackendF
 		State:           filepath.Join(dir, "state.json"),
 		Project:         bhruntime.SharedProjectName(namespace),
 		ResourceProject: bhruntime.SharedResourceProjectName(namespace),
-		Network:         SharedBackendNetworkName(namespace, environment),
+		Network:         network,
 	}
+}
+
+func SharedCoreSQLFilesAt(dataDir, namespace string, m Manifest) (bhruntime.Files, bool, error) {
+	if !UsesSharedPostgreSQL(m) {
+		return bhruntime.Files{}, false, nil
+	}
+	files := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(files.State, m.Environment)
+	if err != nil {
+		return bhruntime.Files{}, false, err
+	}
+	if state.CoreSQL == nil {
+		return bhruntime.Files{}, false, nil
+	}
+	return *state.CoreSQL, true, nil
 }
 
 func UsesSharedPostgreSQL(m Manifest) bool {
@@ -133,6 +164,17 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		return false, nil
 	}
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	if err := rejectLegacySharedBackends(dataDir); err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(shared.Dir, 0700); err != nil {
+		return false, err
+	}
+	unlock, err := coreinstallation.AcquireLifecycleLock(shared.Dir)
+	if err != nil {
+		return false, fmt.Errorf("shared provider lifecycle is already active: %w", err)
+	}
+	defer unlock()
 	state, err := loadSharedBackendState(shared.State, m.Environment)
 	if err != nil {
 		return false, err
@@ -145,6 +187,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err != nil {
 		return false, err
 	}
+	if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
+		return false, errors.New("shared backend dependency does not belong to the selected Core/Target")
+	}
 	if state.CoreSQL == nil && (state.PostgresAdminCredential != "" || len(state.Applications) > 0) {
 		return false, errors.New("retained shared backends use a separate provider; explicit backup-verified migration is required and currently unsupported; existing resources are retained")
 	}
@@ -152,6 +197,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		return false, errors.New("shared backend Core binding changed; explicit migration is required")
 	}
 	state.CoreSQL = &core
+	state.Environment = "core"
 	if err := checkSharedValkeyTopology(state, m); err != nil {
 		return false, err
 	}
@@ -251,14 +297,11 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 
 	if UsesSharedValkey(m) {
+		if err := selectCoreSharedValkey(&state, shared, m); err != nil {
+			return false, err
+		}
 		for _, instance := range ValkeyInstanceNames(m) {
-			port, convErr := strconv.Atoi(strings.TrimSpace(values[valkeyRuntimeKey(instance, "HOST_PORT")]))
-			if convErr != nil || port <= 0 {
-				port, err = allocateLoopbackPort(nil)
-				if err != nil {
-					return false, err
-				}
-			}
+			port := state.ValkeyHostPort
 			ref, err := ensureSharedValkeyCredential(shared.Dir, sharedBackendApplicationKey(m), instance)
 			if err != nil {
 				return false, err
@@ -268,13 +311,17 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 				return false, err
 			}
 			app.Cache[instance] = sharedValkeyResource{
+				Username:            sharedValkeyConsumerName(m, instance),
+				KeyPrefix:           sharedValkeyConsumerPrefix(m, instance),
 				CredentialReference: ref,
 				HostPort:            port,
 				Instances:           valkeyMemberCount(m, instance),
 			}
 			values[valkeyRuntimeKey(instance, "PASSWORD")] = password
+			values[valkeyRuntimeKey(instance, "USER")] = app.Cache[instance].Username
+			values[valkeyRuntimeKey(instance, "KEY_PREFIX")] = app.Cache[instance].KeyPrefix
 			values[valkeyRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(port)
-			values[valkeyContainerHostKey(instance)] = sharedValkeyAccessAlias(m, instance)
+			values[valkeyContainerHostKey(instance)] = coreSharedValkeyAccessAlias()
 		}
 	}
 	state.Applications[appKey] = app
@@ -317,6 +364,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		}
 	}
 	if UsesSharedValkey(m) {
+		if err := reconcileCoreSharedValkeyACL(ctx, compose, shared, state); err != nil {
+			return false, err
+		}
 		if err := waitSharedValkeyReady(ctx, compose, shared, m); err != nil {
 			return false, err
 		}
@@ -522,6 +572,9 @@ func VerifySharedValkey(ctx context.Context, compose bhruntime.RuntimeProvider, 
 	if err != nil {
 		return err
 	}
+	if state.ValkeyAdminCredential != "" {
+		return verifyCoreSharedValkey(ctx, provideroperation.New(compose, shared.Project, shared.Compose, shared.Env), shared, state, m)
+	}
 	app, ok := state.Applications[sharedBackendApplicationKey(m)]
 	if !ok {
 		return fmt.Errorf("shared Valkey application registration is missing")
@@ -721,6 +774,11 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 	}
 
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	unlock, err := coreinstallation.AcquireLifecycleLock(shared.Dir)
+	if err != nil {
+		return fmt.Errorf("shared provider lifecycle is already active: %w", err)
+	}
+	defer unlock()
 	state, err := loadSharedBackendState(shared.State, m.Environment)
 	if errors.Is(err, os.ErrNotExist) {
 		return errors.New("refuse shared backend destroy: protected shared provider state is missing")
@@ -795,7 +853,11 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 			}
 		}
 	}
-	if err := destroySharedValkeyApplicationRuntime(ctx, compose, shared, app); err != nil {
+	if state.ValkeyAdminCredential != "" {
+		if err := releaseCoreSharedValkey(ctx, provideroperation.New(compose, shared.Project, shared.Compose, shared.Env), shared, state, app); err != nil {
+			return err
+		}
+	} else if err := destroySharedValkeyApplicationRuntime(ctx, compose, shared, app); err != nil {
 		return err
 	}
 	for instance, resource := range app.Cache {
@@ -823,7 +885,10 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 	if !sharedBackendHasRuntimeServices(state) {
 		return nil
 	}
-	return compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env)
+	if err := compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+		return err
+	}
+	return reconcileCoreSharedValkeyACL(ctx, compose, shared, state)
 }
 
 func destroySharedValkeyApplicationRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, shared SharedBackendFiles, app sharedBackendAppState) error {
