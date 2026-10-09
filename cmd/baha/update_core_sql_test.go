@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"os"
@@ -33,6 +34,30 @@ func (r *openBaoSQLProbeRuntime) ExecProjectInput(_ context.Context, _, _, _ str
 		return r.response, nil
 	}
 	return "1", nil
+}
+
+func (r *openBaoSQLProbeRuntime) RunProjectFilesEnv(_ context.Context, _, _ string, _ map[string]string, stdin io.Reader, stdout, _ io.Writer, _ []string, args ...string) error {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return err
+	}
+	r.input = string(data)
+	r.args = append([]string(nil), args...)
+	for _, arg := range args {
+		if arg == "keycloak-db-init" {
+			r.service = arg
+			break
+		}
+	}
+	if r.fail {
+		return errors.New("SQL authentication rejected")
+	}
+	response := r.response
+	if response == "" {
+		response = "1"
+	}
+	_, err = io.WriteString(stdout, response)
+	return err
 }
 
 func TestNativeOpenBaoSQLVerificationProtectsCredentials(t *testing.T) {
