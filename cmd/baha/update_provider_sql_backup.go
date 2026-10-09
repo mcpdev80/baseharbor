@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"context"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -56,6 +58,30 @@ func (s providerSQLBackupSpec) configPoint() coreupdate.StreamRecoveryPoint {
 	return coreupdate.StreamRecoveryPoint{Directory: s.Directory, Name: s.Name + "-config"}
 }
 
+func (s providerSQLBackupSpec) artifactBinding(version string) (string, error) {
+	if version == "" || len(s.ConfigPaths) == 0 { return "", errors.New("provider backup has no version or configuration identity") }
+	h := sha256.New()
+	for _, value := range []string{string(s.Provider), s.Project, s.Compose, s.Env, s.Host, s.Database, s.Name, version} {
+		if value == "" || strings.ContainsRune(value, '\x00') { return "", errors.New("invalid provider backup identity field") }
+		_, _ = io.WriteString(h, value+"\\x00")
+	}
+	for _, path := range s.ConfigPaths {
+		if !filepath.IsAbs(path) { return "", errors.New("unbound provider backup configuration path") }
+		_, _ = io.WriteString(h, path+"\\x00")
+	}
+	for _, point := range []coreupdate.StreamRecoveryPoint{s.streamPoint(), s.configPoint()} {
+		file, err := point.OpenVerified()
+		if err != nil { return "", err }
+		digest := sha256.New()
+		_, copyErr := io.Copy(digest, file)
+		closeErr := file.Close()
+		if copyErr != nil { return "", copyErr }
+		if closeErr != nil { return "", closeErr }
+		_, _ = h.Write(digest.Sum(nil))
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func (s providerSQLBackupSpec) capture(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
 	if err := s.validate(); err != nil {
 		return providerupgrade.BackupRef{}, err
@@ -77,9 +103,11 @@ exec pg_dump --format=custom --compress=6 --no-owner --no-acl -h "$1" -U "$2" -d
 	if err := s.captureConfiguration(ctx); err != nil {
 		return providerupgrade.BackupRef{}, fmt.Errorf("%s configuration backup: %w", s.Provider, err)
 	}
+	binding, err := s.artifactBinding(version)
+	if err != nil { return providerupgrade.BackupRef{}, err }
 	ref := providerupgrade.BackupRef{
 		Provider: s.Provider, ID: s.Name, Version: version, CreatedAt: time.Now().UTC(), Verified: true,
-		Metadata: map[string]string{"database_verified": "true", "configuration_verified": "true", "format": "pg_dump-custom-v1"},
+		Metadata: map[string]string{"database_verified": "true", "configuration_verified": "true", "format": "pg_dump-custom-v1", "binding": binding},
 	}
 	if err := s.verify(ctx, ref); err != nil {
 		return providerupgrade.BackupRef{}, err
@@ -152,6 +180,9 @@ func (s providerSQLBackupSpec) verify(ctx context.Context, ref providerupgrade.B
 	if err := s.configPoint().Verify(); err != nil {
 		return err
 	}
+	binding, err := s.artifactBinding(ref.Version)
+	if err != nil { return err }
+	if ref.Metadata["binding"] != binding { return errors.New("provider SQL/configuration archive identity binding mismatch") }
 	environment, err := s.environment()
 	if err != nil {
 		return err
@@ -185,7 +216,7 @@ func (s providerSQLBackupSpec) verifyConfigurationArchive() error {
 		if err != nil {
 			return err
 		}
-		if count >= len(s.ConfigPaths) || header.Name != strconv.Itoa(count) || header.Size < 0 || header.Size > 4<<20 {
+		if count >= len(s.ConfigPaths) || header.Name != strconv.Itoa(count) || header.Size < 0 || header.Size > 4<<20 || header.Typeflag != tar.TypeReg || header.Mode & 0022 != 0 {
 			return errors.New("provider configuration archive structure changed")
 		}
 		if _, err := io.Copy(io.Discard, tr); err != nil {
