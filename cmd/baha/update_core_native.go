@@ -60,7 +60,7 @@ func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) err
 	if user == "" || password == "" || database == "" {
 		return errors.New("Keycloak SQL owner credentials are incomplete")
 	}
-	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc 'SELECT 1' -v ON_ERROR_STOP=1"
+	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN 1 ELSE 1/0 END\" -v ON_ERROR_STOP=1"
 	_, err = o.runtime.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, []byte(password+"\n"), "keycloak-db", "sh", "-ec", script, "--", user, database)
 	if err != nil {
 		return fmt.Errorf("Keycloak managed SQL user cannot authenticate over TLS: %w", err)
