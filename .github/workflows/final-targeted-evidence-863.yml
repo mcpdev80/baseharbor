@@ -21,6 +21,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import hashlib,json,pathlib,runpy,sys
+          sys.path.insert(0,str(pathlib.Path("scripts").resolve()))
           from private_consumer_evidence import PrivateGitHub,PrivateEvidenceVerifier,commitment
           from ecosystem_release_pins import resolve_pins,source_file
           core='d5417bde378b130b831d847e7d6ced5322d4997a';node='9dd7b5eff8b0f4b3bf6ec9feddd191e532f23803';demo='2891dfd2c39ae67a5b3a4cbfb635db8c6933c9b1'
