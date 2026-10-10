@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const recoveryHelperImage = "docker.io/library/alpine:3.22"
+const recoveryHelperImage = "docker.io/library/alpine:3.24"
 
 // VerifyOwnedVolumeQuiesced checks actual native mounts across all projects.
 // Unrelated services may share a project label without sharing this datastore;
