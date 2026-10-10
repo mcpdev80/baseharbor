@@ -1,0 +1,56 @@
+name: Final targeted evidence reauthentication
+on:
+  push:
+    branches:
+      - 'qualification/v0.4.24-evidence-863-38015430253'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact already qualified Core
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: 'd5417bde378b130b831d847e7d6ced5322d4997a'
+      - name: Authenticate actual final native receipts with unchanged production verifier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,runpy,sys
+          from private_consumer_evidence import PrivateGitHub,PrivateEvidenceVerifier,commitment
+          from ecosystem_release_pins import resolve_pins,source_file
+          core='d5417bde378b130b831d847e7d6ced5322d4997a';node='9dd7b5eff8b0f4b3bf6ec9feddd191e532f23803';demo='2891dfd2c39ae67a5b3a4cbfb635db8c6933c9b1'
+          pub=json.loads(source_file('mcpdev80/baseharbor-node-connector',node,'integration-candidate.json'))
+          console=json.loads(source_file('mcpdev80/baseharbor-console',pub['console'],'integration-candidate.json'))
+          demo_core=source_file('mcpdev80/baseharbor-demo',demo,'baseharbor-core.ref')
+          pins=resolve_pins(core,node,pub,console,demo_core,demo)
+          read_archive=runpy.run_path('scripts/pre-release-resume.py')['read_archive']
+          api=PrivateGitHub(public=True)
+          verifier=PrivateEvidenceVerifier(pins['gates'],api,read_archive)
+          checked=[]
+          for gate,roles in pins['gates'].items():
+              for role,pin in roles.items():
+                  verifier.verify_role(role,gate,pin,commitment(pin),core,demo)
+                  checked.append({'gate':gate,'role':role,'commit':pin['commit']})
+          artifacts=api.pages('mcpdev80/baseharbor-node-connector','actions/runs/38015430253/artifacts?per_page=100','artifacts')
+          verified_archives=[]
+          for artifact in artifacts:
+              if not artifact['name'].startswith('private-integration-'):continue
+              receipt,_=read_archive(api.archive('mcpdev80/baseharbor-node-connector',artifact),artifact['digest'])
+              assert receipt['core_commit']==core and receipt['consumer_commit']==node
+              verified_archives.append({'id':artifact['id'],'name':artifact['name'],'digest':artifact['digest'],'job_id':receipt['job_id'],'gate':receipt['gate']})
+          assert len(verified_archives)==2
+          report={'schema':'baseharbor.manual-targeted-qualification/v1','candidate':{'core':core,'node':node,'console':pub['console'],'demo':demo},'result':'success','strict_consumer_evidence':checked,'artifact_digests':verified_archives,'unchanged_core_verifier':core,'source_hashes':{name:hashlib.sha256(pathlib.Path('scripts',name).read_bytes()).hexdigest() for name in ['private_consumer_evidence.py','pre-release-resume.py','ecosystem_release_pins.py']},'scope':'unchanged production verifier; actual authenticated GitHub API origins and ZIP archives; no pre-release matrix'}
+          pathlib.Path('final-targeted-evidence.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('FINAL_STRICT_VERIFICATION='+json.dumps(report,sort_keys=True))
+          PY
+      - name: Retain final verification report
+        uses: actions/upload-artifact@v6
+        with:
+          name: final-targeted-evidence-863-${{ github.run_id }}-${{ github.run_attempt }}
+          path: final-targeted-evidence.json
+          if-no-files-found: error
