@@ -134,6 +134,11 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 			t.Fatal("existing owned project refused")
 		}
 	}
+	// Bind the positively identified daemon before the fixture creates Core journal state,
+	// matching production installCore; pre-existing state must never bypass ownership checks.
+	if err := validateTargetDockerBinding(ctx, target, rt, true); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer stop()
