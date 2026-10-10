@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plan and verify exact gate coverage with immutable, input-equivalent origins."""
 import argparse
+import datetime
 import functools
 import hashlib
 import io
@@ -87,7 +88,7 @@ METADATA = {'CHANGELOG.md', 'docs/roadmap.md',
 
 def metadata_path(path):
     return path in METADATA or (path.startswith('docs/releases/') and
-                                path.endswith(('.md', '.evidence-runs')))
+                                path.endswith(('.md', '.evidence-runs', '.selected-gates.json')))
 
 
 
@@ -101,9 +102,47 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+# This single relocation has no runtime effect: the exact helper is a pure
+# attribute comparison in one package. Hash both files in their original
+# layout only when its bytes, unique definition and unconditional compilation
+# are identical. Every other byte, mode, function or directive remains input.
+OWNERSHIP_HELPER = b"""func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
+\tif len(expected) == 0 || len(current.Attributes) == 0 {
+\t\treturn false
+\t}
+\tfor key, value := range expected {
+\t\tif current.Attributes[key] != value {
+\t\t\treturn false
+\t\t}
+\t}
+\treturn true
+}
+"""
+OWNERSHIP_FILES = ('internal/identityprovider/keycloak_admin.go',
+                   'internal/identityprovider/keycloak_realm_convergence.go')
+
+
+def canonical_ownership_files(admin, convergence):
+    if (not all(data.startswith(b'package identityprovider\n') for data in [admin, convergence]) or
+            any(marker in data for data in [admin, convergence]
+                for marker in [b'//go:', b'//line ', b'/*line ']) or
+            sum(data.count(b'func keycloakRealmOwnedBy(') for data in [admin, convergence]) != 1):
+        return None
+    anchor = b'\nfunc (a *keycloakAdmin) do('
+    if admin.count(anchor) != 1:
+        return None
+    if b'\n' + OWNERSHIP_HELPER + anchor in admin:
+        return admin, convergence
+    if convergence.endswith(b'\n' + OWNERSHIP_HELPER):
+        return (admin.replace(anchor, b'\n' + OWNERSHIP_HELPER + anchor),
+                convergence[:-len(b'\n' + OWNERSHIP_HELPER)])
+    return None
+
+
 class GitInputs:
-    def __init__(self, product, demo):
+    def __init__(self, product, demo, demo_ref=None):
         self.product, self.demo = pathlib.Path(product), pathlib.Path(demo)
+        self.demo_ref = demo_ref
 
     @functools.lru_cache(maxsize=None)
     def objects(self, repo, commit):
@@ -130,12 +169,43 @@ class GitInputs:
         raw = command(['git', 'show', candidate + ':' + REQUIREMENTS_PATH], self.product)
         return load_requirements(raw, tag)
 
+    @functools.lru_cache(maxsize=None)
+    def runtime_product_objects(self, candidate):
+        objects = self.objects(self.product, candidate)
+        if not set(OWNERSHIP_FILES) <= {path for path, _ in objects}:
+            return objects
+        sources = [command(['git', 'show', candidate + ':' + path], self.product)
+                   for path in OWNERSHIP_FILES]
+        normalized = canonical_ownership_files(*sources)
+        if normalized is None:
+            return objects
+        canonical = dict(zip(OWNERSHIP_FILES, normalized))
+        return [(path, meta.split()[0] + ' blob ownership-layout-sha256:' +
+                 hashlib.sha256(canonical[path]).hexdigest()) if path in canonical
+                else (path, meta) for path, meta in objects]
+
     def fingerprint(self, candidate, demo, tag, key):
-        product = [(path, obj) for path, obj in self.objects(self.product, candidate)
-                   if not metadata_path(path) and path != '.github/workflows/pre-release.yml']
+        native_runtime = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        # Source-plan tools do not execute inside native runtime jobs. The current
+        # verifier still authenticates every immutable origin and ZIP. Static
+        # evidence keeps these tooling bytes as part of its execution inputs.
+        collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+        objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
+        product = [(path, obj) for path, obj in objects
+                   if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
+                   and not (native_runtime and path in collectors)]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
                         if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
-                                and not key.startswith('journey/'))]
+                                and not key.startswith('journey/'))
+                        # Atomic bootstrap does not source this isolated gate.
+                        and not (tag == 'v0.4.24' and key.startswith('atomic/')
+                                 and path in {'tests/backup-restore/run.sh',
+                                              'tests/native-default-topology.py',
+                                              'tests/native_default_topology_test.py'}
+                                 and not key.endswith('/backup-restore'))
+                        # pin() separately requires this exact Core binding on
+                        # both candidate and original v0.4.24 Demo revisions.
+                        and not (native_runtime and path == 'baseharbor-core.ref')]
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
         if requirement is None:
@@ -149,10 +219,10 @@ class GitInputs:
             execution[name] = {field: value for field, value in job.items()
                                if field not in {'needs', 'if', 'strategy'}}
             strategy = {field: value for field, value in job.get('strategy', {}).items()
-                        if field != 'matrix'}
+                        if field not in {'matrix', 'max-parallel'}}
             if strategy:
                 execution[name]['strategy'] = strategy
-        return digest({'policy': 'baseharbor.gate-inputs/v2', 'tag': tag, 'gate': key,
+        return digest({'policy': 'baseharbor.gate-inputs/v4', 'tag': tag, 'gate': key,
                        'requirement': requirement, 'product': product, 'demo': demo_objects,
                        'execution': execution})
 
@@ -164,7 +234,17 @@ class GitInputs:
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
-    def pin(self, candidate, tag):
+    def pin(self, candidate, tag, demo_ref=None):
+        if tag == 'v0.4.24':
+            # Consumers can pin an existing Core SHA; Core cannot also embed
+            # their future commit without a circular Git object dependency.
+            resolved = self.demo_ref if demo_ref is None else demo_ref
+            if not isinstance(resolved, str) or not re.fullmatch('[0-9a-f]{40}', resolved):
+                raise ValueError('v0.4.24 requires an exact resolved Demo commit')
+            actual = command(['git', 'show', resolved + ':baseharbor-core.ref'], self.demo).decode().strip()
+            if actual != candidate:
+                raise ValueError('Demo immutable Core pin differs from candidate')
+            return resolved
         return command(['git', 'show', candidate + ':docs/releases/' + tag + '.demo-ref'],
                        self.product).decode().strip()
 
@@ -231,6 +311,10 @@ def validate_manifest(manifest, key, run, candidate, demo, attempt):
         raise ValueError('journey runtime or duration differs')
 
 
+class MissingRootManifest(ValueError):
+    """A bounded, digest-authenticated ZIP contains no reusable gate proof."""
+
+
 def read_archive(data, expected_digest):
     if len(data) > 128 * 1024 * 1024 or 'sha256:' + hashlib.sha256(data).hexdigest() != expected_digest:
         raise ValueError('artifact archive digest or size differs')
@@ -246,7 +330,7 @@ def read_archive(data, expected_digest):
             raise ValueError('unsafe artifact archive entry')
         names.add(info.filename)
     if 'manifest.json' not in names:
-        raise ValueError('artifact root manifest is missing')
+        raise MissingRootManifest('artifact root manifest is missing')
     raw = archive.read('manifest.json')
     if len(raw) > 1024 * 1024:
         raise ValueError('manifest exceeds limit')
@@ -271,6 +355,97 @@ class GitHub:
         return command(['gh', 'api', f'repos/{self.repository}/actions/artifacts/{artifact["id"]}/zip'])
 
 
+def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
+    """Recover the immutable origin pin from digest-verified gate archives."""
+    if tag != 'v0.4.24':
+        return inputs.pin(candidate, tag)
+    pins = set()
+    for job in jobs:
+        key = key_from_job(job['name'], expected)
+        attempt = job.get('run_attempt')
+        if key is None or type(attempt) is not int or attempt < 1:
+            continue
+        if job.get('head_sha') != candidate:
+            raise ValueError('origin pin job source differs')
+        for artifact in artifacts:
+            if artifact.get('name') != artifact_name(key, run_id, attempt) or artifact.get('expired'):
+                continue
+            if (artifact.get('workflow_run', {}).get('id') != run_id or
+                    artifact.get('workflow_run', {}).get('head_sha') != candidate):
+                raise ValueError('origin pin artifact source differs')
+            data = api.archive(artifact)
+            try:
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            except MissingRootManifest:
+                # Failed producers may upload diagnostic failure.json before a
+                # proof exists. This is not a source pin or successful evidence;
+                # keep the failed observation pending in collect(). All ZIP
+                # digest, size and path checks have already succeeded.
+                if job.get('status') == 'completed' and job.get('conclusion') != 'success':
+                    continue
+                raise
+            pin = manifest.get('demo_ref')
+            if (manifest.get('schema') != SCHEMAS[key.split('/')[0]] or
+                    manifest.get('candidate_sha') != candidate or
+                    str(manifest.get('workflow_run_id')) != str(run_id) or
+                    type(manifest.get('workflow_run_attempt')) is not int or
+                    manifest.get('workflow_run_attempt') != attempt or
+                    not isinstance(pin, str) or not re.fullmatch('[0-9a-f]{40}', pin)):
+                raise ValueError('origin pin manifest binding differs')
+            archives[artifact['id']] = (data, manifest, manifest_digest)
+            pins.add(pin)
+    if len(pins) > 1:
+        raise ValueError('origin run contains inconsistent Demo pins')
+    if not pins:
+        if any(key_from_job(job['name'], expected) is not None and
+               job.get('conclusion') != 'skipped' for job in jobs):
+            raise ValueError('origin Demo pin is unavailable; cannot reuse older proof')
+        return None
+    pin = pins.pop()
+    inputs.ensure(candidate, pin)
+    if inputs.pin(candidate, tag, demo_ref=pin) != pin:
+        raise ValueError('origin Demo immutable Core pin differs')
+    return pin
+
+
+def executed_jobs(jobs, expected):
+    """Ignore only exact successful execution copies created by partial reruns."""
+    def times(job):
+        try:
+            return tuple(datetime.datetime.fromisoformat(job[field].replace('Z', '+00:00'))
+                         for field in ['created_at', 'started_at', 'completed_at'])
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+
+    def execution(job):
+        return digest({field: job.get(field) for field in [
+            'run_id', 'name', 'head_sha', 'status', 'conclusion', 'started_at',
+            'completed_at', 'steps', 'runner_id', 'runner_name', 'labels']})
+
+    originals = []
+    for job in jobs:
+        stamp = times(job)
+        if (stamp and stamp[0] <= stamp[1] <= stamp[2] and job.get('steps') and
+                job.get('status') == 'completed' and job.get('conclusion') == 'success' and
+                type(job.get('run_attempt')) is int and type(job.get('id')) is int):
+            originals.append((job, execution(job)))
+    result = []
+    for job in jobs:
+        stamp = times(job)
+        copied = (key_from_job(job.get('name', ''), expected) is not None and
+                  stamp and stamp[1] <= stamp[2] < stamp[0] and
+                  job.get('status') == 'completed' and job.get('conclusion') == 'success')
+        if copied:
+            if (type(job.get('run_attempt')) is not int or type(job.get('id')) is not int or
+                    not any(original['run_attempt'] < job['run_attempt'] and
+                            original['id'] < job['id'] and signature == execution(job)
+                            for original, signature in originals)):
+                raise ValueError('copied successful job has no matching original execution')
+            continue
+        result.append(job)
+    return result
+
+
 def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
             private_verifier=None):
     inputs.ensure(candidate, demo)
@@ -290,10 +465,14 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
             raise ValueError(f'run {run_id} is not an immutable trusted push origin')
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
-        origin_demo = inputs.pin(origin_candidate, tag)
-        inputs.ensure(origin_candidate, origin_demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
-        jobs = api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs')
+        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs'), expected)
+        archives = {}
+        origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
+                                     artifacts, jobs, expected, archives)
+        if origin_demo is None:
+            continue
+        inputs.ensure(origin_candidate, origin_demo)
         for job in jobs:
             key = key_from_job(job['name'], expected)
             if key is None or inputs.fingerprint(origin_candidate, origin_demo, tag, key) != target[key]:
@@ -317,8 +496,11 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
             if (artifact.get('workflow_run', {}).get('id') != run_id or
                     artifact.get('workflow_run', {}).get('head_sha') != origin_candidate):
                 raise ValueError('artifact source run or commit differs')
-            data = api.archive(artifact)
-            manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            if artifact['id'] in archives:
+                data, manifest, manifest_digest = archives[artifact['id']]
+            else:
+                data = api.archive(artifact)
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
             validate_manifest(manifest, key, run_id, origin_candidate, origin_demo, attempt)
             requirement = next(gate for gate in requirements if gate['id'] == key)
             if key.startswith('integration/'):
@@ -403,7 +585,7 @@ def main():
     if args.only_gates and args.mode != 'plan':
         raise ValueError('gate selection is permitted only when planning execution')
     api = GitHub(args.repository)
-    inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo)
+    inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo, args.demo)
     requirements = inputs.requirements(args.candidate, args.tag)
     private_verifier = private_verifier_from_environment(read_archive)
     current = int(os.environ['GITHUB_RUN_ID'])
@@ -437,6 +619,11 @@ def main():
                     'gate_count': len(requirements), 'requirements_digest': digest(requirements),
                     'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
                     'coverage_digest': digest(coverage)}
+        if args.tag == 'v0.4.24':
+            consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
+            if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
+                raise ValueError('v0.4.24 requires an immutable complete consumer origin')
+            approval['consumer_ref'] = consumer_ref
         (args.output / 'release-approved.json').write_text(json.dumps(approval, indent=2) + '\n')
     else:
         jobs = inputs.workflow(args.candidate)

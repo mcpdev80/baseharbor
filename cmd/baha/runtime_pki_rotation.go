@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -54,6 +56,9 @@ func rotateControlPlaneServiceCA(ctx context.Context, runtime bhruntime.RuntimeP
 		return fmt.Errorf("read previous PostgreSQL service CA: %w", err)
 	}
 
+	if err := refreshInstalledCoreIdentitySQLTrust(ctx, files); err != nil {
+		return fmt.Errorf("verify existing Core Identity SQL trust before rotation: %w", err)
+	}
 	if err := platformopenbao.RotateServiceCA(ctx, runtime, files); err != nil {
 		return err
 	}
@@ -73,6 +78,9 @@ func rotateControlPlaneServiceCA(ctx context.Context, runtime bhruntime.RuntimeP
 		return fmt.Errorf("verify OpenBao management UI with replacement service CA before retirement: %w", err)
 	}
 
+	if err := refreshInstalledCoreIdentitySQLTrust(ctx, files); err != nil {
+		return fmt.Errorf("verify Core Identity with replacement SQL trust before retirement: %w", err)
+	}
 	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
 		return err
 	}
@@ -82,6 +90,10 @@ func rotateControlPlaneServiceCA(ctx context.Context, runtime bhruntime.RuntimeP
 	}
 	if err := verifyOpenBaoManagementUI(ctx, files); err != nil {
 		return fmt.Errorf("verify OpenBao management UI after old CA retirement: %w", err)
+	}
+
+	if err := refreshInstalledCoreIdentitySQLTrust(ctx, files); err != nil {
+		return fmt.Errorf("verify Core Identity after old SQL CA retirement: %w", err)
 	}
 
 	if err := verifyOldOpenBaoCARejected(ctx, files, oldOpenBaoCA); err != nil {
@@ -149,4 +161,32 @@ func verifyOldPostgresCARejected(ctx context.Context, runtime bhruntime.RuntimeP
 		return fmt.Errorf("cannot verify previous PostgreSQL CA rejection: %w", err)
 	}
 	return nil
+}
+
+func refreshInstalledCoreIdentitySQLTrust(ctx context.Context, files bhruntime.Files) error {
+	state, err := coreinstallation.Load(filepath.Dir(files.Compose))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !state.Capabilities["identity"] {
+		return nil
+	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	if target.Name != state.Spec.Target || target.RuntimeProvider != state.Spec.Runtime {
+		return errors.New("Core Identity rotation target differs from owned installation")
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	if err := identityprovider.RefreshCoreIdentitySQLTrust(dataDir, target.Name, files); err != nil {
+		return err
+	}
+	return identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
 }

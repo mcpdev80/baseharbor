@@ -26,7 +26,10 @@ type AccessDefinition struct {
 }
 
 type RuntimeDefinition struct {
-	Provider string `yaml:"provider" json:"provider"`
+	Provider       string `yaml:"provider" json:"provider"`
+	DockerEndpoint string `yaml:"docker-endpoint,omitempty" json:"docker_endpoint,omitempty"`
+	DockerContext  string `yaml:"docker-context,omitempty" json:"docker_context,omitempty"`
+	DockerMode     string `yaml:"docker-mode,omitempty" json:"docker_mode,omitempty"`
 }
 
 type TargetAccess struct {
@@ -75,6 +78,9 @@ type Config struct {
 }
 
 type ResolvedTarget struct {
+	DockerEndpoint  string `json:"docker_endpoint,omitempty"`
+	DockerContext   string `json:"docker_context,omitempty"`
+	DockerMode      string `json:"docker_mode,omitempty"`
 	TenantID        string `json:"tenant_id,omitempty"`
 	Name            string `json:"name"`
 	RuntimeProvider string `json:"runtime_provider"`
@@ -84,6 +90,9 @@ type ResolvedTarget struct {
 }
 
 func ConfigPath() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "config", "config.yaml"), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor", "config.yaml"), nil
 	}
@@ -95,6 +104,9 @@ func ConfigPath() (string, error) {
 }
 
 func DataRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Clean(root), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor"), nil
 	}
@@ -199,6 +211,15 @@ func (c Config) Validate() error {
 		}
 	}
 	for name, target := range c.Targets {
+		if target.Runtime.DockerEndpoint != "" && target.Runtime.DockerContext != "" {
+			return fmt.Errorf("target %q selects both Docker endpoint and context", name)
+		}
+		if target.Runtime.DockerMode != "" && target.Runtime.DockerMode != "rootless" && target.Runtime.DockerMode != "rootful" {
+			return fmt.Errorf("target %q Docker mode must be rootless or rootful", name)
+		}
+		if target.Runtime.Provider != "docker" && (target.Runtime.DockerEndpoint != "" || target.Runtime.DockerContext != "" || target.Runtime.DockerMode != "") {
+			return fmt.Errorf("target %q Docker engine configuration requires Docker runtime", name)
+		}
 		if target.TenantID != "" && !targetTenantID.MatchString(target.TenantID) {
 			return fmt.Errorf("target %q tenant-id must be a canonical UUID", name)
 		}
@@ -296,6 +317,9 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 	}
 	access := c.Access[target.Access.Reference]
 	return ResolvedTarget{
+		DockerEndpoint:  target.Runtime.DockerEndpoint,
+		DockerContext:   target.Runtime.DockerContext,
+		DockerMode:      target.Runtime.DockerMode,
 		Name:            name,
 		TenantID:        target.TenantID,
 		RuntimeProvider: target.Runtime.Provider,

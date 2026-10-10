@@ -6,16 +6,62 @@
  * left sidebar; horizontal navigation tabs are intentionally disabled.
  */
 
-:root {
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../brand/fonts/inter-latin-wght-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("../brand/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+}
+
+:root,
+[data-md-color-primary] {
   --md-primary-fg-color: var(--bh-harbor-navy);
   --md-primary-fg-color--light: var(--bh-steel);
   --md-primary-fg-color--dark: var(--bh-deep-navy);
   --md-accent-fg-color: var(--bh-signal-blue);
 }
 
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--bh-ocean-blue);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: var(--bh-signal-blue);
+}
+
 body,
 input {
   font-family: var(--bh-font-ui);
+}
+
+/* Use the supplied artwork unchanged; typography/colors come from brand tokens. */
+.bh-home-mark {
+  float: right;
+  width: min(45%, 22rem);
+  height: auto;
+  margin: 0 0 1.5rem 1.5rem;
+}
+
+.md-typeset:has(.bh-home-mark) h2 {
+  clear: both;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .bh-home-mark {
+    float: none;
+    display: block;
+    width: min(100%, 22rem);
+    margin: 0 auto 1.5rem;
+  }
 }
 
 code,

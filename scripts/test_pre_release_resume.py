@@ -48,8 +48,8 @@ class FakeInputs:
     def ensure(self, *args):
         pass
 
-    def pin(self, *args):
-        return 'b' * 40
+    def pin(self, *args, **kwargs):
+        return kwargs.get('demo_ref', 'b' * 40)
 
     def fingerprint(self, candidate, demo, tag, key):
         return resume.digest([key, tag, demo])
@@ -88,6 +88,141 @@ class FakeAPI:
 
 
 class EvidenceTests(unittest.TestCase):
+    def copied_success(self):
+        original = self.api.jobs[1][0]
+        original.update(created_at='2026-10-10T20:00:00Z',
+                        started_at='2026-10-10T20:00:01Z',
+                        completed_at='2026-10-10T20:00:02Z',
+                        steps=[{'name': 'Run gate', 'number': 1, 'status': 'completed',
+                                'conclusion': 'success', 'started_at': '2026-10-10T20:00:01Z',
+                                'completed_at': '2026-10-10T20:00:02Z'}])
+        copied = dict(original, id=201, run_attempt=2, created_at='2026-10-10T20:10:00Z')
+        self.api.jobs[1].append(copied)
+        return original, copied
+
+    def test_github_copied_success_preserves_original_execution_and_archive(self):
+        original, _ = self.copied_success()
+        proof = self.collect([1])['proofs'][0]
+        self.assertEqual(proof['origin']['job_id'], original['id'])
+        self.assertEqual(proof['origin']['attempt'], 1)
+        self.assertEqual(proof['manifest']['workflow_run_attempt'], 1)
+
+    def test_copied_success_without_matching_original_execution_is_rejected(self):
+        _, copied = self.copied_success()
+        copied['steps'] = [dict(copied['steps'][0], conclusion='failure')]
+        with self.assertRaisesRegex(ValueError, 'original execution'):
+            self.collect([1])
+
+    def test_copied_success_without_original_job_is_rejected(self):
+        _, copied = self.copied_success()
+        self.api.jobs[1] = [copied]
+        with self.assertRaisesRegex(ValueError, 'original execution'):
+            self.collect([1])
+
+    def test_actual_new_execution_cannot_borrow_an_older_archive(self):
+        _, newer = self.copied_success()
+        newer.update(started_at='2026-10-10T20:10:01Z', completed_at='2026-10-10T20:10:02Z')
+        result = self.collect([1])
+        self.assertFalse(result['proofs'])
+        self.assertIn('missing', result['pending']['atomic/static/mcp'])
+
+    def test_actual_new_failure_still_supersedes_original_success(self):
+        _, newer = self.copied_success()
+        newer.update(started_at='2026-10-10T20:10:01Z', completed_at='2026-10-10T20:10:02Z',
+                     conclusion='failure')
+        result = self.collect([1])
+        self.assertFalse(result['proofs'])
+        self.assertIn('failure', result['pending']['atomic/static/mcp'])
+
+    def test_evidence_only_origin_with_skipped_gates_cannot_create_proof(self):
+        self.api.jobs[2][0]['conclusion'] = 'skipped'
+        self.api.artifacts[2] = []
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                'v0.4.24', [2], self.root)
+        self.assertFalse(result['proofs'])
+        self.assertEqual(len(result['pending']), 63)
+
+    def test_v024_reuse_keeps_the_origin_demo_pin_after_candidate_changes(self):
+        class BoundInputs(FakeInputs):
+            def pin(self, candidate, tag, demo_ref=None):
+                resolved = 'd' * 40 if demo_ref is None else demo_ref
+                required = {'a' * 40: 'b' * 40, 'c' * 40: 'd' * 40}[candidate]
+                if resolved != required:
+                    raise ValueError('Demo immutable Core pin differs')
+                return resolved
+
+            def fingerprint(self, candidate, demo, tag, key):
+                # Fixture changes only metadata: execution inputs are identical.
+                return resume.digest([key, tag])
+
+        result = resume.collect(self.api, BoundInputs(), 'c' * 40, 'd' * 40,
+                                'v0.4.24', [1], self.root)
+        self.assertEqual(result['candidate_sha'], 'c' * 40)
+        proof = result['proofs'][0]
+        self.assertEqual(proof['origin']['candidate_sha'], 'a' * 40)
+        self.assertEqual(proof['origin']['demo_ref'], 'b' * 40)
+        self.assertEqual(proof['manifest'], manifest())
+
+    def test_failed_consumer_failure_report_does_not_block_valid_origin_proof(self):
+        # The original pre-release uploaded failure.json, not a proof manifest,
+        # when consumer qualification failed before evidence generation.
+        key = 'integration/docker/remote-target'
+        self.api.jobs[1].append(dict(self.api.job(1, conclusion='failure'),
+                                    id=201, name='Integration · ' + key))
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as output:
+            output.writestr('failure.json', '{"result":"failure"}')
+        data = stream.getvalue()
+        self.api.data[10] = data
+        bad = {'id': 10, 'name': resume.artifact_name(key, 1, 1),
+               'expired': False, 'digest': 'sha256:' + hashlib.sha256(data).hexdigest(),
+               'workflow_run': {'id': 1, 'head_sha': 'a' * 40}}
+        self.api.artifacts[1].append(bad)
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+        self.assertEqual([p['gate'] for p in result['proofs']], ['atomic/static/mcp'])
+        self.assertIn(key, result['pending'])
+        self.assertIn('failure', result['pending'][key])
+        self.assertFalse((self.root / '10.zip').exists())
+        # Even a failed job's diagnostic archive must retain authentic ZIP bytes.
+        bad['digest'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(ValueError, 'digest'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+
+    def test_successful_job_without_root_manifest_is_never_accepted(self):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as output:
+            output.writestr('failure.json', '{}')
+        data = stream.getvalue()
+        self.api.data[1] = data
+        self.api.artifacts[1][0]['digest'] = 'sha256:' + hashlib.sha256(data).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'root manifest is missing'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+
+    def test_v024_missing_origin_pin_fails_closed_instead_of_falling_back(self):
+        self.api.artifacts[2] = []
+        with self.assertRaisesRegex(ValueError, 'origin Demo pin is unavailable'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [2], self.root)
+
+    def test_origin_pin_requires_archive_digest_and_exact_source_binding(self):
+        expected = [gate['id'] for gate in resume.local_requirements('v0.4.24')]
+        artifact = self.api.artifacts[1][0]
+        for field, value in [('digest', 'sha256:' + '0' * 64),
+                             ('workflow_run', {'id': 2, 'head_sha': 'a' * 40})]:
+            bad = dict(artifact, **{field: value})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                resume.origin_demo_pin(self.api, FakeInputs(), 'a' * 40, 'v0.4.24',
+                                       1, [bad], self.api.jobs[1], expected, {})
+
+    def test_v024_keeps_the_complete_v023_required_gate_surface(self):
+        previous = resume.local_requirements('v0.4.23')
+        current = resume.local_requirements('v0.4.24')
+        self.assertEqual(len(current), 63)
+        self.assertEqual(previous, current)
+
     def test_selection_limits_execution_without_approving_deferred_requirements(self):
         original = {'required': ['atomic/static/mcp', 'integration/docker/remote-target'],
                     'pending': {'atomic/static/mcp': 'missing', 'integration/docker/remote-target': 'failed'},
@@ -314,6 +449,22 @@ class GitFingerprintTests(unittest.TestCase):
         runner = self.commit(self.product)
         self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(runner, self.d, key))
 
+    def test_execution_selection_and_matrix_capacity_do_not_rewrite_proofs(self):
+        key = 'atomic/docker/lifecycle'
+        path = self.product / '.github/workflows/pre-release.yml'
+        original = path.read_text()
+        path.write_text(original.replace('    runs-on:',
+                        '    strategy: {max-parallel: 1, matrix: {gate: [lifecycle]}}\n    runs-on:'))
+        selection = self.product / 'docs/releases/v0.4.22.selected-gates.json'
+        selection.parent.mkdir(parents=True, exist_ok=True)
+        selection.write_text('["journey/docker"]\n')
+        scheduled = self.commit(self.product)
+        self.assertEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(scheduled, self.d, key))
+        path.write_text(original.replace('    runs-on:',
+                        '    strategy: {fail-fast: true}\n    runs-on:'))
+        changed = self.commit(self.product)
+        self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(changed, self.d, key))
+
     def test_verifier_auth_schema_and_build_changes_invalidate_static_proof(self):
         key = 'atomic/static/mcp'
         original = self.fingerprint(self.p, self.d, key)
@@ -339,9 +490,119 @@ class GitFingerprintTests(unittest.TestCase):
             changed = self.commit(self.product)
             self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(changed, self.d, key))
 
+    def v024_inventory(self):
+        path = self.product / resume.REQUIREMENTS_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
+        return self.commit(self.product)
+
+    def test_v024_backup_fixture_change_preserves_only_unaffected_atomic_proofs(self):
+        product = self.v024_inventory()
+        for name in ['tests/backup-restore/run.sh', 'tests/native-default-topology.py',
+                     'tests/native_default_topology_test.py']:
+            path = self.demo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('old recovery contract\n')
+            original = self.commit(self.demo)
+            path.write_text('corrected recovery contract\n')
+            changed = self.commit(self.demo)
+            for key, same in [('atomic/docker/identity', True), ('atomic/podman/security', True),
+                              ('atomic/podman/backup-restore', False), ('journey/docker', False)]:
+                with self.subTest(path=name, key=key):
+                    self.assertEqual(self.inputs.fingerprint(product, original, 'v0.4.24', key) ==
+                                     self.inputs.fingerprint(product, changed, 'v0.4.24', key), same)
+
+    def test_v024_collector_metadata_and_rebound_demo_pin_preserve_native_execution(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        original_demo = self.commit(self.demo)
+        for name in ['pre-release-resume.py', 'test_pre_release_resume.py']:
+            path = self.product / 'scripts' / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('updated source-plan tooling\n')
+        changed = self.commit(self.product)
+        (self.demo / 'baseharbor-core.ref').write_text(changed + '\n')
+        changed_demo = self.commit(self.demo)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, original_demo).pin(product, 'v0.4.24'), original_demo)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, changed_demo).pin(changed, 'v0.4.24'), changed_demo)
+        with self.assertRaises(ValueError):
+            resume.GitInputs(self.product, self.demo, original_demo).pin(changed, 'v0.4.24')
+        for key, same in [('atomic/docker/identity', True), ('atomic/static/mcp', False), ('journey/podman', True), ('ha/podman/data', True)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.24', key) ==
+                                 self.inputs.fingerprint(changed, changed_demo, 'v0.4.24', key), same)
+
+    def test_unchanged_pure_ownership_helper_relocation_preserves_native_proofs(self):
+        product = self.v024_inventory()
+        source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()
+        helper = source[source.index('func keycloakRealmOwnedBy('):]
+        admin = self.product / 'internal/identityprovider/keycloak_admin.go'
+        convergence = self.product / 'internal/identityprovider/keycloak_realm_convergence.go'
+        admin.parent.mkdir(parents=True)
+        admin.write_text('package identityprovider\n\n' + helper + '\nfunc (a *keycloakAdmin) do() {}\n')
+        convergence.write_text('package identityprovider\n\nfunc converge() {}\n')
+        before = self.commit(self.product)
+        admin.write_text('package identityprovider\n\nfunc (a *keycloakAdmin) do() {}\n')
+        convergence.write_text('package identityprovider\n\nfunc converge() {}\n\n' + helper)
+        after = self.commit(self.product)
+        for key in ['atomic/docker/identity', 'atomic/podman/security', 'journey/docker', 'ha/podman/data']:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', key),
+                                 self.inputs.fingerprint(after, self.d, 'v0.4.24', key))
+        # A genuine ownership condition change cannot receive the equivalence.
+        convergence.write_text(convergence.read_text().replace('!= value', '== value'))
+        changed = self.commit(self.product)
+        self.assertNotEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', 'atomic/docker/identity'),
+                            self.inputs.fingerprint(changed, self.d, 'v0.4.24', 'atomic/docker/identity'))
+
+    def test_ownership_relocation_never_ignores_build_constraints_or_line_directives(self):
+        self.v024_inventory()
+        source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()
+        helper = source[source.index('func keycloakRealmOwnedBy('):]
+        admin = self.product / 'internal/identityprovider/keycloak_admin.go'
+        convergence = self.product / 'internal/identityprovider/keycloak_realm_convergence.go'
+        admin.parent.mkdir(parents=True)
+        for prefix in ['//go:build linux\n\n', '//line different.go:42\n', '/*line different.go:42*/\n']:
+            with self.subTest(prefix=prefix):
+                admin.write_text(prefix + 'package identityprovider\n\n' + helper + '\nfunc (a *keycloakAdmin) do() {}\n')
+                convergence.write_text('package identityprovider\n\nfunc converge() {}\n')
+                before = self.commit(self.product)
+                admin.write_text(prefix + 'package identityprovider\n\nfunc (a *keycloakAdmin) do() {}\n')
+                convergence.write_text('package identityprovider\n\nfunc converge() {}\n\n' + helper)
+                after = self.commit(self.product)
+                self.assertNotEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', 'atomic/docker/identity'),
+                                    self.inputs.fingerprint(after, self.d, 'v0.4.24', 'atomic/docker/identity'))
+
+    def test_v024_native_reuse_still_rejects_auth_schema_bootstrap_and_producer_changes(self):
+        product = self.v024_inventory()
+        key = 'atomic/podman/identity'
+        original = self.inputs.fingerprint(product, self.d, 'v0.4.24', key)
+        for name in ['internal/auth/auth.go', 'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('changed runtime execution input\n')
+            changed = self.commit(self.product)
+            with self.subTest(path=name):
+                self.assertNotEqual(original, self.inputs.fingerprint(changed, self.d, 'v0.4.24', key))
+        path = self.demo / 'tests/atomic-bootstrap.sh'
+        path.write_text('changed shared bootstrap\n')
+        changed_demo = self.commit(self.demo)
+        self.assertNotEqual(original, self.inputs.fingerprint(product, changed_demo, 'v0.4.24', key))
+
     def test_missing_new_candidate_inventory_is_rejected(self):
         with self.assertRaises(ValueError):
             self.inputs.requirements(self.p, 'v0.4.23')
+
+    def test_v024_demo_owns_exact_core_pin_without_circular_core_demo_ref(self):
+        (self.demo / 'baseharbor-core.ref').write_text(self.p + '\n')
+        demo = self.commit(self.demo)
+        inputs = resume.GitInputs(self.product, self.demo, demo)
+        self.assertEqual(inputs.pin(self.p, 'v0.4.24'), demo)
+        with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+            inputs.pin('f' * 40, 'v0.4.24')
+        with self.assertRaises(ValueError):
+            resume.GitInputs(self.product, self.demo, 'work/mutable').pin(self.p, 'v0.4.24')
 
     def test_publication_handoff_allows_prose_and_rejects_workflow_auth_and_inventory(self):
         spec = importlib.util.spec_from_file_location('handoff', pathlib.Path(resume.__file__).with_name('release-handoff.py'))
@@ -361,6 +622,31 @@ class GitFingerprintTests(unittest.TestCase):
 
 
 class WorkflowIntegrationTests(unittest.TestCase):
+    def test_targeted_journey_retains_valid_evidence_for_both_runtimes(self):
+        import os
+        import re
+        import yaml
+        jobs = yaml.safe_load(pathlib.Path('.github/workflows/targeted-demo-acceptance.yml').read_text())['jobs']
+        job = jobs['reference_journey']
+        self.assertEqual(job['if'], "needs.resolve.outputs.gate == 'reference-journey'")
+        step = next(s for s in job['steps'] if s['name'] == 'Generate reference journey evidence')
+        upload = next(s for s in job['steps'] if s['name'] == 'Upload reference journey evidence')
+        for runtime in ['docker', 'podman']:
+            values = {'steps.candidate.outputs.sha': 'a' * 40,
+                      'needs.resolve.outputs.demo_ref': 'b' * 40,
+                      'steps.journey.outcome': 'success', 'steps.cleanup.outcome': 'success',
+                      'needs.resolve.outputs.runtime': runtime,
+                      'steps.journey.outputs.duration_seconds': '42'}
+            script = re.sub(r'\$\{\{\s*(.*?)\s*\}\}', lambda m: values[m[1]], step['run'])
+            with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as root:
+                env = dict(os.environ, RUNNER_TEMP=root, GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='1')
+                subprocess.run(['bash', '-euo', 'pipefail', '-c', script], env=env, check=True)
+                data = json.loads((pathlib.Path(root) / 'reference-journey-evidence/manifest.json').read_text())
+                resume.validate_manifest(data, 'journey/' + runtime, 1, 'a' * 40, 'b' * 40, 1)
+                self.assertEqual(data['duration_seconds'], 42)
+            self.assertIn('needs.resolve.outputs.runtime', upload['with']['name'])
+            self.assertEqual(upload['with']['retention-days'], 30)
+
     def test_core_integration_jobs_use_exact_requirements_names_and_retained_origins(self):
         import yaml
         jobs = yaml.safe_load(pathlib.Path('.github/workflows/pre-release.yml').read_text())['jobs']

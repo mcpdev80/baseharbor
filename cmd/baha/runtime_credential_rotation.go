@@ -198,6 +198,12 @@ func prepareControlPlaneDatabaseCredentialOverlap(ctx context.Context, runtime b
 		fmt.Fprintf(&preparation, "SELECT format('CREATE ROLE %%I', %s) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) \\gexec\n", quoteControlPlaneLiteral(identity.user), quoteControlPlaneLiteral(identity.user))
 		fmt.Fprintf(&preparation, "ALTER ROLE %s WITH LOGIN %s PASSWORD %s;\n", quoteControlPlaneIdent(identity.user), identity.privilege, quoteControlPlaneLiteral(identity.password))
 	}
+	if files.HA {
+		// Shared consumer isolation revokes PUBLIC access to system databases.
+		// The replacement native replication identity needs its own bounded
+		// CONNECT grant for authenticated verification; do not restore PUBLIC.
+		fmt.Fprintf(&preparation, "GRANT CONNECT ON DATABASE %s TO %s;\n", quoteControlPlaneIdent("postgres"), quoteControlPlaneIdent(next.PostgresReplicationUser))
+	}
 	fmt.Fprintf(&preparation, "GRANT %s TO %s;\n", quoteControlPlaneIdent(current.OpenBaoDBUser), quoteControlPlaneIdent(next.OpenBaoDBUser))
 	prepareSQL := preparation.String()
 

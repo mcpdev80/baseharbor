@@ -68,7 +68,7 @@ func (r *runtimeSeaweedFSRealization) Apply(ctx context.Context) (SeaweedFSInsta
 			return SeaweedFSInstance{}, err
 		}
 	}
-	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, dataDir, r.namespace)
+	files, _, _, err := EnsureSharedProviderAt(ctx, r.runtime, r.issuer, dataDir, r.namespace, application.AvailabilityIntent(r.app).Resolve("object_storage"))
 	if err != nil {
 		return SeaweedFSInstance{}, err
 	}

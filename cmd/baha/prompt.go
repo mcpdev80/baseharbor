@@ -60,7 +60,7 @@ func runConfigPrompt(ctx context.Context, args []string, out, errOut io.Writer) 
 	}
 
 	if len(args) == 0 {
-		if noInput(ctx) {
+		if noInput(ctx) || !readerIsTerminal(os.Stdin) {
 			return usageError("config prompt requires explicit options in non-interactive mode", "Use 'baha config prompt --enable --preset compact' or run interactively.")
 		}
 		return runPromptWizard(cfg, prompt, out)
@@ -134,32 +134,63 @@ func runConfigPrompt(ctx context.Context, args []string, out, errOut io.Writer) 
 }
 
 func runPromptWizard(cfg deployment.Config, prompt deployment.PromptConfig, out io.Writer) error {
-	reader := bufio.NewReader(os.Stdin)
+	return runPromptWizardInput(cfg, prompt, os.Stdin, out)
+}
+
+func runPromptWizardInput(cfg deployment.Config, prompt deployment.PromptConfig, in io.Reader, out io.Writer) error {
+	reader := bufio.NewReader(in)
+	// Clone mutable preferences so cancellation does not mutate the caller.
+	labels := map[string]string{}
+	for key, value := range prompt.Labels {
+		labels[key] = value
+	}
+	prompt.Labels = labels
 	fmt.Fprintln(out, "BaseHarbor prompt setup")
 	fmt.Fprintln(out, promptPreview(cfg, prompt))
-
-	prompt.Enabled = askPromptBool(reader, out, "Enable prompt integration", prompt.Enabled)
-	prompt.Preset = askPromptChoice(reader, out, "Preset", prompt.Preset, "minimal", "compact", "accessible", "detailed", "none")
-	prompt.Position = askPromptChoice(reader, out, "Position", prompt.Position, "before-path", "after-path", "right")
-	prompt.Environment = askPromptChoice(reader, out, "Environment display", prompt.Environment, "never", "critical-only", "always")
-	prompt.ShowApplication = askPromptBool(reader, out, "Show application when inside a repository", prompt.ShowApplication)
-	prompt.TextOnly = askPromptBool(reader, out, "Use text-only prompt output", prompt.TextOnly)
+	var err error
+	if prompt.Enabled, err = askPromptBool(reader, out, "Enable prompt integration", prompt.Enabled); err != nil {
+		return err
+	}
+	if prompt.Preset, err = askPromptChoice(reader, out, "Preset", prompt.Preset, "minimal", "compact", "accessible", "detailed", "none"); err != nil {
+		return err
+	}
+	if prompt.Position, err = askPromptChoice(reader, out, "Position", prompt.Position, "before-path", "after-path", "right"); err != nil {
+		return err
+	}
+	if prompt.Environment, err = askPromptChoice(reader, out, "Environment display", prompt.Environment, "never", "critical-only", "always"); err != nil {
+		return err
+	}
+	if prompt.ShowApplication, err = askPromptBool(reader, out, "Show application when inside a repository", prompt.ShowApplication); err != nil {
+		return err
+	}
+	if prompt.TextOnly, err = askPromptBool(reader, out, "Use text-only prompt output", prompt.TextOnly); err != nil {
+		return err
+	}
 	if target := promptPreviewTarget(cfg); target != "" {
-		currentLabel := prompt.Labels[target]
-		fmt.Fprintf(out, "Prompt label for %s [%s]: ", target, currentLabel)
-		if value, _ := reader.ReadString('\n'); strings.TrimSpace(value) != "" {
-			prompt.Labels[target] = strings.TrimSpace(value)
+		fmt.Fprintf(out, "Prompt label for %s [%s]: ", target, prompt.Labels[target])
+		value, err := readPromptAnswer(reader)
+		if err != nil {
+			return err
+		}
+		if value != "" {
+			prompt.Labels[target] = value
 		}
 	}
 	fmt.Fprintf(out, "Production indicator [%s]: ", prompt.ProdIndicator)
-	if value, _ := reader.ReadString('\n'); strings.TrimSpace(value) != "" {
-		prompt.ProdIndicator = strings.TrimSpace(value)
+	value, err := readPromptAnswer(reader)
+	if err != nil {
+		return err
 	}
-
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Preview:")
+	if value != "" {
+		prompt.ProdIndicator = value
+	}
+	fmt.Fprintln(out, "\nPreview:")
 	fmt.Fprintln(out, promptPreview(cfg, prompt))
-	if !askPromptBool(reader, out, "Save this configuration", true) {
+	save, err := askPromptBool(reader, out, "Save this configuration", false)
+	if err != nil {
+		return err
+	}
+	if !save {
 		fmt.Fprintln(out, "Prompt configuration unchanged.")
 		return nil
 	}
@@ -171,31 +202,53 @@ func runPromptWizard(cfg deployment.Config, prompt deployment.PromptConfig, out 
 	return nil
 }
 
-func askPromptBool(reader *bufio.Reader, out io.Writer, label string, current bool) bool {
+func readPromptAnswer(reader *bufio.Reader) (string, error) {
+	value, err := reader.ReadString('\n')
+	if err != nil {
+		return "", usageError("prompt input ended before confirmation; configuration unchanged", "Run 'baha config prompt' in a terminal or supply explicit configuration flags.")
+	}
+	return strings.TrimSpace(value), nil
+}
+
+func askPromptBool(reader *bufio.Reader, out io.Writer, label string, current bool) (bool, error) {
 	def := "y/N"
 	if current {
 		def = "Y/n"
 	}
-	fmt.Fprintf(out, "%s [%s]: ", label, def)
-	value, _ := reader.ReadString('\n')
-	value = strings.TrimSpace(strings.ToLower(value))
-	if value == "" {
-		return current
+	for {
+		fmt.Fprintf(out, "%s [%s]: ", label, def)
+		value, err := readPromptAnswer(reader)
+		if err != nil {
+			return false, err
+		}
+		switch strings.ToLower(value) {
+		case "":
+			return current, nil
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Fprintln(out, "Choose yes or no.")
+		}
 	}
-	return value == "y" || value == "yes"
 }
 
-func askPromptChoice(reader *bufio.Reader, out io.Writer, label, current string, allowed ...string) string {
-	fmt.Fprintf(out, "%s [%s] (%s): ", label, current, strings.Join(allowed, "/"))
-	value, _ := reader.ReadString('\n')
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return current
+func askPromptChoice(reader *bufio.Reader, out io.Writer, label, current string, allowed ...string) (string, error) {
+	for {
+		fmt.Fprintf(out, "%s [%s] (%s): ", label, current, strings.Join(allowed, "/"))
+		value, err := readPromptAnswer(reader)
+		if err != nil {
+			return "", err
+		}
+		if value == "" {
+			return current, nil
+		}
+		if oneOf(value, allowed...) {
+			return value, nil
+		}
+		fmt.Fprintln(out, "Choose one of the listed values.")
 	}
-	if oneOf(value, allowed...) {
-		return value
-	}
-	return current
 }
 
 func oneOf(value string, allowed ...string) bool {

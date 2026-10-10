@@ -20,6 +20,7 @@ Nach Telemetrie-Initialisierung im eigenen HTTP-Handler:
 tracer := otel.Tracer("orders")
 ctx, span := tracer.Start(request.Context(), "calculate-order-total")
 defer span.End()
+// Pass ctx to database and outbound HTTP operations.
 ```
 
 `ctx` an Datenbank-/HTTP-Aufrufe weitergeben. Ein Exporter instrumentiert nicht automatisch jede Operation; ergänze Spans oder Instrumentierungsbibliotheken.
@@ -27,3 +28,6 @@ defer span.End()
 `baha app env --format json` zeigt maskierte Bindungen; `baha app logs app` liest Workload-Logs. Doctor verifiziert Capabilities, einen Fach-Span beweist erst ein tatsächlicher Request durch instrumentierten Code. Grafana oder andere Visualisierung ist optionales Ecosystem-Tooling.
 
 [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/observability/).
+
+
+Technische Bezeichner: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`.

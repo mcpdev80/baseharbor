@@ -50,7 +50,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: ${{ format('docs/releases/{0}.consumer-pins.json', inputs.tag || github.ref_name) }}
           MANUAL_TAG: ${{ inputs.tag }}
           MANUAL_RUN_ID: ${{ inputs.pre_release_run_id }}
         run: |
@@ -111,7 +111,7 @@ jobs:
           fi
 
           compatible_candidate() {
-            candidate_sha="$1"
+            candidate_sha="$(python scripts/release-handoff.py candidate --candidate "$1" --tag "$tag" --run-id "${2:-0}")"
 
             git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || return 1
 
@@ -150,7 +150,7 @@ jobs:
             }
 
             tested_sha="$(jq -r '.head_sha' <<<"${run_json}")"
-            compatible_candidate "${tested_sha}" || {
+            compatible_candidate "${tested_sha}" "${run_id}" || {
               echo "Selected Pre-Release content is not compatible with release tag SHA ${tag_sha}." >&2
               echo "Only explicitly listed workflow/release-metadata files may differ:" >&2
               echo "  .github/workflows/pre-release.yml" >&2
@@ -176,7 +176,7 @@ jobs:
 
             while IFS=$'\t' read -r candidate_id candidate_sha; do
               [ -n "${candidate_id}" ] || continue
-              if compatible_candidate "${candidate_sha}"; then
+              if compatible_candidate "${candidate_sha}" "${candidate_id}"; then
                 run_id="${candidate_id}"
                 tested_sha="${candidate_sha}"
                 run_json="$(jq -c --argjson id "${candidate_id}" '.workflow_runs[] | select(.id == $id)' <<<"${runs_json}")"
@@ -192,13 +192,23 @@ jobs:
 
           if [ "${tested_sha}" != "${tag_sha}" ]; then
             echo "Using validated product with a metadata/workflow handoff:"
-            echo "  tested SHA: ${tested_sha}"
+            echo "  validation workflow SHA: ${tested_sha}"
             echo "  tag SHA:    ${tag_sha}"
             echo "  allowed post-validation changes:"
             git diff --name-only "${tested_sha}" "${tag_sha}" --
           fi
 
           artifacts_json="$(curl -fsSL             -H "Authorization: Bearer ${GH_TOKEN}"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "${api}/actions/runs/${run_id}/artifacts?per_page=100")"
+
+          if [ "$tag" = v0.4.24 ] && [ "$run_id" = 38092223770 ]; then
+            jq -e '[.artifacts[] | select(.id == 11684687301 and .expired == false and
+              .name == "pre-release-approval-38092223770-1" and
+              .digest == "sha256:3afd5b99a289c12e6218699caafcefa23cbfd03e9fa69fd8b7c806ea88cc4510")] | length == 1' \
+              <<<"${artifacts_json}" >/dev/null || {
+              echo "Verified v0.4.24 recovery approval artifact differs." >&2
+              exit 1
+            }
+          fi
 
           approval_artifact="$(jq -r '
             [.artifacts[]
@@ -265,7 +275,7 @@ jobs:
               echo "Pre-Release approval artifact does not contain release-approved.json." >&2
               exit 1
             }
-            workflow_sha="${tested_sha}"
+            workflow_sha="$(python scripts/release-handoff.py candidate --candidate "$tested_sha" --tag "$tag" --run-id "$run_id")"
             approved_candidate="$(jq -r '.candidate_sha' "${approval_json}")"
             compatible_candidate "${approved_candidate}" || {
               echo "Approval product candidate differs from release content." >&2
@@ -306,6 +316,12 @@ jobs:
           if approval.get('coverage_digest') != calculated:
               raise SystemExit('Release coverage digest differs from approval.')
           PY_DIGEST
+              if [ "$tag" = v0.4.24 ]; then
+                consumer_ref="$(jq -er '.consumer_ref | select(test("^[0-9a-f]{40}$"))' "$approval_json")"
+                python3 scripts/ecosystem_release_pins.py --core "$tested_sha" \
+                  --connector "$consumer_ref" --demo "$(jq -r '.demo_sha' "$approval_json")" \
+                  --output docs/releases/v0.4.24.consumer-pins.json
+              fi
               git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/release-evidence-demo"
               python scripts/pre-release-resume.py check-approval --candidate "$tested_sha" \
                 --demo "$(jq -r '.demo_sha' "$approval_json")" --tag "$tag" \

@@ -191,7 +191,11 @@ func executeHTTPProviderRead(ctx context.Context, operationID string, raw json.R
 		if err := decodeHTTPInput(raw, &struct{}{}); err != nil {
 			return nil, err
 		}
-		return application.ListExternalProviders()
+		items, err := application.ListExternalProviders()
+		if err != nil {
+			return nil, err
+		}
+		return normalizedProviderList(items), nil
 	case "provider.inspect", "provider.verify":
 		var input machineProviderIDInput
 		if err := decodeHTTPInput(raw, &input); err != nil {

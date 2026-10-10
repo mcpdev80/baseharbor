@@ -68,18 +68,25 @@ func appGuidedInitCommand() *cli.Command {
 		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			quick := false
+			yes := false
 			for _, arg := range args {
 				if arg == "--quick" {
 					quick = true
+				}
+				if arg == "--yes" || arg == "-y" {
+					yes = true
 				}
 			}
 			if noInput(ctx) && len(args) == 0 {
 				return usageError("app init needs explicit non-interactive input", "Use 'baha app init --quick' for detected safe defaults or provide deterministic app-init flags.")
 			}
 			if quick {
-				if len(args) != 1 {
-					return usageError("--quick cannot be combined with explicit app-init arguments", "Use either 'baha app init --quick' or the deterministic app-init flags.")
+				for _, arg := range args {
+					if arg != "--quick" && arg != "--yes" && arg != "-y" {
+						return usageError("--quick cannot be combined with explicit app-init arguments", "Use either 'baha app init --quick' or the deterministic app-init flags.")
+					}
 				}
+				ctx = withAssumeYes(ctx, yes || assumeYes(ctx))
 			} else if len(args) > 0 {
 				return appInitCommand().Run(ctx, args, out, errOut)
 			}
@@ -302,6 +309,20 @@ func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io
 	}
 	fmt.Fprintln(out, "next: run 'baha up'")
 	return nil
+}
+
+func quickAdoptionOnlyArguments(args []string) bool {
+	quick := false
+	for _, arg := range args {
+		switch arg {
+		case "--quick":
+			quick = true
+		case "--yes", "-y":
+		default:
+			return false
+		}
+	}
+	return quick
 }
 
 func uniqueSorted(values []string) []string {

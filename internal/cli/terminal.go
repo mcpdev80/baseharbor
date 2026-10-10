@@ -50,6 +50,21 @@ type Terminal struct {
 type activityBuffer struct {
 	bytes.Buffer
 	details chan string
+	notices bytes.Buffer
+}
+
+func (b *activityBuffer) ActivityNotice(message string) {
+	fmt.Fprintln(&b.notices, message)
+}
+
+// ReportActivityNotice retains an operational decision in normal and quiet
+// output, even when successful activity diagnostics are suppressed.
+func ReportActivityNotice(w io.Writer, message string) {
+	if r, ok := w.(interface{ ActivityNotice(string) }); ok {
+		r.ActivityNotice(message)
+	} else {
+		fmt.Fprintln(w, message)
+	}
 }
 
 func newActivityBuffer() *activityBuffer {
@@ -232,11 +247,12 @@ func stateColor(state string) string {
 // verbose mode; failed detail is always revealed.
 func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer) error) error {
 	if t.opts.Quiet {
-		var buffer bytes.Buffer
-		err := fn(&buffer)
+		buffer := newActivityBuffer()
+		err := fn(buffer)
 		if err != nil {
-			_, _ = io.Copy(t.errOut, &buffer)
+			_, _ = io.Copy(t.errOut, buffer)
 		}
+		_, _ = io.Copy(t.errOut, &buffer.notices)
 		return err
 	}
 
@@ -278,6 +294,7 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 		if err != nil || t.opts.Verbose {
 			_, _ = io.WriteString(t.errOut, progress.String())
 		}
+		_, _ = io.WriteString(t.errOut, progress.notices.String())
 		return err
 	}
 

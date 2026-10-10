@@ -101,8 +101,8 @@ func TestPreflightNewTargetRecoveryFilePreservesOldMaterialAndAllocatesFreshDefa
 	if err := persistTargetRecoveryFileReference(ctx, path); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := preflightNewTargetRecoveryFile(ctx, ""); err == nil {
-		t.Fatal("persisted existing material accepted")
+	if next, _, err := preflightNewTargetRecoveryFile(ctx, ""); err != nil || next == path {
+		t.Fatalf("absent Core must allocate fresh output for persisted material: %q %v", next, err)
 	}
 	if _, statErr := os.Stat(path); statErr != nil {
 		t.Fatalf("existing recovery material was changed: %v", statErr)

@@ -69,8 +69,8 @@ func resolveOperatorAuthBoundaryConfig(ctx context.Context, target, environment 
 		return operatorauth.Config{}, operatorauth.ErrConfigurationRequired
 	}
 	interactive, ok := operatorauth.InteractiveFromContext(ctx)
-	if !ok || interactive.In == nil {
-		return operatorauth.Config{}, operatorauth.ErrConfigurationRequired
+	if !ok || interactive.In == nil || !readerIsTerminal(interactive.In) {
+		return operatorauth.Config{}, usageError("operator authentication needs interactive setup but input is not a terminal", "Configure operator OIDC using explicit environment settings or re-run in an interactive terminal; BaseHarbor will not prompt on piped input.")
 	}
 
 	fmt.Fprintf(interactive.Out, "%s requires authenticated BaseHarbor operator access.\n", strings.ToUpper(environment))

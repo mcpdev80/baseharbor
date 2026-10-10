@@ -17,8 +17,10 @@ var ErrResourceOwnership = errors.New("runtime resource ownership does not match
 // container runtime. Application code should not shell out to Docker/Podman
 // directly.
 type Compose struct {
-	command string
-	prefix  []string
+	command      string
+	prefix       []string
+	engineArgs   []string
+	dockerEngine *DockerEngineObservation
 }
 
 func NewCLIBackend(command string, prefix ...string) Compose {

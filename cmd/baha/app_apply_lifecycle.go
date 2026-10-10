@@ -391,6 +391,10 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}); err != nil {
 		return err
 	}
+	// Provider ownership survives failed workload convergence and remains available for safe cleanup.
+	if err := e.recordRealizedProviders(); err != nil {
+		return err
+	}
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
 	}
@@ -438,21 +442,28 @@ func (e *applicationApplyExecution) startRepositoryWorkload(ctx context.Context)
 }
 
 func (e *applicationApplyExecution) recordVerifiedDeployment(ctx context.Context) error {
-	registryResources := managedLogsRegistryResources(e.providers.logs)
-	registryResources = append(registryResources, managedTracesRegistryResources(e.providers.traces)...)
-	if err := application.ReconcileReferenceProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest, registryResources...); err != nil {
-		return fmt.Errorf("record provider registry after successful convergence: %w", err)
-	}
 	if err := recordRepositoryAppliedFingerprint(ctx, e.resolved, e.files); err != nil {
 		return fmt.Errorf("record successfully applied repository desired state: %w", err)
 	}
-	if err := recordAppliedDeployment(ctx, e.resolved, e.files); err != nil {
+	status, _, err := collectResolvedApplicationStatus(ctx, e.resolved)
+	if err != nil {
+		return fmt.Errorf("observe application after convergence: %w", err)
+	}
+	if err := recordAppliedDeploymentObservation(ctx, e.resolved, e.files, observedApplicationState(status), status.Ready); err != nil {
 		return fmt.Errorf("record verified target deployment: %w", err)
 	}
 	e.term.Section("Application")
 	if e.resolved.FromRepository && !e.term.Quiet() {
 		fmt.Fprintln(e.out, "  Environment contract: baha app env --path")
 	}
-	e.term.Success("READY", "application and requested infrastructure verified")
+	return reportApplicationConvergence(e.term, status)
+}
+
+func (e *applicationApplyExecution) recordRealizedProviders() error {
+	registryResources := managedLogsRegistryResources(e.providers.logs)
+	registryResources = append(registryResources, managedTracesRegistryResources(e.providers.traces)...)
+	if err := application.ReconcileReferenceProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest, registryResources...); err != nil {
+		return fmt.Errorf("record provider registry after provider realization: %w", err)
+	}
 	return nil
 }

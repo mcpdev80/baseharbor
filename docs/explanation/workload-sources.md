@@ -190,3 +190,9 @@ Compose is interpreted at two different architectural layers for two different p
 
 The CLI/init layer does not maintain its own Compose parser. Runtime realization must not make repository-adoption or portable-intent decisions, and repository inspection must not own Podman runtime rendering.
 
+
+## Compose include in v0.4.24
+
+Repository inspection does not support Compose `include`. Includes can change the service graph, path bases, environment files and trust boundary. BaseHarbor refuses them before adoption or mutation, with cause `compose_include_unsupported`; it never reports a partial service graph as complete.
+
+Review all included files first. For trusted local sources, render a **separate** flattened file with `docker compose -f compose.yaml config --no-interpolate --output compose.baseharbor.yaml`. Keep the originals. Protect the rendered file: `env_file` values may be embedded even with `--no-interpolate`; do not commit credential-bearing output. Check paths, profiles, secrets and the complete service graph, then explicitly select `compose.baseharbor.yaml` in `baha init`. Podman users can render on a trusted Docker Compose host; no runtime switch is required for deployment. Do not execute Compose on untrusted remote includes.

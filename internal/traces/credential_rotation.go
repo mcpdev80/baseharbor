@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ import (
 // RotateStorageCredentials rotates Tempo's provider-owned S3 identity using the
 // same overlap-safe platform-bucket contract as Loki.
 func (d *Driver) RotateStorageCredentials(ctx context.Context) error {
-	if !d.app.HA {
+	if !application.ComponentHA(d.app, "traces") {
 		return errors.New("Tempo platform-storage credential rotation requires HA mode")
 	}
 	if d.runtime == nil || d.issuer == nil {
@@ -115,7 +116,7 @@ func (d *Driver) RotateAccessPKI(ctx context.Context) error {
 		return err
 	}
 	spec := tempoAccessSpec()
-	if d.app.HA {
+	if application.ComponentHA(d.app, "traces") {
 		spec = tempoHAQueryAccessSpec()
 	}
 	reconcile := func() error {

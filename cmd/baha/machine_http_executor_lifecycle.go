@@ -166,7 +166,7 @@ func (e *bahaMachineExecutor) executeHTTPRepair(
 		return nil, err
 	}
 	reportHTTPProgress(report, "repair", "Repairing safely reconcilable drift.", 40)
-	if err := executeApplicationRepairLifecycle(ctx, e.store, append(args, "--fix"), io.Discard, io.Discard); err != nil {
+	if err := executeApplicationRepairLifecycle(ctx, e.store, append(args, "--fix", "--yes"), io.Discard, io.Discard); err != nil {
 		return nil, err
 	}
 	doctor, err := collectApplicationDoctor(ctx, e.store, args)

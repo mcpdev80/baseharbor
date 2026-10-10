@@ -207,42 +207,74 @@ func Install(ctx context.Context, stateDir string, pemData []byte, issuerReferen
 	return Status{Fingerprint: fingerprint, Trusted: true, Owned: true, Backend: backend.Name(), Path: path}, nil
 }
 
-func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
+// RemovalResult retains explicit evidence for every owned, preserved or refused CA.
+type RemovalResult struct {
+	Removed   []AnchorRecord `json:"removed,omitempty"`
+	Preserved []AnchorRecord `json:"preserved,omitempty"`
+	Untracked []string       `json:"preserved_untracked,omitempty"`
+}
+
+func RemoveOwnedDetailed(ctx context.Context, stateDir string) (RemovalResult, error) {
 	state, err := loadState(stateDir)
 	if err != nil {
-		return 0, err
+		return RemovalResult{}, err
 	}
-	if len(state.Anchors) == 0 {
-		return 0, nil
-	}
-	removed := 0
-	var removeErr error
+	result := RemovalResult{}
+	var failures error
+	retained := make([]AnchorRecord, 0, len(state.Anchors))
 	for _, record := range state.Anchors {
-		backend, err := resolveBackend(record.Backend)
-		if err != nil {
-			removeErr = errors.Join(removeErr, err)
+		backend, resolveErr := resolveBackend(record.Backend)
+		if resolveErr == nil {
+			var expected string
+			expected, resolveErr = backend.AnchorPath(record.Fingerprint)
+			if resolveErr == nil && filepath.Clean(expected) != filepath.Clean(record.Path) {
+				resolveErr = fmt.Errorf("recorded anchor path does not match fingerprint %s", record.Fingerprint)
+			}
+		}
+		if resolveErr == nil {
+			resolveErr = verifyRecordedAnchor(record)
+		}
+		if resolveErr == nil {
+			resolveErr = backend.Remove(ctx, record.Path)
+		}
+		if resolveErr != nil {
+			failures = errors.Join(failures, fmt.Errorf("PRESERVED %s (%s): %w", record.Path, record.Fingerprint, resolveErr))
+			retained = append(retained, record)
+			result.Preserved = append(result.Preserved, record)
 			continue
 		}
-		if err := verifyRecordedAnchor(record); err != nil {
-			removeErr = errors.Join(removeErr, err)
-			continue
+		result.Removed = append(result.Removed, record)
+
+	}
+	if len(retained) > 0 {
+		state.Anchors = retained
+		if err := saveState(stateDir, state); err != nil {
+			return result, errors.Join(failures, err)
 		}
-		if err := backend.Remove(ctx, record.Path); err != nil {
-			removeErr = errors.Join(removeErr, fmt.Errorf("remove owned host trust %s: %w", record.Path, err))
-			continue
+	} else if len(state.Anchors) > 0 || len(result.Removed) > 0 {
+		if err := os.Remove(statePath(stateDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return result, errors.Join(failures, err)
 		}
-		removed++
 	}
-	if removeErr != nil {
-		return removed, removeErr
-	}
-	if err := os.Remove(statePath(stateDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return removed, err
-	}
-	return removed, nil
+	return result, failures
+}
+
+func RemoveOwned(ctx context.Context, stateDir string) (int, error) {
+	result, err := RemoveOwnedDetailed(ctx, stateDir)
+	return len(result.Removed), err
 }
 
 func verifyRecordedAnchor(record AnchorRecord) error {
+	info, statErr := os.Lstat(record.Path)
+	if errors.Is(statErr, os.ErrNotExist) {
+		return nil
+	}
+	if statErr != nil {
+		return statErr
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("PRESERVED host trust anchor %s is not a regular file", record.Path)
+	}
 	data, err := os.ReadFile(record.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -266,6 +298,63 @@ func StateRecords(stateDir string) ([]AnchorRecord, error) {
 		return nil, err
 	}
 	return append([]AnchorRecord(nil), state.Anchors...), nil
+}
+
+// UntrackedCandidates reports BaseHarbor-named anchors which lack verified
+// ownership evidence. Their names do NOT imply ownership and they are never
+// eligible for automatic deletion.
+func UntrackedCandidates(stateDir string) ([]string, error) {
+	directories := []struct{ path, extension string }{
+		{"/usr/local/share/ca-certificates", ".crt"},
+		{"/etc/pki/ca-trust/source/anchors", ".pem"},
+	}
+	return findUntrackedCandidates(stateDir, directories)
+}
+
+func findUntrackedCandidates(stateDir string, directories []struct{ path, extension string }) ([]string, error) {
+	state, err := loadState(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	owned := map[string]bool{}
+	for _, record := range state.Anchors {
+		owned[filepath.Clean(record.Path)] = true
+	}
+	candidates := []string{}
+	for _, dir := range directories {
+		entries, err := os.ReadDir(dir.path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect host trust candidates: %w", err)
+		}
+		for _, entry := range entries {
+			file := entry.Name()
+			if !strings.HasPrefix(file, "baseharbor-") || !strings.HasSuffix(file, dir.extension) {
+				continue
+			}
+			fingerprintPart := strings.TrimSuffix(strings.TrimPrefix(file, "baseharbor-"), dir.extension)
+			if len(fingerprintPart) != 16 {
+				continue
+			}
+			valid := true
+			for _, r := range fingerprintPart {
+				if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
+			path := filepath.Join(dir.path, file)
+			if !owned[filepath.Clean(path)] {
+				candidates = append(candidates, path)
+			}
+		}
+	}
+	return candidates, nil
 }
 
 func statePath(stateDir string) string {
@@ -449,4 +538,54 @@ func runMaybePrivileged(ctx context.Context, name string, args ...string) error 
 		}
 		return nil
 	}
+}
+
+// InspectRecorded observes retained host anchors without requiring a live issuer.
+// Ownership records alone never prove that a certificate still exists or matches.
+type RecordedStatus struct {
+	Fingerprint string `json:"fingerprint"`
+	Backend     string `json:"backend"`
+	State       string `json:"state"`
+	Trusted     bool   `json:"trusted"`
+}
+
+func InspectRecorded(stateDir string) ([]RecordedStatus, error) {
+	records, err := StateRecords(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RecordedStatus, 0, len(records))
+	for _, record := range records {
+		status := RecordedStatus{Fingerprint: record.Fingerprint, Backend: record.Backend, State: "missing"}
+		info, err := os.Lstat(record.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			result = append(result, status)
+			continue
+		}
+		if err != nil {
+			return nil, errors.New("recorded host trust anchor is unreadable; inspect host trust permissions")
+		}
+		if !info.Mode().IsRegular() {
+			status.State = "unverified"
+			result = append(result, status)
+			continue
+		}
+		data, err := os.ReadFile(record.Path)
+		if err != nil {
+			return nil, errors.New("recorded host trust anchor is unreadable; inspect host trust permissions")
+		}
+		cert, fingerprint, err := ParseCA(data)
+		if err != nil || fingerprint != record.Fingerprint {
+			status.State = "unverified"
+			result = append(result, status)
+			continue
+		}
+		status.State = "verified"
+		status.Trusted, err = systemTrusted(cert)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, status)
+	}
+	return result, nil
 }

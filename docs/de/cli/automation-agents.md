@@ -2,6 +2,32 @@
 
 CLI, JSON, MCP und geschütztes HTTP nutzen denselben Domänen-Lifecycle. Automation verwendet strukturierte Ergebnisse und Exit-Status, keine dekorierte menschliche Ausgabe.
 
+Maschinenlesbare Ausgabe:
+
+```text
+-o json
+--output json
+```
+
+Nicht interaktive Ausführung:
+
+```text
+--no-input
+--non-interactive
+```
+
+Agent-Discovery:
+
+```text
+baha agent describe
+```
+
+MCP über stdio:
+
+```text
+baha mcp serve
+```
+
 Unterstützte JSON-Ausgabe erfolgt mit `-o json`/`--output json`. `--no-input` beziehungsweise `--non-interactive` verhindert Prompts, genehmigt aber keine Mutation und ersetzt keine fehlenden Entscheidungen oder Secrets.
 
 Im Application-Repository:

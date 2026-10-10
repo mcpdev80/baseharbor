@@ -120,7 +120,7 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 		FromRepository:      true,
 	}
 	var out bytes.Buffer
-	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader("\n"), &out, resolved, repo); err != nil {
+	if err := ensureRepositoryWorkloadPortsForUp(withAssumeYes(context.Background(), true), strings.NewReader("\n"), &out, resolved, repo); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,7 +243,7 @@ func TestPreflightRepositoryWorkloadPublishedPortsPersistsFallbackForOccupiedFix
 	files := application.RuntimeFiles{Dir: t.TempDir()}
 	var out bytes.Buffer
 	err = preflightRepositoryWorkloadPublishedPorts(
-		context.Background(),
+		withAssumeYes(context.Background(), true),
 		strings.NewReader(""),
 		&out,
 		application.WorkloadFiles{

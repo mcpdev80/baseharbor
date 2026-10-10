@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -233,6 +232,49 @@ func routeNetworkSet(routes []Route) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+// OwnerRoutesPresent is a read-only teardown preflight. Missing registration is
+// safe only when no gateway projection or owned runtime resources remain.
+// Other owners' valid registrations never authorize reconciliation for this app.
+func OwnerRoutesPresent(ctx context.Context, runtime Runtime, target, owner string) (bool, error) {
+	files, err := FilesFor(target)
+	if err != nil {
+		return false, err
+	}
+	current, err := loadState(files.State)
+	if err == nil {
+		for _, route := range current.Routes {
+			if route.Owner == owner {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	entries, err := os.ReadDir(files.Dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	if len(entries) > 0 {
+		return false, errors.New("development gateway registration is missing but retained state exists; run baha doctor before retrying destroy")
+	}
+	inventory, ok := runtime.(interface {
+		ListOwnedProjectResources(context.Context, string) ([]bhruntime.ProjectResource, error)
+	})
+	if !ok {
+		return false, errors.New("development gateway absence cannot be verified by this runtime")
+	}
+	resources, err := inventory.ListOwnedProjectResources(ctx, files.Project)
+	if err != nil {
+		return false, fmt.Errorf("inspect development gateway ownership: %w", err)
+	}
+	if len(resources) > 0 {
+		return false, errors.New("development gateway resources remain without their registration; repair the gateway state before retrying destroy")
+	}
+	return false, nil
 }
 
 func RemoveOwners(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, target string, owners ...string) error {
@@ -565,9 +607,21 @@ func verifyRoute(ctx context.Context, roots *x509.CertPool, route Route, hostPor
 	}
 	client := &http.Client{Transport: transport}
 	if err := serviceaccess.VerifyBrowserRouteWithAllowedAuthorities(ctx, client, canonicalURL(route.Host, hostPort)+"/", allowedURLs...); err != nil {
-		return fmt.Errorf("%s: %w", route.Host, err)
+		return routeVerificationFailure(route.Host, err)
 	}
 	return nil
+}
+
+func routeVerificationFailure(host string, err error) error {
+	if err == nil {
+		return nil
+	}
+	for _, status := range []string{"502", "503", "504"} {
+		if strings.Contains(err.Error(), "browser surface final response is HTTP "+status) {
+			return fmt.Errorf("%s: application upstream unavailable (HTTP %s); verify the workload listener matches exposure.http.port and the selected Target network is reachable", host, status)
+		}
+	}
+	return fmt.Errorf("%s: %w", host, err)
 }
 
 func Verify(ctx context.Context, target string) error {
@@ -714,57 +768,4 @@ func normalizedRoutes(routes []Route) []Route {
 		return out[i].Key < out[j].Key
 	})
 	return out
-}
-
-func projectReadable(source, target string) error {
-	return projectReadableMode(source, target, 0o644)
-}
-
-func projectReadableMode(source, target string, mode os.FileMode) error {
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return err
-	}
-	if len(data) == 0 {
-		return fmt.Errorf("%s is empty", filepath.Base(source))
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	if err := os.Chmod(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, mode); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
-}
-
-func gatewayRuntimeIdentity() (string, string) {
-	current, err := user.Current()
-	if err == nil && numericIdentity(current.Uid) && numericIdentity(current.Gid) {
-		return current.Uid, current.Gid
-	}
-	return "65532", "65532"
-}
-
-func numericIdentity(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }

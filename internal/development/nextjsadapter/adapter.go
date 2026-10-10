@@ -78,7 +78,7 @@ func (a Adapter) Plan(contract application.PortableContract, profile development
 			add(development.ActionDependency, r.Kind, "next", "16.3.6")
 			add(development.ActionDependency, r.Kind, "react", "19.3.0")
 			add(development.ActionDependency, r.Kind, "react-dom", "19.3.0")
-			add(development.ActionBinding, r.Kind, "PORT", "3000")
+			add(development.ActionBinding, r.Kind, "PORT", "8080")
 		case capability.SQL:
 			add(development.ActionDependency, r.Kind, "pg", "8.23.0")
 			add(development.ActionBinding, r.Kind, "DATABASE_URL", "")
@@ -203,11 +203,11 @@ func capabilitySource(bindings map[string]struct{}) string {
 }
 
 func dockerfile() string {
-	return "FROM node:24.21.0-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:24.21.0-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 3000\nCMD [\"npm\",\"start\"]\n"
+	return "FROM node:24.21.0-alpine AS build\nWORKDIR /app\nCOPY package.json ./\nRUN npm install\nCOPY . .\nRUN npm run build\nFROM node:24.21.0-alpine\nWORKDIR /app\nCOPY --from=build /app ./\nUSER node\nEXPOSE 8080\nCMD [\"npm\",\"start\"]\n"
 }
 
 func compose() string {
-	return "services:\n  app:\n    build: .\n    ports:\n      - \"3000:3000\"\n    healthcheck:\n      test: [\"CMD\",\"wget\",\"-q\",\"-O\",\"-\",\"http://127.0.0.1:3000/healthz\"]\n"
+	return "services:\n  app:\n    build: .\n    ports:\n      - \"8080:8080\"\n    environment:\n      PORT: \"8080\"\n    healthcheck:\n      test: [\"CMD\",\"wget\",\"-q\",\"-O\",\"-\",\"http://127.0.0.1:8080/healthz\"]\n"
 }
 
 func envExample(bindings map[string]struct{}) string {

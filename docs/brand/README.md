@@ -21,3 +21,7 @@ This package uses the two supplied images as the canonical artwork. No mascot or
 - Harbor Orange `#F96509`
 - Mist `#E3EAF1`
 - White `#FFFFFF`
+
+## Self-hosted font sources
+
+The unchanged Latin variable font assets use `@fontsource-variable/inter` and `@fontsource-variable/jetbrains-mono`, both version `5.3.0`. Their SIL Open Font License notices are retained in `fonts/inter-LICENSE.txt` and `fonts/jetbrains-mono-LICENSE.txt`. Both language sites use this one canonical asset set without external font requests.

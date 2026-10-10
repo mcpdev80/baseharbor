@@ -268,3 +268,14 @@ func TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerPolicyPermitsOnlyOwnCapabilityInspection(t *testing.T) {
+	if !strings.Contains(managerPolicy, "path \"sys/capabilities-self\" {\n  capabilities = [\"update\"]\n}") {
+		t.Fatal("manager must inspect its own scoped authority without the default policy")
+	}
+	for _, forbidden := range []string{`path "sys/capabilities"`, `path "sys/capabilities-accessor"`, `path "sys/*"`} {
+		if strings.Contains(managerPolicy, forbidden) {
+			t.Fatalf("manager may not inspect or acquire broader authority: %s", forbidden)
+		}
+	}
+}

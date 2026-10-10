@@ -24,3 +24,43 @@ Operator-/Deployment-Namen wie `SMTP_PASSWORD` bleiben im benannten Interface un
 Werte gehören nie in Git/Manifest. Storage bleibt Application-/Environment-gebunden; HTTP benötigt Identity-, Tenant-Besitz- und RBAC-Prüfungen. Ein menschliches OIDC-Token ist keine langfristige Workload-Identität. App-scoped Runtime-Broker und dessen Transport sind eine separate Sicherheitsgrenze.
 
 Die Integration ist optional für Application-Code; eigenständige Anwendungen können eigenen verschlüsselten Credential-Speicher verwenden. [Exakter API-Vertrag (EN)](https://mcpdev80.github.io/baseharbor/reference/application-secret-api/).
+
+
+## Weitere technische Beispiele
+
+```text
+provider = openai-compatible
+endpoint = http://agentgateway:4000/v1
+model = qwen
+credential_ref = baseharbor://secrets/dyn-...
+```
+
+```text
+baseharbor://secrets/dyn-<128-bit-random-id>
+```
+
+```text
+POST   /api/v1/apps/{app}/secret-refs
+POST   /api/v1/apps/{app}/secret-refs/resolve
+PUT    /api/v1/apps/{app}/secret-refs/resolve
+DELETE /api/v1/apps/{app}/secret-refs/resolve
+```
+
+```json
+{"value":"secret-value"}
+```
+
+```json
+{"ref":"baseharbor://secrets/dyn-...","configured":true}
+```
+
+```json
+{"ref":"baseharbor://secrets/dyn-..."}
+```
+
+```json
+{"ref":"baseharbor://secrets/dyn-...","value":"new-secret-value"}
+```
+
+
+Technische Kennungen: `AGENT_GATEWAY_API_KEY`, `baseharbor.yaml`.

@@ -188,6 +188,12 @@ func sharedValkeyMemberCount(resource sharedValkeyResource) int {
 }
 
 func writeSharedValkeyHANetworks(b *strings.Builder, state sharedBackendState, appKeys []string) {
+	if state.ValkeyAdminCredential != "" {
+		if state.ValkeyMembers > 1 {
+			fmt.Fprintf(b, "  %s-ha:\n    internal: true\n", sharedValkeyMemberServiceName(coreSharedValkeyApp(state), defaultServiceInstance, 0))
+		}
+		return
+	}
 	for _, key := range appKeys {
 		app := state.Applications[key]
 		var instances []string

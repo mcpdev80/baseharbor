@@ -23,7 +23,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
-	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
@@ -43,7 +42,7 @@ type applicationDestroyExecution struct {
 	partialRuntime      bool
 	compose             bhruntime.RuntimeProvider
 	existing            []bhruntime.ProjectResource
-	replacedVolumes     []bhruntime.ProjectResource
+	repositoryVolumes   []bhruntime.RepositoryVolume
 	coreRuntime         bhruntime.RuntimeProvider
 	platformFiles       bhruntime.Files
 	destroyOpenBaoScope bool
@@ -117,7 +116,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			"Application Target binding changed during execution.", "Resolve the selected Target again before retrying.", false)
 	}
 	m := e.manifest
-	composeRequired := e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
+	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
 		{Name: "connectivity policy", Run: func(context.Context) error {
@@ -135,13 +134,21 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return err
 		}})
 	}
-	if e.resolved.FromRepository && application.HasManagedRuntimeServices(m) {
-		checks = append(checks, preflight.Check{Name: "replaced repository infrastructure volumes", Run: func(ctx context.Context) error {
-			var err error
-			e.replacedVolumes, err = e.inspectReclaimableReplacedInfrastructureVolumes(ctx)
+	if e.resolved.FromRepository {
+		checks = append(checks, preflight.Check{Name: "repository data volume inventory", Run: func(ctx context.Context) error {
+			inventory, ok := e.compose.(repositoryVolumeInventory)
+			if !ok {
+				return errors.New("selected runtime cannot inventory repository data volumes; destroy refused")
+			}
+			previous, err := e.previousRepositoryVolumeNames()
+			if err != nil {
+				return err
+			}
+			e.repositoryVolumes, err = inventory.InventoryRepositoryVolumes(ctx, application.WorkloadProjectNameForRuntime(m, e.files), previous...)
 			return err
 		}})
 	}
+
 	if e.runtimeErr == nil {
 		checks = append(checks,
 			preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(e.files) }},
@@ -162,6 +169,38 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
 				var err error
+				if e.runtimeErr != nil && len(e.existing) == 0 {
+					state, err := managedTrustCoreState(selected)
+					if err != nil {
+						return err
+					}
+					if state == "not_installed" {
+						root, err := targetRuntimeStateRoot(e.resolved.Target)
+						if err != nil {
+							return err
+						}
+						entries, err := os.ReadDir(root)
+						if err != nil && !errors.Is(err, os.ErrNotExist) {
+							return err
+						}
+						if len(entries) > 0 {
+							return errors.New("Core cleanup state is incomplete; inspect retained state before retrying destroy")
+						}
+						resources, err := e.compose.ListOwnedProjectResources(ctx, targetRuntimeProjectName(e.resolved.Target))
+						if err != nil {
+							return err
+						}
+						if len(resources) > 0 {
+							return errors.New("Core resources remain without runtime state; repair ownership state before retrying destroy")
+						}
+						if _, err := os.Stat(e.files.Bindings); err == nil {
+							return errors.New("application bindings remain without a Core; repair cleanup state before retrying destroy")
+						} else if !errors.Is(err, os.ErrNotExist) {
+							return err
+						}
+						return nil
+					}
+				}
 				e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 				if err != nil {
 					return err
@@ -187,50 +226,14 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	if !ok {
 		return errors.New("application destroy preflight failed; nothing was deleted")
 	}
+	e.excludeManagedInfrastructureVolumes()
 	return nil
-}
-
-func (e *applicationDestroyExecution) inspectReclaimableReplacedInfrastructureVolumes(ctx context.Context) ([]bhruntime.ProjectResource, error) {
-	if !e.resolved.FromRepository {
-		return nil, nil
-	}
-	repositoryRoot := e.resolved.repositoryRoot()
-	selected, composePath, found, err := application.SelectedWorkloadServices(repositoryRoot, e.manifest)
-	if err != nil || !found {
-		return nil, err
-	}
-	environment, err := repositoryWorkloadStopEnvironment(e.resolved, e.files)
-	if err != nil {
-		return nil, err
-	}
-	project := application.WorkloadProjectNameForRuntime(e.manifest, e.files)
-	rendered, err := e.compose.ConfigJSONProjectFilesEnv(ctx, project, repositoryRoot, environment, composePath)
-	if err != nil {
-		return nil, fmt.Errorf("render repository Compose for replaced-volume ownership: %w", err)
-	}
-	candidates, err := repositoryinspect.ReclaimableReplacedInfrastructureVolumes(
-		[]byte(rendered),
-		selected,
-		e.manifest.Services.SQL,
-		e.manifest.Services.Cache,
-	)
-	if err != nil {
-		return nil, err
-	}
-	resources := make([]bhruntime.ProjectResource, 0, len(candidates))
-	for _, candidate := range candidates {
-		name := candidate.RuntimeName
-		if name == "" {
-			name = project + "_" + candidate.LogicalName
-		}
-		resources = append(resources, bhruntime.ProjectResource{Kind: "volume", Name: name})
-	}
-	return e.compose.InspectProjectResources(ctx, project, resources)
 }
 
 func (e *applicationDestroyExecution) renderDeletePlan() error {
 	m := e.manifest
 	e.term.Section("Delete plan")
+	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 
 	if e.partialRuntime {
 		fmt.Fprintln(e.out, "  recovery:   generated runtime definition is incomplete; using ownership-verified cleanup")
@@ -246,9 +249,7 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 		if workload, found, err := materializeRepositoryWorkload(e.resolved, e.files); err == nil && found {
 			fmt.Fprintf(e.out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", workload.Compose)
 		}
-		for _, volume := range e.replacedVolumes {
-			fmt.Fprintf(e.out, "  volume:     %s (reclaimed; belongs only to replaced repository infrastructure)\n", volume.Name)
-		}
+
 	} else if e.resolved.IncompleteDeployment {
 		fmt.Fprintln(e.out, "  repo data:  preserved; repository source is unavailable, so replaced-service volumes cannot be classified safely")
 	}
@@ -302,7 +303,15 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 }
 
 func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Context) error {
+	if !e.confirmed {
+		return errors.New("application destroy requires explicit --yes consent; nothing was deleted")
+	}
 	m := e.manifest
+	if e.resolved.FromRepository {
+		if err := e.saveRepositoryVolumeObservation(); err != nil {
+			return err
+		}
+	}
 	if e.runtimeErr == nil {
 		if err := destroyManagedExposure(ctx, e.compose, m, e.files); err != nil {
 			return err
@@ -315,19 +324,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
 			return err
 		}
-		if len(e.replacedVolumes) > 0 {
-			project := application.WorkloadProjectNameForRuntime(m, e.files)
-			if err := e.compose.DestroyOwnedProjectResources(ctx, project, e.replacedVolumes); err != nil {
-				return fmt.Errorf("reclaim replaced repository infrastructure volumes: %w", err)
-			}
-			remaining, err := e.compose.InspectProjectResources(ctx, project, e.replacedVolumes)
-			if err != nil {
-				return fmt.Errorf("verify replaced repository infrastructure volume cleanup: %w", err)
-			}
-			if len(remaining) != 0 {
-				return fmt.Errorf("verify replaced repository infrastructure volume cleanup: %d volume(s) remain", len(remaining))
-			}
-		}
+
 	}
 	if e.runtimeErr == nil && application.RequiresRuntimeBroker(m) {
 		if err := destroyRuntimeBroker(ctx, e.compose, m, e.files); err != nil {
@@ -473,6 +470,16 @@ func (e *applicationDestroyExecution) cleanupLogs(ctx context.Context) error {
 	if !e.resolved.FromRepository {
 		return nil
 	}
+	registered, err := logsprovider.ApplicationRegisteredAt(e.resolved.TargetStateRoot, e.resolved.Target.Name, e.manifest)
+	if err != nil {
+		return fmt.Errorf("inspect application log registration before cleanup: %w", err)
+	}
+	if !registered {
+		if err := logsprovider.RemoveWorkloadOverride(e.files); err != nil {
+			return err
+		}
+		return logsprovider.RemoveProviderSourceOverride(e.files)
+	}
 	if e.platformFiles.Compose == "" {
 		var err error
 		e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
@@ -540,12 +547,20 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 	if !devaccess.Enabled(e.manifest.Environment) {
 		return nil
 	}
+	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
+	present, err := devgateway.OwnerRoutesPresent(ctx, e.compose, e.resolved.Target.Name, appOwner)
+	if err != nil {
+		return fmt.Errorf("inspect development gateway before cleanup: %w", err)
+	}
+	if !present {
+		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
+		return nil
+	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
 	}
 	issuer := openbao.NewServiceIssuer(e.compose, files)
-	appOwner := "app/" + e.manifest.Name + "/" + e.manifest.Environment
 	if err := devgateway.RemoveOwners(
 		ctx,
 		e.compose,
@@ -591,8 +606,26 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 
 	e.term.Section("Application")
 	e.term.Result("DELETED", "application", e.manifest.Name+" permanently deleted")
+	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 	if e.resolved.FromRepository {
 		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
 	}
 	return nil
+}
+
+type repositoryVolumeInventory interface {
+	InventoryRepositoryVolumes(context.Context, string, ...string) ([]bhruntime.RepositoryVolume, error)
+}
+
+func renderRepositoryVolumePreservation(out io.Writer, volumes []bhruntime.RepositoryVolume, engine string) {
+	for _, volume := range volumes {
+		fmt.Fprintf(out, "PRESERVED volume %s (Compose project: %s; BaseHarbor owner: %s)\n  %s\n", volume.Name, volume.Project, volume.Owner, volume.Reason)
+		if !volume.Shared && volume.Project != "" && (engine == "docker" || engine == "podman") {
+			// Quote engine-provided names as shell data, never interpolate as code.
+			name := "'" + strings.ReplaceAll(volume.Name, "'", "'\"'\"'") + "'"
+			fmt.Fprintf(out, "  Deliberate cleanup after verifying no other consumers and accepting data loss: %s volume rm -- %s\n", engine, name)
+		} else {
+			fmt.Fprintln(out, "  Inspect ownership and all consumers manually before considering cleanup.")
+		}
+	}
 }

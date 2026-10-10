@@ -711,6 +711,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			return nil, err
 		}
 		if instance == preferredRedis {
+			if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+				env["REDIS_KEY_PREFIX"], env["VALKEY_KEY_PREFIX"] = prefix, prefix
+			}
 			env["REDIS_URL"] = uri
 			env["VALKEY_URL"] = uri
 			env["REDIS_CA_FILE"] = valkeyTLSCAContainerPath(instance)
@@ -718,6 +721,9 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		}
 		if instance != defaultServiceInstance {
 			token := envInstanceToken(instance)
+			if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+				env["REDIS_"+token+"_KEY_PREFIX"], env["VALKEY_"+token+"_KEY_PREFIX"] = prefix, prefix
+			}
 			env["REDIS_"+token+"_URL"] = uri
 			env["VALKEY_"+token+"_URL"] = uri
 		}
@@ -764,9 +770,13 @@ func valkeyContainerConnectionURL(values map[string]string, instance string) (st
 	if host == "" {
 		host = valkeyAccessService(instance)
 	}
+	username := values[valkeyRuntimeKey(instance, "USER")]
+	if username == "" {
+		username = "default"
+	}
 	u := &url.URL{
 		Scheme: "rediss",
-		User:   url.UserPassword("default", password),
+		User:   url.UserPassword(username, password),
 		Host:   net.JoinHostPort(host, "6379"),
 		Path:   "/0",
 	}

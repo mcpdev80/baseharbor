@@ -1,63 +1,52 @@
-# BaseHarbor documentation
+---
+hide:
+  - toc
+---
 
-BaseHarbor documentation is organized around the CLI and the domain concepts it operates.
+<img class="bh-home-mark" src="brand/baseharbor-master-lockup.png" alt="BaseHarbor — Build · Run · Control · Everywhere">
 
-> **AI-generated, human-specified, machine-verified.**  
-> BaseHarbor treats human intent and architecture as the specification, AI as an implementation accelerator, and deterministic machine verification as the evidence that the result is correct.
+# Your applications. Your infrastructure.
 
-## New to BaseHarbor?
+BaseHarbor brings applications and their backends together on verified Linux Targets. Use one CLI to run native workloads, connect secure provider bindings and inspect the result.
 
-Start with [Getting started](tutorials/getting-started.md). For a minimal remote setup, use [Homelab: Core + Console + remote Podman](tutorials/homelab.md).
-Core requires SQL, Secrets and Identity; the Console is optional. See
-[Core resource observations](explanation/core-resources.md) for measured reference
-topologies and the resource implications of additional provider isolation.
+[Get started](tutorials/getting-started.md){ .md-button .md-button--primary }
+[GitHub](https://github.com/mcpdev80/baseharbor){ .md-button }
 
-## CLI
+Documentation for **BaseHarbor v0.4.24**. Published versions and installation binaries are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
 
-The `baha` CLI is the primary human interface.
+## From repository to running application
 
-Start with the [CLI overview](cli/index.md), then use the categorized command documentation:
+Install the [CLI and a rootless Docker or Podman runtime](tutorials/getting-started.md), then open your application's repository:
 
-- [Core workflow](cli/core.md)
-- [Applications](cli/applications.md)
-- [Targets](cli/targets.md)
-- [Providers](cli/providers.md)
-- [Development](cli/development.md)
-- [Organization and policy](cli/organization-policy.md)
-- [Security and trust](cli/security-trust.md)
-- [Automation and agents](cli/automation-agents.md)
-- [Shell and UX](cli/shell-ux.md)
-- [Global options](cli/global-options.md)
+```bash
+baha init
+baha up
+baha status
+```
 
-## Provider and service guides
+`baha init` adopts the repository and reuses an existing Core, or guides you through the required setup. Core means **SQL + Secrets + Identity**; the Console is optional. `baha up` converges the application. Status distinguishes verified readiness from a workload that is merely running.
 
-- [PostgreSQL](how-to/postgres.md)
-- [Cache](how-to/cache.md)
-- [Durable key-value](how-to/durable-key-value.md)
-- [Document database](how-to/document-database.md)
-- [Messaging](how-to/messaging.md)
-- [Object storage](how-to/object-storage.md)
-- [Secrets](how-to/secrets.md)
-- [Observability](how-to/observability.md)
-- [External / BYO providers](how-to/external-providers.md)
+## Build with your normal tools
 
-## Platform and security
+Keep your application code and libraries. BaseHarbor detects supported Compose, Quadlet and Kubernetes workload sources, resolves provider-neutral requirements and supplies protected bindings. Ambiguous or [unsupported sources](explanation/workload-sources.md) require an explicit next action before deployment.
 
-- [Targets and deployment destinations](explanation/targets.md)
-- [Organization / Platform Configuration](explanation/organization-configuration.md)
-- [Providers](explanation/providers.md)
-- [Repository workload sources](explanation/workload-sources.md)
-- [Security](explanation/security.md)
-- [Authentication](explanation/authentication.md)
+## Run with a shared or isolated Core
 
-## Reference and specifications
+Choose supported provider placement and a managed local or enrolled remote Target. Ownership, TLS, permissions and retained data remain explicit throughout the lifecycle. [Core resource observations](explanation/core-resources.md) distinguish measured reference topologies from planning estimates and the cost of additional isolation.
 
-- [Manifest](reference/manifest.md)
-- [MCP / agent interface](reference/mcp.md)
-- [Errors](reference/errors.md)
-- [Specification index](spec/README.md)
-- [Architecture decisions](decisions/index.md)
+## Control and verify
 
-Future planning belongs in GitHub Issues. Delivered history belongs in [release notes](releases/index.md).
+Inspect a plan before mutation, diagnose failures with Doctor, and review backups before recovery. CLI, JSON and MCP use the same domain operations. [EN and DE documentation](https://mcpdev80.github.io/baseharbor/de/) have equivalent page and command coverage; shipped technical identifiers and verified CLI output stay identical.
 
-English is canonical. German documentation may provide maintained human-facing guidance, but it does not redefine normative behavior.
+## Choose your next task
+
+| Task | Start here |
+| --- | --- |
+| Create, adopt or operate an application | [Applications](cli/applications.md) |
+| Select a local or remote deployment destination | [Targets](cli/targets.md) |
+| Connect managed or external backends | [Providers](explanation/providers.md) |
+| Manage identity, TLS and trust | [Security](explanation/security.md) |
+| Automate through JSON and MCP | [Automation and agents](cli/automation-agents.md) |
+| Find exact shipped commands and contracts | [Command index](cli/command-index.md) · [Reference](reference/cli.md) |
+
+Delivered changes and support boundaries are recorded in the [release notes](releases/index.md).

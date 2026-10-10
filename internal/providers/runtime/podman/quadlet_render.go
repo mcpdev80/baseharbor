@@ -308,6 +308,9 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 
 	unit.WriteString("\n[Container]\n")
 	fmt.Fprintf(unit, "Image=%s\nContainerName=%s\n", image, containerName)
+	if hostname := strings.TrimSpace(service.Hostname); hostname != "" {
+		fmt.Fprintf(unit, "HostName=%s\n", hostname)
+	}
 	if strings.HasPrefix(image, "localhost/baseharbor-") {
 		unit.WriteString("Pull=never\n")
 	}
@@ -321,6 +324,9 @@ func quadletRenderServiceUnitHeader(unit *strings.Builder, project, serviceName,
 }
 
 func quadletRenderServiceSecurity(unit *strings.Builder, service quadletComposeService) {
+	if mode := strings.TrimSpace(service.UserNSMode); mode != "" {
+		fmt.Fprintf(unit, "UserNS=%s\n", mode)
+	}
 	if user := strings.TrimSpace(service.User); user != "" {
 		userPart, groupPart, found := strings.Cut(user, ":")
 		fmt.Fprintf(unit, "User=%s\n", userPart)
@@ -577,10 +583,7 @@ func quadletRenderServiceRestart(unit *strings.Builder, project string, service 
 			continue
 		}
 		depUnit := project + "-" + sanitizeQuadletName(dep) + ".service"
-		script := fmt.Sprintf(
-			"for i in $(seq 1 240); do if systemctl --user is-failed --quiet %s; then exit 1; fi; if ! systemctl --user is-active --quiet %s; then exit 0; fi; sleep 0.5; done; exit 1",
-			depUnit, depUnit,
-		)
+		script := quadletCompletedDependencyScript(depUnit)
 		fmt.Fprintf(unit, "ExecStartPre=/bin/sh -ec %s\n", strconv.Quote(quadletSystemdValue(script)))
 	}
 	switch strings.ToLower(strings.TrimSpace(service.Restart)) {
@@ -594,4 +597,11 @@ func quadletRenderServiceRestart(unit *strings.Builder, project string, service 
 		return fmt.Errorf("Compose restart policy %q is unsupported", service.Restart)
 	}
 	return nil
+}
+
+// An active (exited) init service is complete, while an inactive service may
+// never have run. Neither is-active nor its negation proves successful exit.
+func quadletCompletedDependencyScript(unit string) string {
+	const complete = `BEGIN { FS="=" } { p[$1]=$2 } END { exit !((p["SubState"]=="exited" || p["SubState"]=="dead") && (p["ActiveState"]=="active" || p["ActiveState"]=="inactive") && p["Result"]=="success" && p["ExecMainCode"]=="1" && p["ExecMainStatus"]=="0" && p["ExecMainExitTimestampMonotonic"] ~ /^[1-9][0-9]*$/) }`
+	return fmt.Sprintf(`for i in $(seq 1 240); do if systemctl --user is-failed --quiet %s; then exit 1; fi; state=$(systemctl --user show %s --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,ExecMainExitTimestampMonotonic --no-pager) || exit 1; if printf '%%s\n' "$state" | awk '%s'; then exit 0; fi; sleep 0.5; done; exit 1`, unit, unit, complete)
 }
