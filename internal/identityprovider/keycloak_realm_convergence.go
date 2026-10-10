@@ -42,3 +42,15 @@ func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakReal
 		}
 	}
 }
+
+func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
+	if len(expected) == 0 || len(current.Attributes) == 0 {
+		return false
+	}
+	for key, value := range expected {
+		if current.Attributes[key] != value {
+			return false
+		}
+	}
+	return true
+}

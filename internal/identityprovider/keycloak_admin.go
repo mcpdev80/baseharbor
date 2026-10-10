@@ -691,18 +691,6 @@ func (a *keycloakAdmin) deleteRealm(ctx context.Context, realm string, ownership
 	return fmt.Errorf("delete Keycloak realm: HTTP %d: %s", status, body)
 }
 
-func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
-	if len(expected) == 0 || len(current.Attributes) == 0 {
-		return false
-	}
-	for key, value := range expected {
-		if current.Attributes[key] != value {
-			return false
-		}
-	}
-	return true
-}
-
 func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any) (int, string, error) {
 	var payloadData []byte
 	if payload != nil {
