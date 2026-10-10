@@ -143,48 +143,7 @@ func targetCommand() *cli.Command {
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
 		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, format, err := parseReadOutputArgs(args, "target")
-			if err != nil {
-				return err
-			}
-			if len(filtered) != 0 {
-				return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
-			}
-			result, err := collectTargetInspection(ctx)
-			if err != nil {
-				return err
-			}
-			if format == outputJSON {
-				return writeJSON(out, result)
-			}
-			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
-			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
-			fmt.Fprintf(out, "Selected %s\n", result.SelectionOrigin)
-			fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
-			if result.Target.Scope != "" {
-				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
-			}
-			if len(result.OperatorAuth) > 0 {
-				fmt.Fprintln(out, "\nOperator authentication")
-				environments := make([]string, 0, len(result.OperatorAuth))
-				for environment := range result.OperatorAuth {
-					environments = append(environments, environment)
-				}
-				sort.Strings(environments)
-				for _, environment := range environments {
-					auth := result.OperatorAuth[environment]
-					fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
-				}
-			}
-			if result.Application != "" {
-				fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
-				fmt.Fprintf(out, "Environment  %s\n", result.Environment)
-				fmt.Fprintf(out, "Repository   %s\n", result.Repository)
-			}
-			fmt.Fprintf(out, "\nEffective\n%s\n", result.Effective)
-			return nil
-		},
+		Run:     inspectTargetCommand,
 		Children: []*cli.Command{
 			{
 				Name:    "list",
@@ -261,62 +220,7 @@ func targetCommand() *cli.Command {
 					return writeTargetList(out, format, items)
 				},
 			},
-			{
-				Name:    "show",
-				Summary: "Show one target",
-				Usage:   "baha target show [NAME] [-o json|--output json|--json]",
-				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					filtered, format, err := parseReadOutputArgs(args, "target show")
-					if err != nil {
-						return err
-					}
-					if len(filtered) > 1 {
-						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
-					}
-					cfg, err := deployment.LoadConfig()
-					if err != nil {
-						return err
-					}
-					name := ""
-					if len(filtered) == 1 {
-						name = filtered[0]
-					}
-					explicit := name
-					if explicit == "" {
-						explicit = targetOverrideFromContext(ctx)
-					}
-					selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
-					if err != nil {
-						return err
-					}
-					target, err := cfg.ResolveTarget(selection, "")
-					if err != nil {
-						return err
-					}
-					root, err := deployment.TargetStateRoot(target.Name)
-					if err != nil {
-						return err
-					}
-					engine, engineErr := inspectTargetDockerEngine(ctx, target)
-					engineError := ""
-					if engineErr != nil {
-						engineError = engineErr.Error()
-					}
-					if format == outputJSON {
-						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError})
-					}
-					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
-					if target.Scope != "" {
-						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
-					}
-					fmt.Fprintf(out, "State    %s\n", root)
-					renderDockerEngine(out, engine)
-					if engineError != "" {
-						fmt.Fprintf(out, "Docker unavailable: %s\n", engineError)
-					}
-					return nil
-				},
-			},
+			targetShowCommand(),
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
@@ -378,6 +282,108 @@ func targetCommand() *cli.Command {
 			},
 		},
 	}
+}
+
+func targetShowCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "show",
+		Summary: "Show one target",
+		Usage:   "baha target show [NAME] [-o json|--output json|--json]",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "target show")
+			if err != nil {
+				return err
+			}
+			if len(filtered) > 1 {
+				return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
+			}
+			cfg, err := deployment.LoadConfig()
+			if err != nil {
+				return err
+			}
+			name := ""
+			if len(filtered) == 1 {
+				name = filtered[0]
+			}
+			explicit := name
+			if explicit == "" {
+				explicit = targetOverrideFromContext(ctx)
+			}
+			selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
+			if err != nil {
+				return err
+			}
+			target, err := cfg.ResolveTarget(selection, "")
+			if err != nil {
+				return err
+			}
+			root, err := deployment.TargetStateRoot(target.Name)
+			if err != nil {
+				return err
+			}
+			engine, engineErr := inspectTargetDockerEngine(ctx, target)
+			engineError := ""
+			if engineErr != nil {
+				engineError = engineErr.Error()
+			}
+			if format == outputJSON {
+				return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError})
+			}
+			fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
+			if target.Scope != "" {
+				fmt.Fprintf(out, "Scope    %s\n", target.Scope)
+			}
+			fmt.Fprintf(out, "State    %s\n", root)
+			renderDockerEngine(out, engine)
+			if engineError != "" {
+				fmt.Fprintf(out, "Docker unavailable: %s\n", engineError)
+			}
+			return nil
+		},
+	}
+}
+
+func inspectTargetCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target")
+	if err != nil {
+		return err
+	}
+	if len(filtered) != 0 {
+		return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
+	}
+	result, err := collectTargetInspection(ctx)
+	if err != nil {
+		return err
+	}
+	if format == outputJSON {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
+	fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
+	fmt.Fprintf(out, "Selected %s\n", result.SelectionOrigin)
+	fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
+	if result.Target.Scope != "" {
+		fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
+	}
+	if len(result.OperatorAuth) > 0 {
+		fmt.Fprintln(out, "\nOperator authentication")
+		environments := make([]string, 0, len(result.OperatorAuth))
+		for environment := range result.OperatorAuth {
+			environments = append(environments, environment)
+		}
+		sort.Strings(environments)
+		for _, environment := range environments {
+			auth := result.OperatorAuth[environment]
+			fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
+		}
+	}
+	if result.Application != "" {
+		fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
+		fmt.Fprintf(out, "Environment  %s\n", result.Environment)
+		fmt.Fprintf(out, "Repository   %s\n", result.Repository)
+	}
+	fmt.Fprintf(out, "\nEffective\n%s\n", result.Effective)
+	return nil
 }
 
 func collectTargetInspection(ctx context.Context) (targetInspectionResult, error) {

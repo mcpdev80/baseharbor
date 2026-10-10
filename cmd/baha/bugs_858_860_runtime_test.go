@@ -75,6 +75,12 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Synthetic retained Core state belongs to this positively identified daemon.
+			if mode == "core-present" || strings.HasPrefix(mode, "partial-") {
+				if err := ensureTargetDockerBinding(ctx, target); err != nil {
+					t.Fatal(err)
+				}
+			}
 			m, repo := bugApplicationRepository(t)
 			if mode == "configured" || mode == "partial-secret-core" {
 				m.Services.Secrets = true

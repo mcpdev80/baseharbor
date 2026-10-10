@@ -50,6 +50,8 @@ func TestAgentDescribeJSON(t *testing.T) {
 }
 
 func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyTools(t *testing.T) {
+	// Contract fixtures have no engine; never inspect a runner's daemon.
+	t.Setenv("PATH", t.TempDir())
 	target := configureTestTarget(t)
 	root := t.TempDir()
 	manifest := application.Manifest{

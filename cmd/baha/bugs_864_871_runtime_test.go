@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -59,7 +60,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 				t.Helper()
 				output.Reset()
 				if err := runWithIO(ctx, args, &output, &output); err != nil {
-					t.Fatalf("CLI %v failed: %v", args, err)
+					t.Fatalf("CLI %v failed: %s", args, finalBugDiagnostic(target, err, output.String()))
 				}
 			}
 			command("--plain", "up", "--yes")
@@ -150,4 +151,34 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 		t.Fatal("recovery lies inside destructible installation state")
 	}
 	t.Log("native destroy/rebootstrap accepted; previous recovery bytes preserved; fresh private recovery outside installation state")
+}
+
+// Diagnostic capture redacts every protected environment value before output.
+func finalBugDiagnostic(target deployment.ResolvedTarget, cause error, output string) string {
+	values := map[string]string{}
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	root, err := deployment.DataRoot()
+	if err == nil {
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".env") {
+				if env, err := readSimpleEnvFile(path); err == nil {
+					for key, value := range env {
+						values[path+key] = value
+					}
+				}
+			}
+			return nil
+		})
+	}
+	var details strings.Builder
+	for err := cause; err != nil; err = errors.Unwrap(err) {
+		fmt.Fprintln(&details, err)
+	}
+	details.WriteString(output)
+	return sanitizeWorkloadDiagnostic(details.String(), values)
 }

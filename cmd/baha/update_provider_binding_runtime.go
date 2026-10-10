@@ -271,90 +271,7 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	}
 	keycloakMutations := providerMemberMutations(keycloakDelta, keycloakServices)
 
-	openBaoHooks := baoAdapter.RuntimeHooks{
-		UpgradePath: patchProviderUpgradePath,
-		Backup: func(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
-			if err := openBaoCompose.Capture(openBaoMutations); err != nil {
-				return providerupgrade.BackupRef{}, err
-			}
-			return openBaoBackup.capture(ctx, version)
-		},
-		VerifyBackup: openBaoBackup.verify,
-		Apply: func(ctx context.Context, version, image, digest string) error {
-			if version != openBaoDelta.Desired.Version || image != openBaoDelta.Desired.Image || digest != openBaoDelta.Desired.Digest {
-				return errors.New("OpenBao adapter target differs from journaled Core delta")
-			}
-			if err := openBaoCompose.Stage(openBaoMutations); err != nil {
-				return err
-			}
-			if !o.core.HA {
-				if err := o.ReconcilePinned(ctx, openBaoDelta); err != nil {
-					return err
-				}
-				return waitForOpenBaoExecReady(ctx, o.runtime, o.core)
-			}
-			environment, err := bhruntime.RuntimeEnvironment(o.core)
-			if err != nil {
-				return err
-			}
-			for _, member := range o.core.OpenBaoMembers() {
-				if err := o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, o.core.Project, filepath.Dir(o.core.Compose),
-					environment, []string{member}, o.core.Compose); err != nil {
-					return fmt.Errorf("roll OpenBao member %s: %w", member, err)
-				}
-				// OpenBao may restart sealed. Unseal each restarted member before
-				// waiting for the unsealed-version readiness gate; deferring
-				// unseal until after the full roll would deadlock on a sealed node.
-				recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
-				if err != nil {
-					return err
-				}
-				if err := platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath); err != nil {
-					return fmt.Errorf("unseal OpenBao after rolling member %s: %w", member, err)
-				}
-				if err := o.waitOpenBaoRollingMember(ctx, member, openBaoDelta.Desired.Version, openBaoDelta.Desired.Digest); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-		Unseal: func(ctx context.Context) error {
-			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
-			if err != nil {
-				return err
-			}
-			return platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath)
-		},
-		VerifyAuth: func(ctx context.Context) error {
-			return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
-		},
-		VerifyApps: o.verifyOwnedApplicationSecretScopes,
-		Restore: func(ctx context.Context, ref providerupgrade.BackupRef, version string) error {
-			if version != openBaoDelta.Installed.Version {
-				return errors.New("OpenBao recovery version differs from journaled original")
-			}
-			if err := o.stopSelected(ctx, o.core, o.core.OpenBaoMembers()...); err != nil {
-				return err
-			}
-			if err := openBaoBackup.restore(ctx, ref); err != nil {
-				return err
-			}
-			if err := openBaoCompose.Restore(openBaoMutations); err != nil {
-				return err
-			}
-			if err := o.ReconcileOriginal(ctx, openBaoDelta); err != nil {
-				return err
-			}
-			if err := waitForOpenBaoExecReady(ctx, o.runtime, o.core); err != nil {
-				return err
-			}
-			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
-			if err != nil {
-				return err
-			}
-			return platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath)
-		},
-	}
+	openBaoHooks := o.openBaoRuntimeHooks(openBaoDelta, openBaoBackup, openBaoCompose, openBaoMutations)
 
 	keycloakHooks := keycloakadapter.CoreHooks{
 		Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
@@ -456,4 +373,92 @@ func (o *coreNativeRuntimeOps) buildBoundProviderTransaction(ctx context.Context
 	// verified by reconcileNativeCoreProviders; copy it into the registry source.
 	_ = ctx
 	return coreupdate.BoundProviderTransaction{Registry: registry, BackupDirectory: receiptDir, RecordExternal: o.Record}, nil
+}
+
+func (o *coreNativeRuntimeOps) openBaoRuntimeHooks(openBaoDelta coreupdate.Delta, openBaoBackup providerSQLBackupSpec, openBaoCompose coreupdate.ComposeCheckpoint, openBaoMutations map[string]coreupdate.Delta) baoAdapter.RuntimeHooks {
+	return baoAdapter.RuntimeHooks{
+		UpgradePath: patchProviderUpgradePath,
+		Backup: func(ctx context.Context, version string) (providerupgrade.BackupRef, error) {
+			if err := openBaoCompose.Capture(openBaoMutations); err != nil {
+				return providerupgrade.BackupRef{}, err
+			}
+			return openBaoBackup.capture(ctx, version)
+		},
+		VerifyBackup: openBaoBackup.verify,
+		Apply: func(ctx context.Context, version, image, digest string) error {
+			if version != openBaoDelta.Desired.Version || image != openBaoDelta.Desired.Image || digest != openBaoDelta.Desired.Digest {
+				return errors.New("OpenBao adapter target differs from journaled Core delta")
+			}
+			if err := openBaoCompose.Stage(openBaoMutations); err != nil {
+				return err
+			}
+			if !o.core.HA {
+				if err := o.ReconcilePinned(ctx, openBaoDelta); err != nil {
+					return err
+				}
+				return waitForOpenBaoExecReady(ctx, o.runtime, o.core)
+			}
+			environment, err := bhruntime.RuntimeEnvironment(o.core)
+			if err != nil {
+				return err
+			}
+			for _, member := range o.core.OpenBaoMembers() {
+				if err := o.runtime.UpProjectFilesSelectedForceRecreateNoBuild(ctx, o.core.Project, filepath.Dir(o.core.Compose),
+					environment, []string{member}, o.core.Compose); err != nil {
+					return fmt.Errorf("roll OpenBao member %s: %w", member, err)
+				}
+				// OpenBao may restart sealed. Unseal each restarted member before
+				// waiting for the unsealed-version readiness gate; deferring
+				// unseal until after the full roll would deadlock on a sealed node.
+				recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
+				if err != nil {
+					return err
+				}
+				if err := platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath); err != nil {
+					return fmt.Errorf("unseal OpenBao after rolling member %s: %w", member, err)
+				}
+				if err := o.waitOpenBaoRollingMember(ctx, member, openBaoDelta.Desired.Version, openBaoDelta.Desired.Digest); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		Unseal: func(ctx context.Context) error {
+			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
+			if err != nil {
+				return err
+			}
+			return platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath)
+		},
+		VerifyAuth: func(ctx context.Context) error {
+			return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
+		},
+		VerifyApps: o.verifyOwnedApplicationSecretScopes,
+		Restore: func(ctx context.Context, ref providerupgrade.BackupRef, version string) error {
+			if version != openBaoDelta.Installed.Version {
+				return errors.New("OpenBao recovery version differs from journaled original")
+			}
+			if err := o.stopSelected(ctx, o.core, o.core.OpenBaoMembers()...); err != nil {
+				return err
+			}
+			if err := openBaoBackup.restore(ctx, ref); err != nil {
+				return err
+			}
+			if err := openBaoCompose.Restore(openBaoMutations); err != nil {
+				return err
+			}
+			if err := o.ReconcileOriginal(ctx, openBaoDelta); err != nil {
+				return err
+			}
+			if err := waitForOpenBaoExecReady(ctx, o.runtime, o.core); err != nil {
+				return err
+			}
+			recoveryPath, _, err := resolveTargetRecoveryFile(ctx, "")
+			if err != nil {
+				return err
+			}
+			return platformopenbao.Unseal(ctx, o.runtime, o.core, recoveryPath)
+		},
+	}
+
 }

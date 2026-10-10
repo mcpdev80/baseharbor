@@ -256,6 +256,11 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 		return KeycloakFiles{}, err
 	}
 
+	return ensureKeycloakAccessAndCompose(ctx, app, issuer, namespace, placement, files, publicPort)
+}
+
+func ensureKeycloakAccessAndCompose(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, namespace string, placement capability.ProviderPlacement, files KeycloakFiles, publicPort int) (KeycloakFiles, error) {
+	dir, coreSQL := files.Dir, files.SharedSQL
 	publicPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
 	if err != nil {
 		return KeycloakFiles{}, err

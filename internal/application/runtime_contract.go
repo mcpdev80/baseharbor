@@ -233,6 +233,10 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("mongodb", instance, len(mongoInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
+	return writeRuntimeContract(m, files, values, bindingsDir, serviceRefs, &env)
+}
+
+func writeRuntimeContract(m Manifest, files RuntimeFiles, values map[string]string, bindingsDir string, serviceRefs map[string]runtimeServiceRef, env *strings.Builder) (RuntimeContract, error) {
 	applicationEnv := filepath.Join(files.Dir, "application.env")
 	if err := writeOwnerOnlyFile(applicationEnv, []byte(env.String())); err != nil {
 		return RuntimeContract{}, fmt.Errorf("write application environment contract: %w", err)
