@@ -7,7 +7,7 @@ Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, oh
 Vor der ersten Application benötigt BaseHarbor seinen Core: **SQL + Secrets + Identity**
 (PostgreSQL, OpenBao und Keycloak). Die Web Console ist optional.
 
-Beim ersten `app init` oder Application-Start bietet BaseHarbor die Einrichtung an:
+Beim ersten `baha init` oder Application-Start bietet BaseHarbor die Einrichtung an:
 
 ```text
 BaseHarbor needs its Core services before the first application can run.
@@ -29,7 +29,6 @@ und erzeugt keinen zweiten Core.
 
 Core-only ohne Repository/Application verwendet den bestehenden Pfad
 `baha up --control-plane-only`; `baha status` außerhalb eines Application-Repositories zeigt den Zustand.
-Der endgültige CLI-Namensraum bleibt Gegenstand des Pre-Freeze-Reviews.
 Maschinenpfade liefern ohne ausdrücklichen Bootstrap-Auftrag den typisierten
 Fehler `core_required`; sie richten keinen Core stillschweigend ein.
 
@@ -51,7 +50,7 @@ baha target show
 Fehlt ein Target, konfiguriere es anhand der [Target-Befehle](../cli/targets.md). Erzeuge danach eine neue Anwendung:
 
 ```bash
-baha app new orders-api --stack go --http --sql
+baha new application orders-api --stack go --http --sql
 cd orders-api
 baha plan
 baha up -e dev
@@ -68,19 +67,19 @@ Eigene Bestell-Endpunkte und Tabellen ergänzt du im erzeugten Code. Das [Postgr
 Nur die Anwendung stoppen und ihre persistenten Daten behalten:
 
 ```bash
-baha app down
+baha down
 ```
 
 Mit `baha up` im selben Repository startest du sie wieder.
 
 ## Bestehendes Repository übernehmen
 
-Bei einer vorhandenen Anwendung folgt auf die optionale Inspektion `baha app init` und danach `baha up`. Dafür brauchst du kein neues Scaffold und keine manuelle Compose-Umschreibung.
+Bei einer vorhandenen Anwendung folgt auf die optionale Inspektion `baha init` und danach `baha up`. Dafür brauchst du kein neues Scaffold und keine manuelle Compose-Umschreibung.
 
 ## 1. Optional: Repository prüfen
 
 ```bash
-baha app inspect .
+baha inspect .
 ```
 
 Die Inspektion ist schreibgeschützt. BaseHarbor zeigt den erkannten Workload, ersetzbare Infrastruktur und die erkannten Fähigkeiten, ohne das Repository zu verändern.
@@ -88,13 +87,13 @@ Die Inspektion ist schreibgeschützt. BaseHarbor zeigt den erkannten Workload, e
 Detaillierte Nachweise:
 
 ```bash
-baha app inspect . --verbose
+baha inspect . --verbose
 ```
 
 ## 2. Portablen Anwendungsvertrag erstellen
 
 ```bash
-baha app init
+baha init
 ```
 
 BaseHarbor erkennt so viel wie sicher möglich und fragt nur bei Mehrdeutigkeit oder echten Benutzerentscheidungen nach.
@@ -113,7 +112,7 @@ Vor dem Schreiben von `baseharbor.yaml` zeigt BaseHarbor eine menschenlesbare Zu
 Deterministische Automatisierung bei eindeutiger Erkennung:
 
 ```bash
-baha app init --quick
+baha init --quick
 ```
 
 `--quick` bricht bei Mehrdeutigkeit der Quelle sicher ab und übernimmt heuristisch erkannte Geheimnis-Kandidaten niemals stillschweigend. Eindeutige Compose-, im Repository gepflegte Quadlet- und rohe Kubernetes-YAML-Quellen können geprüft und übernommen werden, ohne quellenspezifische Namen in den portablen Anwendungsvertrag zu übernehmen.
@@ -166,7 +165,7 @@ baha app secret set APP_SECRET
 
 ## Durchgängige Referenzdemo
 
-Das externe Repository `mcpdev80/baseharbor-demo` ist der Release-seitige Nachweis dieses Ablaufs. Seine README beschreibt den vollständigen Test vom unveränderten Repository über `baha app init` und `baha up` bis READY, Neustart und Aufräumen.
+Das externe Repository `mcpdev80/baseharbor-demo` ist der Release-seitige Nachweis dieses Ablaufs. Seine README beschreibt den vollständigen Test vom unveränderten Repository über `baha init` und `baha up` bis READY, Neustart und Aufräumen.
 
 Die Vorabprüfung validiert sowohl den geführten Benutzerablauf als auch deterministische Komponentenpfade. Der finale Release verwendet diese unveränderlichen Nachweise wieder, statt dieselbe aufwendige Matrix erneut auszuführen.
 

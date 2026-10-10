@@ -4,26 +4,26 @@ Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zu
 
 | Befehl | Aufgabe |
 | --- | --- |
-| `baha app new` | Neue ecosystem-native Application erzeugen |
-| `baha app init` | Bestehendes Repository übernehmen |
-| `baha app inspect` | Repository-/Application-Evidenz lesen |
+| `baha new application` | Neue ecosystem-native Application erzeugen |
+| `baha init` | Bestehendes Repository übernehmen |
+| `baha inspect` | Repository-/Application-Evidenz lesen |
 | `baha app show` | Aufgelösten Vertrag anzeigen |
-| `baha app list` | Bekannte Applications auflisten |
-| `baha app plan` | Plan anzeigen |
+| `baha list` | Bekannte Applications auflisten |
+| `baha plan` | Plan anzeigen |
 | `baha app preflight` | Vor Mutation validieren |
-| `baha app up` / `baha app apply` | Application konvergieren/abgleichen |
-| `baha app down` | Application-Runtime stoppen |
-| `baha app status` | Zustand beobachten |
-| `baha app doctor` | Diagnostizieren, optional reparieren |
-| `baha app update` | Unterstützten Update-Pfad verwenden |
-| `baha app destroy` | Application-eigene Ressourcen entfernen |
+| `baha up` / `baha app apply` | Application konvergieren/abgleichen |
+| `baha down` | Application-Runtime stoppen |
+| `baha status` | Zustand beobachten |
+| `baha doctor` | Diagnostizieren, optional reparieren |
+| `baha app update` | Unterstützte Application-Source aktualisieren |
+| `baha destroy` | Application-eigene Ressourcen entfernen |
 
 ## Erzeugen oder übernehmen
 
 In einem übergeordneten Verzeichnis ohne vorhandenen Ordner `shop-api`:
 
 ```text
-baha app init my-app \
+baha init my-app \
   --workload-source kubernetes:deploy/k8s \
   --workload-component api \
   --workload-component worker
@@ -31,7 +31,7 @@ baha app init my-app \
 
 Das Scaffold deklariert SQL/Cache, ergänzt Go-Clients und Runtime-Bindungsnamen. Fachliche Endpunkte und Tabellen ergänzt du selbst. Nach `baha up` zeigen `baha app logs app` die Logs und `baha app env --format json` maskierte Bindungen.
 
-Bei vorhandenem Repository beginnst du dort mit `baha app inspect .`, danach `baha app init`; kein zweites Scaffold über vorhandene Dateien schreiben.
+Bei vorhandenem Repository beginnst du dort mit `baha inspect .`, danach `baha init`; kein zweites Scaffold über vorhandene Dateien schreiben.
 
 ## Source-neutrale Adoption
 
@@ -40,11 +40,11 @@ Compose, Repository-Quadlet und Raw Kubernetes YAML werden über denselben Sourc
 Explizite Source-/Komponentenwahl, wenn im Repository tatsächlich vorhanden:
 
 ```bash
-baha app new shop-api --stack go --http --sql --cache
+baha new application shop-api --stack go --http --sql --cache
 cd shop-api
-baha app inspect .
+baha inspect .
 baha app show
-baha app plan
+baha plan
 ```
 
 Helm und Kustomize sind noch keine Source Adapter. Eine benötigte explizite Auswahl wird in `baseharbor.repository.yaml` gespeichert.

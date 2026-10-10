@@ -29,11 +29,11 @@ Außerhalb eines Application-Repositories gelten `down` und `destroy` für die a
 
 ## Updates
 
-`baha update --check` prüft die veröffentlichte Binary-Version und zeigt den Status der Provider-Reconciliation. **Im aktuellen Implementierungsstand von v0.4.24 sind Core-Provider-Upgrades über das reine Binary-Update noch nicht unterstützt.** Bei erkanntem Core wird die Änderung verweigert. PostgreSQL, OpenBao und Keycloak werden nicht stillschweigend neu gestartet.
+`baha update --check` prüft veröffentlichte BaseHarbor-Releases und vergleicht die installierten eigenen Core-Provider mit dem ausgewählten unveränderlichen Release-Katalog. JSON zeigt `core_plan` und gegebenenfalls `core_inspection_error`; unbekannte Inventare gelten nicht als unterstützt.
 
-Bei einem für das Zielrelease eingebetteten Katalog enthält die JSON-Ausgabe außerdem die erwarteten Core- und Keycloak-Datenbank-Images mit Digests. Das ist **keine Ist-Versionsprüfung**: Ein tatsächlicher Vergleich mit allen installierten Realisierungen fehlt noch.
+`baha update --yes` aktualisiert BaseHarbor selbst und gleicht nur zugelassene Core-Provider-Änderungen nach geprüften Backup-, Ownership- und Recovery-Voraussetzungen ab. PostgreSQL-Major-Wechsel und nicht unterstützte HA-Transitions bleiben ausgeschlossen. v0.4.24 ist unveröffentlicht; die Prüfung eines verfügbaren Releases veröffentlicht diesen Kandidaten nicht.
 
-Die benötigten Nachweise zu unveränderlichen Image-Digests, Recovery und Verifikation beschreibt der [Core-Update-Vertrag (EN)](https://mcpdev80.github.io/baseharbor/spec/core-provider-update-v1/).
+Für Source-/Git-Updates der Application dient `baha app update`. Das ist eine andere Operation als ein BaseHarbor-/Core-Update. Die [Core-Provider-Update-Spezifikation](../spec/core-provider-update-v1.md) beschreibt die genauen Zulassungs- und Recovery-Grenzen.
 
 ## Automation und Maschinenclients
 

@@ -3,7 +3,7 @@
 Mit installiertem `baha` in einem übergeordneten Verzeichnis ohne `orders-api`:
 
 ```bash
-baha app new orders-api --stack go --http --sql
+baha new application orders-api --stack go --http --sql
 cd orders-api
 baha plan
 baha up -e dev
@@ -57,4 +57,4 @@ App B role -> App A database  DENY
 ```
 
 
-Technische Bezeichner: `baha app inspect .`, `baha app init`.
+Technische Bezeichner: `baha inspect .`, `baha init`.

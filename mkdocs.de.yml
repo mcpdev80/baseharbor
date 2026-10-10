@@ -7,6 +7,7 @@ docs_dir: docs/de
 site_dir: site/de
 theme:
   name: material
+  font: false
   language: de
   logo: ../brand/baseharbor-master-lockup.png
   favicon: ../brand/baseharbor.ico

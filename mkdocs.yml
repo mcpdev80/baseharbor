@@ -11,6 +11,7 @@ exclude_docs: |
 
 theme:
   name: material
+  font: false
   language: en
   logo: brand/baseharbor-master-lockup.png
   favicon: brand/baseharbor.ico

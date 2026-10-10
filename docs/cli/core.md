@@ -4,14 +4,14 @@ These commands form the shortest normal BaseHarbor workflow.
 
 | Command | Purpose | Safety |
 | --- | --- | --- |
-| `baha init` | Explain initialization paths | Read-only |
+| `baha init` | Initialize or adopt the current repository, including required Core setup | Mutating |
 | `baha up` | Start/reuse BaseHarbor and converge the current application | Mutating |
-| `baha down` | Stop the local BaseHarbor control plane | Mutating |
+| `baha down` | Stop the current application, or the control plane outside a repository | Mutating |
 | `baha status` | Show application status in a repository, otherwise control-plane status | Read-only |
 | `baha plan` | Show the application plan | Read-only |
 | `baha doctor` | Diagnose the current application/control plane | Read-only by default |
 | `baha destroy` | Remove BaseHarbor-managed resources/state | Destructive |
-| `baha update` | Update BaseHarbor/application state through the supported update path | Mutating |
+| `baha update` | Update BaseHarbor and Core providers through the supported update path | Mutating |
 | `baha version` | Show build version | Read-only |
 
 ## `baha up`
@@ -58,29 +58,28 @@ Inside an application repository it uses the same application doctor semantics a
 
 ## `baha destroy`
 
-Without `--all`, BaseHarbor shows the ownership-safe destruction scope for the effective Target.
+Inside a repository, `baha destroy` removes the owned application after confirmation. Outside a repository, it shows the ownership-safe destruction scope for the effective Target.
 
 `baha destroy --all` is the explicit installation-cleanup path and removes BaseHarbor-owned installation state while preserving application source repositories and external infrastructure.
 
 ## Example: start, inspect and stop an order API
 
-Inside a scaffold created with `baha app new orders-api --stack go --http --sql`, with a configured runtime Target:
+Inside a scaffold created with `baha new application orders-api --stack go --http --sql`, with a configured runtime Target:
 
 ```bash
 baha plan -e dev
 baha up -e dev
 baha status -o json
 baha doctor
-baha app down
+baha down
 ```
 
-The plan previews deployment; `up` converges it; status reports its result. `app down` stops the application's runtime while preserving persistent data. Use `baha up` to resume it. Top-level `baha down` stops the local control plane and is a different scope.
+The plan previews deployment; `up` converges it; status reports its result. `baha down` stops the application's runtime while preserving persistent data. Use `baha up` to resume it. Inside the repository, `baha down` stops the application; outside a repository it stops the selected control plane.
 
 ## Destroy inventory and preserved recovery material
 
 ```bash
-baha destroy                 # preview this target after its applications are destroyed
-baha destroy --all -o json   # inventory the full installation without mutation
+baha destroy --all -o json
 baha destroy --all --yes -o json
 ```
 

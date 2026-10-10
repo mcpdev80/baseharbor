@@ -2,9 +2,9 @@
 
 | Befehl | Aufgabe | Eingriff |
 | --- | --- | --- |
-| `baha init` | Initialisierungspfade erklären | Lesend |
+| `baha init` | Aktuelles Repository übernehmen und benötigten Core einrichten | Verändernd |
 | `baha up` | Core wiederverwenden/einrichten und Application abgleichen | Verändernd |
-| `baha down` | Lokale Control Plane stoppen | Verändernd |
+| `baha down` | Im Repository die Application, sonst die Control Plane stoppen | Verändernd |
 | `baha status` | Im Repository Application-, sonst Control-Plane-Status | Lesend |
 | `baha plan` | Application-Plan anzeigen | Lesend |
 | `baha doctor` | Application/Control Plane diagnostizieren | Standardmäßig lesend |
@@ -40,18 +40,17 @@ baha plan -e dev
 baha up -e dev
 baha status -o json
 baha doctor
-baha app down
+baha down
 ```
 
 Mit `baha up` wird sie fortgesetzt. `doctor --fix` ist ausdrücklich verändernd.
 
 ## Vollständiges Entfernen
 
-`baha destroy` zeigt den sicheren Scope des effektiven Targets. `baha destroy --all` betrifft alle eigenen Installationsressourcen, bewahrt Source-Repositories und fremde Infrastruktur. Ohne ausdrückliche Freigabe wird nicht gelöscht.
+Im Repository betrifft `baha destroy` die eigene Application; außerhalb zeigt es den sicheren Scope des effektiven Targets. `baha destroy --all` betrifft alle eigenen Installationsressourcen, bewahrt Source-Repositories und fremde Infrastruktur. Ohne ausdrückliche Freigabe wird nicht gelöscht.
 
 ```bash
-baha destroy                 # preview this target after its applications are destroyed
-baha destroy --all -o json   # inventory the full installation without mutation
+baha destroy --all -o json
 baha destroy --all --yes -o json
 ```
 
@@ -60,7 +59,7 @@ Diese Ausgabe zeigt Ressourcen und bewahrtes Recovery-Material. Erst `baha destr
 Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/core/).
 
 
-Technische Bezeichner: `ha: true`, `baha app doctor`, `baha app new orders-api --stack go --http --sql`, `preserved`, `results`.
+Technische Bezeichner: `ha: true`, `baha app doctor`, `baha new application orders-api --stack go --http --sql`, `preserved`, `results`.
 
 ## Provider-Update und Point-Recovery
 

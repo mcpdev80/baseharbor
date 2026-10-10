@@ -29,11 +29,11 @@ Use `baha --help` or `baha COMMAND --help`; developer tasks appear first, and sp
 
 ## Updates
 
-`baha update --check` checks the published BaseHarbor binary release and reports whether provider reconciliation is available. **As of the current v0.4.24 implementation, installed Core provider upgrades are not supported through binary-only self-update**. The command refuses mutation when an existing Core installation is detected. It does not silently restart PostgreSQL, OpenBao or Keycloak.
+`baha update --check` inspects published BaseHarbor releases and compares the installed owned Core providers with the selected immutable release catalog. JSON reports `core_plan` and any `core_inspection_error`; unknown inventory is not assumed supported.
 
-When the binary contains the selected release catalog, JSON output also includes expected Core and Keycloak backing images with immutable digests. This is **not yet installed-version discovery**: actual comparison against all managed realizations is still missing.
+`baha update --yes` updates BaseHarbor itself and reconciles only admitted Core provider changes after verified backup, ownership and recovery checks. PostgreSQL major changes and unsupported HA transitions remain excluded. v0.4.24 is unreleased; checking an available release does not publish this candidate.
 
-See [Core provider update specification](../spec/core-provider-update-v1.md) for the required immutable digest, recovery and verification evidence before this can be enabled.
+Use `baha app update` for application source/Git updates. It is a different operation from BaseHarbor/Core updates. See the [Core provider update specification](../spec/core-provider-update-v1.md) for exact admission and recovery boundaries.
 
 ## Automation and machine clients
 

@@ -3,7 +3,7 @@
 Create a Go API with SQL intent, then inspect and query its application-owned database. With `baha` installed, run from a parent directory:
 
 ```bash
-baha app new orders-api --stack go --http --sql
+baha new application orders-api --stack go --http --sql
 cd orders-api
 baha plan
 baha up -e dev
@@ -30,7 +30,7 @@ SELECT id, total_cents FROM orders WHERE id = 42;
 
 The query returns the sample order with a total of 1990 cents. Exit with `\q`, then run `baha doctor` to verify the SQL capability. This exercises application access, not provider-administrator credentials.
 
-Use [backup and restore](backup-restore.md) before relying on recovery of this order. For an existing API repository, use `baha app inspect .` and `baha app init` instead of creating a second scaffold.
+Use [backup and restore](backup-restore.md) before relying on recovery of this order. For an existing API repository, use `baha inspect .` and `baha init` instead of creating a second scaffold.
 
 ## Shared PostgreSQL isolation
 
