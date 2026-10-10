@@ -88,6 +88,52 @@ class FakeAPI:
 
 
 class EvidenceTests(unittest.TestCase):
+    def copied_success(self):
+        original = self.api.jobs[1][0]
+        original.update(created_at='2026-10-10T20:00:00Z',
+                        started_at='2026-10-10T20:00:01Z',
+                        completed_at='2026-10-10T20:00:02Z',
+                        steps=[{'name': 'Run gate', 'number': 1, 'status': 'completed',
+                                'conclusion': 'success', 'started_at': '2026-10-10T20:00:01Z',
+                                'completed_at': '2026-10-10T20:00:02Z'}])
+        copied = dict(original, id=201, run_attempt=2, created_at='2026-10-10T20:10:00Z')
+        self.api.jobs[1].append(copied)
+        return original, copied
+
+    def test_github_copied_success_preserves_original_execution_and_archive(self):
+        original, _ = self.copied_success()
+        proof = self.collect([1])['proofs'][0]
+        self.assertEqual(proof['origin']['job_id'], original['id'])
+        self.assertEqual(proof['origin']['attempt'], 1)
+        self.assertEqual(proof['manifest']['workflow_run_attempt'], 1)
+
+    def test_copied_success_without_matching_original_execution_is_rejected(self):
+        _, copied = self.copied_success()
+        copied['steps'] = [dict(copied['steps'][0], conclusion='failure')]
+        with self.assertRaisesRegex(ValueError, 'original execution'):
+            self.collect([1])
+
+    def test_copied_success_without_original_job_is_rejected(self):
+        _, copied = self.copied_success()
+        self.api.jobs[1] = [copied]
+        with self.assertRaisesRegex(ValueError, 'original execution'):
+            self.collect([1])
+
+    def test_actual_new_execution_cannot_borrow_an_older_archive(self):
+        _, newer = self.copied_success()
+        newer.update(started_at='2026-10-10T20:10:01Z', completed_at='2026-10-10T20:10:02Z')
+        result = self.collect([1])
+        self.assertFalse(result['proofs'])
+        self.assertIn('missing', result['pending']['atomic/static/mcp'])
+
+    def test_actual_new_failure_still_supersedes_original_success(self):
+        _, newer = self.copied_success()
+        newer.update(started_at='2026-10-10T20:10:01Z', completed_at='2026-10-10T20:10:02Z',
+                     conclusion='failure')
+        result = self.collect([1])
+        self.assertFalse(result['proofs'])
+        self.assertIn('failure', result['pending']['atomic/static/mcp'])
+
     def test_v024_reuse_keeps_the_origin_demo_pin_after_candidate_changes(self):
         class BoundInputs(FakeInputs):
             def pin(self, candidate, tag, demo_ref=None):
