@@ -650,21 +650,14 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
 
     steps:
-      - name: Prepare hosted Podman runtime
-        if: matrix.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y podman
-          podman version
-          podman info
-
       - name: Checkout exact candidate
         id: checkout
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -752,21 +745,14 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
 
     steps:
-      - name: Prepare hosted Podman runtime
-        if: matrix.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y podman
-          podman version
-          podman info
-
       - name: Checkout exact candidate
         id: checkout
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -873,15 +859,13 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
 
     steps:
-      - name: Prepare hosted Podman runtime
-        if: matrix.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y podman
-          podman version
-          podman info
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Verify Podman Quadlet runtime
         id: quadlet
@@ -910,11 +894,6 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
           echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
-
-      - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.source.outputs.candidate_sha }}
 
       - name: Reset journey runtime
         shell: bash
