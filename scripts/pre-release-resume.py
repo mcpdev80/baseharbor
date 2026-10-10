@@ -101,6 +101,43 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+# This single relocation has no runtime effect: the exact helper is a pure
+# attribute comparison in one package. Hash both files in their original
+# layout only when its bytes, unique definition and unconditional compilation
+# are identical. Every other byte, mode, function or directive remains input.
+OWNERSHIP_HELPER = b"""func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
+\tif len(expected) == 0 || len(current.Attributes) == 0 {
+\t\treturn false
+\t}
+\tfor key, value := range expected {
+\t\tif current.Attributes[key] != value {
+\t\t\treturn false
+\t\t}
+\t}
+\treturn true
+}
+"""
+OWNERSHIP_FILES = ('internal/identityprovider/keycloak_admin.go',
+                   'internal/identityprovider/keycloak_realm_convergence.go')
+
+
+def canonical_ownership_files(admin, convergence):
+    if (not all(data.startswith(b'package identityprovider\n') for data in [admin, convergence]) or
+            any(marker in data for data in [admin, convergence]
+                for marker in [b'//go:', b'//line ', b'/*line ']) or
+            sum(data.count(b'func keycloakRealmOwnedBy(') for data in [admin, convergence]) != 1):
+        return None
+    anchor = b'\nfunc (a *keycloakAdmin) do('
+    if admin.count(anchor) != 1:
+        return None
+    if b'\n' + OWNERSHIP_HELPER + anchor in admin:
+        return admin, convergence
+    if convergence.endswith(b'\n' + OWNERSHIP_HELPER):
+        return (admin.replace(anchor, b'\n' + OWNERSHIP_HELPER + anchor),
+                convergence[:-len(b'\n' + OWNERSHIP_HELPER)])
+    return None
+
+
 class GitInputs:
     def __init__(self, product, demo, demo_ref=None):
         self.product, self.demo = pathlib.Path(product), pathlib.Path(demo)
@@ -131,15 +168,31 @@ class GitInputs:
         raw = command(['git', 'show', candidate + ':' + REQUIREMENTS_PATH], self.product)
         return load_requirements(raw, tag)
 
+    @functools.lru_cache(maxsize=None)
+    def runtime_product_objects(self, candidate):
+        objects = self.objects(self.product, candidate)
+        if not set(OWNERSHIP_FILES) <= {path for path, _ in objects}:
+            return objects
+        sources = [command(['git', 'show', candidate + ':' + path], self.product)
+                   for path in OWNERSHIP_FILES]
+        normalized = canonical_ownership_files(*sources)
+        if normalized is None:
+            return objects
+        canonical = dict(zip(OWNERSHIP_FILES, normalized))
+        return [(path, meta.split()[0] + ' blob ownership-layout-sha256:' +
+                 hashlib.sha256(canonical[path]).hexdigest()) if path in canonical
+                else (path, meta) for path, meta in objects]
+
     def fingerprint(self, candidate, demo, tag, key):
-        native_atomic = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/'))
-        # These source-plan tools never execute inside an atomic runtime job.
-        # Current validation still authenticates every original job and ZIP;
-        # their changes continue to invalidate static and journey proofs.
+        native_runtime = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        # Source-plan tools do not execute inside native runtime jobs. The current
+        # verifier still authenticates every immutable origin and ZIP. Static
+        # evidence keeps these tooling bytes as part of its execution inputs.
         collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
-        product = [(path, obj) for path, obj in self.objects(self.product, candidate)
+        objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
+        product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
-                   and not (native_atomic and path in collectors)]
+                   and not (native_runtime and path in collectors)]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
                         if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
                                 and not key.startswith('journey/'))
@@ -151,7 +204,7 @@ class GitInputs:
                                  and not key.endswith('/backup-restore'))
                         # pin() separately requires this exact Core binding on
                         # both candidate and original v0.4.24 Demo revisions.
-                        and not (native_atomic and path == 'baseharbor-core.ref')]
+                        and not (native_runtime and path == 'baseharbor-core.ref')]
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
         if requirement is None:
@@ -168,7 +221,7 @@ class GitInputs:
                         if field not in {'matrix', 'max-parallel'}}
             if strategy:
                 execution[name]['strategy'] = strategy
-        return digest({'policy': 'baseharbor.gate-inputs/v3', 'tag': tag, 'gate': key,
+        return digest({'policy': 'baseharbor.gate-inputs/v4', 'tag': tag, 'gate': key,
                        'requirement': requirement, 'product': product, 'demo': demo_objects,
                        'execution': execution})
 

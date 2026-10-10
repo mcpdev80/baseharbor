@@ -473,10 +473,51 @@ class GitFingerprintTests(unittest.TestCase):
         self.assertEqual(resume.GitInputs(self.product, self.demo, changed_demo).pin(changed, 'v0.4.24'), changed_demo)
         with self.assertRaises(ValueError):
             resume.GitInputs(self.product, self.demo, original_demo).pin(changed, 'v0.4.24')
-        for key, same in [('atomic/docker/identity', True), ('atomic/static/mcp', False), ('journey/podman', False)]:
+        for key, same in [('atomic/docker/identity', True), ('atomic/static/mcp', False), ('journey/podman', True), ('ha/podman/data', True)]:
             with self.subTest(key=key):
                 self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.24', key) ==
                                  self.inputs.fingerprint(changed, changed_demo, 'v0.4.24', key), same)
+
+    def test_unchanged_pure_ownership_helper_relocation_preserves_native_proofs(self):
+        product = self.v024_inventory()
+        source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()
+        helper = source[source.index('func keycloakRealmOwnedBy('):]
+        admin = self.product / 'internal/identityprovider/keycloak_admin.go'
+        convergence = self.product / 'internal/identityprovider/keycloak_realm_convergence.go'
+        admin.parent.mkdir(parents=True)
+        admin.write_text('package identityprovider\n\n' + helper + '\nfunc (a *keycloakAdmin) do() {}\n')
+        convergence.write_text('package identityprovider\n\nfunc converge() {}\n')
+        before = self.commit(self.product)
+        admin.write_text('package identityprovider\n\nfunc (a *keycloakAdmin) do() {}\n')
+        convergence.write_text('package identityprovider\n\nfunc converge() {}\n\n' + helper)
+        after = self.commit(self.product)
+        for key in ['atomic/docker/identity', 'atomic/podman/security', 'journey/docker', 'ha/podman/data']:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', key),
+                                 self.inputs.fingerprint(after, self.d, 'v0.4.24', key))
+        # A genuine ownership condition change cannot receive the equivalence.
+        convergence.write_text(convergence.read_text().replace('!= value', '== value'))
+        changed = self.commit(self.product)
+        self.assertNotEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', 'atomic/docker/identity'),
+                            self.inputs.fingerprint(changed, self.d, 'v0.4.24', 'atomic/docker/identity'))
+
+    def test_ownership_relocation_never_ignores_build_constraints_or_line_directives(self):
+        self.v024_inventory()
+        source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()
+        helper = source[source.index('func keycloakRealmOwnedBy('):]
+        admin = self.product / 'internal/identityprovider/keycloak_admin.go'
+        convergence = self.product / 'internal/identityprovider/keycloak_realm_convergence.go'
+        admin.parent.mkdir(parents=True)
+        for prefix in ['//go:build linux\n\n', '//line different.go:42\n', '/*line different.go:42*/\n']:
+            with self.subTest(prefix=prefix):
+                admin.write_text(prefix + 'package identityprovider\n\n' + helper + '\nfunc (a *keycloakAdmin) do() {}\n')
+                convergence.write_text('package identityprovider\n\nfunc converge() {}\n')
+                before = self.commit(self.product)
+                admin.write_text(prefix + 'package identityprovider\n\nfunc (a *keycloakAdmin) do() {}\n')
+                convergence.write_text('package identityprovider\n\nfunc converge() {}\n\n' + helper)
+                after = self.commit(self.product)
+                self.assertNotEqual(self.inputs.fingerprint(before, self.d, 'v0.4.24', 'atomic/docker/identity'),
+                                    self.inputs.fingerprint(after, self.d, 'v0.4.24', 'atomic/docker/identity'))
 
     def test_v024_native_reuse_still_rejects_auth_schema_bootstrap_and_producer_changes(self):
         product = self.v024_inventory()
