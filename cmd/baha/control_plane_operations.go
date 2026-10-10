@@ -8,6 +8,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	goruntime "runtime"
 )
@@ -17,14 +18,15 @@ type publicControlPlaneCheck struct {
 	Ready bool   `json:"ready"`
 }
 type controlPlaneReport struct {
-	Installation          *coreinstallation.State   `json:"installation,omitempty"`
-	Target                string                    `json:"target"`
-	State                 string                    `json:"state"`
-	Ready                 bool                      `json:"ready"`
-	Running               []string                  `json:"running,omitempty"`
-	Checks                []publicControlPlaneCheck `json:"checks,omitempty"`
-	AvailabilityDetail    string                    `json:"availability_detail,omitempty"`
-	AvailabilitySatisfied bool                      `json:"availability_satisfied"`
+	DockerEngine          *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	Installation          *coreinstallation.State            `json:"installation,omitempty"`
+	Target                string                             `json:"target"`
+	State                 string                             `json:"state"`
+	Ready                 bool                               `json:"ready"`
+	Running               []string                           `json:"running,omitempty"`
+	Checks                []publicControlPlaneCheck          `json:"checks,omitempty"`
+	AvailabilityDetail    string                             `json:"availability_detail,omitempty"`
+	AvailabilitySatisfied bool                               `json:"availability_satisfied"`
 }
 
 func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
@@ -36,6 +38,7 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 		return controlPlaneReport{}, err
 	}
 	result := controlPlaneReport{Target: target.Name, State: "not_deployed"}
+	result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
 	root, err := targetRuntimeStateRoot(target)
 	if err != nil {
 		return result, err
@@ -108,8 +111,9 @@ func inspectControlPlane(ctx context.Context) (controlPlaneReport, error) {
 }
 
 type controlPlaneDoctorReport struct {
-	Ready  bool                      `json:"ready"`
-	Checks []publicControlPlaneCheck `json:"checks"`
+	DockerEngine *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	Ready        bool                               `json:"ready"`
+	Checks       []publicControlPlaneCheck          `json:"checks"`
 }
 
 func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, error) {
@@ -118,6 +122,9 @@ func inspectControlPlaneDoctor(ctx context.Context) (controlPlaneDoctorReport, e
 	}
 	checks := collectControlPlaneDoctorChecks(ctx)
 	result := controlPlaneDoctorReport{Ready: true, Checks: []publicControlPlaneCheck{}}
+	if target, err := effectiveTarget(ctx); err == nil {
+		result.DockerEngine, _ = inspectTargetDockerEngine(ctx, target)
+	}
 	for _, check := range checks {
 		result.Checks = append(result.Checks, publicControlPlaneCheck{Name: check.Name, Ready: check.OK})
 		result.Ready = result.Ready && check.OK
@@ -142,6 +149,13 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	if targetErr != nil {
 		return append(checks, health.Check{Name: "target-selection", OK: false, Message: targetErr.Error()})
 	}
+	if engine, err := inspectTargetDockerEngine(ctx, target); engine != nil {
+		message := fmt.Sprintf("%s (%s; daemon %s)", engine.Endpoint, engine.Mode, engine.DaemonID)
+		if err != nil {
+			message = err.Error()
+		}
+		checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
+	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
 		state, stateErr := managedTrustCoreState(ctx)
 		if stateErr == nil && state == "not_installed" {
@@ -152,8 +166,13 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 				entries, readErr := os.ReadDir(root)
 				if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 					stateErr = readErr
-				} else if len(entries) > 0 {
-					state = "incomplete"
+				} else {
+					for _, entry := range entries {
+						if entry.Name() != "docker-engine.json" {
+							state = "incomplete"
+							break
+						}
+					}
 				}
 			}
 		}

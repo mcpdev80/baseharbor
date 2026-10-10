@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Local Docker is verified rootless by default, all runtime commands use the selected endpoint, and protected daemon bindings prevent implicit engine changes across CLI/MCP or legacy Core cleanup (#863). Target/status/Doctor expose the actual socket and mode.
+
 - App `down` rejects unsupported options with typed errors.
 - Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
 - Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.

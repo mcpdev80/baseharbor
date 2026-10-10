@@ -22,7 +22,7 @@ func (c Compose) ContainerTerminal(ctx context.Context, id string, argv []string
 		}
 	}
 	args := append([]string{"container", "exec", "--interactive", "--tty", id}, argv...)
-	cmd := exec.CommandContext(ctx, c.command, args...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd := exec.CommandContext(ctx, c.command, append(append([]string{}, c.engineArgs...), args...)...)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	return terminal.Start(ctx, cmd, rows, columns)
 }

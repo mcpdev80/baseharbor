@@ -29,9 +29,11 @@ type targetListItem struct {
 }
 
 type targetShowResult struct {
-	ContractVersion string                    `json:"contract_version"`
-	Target          deployment.ResolvedTarget `json:"target"`
-	StateRoot       string                    `json:"state_root"`
+	DockerEngine      *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	DockerEngineError string                             `json:"docker_engine_error,omitempty"`
+	ContractVersion   string                             `json:"contract_version"`
+	Target            deployment.ResolvedTarget          `json:"target"`
+	StateRoot         string                             `json:"state_root"`
 }
 
 type targetInspectionResult struct {
@@ -295,21 +297,30 @@ func targetCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
+					engine, engineErr := inspectTargetDockerEngine(ctx, target)
+					engineError := ""
+					if engineErr != nil {
+						engineError = engineErr.Error()
+					}
 					if format == outputJSON {
-						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root})
+						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError})
 					}
 					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
 					if target.Scope != "" {
 						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
 					}
 					fmt.Fprintf(out, "State    %s\n", root)
+					renderDockerEngine(out, engine)
+					if engineError != "" {
+						fmt.Fprintf(out, "Docker unavailable: %s\n", engineError)
+					}
 					return nil
 				},
 			},
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default]",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]",
 				Run:     createTarget,
 			},
 			{
@@ -421,11 +432,11 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return err
 	}
-	var runtimeProvider, accessProvider, accessName, reference, scope string
+	var runtimeProvider, accessProvider, accessName, reference, scope, dockerEndpoint, dockerContext, dockerMode string
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--docker-endpoint", "--docker-context", "--docker-mode":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
@@ -442,11 +453,17 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 				reference = value
 			case "--scope":
 				scope = value
+			case "--docker-endpoint":
+				dockerEndpoint = value
+			case "--docker-context":
+				dockerContext = value
+			case "--docker-mode":
+				dockerMode = value
 			}
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
 		}
 	}
 	if runtimeProvider == "" || accessName == "" || reference == "" {
@@ -459,7 +476,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault})
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
 	if err != nil {
 		return err
 	}
@@ -546,6 +563,9 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
 	}
+	if err := ensureTargetDockerBinding(ctx, target); err != nil {
+		return target, bhruntime.Files{}, err
+	}
 	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports, ha)
 	if err != nil {
 		return target, bhruntime.Files{}, err
@@ -559,8 +579,11 @@ func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarge
 			"Selected remote Target has no authenticated live runtime binding.",
 			"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
 	}
-	provider, err := runtimeresolver.RuntimeProvider(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
+	provider, err := runtimeresolver.RuntimeProvider(targetDockerEngineContext(ctx, target), bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
+		return nil, err
+	}
+	if err := validateTargetDockerBinding(ctx, target, provider, false); err != nil {
 		return nil, err
 	}
 	return provider, nil

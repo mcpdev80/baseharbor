@@ -11,6 +11,9 @@ import (
 )
 
 type machineTargetCreateInput struct {
+	DockerEndpoint  string `json:"docker_endpoint,omitempty"`
+	DockerContext   string `json:"docker_context,omitempty"`
+	DockerMode      string `json:"docker_mode,omitempty"`
 	Name            string `json:"name"`
 	TenantID        string `json:"tenant_id,omitempty"`
 	RuntimeProvider string `json:"runtime_provider"`
@@ -62,7 +65,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	}
 	cfg.Targets[name] = deployment.TargetDefinition{
 		TenantID: strings.TrimSpace(input.TenantID),
-		Runtime:  deployment.RuntimeDefinition{Provider: runtimeProvider},
+		Runtime:  deployment.RuntimeDefinition{Provider: runtimeProvider, DockerEndpoint: strings.TrimSpace(input.DockerEndpoint), DockerContext: strings.TrimSpace(input.DockerContext), DockerMode: strings.TrimSpace(input.DockerMode)},
 		Access:   deployment.TargetAccess{Reference: accessName},
 		Scope:    scope,
 	}

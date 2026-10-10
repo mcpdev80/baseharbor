@@ -134,7 +134,7 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 			}
 		}
 		def = deployment.TargetDefinition{
-			Runtime: deployment.RuntimeDefinition{Provider: target.RuntimeProvider},
+			Runtime: deployment.RuntimeDefinition{Provider: target.RuntimeProvider, DockerEndpoint: target.DockerEndpoint, DockerContext: target.DockerContext, DockerMode: target.DockerMode},
 			Access:  deployment.TargetAccess{Reference: accessRef},
 			Scope:   target.Scope,
 		}

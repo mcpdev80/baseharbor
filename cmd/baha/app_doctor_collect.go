@@ -48,7 +48,9 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		return &applicationDoctorCollector{}, false, err
 	}
 	m := resolved.Manifest
+	engine, _ := inspectTargetDockerEngine(ctx, resolved.Target)
 	result := applicationDoctorResult{
+		DockerEngine:    engine,
 		ContractVersion: machine.ContractVersion,
 		Target:          resolved.Target.Name,
 		ApplicationID:   m.ApplicationID,

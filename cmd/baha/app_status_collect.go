@@ -47,6 +47,7 @@ func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolv
 		return &applicationStatusCollection{resolved: resolved, manifest: resolved.Manifest, result: result}, true, err
 	}
 	m := resolved.Manifest
+	engine, _ := inspectTargetDockerEngine(ctx, resolved.Target)
 	if err := application.CheckSupportedRuntimeServices(m); err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
@@ -54,6 +55,7 @@ func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolv
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if errors.Is(err, application.ErrRuntimeNotApplied) {
 		result := application.StatusResult{
+			DockerEngine:    engine,
 			ContractVersion: "v1",
 			Target:          resolved.Target.Name,
 			Application:     m.Name,
@@ -86,6 +88,7 @@ func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolv
 	}
 
 	result := application.StatusResult{
+		DockerEngine:    engine,
 		ContractVersion: "v1",
 		Target:          resolved.Target.Name,
 		Application:     m.Name,

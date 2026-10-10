@@ -85,10 +85,11 @@ tar --no-same-owner -C "$destination" -xf -
 chmod 0700 /data "$destination"
 chown -R "$2" /data
 sync`
-	cmd := exec.CommandContext(ctx, c.command, "run", "--rm", "-i", "--read-only", "--cap-drop", "ALL",
+	args := []string{"run", "--rm", "-i", "--read-only", "--cap-drop", "ALL",
 		"--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--security-opt", "no-new-privileges:true",
-		"-v", volume+":/data", "--entrypoint", "/bin/sh", image, "-ceu", script, "--", subdir, owner)
-	cmd.Env = runtimeCommandEnv(c.command)
+		"-v", volume + ":/data", "--entrypoint", "/bin/sh", image, "-ceu", script, "--", subdir, owner}
+	cmd := exec.CommandContext(ctx, c.command, append(append([]string{}, c.engineArgs...), args...)...)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	cmd.Stdin = archive
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
@@ -170,8 +171,8 @@ func (c Compose) directBinary(ctx context.Context, input []byte, args ...string)
 	if strings.TrimSpace(c.command) == "" {
 		return nil, ErrRuntimeNotFound
 	}
-	cmd := exec.CommandContext(ctx, c.command, args...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd := exec.CommandContext(ctx, c.command, append(append([]string{}, c.engineArgs...), args...)...)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}

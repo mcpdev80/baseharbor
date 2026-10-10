@@ -147,6 +147,9 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			return identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
 		},
 	}
+	if err := ensureTargetDockerBinding(ctx, target); err != nil {
+		return coreinstallation.State{}, err
+	}
 	state, err := coreinstallation.Run(ctx, root, spec, steps)
 	if err == nil {
 		fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")

@@ -91,3 +91,22 @@ baha --target docker-dev up -e dev
 
 
 Technische Bezeichner: `runtime_provider`.
+
+## Lokale Docker-Engine auswählen
+
+Rootless-Docker ist der Standard. Vor jeder Lifecycle-Aktion löst der Provider genau einen Unix-Socket auf und verifiziert ihn. Compose, Inspektion, Exec, Volume-Recovery und Cleanup verwenden danach `docker --host SOCKET`. Eine nicht erreichbare oder unerwartet Rootful laufende Engine führt zum Abbruch; es gibt keinen Wechsel zu System-Docker.
+
+Bei einem neuen Target gilt die Reihenfolge: expliziter Target-Endpoint oder -Kontext, `DOCKER_CONTEXT`, `DOCKER_HOST`, aktiver Docker-Kontext. Beim Kontext `default` ohne ausdrücklichen Rootful-Wunsch wählt BaseHarbor `/run/user/<uid>/docker.sock`. Ein aktiver Rootless-Kontext wird auf seinen tatsächlichen Socket aufgelöst. Anwendungsvariablen können diese Auswahl nicht überschreiben.
+
+```bash
+baha target create local-dev --runtime-provider docker --access local-docker --reference local --docker-context rootless --default
+baha target show local-dev --json
+baha --target local-dev status --json
+baha --target local-dev doctor --json
+```
+
+Die Leseergebnisse enthalten `docker_engine.endpoint`, `mode`, `daemon_id`, `selection_origin` und `verified`. Auch die Textausgabe zeigt Socket und Modus. Ist Rootless-Docker nicht erreichbar, muss dessen Daemon gestartet oder die explizite Target-Auswahl korrigiert werden. BaseHarbor verwendet dann nicht ersatzweise `/var/run/docker.sock`.
+
+Die erste eigene Lifecycle-Aktion speichert eine geschützte Bindung `runtime/docker-engine.json` im Target-Zustandsverzeichnis. Weitere CLI- und MCP-Aktionen verwenden diese Bindung auch bei unterschiedlichen geerbten Docker-Kontexten. Ein geänderter Endpoint, Modus oder eine andere Daemon-ID verhindert Änderungen, einen zweiten Bootstrap und Cleanup. Vorhandener Core-Zustand ohne Bindung verlangt nachweislich eigene Ressourcen auf der gewählten Engine. Ist System-Docker erreichbar, verhindern dort vorhandene Ressourcen desselben Targets ebenfalls einen zweiten Core-Bootstrap auf Rootless-Docker.
+
+Vorhandene Rootful-Installationen bleiben erhalten. Ihre Wartung erfordert die explizite Target-Konfiguration `docker-endpoint: unix:///var/run/docker.sock` und `docker-mode: rootful`. Dafür gibt es auch die Target-create-Optionen `--docker-endpoint` und `--docker-mode` sowie die Machine-/MCP-Felder `docker_endpoint` und `docker_mode`. Das ist eine ausdrückliche Wartungsentscheidung, keine Migration. Geschützten Zustand nicht löschen und den Socket eines gebundenen Targets nicht ändern, um Daten zu verschieben. Für eine getrennte Installation ein eigenes Target verwenden.

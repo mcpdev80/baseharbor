@@ -28,7 +28,11 @@ func New(ctx context.Context) (*Provider, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, bhruntime.ErrRuntimeNotFound
 	}
-	return &Provider{Compose: bhruntime.NewCLIBackend(path, "compose")}, nil
+	engine, err := bhruntime.ResolveDockerEngine(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return &Provider{Compose: bhruntime.NewDockerCLIBackend(path, engine)}, nil
 }
 
 func Descriptor() runtimecontract.ProviderDescriptor {

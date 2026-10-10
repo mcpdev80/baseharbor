@@ -71,6 +71,7 @@ func renderApplicationStatus(ctx context.Context, out, errOut io.Writer, result 
 }
 
 func renderApplicationStatusWithExtra(ctx context.Context, out, errOut io.Writer, result application.StatusResult, extra func(*cli.Terminal)) {
+	renderDockerEngine(out, result.DockerEngine)
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(result.Application, result.Environment)
 	term.Section("Application")
@@ -284,6 +285,7 @@ func appDoctorCommand(store application.Store) *cli.Command {
 }
 
 func renderCollectedApplicationDoctor(ctx context.Context, out, errOut io.Writer, result applicationDoctorResult) {
+	renderDockerEngine(out, result.DockerEngine)
 	if result.State == "not_applied" {
 		term := cli.NewTerminal(ctx, out, errOut)
 		term.Header(result.Application, result.Environment)

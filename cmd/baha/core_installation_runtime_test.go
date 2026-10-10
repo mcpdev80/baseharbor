@@ -183,6 +183,9 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 			t.Fatalf("fresh recovery reference not persisted: %s %s %v", current, source, err)
 		}
 	}
+	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_DUAL_DOCKER_ACCEPTANCE") == "1" {
+		verifyDualDockerCLIAndMCP(t, ctx, target)
+	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
 		runManagedProviderOnlyReadinessRegression(t, ctx)
 		runManagedReadinessAndBackupRegression(t, ctx)
