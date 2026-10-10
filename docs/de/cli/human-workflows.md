@@ -31,7 +31,7 @@ Außerhalb eines Application-Repositories gelten `down` und `destroy` für die a
 
 `baha update --check` prüft veröffentlichte BaseHarbor-Releases und vergleicht die installierten eigenen Core-Provider mit dem ausgewählten unveränderlichen Release-Katalog. JSON zeigt `core_plan` und gegebenenfalls `core_inspection_error`; unbekannte Inventare gelten nicht als unterstützt.
 
-`baha update --yes` aktualisiert BaseHarbor selbst und gleicht nur zugelassene Core-Provider-Änderungen nach geprüften Backup-, Ownership- und Recovery-Voraussetzungen ab. PostgreSQL-Major-Wechsel und nicht unterstützte HA-Transitions bleiben ausgeschlossen. v0.4.24 ist unveröffentlicht; die Prüfung eines verfügbaren Releases veröffentlicht diesen Kandidaten nicht.
+`baha update --yes` aktualisiert BaseHarbor selbst und gleicht nur zugelassene Core-Provider-Änderungen nach geprüften Backup-, Ownership- und Recovery-Voraussetzungen ab. PostgreSQL-Major-Wechsel und nicht unterstützte HA-Transitions bleiben ausgeschlossen.
 
 Für Source-/Git-Updates der Application dient `baha app update`. Das ist eine andere Operation als ein BaseHarbor-/Core-Update. Die [Core-Provider-Update-Spezifikation](../spec/core-provider-update-v1.md) beschreibt die genauen Zulassungs- und Recovery-Grenzen.
 

@@ -1074,7 +1074,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.24...HEAD
+[0.4.24]: https://github.com/mcpdev80/baseharbor/compare/v0.4.23...v0.4.24
+[0.4.23]: https://github.com/mcpdev80/baseharbor/compare/v0.4.22...v0.4.23
+[0.4.22]: https://github.com/mcpdev80/baseharbor/compare/v0.4.21...v0.4.22
+[0.4.21]: https://github.com/mcpdev80/baseharbor/compare/v0.4.20...v0.4.21
+[0.4.20]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...v0.4.20
 [0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
 [0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
 [0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
