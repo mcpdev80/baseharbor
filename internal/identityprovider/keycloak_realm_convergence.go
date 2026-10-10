@@ -19,11 +19,11 @@ func (e *keycloakRealmResponseError) Error() string {
 
 // A server error can follow an applied write. Re-enter through the realm read
 // and ownership check rather than replaying a POST or PUT blindly.
-func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakRealm) error {
+func (a *keycloakAdmin) reconcileRealm(ctx context.Context, desired keycloakRealm, ownership ...map[string]string) error {
 	probe, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	for {
-		err := a.reconcileRealmOnce(probe, desired)
+		err := a.reconcileRealmOnce(probe, desired, ownership...)
 		if err == nil {
 			return nil
 		}

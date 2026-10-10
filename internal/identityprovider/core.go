@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -61,7 +62,7 @@ func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer ser
 	if err != nil {
 		return "", err
 	}
-	if err = SetKeycloakCanonicalURL(files, files.PublicURL); err != nil {
+	if err = setCoreKeycloakCanonicalURL(runtime, namespace, files); err != nil {
 		return "", err
 	}
 	if err = runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
@@ -75,8 +76,14 @@ func EnsureCoreIdentity(ctx context.Context, runtime KeycloakRuntime, issuer ser
 		return "", err
 	}
 	ownership := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "installation", "baseharbor.installation": installationID}
-	realm := keycloakRealm{Realm: "baseharbor", Enabled: true, DisplayName: "BaseHarbor", SSLRequired: "all", BruteForceProtected: true, RegistrationAllowed: false, Attributes: ownership}
-	if err = admin.reconcileRealm(ctx, realm); err != nil {
+	attributes := make(map[string]string, len(ownership)+1)
+	for key, value := range ownership {
+		attributes[key] = value
+	}
+	// The installation issuer stays bound to its protected native endpoint.
+	attributes["frontendUrl"] = files.PublicURL
+	realm := keycloakRealm{Realm: "baseharbor", Enabled: true, DisplayName: "BaseHarbor", SSLRequired: "all", BruteForceProtected: true, RegistrationAllowed: false, Attributes: attributes}
+	if err = admin.reconcileRealm(ctx, realm, ownership); err != nil {
 		return "", errors.New("Core identity realm reconciliation failed; inspect protected provider diagnostics")
 	}
 	client, err := keycloakPublicHTTPClient(files)
@@ -151,4 +158,21 @@ func existingCoreKeycloakFiles(dir string) (KeycloakFiles, error) {
 		return KeycloakFiles{}, err
 	}
 	return KeycloakFiles{SharedSQL: sharedSQL, Dir: dir, Env: filepath.Join(dir, "runtime.env"), PublicPort: port, AdminPort: port, PublicURL: "https://" + keycloakPublicHost + ":" + strconv.Itoa(port), AdminURL: "https://127.0.0.1:" + strconv.Itoa(port), PublicAccess: serviceaccess.HTTPGatewayFiles{Material: material}, AdminAccess: serviceaccess.HTTPGatewayFiles{Material: material}}, nil
+}
+
+// Only installation reconciliation may initialize or migrate the shared server's
+// browser authority. Keep an explicitly configured installation hostname.
+func setCoreKeycloakCanonicalURL(runtime KeycloakRuntime, namespace string, files KeycloakFiles) error {
+	values, err := readProtectedEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	canonical := strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"])
+	if canonical == "" || canonical == files.PublicURL {
+		canonical, err = managedOperatorCanonicalBaseURL(runtime, namespace)
+		if err != nil {
+			return err
+		}
+	}
+	return SetKeycloakCanonicalURL(files, canonical)
 }
