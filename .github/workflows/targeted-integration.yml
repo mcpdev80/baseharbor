@@ -46,8 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -69,12 +69,12 @@ jobs:
 
     steps:
       - name: Checkout requested ref
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -217,11 +217,11 @@ jobs:
       BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -235,7 +235,7 @@ jobs:
           go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: core-bootstrap-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/core-bootstrap
@@ -257,11 +257,11 @@ jobs:
       BASEHARBOR_CORE_HA_CUTOVER_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -275,7 +275,7 @@ jobs:
           go test -race -json ./cmd/baha -run '^TestCoreHACutoverRollbackRuntimeAcceptance$' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/ha-recovery/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ha-recovery-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ha-recovery
@@ -303,11 +303,11 @@ jobs:
       BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -325,7 +325,7 @@ jobs:
           go test -p 1 -race -json ./internal/objectstorage ./internal/metrics ./internal/telemetry ./internal/logs ./internal/traces ./internal/identityprovider -run '(DefaultTopologyRuntimeAcceptanceInCI|HARuntime.*AcceptanceInCI)$' -count=1 -timeout 40m 2>&1 | tee "$RUNNER_TEMP/provider-topology/tests.jsonl"
       - name: Retain native topology qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: provider-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/provider-topology
@@ -347,11 +347,11 @@ jobs:
       BASEHARBOR_PROVIDER_TOPOLOGY_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -365,7 +365,7 @@ jobs:
           go test -p 1 -race -json ./internal/application ./internal/logs ./internal/traces -run '^(TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI|TestLokiComponentOverrideRuntimeAcceptanceInCI|TestTempoComponentOverrideRuntimeAcceptanceInCI)$' -count=1 -timeout 50m 2>&1 | tee "$RUNNER_TEMP/application-topology/tests.jsonl"
       - name: Retain native role and override qualifications
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: application-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/application-topology
@@ -387,11 +387,11 @@ jobs:
       BASEHARBOR_PROVIDER_UPGRADE_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -405,7 +405,7 @@ jobs:
           go test -race -json ./cmd/baha -run '^TestCoreProviderVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/provider-versions/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: provider-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -429,11 +429,11 @@ jobs:
       BASEHARBOR_HA_OPENBAO_UPGRADE_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -447,7 +447,7 @@ jobs:
           go test -race -json ./cmd/baha -run '^TestCoreHAOpenBaoVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/ha-openbao-versions/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ha-openbao-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -493,10 +493,10 @@ jobs:
           podman version
 
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -560,12 +560,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout requested ref
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -606,11 +606,11 @@ jobs:
       BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE: '1'
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -623,7 +623,7 @@ jobs:
           go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
       - name: Retain focused bug hunt evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: bug-hunt-templates-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bug-hunt
@@ -643,8 +643,8 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:engine-isolation
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -679,7 +679,7 @@ jobs:
             selection='^TestCoreOnlyBootstrapRuntimeAcceptance$/^development$'
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 24m 2>&1 | tee "$RUNNER_TEMP/engine-isolation/tests.jsonl"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: engine-isolation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -700,8 +700,8 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:identity-trust
       BASEHARBOR_CORE_IDENTITY_SQL_CA_ACCEPTANCE: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -727,7 +727,7 @@ jobs:
             selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$/^ha$'
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 32m 2>&1 | tee "$RUNNER_TEMP/identity-trust/tests.jsonl"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: identity-trust-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -750,8 +750,8 @@ jobs:
       BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
       BASEHARBOR_FINAL_BUG_ACCEPTANCE: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -765,7 +765,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/final-bugs"
           go test -p 2 -json ./cmd/baha ./internal/deployment ./internal/repositoryinspect ./internal/cli -run 'Test(Bug|CoreOnlyBootstrapRuntimeAcceptance|InspectFailsClosedOnComposeInclude|PreflightRepositoryWorkloadPublishedPorts|TargetRecovery|PreflightNewTargetRecovery)' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/final-bugs/tests.jsonl"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: final-product-bugs-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
