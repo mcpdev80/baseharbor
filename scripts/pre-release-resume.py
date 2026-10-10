@@ -87,7 +87,7 @@ METADATA = {'CHANGELOG.md', 'docs/roadmap.md',
 
 def metadata_path(path):
     return path in METADATA or (path.startswith('docs/releases/') and
-                                path.endswith(('.md', '.evidence-runs')))
+                                path.endswith(('.md', '.evidence-runs', '.selected-gates.json')))
 
 
 
@@ -165,7 +165,7 @@ class GitInputs:
             execution[name] = {field: value for field, value in job.items()
                                if field not in {'needs', 'if', 'strategy'}}
             strategy = {field: value for field, value in job.get('strategy', {}).items()
-                        if field != 'matrix'}
+                        if field not in {'matrix', 'max-parallel'}}
             if strategy:
                 execution[name]['strategy'] = strategy
         return digest({'policy': 'baseharbor.gate-inputs/v3', 'tag': tag, 'gate': key,

@@ -1,0 +1,8 @@
+[
+  "journey/docker",
+  "journey/podman",
+  "ha/podman/data",
+  "integration/docker/remote-target",
+  "integration/podman/remote-target",
+  "integration/static/live-console"
+]

@@ -357,6 +357,22 @@ class GitFingerprintTests(unittest.TestCase):
         runner = self.commit(self.product)
         self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(runner, self.d, key))
 
+    def test_execution_selection_and_matrix_capacity_do_not_rewrite_proofs(self):
+        key = 'atomic/docker/lifecycle'
+        path = self.product / '.github/workflows/pre-release.yml'
+        original = path.read_text()
+        path.write_text(original.replace('    runs-on:',
+                        '    strategy: {max-parallel: 1, matrix: {gate: [lifecycle]}}\n    runs-on:'))
+        selection = self.product / 'docs/releases/v0.4.22.selected-gates.json'
+        selection.parent.mkdir(parents=True, exist_ok=True)
+        selection.write_text('["journey/docker"]\n')
+        scheduled = self.commit(self.product)
+        self.assertEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(scheduled, self.d, key))
+        path.write_text(original.replace('    runs-on:',
+                        '    strategy: {fail-fast: true}\n    runs-on:'))
+        changed = self.commit(self.product)
+        self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(changed, self.d, key))
+
     def test_verifier_auth_schema_and_build_changes_invalidate_static_proof(self):
         key = 'atomic/static/mcp'
         original = self.fingerprint(self.p, self.d, key)
