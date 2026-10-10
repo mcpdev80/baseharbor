@@ -134,6 +134,14 @@ class EvidenceTests(unittest.TestCase):
         self.assertFalse(result['proofs'])
         self.assertIn('failure', result['pending']['atomic/static/mcp'])
 
+    def test_evidence_only_origin_with_skipped_gates_cannot_create_proof(self):
+        self.api.jobs[2][0]['conclusion'] = 'skipped'
+        self.api.artifacts[2] = []
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                'v0.4.24', [2], self.root)
+        self.assertFalse(result['proofs'])
+        self.assertEqual(len(result['pending']), 63)
+
     def test_v024_reuse_keeps_the_origin_demo_pin_after_candidate_changes(self):
         class BoundInputs(FakeInputs):
             def pin(self, candidate, tag, demo_ref=None):

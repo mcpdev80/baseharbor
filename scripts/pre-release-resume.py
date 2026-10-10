@@ -397,7 +397,8 @@ def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expect
     if len(pins) > 1:
         raise ValueError('origin run contains inconsistent Demo pins')
     if not pins:
-        if any(key_from_job(job['name'], expected) is not None for job in jobs):
+        if any(key_from_job(job['name'], expected) is not None and
+               job.get('conclusion') != 'skipped' for job in jobs):
             raise ValueError('origin Demo pin is unavailable; cannot reuse older proof')
         return None
     pin = pins.pop()
