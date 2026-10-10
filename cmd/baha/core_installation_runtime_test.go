@@ -41,7 +41,11 @@ func TestCoreOnlyBootstrapRuntimeAcceptance(t *testing.T) {
 	if err != nil || (command == "docker" && !strings.Contains(string(rootless), "rootless")) || (command == "podman" && strings.TrimSpace(string(rootless)) != "true") {
 		t.Fatal("Core bootstrap acceptance requires a verified rootless runtime host")
 	}
-	for _, role := range []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment} {
+	roles := []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment}
+	if os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		roles = roles[:1]
+	}
+	for _, role := range roles {
 		if !t.Run(string(role), func(t *testing.T) { runCoreOnlyBootstrapRuntime(t, role) }) {
 			return
 		}
@@ -56,6 +60,9 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
+	if os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	}
 	target := configureTestTarget(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
@@ -206,6 +213,9 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_DUAL_DOCKER_ACCEPTANCE") == "1" {
 		verifyDualDockerCLIAndMCP(t, ctx, target)
+	}
+	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		runFinalBugRuntimeRegression(t, ctx, target, opts)
 	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
 		runManagedProviderOnlyReadinessRegression(t, ctx)

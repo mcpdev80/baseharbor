@@ -47,6 +47,9 @@ func repositoryApplicationUp(ctx context.Context, in io.Reader, out, errOut io.W
 	}
 	switch decision {
 	case repositoryUpNoop:
+		if err := recordObservedDeployment(resolved, "ready", true); err != nil {
+			return err
+		}
 		if err := maybeOfferManagedHostTrust(ctx, in, out, opts); err != nil {
 			return err
 		}

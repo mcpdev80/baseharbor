@@ -252,3 +252,7 @@ Live admission, renewal, revocation and Docker/Podman support require pinned
 Core -> Connector -> runtime evidence; see the
 [Target Access contract](../spec/target-access-v1.md) and the
 [platform support matrix](../reference/platform-support.md).
+
+## Isolated state override
+
+`BASEHARBOR_STATE_DIR` is the authoritative isolated installation data root. Target/deployment/provider/TLS state resides below it; Target configuration is stored at `config/config.yaml` inside it. This override takes precedence over XDG data and configuration paths, so an isolated test cannot discover or rewrite the normal user's Target selection. Operator recovery material uses the sibling `<state-root>-recovery/<target>/` and survives installation-state deletion. Explicit operator recovery paths remain unchanged. Use an absolute dedicated directory and never point the override at another installation's state.

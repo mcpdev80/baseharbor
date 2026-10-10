@@ -59,8 +59,8 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 	run("pull", "docker.io/library/alpine:3.23")
 	for _, mode := range []string{"configured", "core-present", "deployed-workload", "partial-core", "partial-secret-core", "orphan-gateway"} {
 		t.Run(mode, func(t *testing.T) {
-			target := configureTestTarget(t)
 			t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+			target := configureTestTarget(t)
 			cfg, err := deployment.LoadConfig()
 			if err != nil {
 				t.Fatal(err)

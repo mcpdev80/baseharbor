@@ -431,7 +431,7 @@ func DataDir(stateDir string) (string, error) {
 	if stateDir != "" {
 		return filepath.Clean(stateDir), nil
 	}
-	if override := os.Getenv("BASEHARBOR_STATE_DIR"); override != "" {
+	if override := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); override != "" {
 		return filepath.Clean(override), nil
 	}
 	runtimeDir, err := resolveStateDir("")
@@ -445,7 +445,7 @@ func resolveStateDir(stateDir string) (string, error) {
 	if stateDir != "" {
 		return filepath.Clean(stateDir), nil
 	}
-	if override := os.Getenv("BASEHARBOR_STATE_DIR"); override != "" {
+	if override := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); override != "" {
 		return filepath.Clean(override), nil
 	}
 

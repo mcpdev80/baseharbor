@@ -90,6 +90,9 @@ type ResolvedTarget struct {
 }
 
 func ConfigPath() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "config", "config.yaml"), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor", "config.yaml"), nil
 	}
@@ -101,6 +104,9 @@ func ConfigPath() (string, error) {
 }
 
 func DataRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Clean(root), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor"), nil
 	}

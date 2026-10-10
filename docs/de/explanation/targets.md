@@ -234,3 +234,7 @@ Color: soft green
 
 
 Technische Kennungen: `baha.localhost`, `auth.<domain>`, `auth-admin.<domain>`, `secrets.<domain>`, `metrics.<domain>`, `baha shell-init zsh`, `baha shell-init fish`.
+
+## Isoliertes State-Verzeichnis
+
+`BASEHARBOR_STATE_DIR` ist der autoritative Datenstamm der isolierten Installation. Target-, Deployment-, Provider- und TLS-State liegen darunter; die Target-Konfiguration liegt darin unter `config/config.yaml`. Der Override hat Vorrang vor XDG-Daten- und Konfigurationspfaden. Ein isolierter Test kann dadurch die Target-Auswahl der normalen Benutzerinstallation weder entdecken noch überschreiben. Recovery-Material des Operators liegt im benachbarten `<state-root>-recovery/<target>/` und überlebt das Löschen des Installations-State. Explizite Recovery-Pfade bleiben unverändert. Verwende ein eigenes absolutes Verzeichnis und niemals den State einer fremden Installation.

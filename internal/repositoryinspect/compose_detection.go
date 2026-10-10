@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -45,7 +46,14 @@ func detectComposeServices(data []byte) ([]composeService, error) {
 		return nil, fmt.Errorf("decode Compose YAML: %w", err)
 	}
 	if document.Include != nil {
-		return nil, fmt.Errorf("Compose include is not yet supported by repository inspection; refusing incomplete service detection")
+		return nil, &machine.Error{
+			Code:        machine.ErrorUnsupported,
+			CauseCode:   "compose_include_unsupported",
+			Message:     "Compose include is not yet supported by repository inspection; refusing incomplete service detection",
+			Resource:    "compose.include",
+			Remediation: "requires developer input",
+			Next:        "Review included files first, then render a separate flattened source with 'docker compose -f compose.yaml config --no-interpolate --output compose.baseharbor.yaml'. Keep the original files, protect the output (it may contain env_file values), review paths/profiles/secrets, and select compose.baseharbor.yaml in 'baha init'. Do not run Compose against untrusted includes.",
+		}
 	}
 	if len(document.Services) == 0 {
 		return nil, nil

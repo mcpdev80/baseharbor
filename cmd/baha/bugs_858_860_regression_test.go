@@ -74,8 +74,8 @@ func bugApplicationRepository(t *testing.T) (application.Manifest, string) {
 func TestAgentsOnlyLeavesEntireStateAndApplicationListUnchanged(t *testing.T) {
 	for _, mode := range []string{"new", "manifest", "initialized", "registered"} {
 		t.Run(mode, func(t *testing.T) {
-			target := configureTestTarget(t)
 			t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+			target := configureTestTarget(t)
 			m, repo := bugApplicationRepository(t)
 			if mode == "new" {
 				if err := os.Remove(filepath.Join(repo, application.RepositoryManifestName)); err != nil {
