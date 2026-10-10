@@ -196,7 +196,7 @@ func mcpCommand(store application.Store) *cli.Command {
 }
 
 func runMCPServer(ctx context.Context, store application.Store) error {
-	return newMCPServer(store).Run(ctx, &drainingMCPTransport{inner: &mcp.StdioTransport{}, timeout: time.Minute})
+	return newMCPServer(store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
 }
 
 func newMCPServer(store application.Store) *mcp.Server {

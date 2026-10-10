@@ -23,16 +23,19 @@ type mcpTestWriter struct{ io.Writer }
 func (mcpTestWriter) Close() error { return nil }
 
 func TestMCPStdioEOFFlushesDecodedRequests(t *testing.T) {
-	for _, input := range []string{eofInitialize, eofInitialize + `{"jsonrpc":"2.0","id":2,"method":"missing-method"}` + "\n", ""} {
+	for _, input := range []string{eofInitialize, strings.TrimSuffix(eofInitialize, "\n"), eofInitialize + `{"jsonrpc":"2.0","id":2,"method":"missing-method"}` + "\n", ""} {
 		var out bytes.Buffer
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		transport := &drainingMCPTransport{inner: &mcp.IOTransport{Reader: io.NopCloser(strings.NewReader(input)), Writer: mcpTestWriter{&out}}, timeout: time.Second}
+		transport := &drainingMCPTransport{reader: io.NopCloser(strings.NewReader(input)), writer: mcpTestWriter{&out}, timeout: time.Second}
 		err := newMCPServer(application.DefaultStore()).Run(ctx, transport)
 		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := strings.Count(input, "\n")
+		if input != "" && !strings.HasSuffix(input, "\n") {
+			want++
+		}
 		dec := json.NewDecoder(&out)
 		for i := 0; i < want; i++ {
 			var reply map[string]any
@@ -76,21 +79,14 @@ func TestMCPStdioPipeSubprocessEOF(t *testing.T) {
 	}
 }
 
-type eofMCPConnection struct{}
-
-func (eofMCPConnection) Read(context.Context) (jsonrpc.Message, error) { return nil, io.EOF }
-func (eofMCPConnection) Write(context.Context, jsonrpc.Message) error  { return nil }
-func (eofMCPConnection) Close() error                                  { return nil }
-func (eofMCPConnection) SessionID() string                             { return "" }
-
 func TestMCPStdioEOFDrainIsBoundedAndCloseUnblocks(t *testing.T) {
 	id, _ := jsonrpc.MakeID(float64(1))
 	for _, closeFirst := range []bool{false, true} {
-		c := &drainingMCPConnection{Connection: eofMCPConnection{}, timeout: 20 * time.Millisecond, pending: map[jsonrpc.ID]int{id: 1}, changed: make(chan struct{}), closed: make(chan struct{})}
+		d := &mcpEOFDrain{ctx: context.Background(), timeout: 20 * time.Millisecond, pending: map[jsonrpc.ID]int{id: 1}, changed: make(chan struct{}), closed: make(chan struct{})}
 		if closeFirst {
-			c.Close()
+			d.close()
 		}
-		_, err := c.Read(context.Background())
+		err := d.wait()
 		if err == nil || err == io.EOF {
 			t.Fatalf("silently lost reply: %v", err)
 		}
@@ -105,7 +101,7 @@ func TestMCPStdioOpenInputRetainsNormalClientSession(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- newMCPServer(application.DefaultStore()).Run(ctx, &drainingMCPTransport{inner: &mcp.IOTransport{Reader: inReader, Writer: outWriter}, timeout: time.Second})
+		done <- newMCPServer(application.DefaultStore()).Run(ctx, &drainingMCPTransport{reader: inReader, writer: outWriter, timeout: time.Second})
 	}()
 	client := mcp.NewClient(&mcp.Implementation{Name: "normal-client", Version: "1"}, nil)
 	session, err := client.Connect(ctx, &mcp.IOTransport{Reader: outReader, Writer: inWriter}, nil)
@@ -121,5 +117,36 @@ func TestMCPStdioOpenInputRetainsNormalClientSession(t *testing.T) {
 	case <-done:
 	case <-ctx.Done():
 		t.Fatal("stdio session did not close")
+	}
+}
+
+func TestMCPStdioPreservesSDKNegotiatedBatchRejection(t *testing.T) {
+	inReader, inWriter := io.Pipe()
+	outReader, outWriter := io.Pipe()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- newMCPServer(application.DefaultStore()).Run(ctx, &drainingMCPTransport{reader: inReader, writer: outWriter, timeout: time.Second})
+	}()
+	if _, err := io.WriteString(inWriter, eofInitialize); err != nil {
+		t.Fatal(err)
+	}
+	var initialized map[string]any
+	if err := json.NewDecoder(outReader).Decode(&initialized); err != nil || initialized["result"] == nil {
+		t.Fatalf("initialize: %v %v", initialized, err)
+	}
+	_, err := io.WriteString(inWriter, `[{"jsonrpc":"2.0","id":2,"method":"ping"},{"jsonrpc":"2.0","id":3,"method":"ping"}]`+"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inWriter.Close()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "batching is not supported") {
+			t.Fatalf("negotiated SDK policy lost: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("batch rejection did not close the session")
 	}
 }

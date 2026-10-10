@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,24 +14,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// The SDK closes a session as soon as its reader reaches EOF, cancelling
-// handlers even when complete requests were decoded before the peer half-close.
-// Keep the SDK's framing and dispatch, but let those requests flush their replies.
+// Delay a peer's stdin half-close until complete requests have flushed replies.
+// Return the SDK IO connection unchanged: its private negotiated-protocol hooks,
+// framing, dispatch and batch-admission rules must remain authoritative.
 type drainingMCPTransport struct {
-	inner   mcp.Transport
+	reader  io.ReadCloser
+	writer  io.WriteCloser
 	timeout time.Duration
 }
 
 func (t *drainingMCPTransport) Connect(ctx context.Context) (mcp.Connection, error) {
-	c, err := t.inner.Connect(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &drainingMCPConnection{Connection: c, timeout: t.timeout, pending: make(map[jsonrpc.ID]int), changed: make(chan struct{}), closed: make(chan struct{})}, nil
+	drain := &mcpEOFDrain{ctx: ctx, timeout: t.timeout, pending: make(map[jsonrpc.ID]int), changed: make(chan struct{}), closed: make(chan struct{})}
+	return (&mcp.IOTransport{Reader: &mcpDrainReader{source: t.reader, reader: bufio.NewReader(t.reader), drain: drain}, Writer: &mcpDrainWriter{source: t.writer, drain: drain}}).Connect(ctx)
 }
 
-type drainingMCPConnection struct {
-	mcp.Connection
+type mcpEOFDrain struct {
+	ctx     context.Context
 	timeout time.Duration
 	mu      sync.Mutex
 	pending map[jsonrpc.ID]int
@@ -38,59 +38,130 @@ type drainingMCPConnection struct {
 	once    sync.Once
 }
 
-func (c *drainingMCPConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
-	msg, err := c.Connection.Read(ctx)
-	if err == nil {
-		if req, ok := msg.(*jsonrpc.Request); ok && req.IsCall() {
-			c.mu.Lock()
-			c.pending[req.ID]++
-			c.mu.Unlock()
+func mcpFrameMessages(raw []byte) []jsonrpc.Message {
+	var rows []json.RawMessage
+	if json.Unmarshal(raw, &rows) != nil {
+		rows = []json.RawMessage{raw}
+	}
+	var messages []jsonrpc.Message
+	for _, row := range rows {
+		if msg, err := jsonrpc.DecodeMessage(row); err == nil {
+			messages = append(messages, msg)
 		}
-		return msg, nil
 	}
-	if !errors.Is(err, io.EOF) {
-		return nil, err
+	return messages
+}
+
+func (d *mcpEOFDrain) incoming(raw []byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, msg := range mcpFrameMessages(raw) {
+		if req, ok := msg.(*jsonrpc.Request); ok && req.IsCall() {
+			d.pending[req.ID]++
+		}
 	}
-	timer := time.NewTimer(c.timeout)
+}
+
+func (d *mcpEOFDrain) outgoing(raw []byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, msg := range mcpFrameMessages(raw) {
+		if reply, ok := msg.(*jsonrpc.Response); ok {
+			if count := d.pending[reply.ID]; count > 1 {
+				d.pending[reply.ID]--
+			} else {
+				delete(d.pending, reply.ID)
+			}
+		}
+	}
+	close(d.changed)
+	d.changed = make(chan struct{})
+}
+
+func (d *mcpEOFDrain) wait() error {
+	timer := time.NewTimer(d.timeout)
 	defer timer.Stop()
 	for {
-		c.mu.Lock()
-		empty, changed := len(c.pending) == 0, c.changed
-		c.mu.Unlock()
+		d.mu.Lock()
+		empty, changed := len(d.pending) == 0, d.changed
+		d.mu.Unlock()
 		if empty {
-			return nil, io.EOF
+			return io.EOF
 		}
 		select {
 		case <-changed:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-c.closed:
-			return nil, mcp.ErrConnectionClosed
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		case <-d.closed:
+			return mcp.ErrConnectionClosed
 		case <-timer.C:
-			return nil, fmt.Errorf("MCP stdin closed before pending replies completed; keep stdin open for long-running requests")
+			return fmt.Errorf("MCP stdin closed before pending replies completed; keep stdin open for long-running requests")
 		}
 	}
 }
+func (d *mcpEOFDrain) close() { d.once.Do(func() { close(d.closed) }) }
 
-func (c *drainingMCPConnection) Write(ctx context.Context, msg jsonrpc.Message) error {
-	if err := c.Connection.Write(ctx, msg); err != nil {
-		return err
+type mcpDrainReader struct {
+	source io.ReadCloser
+	reader *bufio.Reader
+	drain  *mcpEOFDrain
+	buffer []byte
+	eof    bool
+}
+
+func (r *mcpDrainReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
 	}
-	if reply, ok := msg.(*jsonrpc.Response); ok {
-		c.mu.Lock()
-		if count := c.pending[reply.ID]; count > 1 {
-			c.pending[reply.ID]--
-		} else {
-			delete(c.pending, reply.ID)
+	if len(r.buffer) == 0 {
+		if r.eof {
+			return 0, r.drain.wait()
 		}
-		close(c.changed)
-		c.changed = make(chan struct{})
-		c.mu.Unlock()
+		for {
+			fragment, err := r.reader.ReadSlice('\n')
+			if len(r.buffer)+len(fragment) > mcp.DefaultMaxLineLength {
+				return 0, errors.New("MCP stdin frame exceeds the SDK maximum line length")
+			}
+			r.buffer = append(r.buffer, fragment...)
+			if err == bufio.ErrBufferFull {
+				continue
+			}
+			if err != nil && err != io.EOF {
+				return 0, err
+			}
+			r.eof = err == io.EOF
+			if len(r.buffer) == 0 {
+				return 0, r.drain.wait()
+			}
+			// Observation only; the SDK still validates and executes the original bytes.
+			r.drain.incoming(r.buffer)
+			break
+		}
 	}
-	return nil
+	n := copy(p, r.buffer)
+	r.buffer = r.buffer[n:]
+	return n, nil
+}
+func (r *mcpDrainReader) Close() error { r.drain.close(); return r.source.Close() }
+
+type mcpDrainWriter struct {
+	source io.WriteCloser
+	drain  *mcpEOFDrain
 }
 
-func (c *drainingMCPConnection) Close() error {
-	c.once.Do(func() { close(c.closed) })
-	return c.Connection.Close()
+// SDK ioConn serializes writes and sends one complete encoded frame per call.
+func (w *mcpDrainWriter) Write(p []byte) (int, error) {
+	n, err := w.source.Write(p)
+	if err == nil && n != len(p) {
+		return n, io.ErrShortWrite
+	}
+	if err == nil && n == len(p) {
+		w.drain.outgoing(p)
+	}
+	return n, err
 }
+func (w *mcpDrainWriter) Close() error { w.drain.close(); return w.source.Close() }
+
+type mcpStdoutWriter struct{ io.Writer }
+
+func (mcpStdoutWriter) Close() error { return nil }
