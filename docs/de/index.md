@@ -12,6 +12,8 @@ BaseHarbor verbindet Anwendungen und ihre Backends auf verifizierten Linux-Targe
 [Jetzt starten](tutorials/getting-started.md){ .md-button .md-button--primary }
 [GitHub](https://github.com/mcpdev80/baseharbor){ .md-button }
 
+Dokumentation zum **Kandidaten v0.4.24**. Die Pre-Release-Abnahme ist abgeschlossen; das Release ist noch nicht veröffentlicht. Die aktuell veröffentlichte Version findest du im [GitHub-Release](https://github.com/mcpdev80/baseharbor/releases/latest).
+
 ## Vom Repository zur laufenden Anwendung
 
 Installiere die [CLI und eine Rootless-Docker- oder Podman-Runtime](tutorials/getting-started.md) und öffne das Repository deiner Anwendung:

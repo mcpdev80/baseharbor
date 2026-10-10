@@ -2,7 +2,7 @@
 
 Release notes record delivered behavior. Future planning belongs in GitHub Issues.
 
-Upcoming candidate: [v0.4.24 draft](v0.4.24.md), under implementation and not pre-release approved.
+Current candidate: [v0.4.24](v0.4.24.md). Implementation and pre-release validation are complete; publication has not yet taken place.
 
 - [v0.4.23](v0.4.23.md)
 - [v0.4.22](v0.4.22.md)

@@ -70,17 +70,17 @@ This convenience boundary applies only to `dev`. Test/prod continue to require i
 Inside an application repository:
 
 ```bash
-baha app psql
-baha app redis
+baha app sql
+baha app cache
 ```
 
 If an application declares multiple logical instances, select one explicitly:
 
 ```bash
-baha app psql primary
-baha app psql analytics
-baha app redis cache
-baha app redis sessions
+baha app sql primary
+baha app sql analytics
+baha app cache cache
+baha app cache sessions
 ```
 
 `psql` uses the materialized owner-only PostgreSQL binding and passes the password through the child-process environment rather than a command-line argument. `redis` prefers `valkey-cli` and falls back to `redis-cli`; authentication is likewise supplied through the client environment.
@@ -90,8 +90,8 @@ The required client must be installed locally. BaseHarbor does not hide a missin
 For stored application state outside a repository, select the application explicitly:
 
 ```bash
-baha app psql --app mailflow
-baha app redis cache --app mailflow
+baha app sql --app mailflow
+baha app cache cache --app mailflow
 ```
 
 ## Connection metadata

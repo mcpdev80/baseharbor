@@ -1,60 +1,20 @@
 # Roadmap
 
-Detailed planning lives in GitHub Issues. This page shows product direction only.
+Detailed planning lives in GitHub Issues. This page shows product direction; [issue #155](https://github.com/mcpdev80/baseharbor/issues/155) is the overarching roadmap.
 
-The authoritative high-level planning issue is #155. Release-specific scope and
-acceptance remain in the linked release umbrella and child issues.
+## Current candidate — v0.4.24
 
-## Current — v0.4.22
+Implementation and pre-release validation are complete; publication remains pending.
 
-Machine Operator Authorization, Extension Trust and release readiness.
+- Task-oriented CLI and repository-aware application lifecycle.
+- Explicit Core/Target selection and rootless Docker by default.
+- Shared providers without duplicate servers, with opt-in HA.
+- Guarded provider updates, PostgreSQL/etcd recovery and bounded upgrade paths.
+- Joint Console/Node Connector workflows and complete EN/DE documentation.
 
-- transport-neutral machine-operation authorization;
-- MCP enforcement of the shared authorization boundary;
-- product-neutral extension trust metadata and policy boundary;
-- public versioned provider/extension conformance artifacts;
-- documented CLI/JSON/MCP coverage and practical automation examples;
-- consistent repository init and lifecycle preflight, plus buildable Go starters;
-- single-instance control-plane and PostgreSQL defaults, with explicit HA intent;
-- ownership-safe target/provider cleanup and accurate resource planning;
-- earlier Docker/Podman journeys, actionable failure diagnostics and selective
-  evidence reuse for unchanged gate inputs, without weaker acceptance criteria.
-
-Implementation is complete in PR #790. Full Docker/Podman acceptance and all 55
-required proofs passed in prerelease run 37385682137.
+The [release notes](releases/v0.4.24.md) describe the highlights and compatibility notes. Detailed scope and evidence are recorded in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 ## Before the v0.5 freeze
-
-### v0.4.23
-
-Freeze Readiness Policy, Public Namespace and Platform Contract.
-
-- explicit compatibility/freeze policy;
-- public namespace and schema-governance decisions;
-- supported/tested platform classification;
-- remaining runtime-neutral contract boundaries;
-- machine HTTP/streaming and Target Access boundaries required so future Console
-  work does not reopen frozen Core semantics.
-- repository-independent secure Core bootstrap with mandatory SQL, Secrets and
-  Identity, first-application continuation and machine-role defaults;
-- optional Console attached to one selected Core in the same installation and
-  security boundary, with same-origin HTTPS as the default;
-- explicit shared/application-isolated placement and measured Core resource
-  evidence;
-- complete remote application and private-consumer integration qualification
-  before pre-release approval.
-
-Implementation is in progress in PR #809. The [draft release notes](releases/v0.4.23.md)
-do not claim release or pre-release approval.
-
-### v0.4.24
-
-Human CLI and Documentation Consolidation.
-
-- compact task-oriented human CLI;
-- progressive disclosure for advanced/operator namespaces;
-- task/category-first documentation information architecture;
-- complete canonical command reference aligned with the final CLI.
 
 ### v0.4.25
 

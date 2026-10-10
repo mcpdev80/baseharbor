@@ -2,9 +2,9 @@
 
 ## Aktueller Kandidat
 
-[BaseHarbor v0.4.24](v0.4.24.md) wird umgesetzt. Der Pre-Release wurde noch nicht freigegeben.
+[BaseHarbor v0.4.24](v0.4.24.md): Implementierung und Pre-Release-Abnahme sind abgeschlossen. Die Veröffentlichung steht noch aus.
 
-Die Abnahme muss Code, Demo, Dokumentation und Consumer-Nachweise an denselben Kandidaten binden. Nicht erfüllte Pflichtnachweise verhindern die Freigabe.
+Die Nachweise beziehen sich auf den geprüften gemeinsamen Code-Kandidaten. Dokumentationskorrekturen ändern dessen Runtime-Abnahme nicht.
 
 ## Ältere Release Notes
 

@@ -17,7 +17,7 @@ baha app env --format json
 Nach erfolgreichem Deployment:
 
 ```bash
-baha app psql
+baha app sql
 ```
 
 In dieser PostgreSQL-Sitzung:

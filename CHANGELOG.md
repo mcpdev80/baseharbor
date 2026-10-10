@@ -20,9 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SQL and cache operations use `baha app sql` and `baha app cache`, not legacy provider-specific aliases.
 - Root-level `baha down` and `baha destroy` distinguish application repository context from installation-wide lifecycle.
 - `baha update --check` reports availability of admissible installed-Core provider reconciliation.
-- Connector and Console compatibility must be tied to immutable joint release SHAs rather than older integration receipts.
+- Console and Node Connector support the version-matched Core workflows for setup, remote application lifecycle, logs, terminal, authorization and credential/CA rotation.
 
 ### Fixed
+
+- Configuration prompts reject EOF/non-terminal input before writes; isolated state roots, native workload bindings, live readiness after reconciliation, recovery-safe rebootstrap, consented port fallback and explicit unsupported Compose includes improve everyday developer workflows (#864–#871).
 
 - Identity bootstrap uses the existing immutable release-catalog Keycloak pin rather than following upstream tag drift. HA recovery capture waits at most 90 seconds for verified healthy standbys to reach zero replay lag; unknown state, split brain and leader changes remain immediate failures.
 
@@ -42,20 +44,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
 - Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
 
-### Verified
+### Support boundaries
 
-- Core SHA `49a2fab76079b98b5697ba9f556abb6e6c066cac`: Go tests, vet, build and isolated rootless Docker/Podman HA backup/snapshot/restore/three-member-quorum gates, [Actions 37954182113](https://github.com/mcpdev80/baseharbor/actions/runs/37954182113).
-- Prior complete native Console/Connector Docker/Podman integration passed in [Actions 37968583370](https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/37968583370); the final immutable candidate matrix and exact-source evidence are tracked in PR #837.
+- Provider updates require compatible release-pinned images, verified ownership and backups. PostgreSQL major upgrades and unsupported provider upgrade paths remain blocked.
+- Shared native PostgreSQL HA and physical backup-state recovery are supported; application-scoped PostgreSQL HA, cross-host failover and automatic plaintext-to-mTLS DCS migration remain unsupported.
+- Existing installations do not silently change topology. SQL transactions with unknown commit outcomes are not automatically replayed.
+- Implementation and complete pre-release validation are finished. Publication remains pending, so this version is still Unreleased.
 
-### Support boundaries and acceptance requirements
-
-- Native DCS cutover, PostgreSQL physical point-in-time backup-state recovery and same-image rolling/failure recovery passed isolated rootless Docker/Podman acceptance. Changed-image upgrade compatibility and plaintext DCS migration remain unqualified.
-- Real provider-version/state recovery and final Console/Node remote runtime acceptance require successful targeted native evidence for the selected source inputs.
-- Application-scoped PostgreSQL HA and cross-host failure tolerance remain unsupported; shared PostgreSQL HA remains supported.
-- Demo and all dependent component pins must be synchronized with one final immutable Core SHA, then revalidated.
-- v0.4.24 has not been tagged, merged or published. This entry remains Unreleased until all release gates have passed and publication is authorized.
-
-## [0.4.23] - Unreleased
+## [0.4.23] - 2026-10-08
 
 ### Added
 

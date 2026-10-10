@@ -17,7 +17,7 @@ baha app env --format json
 After successful deployment, open the application's SQL instance:
 
 ```bash
-baha app psql
+baha app sql
 ```
 
 In that PostgreSQL session:

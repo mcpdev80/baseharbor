@@ -1,60 +1,20 @@
 # Fahrplan
 
-Detaillierte Planung lebt in GitHub Issues. Diese Seite zeigt nur Produktrichtung.
+Detaillierte Planung steht in GitHub Issues. Diese Seite zeigt die Produktrichtung; [Issue #155](https://github.com/mcpdev80/baseharbor/issues/155) ist die übergeordnete Roadmap.
 
-Die maßgebliche hochrangige Planungsfrage ist #155. Release-spezifischer Umfang und
-Die Akzeptanz bleibt in den verbundenen Release-Dach- und Kind-Problemen.
+## Aktueller Kandidat — v0.4.24
 
-## Aktuelle — v0.4.22
+Implementierung und Pre-Release-Abnahme sind abgeschlossen; die Veröffentlichung steht noch aus.
 
-Maschinenbediener Autorisierung, Erweiterung Vertrauen und Freigabebereitschaft.
+- Aufgabenorientierte CLI und repositorybezogener Application-Lifecycle.
+- Explizite Core-/Target-Auswahl und Rootless-Docker als Standard.
+- Gemeinsame Provider ohne doppelte Server, mit ausdrücklich aktivierter HA.
+- Abgesicherte Provider-Updates, PostgreSQL-/etcd-Recovery und klar begrenzte Upgrade-Pfade.
+- Gemeinsame Console-/Node-Connector-Workflows und vollständige EN/DE-Dokumentation.
 
-- Genehmigung des transportneutralen Maschinenbetriebs;
-- Durchsetzung der gemeinsamen Genehmigungsgrenze durch die MCP;
-- Produktneutrale Erweiterung Vertrauen Metadaten und politische Grenze;
-- öffentliche versionierte Anbieter/Extensions-Konformitäts-Artefakte;
-- dokumentierte CLI/JSON/MCP-Abdeckung und praktische Automatisierungsbeispiele;
-- konsistente Repository-Init- und Lifecycle-Vorflug, plus baubare Go-Starter;
-- single-instance control-plane und PostgreSQL-Standards mit expliziter HA-Intention;
-- eigentumssicheres Ziel/Anbieter-Reinigung und genaue Ressourcenplanung;
-- Frühere Docker/Podman-Reisen, umsetzbare Fehlerdiagnose und selektive
-  Wiederverwendung von Nachweisen für unveränderte Gate-Eingänge ohne schwächere Akzeptanzkriterien.
+Die [Release Notes](releases/v0.4.24.md) beschreiben die wichtigsten Änderungen und Kompatibilitätshinweise. Detaillierter Umfang und Nachweise stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
-Die Umsetzung ist abgeschlossen in PR #790. Full Docker/Podman Annahme und alle 55
-erforderliche Nachweise in Prelease-Lauf 37385682137 übergeben.
-
-## Vor dem v0.5 Einfrieren
-
-### v0.4.23
-
-Readiness Policy, Public Namespace und Plattformvertrag einfrieren.
-
-- explizite Vereinbarkeits-/Gefrierpolitik;
-- Entscheidungen über den öffentlichen Namensraum und die Schema-Governance;
-- die Einstufung der unterstützten/geprüften Plattform;
-- Restlaufzeitneutrale Vertragsgrenzen;
-- Maschine HTTP/Streaming und Target Access-Grenzen erforderlich, so dass zukünftige Konsole
-  Arbeit nicht wieder öffnen gefrorenen Kern semantik.
-- repository-unabhängige sichere Core Bootstrap mit obligatorischen SQL, Secrets und
-  Identität, Fortsetzung der Erstanwendung und Standardeinstellungen für die Maschinenrolle;
-- optional Konsole an einem ausgewählten Core in der gleichen Installation angebracht und
-  Sicherheitsgrenze, mit gleichem HTTPS-Ursprung wie die Standardeinstellung;
-- explizite geteilte/applikationsisolierte Platzierung und gemessene Kernressource
-  Nachweise;
-- vollständige Remote-Anwendung und Private-Consumer-Integration Qualifikation
-  vor der Freigabe der Genehmigung.
-
-Die Umsetzung ist in PR #809 im Gange.[draft release notes](releases/v0.4.23.md)
-keine Freigabe oder Genehmigung vor der Freigabe beantragen.
-
-### v0.4.24
-
-Human CLI und Dokumentation Konsolidierung.
-
-- kompakter, aufgabenorientierter menschlicher CLI;
-- schrittweise Offenlegung für fortgeschrittene Namespaces/Operator-Namespaces;
-- Aufgaben-/Kategorie-First-Dokumentations-Informationsarchitektur;
-- vollständige kanonische Befehlsreferenz, die mit dem finalen CLI ausgerichtet ist.
+## Vor dem v0.5-Freeze
 
 ### v0.4.25
 

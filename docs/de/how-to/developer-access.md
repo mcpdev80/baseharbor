@@ -40,7 +40,7 @@ secrets.<domain>
 metrics.<domain>
 ```
 
-Mehrere Instanzen werden explizit gewählt, etwa `baha app psql analytics` oder `baha app redis cache`. Außerhalb eines Repositorys ist eine Application mit `--app NAME` nötig. Passwörter gehen über die Child-Prozess-Umgebung, nicht über Befehlsargumente. Ein fehlender Client wird nicht durch eine fremde Container-Shell ersetzt.
+Mehrere Instanzen werden explizit gewählt, etwa `baha app sql analytics` oder `baha app cache cache`. Außerhalb eines Repositorys ist eine Application mit `--app NAME` nötig. Passwörter gehen über die Child-Prozess-Umgebung, nicht über Befehlsargumente. Ein fehlender Client wird nicht durch eine fremde Container-Shell ersetzt.
 
 `baha app creds postgres` zeigt standardmäßig maskierte Metadaten. `--reveal` ist eine separate bewusste Aktion.
 
@@ -67,20 +67,20 @@ baha dev credentials --reset
 ```
 
 ```bash
-baha app psql
-baha app redis
+baha app sql
+baha app cache
 ```
 
 ```bash
-baha app psql primary
-baha app psql analytics
-baha app redis cache
-baha app redis sessions
+baha app sql primary
+baha app sql analytics
+baha app cache cache
+baha app cache sessions
 ```
 
 ```bash
-baha app psql --app mailflow
-baha app redis cache --app mailflow
+baha app sql --app mailflow
+baha app cache cache --app mailflow
 ```
 
 ```bash
@@ -114,3 +114,5 @@ Technische Bezeichner: `baseharbor.yaml`, `https://<host>:8443`, `baha status`, 
 ### Next.js-Upstream-Port stimmt nicht überein (P0 #844)
 
 Eine generierte Next.js-Application deklariert `exposure.http.port: 8080`. Der Compose-Workload muss ebenso auf `PORT=8080` lauschen, `8080:8080` veröffentlichen, `EXPOSE 8080` deklarieren und `http://127.0.0.1:8080/healthz` prüfen. Ein fehlerfrei laufender Container auf Port 3000 beweist nicht, dass der auf 8080 deklarierte Upstream erreichbar ist. HTTP 502/503/504 am kanonischen Development-Gateway bedeutet einen nicht erreichbaren Application-Upstream, nicht zwangsläufig eine fehlende HTTPS-Domain oder Gateway-Route. Zuerst Listener, Exposure-Port und Target-Netzwerk prüfen. Interne Caddyfile- und Gateway-State-Pfade gehören nicht in Fehlermeldungen.
+
+Der SQL-Zugriff benötigt den lokalen Client `psql`; für Cache-Zugriff wird ein passender lokaler Client verwendet.
