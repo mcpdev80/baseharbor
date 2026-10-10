@@ -165,16 +165,17 @@ class GitInputs:
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
-    def pin(self, candidate, tag):
+    def pin(self, candidate, tag, demo_ref=None):
         if tag == 'v0.4.24':
             # Consumers can pin an existing Core SHA; Core cannot also embed
             # their future commit without a circular Git object dependency.
-            if not isinstance(self.demo_ref, str) or not re.fullmatch('[0-9a-f]{40}', self.demo_ref):
+            resolved = self.demo_ref if demo_ref is None else demo_ref
+            if not isinstance(resolved, str) or not re.fullmatch('[0-9a-f]{40}', resolved):
                 raise ValueError('v0.4.24 requires an exact resolved Demo commit')
-            actual = command(['git', 'show', self.demo_ref + ':baseharbor-core.ref'], self.demo).decode().strip()
+            actual = command(['git', 'show', resolved + ':baseharbor-core.ref'], self.demo).decode().strip()
             if actual != candidate:
                 raise ValueError('Demo immutable Core pin differs from candidate')
-            return self.demo_ref
+            return resolved
         return command(['git', 'show', candidate + ':docs/releases/' + tag + '.demo-ref'],
                        self.product).decode().strip()
 
@@ -281,6 +282,49 @@ class GitHub:
         return command(['gh', 'api', f'repos/{self.repository}/actions/artifacts/{artifact["id"]}/zip'])
 
 
+def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
+    """Recover the immutable origin pin from digest-verified gate archives."""
+    if tag != 'v0.4.24':
+        return inputs.pin(candidate, tag)
+    pins = set()
+    for job in jobs:
+        key = key_from_job(job['name'], expected)
+        attempt = job.get('run_attempt')
+        if key is None or type(attempt) is not int or attempt < 1:
+            continue
+        if job.get('head_sha') != candidate:
+            raise ValueError('origin pin job source differs')
+        for artifact in artifacts:
+            if artifact.get('name') != artifact_name(key, run_id, attempt) or artifact.get('expired'):
+                continue
+            if (artifact.get('workflow_run', {}).get('id') != run_id or
+                    artifact.get('workflow_run', {}).get('head_sha') != candidate):
+                raise ValueError('origin pin artifact source differs')
+            data = api.archive(artifact)
+            manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            pin = manifest.get('demo_ref')
+            if (manifest.get('schema') != SCHEMAS[key.split('/')[0]] or
+                    manifest.get('candidate_sha') != candidate or
+                    str(manifest.get('workflow_run_id')) != str(run_id) or
+                    type(manifest.get('workflow_run_attempt')) is not int or
+                    manifest.get('workflow_run_attempt') != attempt or
+                    not isinstance(pin, str) or not re.fullmatch('[0-9a-f]{40}', pin)):
+                raise ValueError('origin pin manifest binding differs')
+            archives[artifact['id']] = (data, manifest, manifest_digest)
+            pins.add(pin)
+    if len(pins) > 1:
+        raise ValueError('origin run contains inconsistent Demo pins')
+    if not pins:
+        if any(key_from_job(job['name'], expected) is not None for job in jobs):
+            raise ValueError('origin Demo pin is unavailable; cannot reuse older proof')
+        return None
+    pin = pins.pop()
+    inputs.ensure(candidate, pin)
+    if inputs.pin(candidate, tag, demo_ref=pin) != pin:
+        raise ValueError('origin Demo immutable Core pin differs')
+    return pin
+
+
 def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
             private_verifier=None):
     inputs.ensure(candidate, demo)
@@ -300,10 +344,14 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
             raise ValueError(f'run {run_id} is not an immutable trusted push origin')
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
-        origin_demo = inputs.pin(origin_candidate, tag)
-        inputs.ensure(origin_candidate, origin_demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
         jobs = api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs')
+        archives = {}
+        origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
+                                     artifacts, jobs, expected, archives)
+        if origin_demo is None:
+            continue
+        inputs.ensure(origin_candidate, origin_demo)
         for job in jobs:
             key = key_from_job(job['name'], expected)
             if key is None or inputs.fingerprint(origin_candidate, origin_demo, tag, key) != target[key]:
@@ -327,8 +375,11 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
             if (artifact.get('workflow_run', {}).get('id') != run_id or
                     artifact.get('workflow_run', {}).get('head_sha') != origin_candidate):
                 raise ValueError('artifact source run or commit differs')
-            data = api.archive(artifact)
-            manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            if artifact['id'] in archives:
+                data, manifest, manifest_digest = archives[artifact['id']]
+            else:
+                data = api.archive(artifact)
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
             validate_manifest(manifest, key, run_id, origin_candidate, origin_demo, attempt)
             requirement = next(gate for gate in requirements if gate['id'] == key)
             if key.startswith('integration/'):

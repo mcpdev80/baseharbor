@@ -348,8 +348,10 @@ func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Conte
 		}
 		identityRoutes = append(identityRoutes, devgateway.Route{
 			Key: adminKey, Host: adminHost,
-			Upstream:   "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":8443",
-			Network:    files.InternalNetwork,
+			Upstream: "https://" + devaccess.ProviderAlias(files.Project, "identity-admin") + ":8443",
+			// Both browser aliases are published on the verified frontend's
+			// consumer network. The internal network belongs to its backends.
+			Network:    files.ConsumerNetwork,
 			TrustFile:  files.AdminAccess.Material.CA,
 			ServerName: files.AdminAccess.Material.ServerName,
 		})

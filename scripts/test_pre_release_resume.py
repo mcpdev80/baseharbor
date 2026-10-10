@@ -48,8 +48,8 @@ class FakeInputs:
     def ensure(self, *args):
         pass
 
-    def pin(self, *args):
-        return 'b' * 40
+    def pin(self, *args, **kwargs):
+        return kwargs.get('demo_ref', 'b' * 40)
 
     def fingerprint(self, candidate, demo, tag, key):
         return resume.digest([key, tag, demo])
@@ -88,6 +88,43 @@ class FakeAPI:
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_v024_reuse_keeps_the_origin_demo_pin_after_candidate_changes(self):
+        class BoundInputs(FakeInputs):
+            def pin(self, candidate, tag, demo_ref=None):
+                resolved = 'd' * 40 if demo_ref is None else demo_ref
+                required = {'a' * 40: 'b' * 40, 'c' * 40: 'd' * 40}[candidate]
+                if resolved != required:
+                    raise ValueError('Demo immutable Core pin differs')
+                return resolved
+
+            def fingerprint(self, candidate, demo, tag, key):
+                # Fixture changes only metadata: execution inputs are identical.
+                return resume.digest([key, tag])
+
+        result = resume.collect(self.api, BoundInputs(), 'c' * 40, 'd' * 40,
+                                'v0.4.24', [1], self.root)
+        self.assertEqual(result['candidate_sha'], 'c' * 40)
+        proof = result['proofs'][0]
+        self.assertEqual(proof['origin']['candidate_sha'], 'a' * 40)
+        self.assertEqual(proof['origin']['demo_ref'], 'b' * 40)
+        self.assertEqual(proof['manifest'], manifest())
+
+    def test_v024_missing_origin_pin_fails_closed_instead_of_falling_back(self):
+        self.api.artifacts[2] = []
+        with self.assertRaisesRegex(ValueError, 'origin Demo pin is unavailable'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [2], self.root)
+
+    def test_origin_pin_requires_archive_digest_and_exact_source_binding(self):
+        expected = [gate['id'] for gate in resume.local_requirements('v0.4.24')]
+        artifact = self.api.artifacts[1][0]
+        for field, value in [('digest', 'sha256:' + '0' * 64),
+                             ('workflow_run', {'id': 2, 'head_sha': 'a' * 40})]:
+            bad = dict(artifact, **{field: value})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                resume.origin_demo_pin(self.api, FakeInputs(), 'a' * 40, 'v0.4.24',
+                                       1, [bad], self.api.jobs[1], expected, {})
+
     def test_v024_keeps_the_complete_v023_required_gate_surface(self):
         previous = resume.local_requirements('v0.4.23')
         current = resume.local_requirements('v0.4.24')
@@ -377,6 +414,31 @@ class GitFingerprintTests(unittest.TestCase):
 
 
 class WorkflowIntegrationTests(unittest.TestCase):
+    def test_targeted_journey_retains_valid_evidence_for_both_runtimes(self):
+        import os
+        import re
+        import yaml
+        jobs = yaml.safe_load(pathlib.Path('.github/workflows/targeted-demo-acceptance.yml').read_text())['jobs']
+        job = jobs['reference_journey']
+        self.assertEqual(job['if'], "needs.resolve.outputs.gate == 'reference-journey'")
+        step = next(s for s in job['steps'] if s['name'] == 'Generate reference journey evidence')
+        upload = next(s for s in job['steps'] if s['name'] == 'Upload reference journey evidence')
+        for runtime in ['docker', 'podman']:
+            values = {'steps.candidate.outputs.sha': 'a' * 40,
+                      'needs.resolve.outputs.demo_ref': 'b' * 40,
+                      'steps.journey.outcome': 'success', 'steps.cleanup.outcome': 'success',
+                      'needs.resolve.outputs.runtime': runtime,
+                      'steps.journey.outputs.duration_seconds': '42'}
+            script = re.sub(r'\$\{\{\s*(.*?)\s*\}\}', lambda m: values[m[1]], step['run'])
+            with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as root:
+                env = dict(os.environ, RUNNER_TEMP=root, GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='1')
+                subprocess.run(['bash', '-euo', 'pipefail', '-c', script], env=env, check=True)
+                data = json.loads((pathlib.Path(root) / 'reference-journey-evidence/manifest.json').read_text())
+                resume.validate_manifest(data, 'journey/' + runtime, 1, 'a' * 40, 'b' * 40, 1)
+                self.assertEqual(data['duration_seconds'], 42)
+            self.assertIn('needs.resolve.outputs.runtime', upload['with']['name'])
+            self.assertEqual(upload['with']['retention-days'], 30)
+
     def test_core_integration_jobs_use_exact_requirements_names_and_retained_origins(self):
         import yaml
         jobs = yaml.safe_load(pathlib.Path('.github/workflows/pre-release.yml').read_text())['jobs']
