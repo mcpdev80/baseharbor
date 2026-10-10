@@ -152,7 +152,7 @@ func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
 			ok = false
 		}
 		detail := ""
-		if !check.OK || term.Verbose() || check.Name == "control-plane-ha" {
+		if !check.OK || term.Verbose() || check.Name == "control-plane-ha" || check.Name == "Docker engine" {
 			detail = check.Message
 		}
 		term.Result(state, check.Name, detail)

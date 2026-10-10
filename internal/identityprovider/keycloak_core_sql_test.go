@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -116,5 +117,69 @@ func TestSharedIdentityRetainedDedicatedSQLFailsBeforeMutation(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "runtime.env")); !os.IsNotExist(err) {
 			t.Fatal("migration refusal generated credentials")
 		}
+	}
+}
+
+func TestInstalledIdentitySQLTrustRotationPreservesMountedFileAndOwnership(t *testing.T) {
+	for _, ha := range []bool{false, true} {
+		t.Run(map[bool]string{false: "single", true: "ha"}[ha], func(t *testing.T) {
+			root := t.TempDir()
+			issuer := newCoreSQLTestIssuer(t, root, ha)
+			app := application.WithHA(application.New("core", "prod", false, false, false), ha)
+			placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+			files, err := ensureKeycloakFilesForPlacement(context.Background(), app, issuer, root, "local", placement)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projected := filepath.Join(files.Dir, "db-ha", "runtime", "ca.pem")
+			before, err := os.Stat(projected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compose, _ := os.ReadFile(files.Compose)
+			env, _ := os.ReadFile(files.Env)
+			replacement := newCoreSQLTestIssuer(t, t.TempDir(), ha)
+			ca, err := os.ReadFile(bhruntime.CorePostgresCA(replacement.core))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(bhruntime.CorePostgresCA(issuer.core), ca, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := RefreshCoreIdentitySQLTrust(root, "local", issuer.core); err != nil {
+				t.Fatal(err)
+			}
+			after, _ := os.Stat(projected)
+			actual, _ := os.ReadFile(projected)
+			if !os.SameFile(before, after) || !bytes.Equal(actual, ca) {
+				t.Fatal("mounted SQL CA did not update in place")
+			}
+			composeAfter, _ := os.ReadFile(files.Compose)
+			envAfter, _ := os.ReadFile(files.Env)
+			if !bytes.Equal(compose, composeAfter) || !bytes.Equal(env, envAfter) {
+				t.Fatal("trust refresh changed topology or credentials")
+			}
+			foreign := issuer.core
+			foreign.Project = "foreign-core"
+			if err := RefreshCoreIdentitySQLTrust(root, "local", foreign); err == nil {
+				t.Fatal("foreign SQL binding admitted")
+			}
+			if data, _ := os.ReadFile(projected); !bytes.Equal(data, ca) {
+				t.Fatal("foreign binding modified trust")
+			}
+			if err := os.Remove(projected); err != nil {
+				t.Fatal(err)
+			}
+			external := filepath.Join(t.TempDir(), "foreign-ca.pem")
+			if err := os.WriteFile(external, ca, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(external, projected); err != nil {
+				t.Fatal(err)
+			}
+			if err := RefreshCoreIdentitySQLTrust(root, "local", issuer.core); err == nil {
+				t.Fatal("symlink trust projection accepted")
+			}
+		})
 	}
 }

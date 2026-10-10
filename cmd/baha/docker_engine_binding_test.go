@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/health"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -157,5 +160,17 @@ func TestProtectedDockerBindingRejectsAmbiguousRecords(t *testing.T) {
 	}
 	if _, err := readDockerEngineBinding(path, target.Name); err == nil {
 		t.Fatal("symlink binding admitted")
+	}
+}
+
+func TestHumanDoctorAlwaysDisplaysSelectedDockerEndpointAndMode(t *testing.T) {
+	var out bytes.Buffer
+	term := cli.NewTerminal(context.Background(), &out, &out)
+	endpoint := "unix:///run/user/1000/docker.sock"
+	if !renderControlPlaneDoctor(term, []health.Check{{Name: "Docker engine", OK: true, Message: endpoint + " (rootless; daemon original)"}}) {
+		t.Fatal("healthy engine marked failed")
+	}
+	if !strings.Contains(out.String(), endpoint) || !strings.Contains(out.String(), "rootless") {
+		t.Fatal("human doctor hid the actual endpoint or mode")
 	}
 }

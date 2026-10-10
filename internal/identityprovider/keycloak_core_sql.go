@@ -117,3 +117,26 @@ func projectKeycloakCoreSQLCA(files KeycloakFiles, core bhruntime.Files) error {
 	}
 	return os.WriteFile(filepath.Join(dir, "ca.pem"), data, 0o644)
 }
+
+// RefreshCoreIdentitySQLTrust updates only the existing installation-owned SQL
+// trust projection. It does not create a realm, database, provider or topology.
+// Write in place: existing bind mounts must see both overlap and retirement.
+func RefreshCoreIdentitySQLTrust(dataDir, namespace string, core bhruntime.Files) error {
+	files, err := ExistingCoreRuntimeFiles(dataDir, namespace)
+	if err != nil {
+		return err
+	}
+	if files.SharedSQL == nil {
+		return nil
+	} // Retained dedicated SQL is independent.
+	bound := files.SharedSQL
+	if bound.Project != core.Project || bound.ResourceProject != core.ResourceProject || filepath.Clean(bound.Compose) != filepath.Clean(core.Compose) || filepath.Clean(bound.Env) != filepath.Clean(core.Env) {
+		return errors.New("Core Identity SQL trust belongs to a different physical Core; no migration or trust update performed")
+	}
+	projected := filepath.Join(files.Dir, "db-ha", "runtime", "ca.pem")
+	info, err := os.Lstat(projected)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 {
+		return errors.New("existing Core Identity SQL CA projection must be a regular non-writable trust file")
+	}
+	return projectKeycloakCoreSQLCA(files, core)
+}

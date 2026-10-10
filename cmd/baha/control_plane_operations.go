@@ -11,6 +11,7 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	goruntime "runtime"
+	"time"
 )
 
 type publicControlPlaneCheck struct {
@@ -209,6 +210,23 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 		checks = append(checks, health.RuntimeChecksForFiles(files)...)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		checks = append(checks, health.Check{Name: "runtime-config", OK: false, Message: "selected Target runtime state is unreadable"})
+	}
+	if target.AccessProvider == "" || target.AccessProvider == "local" {
+		if root, err := targetRuntimeStateRoot(target); err == nil {
+			if state, err := coreinstallation.Load(root); err == nil && state.Capabilities["identity"] {
+				probe, cancel := context.WithTimeout(ctx, 10*time.Second)
+				dataDir, identityErr := targetDataRoot(target)
+				if identityErr == nil {
+					identityErr = identityprovider.VerifyCoreIdentity(probe, dataDir, target.Name, state.ID, state.IdentityIssuer)
+				}
+				cancel()
+				message := "owned realm, database-backed authentication and discovery verified"
+				if identityErr != nil {
+					message = "Core Identity is unavailable; inspect its SQL trust and protected provider diagnostics"
+				}
+				checks = append(checks, health.Check{Name: "Core Identity", OK: identityErr == nil, Message: message})
+			}
+		}
 	}
 	return appendControlPlaneAvailabilityDoctor(ctx, checks)
 }

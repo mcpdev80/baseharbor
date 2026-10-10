@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Shared Core Identity receives PostgreSQL CA overlap and final trust before old SQL trust is retired; rotation verifies real Identity authentication, and Core Doctor checks live Identity rather than SQL/Secrets alone.
+
 - Local Docker is verified rootless by default, all runtime commands use the selected endpoint, and protected daemon bindings prevent implicit engine changes across CLI/MCP or legacy Core cleanup (#863). Target/status/Doctor expose the actual socket and mode.
 
 - App `down` rejects unsupported options with typed errors.

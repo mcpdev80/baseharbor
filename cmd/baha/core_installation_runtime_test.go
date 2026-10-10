@@ -49,6 +49,10 @@ func TestCoreOnlyBootstrapRuntimeAcceptance(t *testing.T) {
 }
 
 func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole) {
+	runCoreOnlyBootstrapRuntimeWithHA(t, role, false)
+}
+
+func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.MachineRole, ha bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
@@ -93,7 +97,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}()
 	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name), bhruntime.SharedProjectName(target.Name+"-core"))
 	defer sampler.stop()
-	opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
+	opts := runtimeUpOptions{HA: ha, Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
 	var preservedRecovery string
 	if role == coreinstallation.Development {
 		preservedRecovery, err = defaultTargetRecoveryFile(target.Name)
@@ -182,6 +186,9 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 		if err != nil || current == preservedRecovery || source != "persisted target" {
 			t.Fatalf("fresh recovery reference not persisted: %s %s %v", current, source, err)
 		}
+	}
+	if os.Getenv("BASEHARBOR_CORE_IDENTITY_SQL_CA_ACCEPTANCE") == "1" {
+		verifyInstalledCoreIdentitySQLCARotation(t, ctx, target, first, opts.RecoveryFile)
 	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_DUAL_DOCKER_ACCEPTANCE") == "1" {
 		verifyDualDockerCLIAndMCP(t, ctx, target)
