@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -154,6 +155,38 @@ func TestIdentityReadFailsClosedOnAmbiguousOrMissingOwner(t *testing.T) {
 	got, err := ResolveIdentity(m, IdentitySnapshot{ApplicationIDs: []string{contractAppID, contractAppID}})
 	if err != nil || got.ApplicationID != contractAppID {
 		t.Fatal("existing explicit identity changed")
+	}
+}
+
+func TestIdentityConcurrentInitializationConverges(t *testing.T) {
+	m := WithWorkloadComponents(Manifest{Version: 1, Name: "myapp", Environment: "dev"}, "app")
+	store := Store{Root: filepath.Join(t.TempDir(), "apps")}
+	var wg sync.WaitGroup
+	ids := make(chan string, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got, err := store.InitializeIdentity(m, IdentitySnapshot{}); err == nil {
+				ids <- got.ApplicationID
+			}
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	winner, err := store.InitializeIdentity(m, IdentitySnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range ids {
+		if id != winner.ApplicationID {
+			t.Fatal("concurrent initialization changed identity")
+		}
+	}
+	renamed := m
+	renamed.ApplicationID, renamed.Name = winner.ApplicationID, "renamed"
+	if _, err := store.InitializeIdentity(renamed, IdentitySnapshot{}); err == nil {
+		t.Fatal("created a parallel identity owner")
 	}
 }
 
@@ -341,5 +374,24 @@ func TestFootprintEvidenceValidation(t *testing.T) {
 		if err != nil || got.Existing[0].MemoryBytes.Classification != class {
 			t.Fatalf("evidence lost: %v", err)
 		}
+	}
+}
+
+func TestFootprintUnusedRespectsTargetWideConsumers(t *testing.T) {
+	s := contractSnapshot()
+	resource, err := capability.Resolve("otherapp", capability.Requirement{Kind: capability.SQL, Name: "default"}, capability.PostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Registry.BindDeployment(resource, contractOtherID, "dev", "sql/shared"); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{Version: 1, Name: "myapp", Environment: "dev"}
+	got, err := ResolveFootprint(m, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Unused) != 0 || len(got.Existing) != 0 {
+		t.Fatal("another app's provider was classified unused or selected")
 	}
 }

@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/footprint/v1/footprint.schema.json",
+  "title": "baseharbor.footprint/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "target",
+    "requirements",
+    "existing",
+    "additional",
+    "unused",
+    "core",
+    "complete"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.footprint/v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "application_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requirement",
+          "binding"
+        ],
+        "properties": {
+          "requirement": {
+            "type": "object",
+            "required": [
+              "kind",
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "binding": {
+            "enum": [
+              "bound",
+              "requested/unbound"
+            ]
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "enum": [
+              "running",
+              "stopped-but-owned",
+              "newly-required",
+              "unverifiable",
+              "foreign"
+            ]
+          }
+        }
+      }
+    },
+    "existing": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provider"
+      }
+    },
+    "additional": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provider"
+      }
+    },
+    "unused": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "core": {
+      "enum": [
+        "required",
+        "not-required",
+        "unknown"
+      ]
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "quantity": {
+      "type": "object",
+      "required": [
+        "classification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "unknown",
+            "measured",
+            "estimated"
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "classification": {
+              "const": "unknown"
+            }
+          },
+          "not": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "classification": {
+              "enum": [
+                "measured",
+                "estimated"
+              ]
+            }
+          },
+          "required": [
+            "value",
+            "source"
+          ]
+        }
+      ]
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "scope",
+        "ownership",
+        "shared",
+        "consumers",
+        "state",
+        "core",
+        "memory_bytes",
+        "containers"
+      ],
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "shared",
+            "application",
+            "external"
+          ]
+        },
+        "ownership": {
+          "enum": [
+            "baseharbor",
+            "external"
+          ]
+        },
+        "shared": {
+          "type": "boolean"
+        },
+        "consumers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "enum": [
+            "running",
+            "stopped-but-owned",
+            "newly-required",
+            "unverifiable",
+            "foreign"
+          ]
+        },
+        "core": {
+          "enum": [
+            "required",
+            "not-required",
+            "unknown"
+          ]
+        },
+        "memory_bytes": {
+          "$ref": "#/$defs/quantity"
+        },
+        "containers": {
+          "$ref": "#/$defs/quantity"
+        }
+      }
+    }
+  }
+}

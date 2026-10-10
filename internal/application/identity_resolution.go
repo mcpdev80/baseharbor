@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"fmt"
+	"os"
 )
 
 // IdentitySnapshot contains claims from the existing repository/application and
@@ -47,6 +48,9 @@ func ResolveIdentity(m Manifest, snapshot IdentitySnapshot) (Manifest, error) {
 // existing Store.Create winner rather than replacing its identity.
 func (s Store) InitializeIdentity(m Manifest, snapshot IdentitySnapshot) (Manifest, error) {
 	authoredID := m.ApplicationID
+	if err := m.Validate(); err != nil {
+		return Manifest{}, err
+	}
 	items, err := s.List()
 	if err != nil {
 		return Manifest{}, err
@@ -82,7 +86,7 @@ func (s Store) InitializeIdentity(m Manifest, snapshot IdentitySnapshot) (Manife
 	if _, err = s.Create(m); err == nil {
 		return m, nil
 	}
-	if !errors.Is(err, ErrExists) {
+	if !errors.Is(err, ErrExists) && !errors.Is(err, os.ErrExist) {
 		return Manifest{}, err
 	}
 	winner, _, err := s.Load(m.Name)

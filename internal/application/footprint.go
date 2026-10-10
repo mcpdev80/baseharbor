@@ -315,7 +315,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		result.Requirements = append(result.Requirements, entry)
 	}
 	for _, instance := range snapshot.Registry.Instances {
-		if !selected[instance.ID] {
+		if !selected[instance.ID] && len(snapshot.Registry.BindingsForProviderInstance(instance.ID)) == 0 {
 			result.Unused = append(result.Unused, instance.ID)
 		}
 	}
