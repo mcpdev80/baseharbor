@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -63,11 +64,19 @@ func prepareOwnedPatroniPhysicalRestore(ctx context.Context, journalDir string) 
 // A physical basebackup is a recoverable *data* point, not an etcd DCS snapshot,
 // and does NOT authorize an unsupported Spilo image migration by itself.
 func captureOwnedPatroniBackup(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, directory string) error {
-	members, err := inspectPatroniMembers(ctx, rt, files)
-	if err != nil {
-		return err
-	}
-	leader, _, err := coreupdate.VerifyPatroniQuorum(ctx, members, 0)
+	return captureOwnedPatroniBackupFromLeader(ctx, rt, files, directory, "")
+}
+
+func awaitOwnedPatroniQuorum(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, expectedLeader string) (string, error) {
+	quorumCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	return coreupdate.AwaitPatroniQuorum(quorumCtx, expectedLeader, 2*time.Second, func(ctx context.Context) ([]coreupdate.PatroniMemberState, error) {
+		return inspectPatroniMembers(ctx, rt, files)
+	})
+}
+
+func captureOwnedPatroniBackupFromLeader(ctx context.Context, rt bhruntime.RuntimeProvider, files bhruntime.Files, directory, expectedLeader string) error {
+	leader, err := awaitOwnedPatroniQuorum(ctx, rt, files, expectedLeader)
 	if err != nil {
 		return fmt.Errorf("native backup Patroni quorum: %w", err)
 	}

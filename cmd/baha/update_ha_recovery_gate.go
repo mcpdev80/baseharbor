@@ -82,15 +82,11 @@ func prepareCoreHARecoveryEvidence(ctx context.Context, rt bhruntime.RuntimeProv
 	if err := verifyCoreHADCSSecurity(files); err != nil {
 		return err
 	}
-	before, err := inspectPatroniMembers(ctx, rt, files)
-	if err != nil {
-		return fmt.Errorf("inspect HA Patroni members before recovery capture: %w", err)
-	}
-	leader, _, err := coreupdate.VerifyPatroniQuorum(ctx, before, 0)
+	leader, err := awaitOwnedPatroniQuorum(ctx, rt, files, "")
 	if err != nil {
 		return fmt.Errorf("Core HA Patroni quorum before recovery capture: %w", err)
 	}
-	if err := captureOwnedPatroniBackup(ctx, rt, files, filepath.Join(journalDir, "patroni-recovery")); err != nil {
+	if err := captureOwnedPatroniBackupFromLeader(ctx, rt, files, filepath.Join(journalDir, "patroni-recovery"), leader); err != nil {
 		return fmt.Errorf("capture verified Patroni physical recovery point: %w", err)
 	}
 	if err := prepareOwnedPatroniPhysicalRestore(ctx, journalDir); err != nil {
@@ -107,16 +103,9 @@ func prepareCoreHARecoveryEvidence(ctx context.Context, rt bhruntime.RuntimeProv
 	if err := captureCoreHARecoverySource(ctx, rt, files, journalDir, leader, ev); err != nil {
 		return err
 	}
-	after, err := inspectPatroniMembers(ctx, rt, files)
-	if err != nil {
-		return fmt.Errorf("inspect HA Patroni members after DCS recovery proof: %w", err)
-	}
-	afterLeader, _, err := coreupdate.VerifyPatroniQuorum(ctx, after, 0)
+	_, err = awaitOwnedPatroniQuorum(ctx, rt, files, leader)
 	if err != nil {
 		return fmt.Errorf("Core HA Patroni quorum after DCS recovery proof: %w", err)
-	}
-	if afterLeader != leader {
-		return errors.New("Patroni leader changed while establishing recovery evidence; replan required")
 	}
 	return nil
 }

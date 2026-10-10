@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Identity bootstrap uses the existing immutable release-catalog Keycloak pin rather than following upstream tag drift. HA recovery capture waits at most 90 seconds for verified healthy standbys to reach zero replay lag; unknown state, split brain and leader changes remain immediate failures.
+
 - Quick init accepts explicit noninteractive Core bootstrap consent and recognizes real terminals; stopped development routes retain truthful diagnostics, fresh managed certificates do not warn before their renewal window, and MCP stdio flushes decoded replies before EOF (#827–#831).
 
 - Shared Core Identity receives PostgreSQL CA overlap and final trust before old SQL trust is retired; rotation verifies real Identity authentication, and Core Doctor checks live Identity rather than SQL/Secrets alone.
