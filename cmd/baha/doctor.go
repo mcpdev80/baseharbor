@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type doctorRepairClass string
@@ -34,15 +38,21 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	}
 	args = filtered
 	fix := false
+	approved := false
 	for _, arg := range args {
 		switch arg {
 		case "--fix":
 			fix = true
+		case "--yes":
+			approved = true
 		default:
-			return usageError("unknown argument "+arg, "Usage: baha doctor [--fix]")
+			return usageError("unknown argument "+arg, "Usage: baha doctor [--fix --yes]")
 		}
 	}
 
+	if approved && !fix {
+		return usageError("--yes requires --fix", "Use baha doctor --fix --yes to confirm reconvergence of existing Core components.")
+	}
 	if format == outputJSON {
 		if fix {
 			return usageError("structured doctor output is read-only", "Use the explicit control-plane.repair semantic operation or human doctor --fix.")
@@ -50,15 +60,6 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 		result, err := inspectControlPlaneDoctor(ctx)
 		if err != nil {
 			return err
-		}
-		if fix && !result.Ready && hasAutoFixableDoctorFinding(classifyDoctorFindings(collectControlPlaneDoctorChecks(ctx))) {
-			if err := repairExistingControlPlaneRuntime(ctx, io.Discard); err != nil {
-				return err
-			}
-			result, err = inspectControlPlaneDoctor(ctx)
-			if err != nil {
-				return err
-			}
 		}
 		return writeJSON(out, result)
 	}
@@ -70,7 +71,11 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	checks := collectControlPlaneDoctorChecks(ctx)
 	ok := renderControlPlaneDoctor(term, checks)
 	if ok {
-		fmt.Fprintln(out, "\nREADY")
+		if controlPlaneNotDeployed(checks) {
+			fmt.Fprintln(out, "\nNOT DEPLOYED")
+		} else {
+			fmt.Fprintln(out, "\nREADY")
+		}
 		return nil
 	}
 
@@ -78,13 +83,27 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	renderDoctorFindings(term, findings)
 	if !fix {
 		fmt.Fprintln(out, "\nNext:")
-		fmt.Fprintln(out, "  baha doctor --fix")
-		fmt.Fprintln(out, "  baha doctor --verbose")
+		if hasAutoFixableDoctorFinding(findings) {
+			fmt.Fprintln(out, "  baha doctor --fix")
+		}
+		fmt.Fprintln(out, "  baha doctor --json")
 		fmt.Fprintf(out, "\nDEGRADED · %d problem(s) require attention\n", len(findings))
 		return cli.Presented(errors.New("one or more checks failed"))
 	}
 
 	if hasAutoFixableDoctorFinding(findings) {
+		if !approved {
+			if noInput(ctx) || !readerIsTerminal(os.Stdin) {
+				return usageError("doctor --fix requires explicit consent before modifying the Core", "Review the findings and run baha doctor --fix --yes. Only existing runtime components will be reconverged.")
+			}
+			approved, err = confirmDoctorRepair(os.Stdin, errOut)
+			if err != nil {
+				return err
+			}
+			if !approved {
+				return usageError("Core repair cancelled; no changes made", "Review the Doctor findings or run 'baha doctor --fix --yes' when ready.")
+			}
+		}
 		term.Section("Repair")
 		if err := repairExistingControlPlaneRuntime(ctx, out); err != nil {
 			term.Result("FAILED", "repair", err.Error())
@@ -105,15 +124,16 @@ func doctorCommand(ctx context.Context, args []string, out, errOut io.Writer) er
 	renderDoctorFindings(term, remaining)
 	fmt.Fprintln(out, "\nNext:")
 	fmt.Fprintln(out, "  Resolve the remaining problems above.")
-	fmt.Fprintln(out, "  baha doctor --verbose")
+	fmt.Fprintln(out, "  baha doctor --json")
 	fmt.Fprintf(out, "\nDEGRADED · %d problem(s) still require attention\n", len(remaining))
 	return cli.Presented(errors.New("one or more checks still require action"))
 }
 
 func appendControlPlaneAvailabilityDoctor(ctx context.Context, checks []health.Check) []health.Check {
+	checks = appendHostTrustOwnershipDoctor(checks)
 	report, err := collectControlPlaneAvailability(ctx, checks)
 	if err != nil {
-		return checks
+		return append(checks, health.Check{Name: "control-plane-ha", OK: false, Message: "real Core provider topology unavailable: " + err.Error()})
 	}
 	return append(checks, health.Check{
 		Name:    "control-plane-ha",
@@ -132,7 +152,7 @@ func renderControlPlaneDoctor(term *cli.Terminal, checks []health.Check) bool {
 			ok = false
 		}
 		detail := ""
-		if !check.OK || term.Verbose() {
+		if !check.OK || term.Verbose() || check.Name == "control-plane-ha" || check.Name == "Docker engine" {
 			detail = check.Message
 		}
 		term.Result(state, check.Name, detail)
@@ -148,6 +168,17 @@ func classifyDoctorFindings(checks []health.Check) []doctorFinding {
 		}
 		finding := doctorFinding{Check: check, Class: doctorManualAction, Action: "inspect the failed prerequisite and correct it manually"}
 		switch check.Name {
+		case "target-selection":
+			finding.Class = doctorNeedsInput
+			finding.Action = "run baha target list, then baha target activate NAME"
+		case "selected-runtime":
+			finding.Action = "start or configure the selected runtime; rerun baha doctor"
+		case "target-access":
+			finding.Class = doctorNeedsInput
+			finding.Action = "reconnect the authenticated remote Target and rerun baha doctor"
+		case "host-trust-ownership":
+			finding.Class = doctorManualAction
+			finding.Action = "inspect the host-trust ownership state; do not delete or overwrite unverified records. If ownership is valid, use 'baha trust uninstall --yes' for explicit cleanup."
 		case "container-runtime":
 			finding.Action = "start or install Docker/Podman, then rerun 'baha doctor'"
 		case "compose":
@@ -229,4 +260,30 @@ func repairExistingControlPlaneRuntime(parent context.Context, out io.Writer) er
 	}
 	fmt.Fprintln(out, "Repair applied: existing runtime definition converged without changing configuration.")
 	return nil
+}
+
+func appendHostTrustOwnershipDoctor(checks []health.Check) []health.Check {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: false, Message: "host trust state directory unavailable: " + err.Error()})
+	}
+	records, err := hosttrust.StateRecords(dataDir)
+	if err != nil {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: false, Message: "host trust ownership state invalid: " + err.Error()})
+	}
+	if len(records) == 0 {
+		return append(checks, health.Check{Name: "host-trust-ownership", OK: true, Message: "no BaseHarbor-owned host CA anchors"})
+	}
+	return append(checks, health.Check{Name: "host-trust-ownership", OK: true, Message: fmt.Sprintf("%d recorded BaseHarbor-owned CA anchor(s); inspect with 'baha trust status', remove explicitly with 'baha trust uninstall'", len(records))})
+}
+
+func confirmDoctorRepair(in io.Reader, out io.Writer) (bool, error) {
+	fmt.Fprintln(out, "Planned action: reconverge the EXISTING selected Core runtime. No reinstall or destructive reset.")
+	fmt.Fprint(out, "Approve repair for this run? [y/N]: ")
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("read repair consent: %w; use --fix --yes in non-interactive mode", err)
+	}
+	normalized := strings.ToLower(strings.TrimSpace(answer))
+	return normalized == "y" || normalized == "yes" || normalized == "j" || normalized == "ja", nil
 }

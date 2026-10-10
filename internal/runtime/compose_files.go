@@ -320,7 +320,7 @@ func (c Compose) outputProjectFilesEnvProgress(ctx context.Context, project, wor
 		cmd.Dir = workdir
 	}
 	var err error
-	cmd.Env, err = mergeProcessEnvironment(environment)
+	cmd.Env, err = c.commandEnvironment(environment)
 	if err != nil {
 		return "", err
 	}
@@ -368,7 +368,7 @@ func (c Compose) outputProjectFilesInputEnv(ctx context.Context, project, workdi
 		cmd.Dir = workdir
 	}
 	var err error
-	cmd.Env, err = mergeProcessEnvironment(environment)
+	cmd.Env, err = c.commandEnvironment(environment)
 	if err != nil {
 		return "", err
 	}

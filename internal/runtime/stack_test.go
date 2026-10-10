@@ -330,6 +330,20 @@ func TestLegacyStateIsReusedWhenGlobalStateIsAbsent(t *testing.T) {
 
 func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	text := string(composeYAML)
+	// Spilo builds Patroni's DCS configuration from ETCD3_ placeholders.
+	// PATRONI_ETCD3_ alone leaves the generated client on plaintext HTTP.
+	for key, value := range map[string]string{
+		"PROTOCOL": "https",
+		"CACERT":   "/run/baseharbor/tls-runtime/etcd-ca.pem",
+		"CERT":     "/run/baseharbor/tls-runtime/etcd-client.pem",
+		"KEY":      "/run/baseharbor/tls-runtime/etcd-client-key.pem",
+	} {
+		for _, prefix := range []string{"ETCD3_", "PATRONI_ETCD3_"} {
+			if got := strings.Count(text, "\n      "+prefix+key+": "+value+"\n"); got != 3 {
+				t.Fatalf("Spilo %s%s appears %d times, want 3", prefix, key, got)
+			}
+		}
+	}
 	const hosts = `      ETCD3_HOSTS: "'postgres-etcd-1:2379','postgres-etcd-2:2379','postgres-etcd-3:2379'"`
 	if got := strings.Count(text, hosts); got != 3 {
 		t.Fatalf("Spilo ETCD3_HOSTS appears %d times, want exactly 3", got)
@@ -338,7 +352,7 @@ func TestEmbeddedComposeUsesOneSharedSpiloDCS(t *testing.T) {
 	if got := strings.Count(text, scope); got != 3 {
 		t.Fatalf("SCOPE appears %d times, want exactly 3", got)
 	}
-	if got := strings.Count(text, "ETCD3_HOSTS:"); got != 3 {
+	if got := strings.Count(text, "\n      ETCD3_HOSTS:"); got != 3 {
 		t.Fatalf("Spilo runtime must configure ETCD3_HOSTS exactly three times, got %d", got)
 	}
 	const pgroot = "      PGROOT: /home/postgres/pgdata/pgroot\n"
@@ -400,7 +414,7 @@ func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
 func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
 	for _, wanted := range []string{
-		"docker.io/openbao/openbao:2.7.0",
+		"docker.io/openbao/openbao:2.7.1",
 		"command: [\"server\", \"-config=/run/baseharbor/openbao/openbao.hcl\"]",
 		"BASEHARBOR_OPENBAO_DB_PASSWORD",
 		"./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro",

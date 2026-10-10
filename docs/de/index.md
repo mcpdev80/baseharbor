@@ -1,67 +1,52 @@
-# BaseHarbor-Dokumentation
+---
+hide:
+  - toc
+---
 
-Die englische Dokumentation ist die kanonische Quelle für technische Referenzen und normative Verträge.
+<img class="bh-home-mark" src="../brand/baseharbor-master-lockup.png" alt="BaseHarbor — Build · Run · Control · Everywhere">
 
-Die deutsche Dokumentation konzentriert sich bewusst auf leicht verständliche menschliche Erklärungen.
+# Deine Anwendungen. Deine Infrastruktur.
 
-> **KI-generiert, menschlich spezifiziert, maschinell verifiziert.**  
-> Menschliche Entscheidungen definieren Ziel, Architektur, Grenzen und Akzeptanzkriterien. KI kann die Umsetzung beschleunigen; als korrekt gilt das Ergebnis erst durch deterministische maschinelle Verifikation.
+BaseHarbor verbindet Anwendungen und ihre Backends auf verifizierten Linux-Targets. Mit einer CLI betreibst du native Workloads, verbindest sichere Provider-Bindings und prüfst das Ergebnis.
 
-## Neu bei BaseHarbor?
+[Jetzt starten](tutorials/getting-started.md){ .md-button .md-button--primary }
+[GitHub](https://github.com/mcpdev80/baseharbor){ .md-button }
 
-[Einstieg](tutorials/getting-started.md) · [Homelab: Core + Console + Remote Podman](tutorials/homelab.md)
+Dokumentation für **BaseHarbor v0.4.24**. Veröffentlichte Versionen und Installationsdateien findest du in den [GitHub-Releases](https://github.com/mcpdev80/baseharbor/releases).
 
-SQL, Secrets und Identity bilden den verpflichtenden Core; die Console ist optional.
-Die [Core-Ressourcen](explanation/core-resources.md) zeigen gemessene
-Referenz-Topologien und erklären den zusätzlichen Verbrauch durch Provider-Isolation.
+## Vom Repository zur laufenden Anwendung
 
-## Verstehen
+Installiere die [CLI und eine Rootless-Docker- oder Podman-Runtime](tutorials/getting-started.md) und öffne das Repository deiner Anwendung:
 
-- [Architektur](explanation/architecture.md)
-- [Kontexte und Deployment-Ziele](explanation/targets.md)
-- [Anwendungsvertrag](explanation/application-contract.md)
-- [Provider](explanation/providers.md)
-- [Sicherheit](explanation/security.md)
+```bash
+baha init
+baha up
+baha status
+```
 
-## Kommandozeile
+`baha init` übernimmt das Repository und verwendet einen vorhandenen Core oder führt durch die benötigte Einrichtung. Core bedeutet **SQL + Secrets + Identity**; die Console ist optional. `baha up` gleicht die Anwendung ab. Status unterscheidet verifizierte Readiness von einem lediglich laufenden Workload.
 
-`baha` ist die primäre menschliche Schnittstelle. Die [CLI-Übersicht](cli/index.md) führt zu den Bereichen:
+## Mit deinen gewohnten Werkzeugen entwickeln
 
-- [Core-Workflow](cli/core.md)
-- [Applications](cli/applications.md)
-- [Targets](cli/targets.md)
-- [Provider](cli/providers.md)
-- [Development und Workspaces](cli/development.md)
-- [Organisation und Policy](cli/organization-policy.md)
-- [Security und Trust](cli/security-trust.md)
-- [Automation und Agents](cli/automation-agents.md)
-- [Shell und Bedienung](cli/shell-ux.md)
-- [Globale Optionen](cli/global-options.md)
+Anwendungscode und Bibliotheken bleiben erhalten. BaseHarbor erkennt unterstützte Compose-, Quadlet- und Kubernetes-Workload-Quellen, löst providerneutrale Anforderungen auf und liefert geschützte Bindings. Mehrdeutige oder [nicht unterstützte Quellen](explanation/workload-sources.md) erfordern vor dem Deployment eine konkrete nächste Aktion.
 
-## Provider- und Betriebsanleitungen
+## Mit gemeinsamem oder isoliertem Core betreiben
 
-- [PostgreSQL](how-to/postgres.md)
-- [Cache](how-to/cache.md)
-- [Dauerhafter Key-Value-Speicher](how-to/durable-key-value.md)
-- [Dokumentdatenbank](how-to/document-database.md)
-- [Messaging](how-to/messaging.md)
-- [Objektspeicher](how-to/object-storage.md)
-- [Secrets](how-to/secrets.md)
-- [Observability](how-to/observability.md)
-- [Externe/BYO-Provider](how-to/external-providers.md)
-- [Backup und Restore](how-to/backup-restore.md)
+Wähle eine unterstützte Provider-Platzierung und ein verwaltetes lokales oder registriertes Remote-Target. Ownership, TLS, Berechtigungen und erhaltene Daten bleiben im gesamten Lifecycle ausdrücklich geprüft. Die [Core-Ressourcenbeobachtungen](explanation/core-resources.md) unterscheiden gemessene Referenz-Topologien von Planungsbudgets und dem zusätzlichen Verbrauch durch Isolation.
 
-## Plattform und Sicherheit
+## Kontrollieren und verifizieren
 
-- [Organisationskonfiguration](explanation/organization-configuration.md)
-- [Repository-Workload-Quellen](explanation/workload-sources.md)
-- [Authentifizierung](explanation/authentication.md)
+Prüfe vor Änderungen den Plan, diagnostiziere Fehler mit Doctor und kontrolliere Backups vor einer Recovery. CLI, JSON und MCP verwenden dieselben Domänenoperationen. [EN und DE](https://mcpdev80.github.io/baseharbor/) haben gleichwertige Seiten- und Befehlsabdeckung; ausgelieferte technische Bezeichner und verifizierte CLI-Ausgaben bleiben identisch.
 
-## Genaue technische Details
+## Wähle deine nächste Aufgabe
 
-Nutze die englischen kanonischen Bereiche:
+| Aufgabe | Einstieg |
+| --- | --- |
+| Eine Anwendung erstellen, übernehmen oder betreiben | [Applications](cli/applications.md) |
+| Ein lokales oder entferntes Deployment-Ziel wählen | [Targets](cli/targets.md) |
+| Verwaltete oder externe Backends anbinden | [Provider](explanation/providers.md) |
+| Identity, TLS und Trust verwalten | [Sicherheit](explanation/security.md) |
+| Über JSON und MCP automatisieren | [Automation und Agents](cli/automation-agents.md) |
+| Ausgelieferte Befehle und Verträge nachschlagen | [Befehlsindex](cli/command-index.md) · [Referenz](reference/cli.md) |
 
-- [Technische Referenz](https://mcpdev80.github.io/baseharbor/reference/cli/)
-- [Spezifikationen](https://mcpdev80.github.io/baseharbor/spec/)
-
-Übersetzungen dürfen normative Semantik nicht neu definieren.
+Ausgelieferte Änderungen und Support-Grenzen stehen in den [Release Notes](releases/index.md).

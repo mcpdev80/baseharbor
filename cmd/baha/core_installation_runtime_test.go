@@ -41,7 +41,11 @@ func TestCoreOnlyBootstrapRuntimeAcceptance(t *testing.T) {
 	if err != nil || (command == "docker" && !strings.Contains(string(rootless), "rootless")) || (command == "podman" && strings.TrimSpace(string(rootless)) != "true") {
 		t.Fatal("Core bootstrap acceptance requires a verified rootless runtime host")
 	}
-	for _, role := range []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment} {
+	roles := []coreinstallation.MachineRole{coreinstallation.Development, coreinstallation.Deployment}
+	if os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		roles = roles[:1]
+	}
+	for _, role := range roles {
 		if !t.Run(string(role), func(t *testing.T) { runCoreOnlyBootstrapRuntime(t, role) }) {
 			return
 		}
@@ -49,9 +53,16 @@ func TestCoreOnlyBootstrapRuntimeAcceptance(t *testing.T) {
 }
 
 func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole) {
+	runCoreOnlyBootstrapRuntimeWithHA(t, role, false)
+}
+
+func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.MachineRole, ha bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
+	if os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	}
 	target := configureTestTarget(t)
 	if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {
 		cfg, err := deployment.LoadConfig()
@@ -93,7 +104,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}()
 	sampler := startCoreMemorySampler(ctx, runtime, target.RuntimeProvider, targetRuntimeProjectName(target), bhruntime.SharedProjectName(target.Name), bhruntime.SharedProjectName(target.Name+"-core"))
 	defer sampler.stop()
-	opts := runtimeUpOptions{Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
+	opts := runtimeUpOptions{HA: ha, Yes: true, ControlPlaneOnly: true, MachineRole: role, RecoveryFile: filepath.Join(t.TempDir(), "recovery.json")}
 	var preservedRecovery string
 	if role == coreinstallation.Development {
 		preservedRecovery, err = defaultTargetRecoveryFile(target.Name)
@@ -110,6 +121,7 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	}
 	first, err := installCore(ctx, strings.NewReader(""), &out, opts)
 	if err != nil {
+		logCoreBootstrapFailure(t, runtime, target.Name, target.RuntimeProvider)
 		t.Fatalf("Core-only bootstrap failed: %v", err)
 	}
 	if !first.Ready || first.IdentityIssuer == "" || first.Spec.MachineRole != role {
@@ -123,7 +135,11 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, service := range []string{"postgres", "openbao", "postgres-member-1", "openbao-member-1"} {
+	services := []string{"postgres", "openbao", "openbao-member-1"}
+	if !ha {
+		services = append(services, "postgres-member-1")
+	}
+	for _, service := range services {
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, service, containersecurity.Requirements{ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true}); err != nil {
 			inventory, inventoryErr := runtime.ListRuntimeContainers(ctx)
 			for _, container := range inventory {
@@ -133,6 +149,16 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 				t.Logf("Runtime inventory unavailable: %v", inventoryErr)
 			}
 			t.Fatal(err)
+		}
+	}
+	if ha {
+		// Native Spilo bootstraps as container root with a writable filesystem.
+		// Its database process must still run as the unprivileged postgres user
+		// inside the verified rootless host namespace. Do not impose the distinct
+		// Single PostgreSQL image's container filesystem contract on Spilo.
+		const processUID = `ps -eo comm=,uid= | awk '$1 == "postgres" { found=1; if ($2 == 0) bad=1 } END { exit (!found || bad) }'`
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-member-1", "sh", "-ec", processUID); err != nil {
+			t.Fatalf("HA PostgreSQL database process must be non-root: %v", err)
 		}
 	}
 	second, err := installCore(ctx, strings.NewReader(""), &out, opts)
@@ -182,10 +208,56 @@ func runCoreOnlyBootstrapRuntime(t *testing.T, role coreinstallation.MachineRole
 			t.Fatalf("fresh recovery reference not persisted: %s %s %v", current, source, err)
 		}
 	}
+	if os.Getenv("BASEHARBOR_CORE_IDENTITY_SQL_CA_ACCEPTANCE") == "1" {
+		verifyInstalledCoreIdentitySQLCARotation(t, ctx, target, first, opts.RecoveryFile)
+	}
+	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_DUAL_DOCKER_ACCEPTANCE") == "1" {
+		verifyDualDockerCLIAndMCP(t, ctx, target)
+	}
+	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_FINAL_BUG_ACCEPTANCE") == "1" {
+		runFinalBugRuntimeRegression(t, ctx, target, opts)
+	}
 	if role == coreinstallation.Development && os.Getenv("BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE") == "1" {
 		runManagedProviderOnlyReadinessRegression(t, ctx)
 		runManagedReadinessAndBackupRegression(t, ctx)
 		runGeneratedSecretDeliveryRegression(t, ctx)
+	}
+}
+
+// Observe only this fixture's resources before deferred cleanup removes them.
+// Emit lifecycle state and known error categories, never raw provider logs or
+// credential-bearing environments.
+func logCoreBootstrapFailure(t *testing.T, runtime bhruntime.RuntimeProvider, target, engine string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Log("Core failure inventory unavailable")
+		return
+	}
+	backend := bhruntime.NewCLIBackend(engine)
+	projects := map[string]bool{bhruntime.SharedProjectName(target): true, bhruntime.SharedProjectName(target + "-core"): true}
+	for _, container := range containers {
+		if !projects[container.Project] {
+			continue
+		}
+		t.Logf("Core failure resource: project=%s service=%s running=%t health=%s", container.Project, container.Service, container.Running, container.Health)
+		if engine == "podman" {
+			state, err := exec.CommandContext(ctx, "systemctl", "--user", "show", container.Project+"-"+container.Service+".service", "--property=ActiveState,SubState,Result,ExecMainStatus,ExecMainCode,ExecMainExitTimestampMonotonic", "--no-pager").Output()
+			if err == nil {
+				t.Logf("Core failure unit: service=%s %s", container.Service, strings.TrimSpace(string(state)))
+			}
+		}
+		logs, err := backend.DirectOutput(ctx, "logs", "--tail", "60", container.ID)
+		if err != nil {
+			continue
+		}
+		for _, category := range []string{"permission denied", "Permission denied", "certificate verify failed", "could not translate host name", "password authentication failed", "Connection refused", "No such file or directory", "did not become ready", "OutOfMemoryError", "SQLState: 28P01", "SQLState: 08006"} {
+			if strings.Contains(logs, category) {
+				t.Logf("Core failure category: service=%s category=%s", container.Service, category)
+			}
+		}
 	}
 }
 

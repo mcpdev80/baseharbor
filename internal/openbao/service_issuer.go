@@ -21,6 +21,14 @@ func NewServiceIssuer(executor Executor, files bhruntime.Files) *ServiceIssuer {
 	return &ServiceIssuer{executor: executor, files: files}
 }
 
+// CoreRuntimeFiles exposes the selected physical dependency, never its secrets.
+func (i *ServiceIssuer) CoreRuntimeFiles() (bhruntime.Files, error) {
+	if i == nil || i.executor == nil || i.files.Compose == "" || i.files.Env == "" || i.files.Project == "" {
+		return bhruntime.Files{}, errors.New("shared Core dependency is not configured")
+	}
+	return i.files, nil
+}
+
 func (i *ServiceIssuer) TrustBundle(ctx context.Context) (serviceaccess.TrustBundle, error) {
 	if i == nil || i.executor == nil {
 		return serviceaccess.TrustBundle{}, errors.New("OpenBao service issuer is not configured")

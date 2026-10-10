@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -178,3 +179,75 @@ WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4`, scope.Tenant
 }
 
 var _ targetenrollment.NodeRegistry = (*ConnectorEnrollmentStore)(nil)
+
+func (s *ConnectorEnrollmentStore) Status(ctx context.Context, scope targetenrollment.Scope) (targetenrollment.NodeStatus, error) {
+	if ctx.Err() != nil || s == nil || s.pool == nil || scope.Validate() != nil {
+		return targetenrollment.NodeStatus{}, targetenrollment.ErrDenied
+	}
+	var status targetenrollment.NodeStatus
+	err := WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var serial *string
+		var expires *time.Time
+		if err := tx.QueryRow(ctx, `SELECT certificate_serial,certificate_expires_at,certificate_revoked
+FROM connector_nodes WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4`,
+			scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime).Scan(&serial, &expires, &status.Revoked); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return targetenrollment.ErrDenied
+			}
+			return err
+		}
+		if serial != nil && expires != nil {
+			status.Enrolled = true
+			status.ExpiresAt = expires.UTC()
+			normalized, err := targetenrollment.NormalizeCertificateSerial(*serial)
+			if err != nil {
+				return targetenrollment.ErrDenied
+			}
+			status.Serial = normalized
+		}
+		return nil
+	})
+	if err != nil {
+		return targetenrollment.NodeStatus{}, targetenrollment.ErrDenied
+	}
+	return status, nil
+}
+
+func (s *ConnectorEnrollmentStore) RevokeCurrent(ctx context.Context, scope targetenrollment.Scope) (string, error) {
+	if ctx.Err() != nil || s == nil || s.pool == nil || scope.Validate() != nil {
+		return "", targetenrollment.ErrDenied
+	}
+	var normalized string
+	err := WithTenantTx(ctx, s.pool, scope.TenantID, func(tx pgx.Tx) error {
+		var serial *string
+		if err := tx.QueryRow(ctx, `SELECT certificate_serial FROM connector_nodes
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4 FOR UPDATE`,
+			scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime).Scan(&serial); err != nil {
+			return targetenrollment.ErrDenied
+		}
+		if serial == nil || strings.TrimSpace(*serial) == "" {
+			return targetenrollment.ErrDenied
+		}
+		var err error
+		normalized, err = targetenrollment.NormalizeCertificateSerial(*serial)
+		if err != nil {
+			return targetenrollment.ErrDenied
+		}
+		if _, err := tx.Exec(ctx, `UPDATE connector_nodes SET certificate_revoked=true
+WHERE tenant_id=$1 AND node_id=$2 AND target_id=$3 AND runtime=$4`,
+			scope.TenantID, scope.NodeID, scope.TargetID, scope.Runtime); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE connector_certificate_overlap SET certificate_revoked=true
+WHERE tenant_id=$1 AND node_id=$2`, scope.TenantID, scope.NodeID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", targetenrollment.ErrDenied
+	}
+	return normalized, nil
+}
+
+var _ targetenrollment.NodeLifecycleStore = (*ConnectorEnrollmentStore)(nil)

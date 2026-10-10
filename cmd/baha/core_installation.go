@@ -130,7 +130,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			if err != nil {
 				return "", err
 			}
-			return identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID)
+			return identityprovider.EnsureCoreIdentity(ctx, compose, platformopenbao.NewServiceIssuer(compose, files), dataDir, target.Name, state.ID, state.Spec.HA)
 		},
 		Verify: func(ctx context.Context, state coreinstallation.State) error {
 			_, ready := health.Format(health.RuntimeChecksForFiles(files))
@@ -146,6 +146,9 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 			}
 			return identityprovider.VerifyCoreIdentity(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer)
 		},
+	}
+	if err := ensureTargetDockerBinding(ctx, target); err != nil {
+		return coreinstallation.State{}, err
 	}
 	state, err := coreinstallation.Run(ctx, root, spec, steps)
 	if err == nil {

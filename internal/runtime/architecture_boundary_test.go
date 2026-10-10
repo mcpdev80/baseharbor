@@ -60,6 +60,8 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		"internal/application/runtime_postgres.go",
 		"internal/application/shared_backends.go",
 		"internal/application/shared_backends_runtime.go",
+		// Existing shared backend adapter split; lifecycle responsibilities are unchanged.
+		"internal/application/shared_backends_resources_runtime.go",
 		"internal/application/valkey_credential_rotation.go",
 		"internal/application/valkey_credential_rotation_helpers.go",
 		"internal/application/valkey_credential_rotation_runtime.go",

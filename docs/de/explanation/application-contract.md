@@ -16,7 +16,13 @@ services:
   sql:
     enabled: true
 
-  cache:
+  key_value:
+    enabled: true
+
+  messaging_queue:
+    enabled: true
+
+  document_database:
     enabled: true
 
 secrets:
@@ -27,7 +33,7 @@ secrets:
 Die wichtigste Regel:
 
 ```text
-Anwendungsanforderung != Provider-Konfiguration
+application intent != provider configuration
 ```
 
 Runtime-spezifische Namen, Provider-Auswahl, Platzierung und generierte Zugangsdaten gehören nicht in den portablen Vertrag.

@@ -147,7 +147,13 @@ func (a *keycloakAdmin) login(ctx context.Context) error {
 	return nil
 }
 
-func (a *keycloakAdmin) reconcileRealmOnce(ctx context.Context, desired keycloakRealm) error {
+// An explicit ownership map allows the installation owner to migrate routing
+// attributes without treating those mutable attributes as ownership claims.
+func (a *keycloakAdmin) reconcileRealmOnce(ctx context.Context, desired keycloakRealm, ownership ...map[string]string) error {
+	expectedOwnership := desired.Attributes
+	if len(ownership) > 0 {
+		expectedOwnership = ownership[0]
+	}
 	path := "/admin/realms/" + url.PathEscape(desired.Realm)
 	status, body, err := a.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -159,7 +165,7 @@ func (a *keycloakAdmin) reconcileRealmOnce(ctx context.Context, desired keycloak
 		if err := json.Unmarshal([]byte(body), &current); err != nil {
 			return fmt.Errorf("decode existing Keycloak realm: %w", err)
 		}
-		if !keycloakRealmOwnedBy(current, desired.Attributes) {
+		if !keycloakRealmOwnedBy(current, expectedOwnership) {
 			return fmt.Errorf("Keycloak realm %q exists but is not owned by this BaseHarbor application/environment", desired.Realm)
 		}
 		status, body, err = a.do(ctx, http.MethodPut, path, desired)
@@ -683,18 +689,6 @@ func (a *keycloakAdmin) deleteRealm(ctx context.Context, realm string, ownership
 		return nil
 	}
 	return fmt.Errorf("delete Keycloak realm: HTTP %d: %s", status, body)
-}
-
-func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
-	if len(expected) == 0 || len(current.Attributes) == 0 {
-		return false
-	}
-	for key, value := range expected {
-		if current.Attributes[key] != value {
-			return false
-		}
-	}
-	return true
 }
 
 func (a *keycloakAdmin) do(ctx context.Context, method, path string, payload any) (int, string, error) {

@@ -28,3 +28,6 @@ _, err := products.InsertOne(ctx, bson.M{
 Fehler behandeln; keine fremde Application-Datenbank wählen. Dieses Fachverhalten ergänzt du selbst. `baha doctor` prüft die Capability; dauerhafte Dokumente gehören in [Backup/Restore](backup-restore.md).
 
 [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/document-database/).
+
+
+Technische Bezeichner: `.env.example`.

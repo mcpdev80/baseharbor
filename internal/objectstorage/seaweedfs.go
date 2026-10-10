@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -75,14 +77,14 @@ type legacyServiceCleaner interface {
 	RemoveProjectServices(context.Context, string, ...string) error
 }
 
-func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, AdminCredentials, string, error) {
+func EnsureSharedProviderAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace string, intent ...availability.Requirement) (ProviderFiles, AdminCredentials, string, error) {
 	if runtime == nil {
 		return ProviderFiles{}, AdminCredentials{}, "", errors.New("SeaweedFS runtime is required")
 	}
 	reconcileCtx, cancel := context.WithTimeout(ctx, sharedProviderReconcileTimeout)
 	defer cancel()
 
-	files, err := EnsureProviderFilesAt(reconcileCtx, issuer, dataDir, namespace)
+	files, err := EnsureProviderFilesAt(reconcileCtx, issuer, dataDir, namespace, intent...)
 	if err != nil {
 		return ProviderFiles{}, AdminCredentials{}, "", err
 	}
@@ -249,7 +251,7 @@ func (d *Driver) EnsureSharedProvider(ctx context.Context) (ProviderFiles, Admin
 			return ProviderFiles{}, AdminCredentials{}, "", err
 		}
 	}
-	return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, dataDir, d.namespace)
+	return EnsureSharedProviderAt(ctx, d.runtime, d.issuer, dataDir, d.namespace, application.AvailabilityIntent(d.app).Resolve("object_storage"))
 }
 
 func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
@@ -511,7 +513,7 @@ func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (Prov
 	return EnsureProviderFilesAt(ctx, issuer, dataDir, "")
 }
 
-func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string) (ProviderFiles, error) {
+func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dataDir, namespace string, intent ...availability.Requirement) (ProviderFiles, error) {
 	dir := filepath.Join(filepath.Clean(dataDir), "providers", "seaweedfs")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ProviderFiles{}, fmt.Errorf("create SeaweedFS provider state: %w", err)
@@ -519,6 +521,13 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 	project := bhruntime.SharedProjectName(namespace)
 	network := scopedProviderName(ProviderNetwork, namespace)
 	files := ProviderFiles{Dir: dir, Compose: filepath.Join(dir, "compose.yaml"), Env: filepath.Join(dir, "runtime.env"), Project: project, Network: network}
+	members, err := providertopology.ResolveMembers(files.Compose, "seaweedfs-node", 3, intent...)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if members != 1 && (members < 3 || members%2 == 0) {
+		return ProviderFiles{}, errors.New("SeaweedFS HA requires an odd master quorum of at least three members")
+	}
 	values := map[string]string{}
 	if data, err := os.ReadFile(files.Env); err == nil {
 		values, err = parseEnv(data)
@@ -552,23 +561,23 @@ func EnsureProviderFilesAt(ctx context.Context, issuer serviceaccess.Issuer, dat
 		return ProviderFiles{}, err
 	}
 	accessPolicy.ServerName = "seaweedfs"
-	accessSpec := s3AccessSpec()
+	accessSpec := s3AccessSpec(members)
 	accessSpec.Networks = []string{"object-storage", "object-storage-internal"}
 	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
-	rendered := providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network)
+	rendered := providerComposeYAMLWithAccessAndNetwork(accessFiles, files.Network, members)
 	if managementUI {
 		adminPolicy, err := serviceaccess.Resolve("prod", "seaweedfs-admin", serviceaccess.AuthenticationNative)
 		if err != nil {
 			return ProviderFiles{}, err
 		}
-		adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(files.Dir, "management-ui"), seaweedAdminAccessSpec())
+		adminAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, adminPolicy, filepath.Join(files.Dir, "management-ui"), seaweedAdminAccessSpec(members))
 		if err != nil {
 			return ProviderFiles{}, err
 		}
-		rendered = providerComposeWithManagementUI(rendered, adminAccess)
+		rendered = providerComposeWithManagementUI(rendered, adminAccess, members)
 	}
 	if err := os.WriteFile(files.Compose, []byte(rendered), 0o600); err != nil {
 		return ProviderFiles{}, fmt.Errorf("write SeaweedFS provider compose: %w", err)
@@ -637,11 +646,23 @@ func providerComposeYAMLWithAccess(access serviceaccess.HTTPGatewayFiles) string
 	return providerComposeYAMLWithAccessAndNetwork(access, ProviderNetwork)
 }
 
-func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string) string {
-	const peers = "seaweedfs-node-1:9333,seaweedfs-node-2:9333,seaweedfs-node-3:9333"
+func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFiles, network string, requested ...int) string {
+	members := 1
+	if len(requested) > 0 {
+		members = requested[0]
+	}
+	var peerNames []string
+	for _, member := range providertopology.Names("seaweedfs-node", members) {
+		peerNames = append(peerNames, member+":9333")
+	}
+	peers := strings.Join(peerNames, ",")
+	replication := "000"
+	if members > 1 {
+		replication = "100"
+	}
 	var b strings.Builder
 	b.WriteString("services:\n")
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= members; i++ {
 		name := fmt.Sprintf("seaweedfs-node-%d", i)
 		volume := fmt.Sprintf("seaweedfs-data-%d", i)
 		dc := fmt.Sprintf("dc%d", i)
@@ -662,9 +683,9 @@ func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFil
 		b.WriteString("      - -ip.bind=0.0.0.0\n")
 		fmt.Fprintf(&b, "      - -dataCenter=%s\n", dc)
 		fmt.Fprintf(&b, "      - -master.peers=%s\n", peers)
-		b.WriteString("      - -master.defaultReplication=100\n")
+		fmt.Fprintf(&b, "      - -master.defaultReplication=%s\n", replication)
 		b.WriteString("      - -master.telemetry=false\n")
-		b.WriteString("      - -filer.defaultReplicaPlacement=100\n")
+		fmt.Fprintf(&b, "      - -filer.defaultReplicaPlacement=%s\n", replication)
 		b.WriteString("      - -s3.port=8333\n")
 		b.WriteString("      - -s3.iam=true\n")
 		b.WriteString("      - -s3.iam.readOnly=false\n")
@@ -674,104 +695,14 @@ func providerComposeYAMLWithAccessAndNetwork(access serviceaccess.HTTPGatewayFil
 		fmt.Fprintf(&b, "      - %s:/data\n", volume)
 		b.WriteString("    networks:\n      object-storage-internal: {}\n")
 	}
-	accessSpec := s3AccessSpec()
+	accessSpec := s3AccessSpec(members)
 	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, accessSpec))
 	b.WriteString("\nvolumes:\n")
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= members; i++ {
 		fmt.Fprintf(&b, "  seaweedfs-data-%d:\n\n", i)
 	}
 	b.WriteString("networks:\n")
 	fmt.Fprintf(&b, "  object-storage:\n    name: %s\n", strconv.Quote(network))
 	fmt.Fprintf(&b, "  object-storage-internal:\n    name: %s\n    internal: true\n", strconv.Quote(network+"-internal"))
 	return b.String()
-}
-
-func projectSeaweedNativeTLS(dir string, material serviceaccess.TLSMaterial) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	for source, name := range map[string]string{
-		material.CA:                "ca.pem",
-		material.ServerCertificate: "server.pem",
-		material.ServerKey:         "server-key.pem",
-	} {
-		data, err := os.ReadFile(source)
-		if err != nil {
-			return err
-		}
-		if len(data) == 0 {
-			return fmt.Errorf("SeaweedFS TLS material %s is empty", name)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func providerEndpoint(files ProviderFiles) (string, error) {
-	data, err := os.ReadFile(files.Env)
-	if err != nil {
-		return "", err
-	}
-	values, err := parseEnv(data)
-	if err != nil {
-		return "", err
-	}
-	port := values["BASEHARBOR_SEAWEEDFS_PORT"]
-	n, err := strconv.Atoi(port)
-	if err != nil || n < 1 || n > 65535 {
-		return "", fmt.Errorf("invalid SeaweedFS provider port")
-	}
-	return "https://127.0.0.1:" + port, nil
-}
-
-func s3AccessSpec() serviceaccess.HTTPGatewaySpec {
-	return serviceaccess.HTTPGatewaySpec{
-		ServiceName:      "seaweedfs-access",
-		Upstreams:        []string{"http://seaweedfs-node-1:8333", "http://seaweedfs-node-2:8333", "http://seaweedfs-node-3:8333"},
-		PublishedPortEnv: "BASEHARBOR_SEAWEEDFS_PORT",
-		ContainerPort:    8443,
-		Networks:         []string{"object-storage", "object-storage-internal"},
-		NetworkAliases:   []string{"seaweedfs"},
-		CertificateNames: []string{"seaweedfs"},
-		RequireClient:    false,
-		HealthStatus:     http.StatusForbidden,
-	}
-}
-
-func s3HTTPClient(files ProviderFiles) (*http.Client, error) {
-	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return nil, err
-	}
-	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
-	if err != nil {
-		return nil, fmt.Errorf("load S3 service access identity: %w", err)
-	}
-	return serviceaccess.NewHTTPClient(material, false)
-}
-
-func ServiceContainerEndpoint(files ProviderFiles) (string, error) {
-	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return "", err
-	}
-	host := "seaweedfs"
-	if policy.PKISource != serviceaccess.PKIManagedLocal && strings.TrimSpace(policy.ServerName) != "" {
-		host = strings.TrimSpace(policy.ServerName)
-	}
-	return "https://" + host + ":8443", nil
-}
-
-func ServiceTrustBundle(files ProviderFiles) (string, error) {
-	policy, err := serviceaccess.Resolve("prod", "seaweedfs", serviceaccess.AuthenticationNative)
-	if err != nil {
-		return "", err
-	}
-	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
-	if err != nil {
-		return "", err
-	}
-	return material.CA, nil
 }

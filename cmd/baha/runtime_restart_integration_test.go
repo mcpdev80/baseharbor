@@ -42,6 +42,9 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	if runtimeCommand == "" {
 		runtimeCommand = "docker"
 	}
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	t.Setenv("BASEHARBOR_TARGET", "")
 	if runtimeCommand == "podman" {
 		var targetOut bytes.Buffer
 		if err := runWithIO(ctx, []string{"target", "create", "podman-restart-ci", "--provider", "podman", "--access", "podman-restart-ci", "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
@@ -65,9 +68,6 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	for _, name := range strings.Fields(string(baselineVolumes)) {
 		baseline[name] = true
 	}
-	stateDir := t.TempDir()
-	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
-
 	postgresPort, err := selectControlPlanePort(&bytes.Buffer{}, "PostgreSQL", "--postgres-port", 0, bhruntime.DefaultPostgresPort, 15432)
 	if err != nil {
 		t.Fatal(err)

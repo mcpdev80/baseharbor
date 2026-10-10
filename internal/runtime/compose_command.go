@@ -11,8 +11,8 @@ import (
 )
 
 func (c Compose) directOutput(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, c.command, args...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd := exec.CommandContext(ctx, c.command, append(append([]string{}, c.engineArgs...), args...)...)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -48,7 +48,7 @@ func (c Compose) outputProjectInputProgress(ctx context.Context, project, compos
 	fullArgs = append(fullArgs, args...)
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}
@@ -81,7 +81,7 @@ func (c Compose) outputProjectInput(ctx context.Context, project, composeFile, e
 	fullArgs = append(fullArgs, args...)
 
 	cmd := exec.CommandContext(ctx, c.command, fullArgs...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}
@@ -102,8 +102,8 @@ func (c Compose) directStream(ctx context.Context, args ...string) (io.ReadClose
 	if strings.TrimSpace(c.command) == "" {
 		return nil, ErrRuntimeNotFound
 	}
-	cmd := exec.CommandContext(ctx, c.command, args...)
-	cmd.Env = runtimeCommandEnv(c.command)
+	cmd := exec.CommandContext(ctx, c.command, append(append([]string{}, c.engineArgs...), args...)...)
+	cmd.Env, _ = c.commandEnvironment(nil)
 	reader, writer := io.Pipe()
 	cmd.Stdout = writer
 	cmd.Stderr = writer

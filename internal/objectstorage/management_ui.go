@@ -145,10 +145,14 @@ func ensureManagementUIValues(values map[string]string) error {
 	return nil
 }
 
-func seaweedAdminAccessSpec() serviceaccess.HTTPGatewaySpec {
+func seaweedAdminAccessSpec(requested ...int) serviceaccess.HTTPGatewaySpec {
+	upstreams := []string{"http://seaweedfs-admin-1:23646"}
+	if len(requested) > 0 && requested[0] > 1 {
+		upstreams = append(upstreams, "http://seaweedfs-admin-2:23646")
+	}
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:      "seaweedfs-admin-access",
-		Upstreams:        []string{"http://seaweedfs-admin-1:23646", "http://seaweedfs-admin-2:23646"},
+		Upstreams:        upstreams,
 		PublishedPortEnv: seaweedAdminPortEnv,
 		ContainerPort:    9443,
 		Networks:         []string{"object-storage", "object-storage-internal"},
@@ -157,7 +161,11 @@ func seaweedAdminAccessSpec() serviceaccess.HTTPGatewaySpec {
 	}
 }
 
-func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatewayFiles) string {
+func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatewayFiles, requested ...int) string {
+	members := 1
+	if len(requested) > 0 {
+		members = requested[0]
+	}
 	renderAdmin := func(name, master, volume string) string {
 		return fmt.Sprintf(`  %s:
     image: %s
@@ -185,11 +193,15 @@ func providerComposeWithManagementUI(base string, access serviceaccess.HTTPGatew
 
 `, name, ProviderImage, master, seaweedAdminUserEnv, seaweedAdminPasswordEnv, volume)
 	}
-	service := renderAdmin("seaweedfs-admin-1", "seaweedfs-node-1:9333", "seaweedfs-admin-data-1") +
-		renderAdmin("seaweedfs-admin-2", "seaweedfs-node-2:9333", "seaweedfs-admin-data-2")
-	gateway := serviceaccess.HTTPGatewayComposeService(access, seaweedAdminAccessSpec())
+	service := renderAdmin("seaweedfs-admin-1", "seaweedfs-node-1:9333", "seaweedfs-admin-data-1")
+	adminVolumes := "  seaweedfs-admin-data-1:\n"
+	if members > 1 {
+		service += renderAdmin("seaweedfs-admin-2", "seaweedfs-node-2:9333", "seaweedfs-admin-data-2")
+		adminVolumes += "  seaweedfs-admin-data-2:\n"
+	}
+	gateway := serviceaccess.HTTPGatewayComposeService(access, seaweedAdminAccessSpec(members))
 	marker := "volumes:\n  seaweedfs-data-1:\n"
-	replacement := service + gateway + "volumes:\n  seaweedfs-admin-data-1:\n  seaweedfs-admin-data-2:\n  seaweedfs-data-1:\n"
+	replacement := service + gateway + "volumes:\n" + adminVolumes + "  seaweedfs-data-1:\n"
 	if !strings.Contains(base, marker) {
 		return base
 	}

@@ -61,6 +61,18 @@ type RenewalStore interface {
 	CreateRenewal(context.Context, Grant) error
 }
 
+type NodeLifecycleStore interface {
+	Status(context.Context, Scope) (NodeStatus, error)
+	RevokeCurrent(context.Context, Scope) (string, error)
+}
+
+type NodeStatus struct {
+	Enrolled  bool      `json:"enrolled"`
+	Revoked   bool      `json:"revoked"`
+	Serial    string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+}
+
 type Authority struct {
 	store  Store
 	issuer serviceaccess.CSRIssuer
@@ -177,4 +189,30 @@ func validCredential(value string) bool {
 func digest(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
+}
+
+func (a *Authority) Status(ctx context.Context, scope Scope) (NodeStatus, error) {
+	lifecycle, ok := a.store.(NodeLifecycleStore)
+	if !ok || scope.Validate() != nil {
+		return NodeStatus{}, ErrDenied
+	}
+	return lifecycle.Status(ctx, scope)
+}
+
+func (a *Authority) Disconnect(ctx context.Context, scope Scope) error {
+	lifecycle, ok := a.store.(NodeLifecycleStore)
+	if !ok || scope.Validate() != nil {
+		return ErrDenied
+	}
+	serial, err := lifecycle.RevokeCurrent(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if serial == "" {
+		return nil
+	}
+	if err := a.issuer.Revoke(ctx, serial); err != nil {
+		return errors.New("connector admission was revoked but issuer revocation failed")
+	}
+	return nil
 }

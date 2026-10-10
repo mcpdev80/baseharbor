@@ -5,23 +5,25 @@ import re
 import hashlib
 
 from private_consumer_evidence import (QUALIFICATIONS, REPOSITORIES, WORKFLOW,
-                                      private_verifier_from_environment)
+                                      private_verifier_from_environment, source_origin)
 
 
 def check_access(pins, api):
     if set(pins) != set(QUALIFICATIONS):
         raise ValueError('private_configuration_roles_differ')
-    sources = set()
+    sources = {}
     for gate, binding in pins.items():
         roles = {'connector', 'console'} if gate.endswith('/live-console') else {'connector'}
         if not isinstance(binding, dict) or set(binding) != roles:
             raise ValueError('private_configuration_roles_differ')
         for role, pin in binding.items():
-            if (not isinstance(pin, dict) or set(pin) != {'repository', 'commit', 'workflow'} or
-                    pin.get('repository') != REPOSITORIES[role] or pin.get('workflow') != WORKFLOW or
-                    not isinstance(pin.get('commit'), str) or not re.fullmatch('[0-9a-f]{40}', pin['commit'])):
+            try:
+                origin_repository, origin_commit, _, _ = source_origin(role, gate, pin)
+            except (ValueError, KeyError, TypeError):
                 raise ValueError('private_configuration_source_binding_invalid')
-            sources.add((pin['repository'], pin['commit']))
+            key = (pin['repository'], pin['commit'])
+            sources[key] = sources.get(key, False) or 'origin' not in pin
+            sources[(origin_repository, origin_commit)] = True
     # Validate every binding before contacting any origin. Diagnostics never
     # contain the private source identity, API response or authentication token.
     try:
@@ -32,7 +34,7 @@ def check_access(pins, api):
             runs = json.loads(api.command(repository, 'actions/runs?per_page=1'))
             if not isinstance(runs.get('workflow_runs'), list):
                 raise ValueError()
-            if getattr(api, 'public', False):
+            if getattr(api, 'public', False) and sources[(repository, commit)]:
                 artifacts = api.pages(repository, 'actions/artifacts?per_page=100', 'artifacts')
                 exact = [item for item in artifacts if item.get('expired') is False and
                          item.get('workflow_run', {}).get('head_sha') == commit]

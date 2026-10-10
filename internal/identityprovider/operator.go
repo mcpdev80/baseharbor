@@ -3,8 +3,10 @@ package identityprovider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
@@ -35,6 +37,16 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if placement.Scope != capability.ScopeShared {
 		return ManagedOperatorOIDC{}, fmt.Errorf("managed BaseHarbor operator identity requires shared Keycloak placement; got %s", placement.Scope)
 	}
+	// Operator login consumes retained Core membership; it is not a new HA request.
+	if existing, err := ExistingCoreRuntimeFiles(dataDir, namespace); err == nil {
+		values, err := readProtectedEnv(existing.Env)
+		if err != nil {
+			return ManagedOperatorOIDC{}, err
+		}
+		app.HA = values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] == "ha"
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ManagedOperatorOIDC{}, err
+	}
 	files, err := EnsureKeycloakFilesAt(ctx, app, issuer, dataDir, namespace)
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
@@ -43,7 +55,7 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	if err := SetKeycloakCanonicalURL(files, canonicalBase); err != nil {
+	if err := setApplicationKeycloakCanonicalURL(files, canonicalBase); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	files.CanonicalPublicURL = canonicalBase
@@ -65,6 +77,8 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 		"baseharbor.target":      strings.TrimSpace(target),
 		"baseharbor.environment": strings.TrimSpace(environment),
 	}
+	// Realm-local authority preserves the installation/master issuer.
+	ownership["frontendUrl"] = canonicalBase
 	desiredRealm := keycloakRealm{
 		Realm:                                  realm,
 		Enabled:                                true,

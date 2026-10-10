@@ -26,6 +26,10 @@ on your own machine, no vendor, no lock-in.
   </a>
 </p>
 
+## BaseHarbor v0.4.24
+
+This README and the EN/DE documentation describe v0.4.24. Installation binaries and published versions are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
+
 ## BaseHarbor Core
 
 The Core has three mandatory capabilities: **SQL, Secrets and Identity**.
@@ -58,7 +62,7 @@ BaseHarbor takes that work off your plate. It is a normal CLI —
 deterministic, no AI involved:
 
 ```bash
-baha app init      # adopt your existing repo, or plan a new app
+baha init          # adopt your existing repo, or plan a new app
 baha up            # provision, connect, secure, verify
 baha status        # done — with evidence, not guesswork
 ```
@@ -96,7 +100,7 @@ exist?"* but *"does the application actually work?"*
 
 ## What you get
 
-- **Create new applications** — `baha app new` turns capability intent into a normal Go, Next.js, Python or Quarkus project, validates it, and keeps ecosystem-native libraries instead of introducing a BaseHarbor app framework.
+- **Create new applications** — `baha new application` turns capability intent into a normal Go, Next.js, Python or Quarkus project, validates it, and keeps ecosystem-native libraries instead of introducing a BaseHarbor app framework.
 - **Multi-repo workspaces** — one logical application can span monorepos, multiple existing worktrees and OCI components; guided workspace mapping keeps local checkout paths out of portable intent. `baha app workspace status` and fast-forward-only `workspace update` provide safe Git synchronization without hiding normal Git decisions.
 - **Adopt existing repositories** — `baha` inspects your code, dependencies,
   workload sources and ports deterministically (parsers, rules, repository

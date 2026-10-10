@@ -13,9 +13,12 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 	unsupported := func(reason string) availability.Support {
 		return availability.Support{Level: availability.Unsupported, Limits: reason}
 	}
+	native := func(count int, limits string) availability.Support {
+		return availability.Support{Level: availability.PartiallySupported, RecommendedInstances: count, Limits: limits, Guarantees: availability.Guarantees{MemberFailureTolerance: true, HostFailureTolerance: false, FailureDomain: "runtime-host"}}
+	}
 	switch kind {
 	case ProviderPostgreSQL:
-		return unsupported("current BaseHarbor PostgreSQL reference realization is single-instance"), nil
+		return native(3, "native shared PostgreSQL uses Patroni and an odd authenticated etcd quorum on one runtime host; application-scoped PostgreSQL remains single-instance"), nil
 	case ProviderValkey:
 		return availability.Support{
 			Level:                availability.Supported,
@@ -30,7 +33,7 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 			},
 		}, nil
 	case ProviderOpenBao:
-		return unsupported("current BaseHarbor OpenBao reference realization uses one managed server"), nil
+		return native(3, "native Core OpenBao HA uses three service members and the retained shared PostgreSQL backend; a single Core installation cannot be silently converted"), nil
 	case ProviderCaddy:
 		return unsupported("single-host exposure owns one loopback HTTPS port; stable routing and config/TLS hot reload are supported, but redundant ingress/member-failure tolerance is not"), nil
 	case ProviderSeaweedFS:
@@ -80,11 +83,11 @@ func AvailabilitySupportForProvider(kind ProviderKind) (availability.Support, er
 			},
 		}, nil
 	case ProviderLoki:
-		return unsupported("current BaseHarbor Loki reference realization is single-instance"), nil
+		return native(3, "native Loki uses three service members and explicitly requested replicated platform object storage on one runtime host"), nil
 	case ProviderTempo:
-		return unsupported("current BaseHarbor Tempo reference realization is single-instance"), nil
+		return native(2, "native Tempo uses fixed replicated live-store partitions and redundant distributors/query services with platform object storage on one runtime host"), nil
 	case ProviderKeycloak:
-		return unsupported("current BaseHarbor Keycloak reference realization is single-instance"), nil
+		return native(3, "native Keycloak uses three identity members and a Patroni/etcd PostgreSQL backend on one runtime host"), nil
 	case ProviderExternalOIDC:
 		return unsupported("external OIDC availability must be explicitly declared and verified by the selected external provider"), nil
 	case ProviderRabbitMQ:

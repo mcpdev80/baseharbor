@@ -1,8 +1,13 @@
 package identityprovider
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,10 +17,39 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
+type coreSQLTestIssuer struct {
+	*serviceissuer.Issuer
+	core bhruntime.Files
+}
+
+func (i coreSQLTestIssuer) CoreRuntimeFiles() (bhruntime.Files, error) { return i.core, nil }
+
+func newCoreSQLTestIssuer(t *testing.T, root string, ha bool) coreSQLTestIssuer {
+	t.Helper()
+	issuer := serviceissuer.New(t)
+	core, err := bhruntime.EnsureFilesForProjectAndResources(filepath.Join(root, "core-runtime"), bhruntime.SharedProjectName("local"), bhruntime.SharedResourceProjectName("local"), bhruntime.Ports{Postgres: 5432, OpenBao: 8200}, ha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := issuer.TrustBundle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := bhruntime.CorePostgresCA(core)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, bundle.PEM, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return coreSQLTestIssuer{Issuer: issuer, core: core}
+}
+
 type coreHostnameRuntime struct {
 	testKeycloakRuntime
 	t    *testing.T
 	stop error
+	want string
 }
 
 func (r coreHostnameRuntime) ConfigProject(_ context.Context, _, _, env string) error {
@@ -23,19 +57,31 @@ func (r coreHostnameRuntime) ConfigProject(_ context.Context, _, _, env string) 
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	want := "https://" + keycloakPublicHost + ":" + values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"]
+	want := r.want
 	if values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] != want {
-		r.t.Fatal("Core startup must bind Keycloak hostname to its owned HTTPS destination")
+		r.t.Fatal("Core startup must bind Keycloak hostname to its canonical target HTTPS destination")
 	}
 	return r.stop
 }
 
 func TestCoreIdentityBindsHostnameBeforeRuntimeValidation(t *testing.T) {
-	stop := errors.New("stop before runtime mutation")
-	runtime := coreHostnameRuntime{t: t, stop: stop}
-	_, err := EnsureCoreIdentity(context.Background(), runtime, serviceissuer.New(t), t.TempDir(), "local", "64e3d34f-ff08-4f59-9696-215857eaaf84")
-	if !errors.Is(err, stop) {
-		t.Fatalf("unexpected bootstrap result: %v", err)
+	for _, engine := range []string{"docker", "podman"} {
+		t.Run(engine, func(t *testing.T) {
+			stop := errors.New("stop before runtime mutation")
+			t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+			t.Setenv("BASEHARBOR_DEV_DOMAIN", "baha.localhost")
+			provider := testKeycloakRuntime{engine: engine}
+			want, err := managedOperatorCanonicalBaseURL(provider, "local")
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime := coreHostnameRuntime{testKeycloakRuntime: provider, t: t, stop: stop, want: want}
+			root := t.TempDir()
+			_, err = EnsureCoreIdentity(context.Background(), runtime, newCoreSQLTestIssuer(t, root, false), root, "local", "64e3d34f-ff08-4f59-9696-215857eaaf84")
+			if !errors.Is(err, stop) {
+				t.Fatalf("unexpected bootstrap result: %v", err)
+			}
+		})
 	}
 }
 
@@ -43,7 +89,7 @@ func TestCoreIdentityExistingDiscoveryRetainsHTTPSPort(t *testing.T) {
 	root := t.TempDir()
 	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
 	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
-	files, err := ensureKeycloakFilesForPlacement(context.Background(), spec, serviceissuer.New(t), root, "local", placement)
+	files, err := ensureKeycloakFilesForPlacement(context.Background(), spec, newCoreSQLTestIssuer(t, root, false), root, "local", placement)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,5 +105,108 @@ func TestCoreIdentityExistingDiscoveryRetainsHTTPSPort(t *testing.T) {
 	}
 	if files.Project == bhruntime.SharedProjectName("local") || files.Project != bhruntime.SharedProjectName("local-core") {
 		t.Fatal("application provider reconciliation can replace Core Identity containers")
+	}
+	beforeCompose, err := os.ReadFile(files.Compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeEnv, err := os.ReadFile(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned, err := ExistingCoreRuntimeFiles(root, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owned.Project != files.Project || owned.Compose != files.Compose || owned.ConsumerNetwork != files.ConsumerNetwork || owned.InternalNetwork != files.InternalNetwork {
+		t.Fatal("existing Core Identity lost its owned runtime binding")
+	}
+	afterCompose, _ := os.ReadFile(files.Compose)
+	afterEnv, _ := os.ReadFile(files.Env)
+	if !bytes.Equal(beforeCompose, afterCompose) || !bytes.Equal(beforeEnv, afterEnv) {
+		t.Fatal("existing runtime discovery changed provider material")
+	}
+	if err := os.Chmod(files.Compose, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingCoreRuntimeFiles(root, "local"); err == nil {
+		t.Fatal("accepted unprotected Compose")
+	}
+	if err := os.Remove(files.Compose); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(files.Env, files.Compose); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingCoreRuntimeFiles(root, "local"); err == nil {
+		t.Fatal("accepted symlink Compose")
+	}
+}
+
+func TestCoreIdentityCanonicalAuthorityPreservesInstallationOverride(t *testing.T) {
+	root := t.TempDir()
+	issuer := newCoreSQLTestIssuer(t, root, false)
+	spec := application.Manifest{Version: application.CurrentVersion, Name: "core", Environment: "prod", Services: application.Services{Identity: true}}
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	files, err := ensureKeycloakFilesForPlacement(context.Background(), spec, issuer, root, "local", placement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const configured = "https://installation-authority.localhost:18443"
+	if err := SetKeycloakCanonicalURL(files, configured); err != nil {
+		t.Fatal(err)
+	}
+	stop := errors.New("stop before runtime mutation")
+	runtime := coreHostnameRuntime{t: t, stop: stop, want: configured}
+	if _, err := EnsureCoreIdentity(context.Background(), runtime, issuer, root, "local", "64e3d34f-ff08-4f59-9696-215857eaaf84"); !errors.Is(err, stop) {
+		t.Fatal(err)
+	}
+}
+
+func TestCoreIdentityRealmRoutingMigrationRequiresInstallationOwnership(t *testing.T) {
+	for _, owned := range []bool{true, false} {
+		t.Run(map[bool]string{true: "owned", false: "foreign"}[owned], func(t *testing.T) {
+			ownership := map[string]string{"baseharbor.owner": "baseharbor", "baseharbor.scope": "installation", "baseharbor.installation": "installation-id"}
+			existing := map[string]string{}
+			for key, value := range ownership {
+				existing[key] = value
+			}
+			if !owned {
+				existing["baseharbor.installation"] = "foreign-id"
+			}
+			updated := false
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodGet:
+					json.NewEncoder(w).Encode(keycloakRealm{Realm: "baseharbor", Enabled: true, Attributes: existing})
+				case http.MethodPut:
+					updated = true
+					var realm keycloakRealm
+					if err := json.NewDecoder(r.Body).Decode(&realm); err != nil {
+						t.Error(err)
+					}
+					if realm.Attributes["frontendUrl"] != "https://identity.localhost:45678" || !keycloakRealmOwnedBy(realm, ownership) {
+						t.Error("migration lost native issuer or installation ownership")
+					}
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					t.Errorf("unexpected method %s", r.Method)
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			}))
+			defer server.Close()
+			attributes := map[string]string{"frontendUrl": "https://identity.localhost:45678"}
+			for key, value := range ownership {
+				attributes[key] = value
+			}
+			admin := &keycloakAdmin{endpoint: server.URL, client: server.Client(), token: "test"}
+			err := admin.reconcileRealm(context.Background(), keycloakRealm{Realm: "baseharbor", Enabled: true, Attributes: attributes}, ownership)
+			if owned && (err != nil || !updated) {
+				t.Fatalf("owned realm migration failed: %v", err)
+			}
+			if !owned && (err == nil || updated) {
+				t.Fatal("foreign realm was modified")
+			}
+		})
 	}
 }

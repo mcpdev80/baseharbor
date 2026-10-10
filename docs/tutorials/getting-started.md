@@ -7,7 +7,7 @@ This tutorial gets an existing application running under BaseHarbor without requ
 BaseHarbor needs its Core before the first application runs: **SQL + Secrets + Identity**
 (PostgreSQL, OpenBao and Keycloak). The Web Console is optional.
 
-When the first `app init` or application startup needs setup, BaseHarbor offers:
+When the first `baha init` or application startup needs setup, BaseHarbor offers:
 
 ```text
 BaseHarbor needs its Core services before the first application can run.
@@ -28,7 +28,6 @@ Retries reconcile the same owned installation; they do not create another Core.
 
 To bootstrap only the Core without an application or repository, use the existing
 `baha up --control-plane-only` path. Inspect it with `baha status` outside an application repository.
-The final CLI namespace is still subject to the pre-freeze CLI review.
 Non-interactive application requests return a typed `core_required` outcome unless
 automatic bootstrap was explicitly requested; automation can invoke Core setup first.
 
@@ -50,7 +49,7 @@ baha target show
 If no Target is configured, follow [Target commands](../cli/targets.md) before deploying. Create a fresh application:
 
 ```bash
-baha app new orders-api --stack go --http --sql
+baha new application orders-api --stack go --http --sql
 cd orders-api
 baha plan
 baha up -e dev
@@ -67,7 +66,7 @@ The scaffold is a starting point: add your order endpoints and schema. The [Post
 Stop only this application's runtime while preserving its persistent data:
 
 ```bash
-baha app down
+baha down
 ```
 
 Run `baha up` again from the repository to resume it.
@@ -79,7 +78,7 @@ For a repository you already own, the normal path is inspection, guided adoption
 ## 1. Optional: inspect the repository
 
 ```bash
-baha app inspect .
+baha inspect .
 ```
 
 Inspection is read-only. BaseHarbor reports detected workload, replaceable infrastructure and capability evidence without mutating the repository.
@@ -87,13 +86,13 @@ Inspection is read-only. BaseHarbor reports detected workload, replaceable infra
 Use detailed evidence when needed:
 
 ```bash
-baha app inspect . --verbose
+baha inspect . --verbose
 ```
 
 ## 2. Create the portable application contract
 
 ```bash
-baha app init
+baha init
 ```
 
 BaseHarbor detects what it can and asks only for ambiguous or user-owned decisions.
@@ -114,7 +113,7 @@ Before writing `baseharbor.yaml`, BaseHarbor shows a human-readable adoption sum
 For deterministic automation with unambiguous evidence:
 
 ```bash
-baha app init --quick
+baha init --quick
 ```
 
 `--quick` fails closed on source ambiguity and never silently promotes heuristic secret candidates. Unambiguous Compose, repository-authored Quadlet and raw Kubernetes YAML can be inspected/adopted without turning their source-native names into portable intent.
@@ -177,7 +176,7 @@ printf '%s' "$APP_SECRET" | baha app secret set APP_SECRET --stdin
 
 ## Reference end-to-end demo
 
-The external `mcpdev80/baseharbor-demo` repository is the release-facing proof of this journey. Its README documents a complete pristine-repository test from `baha app init` through `baha up`, READY verification, restart and cleanup.
+The external `mcpdev80/baseharbor-demo` repository is the release-facing proof of this journey. Its README documents a complete pristine-repository test from `baha init` through `baha up`, READY verification, restart and cleanup.
 
 Pre-release validation executes both:
 

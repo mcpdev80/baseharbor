@@ -454,6 +454,8 @@ func (p PodmanProvider) RunProjectFilesEnv(ctx context.Context, project, workdir
 	}
 
 	switch args[0] {
+	case "run":
+		return p.runNativeComposeOneOff(ctx, project, resolved, environment, stdin, stdout, stderr, args[1:])
 	case "logs":
 		follow := false
 		var services []string

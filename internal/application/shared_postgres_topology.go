@@ -31,12 +31,26 @@ func selectSharedPostgresTopology(state *sharedBackendState, m Manifest) error {
 // CheckSharedPostgresTopologyAt is read-only and rejects changing a retained
 // provider's storage realization before runtime or credential mutation.
 func CheckSharedPostgresTopologyAt(dataDir, namespace string, m Manifest) error {
-	if !UsesSharedPostgreSQL(m) {
+	if !HasSharedBackends(m) {
 		return nil
 	}
 	files := SharedBackendFilesAt(dataDir, namespace, m.Environment)
 	state, err := loadSharedBackendState(files.State, m.Environment)
 	if err != nil {
+		return err
+	}
+	if state.CoreSQL != nil && UsesSharedPostgreSQL(m) {
+		requirement := AvailabilityIntent(m).Resolve("sql")
+		members := 1
+		if state.CoreSQL.HA {
+			members = 3
+		}
+		if requirement.HA && !state.CoreSQL.HA || requirement.Instances > 0 && requirement.Instances != members {
+			return fmt.Errorf("shared PostgreSQL intent differs from the existing Core topology; explicit matching Core or application placement is required")
+		}
+		return checkSharedValkeyTopology(state, m)
+	}
+	if err := checkSharedValkeyTopology(state, m); err != nil {
 		return err
 	}
 	return selectSharedPostgresTopology(&state, m)

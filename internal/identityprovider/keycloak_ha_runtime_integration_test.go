@@ -25,6 +25,9 @@ func TestKeycloakHARuntimeFailoverAcceptanceInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE") != "1" {
 		t.Skip("set BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1 to run the real Keycloak HA acceptance")
 	}
+	// This isolated provider test owns its SQL HA dependency. Shared placement
+	// requires an already running selected Core and is covered by Core journeys.
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(capability.ScopeApplication))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()

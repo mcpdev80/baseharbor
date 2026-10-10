@@ -410,7 +410,16 @@ func repositoryWorkloadStopEnvironment(resolved resolvedApplication, files appli
 }
 
 func repositoryWorkloadEnvironment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) (map[string]string, error) {
+	// Compose interpolates each source before merging the managed override.
+	// Supply the same native bindings used by that override to every operation.
 	environment := map[string]string{}
+	if files.Env != "" {
+		managed, err := application.ManagedWorkloadEnvironment(resolved.Manifest, files)
+		if err != nil {
+			return nil, fmt.Errorf("resolve managed workload environment: %w", err)
+		}
+		environment = managed
+	}
 	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
 		return nil, err
 	}

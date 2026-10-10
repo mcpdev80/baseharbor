@@ -24,24 +24,24 @@ Ein BaseHarbor Target ist ein benanntes Deployment-Ziel.
 ```text
 Target
 ├── Runtime Provider
-├── Runtime-Zugriffsreferenz
-└── Target-Bereich
+├── Runtime Access Reference
+└── Target Scope
 ```
 
 Die Begriffe bleiben getrennt:
 
 ```text
 Target
-  wohin BaseHarbor arbeitet
+  where BaseHarbor operates
 
-Runtime-Provider
-  welche Runtime-Implementierung Workloads realisiert
+Runtime Provider
+  which runtime implementation realizes workloads
 
-Zugriff
-  wie BaseHarbor die Runtime erreicht und sich authentifiziert
+Access
+  how BaseHarbor reaches/authenticates to that runtime
 
-Bereich
-  welcher logische Bereich innerhalb der Runtime ausgewählt ist
+Scope
+  which logical area inside that runtime is selected
 ```
 
 Ein Target-Name trägt keine Runtime-Semantik. Ein Target bedeutet weder automatisch lokal/entfernt noch Docker/Podman/Kubernetes/OpenShift.
@@ -79,8 +79,8 @@ Das aktuelle Verzeichnis darf beim Erkennen von Anwendung und Umgebung helfen, a
 Die Benutzerkonfiguration ist global:
 
 ```text
-$XDG_CONFIG_HOME/baseharbor/config.yaml
-~/.config/baseharbor/config.yaml
+cwd may answer "which application do I mean?"
+cwd must not answer "which applications does BaseHarbor know?"
 ```
 
 Sie enthaelt Target-Definitionen, Zugriffsdefinitionen, Vorgaben und Prompt-Präferenzen. Auch Target-eigene Provider-Lifecycle-Referenzen koennen hier liegen; fuer managed OpenBao speichert der optionale Eintrag `target.openbao.recovery-file` nur den absoluten Pfad zur vom Betreiber verwahrten Wiederherstellungsdatei, niemals das Recovery-Material selbst.
@@ -88,8 +88,8 @@ Sie enthaelt Target-Definitionen, Zugriffsdefinitionen, Vorgaben und Prompt-Prä
 Veränderlicher Runtime-/Bereitstellungszustand ist Target-bezogen:
 
 ```text
-$XDG_DATA_HOME/baseharbor/targets/<target>/
-~/.local/share/baseharbor/targets/<target>/
+$XDG_CONFIG_HOME/baseharbor/config.yaml
+~/.config/baseharbor/config.yaml
 ```
 
 Damit koennen Docker-, Podman- und lokale Kubernetes/K3s-Targets unabhaengig parallel existieren, ohne versehentlich denselben BaseHarbor-State zu teilen. Gemeinsam genutzte Provider gehören zum Target-/Provider-Lebenszyklus und nicht zu einer einzelnen Anwendung. Insbesondere duerfen Löschen oder Umbenennen einer Anwendung weder die Target-weite OpenBao-Recovery-Referenz noch die gemeinsam genutzte OpenBao-Provider-Instanz entfernen.
@@ -101,13 +101,8 @@ Ein lokales K3s/Kubernetes-Target ist kein Sonderfall: es ist ein Kubernetes-Tar
 Das effektive Target wird so aufgelöst:
 
 ```text
-explizites --target
-        ↓
-aktiviertes `BASEHARBOR_TARGET`
-        ↓
-konfiguriertes Standard-Target
-        ↓
-Auswahl beim ersten Lauf bzw. für ein lokales Target
+$XDG_DATA_HOME/baseharbor/targets/<target>/
+~/.local/share/baseharbor/targets/<target>/
 ```
 
 Anwendung und Umgebung bleiben unabhängige Achsen.
@@ -119,8 +114,20 @@ Targets können nur für die aktuelle Shell ähnlich wie eine Python-Umgebung ak
 Die optionale Prompt-Anzeige macht das Target sichtbar, bevor ein baha-Befehl eingegeben wird:
 
 ```text
-[homelab] ~/projects/demo $
-[prod-ocp PROD] ~/projects/mailflow $
+~/.local/share/baseharbor/
+└── targets/
+    ├── docker-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    ├── podman-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    └── laptop-k3s/
+        ├── runtime/
+        ├── provider-registry.json
+        └── deployments/
 ```
 
 Darstellung, Position, Farben und Barrierefreiheit sind konfigurierbar. Produktion darf niemals nur über Farbe erkennbar sein.
@@ -134,7 +141,10 @@ Ein Target mit registrierten Deployments oder BaseHarbor-eigenen Runtime-Ressour
 Mutierende/destruktive Operationen zeigen die volle effektive Identitaet:
 
 ```text
-target + application + environment
+application workload   <app>.<dev-domain>
+application UI         <app>-<service>.<dev-domain>
+shared provider UI     <service>.<dev-domain>
+external               provider-owned URL
 ```
 
 `baha app list` liest Target-/Global-State statt repository-lokalen Zustand. `baha app list --all-targets` liefert die installationsweite Sicht.
@@ -151,11 +161,13 @@ Die Prompt-Anzeige ist reine Darstellung und darf vom eigentlichen Target-Namen 
 Beispiel:
 
 ```text
-Target: laptop-docker-12
-Prompt-Beschriftung: ld12
-Farbe: weiches Gruen
-
-[ld12] ~/projects/demo $
+explicit --target
+        ↓
+activated BASEHARBOR_TARGET
+        ↓
+configured default target
+        ↓
+first-run/local target selection
 ```
 
 Die Beschriftung ist nur ein visueller Alias. Sie verändert weder Target-Identität noch Bereitstellungsschlüssel, Besitz noch Target-Auflösung.
@@ -192,3 +204,37 @@ Core -> Connector -> Runtime-Evidenz. Details stehen im
 [Target-Access-Vertrag](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/spec/target-access-v1.md)
 und in der englischen
 [Plattform-Supportmatrix](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/reference/platform-support.md).
+
+
+## Weitere unveränderte technische Beispiele
+
+```bash
+eval "$(baha target activate docker-dev)"
+baha target -o json
+baha config prompt
+source <(baha shell-init bash)
+```
+
+```text
+[homelab] ~/projects/demo $
+[prod-ocp PROD] ~/projects/mailflow $
+```
+
+```text
+target + application + environment
+```
+
+```text
+Target: laptop-docker-12
+Prompt label: ld12
+Color: soft green
+
+[ld12] ~/projects/demo $
+```
+
+
+Technische Kennungen: `baha.localhost`, `auth.<domain>`, `auth-admin.<domain>`, `secrets.<domain>`, `metrics.<domain>`, `baha shell-init zsh`, `baha shell-init fish`.
+
+## Isoliertes State-Verzeichnis
+
+`BASEHARBOR_STATE_DIR` ist der autoritative Datenstamm der isolierten Installation. Target-, Deployment-, Provider- und TLS-State liegen darunter; die Target-Konfiguration liegt darin unter `config/config.yaml`. Organisationsauswahl und Konfigurationscache liegen unter `config/organization/` und `cache/organization/`; geschützte Operator-Sessions liegen unter `cache/sessions/`. Eine fremde Installation kann dadurch weder das isolierte Target verändern noch ihren Login bereitstellen. Der Override hat Vorrang vor XDG-Daten- und Konfigurationspfaden. Ein isolierter Test kann dadurch die Target-Auswahl der normalen Benutzerinstallation weder entdecken noch überschreiben. Recovery-Material des Operators liegt im benachbarten `<state-root>-recovery/<target>/` und überlebt das Löschen des Installations-State. Explizite Recovery-Pfade bleiben unverändert. Verwende ein eigenes absolutes Verzeichnis und niemals den State einer fremden Installation.

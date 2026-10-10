@@ -124,7 +124,7 @@ func ensureRepositoryWorkloadPortsForUp(ctx context.Context, in io.Reader, out i
 			return fmt.Errorf("persist workload host port %s=%d: %w", variable.Name, fallback, err)
 		}
 		persisted[variable.Name] = strconv.Itoa(fallback)
-		fmt.Fprintf(out, "[OK] workload-port      %s=%d saved for this deployment\n", variable.Name, fallback)
+		cli.ReportActivityNotice(out, fmt.Sprintf("[UPDATED] workload-port %s host port %d -> %d saved for this deployment", variable.Name, port, fallback))
 	}
 	return nil
 }
@@ -306,7 +306,7 @@ func preflightRepositoryWorkloadPublishedPorts(
 		if err := persistWorkloadPortOverride(files, environment, variable.Name, fallback); err != nil {
 			return fmt.Errorf("persist workload host-port preflight selection: %w", err)
 		}
-		fmt.Fprintf(out, "[OK] workload-port      %s=%d saved for this deployment\n", variable.Name, fallback)
+		cli.ReportActivityNotice(out, fmt.Sprintf("[UPDATED] workload-port %s host port %d -> %d saved for this deployment", variable.Name, port, fallback))
 	}
 
 	rel, err := filepath.Rel(workload.RepositoryRoot, workload.Compose)
@@ -363,7 +363,7 @@ func preflightRepositoryWorkloadPublishedPorts(
 			}
 			values[i] = replacement
 			changed = true
-			fmt.Fprintf(out, "[OK] workload-port      %s %d -> %d saved for this deployment\n", service, port, fallback)
+			cli.ReportActivityNotice(out, fmt.Sprintf("[UPDATED] workload-port %s host port %d -> %d (requested port occupied; mapping saved for this deployment)", service, port, fallback))
 		}
 		if changed {
 			rewritten[service] = values
@@ -450,16 +450,16 @@ func persistFixedWorkloadPortOverrides(files application.RuntimeFiles, ports map
 func acceptFixedWorkloadPortFallback(ctx context.Context, in io.Reader, out io.Writer, service string, from, to int) (bool, error) {
 	fmt.Fprintf(out, "Workload host port %d for %s is already in use.\n", from, service)
 	fmt.Fprintf(out, "Found free host port %d.\n", to)
-	if commandAssumesYes() || (!noInput(ctx) && !readerIsTerminal(in)) {
+	if assumeYes(ctx) || commandAssumesYes() {
 		fmt.Fprintf(out, "[RETRYING] using %d for %s automatically.\n", to, service)
 		return true, nil
 	}
-	if noInput(ctx) {
-		return false, usageError("fixed workload port conflict requires an explicit decision in --no-input mode", "Choose a free host port or run with --yes to accept BaseHarbor's deployment-local fallback.")
+	if noInput(ctx) || !readerIsTerminal(in) {
+		return false, &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Workload host port %d for %s is occupied; available replacement is %d.", from, service, to), Resource: service, Remediation: "requires developer input", Next: "Choose a free host port or run with --yes to accept BaseHarbor's deployment-local fallback."}
 	}
 	fmt.Fprintf(out, "Use %d instead? [Y/n]: ", to)
 	answer, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
 		return false, err
 	}
 	answer = strings.TrimSpace(strings.ToLower(answer))
@@ -535,16 +535,16 @@ func commandAssumesYes() bool {
 func acceptWorkloadPortFallback(ctx context.Context, in io.Reader, out io.Writer, variable string, from, to int) (bool, error) {
 	fmt.Fprintf(out, "Workload host port %d is already in use.\n", from)
 	fmt.Fprintf(out, "Found free host port %d for %s.\n", to, variable)
-	if commandAssumesYes() || (!noInput(ctx) && !readerIsTerminal(in)) {
+	if assumeYes(ctx) || commandAssumesYes() {
 		fmt.Fprintf(out, "[RETRYING] using %s=%d automatically.\n", variable, to)
 		return true, nil
 	}
-	if noInput(ctx) {
-		return false, usageError("workload port conflict requires an explicit override in --no-input mode", "Set the published port environment variable explicitly to a free port and retry.")
+	if noInput(ctx) || !readerIsTerminal(in) {
+		return false, &machine.Error{Code: machine.ErrorPortConflict, CauseCode: "host_port_in_use", Message: fmt.Sprintf("Workload host port %d for %s is occupied; available replacement is %d.", from, variable, to), Resource: variable, Remediation: "requires developer input", Next: "Set the published port environment variable explicitly to a free port, or retry with --yes."}
 	}
 	fmt.Fprintf(out, "Use %d instead? [Y/n]: ", to)
 	answer, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
 		return false, err
 	}
 	answer = strings.TrimSpace(strings.ToLower(answer))
@@ -617,6 +617,7 @@ func startRepositoryWorkloadWithPortFallback(ctx context.Context, in io.Reader, 
 		if persistErr := persistWorkloadPortOverride(files, environment, candidate.Name, fallback); persistErr != nil {
 			return errors.Join(err, fmt.Errorf("persist workload host-port fallback: %w", persistErr))
 		}
+		cli.ReportActivityNotice(out, fmt.Sprintf("[UPDATED] workload-port %s host port %d -> %d saved for this deployment", candidate.Name, conflict, fallback))
 	}
 	return errors.New("application workload start exhausted host-port retries")
 }

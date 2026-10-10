@@ -9,8 +9,8 @@ This documentation follows the actual command surface and groups commands by res
 For the normal application workflow, begin with:
 
 ```text
-baha app new
-baha app init
+baha new application
+baha init
 baha up
 baha status
 baha doctor

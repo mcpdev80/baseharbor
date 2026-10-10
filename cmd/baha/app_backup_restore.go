@@ -449,7 +449,16 @@ func verifyRestoredApplicationHealth(ctx context.Context, store application.Stor
 		return fmt.Errorf("final restore doctor verification: %w", err)
 	}
 	if !doctor.Healthy {
-		return errors.New("final restore doctor verification is not healthy")
+		var failed []string
+		for _, check := range doctor.Checks {
+			if !check.OK {
+				failed = append(failed, check.Name)
+			}
+		}
+		if doctor.tlsErr != nil || (doctor.TLS != nil && !doctor.TLS.Healthy) {
+			failed = append(failed, "application TLS")
+		}
+		return fmt.Errorf("final restore doctor verification is not healthy: %s", strings.Join(failed, "; "))
 	}
 	return nil
 }

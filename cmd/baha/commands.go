@@ -13,42 +13,7 @@ import (
 
 func rootCommand() *cli.Command {
 	store := application.DefaultStore()
-	appCmd := appCommand(store)
-	for i, child := range appCmd.Children {
-		switch child.Name {
-		case "init":
-			initCmd := appInitWithInputResolverCommand(store)
-			initCmd.Usage = "baha app init [--quick] [--json] | baha app init [--agents] [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [--agents] [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]"
-			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
-			appCmd.Children[i] = initCmd
-		case "show":
-			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
-		}
-	}
-	appCmd.Children = append(appCmd.Children,
-		appInspectCommand(),
-		appApplyCommand(store),
-		appGuidedBackupCommand(store),
-		appGuidedRestoreCommandWithRecoveryMetadata(store),
-		appEnvCommand(store),
-		appPSQLCommand(store),
-		appRedisCommand(store),
-		appCredsCommand(store),
-		appLogsCommand(store),
-		appShellCommand(store),
-		appExecCommand(store),
-		appUpdateCommand(store),
-		appTLSCommand(store),
-		appStatusCommandWithTLS(store),
-		appDoctorRepairCommandWithTLS(store),
-		appDownCommand(store),
-		appUpCommand(store),
-		appDestroyCommand(store),
-		appSecretCommand(store),
-		appRuntimeIdentityCommand(store),
-		appEvidenceCommand(store),
-	)
-	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
+	appCmd := configuredApplicationCommand(store)
 
 	var appPlan *cli.Command
 	for _, child := range appCmd.Children {
@@ -71,7 +36,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "init",
 			Summary: "Initialize or adopt the application in the current repository",
-			Usage:   "baha init [--quick] [--json] [--agents] [--input NAME=VALUE]... [--yes]",
+			Usage:   "baha init --agents [--json] | baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]",
 			Long:    "Canonical application initialization. Reuses the same repository inspection, guided input resolution and Core bootstrap as application initialization; explicit flags remain available for non-interactive use.",
 			Run:     appInitWithInputResolverCommand(store).Run,
 		},
@@ -170,13 +135,18 @@ func rootCommand() *cli.Command {
 					}
 					return writeJSON(out, result)
 				}
+				target, err := effectiveTarget(ctx)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "Selection source: %s (%s)\n", target.Name, targetSelectionOrigin(ctx))
 				return runtimeStatus(ctx, out)
 			},
 		},
 		{
 			Name:    "doctor",
 			Summary: "Diagnose the current application repository, otherwise the control plane",
-			Usage:   "baha doctor [--fix] [-o json|--output json]",
+			Usage:   "baha doctor [--fix --yes] [-o json|--output json]",
 			Long:    "Inside an application repository, runs the same application doctor used by 'baha app doctor'. Outside a repository it keeps the control-plane doctor behavior. Structured output is read-only and cannot be combined with --fix.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if inApplicationRepository() {
@@ -188,7 +158,10 @@ func rootCommand() *cli.Command {
 		},
 		providerCommand(),
 		stackCommand(),
+		workspaceNamespaceCommand(),
 		targetCommand(),
+		useTargetCommand(),
+		nodeCommand(),
 		devCommand(),
 		configCommand(),
 		shellInitCommand(),
@@ -207,30 +180,7 @@ func rootCommand() *cli.Command {
 		operatorLogoutCommand(),
 		operatorWhoAmICommand(),
 		updateCommand(),
-		{
-			Name:    "version",
-			Aliases: nil,
-			Summary: "Print build version",
-			Usage:   "baha version [-o json|--output json|--json]",
-			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-				filtered, format, err := parseReadOutputArgs(args, "version")
-				if err != nil {
-					return err
-				}
-				if len(filtered) != 0 {
-					return usageError("baha version does not accept positional arguments", "Use --json or -o json for structured output.")
-				}
-				if format == outputJSON {
-					return writeJSON(out, map[string]string{
-						"version": version,
-						"commit":  commit,
-						"built":   date,
-					})
-				}
-				fmt.Fprintf(out, "baha %s (commit %s, built %s)\n", version, commit, date)
-				return nil
-			},
-		},
+		versionCommand(),
 	}
 	root.Children = append(root.Children, tuiCommand(store), completionCommand(root, store), internalCompletionCommand(root, store))
 	if inApplicationRepository() {
@@ -245,6 +195,74 @@ func rootCommand() *cli.Command {
 		}
 	}
 	return root
+}
+
+func versionCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "version",
+		Aliases: nil,
+		Summary: "Print build version",
+		Usage:   "baha version [-o json|--output json|--json]",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "version")
+			if err != nil {
+				return err
+			}
+			if len(filtered) != 0 {
+				return usageError("baha version does not accept positional arguments", "Use --json or -o json for structured output.")
+			}
+			if format == outputJSON {
+				return writeJSON(out, map[string]string{
+					"version": version,
+					"commit":  commit,
+					"built":   date,
+				})
+			}
+			fmt.Fprintf(out, "baha %s (commit %s, built %s)\n", version, commit, date)
+			return nil
+		},
+	}
+}
+
+func configuredApplicationCommand(store application.Store) *cli.Command {
+	appCmd := appCommand(store)
+	for i, child := range appCmd.Children {
+		switch child.Name {
+		case "init":
+			initCmd := appInitWithInputResolverCommand(store)
+			initCmd.Usage = "baha app init --agents [--json] | baha app init [--quick] [--json] | baha app init [--input NAME=VALUE]... [--hostname HOST] [--tls acme|existing|local] [--cert-dir DIR] [--yes] | baha app init [NAME] [-e ENV|--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME] [--workload-component NAME]... [--workload-source KIND:PATH]"
+			initCmd.Long += " Without baseharbor.yaml, the existing manifest flags remain available for deterministic repository-contract creation."
+			appCmd.Children[i] = initCmd
+		case "show":
+			appCmd.Children[i] = appShowCommandWithRecoveryMetadata(store)
+		}
+	}
+	appCmd.Children = append(appCmd.Children,
+		appInspectCommand(),
+		appApplyCommand(store),
+		appGuidedBackupCommand(store),
+		appGuidedRestoreCommandWithRecoveryMetadata(store),
+		appEnvCommand(store),
+		appPSQLCommand(store),
+		appRedisCommand(store),
+		appCredsCommand(store),
+		appLogsCommand(store),
+		appShellCommand(store),
+		appExecCommand(store),
+		appUpdateCommand(store),
+		appTLSCommand(store),
+		appStatusCommandWithTLS(store),
+		appDoctorRepairCommandWithTLS(store),
+		appDownCommand(store),
+		appUpCommand(store),
+		appDestroyCommand(store),
+		appSecretCommand(store),
+		appRuntimeIdentityCommand(store),
+		appEvidenceCommand(store),
+	)
+	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
+
+	return appCmd
 }
 
 func usageError(message, hint string) error {

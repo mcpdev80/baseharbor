@@ -6,10 +6,18 @@ BaseHarbor trennt Operator-Identität, Application-Benutzer und interne Provider
 
 Lokales `dev` kann im trusted-local-Modus ohne Login arbeiten. Geschützter Zugriff in `test` und `prod` benötigt eine gültige OIDC-Operator-Sitzung für Target und Umgebung. Die CLI verwendet Authorization Code mit PKCE und kurzlebigen, lokal geschützten Sitzungszustand.
 
-```bash
-baha login -e test
-baha whoami -e test
-baha logout -e test
+```text
+Authorization: Bearer <ID token>
+        ↓
+OIDC discovery + JWKS verification
+        ↓
+identity.Principal { issuer, subject, audience }
+        ↓
+identity-scoped membership resolution
+        ↓
+tenancy.Context { tenant, external identity, roles }
+        ↓
+RBAC + application ownership + protected handler
 ```
 
 Managed Keycloak oder externes OIDC können diese Grenze bereitstellen. Application- und Operator-Clients, Scopes und logische Identitätsbereiche bleiben getrennt. Login erweitert keine Policy-Berechtigungen.
@@ -33,3 +41,24 @@ Ein Development-Target besitzt ein separates Management-Konto, standardmäßig `
 Nur `baha dev credentials` zeigt Zugangsdaten ausdrücklich an. Status, Doctor, Plan und Evidence enthalten das Passwort nicht. Die Target-Domain ist standardmäßig `baha.localhost`; Browser- und interne Workload-Endpunkte werden passend zum jeweiligen Netz realisiert.
 
 Weiter: [Security-/Trust-Befehle](../cli/security-trust.md), [Sicherheit](security.md), [technische Erklärung (EN)](https://mcpdev80.github.io/baseharbor/explanation/authentication/).
+
+
+## Weitere unveränderte technische Beispiele
+
+```text
+baseharbor.identity_issuer
+baseharbor.identity_subject
+```
+
+```text
+pre-tenant request phase
+    verified issuer + subject
+    -> SELECT-only identity policy
+
+post-resolution request phase
+    resolved tenant_id
+    -> normal tenant RLS policy
+```
+
+
+Technische Kennungen: `internal/auth.OIDCVerifier`, `github.com/coreos/go-oidc/v3/oidc`, `https://auth.<domain>`, `https://auth-admin.<domain>`, `baha login -e ENV`, `baha whoami -e ENV`, `baha logout -e ENV`, `baseharbor.tenant_id`, `0004_identity_membership_resolution`, `memberships`, `FOR SELECT`, `database.IdentityTenantResolver`, `set_config`, `tenancy.Resolve`, `ErrNoMembership`, `ErrAmbiguousTenant`.

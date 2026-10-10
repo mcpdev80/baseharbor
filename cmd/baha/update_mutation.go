@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
- "github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -28,9 +28,15 @@ const (
 )
 
 var selfUpdateExecutable = os.Executable
+var verifyCoreBinaryOnly = verifyUnchangedCoreForBinaryUpdate
 
 func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpdateOptions, out, errOut io.Writer) error {
 	if check.Relation == "up-to-date" {
+		if check.CoreReconciliation != "not_required" {
+			if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+				return fmt.Errorf("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled: %w", err)
+			}
+		}
 		fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
 		return nil
 	}
@@ -49,7 +55,9 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	// staging, or executable changes begin.
 	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
 	if controlPlaneExists {
-		return errors.New("Core provider version reconciliation is not yet available for self-update; installed Core was left unchanged. Use 'baha update --check' to inspect the selected release")
+		if err := preflightNativeCoreUpgrade(ctx, check.Target); err != nil {
+			return fmt.Errorf("Core provider migration preflight refused update: %w", err)
+		}
 	}
 	_, localApplicationExists := localApplicationForSelfUpdate()
 
@@ -83,7 +91,14 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	}
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
-
+	// A verified binary candidate is available before any data-bearing Core
+	// provider update begins. Recovery remains durable if mutation fails.
+	if controlPlaneExists {
+		if err := reconcileNativeCoreProviders(ctx, check.Target); err != nil {
+			return fmt.Errorf("Core native provider update incomplete; recovery journal retained: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] core              pinned SQL, Secrets and Identity semantics verified")
+	}
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
@@ -106,6 +121,11 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 		return fmt.Errorf("post-update runtime verification failed; previous CLI binary restored: %w", err)
 	}
 
+	if controlPlaneExists {
+		if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+			return fmt.Errorf("post-update Core semantic verification failed; previous CLI binary restored: %w", err)
+		}
+	}
 	rollback = false
 	fmt.Fprintf(out, "BaseHarbor updated successfully: %s -> %s\n", displayInstalledVersion(check.Installed), check.Target)
 	fmt.Fprintf(out, "Runtime image target: %s\n", defaultRuntimeImage(check.Target))

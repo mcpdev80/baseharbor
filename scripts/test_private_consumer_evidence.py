@@ -75,6 +75,38 @@ class PrivateEvidenceTests(unittest.TestCase):
         self.assertNotIn(REPO, public)
         self.assertNotIn(SOURCE, public)
 
+    def test_complete_joint_browser_origin_is_bound_to_exact_console_source(self):
+        console = 'e' * 40
+        gate = 'integration/static/live-console'
+        origin = {'repository': REPO, 'commit': SOURCE, 'gate': GATE}
+        pin = {'repository': private.REPOSITORIES['console'], 'commit': console,
+               'workflow': private.WORKFLOW, 'origin': origin}
+        self.api.receipt['console_commit'] = console
+        self.api.receipt['qualifications'].update(dict.fromkeys(private.QUALIFICATIONS[gate], True))
+        verifier = private.PrivateEvidenceVerifier({}, self.api, resume.read_archive)
+        verifier.verify_role('console', gate, pin, private.commitment(pin), CORE, DEMO)
+        for field, value in [('console_commit', 'f' * 40), ('core_commit', 'f' * 40), ('cleanup_result', 'failure')]:
+            before = self.api.receipt[field]
+            self.api.receipt[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                verifier.verify_role('console', gate, pin, private.commitment(pin), CORE, DEMO)
+            self.api.receipt[field] = before
+        self.api.receipt['qualifications'].pop('terminal-resize-close')
+        with self.assertRaises(ValueError):
+            verifier.verify_role('console', gate, pin, private.commitment(pin), CORE, DEMO)
+
+    def test_joint_origin_cannot_substitute_another_repository_or_partial_gate(self):
+        gate = 'integration/static/live-console'
+        for field, value in [('repository', 'foreign/repository'), ('gate', 'integration/podman/remote-target'), ('commit', 'branch-name')]:
+            origin = {'repository': REPO, 'commit': SOURCE, 'gate': GATE}
+            origin[field] = value
+            pin = {**PIN, 'origin': origin}
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                private.source_origin('connector', gate, pin)
+        pin = {**PIN, 'origin': {'repository': REPO, 'commit': 'f' * 40, 'gate': GATE}}
+        with self.assertRaises(ValueError):
+            private.source_origin('connector', gate, pin)
+
     def test_latest_failure_cancel_pending_or_missing_job_blocks_old_success(self):
         for status in ['failure', 'cancelled', 'skipped', None]:
             with self.subTest(status=status):

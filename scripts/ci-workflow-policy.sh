@@ -7,7 +7,9 @@ expected=(
   artifact-gc.yml
   ci.yml
   docker-runtime-acceptance.yml
+  host-trust-owned-e2e.yml
   mcp-lifecycle-acceptance.yml
+  nextjs-greenfield-e2e.yml
   observability-acceptance.yml
   pages.yml
   podman-acceptance.yml

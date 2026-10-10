@@ -37,7 +37,7 @@ func (c Compose) RunProjectFilesEnv(ctx context.Context, project, workdir string
 		cmd.Dir = workdir
 	}
 	var err error
-	cmd.Env, err = mergeProcessEnvironment(environment)
+	cmd.Env, err = c.commandEnvironment(environment)
 	if err != nil {
 		return err
 	}
