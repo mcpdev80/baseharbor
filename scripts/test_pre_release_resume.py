@@ -382,6 +382,63 @@ class GitFingerprintTests(unittest.TestCase):
             changed = self.commit(self.product)
             self.assertNotEqual(self.fingerprint(self.p, self.d, key), self.fingerprint(changed, self.d, key))
 
+    def v024_inventory(self):
+        path = self.product / resume.REQUIREMENTS_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
+        return self.commit(self.product)
+
+    def test_v024_backup_fixture_change_preserves_only_unaffected_atomic_proofs(self):
+        product = self.v024_inventory()
+        path = self.demo / 'tests/backup-restore/run.sh'
+        path.parent.mkdir(parents=True)
+        path.write_text('old recovery contract\n')
+        original = self.commit(self.demo)
+        path.write_text('corrected recovery contract\n')
+        changed = self.commit(self.demo)
+        for key, same in [('atomic/docker/identity', True), ('atomic/podman/security', True),
+                          ('atomic/podman/backup-restore', False), ('journey/docker', False)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, original, 'v0.4.24', key) ==
+                                 self.inputs.fingerprint(product, changed, 'v0.4.24', key), same)
+
+    def test_v024_collector_metadata_and_rebound_demo_pin_preserve_native_execution(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        original_demo = self.commit(self.demo)
+        for name in ['pre-release-resume.py', 'test_pre_release_resume.py']:
+            path = self.product / 'scripts' / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('updated source-plan tooling\n')
+        changed = self.commit(self.product)
+        (self.demo / 'baseharbor-core.ref').write_text(changed + '\n')
+        changed_demo = self.commit(self.demo)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, original_demo).pin(product, 'v0.4.24'), original_demo)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, changed_demo).pin(changed, 'v0.4.24'), changed_demo)
+        with self.assertRaises(ValueError):
+            resume.GitInputs(self.product, self.demo, original_demo).pin(changed, 'v0.4.24')
+        for key, same in [('atomic/docker/identity', True), ('atomic/static/mcp', False), ('journey/podman', False)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.24', key) ==
+                                 self.inputs.fingerprint(changed, changed_demo, 'v0.4.24', key), same)
+
+    def test_v024_native_reuse_still_rejects_auth_schema_bootstrap_and_producer_changes(self):
+        product = self.v024_inventory()
+        key = 'atomic/podman/identity'
+        original = self.inputs.fingerprint(product, self.d, 'v0.4.24', key)
+        for name in ['internal/auth/auth.go', 'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('changed runtime execution input\n')
+            changed = self.commit(self.product)
+            with self.subTest(path=name):
+                self.assertNotEqual(original, self.inputs.fingerprint(changed, self.d, 'v0.4.24', key))
+        path = self.demo / 'tests/atomic-bootstrap.sh'
+        path.write_text('changed shared bootstrap\n')
+        changed_demo = self.commit(self.demo)
+        self.assertNotEqual(original, self.inputs.fingerprint(product, changed_demo, 'v0.4.24', key))
+
     def test_missing_new_candidate_inventory_is_rejected(self):
         with self.assertRaises(ValueError):
             self.inputs.requirements(self.p, 'v0.4.23')

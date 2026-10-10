@@ -132,11 +132,24 @@ class GitInputs:
         return load_requirements(raw, tag)
 
     def fingerprint(self, candidate, demo, tag, key):
+        native_atomic = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/'))
+        # These source-plan tools never execute inside an atomic runtime job.
+        # Current validation still authenticates every original job and ZIP;
+        # their changes continue to invalidate static and journey proofs.
+        collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
         product = [(path, obj) for path, obj in self.objects(self.product, candidate)
-                   if not metadata_path(path) and path != '.github/workflows/pre-release.yml']
+                   if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
+                   and not (native_atomic and path in collectors)]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
                         if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
-                                and not key.startswith('journey/'))]
+                                and not key.startswith('journey/'))
+                        # Atomic bootstrap does not source this isolated gate.
+                        and not (tag == 'v0.4.24' and key.startswith('atomic/')
+                                 and path == 'tests/backup-restore/run.sh'
+                                 and not key.endswith('/backup-restore'))
+                        # pin() separately requires this exact Core binding on
+                        # both candidate and original v0.4.24 Demo revisions.
+                        and not (native_atomic and path == 'baseharbor-core.ref')]
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
         if requirement is None:
@@ -153,7 +166,7 @@ class GitInputs:
                         if field != 'matrix'}
             if strategy:
                 execution[name]['strategy'] = strategy
-        return digest({'policy': 'baseharbor.gate-inputs/v2', 'tag': tag, 'gate': key,
+        return digest({'policy': 'baseharbor.gate-inputs/v3', 'tag': tag, 'gate': key,
                        'requirement': requirement, 'product': product, 'demo': demo_objects,
                        'execution': execution})
 
