@@ -155,7 +155,7 @@ func Run(ctx context.Context, root string, spec Spec, steps Steps) (State, error
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
 		return State{}, errors.New("Core state directory must be protected and owned")
 	}
-	unlock, err := lock(root)
+	unlock, err := AcquireLifecycleLock(root)
 	if err != nil {
 		return State{}, err
 	}

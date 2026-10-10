@@ -96,3 +96,21 @@ func TestSingleControlPlaneAvailabilityReportsActualTopology(t *testing.T) {
 		t.Fatal("hidden etcd must not satisfy single topology")
 	}
 }
+
+func TestCoreIdentityTopologySeparatesSQLProxyEtcdAndIdentityMembers(t *testing.T) {
+	r := controlPlaneAvailability{HA: true, Satisfied: true, ActualHA: true}
+	r.observeIdentity([]string{"keycloak-1", "keycloak-2", "keycloak-3", "keycloak-db", "keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3", "keycloak-db-etcd-1", "keycloak-db-etcd-2", "keycloak-db-etcd-3", "keycloak-db-init", "keycloak-db-tls-init", "keycloak-admin"})
+	if !r.Satisfied || !r.ActualHA || r.IdentityMembers != 3 || r.IdentitySQLMembers != 3 || r.IdentityEtcd != 3 || r.Helpers != 4 {
+		t.Fatalf("incorrect native roles: %+v", r)
+	}
+	r = controlPlaneAvailability{Satisfied: true}
+	r.observeIdentity([]string{"keycloak-1", "keycloak-db", "keycloak-admin"})
+	if !r.Satisfied || r.ActualHA || r.IdentityMembers != 1 || r.IdentitySQLMembers != 1 || r.Helpers != 1 {
+		t.Fatalf("incorrect single roles: %+v", r)
+	}
+	r = controlPlaneAvailability{HA: true, Satisfied: true, ActualHA: true}
+	r.observeIdentity([]string{"keycloak-1", "keycloak-db"})
+	if r.Satisfied || r.ActualHA {
+		t.Fatal("single identity silently satisfied Core HA")
+	}
+}

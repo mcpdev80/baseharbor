@@ -191,6 +191,9 @@ jobs:
 
   targeted_ha_docker:
     name: Targeted HA · docker
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -199,6 +202,8 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -228,22 +233,19 @@ jobs:
 
   targeted_ha_podman:
     name: Targeted HA · podman
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       BASEHARBOR_TEST_RUNTIME: podman
     steps:
-      - name: Prepare hosted Podman runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y podman
-          podman version
-          podman info
       - name: Checkout exact candidate
         uses: actions/checkout@v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
         uses: actions/setup-go@v7
         with:

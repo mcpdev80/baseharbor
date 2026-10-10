@@ -62,6 +62,10 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 }
 
 func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) error {
+	return recordAppliedDeploymentObservation(ctx, resolved, files, "ready", true)
+}
+
+func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles, state string, ready bool) error {
 	if !resolved.SourceAvailable {
 		return fmt.Errorf("cannot record applied deployment without available source")
 	}
@@ -98,10 +102,12 @@ func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, 
 			LastAppliedRef: revision,
 		},
 		Observed: deployment.ObservedDeployment{
-			State:      "ready",
-			Ready:      true,
-			VerifiedAt: time.Now().UTC(),
+			State: state,
+			Ready: ready,
 		},
+	}
+	if ready {
+		record.Observed.VerifiedAt = time.Now().UTC()
 	}
 	return deployment.SaveDeploymentRecord(record)
 }

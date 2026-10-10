@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type applicationDoctorWorkloadResult struct {
@@ -23,6 +24,7 @@ type applicationDoctorSecretResult struct {
 }
 
 type applicationDoctorResult struct {
+	DockerEngine    *bhruntime.DockerEngineObservation           `json:"docker_engine,omitempty"`
 	ContractVersion string                                       `json:"contract_version"`
 	Target          string                                       `json:"target"`
 	ApplicationID   string                                       `json:"application_id"`

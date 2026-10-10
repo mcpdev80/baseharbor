@@ -241,7 +241,7 @@ func registerMCPPlatformReadTools(server *mcp.Server, store application.Store) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, result, nil
+		return nil, normalizedProviderList(result), nil
 	})
 
 	mcp.AddTool(server, machineMCPTool("provider.inspect", "Inspect one external provider registration without revealing credential or private-key material.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineProviderIDInput) (*mcp.CallToolResult, any, error) {
@@ -560,7 +560,8 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		}
 		ctx, cancelLifecycle := machineLifecycleContext(ctx)
 		defer cancelLifecycle()
-		args = append(args, "--fix")
+		// The authorized semantic repair invocation is the explicit mutation request.
+		args = append(args, "--fix", "--yes")
 		if err := executeApplicationRepairLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}

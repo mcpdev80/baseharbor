@@ -2,9 +2,9 @@
 
 Detailed planning lives in GitHub Issues. This page shows product direction; [issue #155](https://github.com/mcpdev80/baseharbor/issues/155) is the overarching roadmap.
 
-## Current candidate — v0.4.24
+## Current — v0.4.24
 
-Implementation and pre-release validation are complete; publication remains pending.
+Implementation and pre-release validation are complete.
 
 - Task-oriented CLI and repository-aware application lifecycle.
 - Explicit Core/Target selection and rootless Docker by default.

@@ -39,21 +39,15 @@ jobs:
       ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
 
     steps:
-      - name: Prepare hosted Podman runtime
-        if: inputs.runtime == 'podman'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y podman
-          podman version
-          podman info
-
       - name: Checkout BaseHarbor candidate
         id: checkout
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Prepare verified rootless runtime
+        if: inputs.runtime != 'static'
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Resolve candidate SHA
         id: candidate

@@ -17,6 +17,14 @@ func defaultTargetRecoveryFile(target string) (string, error) {
 	if err := deployment.ValidateTargetName(target); err != nil {
 		return "", err
 	}
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		// Recovery material must survive removal of the isolated installation.
+		root, err := filepath.Abs(root)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(root+"-recovery", target, "openbao-recovery.json"), nil
+	}
 	root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
 	if root == "" {
 		home, err := os.UserHomeDir()
@@ -33,9 +41,16 @@ func preflightNewTargetRecoveryFile(ctx context.Context, explicit string) (strin
 	if err != nil {
 		return "", "", err
 	}
-	info, statErr := os.Stat(path)
+	info, statErr := os.Lstat(path)
 	if statErr == nil {
-		if source == "target default" && !info.IsDir() {
+		rotate := source == "target default"
+		if source == "persisted target" {
+			// Only an absent Core may abandon an old output reference. An active
+			// or unreadable installation still requires explicit operator input.
+			_, runtimeErr := existingTargetRuntimeFiles(ctx)
+			rotate = errors.Is(runtimeErr, os.ErrNotExist)
+		}
+		if rotate && info.Mode().IsRegular() {
 			// A destroyed installation's recovery material remains operator-owned.
 			// Allocate a new output name, never delete or overwrite the old file.
 			var suffix [16]byte
@@ -46,7 +61,7 @@ func preflightNewTargetRecoveryFile(ctx context.Context, explicit string) (strin
 			if _, err := os.Lstat(fresh); !errors.Is(err, os.ErrNotExist) {
 				return "", "", errors.New("fresh recovery output path is unavailable")
 			}
-			return fresh, "target default (fresh installation)", nil
+			return fresh, source + " (fresh installation)", nil
 		}
 		kind := "file"
 		if info.IsDir() {
@@ -134,7 +149,7 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 			}
 		}
 		def = deployment.TargetDefinition{
-			Runtime: deployment.RuntimeDefinition{Provider: target.RuntimeProvider},
+			Runtime: deployment.RuntimeDefinition{Provider: target.RuntimeProvider, DockerEndpoint: target.DockerEndpoint, DockerContext: target.DockerContext, DockerMode: target.DockerMode},
 			Access:  deployment.TargetAccess{Reference: accessRef},
 			Scope:   target.Scope,
 		}

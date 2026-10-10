@@ -2,6 +2,7 @@ package repositoryinspect
 
 import (
 	"context"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"os"
 	"path/filepath"
 	"strings"
@@ -655,6 +656,13 @@ services:
 	_, err := Inspect(context.Background(), root)
 	if err == nil || !strings.Contains(err.Error(), "Compose include is not yet supported") {
 		t.Fatalf("Inspect error = %v, want explicit include failure", err)
+	}
+	classified := machine.Classify(err)
+	if classified.Code != machine.ErrorUnsupported || classified.CauseCode != "compose_include_unsupported" || !strings.Contains(classified.Next, "--no-interpolate") {
+		t.Fatalf("include lacks typed safe remediation: %+v", classified)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "baseharbor.yaml")); !os.IsNotExist(statErr) {
+		t.Fatal("unsupported include mutated the repository")
 	}
 }
 

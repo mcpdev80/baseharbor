@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -27,9 +28,15 @@ const (
 )
 
 var selfUpdateExecutable = os.Executable
+var verifyCoreBinaryOnly = verifyUnchangedCoreForBinaryUpdate
 
 func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpdateOptions, out, errOut io.Writer) error {
 	if check.Relation == "up-to-date" {
+		if check.CoreReconciliation != "not_required" {
+			if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+				return fmt.Errorf("BaseHarbor CLI is up to date, but installed Core providers have not been safely reconciled: %w", err)
+			}
+		}
 		fmt.Fprintf(out, "BaseHarbor %s is already installed.\n", check.Target)
 		return nil
 	}
@@ -42,6 +49,17 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	if check.Relation != "update-available" && check.Relation != "development-build" {
 		return fmt.Errorf("refusing self-update because installed/target version ordering is %q", check.Relation)
 	}
+
+	// A binary-only update cannot certify the mandatory SQL/Secrets/Identity
+	// release contract. Refuse mutations for an installed Core before downloads,
+	// staging, or executable changes begin.
+	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
+	if controlPlaneExists {
+		if err := preflightNativeCoreUpgrade(ctx, check.Target); err != nil {
+			return fmt.Errorf("Core provider migration preflight refused update: %w", err)
+		}
+	}
+	_, localApplicationExists := localApplicationForSelfUpdate()
 
 	executable, err := selfUpdateExecutable()
 	if err != nil {
@@ -73,9 +91,14 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 	}
 	fmt.Fprintf(out, "[OK] release           %s downloaded and checksum verified\n", check.Target)
 	fmt.Fprintf(out, "[OK] candidate         reports BaseHarbor %s\n", check.Target)
-
-	_, controlPlaneExists := existingControlPlaneForSelfUpdate(ctx)
-	_, localApplicationExists := localApplicationForSelfUpdate()
+	// A verified binary candidate is available before any data-bearing Core
+	// provider update begins. Recovery remains durable if mutation fails.
+	if controlPlaneExists {
+		if err := reconcileNativeCoreProviders(ctx, check.Target); err != nil {
+			return fmt.Errorf("Core native provider update incomplete; recovery journal retained: %w", err)
+		}
+		fmt.Fprintln(out, "[OK] core              pinned SQL, Secrets and Identity semantics verified")
+	}
 
 	recoveryPath, err := replaceExecutableWithRecovery(executable, candidate, check.Installed)
 	if err != nil {
@@ -98,6 +121,11 @@ func performSelfUpdate(ctx context.Context, check selfUpdateCheck, opts selfUpda
 		return fmt.Errorf("post-update runtime verification failed; previous CLI binary restored: %w", err)
 	}
 
+	if controlPlaneExists {
+		if err := verifyCoreBinaryOnly(ctx, check.Target); err != nil {
+			return fmt.Errorf("post-update Core semantic verification failed; previous CLI binary restored: %w", err)
+		}
+	}
 	rollback = false
 	fmt.Fprintf(out, "BaseHarbor updated successfully: %s -> %s\n", displayInstalledVersion(check.Installed), check.Target)
 	fmt.Fprintf(out, "Runtime image target: %s\n", defaultRuntimeImage(check.Target))
@@ -385,6 +413,22 @@ func selfUpdateEnvironment(target string) []string {
 }
 
 func existingControlPlaneForSelfUpdate(ctx context.Context) (bhruntime.Files, bool) {
+	// Owned installation identity is authoritative even if runtime files are
+	// missing or degraded. Never infer "no Core" from unreadable runtime files.
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return bhruntime.Files{}, true
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return bhruntime.Files{}, true
+	}
+	if _, err := coreinstallation.Load(root); err == nil {
+		files, _ := existingTargetRuntimeFiles(ctx)
+		return files, true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return bhruntime.Files{}, true
+	}
 	files, err := existingTargetRuntimeFiles(ctx)
 	return files, err == nil
 }

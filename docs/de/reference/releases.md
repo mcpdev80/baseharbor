@@ -104,7 +104,7 @@ Für v0.4.24 bindet die `integration-candidate.json` des finalen Connector-Commi
 
 `scripts/ecosystem_release_pins.py` prüft alle Bindungen und erstellt das öffentliche Manifest der Consumer-Nachweise. Der Pre-Release-Workflow akzeptiert eine optionale exakte `consumer_ref` oder löst den geprüften Connector-Integrationsbranch einmalig auf und hält dessen 40-stelligen SHA fest. Die Freigabe bewahrt diese unveränderliche Consumer-Quelle; die Release-Nachprüfung löst dieselben Commits auf. Der vollständige native Connector-Job prüft auch das exakte Console-Browser-Receipt. Sein authentifiziertes Artefakt kann deshalb die Console-Integration ohne Wiederholung derselben Journey belegen. Alle bisherigen atomaren Gates bleiben erforderlich.
 
-Das Vorbereiten dieser Eingaben startet oder genehmigt keinen Pre-Release. Die geprüfte SHA-Matrix und die abgeschlossene Pre-Release-Abnahme stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837). v0.4.24 bleibt bis zur gesonderten Freigabe Unreleased.
+Das Vorbereiten dieser Eingaben startet oder genehmigt keinen Pre-Release. Die geprüfte SHA-Matrix und die abgeschlossene Pre-Release-Abnahme stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 ## Freigabe von Artefakten
 

@@ -24,6 +24,7 @@ const (
 )
 
 type Placement struct {
+	Members int
 	Scope   capability.ProviderScope
 	Project string
 	Network string
@@ -83,17 +84,15 @@ func placementFromProviderPlacementAt(dataDir, namespace string, m application.M
 	}
 	switch providerPlacement.Scope {
 	case capability.ScopeShared:
+		if err := bhruntime.CheckSharedProviderIdentity(dataDir, "prometheus"); err != nil {
+			return Placement{}, err
+		}
 		project := bhruntime.SharedProjectName(namespace)
 		volume := "baseharbor-prometheus-data"
 		if prefix != "" {
 			volume = "baseharbor-prometheus-data-" + strings.TrimSuffix(prefix, "-")
 		}
 		dir := filepath.Join(filepath.Clean(dataDir), "providers", "prometheus", "shared")
-		if providerPlacement.SharingBoundary != "" {
-			token := application.ProviderPlacementNameToken(providerPlacement.SharingBoundary)
-			volume += "-" + token
-			dir = filepath.Join(dir, token)
-		}
 		return Placement{
 			Scope:   capability.ScopeShared,
 			Project: project,

@@ -47,19 +47,28 @@ func keycloakBootstrapServices(compose string) ([]string, error) {
 		return nil, err
 	}
 	var document struct {
-		Services map[string]yaml.Node `yaml:"services"`
+		Services map[string]struct {
+			Profiles []string `yaml:"profiles"`
+		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(data, &document); err != nil {
 		return nil, err
 	}
-	for _, required := range []string{"keycloak-1", "keycloak-2", "keycloak-3", "keycloak-access"} {
+	for _, required := range []string{"keycloak-1", "keycloak-access"} {
 		if _, ok := document.Services[required]; !ok {
 			return nil, errors.New("Keycloak bootstrap graph is incomplete")
 		}
 	}
+	if _, second := document.Services["keycloak-2"]; second {
+		if _, third := document.Services["keycloak-3"]; !third {
+			return nil, errors.New("Keycloak HA bootstrap graph has fewer than three members")
+		}
+	} else if _, third := document.Services["keycloak-3"]; third {
+		return nil, errors.New("Keycloak HA bootstrap graph is incomplete")
+	}
 	var selected []string
-	for name := range document.Services {
-		if name != "keycloak-2" && name != "keycloak-3" {
+	for name, service := range document.Services {
+		if name != "keycloak-2" && name != "keycloak-3" && len(service.Profiles) == 0 {
 			selected = append(selected, name)
 		}
 	}

@@ -18,33 +18,16 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-func TestInitDoesNotCreateLegacyGlobalConfig(t *testing.T) {
-	dir := t.TempDir()
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(old)
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-
+func TestCanonicalInitHelpUsesApplicationInitialization(t *testing.T) {
 	var out bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"init"}, &out, &out); err != nil {
-		t.Fatalf("init failed: %v\n%s", err, out.String())
+	if err := runWithIO(context.Background(), []string{"init", "--help"}, &out, &out); err != nil {
+		t.Fatalf("init help failed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "baseharbor.yaml")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("baha init must not create repository manifest/global config: %v", err)
+	if !strings.Contains(out.String(), "baha init") {
+		t.Fatalf("canonical initialization help missing: %s", out.String())
 	}
-	for _, wanted := range []string{"baha app init", "baha target create"} {
-		if !strings.Contains(out.String(), wanted) {
-			t.Fatalf("init output missing %q: %s", wanted, out.String())
-		}
-	}
-	for _, forbidden := range []string{"deployment:", "single-node", "data_dir:", "runtime: auto"} {
-		if strings.Contains(out.String(), forbidden) {
-			t.Fatalf("init output still exposes legacy config %q: %s", forbidden, out.String())
-		}
+	if strings.Contains(out.String(), "Compatibility entrypoint") {
+		t.Fatalf("legacy init presentation still exposed: %s", out.String())
 	}
 }
 

@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"github.com/mcpdev80/baseharbor/internal/hosttrust"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -120,5 +123,91 @@ func TestTargetOwnedRuntimeContainersFiltersOnlyTargetProjects(t *testing.T) {
 	}
 	if got[0].Project != "bh-local-demo-dev" || got[1].Project != "bh-local-shared" {
 		t.Fatalf("unexpected target-owned ordering/content: %#v", got)
+	}
+}
+
+func TestFullDestroyPreservesGlobalOwnershipOnHostCAFailure(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-state"))
+	root, err := deployment.TargetStateRoot("orphan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	original := removeHostTrustForFullDestroy
+	removeHostTrustForFullDestroy = func(_ context.Context, dir string) (hosttrust.RemovalResult, error) {
+		expected, err := bhruntime.DataDir("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dir != expected {
+			t.Fatalf("destroy looked for trust state in %q, expected global %q", dir, expected)
+		}
+		return hosttrust.RemovalResult{Preserved: []hosttrust.AnchorRecord{{Fingerprint: strings.Repeat("a", 64), Path: "/usr/local/share/ca-certificates/baseharbor-aaaaaaaaaaaaaaaa.crt"}}}, errors.New("recorded CA mismatch")
+	}
+	defer func() { removeHostTrustForFullDestroy = original }()
+	var out bytes.Buffer
+	err = runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out)
+	if err == nil {
+		t.Fatalf("unverified anchor unexpectedly permitted destroy: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "PRESERVED host CA "+strings.Repeat("a", 64)) {
+		t.Fatalf("missing exact preserved anchor warning: %s", out.String())
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("destroy discarded ownership evidence: %v", err)
+	}
+}
+
+func TestFullDestroyJSONReportsPreservedCAOnFailure(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-state"))
+	original := removeHostTrustForFullDestroy
+	removeHostTrustForFullDestroy = func(_ context.Context, _ string) (hosttrust.RemovalResult, error) {
+		return hosttrust.RemovalResult{Preserved: []hosttrust.AnchorRecord{{Fingerprint: strings.Repeat("f", 64), Path: "/test/operator-owned.crt"}}}, errors.New("fingerprint changed")
+	}
+	defer func() { removeHostTrustForFullDestroy = original }()
+	var out bytes.Buffer
+	err := runtimeDestroyCommand(context.Background(), []string{"--all", "--yes", "--json"}, &out, &out)
+	if err == nil {
+		t.Fatal("unsafe destroy reported success")
+	}
+	if !strings.Contains(out.String(), "\"PRESERVED\"") || !strings.Contains(out.String(), "operator-owned.crt") {
+		t.Fatalf("JSON did not report preserved CA: %s", out.String())
+	}
+}
+
+func TestFailedRuntimeInventoryCannotRemoveOwnedHostTrust(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-state"))
+	config, err := deployment.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("{broken-config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	removed := false
+	original := removeHostTrustForFullDestroy
+	removeHostTrustForFullDestroy = func(context.Context, string) (hosttrust.RemovalResult, error) {
+		removed = true
+		return hosttrust.RemovalResult{}, nil
+	}
+	defer func() { removeHostTrustForFullDestroy = original }()
+	var out bytes.Buffer
+	err = runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out)
+	if removed {
+		t.Fatalf("host CA removed despite failed installation inventory: %s", out.String())
+	}
+	if err == nil {
+		t.Fatalf("corrupt registry did not block full destroy: %s", out.String())
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/availability"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -34,12 +35,12 @@ type platformBucketState struct {
 	SecretAccessKey string `json:"secret_access_key"`
 }
 
-func EnsurePlatformBucketAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace, logicalName string) (PlatformBucket, error) {
+func EnsurePlatformBucketAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, dataDir, namespace, logicalName string, intent ...availability.Requirement) (PlatformBucket, error) {
 	logicalName = platformBucketToken(logicalName)
 	if logicalName == "" {
 		return PlatformBucket{}, errors.New("platform object-storage bucket name is required")
 	}
-	files, _, _, err := EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, namespace)
+	files, _, _, err := EnsureSharedProviderAt(ctx, runtime, issuer, dataDir, namespace, intent...)
 	if err != nil {
 		return PlatformBucket{}, err
 	}

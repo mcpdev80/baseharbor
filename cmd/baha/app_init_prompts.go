@@ -413,11 +413,7 @@ func appInitReaderIsRealTerminal(r io.Reader) bool {
 	if !ok {
 		return false
 	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(file.Fd())
 }
 
 func appInitReaderIsTerminal(r io.Reader) bool {
@@ -425,9 +421,5 @@ func appInitReaderIsTerminal(r io.Reader) bool {
 	if !ok {
 		return true
 	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(file.Fd())
 }

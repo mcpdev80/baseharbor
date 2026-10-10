@@ -122,10 +122,19 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 			"uri":          uri,
 			"certificates": certificates,
 		}
+		if username := values[valkeyRuntimeKey(instance, "USER")]; username != "" {
+			entries["username"] = username
+		}
+		if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+			entries["baseharbor-key-prefix"] = prefix
+		}
 		if err := writeBinding(binding, entries); err != nil {
 			return RuntimeContract{}, err
 		}
 		if instance == preferredRedis {
+			if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+				fmt.Fprintf(&env, "REDIS_KEY_PREFIX=%s\nVALKEY_KEY_PREFIX=%s\n", prefix, prefix)
+			}
 			fmt.Fprintf(&env, "REDIS_URL=%s\n", uri)
 			fmt.Fprintf(&env, "VALKEY_URL=%s\n", uri)
 			fmt.Fprintf(&env, "REDIS_CA_FILE=%s\n", values[valkeyTLSCAKey(instance)])
@@ -133,6 +142,9 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		}
 		if instance != defaultServiceInstance {
 			token := envInstanceToken(instance)
+			if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+				fmt.Fprintf(&env, "REDIS_%s_KEY_PREFIX=%s\nVALKEY_%s_KEY_PREFIX=%s\n", token, prefix, token, prefix)
+			}
 			fmt.Fprintf(&env, "REDIS_%s_URL=%s\n", token, uri)
 			fmt.Fprintf(&env, "VALKEY_%s_URL=%s\n", token, uri)
 		}
@@ -221,6 +233,10 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 		serviceRefs[serviceReferenceKey("mongodb", instance, len(mongoInstances))] = runtimeServiceRef{Binding: bindingRef}
 	}
 
+	return writeRuntimeContract(m, files, values, bindingsDir, serviceRefs, &env)
+}
+
+func writeRuntimeContract(m Manifest, files RuntimeFiles, values map[string]string, bindingsDir string, serviceRefs map[string]runtimeServiceRef, env *strings.Builder) (RuntimeContract, error) {
 	applicationEnv := filepath.Join(files.Dir, "application.env")
 	if err := writeOwnerOnlyFile(applicationEnv, []byte(env.String())); err != nil {
 		return RuntimeContract{}, fmt.Errorf("write application environment contract: %w", err)
@@ -341,22 +357,30 @@ func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, valu
 		if host == "" {
 			host = valkeyAccessService(instance)
 		}
+		username := values[valkeyRuntimeKey(instance, "USER")]
+		if username == "" {
+			username = "default"
+		}
 		uri := (&url.URL{
 			Scheme: "rediss",
-			User:   url.UserPassword("default", password),
+			User:   url.UserPassword(username, password),
 			Host:   net.JoinHostPort(host, "6379"),
 			Path:   "/0",
 		}).String()
-		if err := writeWorkloadServiceBinding(filepath.Join(root, name), map[string]string{
+		entries := map[string]string{
 			"type":         "redis",
 			"provider":     "valkey",
 			"host":         host,
 			"port":         "6379",
-			"username":     "default",
+			"username":     username,
 			"password":     password,
 			"uri":          uri,
 			"certificates": certificates,
-		}); err != nil {
+		}
+		if prefix := values[valkeyRuntimeKey(instance, "KEY_PREFIX")]; prefix != "" {
+			entries["baseharbor-key-prefix"] = prefix
+		}
+		if err := writeWorkloadServiceBinding(filepath.Join(root, name), entries); err != nil {
 			return "", fmt.Errorf("project workload service binding %s: %w", name, err)
 		}
 	}

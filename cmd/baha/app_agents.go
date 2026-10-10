@@ -46,7 +46,7 @@ func ensureBaseHarborAgentsSection(root string) (bool, error) {
 	switch startCount {
 	case 0:
 		if strings.TrimSpace(updated) != "" {
-			updated = strings.TrimRight(updated, "\r\n") + "\n\n"
+			updated += "\n\n"
 		}
 		updated += section + "\n"
 	case 1:

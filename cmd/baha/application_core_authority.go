@@ -100,6 +100,9 @@ func resolveApplicationCoreRuntime(ctx context.Context, resolved resolvedApplica
 	if err != nil {
 		return nil, bhruntime.Files{}, err
 	}
+	if err := requireApplicationSecretsTopology(resolved.Manifest, files.HA); err != nil {
+		return nil, bhruntime.Files{}, err
+	}
 	if remote {
 		provider, err := detectRuntimeForTarget(withTargetOverride(ctx, core.Name), core)
 		if err != nil {
@@ -111,6 +114,13 @@ func resolveApplicationCoreRuntime(ctx context.Context, resolved resolvedApplica
 		return nil, bhruntime.Files{}, unavailableApplicationCoreRuntime()
 	}
 	return workload, files, nil
+}
+
+func requireApplicationSecretsTopology(m application.Manifest, coreHA bool) error {
+	if m.Services.Secrets && application.ComponentHA(m, "secrets") && !coreHA {
+		return machine.NewError(machine.ErrorCapabilityMissing, "Application requests secrets HA but the bound Core OpenBao topology is Single.", "Use an explicitly provisioned HA Core or set the secrets component override to ha: false; existing Core data is never migrated implicitly.", false)
+	}
+	return nil
 }
 
 func unavailableApplicationCoreRuntime() error {

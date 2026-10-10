@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
@@ -376,9 +377,20 @@ func InspectSharedBackendTLSLifecycleAt(dataDir, namespace string, m Manifest) (
 		return nil, nil
 	}
 	shared := SharedBackendFilesAt(dataDir, namespace, m.Environment)
+	state, err := loadSharedBackendState(shared.State, m.Environment)
+	if err != nil {
+		return nil, err
+	}
 	var out []BackendTLSLifecycleObservation
 	if UsesSharedPostgreSQL(m) {
-		lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(shared.Dir, "postgresql", "service-access", "pki"))
+		root := filepath.Join(shared.Dir, "postgresql", "service-access", "pki")
+		if state.CoreSQL != nil {
+			root = filepath.Join(filepath.Dir(state.CoreSQL.Compose), "providers", "postgresql", "service-access", "pki")
+			if _, err := os.Stat(bhruntime.CorePostgresCA(*state.CoreSQL)); err != nil {
+				return nil, fmt.Errorf("inspect Core PostgreSQL trust: %w", err)
+			}
+		}
+		lifecycle, err := serviceaccess.InspectLifecycle(root)
 		if err != nil {
 			return nil, fmt.Errorf("inspect shared PostgreSQL TLS lifecycle: %w", err)
 		}
@@ -389,6 +401,9 @@ func InspectSharedBackendTLSLifecycleAt(dataDir, namespace string, m Manifest) (
 	if UsesSharedValkey(m) {
 		for _, instance := range ValkeyInstanceNames(m) {
 			root := filepath.Join(shared.Dir, "valkey", sharedBackendToken(m.Name), sharedBackendToken(instance))
+			if state.ValkeyAdminCredential != "" {
+				root = filepath.Join(shared.Dir, "valkey", "core", defaultServiceInstance)
+			}
 			lifecycle, err := serviceaccess.InspectLifecycle(filepath.Join(root, "service-access", "pki"))
 			if err != nil {
 				return nil, fmt.Errorf("inspect shared Valkey TLS lifecycle for %s: %w", instance, err)

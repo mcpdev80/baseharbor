@@ -12,7 +12,7 @@ BaseHarbor brings applications and their backends together on verified Linux Tar
 [Get started](tutorials/getting-started.md){ .md-button .md-button--primary }
 [GitHub](https://github.com/mcpdev80/baseharbor){ .md-button }
 
-Documentation for the **v0.4.24 candidate**. Pre-release validation is complete; the release is not published yet. For the currently published version, use the [GitHub release](https://github.com/mcpdev80/baseharbor/releases/latest).
+Documentation for **BaseHarbor v0.4.24**. Published versions and installation binaries are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
 
 ## From repository to running application
 

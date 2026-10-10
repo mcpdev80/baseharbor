@@ -5,11 +5,20 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	"strings"
 	"time"
 )
 
 var filerMembers = []string{"seaweedfs-node-1", "seaweedfs-node-2", "seaweedfs-node-3"}
+
+func retainedFilerMembers(files ProviderFiles) []string {
+	count, err := providertopology.ExistingMembers(files.Compose, "seaweedfs-node")
+	if err != nil {
+		return nil
+	}
+	return providertopology.Names("seaweedfs-node", count)
+}
 
 // SeaweedFS can lose a peer join between its initial peer snapshot and the
 // metadata subscription callback registration. A reachable filer then has an
@@ -18,6 +27,13 @@ var filerMembers = []string{"seaweedfs-node-1", "seaweedfs-node-2", "seaweedfs-n
 // metadata replication path before configuring identities. Rejoin only a
 // reader that fails this proof, then require the same proof to pass.
 func reconcileFilerMetadata(ctx context.Context, runtime Runtime, files ProviderFiles) error {
+	members, err := providertopology.ExistingMembers(files.Compose, "seaweedfs-node")
+	if err != nil {
+		return err
+	}
+	if members == 1 {
+		return nil
+	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
@@ -53,7 +69,11 @@ func filerShell(ctx context.Context, runtime Runtime, files ProviderFiles, membe
 }
 
 func createFilerMetadataMarkers(ctx context.Context, runtime Runtime, files ProviderFiles, root string) error {
-	for _, member := range filerMembers {
+	members := retainedFilerMembers(files)
+	if len(members) == 0 {
+		return fmt.Errorf("retained filer topology is unverified")
+	}
+	for _, member := range members {
 		for {
 			if _, err := filerShell(ctx, runtime, files, member, "fs.mkdir "+root+"/"+member+"\n"); err == nil {
 				break
@@ -67,12 +87,16 @@ func createFilerMetadataMarkers(ctx context.Context, runtime Runtime, files Prov
 }
 
 func missingFilerMetadataMarkers(ctx context.Context, runtime Runtime, files ProviderFiles, root string) []string {
+	members := retainedFilerMembers(files)
+	if len(members) == 0 {
+		return []string{"unverified-topology"}
+	}
 	var commands strings.Builder
-	for _, source := range filerMembers {
+	for _, source := range members {
 		fmt.Fprintf(&commands, "fs.meta.cat %s/%s\n", root, source)
 	}
 	var missing []string
-	for _, reader := range filerMembers {
+	for _, reader := range retainedFilerMembers(files) {
 		if !filerMetadataReaderReady(ctx, runtime, files, reader, commands.String()) {
 			missing = append(missing, reader)
 		}
@@ -81,11 +105,15 @@ func missingFilerMetadataMarkers(ctx context.Context, runtime Runtime, files Pro
 }
 
 func filerMetadataReaderReady(ctx context.Context, runtime Runtime, files ProviderFiles, reader, commands string) bool {
+	members := retainedFilerMembers(files)
+	if len(members) == 0 {
+		return false
+	}
 	out, err := filerShell(ctx, runtime, files, reader, commands)
 	if err != nil {
 		return false
 	}
-	for _, source := range filerMembers {
+	for _, source := range retainedFilerMembers(files) {
 		if !strings.Contains(out, `"name": "`+source+`"`) {
 			return false
 		}
@@ -132,7 +160,7 @@ func rejoinFilerMetadataMembers(ctx context.Context, runtime Runtime, files Prov
 		// Restore all incoming replication paths before changing another HA
 		// member. Its own store is durable across a container recreation.
 		var commands strings.Builder
-		for _, source := range filerMembers {
+		for _, source := range retainedFilerMembers(files) {
 			fmt.Fprintf(&commands, "fs.meta.cat %s/%s\n", root, source)
 		}
 		for {
@@ -150,7 +178,7 @@ func rejoinFilerMetadataMembers(ctx context.Context, runtime Runtime, files Prov
 func removeFilerMetadataMarkers(runtime Runtime, files ProviderFiles, root string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	for _, member := range filerMembers {
+	for _, member := range retainedFilerMembers(files) {
 		_, _ = filerShell(ctx, runtime, files, member, "fs.rm -rf "+root+"\n")
 	}
 }

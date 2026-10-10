@@ -18,7 +18,7 @@ func registerMCPConnectivityTools(server *mcp.Server) {
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, map[string]any{"rules": rules}, nil
+		return nil, normalizedConnectivityList(rules), nil
 	})
 	mcp.AddTool(server, machineMCPTool("connectivity.connect", "Converge and verify one directional connectivity exception after authorization of both environments.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineConnectivityInput) (*mcp.CallToolResult, any, error) {
 		source, err := parseConnectivityEndpointInput(formatConnectivityInput(input.Source))

@@ -9,6 +9,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestParseSelfUpdateOptionsDefaultsToStable(t *testing.T) {
@@ -141,7 +145,7 @@ func TestSelfUpdateCommandIsDiscoverableAndMutationRequiresConfirmation(t *testi
 			continue
 		}
 		updateFound = true
-		if child.Usage != "baha update [--check] [--yes] [--channel stable|rc | --version VERSION]" {
+		if child.Usage != "baha update [--check] [--yes] [--channel stable|rc | --version VERSION] [--recover]" {
 			t.Fatalf("unexpected update usage: %s", child.Usage)
 		}
 
@@ -208,5 +212,166 @@ func testRelease(tag string, prerelease bool) baseHarborRelease {
 			{Name: assetName, BrowserDownloadURL: "https://example.invalid/" + assetName, Digest: "sha256:abc"},
 			{Name: "checksums.txt", BrowserDownloadURL: "https://example.invalid/checksums.txt", Digest: "sha256:def"},
 		},
+	}
+}
+
+func TestUpdateCheckCoreCatalogHasImmutableReferenceVersions(t *testing.T) {
+	manifest, err := coreupdate.LoadRelease("0.4.24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Providers) != 3 || len(manifest.Backing) != 3 {
+		t.Fatalf("release must declare three Core providers, both Keycloak SQL placements and Core HA Spilo backing: %+v", manifest)
+	}
+	check := selfUpdateCheck{CoreReconciliation: "unavailable", CoreExpected: manifest.Providers, CoreBacking: manifest.Backing}
+	encoded, err := json.Marshal(check)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"core_expected"`) || !strings.Contains(string(encoded), `"core_backing"`) ||
+		!strings.Contains(string(encoded), `"core_reconciliation":"unavailable"`) {
+		t.Fatalf("structured update check omits immutable Core metadata: %s", encoded)
+	}
+}
+
+type updateInventoryRuntime struct {
+	bhruntime.RuntimeProvider
+	images map[string]bhruntime.ImageIdentity
+}
+
+func (r updateInventoryRuntime) ProjectServiceImageIdentity(_ context.Context, project, service string) (bhruntime.ImageIdentity, error) {
+	v, ok := r.images[project+"/"+service]
+	if !ok {
+		return bhruntime.ImageIdentity{}, fmt.Errorf("missing %s/%s", project, service)
+	}
+	return v, nil
+}
+
+func TestCoreUpdateCheckInspectsOwnedRunningProviderImages(t *testing.T) {
+	namespace := "test-core-update"
+	project := bhruntime.SharedProjectName(namespace)
+	idProject := bhruntime.SharedProjectName(namespace + "-core")
+	images := map[string]bhruntime.ImageIdentity{
+		project + "/postgres-member-1": {Reference: "docker.io/library/postgres:18-alpine", Digest: "docker.io/library/postgres@sha256:" + strings.Repeat("a", 64)},
+		project + "/openbao-member-1":  {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "docker.io/openbao/openbao@sha256:" + strings.Repeat("b", 64)},
+		idProject + "/keycloak-1":      {Reference: "quay.io/keycloak/keycloak:26.8.0", Digest: "quay.io/keycloak/keycloak@sha256:" + strings.Repeat("c", 64)},
+	}
+	images[idProject+"/keycloak-db"] = bhruntime.ImageIdentity{Reference: "docker.io/library/postgres:18-alpine", Digest: "sha256:" + strings.Repeat("d", 64)}
+	state := coreinstallation.State{ID: "owned-core", Ready: true, Spec: coreinstallation.Spec{Target: namespace}}
+	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
+	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
+	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Deltas) != 4 {
+		t.Fatalf("expected 4 Core and backing realizations, got %d", len(plan.Deltas))
+	}
+	for _, d := range plan.Deltas {
+		if d.Installed.Owner != "baseharbor" || (d.Installed.Scope != "shared" && d.Installed.Scope != "backing") || !strings.HasPrefix(d.Installed.Digest, "sha256:") {
+			t.Fatalf("unverified provider inventory %+v", d)
+		}
+	}
+	assertPinnedKeycloakBackingNoChangeIdentity(t, state, images, plan)
+	delete(images, idProject+"/keycloak-1")
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil {
+		t.Fatal("accepted incomplete Identity runtime inventory")
+	}
+}
+
+func TestCoreHAUpdateCheckReportsSeparatePinnedSpiloBacking(t *testing.T) {
+	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
+	project := bhruntime.SharedProjectName("test-core-update")
+	identityProject := bhruntime.SharedProjectName("test-core-update-core")
+	images := map[string]bhruntime.ImageIdentity{
+		project + "/postgres-member-1":  {Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "ghcr.io/zalando/spilo-18@sha256:" + strings.Repeat("a", 64)},
+		project + "/openbao-member-1":   {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "sha256:" + strings.Repeat("b", 64)},
+		identityProject + "/keycloak-1": {Reference: "quay.io/keycloak/keycloak:26.8.0", Digest: "sha256:" + strings.Repeat("c", 64)},
+	}
+	images[project+"/postgres-member-2"] = images[project+"/postgres-member-1"]
+	images[project+"/postgres-member-3"] = images[project+"/postgres-member-1"]
+	images[project+"/openbao-member-2"] = images[project+"/openbao-member-1"]
+	images[project+"/openbao-member-3"] = images[project+"/openbao-member-1"]
+	images[identityProject+"/keycloak-2"] = images[identityProject+"/keycloak-1"]
+	images[identityProject+"/keycloak-3"] = images[identityProject+"/keycloak-1"]
+	images[identityProject+"/keycloak-db-member-1"] = bhruntime.ImageIdentity{Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "sha256:" + strings.Repeat("a", 64)}
+	images[identityProject+"/keycloak-db-member-2"] = images[identityProject+"/keycloak-db-member-1"]
+	images[identityProject+"/keycloak-db-member-3"] = images[identityProject+"/keycloak-db-member-1"]
+	plan, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Deltas) != 4 {
+		t.Fatalf("expected Core SQL, OpenBao, Identity and Keycloak backing, got %d", len(plan.Deltas))
+	}
+	found := false
+	for _, delta := range plan.Deltas {
+		if delta.Installed.Scope != "backing" {
+			continue
+		}
+		found = true
+		if delta.Installed.Image != "ghcr.io/zalando/spilo-18:4.1-p2" || delta.Desired.Version != "18-spilo-4.1-p2" || delta.Classification != coreupdate.Unsupported {
+			t.Fatalf("HA backing delta must fail closed on unverified pin: %+v", delta)
+		}
+	}
+	if !found {
+		t.Fatal("missing Spilo backing delta")
+	}
+	assertPinnedKeycloakBackingNoChangeIdentity(t, state, images, plan)
+}
+
+func assertPinnedKeycloakBackingNoChangeIdentity(t *testing.T, state coreinstallation.State, images map[string]bhruntime.ImageIdentity, plan coreupdate.Plan) {
+	t.Helper()
+	for _, delta := range plan.Deltas {
+		if delta.Installed.Scope != "backing" {
+			continue
+		}
+		project := bhruntime.SharedProjectName(state.Spec.Target + "-core")
+		services := []string{delta.Installed.Instance}
+		if state.Spec.HA {
+			services = []string{"keycloak-db-member-1", "keycloak-db-member-2", "keycloak-db-member-3"}
+		}
+		for _, service := range services {
+			images[project+"/"+service] = bhruntime.ImageIdentity{Reference: delta.Desired.Image, Digest: delta.Desired.Digest}
+		}
+	}
+	pinned, err := inspectCoreRuntimePlan(t.Context(), "0.4.24", state, updateInventoryRuntime{images: images})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, delta := range pinned.Deltas {
+		if delta.Installed.Scope == "backing" && (delta.Classification != coreupdate.NoChange || delta.Installed.Image != delta.Desired.Image || delta.Installed.Digest != delta.Desired.Digest || delta.Installed.Version != delta.Desired.Version) {
+			t.Fatalf("unchanged immutable Keycloak backing cannot satisfy native transaction invariant: %+v", delta)
+		}
+	}
+}
+
+func TestCoreInventoryRejectsIncompleteOwnedState(t *testing.T) {
+	state := coreinstallation.State{ID: "owned", Ready: true, Spec: coreinstallation.Spec{Target: "core-test"}}
+	project := bhruntime.SharedProjectName("core-test")
+	runtime := updateInventoryRuntime{images: map[string]bhruntime.ImageIdentity{
+		project + "/postgres-member-1": {Reference: "docker.io/library/postgres:18-alpine", Digest: "sha256:" + strings.Repeat("a", 64)},
+		project + "/openbao-member-1":  {Reference: "docker.io/openbao/openbao:2.7.0", Digest: "sha256:" + strings.Repeat("b", 64)},
+	}}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, runtime); err == nil {
+		t.Fatal("accepted missing Identity image")
+	}
+	state.Spec.Target = ""
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, runtime); err == nil {
+		t.Fatal("accepted empty owning Target")
+	}
+}
+
+func TestCoreHAInventoryRejectsImageDriftAndMissingPeers(t *testing.T) {
+	state := coreinstallation.State{ID: "owned-ha", Ready: true, Spec: coreinstallation.Spec{Target: "test-core-update", HA: true}}
+	project := bhruntime.SharedProjectName(state.Spec.Target)
+	primary := bhruntime.ImageIdentity{Reference: "ghcr.io/zalando/spilo-18:4.1-p2", Digest: "sha256:" + strings.Repeat("a", 64)}
+	images := map[string]bhruntime.ImageIdentity{project + "/postgres-member-1": primary, project + "/postgres-member-2": primary}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil || !strings.Contains(err.Error(), "postgres-member-3") {
+		t.Fatalf("missing HA peer accepted: %v", err)
+	}
+	images[project+"/postgres-member-3"] = bhruntime.ImageIdentity{Reference: primary.Reference, Digest: "sha256:" + strings.Repeat("b", 64)}
+	if _, err := inspectCoreRuntimePlan(context.Background(), "0.4.24", state, updateInventoryRuntime{images: images}); err == nil || !strings.Contains(err.Error(), "disagrees") {
+		t.Fatalf("HA image drift accepted: %v", err)
 	}
 }

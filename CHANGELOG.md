@@ -4,7 +4,7 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
-## [0.4.24] - Unreleased
+## [0.4.24] - 2026-10-11
 
 ### Added
 
@@ -49,7 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Provider updates require compatible release-pinned images, verified ownership and backups. PostgreSQL major upgrades and unsupported provider upgrade paths remain blocked.
 - Shared native PostgreSQL HA and physical backup-state recovery are supported; application-scoped PostgreSQL HA, cross-host failover and automatic plaintext-to-mTLS DCS migration remain unsupported.
 - Existing installations do not silently change topology. SQL transactions with unknown commit outcomes are not automatically replayed.
-- Implementation and complete pre-release validation are finished. Publication remains pending, so this version is still Unreleased.
 
 ## [0.4.23] - 2026-10-08
 
@@ -1075,7 +1074,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.24...HEAD
+[0.4.24]: https://github.com/mcpdev80/baseharbor/compare/v0.4.23...v0.4.24
+[0.4.23]: https://github.com/mcpdev80/baseharbor/compare/v0.4.22...v0.4.23
+[0.4.22]: https://github.com/mcpdev80/baseharbor/compare/v0.4.21...v0.4.22
+[0.4.21]: https://github.com/mcpdev80/baseharbor/compare/v0.4.20...v0.4.21
+[0.4.20]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...v0.4.20
 [0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
 [0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
 [0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17

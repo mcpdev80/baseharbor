@@ -21,6 +21,8 @@ func TestRenderComposeProjectQuadletsMapsManagedRuntimeSemantics(t *testing.T) {
     image: docker.io/library/postgres:18-alpine
     restart: unless-stopped
     user: "postgres"
+    hostname: postgres-member-1
+    userns_mode: keep-id
     read_only: true
     cap_drop: ["ALL"]
     cap_add: ["NET_BIND_SERVICE"]
@@ -86,6 +88,8 @@ networks:
 	for _, want := range []string{
 		"Image=docker.io/library/postgres:18-alpine",
 		"User=postgres",
+		"HostName=postgres-member-1",
+		"UserNS=keep-id",
 		"ReadOnly=true",
 		"DropCapability=all",
 		"AddCapability=NET_BIND_SERVICE",
@@ -652,11 +656,15 @@ func TestRenderComposeProjectQuadletsHonorsCompletedDependency(t *testing.T) {
 		"Wants=dependency-complete-init.service",
 		"After=dependency-complete-init.service",
 		"ExecStartPre=/bin/sh -ec",
-		"systemctl --user is-active --quiet dependency-complete-init.service",
+		"systemctl --user show dependency-complete-init.service",
+		"ExecMainExitTimestampMonotonic",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("completed dependency Quadlet missing %q:\n%s", want, unit)
 		}
+	}
+	if !strings.Contains(got.Files["dependency-complete-init.container"], "RemainAfterExit=yes") {
+		t.Fatal("init exit evidence may disappear before dependent verification")
 	}
 	if strings.Contains(unit, "Requires=dependency-complete-init.service") {
 		t.Fatalf("completed dependency must not use Requires= because successful one-shots become inactive:\n%s", unit)

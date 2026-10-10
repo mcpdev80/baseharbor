@@ -520,13 +520,7 @@ func (c Compose) ProjectServiceImageIdentity(ctx context.Context, project, servi
 	}
 	digests, err := c.directOutput(ctx, "image", "inspect", "--format", `{{range .RepoDigests}}{{.}}{{"\n"}}{{end}}`, identity.ImageID)
 	if err == nil {
-		for _, line := range strings.Split(digests, "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				identity.Digest = line
-				break
-			}
-		}
+		identity.Digest = c.verifiedImageRepositoryDigest(ctx, identity, digests)
 	}
 	return identity, nil
 }

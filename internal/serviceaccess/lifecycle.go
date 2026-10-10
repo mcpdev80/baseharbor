@@ -78,10 +78,14 @@ func InspectLifecycle(dir string) (LifecycleObservation, error) {
 }
 
 func lifecycleHealth(expiresAt time.Time, renewalMode string) (string, string) {
+	return lifecycleHealthAt(expiresAt, renewalMode, time.Now())
+}
+
+func lifecycleHealthAt(expiresAt time.Time, renewalMode string, now time.Time) (string, string) {
 	if expiresAt.IsZero() {
 		return "unknown", "certificate expiry is not recorded"
 	}
-	remaining := time.Until(expiresAt)
+	remaining := expiresAt.Sub(now)
 	switch {
 	case remaining <= 0:
 		return "critical", "certificate is expired"
@@ -92,7 +96,7 @@ func lifecycleHealth(expiresAt time.Time, renewalMode string) (string, string) {
 		return "critical", "certificate expires within 7 days; replacement is required"
 	case remaining <= 30*24*time.Hour:
 		if renewalMode == "automatic-reconcile" {
-			return "warn", "certificate expires within 30 days; the next service reconcile will renew it before the 7-day renewal window"
+			return "ok", ""
 		}
 		return "warn", "certificate expires within 30 days; prepare replacement material"
 	default:

@@ -382,8 +382,13 @@ func (e *applicationUpExecution) finalize(ctx context.Context) error {
 	if err := recordRepositoryAppliedFingerprint(ctx, e.resolved, e.files); err != nil {
 		return fmt.Errorf("record successfully started repository desired state: %w", err)
 	}
+	status, _, err := collectResolvedApplicationStatus(ctx, e.resolved)
+	if err != nil {
+		return fmt.Errorf("observe application after restart: %w", err)
+	}
+	if err := recordObservedDeployment(e.resolved, observedApplicationState(status), status.Ready); err != nil {
+		return fmt.Errorf("record application after restart: %w", err)
+	}
 	e.term.Section("Application")
-	e.term.Result("READY", "application", "runtime and requested infrastructure verified")
-	fmt.Fprintln(e.out, "\nREADY")
-	return nil
+	return reportApplicationConvergence(e.term, status)
 }

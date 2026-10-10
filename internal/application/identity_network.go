@@ -29,9 +29,9 @@ func IdentityProviderNetworkNameForPlacement(m Manifest, namespace string, place
 	base := "baseharbor-identity"
 	switch placement.Scope {
 	case capability.ScopeShared:
-		if boundary := strings.TrimSpace(placement.SharingBoundary); boundary != "" {
-			base += "-" + boundary
-		}
+		// Logical consumer boundaries reuse the installation-owned Identity.
+		// Match its physical network rather than inventing a consumer network.
+		base += "-core"
 	case capability.ScopeApplication:
 		base += "-" + m.Name + "-" + m.Environment
 	default:

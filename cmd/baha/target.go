@@ -29,9 +29,11 @@ type targetListItem struct {
 }
 
 type targetShowResult struct {
-	ContractVersion string                    `json:"contract_version"`
-	Target          deployment.ResolvedTarget `json:"target"`
-	StateRoot       string                    `json:"state_root"`
+	DockerEngine      *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	DockerEngineError string                             `json:"docker_engine_error,omitempty"`
+	ContractVersion   string                             `json:"contract_version"`
+	Target            deployment.ResolvedTarget          `json:"target"`
+	StateRoot         string                             `json:"state_root"`
 }
 
 type targetInspectionResult struct {
@@ -41,6 +43,7 @@ type targetInspectionResult struct {
 	Environment        string                             `json:"environment,omitempty"`
 	Repository         string                             `json:"repository,omitempty"`
 	Effective          string                             `json:"effective"`
+	SelectionOrigin    string                             `json:"selection_origin"`
 	OperatorAuth       map[string]operatorAuthObservation `json:"operator_auth,omitempty"`
 	AccessCapabilities *targetaccess.Descriptor           `json:"access_capabilities,omitempty"`
 }
@@ -66,18 +69,19 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	}
 	explicit := targetOverrideFromContext(ctx)
 	activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
+	selected, selectionErr := selectedTargetName(explicit, activated, cfg)
+	if selectionErr != nil {
+		return deployment.ResolvedTarget{}, selectionErr
+	}
 	state, configured, err := orgconfig.LoadActiveOptional()
 	if err != nil || !configured {
 		if err == nil {
-			return cfg.ResolveTarget(explicit, activated)
+			return cfg.ResolveTarget(selected, "")
 		}
 		return deployment.ResolvedTarget{}, err
 	}
 	var preferences []orgconfig.PreferenceLayer
-	userTarget := activated
-	if userTarget == "" {
-		userTarget = strings.TrimSpace(cfg.DefaultTarget)
-	}
+	userTarget := selected
 	if userTarget != "" {
 		defaults := orgconfig.EnvironmentDefaults{Target: userTarget}
 		preferences = append(preferences, orgconfig.PreferenceLayer{Scope: orgconfig.ScopeUser,
@@ -94,7 +98,7 @@ func effectiveTarget(ctx context.Context) (deployment.ResolvedTarget, error) {
 	if effective.Target != nil {
 		return cfg.ResolveTarget(effective.Target.Value, "")
 	}
-	return cfg.ResolveTarget("", "")
+	return cfg.ResolveTarget(selected, "")
 }
 
 func organizationDefaultTarget() (string, error) {
@@ -139,47 +143,7 @@ func targetCommand() *cli.Command {
 		Name:    "target",
 		Summary: "Inspect and manage BaseHarbor deployment targets",
 		Usage:   "baha target [list|show|create|delete|activate|deactivate] [-o json|--output json|--json]",
-		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			filtered, format, err := parseReadOutputArgs(args, "target")
-			if err != nil {
-				return err
-			}
-			if len(filtered) != 0 {
-				return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
-			}
-			result, err := collectTargetInspection(ctx)
-			if err != nil {
-				return err
-			}
-			if format == outputJSON {
-				return writeJSON(out, result)
-			}
-			fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
-			fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
-			fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
-			if result.Target.Scope != "" {
-				fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
-			}
-			if len(result.OperatorAuth) > 0 {
-				fmt.Fprintln(out, "\nOperator authentication")
-				environments := make([]string, 0, len(result.OperatorAuth))
-				for environment := range result.OperatorAuth {
-					environments = append(environments, environment)
-				}
-				sort.Strings(environments)
-				for _, environment := range environments {
-					auth := result.OperatorAuth[environment]
-					fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
-				}
-			}
-			if result.Application != "" {
-				fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
-				fmt.Fprintf(out, "Environment  %s\n", result.Environment)
-				fmt.Fprintf(out, "Repository   %s\n", result.Repository)
-			}
-			fmt.Fprintf(out, "\nEffective\n%s\n", result.Effective)
-			return nil
-		},
+		Run:     inspectTargetCommand,
 		Children: []*cli.Command{
 			{
 				Name:    "list",
@@ -198,9 +162,21 @@ func targetCommand() *cli.Command {
 						return err
 					}
 					activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET"))
-					effective, err := cfg.ResolveTarget("", activated)
-					if err != nil {
-						return err
+					selection, selectionErr := selectedTargetName(targetOverrideFromContext(ctx), activated, cfg)
+					// Listing must remain usable when multiple Targets require a choice.
+					// All other resolver failures (corrupt selection/config) fail closed.
+					if selectionErr != nil {
+						if typed := machine.Classify(selectionErr); typed.Code != machine.ErrorConflict && typed.Code != machine.ErrorNotFound {
+							return selectionErr
+						}
+					}
+					effectiveName := ""
+					if selectionErr == nil {
+						effective, resolveErr := cfg.ResolveTarget(selection, "")
+						if resolveErr != nil {
+							return resolveErr
+						}
+						effectiveName = effective.Name
 					}
 					names := cfg.TargetNames()
 					if _, configured := cfg.Targets["local"]; !configured {
@@ -233,10 +209,10 @@ func targetCommand() *cli.Command {
 						if name == cfg.DefaultTarget {
 							marks = append(marks, "default")
 						}
-						if name == activated {
+						if selectionErr == nil && name == selection && (activated != "" || targetOverrideFromContext(ctx) != "" || persistedTargetIsActive()) {
 							marks = append(marks, "active")
 						}
-						if name == effective.Name {
+						if name == effectiveName {
 							marks = append(marks, "effective")
 						}
 						items = append(items, targetListItem{Name: name, Runtime: provider, Access: access, AccessProvider: accessProvider, Scope: scope, Selectors: marks})
@@ -244,49 +220,11 @@ func targetCommand() *cli.Command {
 					return writeTargetList(out, format, items)
 				},
 			},
-			{
-				Name:    "show",
-				Summary: "Show one target",
-				Usage:   "baha target show [NAME] [-o json|--output json|--json]",
-				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					filtered, format, err := parseReadOutputArgs(args, "target show")
-					if err != nil {
-						return err
-					}
-					if len(filtered) > 1 {
-						return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
-					}
-					cfg, err := deployment.LoadConfig()
-					if err != nil {
-						return err
-					}
-					name := ""
-					if len(filtered) == 1 {
-						name = filtered[0]
-					}
-					target, err := cfg.ResolveTarget(name, os.Getenv("BASEHARBOR_TARGET"))
-					if err != nil {
-						return err
-					}
-					root, err := deployment.TargetStateRoot(target.Name)
-					if err != nil {
-						return err
-					}
-					if format == outputJSON {
-						return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root})
-					}
-					fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
-					if target.Scope != "" {
-						fmt.Fprintf(out, "Scope    %s\n", target.Scope)
-					}
-					fmt.Fprintf(out, "State    %s\n", root)
-					return nil
-				},
-			},
+			targetShowCommand(),
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default]",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]",
 				Run:     createTarget,
 			},
 			{
@@ -297,38 +235,155 @@ func targetCommand() *cli.Command {
 			},
 			{
 				Name:    "activate",
-				Summary: "Print shell code that activates a target in the current shell",
+				Summary: "Persist the active deployment target for this user",
 				Usage:   "baha target activate NAME",
-				Long:    "Activation is shell-local. Evaluate the emitted assignment in the current shell; BaseHarbor never mutates a parent process environment.",
+				Long:    "Persists per-user target selection across CLI processes. --target and BASEHARBOR_TARGET override the persisted selection.",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+					if len(args) == 1 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target activate", args[0])
+					}
+					if len(args) == 0 {
+						return guidedTargetActivation(ctx, out, errOut)
+					}
 					if len(args) != 1 {
-						return usageError("baha target activate requires NAME", "Example: eval \"$(baha target activate docker-dev)\"")
+						return usageError("baha target activate requires NAME", "Example: baha target activate docker-dev")
 					}
 					cfg, err := deployment.LoadConfig()
 					if err != nil {
 						return err
 					}
-					if _, ok := cfg.Targets[args[0]]; !ok {
-						return fmt.Errorf("target %q is not configured", args[0])
+					if _, ok := cfg.Targets[args[0]]; !ok && args[0] != "local" {
+						return machine.NewError(machine.ErrorNotFound, fmt.Sprintf("target %q is not configured", args[0]), "Run baha target list to choose an existing deployment Target.", false)
 					}
-					fmt.Fprint(out, shellActivationCode(currentShellName(), args[0]))
+					if err := writePersistedTarget(args[0]); err != nil {
+						return err
+					}
+					fmt.Fprintf(out, "Active target: %s\n", args[0])
 					return nil
 				},
 			},
 			{
 				Name:    "deactivate",
-				Summary: "Print shell code that clears the active target",
+				Summary: "Clear persisted active deployment target",
 				Usage:   "baha target deactivate",
 				Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-					if len(args) != 0 {
-						return usageError("baha target deactivate does not accept arguments", "Example: eval \"$(baha target deactivate)\"")
+					if len(args) != 0 && strings.HasPrefix(args[0], "-") {
+						return unknownOptionUsage("baha target deactivate", args[0])
 					}
-					fmt.Fprint(out, shellDeactivationCode(currentShellName()))
+					if len(args) != 0 {
+						return usageError("baha target deactivate does not accept arguments", "Example: baha target deactivate")
+					}
+					if err := clearPersistedTarget(); err != nil {
+						return err
+					}
+					fmt.Fprintln(out, "Active target cleared")
 					return nil
 				},
 			},
 		},
 	}
+}
+
+func targetShowCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "show",
+		Summary: "Show one target",
+		Usage:   "baha target show [NAME] [-o json|--output json|--json]",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, format, err := parseReadOutputArgs(args, "target show")
+			if err != nil {
+				return err
+			}
+			if len(filtered) > 1 {
+				return usageError("baha target show accepts at most one NAME", "Run 'baha target show NAME [--json]'.")
+			}
+			cfg, err := deployment.LoadConfig()
+			if err != nil {
+				return err
+			}
+			name := ""
+			if len(filtered) == 1 {
+				name = filtered[0]
+			}
+			explicit := name
+			if explicit == "" {
+				explicit = targetOverrideFromContext(ctx)
+			}
+			selection, err := selectedTargetName(explicit, strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")), cfg)
+			if err != nil {
+				return err
+			}
+			target, err := cfg.ResolveTarget(selection, "")
+			if err != nil {
+				return err
+			}
+			root, err := deployment.TargetStateRoot(target.Name)
+			if err != nil {
+				return err
+			}
+			engine, engineErr := inspectTargetDockerEngine(ctx, target)
+			engineError := ""
+			if engineErr != nil {
+				engineError = engineErr.Error()
+			}
+			if format == outputJSON {
+				return writeJSON(out, targetShowResult{ContractVersion: machine.ContractVersion, Target: target, StateRoot: root, DockerEngine: engine, DockerEngineError: engineError})
+			}
+			fmt.Fprintf(out, "Target   %s\nRuntime  %s\nAccess   %s (%s)\n", target.Name, target.RuntimeProvider, target.AccessReference, target.AccessProvider)
+			if target.Scope != "" {
+				fmt.Fprintf(out, "Scope    %s\n", target.Scope)
+			}
+			fmt.Fprintf(out, "State    %s\n", root)
+			renderDockerEngine(out, engine)
+			if engineError != "" {
+				fmt.Fprintf(out, "Docker unavailable: %s\n", engineError)
+			}
+			return nil
+		},
+	}
+}
+
+func inspectTargetCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, format, err := parseReadOutputArgs(args, "target")
+	if err != nil {
+		return err
+	}
+	if len(filtered) != 0 {
+		return unknownOptionUsage("baha target", filtered[0], "-o", "--output", "--json")
+	}
+	result, err := collectTargetInspection(ctx)
+	if err != nil {
+		return err
+	}
+	if format == outputJSON {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "Target   %s\n", result.Target.Name)
+	fmt.Fprintf(out, "Runtime  %s\n", result.Target.RuntimeProvider)
+	fmt.Fprintf(out, "Selected %s\n", result.SelectionOrigin)
+	fmt.Fprintf(out, "Access   %s (%s)\n", result.Target.AccessReference, result.Target.AccessProvider)
+	if result.Target.Scope != "" {
+		fmt.Fprintf(out, "Scope    %s\n", result.Target.Scope)
+	}
+	if len(result.OperatorAuth) > 0 {
+		fmt.Fprintln(out, "\nOperator authentication")
+		environments := make([]string, 0, len(result.OperatorAuth))
+		for environment := range result.OperatorAuth {
+			environments = append(environments, environment)
+		}
+		sort.Strings(environments)
+		for _, environment := range environments {
+			auth := result.OperatorAuth[environment]
+			fmt.Fprintf(out, "  %-12s %-16s %-14s %s\n", environment, auth.Status, auth.Session, auth.Provider)
+		}
+	}
+	if result.Application != "" {
+		fmt.Fprintf(out, "\nApplication  %s\n", result.Application)
+		fmt.Fprintf(out, "Environment  %s\n", result.Environment)
+		fmt.Fprintf(out, "Repository   %s\n", result.Repository)
+	}
+	fmt.Fprintf(out, "\nEffective\n%s\n", result.Effective)
+	return nil
 }
 
 func collectTargetInspection(ctx context.Context) (targetInspectionResult, error) {
@@ -340,6 +395,7 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 		ContractVersion: machine.ContractVersion,
 		Target:          target,
 		Effective:       target.Name,
+		SelectionOrigin: targetSelectionOrigin(ctx),
 	}
 	if kind, parseErr := targetaccess.ParseProviderKind(target.AccessProvider); parseErr == nil {
 		if descriptor, builtIn := targetaccess.BuiltInDescriptor(kind); builtIn {
@@ -367,6 +423,9 @@ func collectTargetInspection(ctx context.Context) (targetInspectionResult, error
 }
 
 func createTarget(ctx context.Context, args []string, out, errOut io.Writer) error {
+	if len(args) == 0 {
+		return runGuidedNewLocalTarget(ctx, out, errOut)
+	}
 	filtered, format, err := parseReadOutputArgs(args, "target create")
 	if err != nil {
 		return err
@@ -379,11 +438,11 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return err
 	}
-	var runtimeProvider, accessProvider, accessName, reference, scope string
+	var runtimeProvider, accessProvider, accessName, reference, scope, dockerEndpoint, dockerContext, dockerMode string
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--docker-endpoint", "--docker-context", "--docker-mode":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
@@ -400,11 +459,17 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 				reference = value
 			case "--scope":
 				scope = value
+			case "--docker-endpoint":
+				dockerEndpoint = value
+			case "--docker-context":
+				dockerContext = value
+			case "--docker-mode":
+				dockerMode = value
 			}
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
 		}
 	}
 	if runtimeProvider == "" || accessName == "" || reference == "" {
@@ -417,7 +482,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault})
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
 	if err != nil {
 		return err
 	}
@@ -438,6 +503,11 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return err
 	}
 	args = filtered
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME; target deletion does not accept --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
+		}
+	}
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
 	}
@@ -499,6 +569,9 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 	if err != nil {
 		return deployment.ResolvedTarget{}, bhruntime.Files{}, err
 	}
+	if err := ensureTargetDockerBinding(ctx, target); err != nil {
+		return target, bhruntime.Files{}, err
+	}
 	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports, ha)
 	if err != nil {
 		return target, bhruntime.Files{}, err
@@ -512,8 +585,11 @@ func detectRuntimeForTarget(ctx context.Context, target deployment.ResolvedTarge
 			"Selected remote Target has no authenticated live runtime binding.",
 			"Establish the selected Target Access session; BaseHarbor never executes a remote selection locally.", true)
 	}
-	provider, err := runtimeresolver.RuntimeProvider(ctx, bhruntime.ProviderKind(target.RuntimeProvider))
+	provider, err := runtimeresolver.RuntimeProvider(targetDockerEngineContext(ctx, target), bhruntime.ProviderKind(target.RuntimeProvider))
 	if err != nil {
+		return nil, err
+	}
+	if err := validateTargetDockerBinding(ctx, target, provider, false); err != nil {
 		return nil, err
 	}
 	return provider, nil

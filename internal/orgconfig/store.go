@@ -15,6 +15,9 @@ type ActiveState struct {
 }
 
 func configRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "config", "organization"), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor", "organization"), nil
 	}
@@ -26,6 +29,9 @@ func configRoot() (string, error) {
 }
 
 func cacheRoot() (string, error) {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		return filepath.Join(root, "cache", "organization"), nil
+	}
 	if root := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); root != "" {
 		return filepath.Join(root, "baseharbor", "organization"), nil
 	}

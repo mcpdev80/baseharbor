@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -272,8 +274,7 @@ func readerIsTerminal(in io.Reader) bool {
 	if !ok {
 		return true
 	}
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(file.Fd())
 }
 
 func portAvailable(port int) bool {

@@ -215,6 +215,7 @@ func runtimeStatus(parent context.Context, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	result, err := inspectControlPlane(ctx)
+	renderDockerEngine(out, result.DockerEngine)
 	if err != nil {
 		return err
 	}

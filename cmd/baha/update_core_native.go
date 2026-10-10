@@ -1,0 +1,637 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/health"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/providerbinding"
+	"github.com/mcpdev80/baseharbor/internal/providerupgrade"
+	keycloakadapter "github.com/mcpdev80/baseharbor/internal/providerupgrade/keycloak"
+	baoAdapter "github.com/mcpdev80/baseharbor/internal/providerupgrade/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+type coreNativeRuntimeOps struct {
+	runtime                                                     bhruntime.RuntimeProvider
+	core                                                        bhruntime.Files
+	identity                                                    identityprovider.KeycloakFiles
+	dataDir, target, installation, issuer, release, receiptPath string
+}
+
+func (o *coreNativeRuntimeOps) files(d coreupdate.Delta) (string, string, string) {
+	if d.Installed.Kind == coreupdate.Identity || d.Installed.Scope == "backing" {
+		return o.identity.Project, o.identity.Compose, o.identity.Env
+	}
+	return o.core.Project, o.core.Compose, o.core.Env
+}
+
+// verifyOpenBaoBackingSQL proves that the protected OpenBao application
+// credentials can authenticate against their actual, dedicated SQL database.
+// Passwords are passed via stdin by probeControlPlanePostgresCredential.
+func (o *coreNativeRuntimeOps) verifyOpenBaoBackingSQL(ctx context.Context) error {
+	credentials, err := bhruntime.LoadControlPlaneCredentials(o.core)
+	if err != nil {
+		return fmt.Errorf("managed OpenBao SQL credentials unavailable: %w", err)
+	}
+	if err := probeControlPlanePostgresCredential(ctx, o.runtime, o.core, credentials.OpenBaoDBUser, credentials.OpenBaoDBPassword, "openbao"); err != nil {
+		return fmt.Errorf("OpenBao backing SQL authentication/readiness failed: %w", err)
+	}
+	return nil
+}
+
+// verifyKeycloakBackingSQL authenticates with the dedicated Keycloak
+// application role over verified TLS. It does not use the superuser or log
+// credentials, and runs only in the owned single-Core topology.
+func (o *coreNativeRuntimeOps) verifyKeycloakBackingSQL(ctx context.Context) error {
+	files := bhruntime.Files{Project: o.identity.Project, Compose: o.identity.Compose, Env: o.identity.Env}
+	values, err := bhruntime.RuntimeEnvironment(files)
+	if err != nil {
+		return fmt.Errorf("protected Keycloak SQL credentials unavailable: %w", err)
+	}
+	user, password, database := values["BASEHARBOR_KEYCLOAK_DB_USER"], values["BASEHARBOR_KEYCLOAK_DB_PASSWORD"], values["BASEHARBOR_KEYCLOAK_DB_NAME"]
+	if user == "" || password == "" || database == "" {
+		return errors.New("Keycloak SQL owner credentials are incomplete")
+	}
+	if o.identity.SharedSQL != nil {
+		if o.identity.SharedSQL.Project != o.core.Project || o.identity.SharedSQL.Compose != o.core.Compose {
+			return errors.New("Identity SQL is not bound to the selected Core")
+		}
+		const sharedScript = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem PGCONNECT_TIMEOUT=5\nexec psql --no-psqlrc -h postgres -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN '1' ELSE 'missing_keycloak_schema' END\" -v ON_ERROR_STOP=1"
+		out, err := o.runtime.ExecProjectInput(ctx, o.core.Project, o.core.Compose, o.core.Env, []byte(password+"\n"), "postgres-admin", "sh", "-ec", sharedScript, "--", user, database)
+		if err != nil || strings.TrimSpace(out) != "1" {
+			return errors.New("Keycloak shared Core SQL authentication/schema verification failed")
+		}
+		return nil
+	}
+	const script = "IFS= read -r PGPASSWORD || exit 1\nexport PGPASSWORD PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/db-tls/ca.pem PGCONNECT_TIMEOUT=5\nexec psql -h keycloak-db -p 5432 -U \"$1\" -d \"$2\" -Atqc \"SELECT CASE WHEN to_regclass('public.realm') IS NOT NULL AND to_regclass('public.client') IS NOT NULL THEN '1' ELSE 'missing_keycloak_schema' END\" -v ON_ERROR_STOP=1"
+	var output strings.Builder
+	if err := o.runtime.RunProjectFilesEnv(ctx, files.Project, filepath.Dir(files.Compose), values,
+		strings.NewReader(password+"\n"), &output, io.Discard, []string{files.Compose},
+		"run", "--rm", "--no-deps", "keycloak-db-init", "sh", "-ec", script, "--", user, database); err != nil {
+		return fmt.Errorf("Keycloak managed SQL user cannot authenticate over TLS: %w", err)
+	}
+	if strings.TrimSpace(output.String()) != "1" {
+		return errors.New("Keycloak SQL realm/client schema not verified")
+	}
+	return nil
+}
+
+func (o *coreNativeRuntimeOps) inspectNativeKeycloakMember(ctx context.Context, service string) (keycloakadapter.State, error) {
+	services := []string{service}
+	topology := keycloakadapter.TopologySingle
+	if o.core.HA {
+		services = []string{"keycloak-1", "keycloak-2", "keycloak-3"}
+		topology = keycloakadapter.TopologyHA
+	}
+	containers, err := o.runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		return keycloakadapter.State{}, err
+	}
+	running := map[string]bool{}
+	for _, container := range containers {
+		if container.Project != o.identity.Project {
+			continue
+		}
+		for _, expected := range services {
+			if container.Service != expected {
+				continue
+			}
+			if running[expected] {
+				return keycloakadapter.State{}, fmt.Errorf("duplicate Keycloak managed member %s", expected)
+			}
+			if !container.Running || strings.EqualFold(container.Health, "unhealthy") {
+				return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s not healthy", expected)
+			}
+			running[expected] = true
+		}
+	}
+	members := make([]keycloakadapter.Member, 0, len(services))
+	stateVersion := ""
+	for _, expected := range services {
+		if !running[expected] {
+			return keycloakadapter.State{}, fmt.Errorf("Keycloak managed member %s is not running", expected)
+		}
+		image, err := o.runtime.ProjectServiceImageIdentity(ctx, o.identity.Project, expected)
+		if err != nil {
+			return keycloakadapter.State{}, err
+		}
+		ref, err := ownedTaggedImage(image, o.identity.Compose, expected)
+		if err != nil {
+			return keycloakadapter.State{}, err
+		}
+		index := strings.LastIndex(ref, ":")
+		if index < 0 || index == len(ref)-1 {
+			return keycloakadapter.State{}, errors.New("Keycloak runtime image version is not observable")
+		}
+		version := ref[index+1:]
+		if stateVersion == "" {
+			stateVersion = version
+		}
+		members = append(members, keycloakadapter.Member{Name: expected, Version: version, Ready: true})
+	}
+	return keycloakadapter.State{
+		Version: stateVersion, Owner: "baseharbor", Topology: topology, Healthy: true,
+		DatabaseType: "postgresql", Members: members,
+	}, nil
+}
+
+// admitNativeProviderTransition delegates conservative single-Core patch upgrades
+// to the actual OpenBao/Keycloak adapter Preflight contracts while the original
+// installation is still running. Snapshot and mutation remain journal-owned.
+func (o *coreNativeRuntimeOps) admitNativeProviderTransition(ctx context.Context, d coreupdate.Delta) error {
+	if d.Classification == coreupdate.NoChange {
+		return nil
+	}
+	request := providerupgrade.Request{CurrentVersion: d.Installed.Version, TargetVersion: d.Desired.Version,
+		TargetImage: d.Desired.Image, TargetDigest: d.Desired.Digest}
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		adapter := baoAdapter.New(&baoAdapter.NativeOps{Executor: o.runtime, Files: o.core, Owner: "baseharbor",
+			Hooks: baoAdapter.RuntimeHooks{UpgradePath: patchProviderUpgradePath}})
+		assessment, err := adapter.Preflight(ctx, request)
+		if err != nil {
+			return err
+		}
+		if assessment.Classification != providerupgrade.ClassificationSupported || !assessment.BackupRequired {
+			return errors.New("UNSUPPORTED: OpenBao mutation requires verified provider-adapter backup admission")
+		}
+		return nil
+	case coreupdate.Identity:
+		adapter := keycloakadapter.New(&keycloakadapter.NativeOps{
+			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
+			Hooks: keycloakadapter.CoreHooks{
+				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
+					return o.inspectNativeKeycloakMember(ctx, d.Installed.Instance)
+				},
+				Compatibility: o.keycloakUpgradePath,
+			},
+		})
+		assessment, err := adapter.Preflight(ctx, request)
+		if err != nil {
+			return err
+		}
+		if assessment.Classification != providerupgrade.ClassificationSupported || !assessment.BackupRequired {
+			return errors.New("UNSUPPORTED: Keycloak mutation requires verified provider-adapter backup admission")
+		}
+		return nil
+	}
+	return nil
+}
+
+func (o *coreNativeRuntimeOps) Preflight(ctx context.Context, plan coreupdate.Plan) error {
+	wanted := 4
+	if o.identity.SharedSQL != nil {
+		wanted = 3
+	}
+	if len(plan.Deltas) != wanted {
+		return fmt.Errorf("Core runtime update requires %d owned physical SQL/Secrets/Identity realizations", wanted)
+	}
+	for _, d := range plan.Deltas {
+		if d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
+			if err := o.admitNativeProviderTransition(ctx, d); err != nil {
+				return fmt.Errorf("%s provider-adapter upgrade admission: %w", d.Installed.Kind, err)
+			}
+		}
+	}
+	for _, files := range []struct{ project, compose, env string }{{o.core.Project, o.core.Compose, o.core.Env}, {o.identity.Project, o.identity.Compose, o.identity.Env}} {
+		if err := o.runtime.ConfigProject(ctx, files.project, files.compose, files.env); err != nil {
+			return fmt.Errorf("Core managed project %s preflight: %w", files.project, err)
+		}
+	}
+	if err := o.verifyOpenBaoBackingSQL(ctx); err != nil {
+		return err
+	}
+	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
+		return fmt.Errorf("OpenBao AppRole/policies/KV preflight: %w", err)
+	}
+	if err := o.verifyKeycloakBackingSQL(ctx); err != nil {
+		return err
+	}
+	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
+		return fmt.Errorf("Keycloak SQL/realm/OIDC/token preflight: %w", err)
+	}
+	return nil
+}
+func (o *coreNativeRuntimeOps) Quiesce(ctx context.Context, d coreupdate.Delta) error {
+	if d.Installed.Kind == coreupdate.SQL && d.Installed.Scope == "shared" && o.identity.SharedSQL != nil {
+		if err := o.runtime.StopProject(ctx, o.identity.Project, o.identity.Compose, o.identity.Env); err != nil {
+			return errors.New("quiesce shared Identity before Core SQL mutation failed")
+		}
+	}
+	project, compose, env := o.files(d)
+	if err := o.runtime.StopProject(ctx, project, compose, env); err != nil {
+		return fmt.Errorf("stop owned Core provider project %s: %w", project, err)
+	}
+	volume, err := coreupdate.ResolveOwnedServiceVolume(compose, nativeRecoveryService(d), project)
+	if err != nil {
+		return err
+	}
+	return o.verifyQuiesced(ctx, project, volume)
+}
+func (o *coreNativeRuntimeOps) verifyQuiesced(ctx context.Context, project, volume string) error {
+	verifier, ok := o.runtime.(interface {
+		VerifyOwnedVolumeQuiesced(context.Context, string, string) error
+	})
+	if !ok || volume == "" {
+		return errors.New("native runtime must verify actual owned-volume consumers before backup or restore")
+	}
+	return verifier.VerifyOwnedVolumeQuiesced(ctx, project, volume)
+}
+func (o *coreNativeRuntimeOps) ReconcilePinned(ctx context.Context, d coreupdate.Delta) error {
+	project, compose, env := o.files(d)
+	if err := o.runtime.UpProject(ctx, project, compose, env); err != nil {
+		return err
+	}
+	if err := o.resumeSQLDependents(ctx, d); err != nil {
+		return err
+	}
+	return o.verifyImage(ctx, d, true)
+}
+func (o *coreNativeRuntimeOps) ReconcileOriginal(ctx context.Context, d coreupdate.Delta) error {
+	project, compose, env := o.files(d)
+	if err := o.runtime.UpProject(ctx, project, compose, env); err != nil {
+		return err
+	}
+	if err := o.resumeSQLDependents(ctx, d); err != nil {
+		return err
+	}
+	return o.verifyImage(ctx, d, false)
+}
+
+func (o *coreNativeRuntimeOps) resumeSQLDependents(ctx context.Context, d coreupdate.Delta) error {
+	if d.Installed.Kind != coreupdate.SQL || d.Installed.Scope != "shared" || o.core.HA {
+		return nil
+	}
+	path, _, err := resolveTargetRecoveryFile(ctx, "")
+	if err != nil {
+		return err
+	}
+	if err := platformopenbao.Unseal(ctx, o.runtime, o.core, path); err != nil {
+		return err
+	}
+	if o.identity.SharedSQL != nil {
+		// Reuse the protected existing SQL binding; never regenerate credentials
+		// or provision a dependency during upgrade/recovery.
+		return o.runtime.UpProject(ctx, o.identity.Project, o.identity.Compose, o.identity.Env)
+	}
+	return nil
+}
+func (o *coreNativeRuntimeOps) verifyImage(ctx context.Context, d coreupdate.Delta, pinned bool) error {
+	project, _, _ := o.files(d)
+	id, err := o.runtime.ProjectServiceImageIdentity(ctx, project, d.Installed.Instance)
+	if err != nil {
+		return err
+	}
+	expected := d.Installed.Digest
+	if pinned {
+		expected = d.Desired.Digest
+	}
+	digest := id.Digest
+	if i := strings.Index(digest, "@sha256:"); i >= 0 {
+		digest = digest[i+1:]
+	}
+	if digest != expected {
+		return fmt.Errorf("Core provider %s running digest %s differs from expected pinned image", d.Installed.Instance, digest)
+	}
+	return nil
+}
+
+// verifyBoundProviderSemantics delegates post-upgrade validation to the
+// integrated Session-1C adapters after the native runner has confirmed its
+// immutable image. During rollback the original digest remains valid and the
+// existing Core semantic checks are still mandatory.
+func (o *coreNativeRuntimeOps) verifyBoundProviderSemantics(ctx context.Context, d coreupdate.Delta) error {
+	var project, service string
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		project, service = o.core.Project, d.Installed.Instance
+	case coreupdate.Identity:
+		project, service = o.identity.Project, d.Installed.Instance
+	default:
+		return nil
+	}
+	identity, err := o.runtime.ProjectServiceImageIdentity(ctx, project, service)
+	if err != nil {
+		return err
+	}
+	digest := identity.Digest
+	if index := strings.Index(digest, "@sha256:"); index >= 0 {
+		digest = digest[index+1:]
+	}
+	if digest == d.Installed.Digest {
+		return nil
+	}
+	if digest != d.Desired.Digest {
+		return errors.New("provider semantics cannot verify an unrecognized runtime image digest")
+	}
+	request := providerupgrade.Request{
+		CurrentVersion: d.Installed.Version, TargetVersion: d.Desired.Version,
+		TargetImage: d.Desired.Image, TargetDigest: d.Desired.Digest,
+	}
+	switch d.Installed.Kind {
+	case coreupdate.Secrets:
+		ops := &baoAdapter.NativeOps{Executor: o.runtime, Files: o.core, Owner: "baseharbor",
+			Hooks: baoAdapter.RuntimeHooks{
+				VerifyAuth: func(ctx context.Context) error {
+					return platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core)
+				},
+				VerifyApps: func(ctx context.Context) error {
+					return o.verifyOwnedApplicationSecretScopes(ctx)
+				},
+			},
+		}
+		return baoAdapter.New(ops).Verify(ctx, request)
+	case coreupdate.Identity:
+		ops := &keycloakadapter.NativeOps{
+			DataDir: o.dataDir, Namespace: o.target, InstallationID: o.installation, ExpectedIssuer: o.issuer,
+			Hooks: keycloakadapter.CoreHooks{
+				Inspect: func(ctx context.Context) (keycloakadapter.State, error) {
+					return o.inspectNativeKeycloakMember(ctx, service)
+				},
+				VerifySQL: o.verifyKeycloakBackingSQL,
+				VerifyRealms: func(ctx context.Context) error {
+					return identityprovider.VerifyCoreIdentity(ctx, o.dataDir, o.target, o.installation, o.issuer)
+				},
+				VerifyTokens: func(ctx context.Context) error {
+					return identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer)
+				},
+			},
+		}
+		return keycloakadapter.New(ops).Verify(ctx, request)
+	}
+	return nil
+}
+
+func (o *coreNativeRuntimeOps) VerifySemantics(ctx context.Context, d coreupdate.Delta) error {
+	if _, ok := health.Format(health.RuntimeChecksForFiles(o.core)); !ok {
+		return errors.New("Core PostgreSQL/OpenBao health check failed")
+	}
+	if err := platformopenbao.CheckManager(ctx, o.runtime, o.core); err != nil {
+		return fmt.Errorf("OpenBao semantics: %w", err)
+	}
+	if err := o.verifyOpenBaoBackingSQL(ctx); err != nil {
+		return err
+	}
+	if err := platformopenbao.VerifyUpgradeManagerPolicyAndAppRole(ctx, o.runtime, o.core); err != nil {
+		return fmt.Errorf("OpenBao AppRole, policies and secret access: %w", err)
+	}
+	if err := o.verifyKeycloakBackingSQL(ctx); err != nil {
+		return err
+	}
+	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, o.dataDir, o.target, o.installation, o.issuer); err != nil {
+		return fmt.Errorf("Keycloak realm, OIDC and operator token semantics: %w", err)
+	}
+	if err := o.verifyBoundProviderSemantics(ctx, d); err != nil {
+		return fmt.Errorf("native provider adapter semantic verification: %w", err)
+	}
+	return nil
+}
+func (o *coreNativeRuntimeOps) Record(_ context.Context, d coreupdate.Delta, state string) error {
+	journal, err := coreupdate.LoadJournal(o.receiptPath, o.release)
+	if err != nil {
+		return err
+	}
+	return journal.Record(o.receiptPath, d, state)
+}
+
+func nativeRecoveryService(d coreupdate.Delta) string {
+	switch d.Installed.Kind {
+	case coreupdate.Identity:
+		return "keycloak-db"
+	case coreupdate.Secrets:
+		return "postgres-member-1"
+	default:
+		return d.Installed.Instance
+	}
+}
+
+func reconcileNativeCoreProviders(ctx context.Context, release string) error {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	stateRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return err
+	}
+	// Serialize against bootstrap and all other provider-update releases before
+	// reading installation state or inventory. Member journals are receipts,
+	// not locks: concurrent callers must never recreate the same replica.
+	unlock, err := coreinstallation.AcquireLifecycleLock(stateRoot)
+	if err != nil {
+		return fmt.Errorf("Core lifecycle operation already active or lock unavailable: %w", err)
+	}
+	defer unlock()
+	state, err := coreinstallation.Load(stateRoot)
+	if err != nil {
+		return err
+	}
+	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
+		return errors.New("refusing provider upgrade for unready or mismatched owned Core")
+	}
+	runtime, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	plan, err := inspectSelectedCoreRuntimePlan(ctx, release, state, runtime)
+	if err != nil {
+		return err
+	}
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for _, d := range plan.Deltas {
+		if d.Classification == coreupdate.Unsupported {
+			return fmt.Errorf("unsupported provider %s upgrade: %s", d.Installed.Instance, d.Reason)
+		}
+		if d.Classification != coreupdate.NoChange {
+			changed = true
+		}
+	}
+	// A restart can leave all three desired Spilo images running while
+	// the durable member journal still records an interrupted recovery.
+	// Never bypass that evidence through the binary-only no-change path.
+	if state.Spec.HA {
+		journal, err := coreUpdateJournal(stateRoot, release, true)
+		if err != nil {
+			return err
+		}
+		for _, delta := range plan.Deltas {
+			if delta.Installed.Kind == coreupdate.SQL && delta.Installed.Scope == "shared" && delta.Classification == coreupdate.NoChange {
+				pin := coreupdate.BackingPin{Role: "core-ha-postgresql", Version: delta.Desired.Version, Image: delta.Desired.Image, Digest: delta.Desired.Digest}
+				path := filepath.Join(journal, "patroni-members.json")
+				if err := verifyCompletedPatroniJournal(ctx, state, release, pin, path); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if !changed {
+		return verifyCoreBinaryOnly(ctx, release)
+	}
+	coreFiles, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		return err
+	}
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	identityFiles, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target.Name)
+	if err != nil {
+		return err
+	}
+	openBaoMembers := coreFiles.OpenBaoMembers()
+	expectedOpenBaoMembers := 1
+	if state.Spec.HA {
+		expectedOpenBaoMembers = 3
+	}
+	if len(openBaoMembers) != expectedOpenBaoMembers {
+		return fmt.Errorf("OpenBao managed topology requires %d owned member(s), got %d", expectedOpenBaoMembers, len(openBaoMembers))
+	}
+	// Require live ownership and immutable image identity for both provider
+	// adapters before any native update journal, backup or mutation is touched.
+	binding := &providerbinding.RuntimeBinding{
+		Reader: runtime, Engine: target.RuntimeProvider,
+		Sources: map[providerupgrade.Provider]providerbinding.ManagedSource{
+			providerupgrade.ProviderOpenBao:  {Project: coreFiles.Project, Service: openBaoMembers[0]},
+			providerupgrade.ProviderKeycloak: {Project: identityFiles.Project, Service: "keycloak-1"},
+		},
+	}
+	for _, kind := range []providerupgrade.Provider{providerupgrade.ProviderOpenBao, providerupgrade.ProviderKeycloak} {
+		if _, err := binding.InspectManaged(ctx, kind); err != nil {
+			return fmt.Errorf("managed %s runtime ownership preflight: %w", kind, err)
+		}
+	}
+	journalDir, err := coreUpdateJournal(stateRoot, release, true)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(journalDir, 0700); err != nil {
+		return err
+	}
+	if err := os.Chmod(journalDir, 0700); err != nil {
+		return err
+	}
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
+		}
+		if err := prepareCoreHARecoveryEvidence(ctx, runtime, coreFiles, state, target.Name, release, journalDir); err != nil {
+			return err
+		}
+		for i := range plan.Deltas {
+			delta := plan.Deltas[i]
+			if delta.Installed.Kind != coreupdate.SQL || delta.Installed.Scope != "shared" || delta.Classification == coreupdate.NoChange {
+				continue
+			}
+			if err := rollOwnedCoreHAPostgres(ctx, runtime, coreFiles, delta, state.ID, target.Name, release, journalDir); err != nil {
+				return err
+			}
+			// The native rolling coordinator has verified all live target
+			// images and quorum. Reflect that proven realization before the
+			// central journal checks the strict NoChange identity invariant.
+			// Never send live HA SQL through generic quiesce/volume recovery.
+			plan.Deltas[i] = verifiedNativeHAPostgresDelta(delta)
+		}
+	}
+	ops := &coreNativeRuntimeOps{runtime: runtime, core: coreFiles, identity: identityFiles, dataDir: dataDir, target: target.Name,
+		installation: state.ID, issuer: state.IdentityIssuer, release: release, receiptPath: filepath.Join(journalDir, "receipts.json")}
+	bound, err := ops.buildBoundProviderTransaction(ctx, plan, journalDir, target.RuntimeProvider)
+	if err != nil {
+		return fmt.Errorf("bind provider adapter transaction: %w", err)
+	}
+	assets := map[string]coreupdate.NativeProviderAssets{}
+	for _, d := range plan.Deltas {
+		if d.Classification == coreupdate.NoChange || d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity {
+			continue
+		}
+		project, compose, _ := ops.files(d)
+		dataService := nativeRecoveryService(d)
+		volume, volumeErr := coreupdate.ResolveOwnedServiceVolume(compose, dataService, project)
+		if volumeErr != nil {
+			return fmt.Errorf("Core %s requires a verifiable persistent data volume before migration: %w", d.Installed.Instance, volumeErr)
+		}
+		assets[coreupdate.JournalKey(d)] = coreupdate.NativeProviderAssets{
+			Recovery: coreupdate.VolumeRecovery{Runtime: runtime, Directory: filepath.Join(journalDir, "backups"), Project: project, Volume: volume, VerifyQuiesced: ops.verifyQuiesced},
+			Compose:  coreupdate.ComposeCheckpoint{Path: compose, Directory: filepath.Join(journalDir, "compose-backups")},
+		}
+	}
+	if err := coreupdate.RunMixedProviderUpdates(ctx, plan, filepath.Join(journalDir, "journal.json"), ops, assets, bound.Hooks(), func(d coreupdate.Delta) bool {
+		return d.Installed.Kind == coreupdate.Secrets || d.Installed.Kind == coreupdate.Identity
+	}); err != nil {
+		return err
+	}
+	return verifyReconciledCore(ctx, release)
+}
+
+func preflightNativeCoreUpgrade(ctx context.Context, release string) error {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return err
+	}
+	state, err := coreinstallation.Load(root)
+	if err != nil {
+		return err
+	}
+	if !state.Ready || state.ID == "" || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
+		return errors.New("Core installation not owned and ready for provider upgrade")
+	}
+	runtime, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	plan, err := inspectSelectedCoreRuntimePlan(ctx, release, state, runtime)
+	if err != nil {
+		return err
+	}
+	plan, err = corePlanOnly(plan)
+	if err != nil {
+		return err
+	}
+	if state.Spec.HA {
+		files, filesErr := existingTargetRuntimeFiles(ctx)
+		if filesErr != nil {
+			return fmt.Errorf("inspect HA Core runtime files: %w", filesErr)
+		}
+		if securityErr := verifyCoreHADCSSecurity(files); securityErr != nil {
+			return securityErr
+		}
+		members, inspectErr := inspectPatroniMembers(ctx, runtime, files)
+		if inspectErr != nil {
+			return fmt.Errorf("inspect HA Patroni members: %w", inspectErr)
+		}
+		if _, _, quorumErr := coreupdate.VerifyPatroniQuorum(ctx, members, 0); quorumErr != nil {
+			return fmt.Errorf("Core HA Patroni quorum not verified: %w", quorumErr)
+		}
+	}
+	if state.Spec.HA {
+		if err := validateHAProviderPlan(plan); err != nil {
+			return err
+		}
+	}
+	for _, d := range plan.Deltas {
+		switch d.Classification {
+		case coreupdate.NoChange, coreupdate.BackupRequired, coreupdate.MigrationRequired:
+		default:
+			return fmt.Errorf("Core provider %s requires unsupported migration: %s", d.Installed.Instance, d.Reason)
+		}
+	}
+	return nil
+}

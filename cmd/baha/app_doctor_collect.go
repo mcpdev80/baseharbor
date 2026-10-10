@@ -48,7 +48,9 @@ func newApplicationDoctorCollector(ctx context.Context, store application.Store,
 		return &applicationDoctorCollector{}, false, err
 	}
 	m := resolved.Manifest
+	engine, _ := inspectTargetDockerEngine(ctx, resolved.Target)
 	result := applicationDoctorResult{
+		DockerEngine:    engine,
 		ContractVersion: machine.ContractVersion,
 		Target:          resolved.Target.Name,
 		ApplicationID:   m.ApplicationID,
@@ -114,6 +116,27 @@ func (c *applicationDoctorCollector) runChecks(ctx context.Context) {
 	checks = c.appendBackendChecks(checks)
 	checks = c.appendSecretChecks(checks)
 	c.results, c.ok = preflight.Run(checkCtx, checks)
+	if c.compose != nil && c.runtimeErr == nil {
+		verified := map[string]bool{}
+		for _, check := range c.results {
+			if check.OK {
+				switch check.Name {
+				case "valkey readiness":
+					verified["valkey"] = true
+				case "rabbitmq semantic verification":
+					verified["rabbitmq"] = true
+				case "mongodb semantic verification":
+					verified["mongodb"] = true
+				}
+			}
+		}
+		for _, check := range collectProviderTopologyChecks(checkCtx, c.compose, c.resolved, c.files, verified) {
+			c.results = append(c.results, preflight.Result{Name: check.Name, OK: check.OK, Detail: check.Detail})
+			if !check.OK {
+				c.ok = false
+			}
+		}
+	}
 }
 
 func (c *applicationDoctorCollector) baseChecks() []preflight.Check {

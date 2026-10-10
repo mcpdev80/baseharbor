@@ -44,6 +44,8 @@ func EstimateControlPlane(ha bool) (MemoryEstimate, error) {
 		switch {
 		case strings.HasPrefix(name, "postgres-member-"):
 			mib = 512
+		case name == "postgres-etcd-recovery":
+			mib = 64
 		case strings.HasPrefix(name, "postgres-etcd-"):
 			mib = 192
 		case strings.HasPrefix(name, "openbao-member-"):

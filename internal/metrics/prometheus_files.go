@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"os"
@@ -187,6 +188,11 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	if placement.Scope == capability.ScopeExternal {
 		return ProviderFiles{}, errors.New("external metrics provider has no BaseHarbor-owned provider files")
 	}
+	members, err := providertopology.ResolveMembers(filepath.Join(placement.Dir, "compose.yaml"), "prometheus", 2, application.AvailabilityIntent(m).Resolve("metrics"))
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	placement.Members = members
 	dir := placement.Dir
 	targetsDir := filepath.Join(dir, "targets")
 	if err := os.MkdirAll(targetsDir, 0o755); err != nil {
@@ -321,14 +327,14 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	memberPolicy := accessPolicy
 	memberPolicy.AuthenticationRequired = false
 	memberPolicy.Authentication = serviceaccess.AuthenticationNative
-	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "prometheus", "prometheus-1", "prometheus-2")
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), append([]string{"prometheus"}, providertopology.Names("prometheus", placement.Members)...)...)
 	if err != nil {
 		return ProviderFiles{}, err
 	}
 	if err := writePrometheusWebConfig(files.WebConfig, memberPolicy, values); err != nil {
 		return ProviderFiles{}, err
 	}
-	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA)
+	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA, placement.Members)
 	if values["BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"] != "" {
 		accessSpec.HealthAuthorizationEnv = "BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"
 	}
@@ -454,6 +460,11 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 		return err
 	}
 
+	members, err := providertopology.ResolveMembers(files.Compose, "prometheus", 2)
+	if err != nil {
+		return err
+	}
+	placement.Members = members
 	accessEnvironment := prometheusAccessEnvironment(m, registrations)
 	accessPolicy, err := serviceaccess.Resolve(accessEnvironment, "prometheus", serviceaccess.AuthenticationMTLS)
 	if err != nil {
@@ -463,7 +474,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	memberPolicy := accessPolicy
 	memberPolicy.AuthenticationRequired = false
 	memberPolicy.Authentication = serviceaccess.AuthenticationNative
-	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), "prometheus", "prometheus-1", "prometheus-2")
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), append([]string{"prometheus"}, providertopology.Names("prometheus", placement.Members)...)...)
 	if err != nil {
 		return err
 	}
@@ -474,7 +485,7 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	if err := writePrometheusWebConfig(files.WebConfig, memberPolicy, values); err != nil {
 		return err
 	}
-	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA)
+	accessSpec := prometheusHAAccessSpec(memberTLS.Material.CA, placement.Members)
 	if values["BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"] != "" {
 		accessSpec.HealthAuthorizationEnv = "BASEHARBOR_PROMETHEUS_HEALTH_AUTHORIZATION"
 	}
@@ -494,10 +505,21 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	return nil
 }
 
-func prometheusHAAccessSpec(memberCA string) serviceaccess.HTTPGatewaySpec {
+func prometheusHAAccessSpec(memberCA string, requested ...int) serviceaccess.HTTPGatewaySpec {
+	members := 2
+	if len(requested) > 0 {
+		members = requested[0]
+	}
+	if members < 1 {
+		members = 1
+	}
+	var upstreams []string
+	for _, name := range providertopology.Names("prometheus", members) {
+		upstreams = append(upstreams, "https://"+name+":9090")
+	}
 	return serviceaccess.HTTPGatewaySpec{
 		ServiceName:        "prometheus-access",
-		Upstreams:          []string{"https://prometheus-1:9090", "https://prometheus-2:9090"},
+		Upstreams:          upstreams,
 		UpstreamTrustFile:  memberCA,
 		UpstreamServerName: "prometheus",
 		PublishedPortEnv:   "BASEHARBOR_PROMETHEUS_PORT",

@@ -1,5 +1,7 @@
 package application
 
+import bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+
 // StatusCheck is a secret-safe readiness observation shared by CLI and future
 // machine-oriented control surfaces.
 type StatusCheck struct {
@@ -12,15 +14,16 @@ type StatusCheck struct {
 // StatusResult is the shared application readiness model. It intentionally
 // contains operational state only and never credential or secret values.
 type StatusResult struct {
-	ContractVersion string        `json:"contract_version"`
-	Target          string        `json:"target"`
-	Application     string        `json:"application"`
-	Environment     string        `json:"environment"`
-	Manifest        string        `json:"manifest,omitempty"`
-	Project         string        `json:"project"`
-	State           string        `json:"state"`
-	Ready           bool          `json:"ready"`
-	Checks          []StatusCheck `json:"checks"`
+	DockerEngine    *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	ContractVersion string                             `json:"contract_version"`
+	Target          string                             `json:"target"`
+	Application     string                             `json:"application"`
+	Environment     string                             `json:"environment"`
+	Manifest        string                             `json:"manifest,omitempty"`
+	Project         string                             `json:"project"`
+	State           string                             `json:"state"`
+	Ready           bool                               `json:"ready"`
+	Checks          []StatusCheck                      `json:"checks"`
 }
 
 // AddCheck appends one readiness observation and folds failures into Ready.

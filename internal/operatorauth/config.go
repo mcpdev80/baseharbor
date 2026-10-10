@@ -99,7 +99,9 @@ func SessionPath(target, environment string) (string, error) {
 		return "", err
 	}
 	base := ""
-	if dir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); dir != "" {
+	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
+		base = filepath.Join(root, "cache", "sessions")
+	} else if dir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); dir != "" {
 		base = filepath.Join(dir, "baseharbor")
 	} else {
 		dir, err := os.UserCacheDir()

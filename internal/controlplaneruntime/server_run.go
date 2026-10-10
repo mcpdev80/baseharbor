@@ -237,6 +237,8 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		mux.Handle(targetenrollment.EnrollmentPath, handler)
 		operatorMux.Handle(targetenrollment.AuthorizationPath, handler)
 		operatorMux.Handle(targetenrollment.RenewalAuthorizationPath, handler)
+		operatorMux.Handle(targetenrollment.StatusPath, handler)
+		operatorMux.Handle(targetenrollment.DisconnectPath, handler)
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {

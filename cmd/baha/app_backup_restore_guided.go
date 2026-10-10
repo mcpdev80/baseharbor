@@ -39,7 +39,11 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 			return err
 		}
 		if hasOption(args, "--password-file") {
-			return baseRun(ctx, args, out, errOut)
+			forwarded, err := prepareNonInteractiveBackupOutput(ctx, store, args, errOut)
+			if err != nil {
+				return err
+			}
+			return baseRun(ctx, forwarded, out, errOut)
 		}
 		if noInput(ctx) {
 			return usageError("backup requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
@@ -62,7 +66,13 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 		}
 		m := resolved.Manifest
 		if outputPath == "" {
-			outputPath = fmt.Sprintf("%s-%s-%s.bhbackup", m.Name, m.Environment, time.Now().UTC().Format("20060102T150405Z"))
+			outputPath, err = defaultGuidedBackupPath(m.Name, m.Environment, time.Now())
+			if err != nil {
+				return err
+			}
+		}
+		if backupOutputFlag(filtered) != "" {
+			reportGitBackupRisk(errOut, outputPath)
 		}
 		files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 		if err != nil {
@@ -106,7 +116,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 			return err
 		}
 		defer zeroBytes(password)
-		return withInMemoryPasswordFile(password, func(passwordPath string) error {
+		backupErr := withInMemoryPasswordFile(password, func(passwordPath string) error {
 			forwarded := append([]string(nil), selectionFiltered...)
 			for _, class := range requestedSelection.Include {
 				forwarded = append(forwarded, "--include-state", string(class))
@@ -125,6 +135,11 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 				return baseRun(ctx, forwarded, buffer, errOut)
 			})
 		})
+		if backupErr != nil {
+			return backupErr
+		}
+		fmt.Fprintf(out, "Backup saved: %s\nRestore with: baha app restore %q\n", outputPath, outputPath)
+		return nil
 	}
 	return command
 }
@@ -132,7 +147,7 @@ func appGuidedBackupCommand(store application.Store) *cli.Command {
 func appGuidedRestoreCommand(store application.Store) *cli.Command {
 	command := appRestoreCommand(store)
 	baseRun := command.Run
-	command.Usage = "baha app restore BACKUP [NAME] [--password-file FILE]"
+	command.Usage = "baha app restore [BACKUP] [NAME] [--password-file FILE]"
 	command.Long = "Validates and decrypts the complete archive before mutation. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry, shows the backup identity, included durable resources and mutation impact, and requires confirmation before restore. Automation keeps the deterministic --password-file path."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if hasOption(args, "--password-file") {
@@ -145,6 +160,13 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
 		}
 
+		if len(args) == 0 {
+			selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
+			if selectErr != nil {
+				return selectErr
+			}
+			args = []string{selected}
+		}
 		backupPath, name, err := parseGuidedRestoreArgs(args)
 		if err != nil {
 			return err
@@ -565,4 +587,42 @@ func withInMemoryPasswordFile(password []byte, fn func(string) error) error {
 	}
 	path := fmt.Sprintf("/proc/self/fd/%d", fd)
 	return fn(path)
+}
+
+func defaultGuidedBackupPath(app, environment string, now time.Time) (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user backup directory: %w", err)
+	}
+	dir := filepath.Join(filepath.Dir(base), "baseharbor-backups")
+	if xdg := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); xdg != "" {
+		if !filepath.IsAbs(xdg) {
+			return "", errors.New("XDG_DATA_HOME must be absolute for safe backup output")
+		}
+		dir = filepath.Join(xdg, "baseharbor", "backups")
+	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dir = filepath.Join(home, ".local", "share", "baseharbor", "backups")
+	}
+	if err := ensureDefaultBackupOutsideGit(dir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("create backup directory: %w", err)
+	}
+	actualDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve backup directory symlinks: %w", err)
+	}
+	if err := ensureDefaultBackupOutsideGit(actualDir); err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("backup directory must be owner-only (0700)")
+	}
+	filename := fmt.Sprintf("%s-%s-%s.bhbackup", app, environment, now.UTC().Format("20060102T150405Z"))
+	return filepath.Join(dir, filename), nil
 }

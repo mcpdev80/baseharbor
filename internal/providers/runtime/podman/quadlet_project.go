@@ -41,6 +41,8 @@ type quadletComposeService struct {
 	DependsOn   quadletDependencies       `yaml:"depends_on"`
 	Profiles    []string                  `yaml:"profiles"`
 	User        string                    `yaml:"user"`
+	Hostname    string                    `yaml:"hostname"`
+	UserNSMode  string                    `yaml:"userns_mode"`
 	ReadOnly    bool                      `yaml:"read_only"`
 	CapDrop     []string                  `yaml:"cap_drop"`
 	CapAdd      []string                  `yaml:"cap_add"`
@@ -295,6 +297,14 @@ func RenderComposeProjectFilesQuadletsEnv(composePaths []string, envFile string,
 	for _, serviceName := range quadletEnabledServiceNames(model, selected) {
 		if err := quadletRenderProjectService(&result, composePath, project, model, serviceName, selected); err != nil {
 			return QuadletProject{}, err
+		}
+	}
+	// Keep successful init exit evidence available for dependents and later
+	// start calls. Classification is complete only after all services render.
+	for service := range result.CompletedServices {
+		file := strings.TrimSuffix(result.ServiceUnits[service], ".service") + ".container"
+		if content, ok := result.Files[file]; ok {
+			result.Files[file] = content + "\n[Service]\nRemainAfterExit=yes\n"
 		}
 	}
 

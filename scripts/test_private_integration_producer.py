@@ -103,7 +103,7 @@ class ProducerTests(unittest.TestCase):
         import yaml
         root = pathlib.Path(__file__).resolve().parents[1]
         jobs = yaml.safe_load((root / '.github/workflows/pre-release.yml').read_text())['jobs']
-        requirements = resume.local_requirements('v0.4.23')
+        requirements = resume.local_requirements('v0.4.24')
         self.assertEqual(len(requirements), 63)
         for requirement in requirements:
             if not requirement['id'].startswith('integration/'):
@@ -117,7 +117,8 @@ class ProducerTests(unittest.TestCase):
             self.assertEqual(len(steps), 1)
             self.assertEqual(steps[0]['env']['GH_TOKEN'], '${{ github.token }}')
             self.assertEqual(steps[0]['env']['BASEHARBOR_PUBLIC_EVIDENCE_FILE'],
-                             'docs/releases/v0.4.23.consumer-pins.json')
+                             "${{ format('docs/releases/{0}.consumer-pins.json', " +
+                             ('steps.release.outputs.tag' if job == 'source' else 'needs.source.outputs.tag') + ") }}")
 
 
 if __name__ == '__main__':
