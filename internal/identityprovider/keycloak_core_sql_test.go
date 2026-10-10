@@ -91,6 +91,37 @@ func TestSharedIdentityUsesExactlyOneCoreSQLDependency(t *testing.T) {
 	}
 }
 
+func TestApplicationIdentityNetworkMatchesMaterializedProvider(t *testing.T) {
+	for _, scope := range []capability.ProviderScope{capability.ScopeShared, capability.ScopeApplication} {
+		t.Run(string(scope), func(t *testing.T) {
+			t.Setenv("BASEHARBOR_IDENTITY_PROVIDER", "keycloak")
+			t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), string(scope))
+			boundaries := []string{""}
+			if scope == capability.ScopeShared {
+				boundaries = append(boundaries, "team-a", "team-b")
+			}
+			for _, boundary := range boundaries {
+				t.Setenv(application.ProviderSharingBoundaryEnv(capability.ProviderKeycloak), boundary)
+				root := t.TempDir()
+				issuer := newCoreSQLTestIssuer(t, root, false)
+				app := application.WithIdentity(application.New("consumer", "dev", false, false, false))
+				placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files, err := ensureKeycloakFilesForPlacement(context.Background(), app, issuer, root, "local", placement)
+				if err != nil {
+					t.Fatal(err)
+				}
+				network, err := application.IdentityProviderNetworkName(app, "local")
+				if err != nil || network != files.ConsumerNetwork {
+					t.Fatalf("consumer network %q differs from materialized provider %q: %v", network, files.ConsumerNetwork, err)
+				}
+			}
+		})
+	}
+}
+
 func TestSharedIdentityRetainedDedicatedSQLFailsBeforeMutation(t *testing.T) {
 	for _, service := range []string{"keycloak-db", "keycloak-db-member-1"} {
 		root := t.TempDir()
