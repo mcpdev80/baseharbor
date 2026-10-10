@@ -65,7 +65,7 @@ jobs:
           retention-days: 90
 
   identity_trust:
-    if: ${{ contains(github.event.head_commit.message, '[identity-runtime]') }}
+    if: ${{ contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]') }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
@@ -101,6 +101,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/identity-trust"
           selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$'
+          if [ '${{ contains(github.event.head_commit.message, '[identity-ha-runtime]') }}' = true ]; then
+            selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$/^ha$'
+          fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 32m 2>&1 | tee "$RUNNER_TEMP/identity-trust/tests.jsonl"
       - uses: actions/upload-artifact@v6
         if: always()

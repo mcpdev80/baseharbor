@@ -128,7 +128,11 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, service := range []string{"postgres", "openbao", "postgres-member-1", "openbao-member-1"} {
+	services := []string{"postgres", "openbao", "openbao-member-1"}
+	if !ha {
+		services = append(services, "postgres-member-1")
+	}
+	for _, service := range services {
 		if err := containersecurity.VerifyComposeService(ctx, files.Project, service, containersecurity.Requirements{ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true}); err != nil {
 			inventory, inventoryErr := runtime.ListRuntimeContainers(ctx)
 			for _, container := range inventory {
@@ -138,6 +142,16 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 				t.Logf("Runtime inventory unavailable: %v", inventoryErr)
 			}
 			t.Fatal(err)
+		}
+	}
+	if ha {
+		// Native Spilo bootstraps as container root with a writable filesystem.
+		// Its database process must still run as the unprivileged postgres user
+		// inside the verified rootless host namespace. Do not impose the distinct
+		// Single PostgreSQL image's container filesystem contract on Spilo.
+		const processUID = `ps -eo comm=,uid= | awk '$1 == "postgres" { found=1; if ($2 == 0) bad=1 } END { exit (!found || bad) }'`
+		if _, err := runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-member-1", "sh", "-ec", processUID); err != nil {
+			t.Fatalf("HA PostgreSQL database process must be non-root: %v", err)
 		}
 	}
 	second, err := installCore(ctx, strings.NewReader(""), &out, opts)
