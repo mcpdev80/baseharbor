@@ -32,3 +32,12 @@ records, authenticated stream descriptors and actual Core terminal event/input
 examples. Terminal binary data uses standard JSON base64. The dedicated shipped
 terminal schemas remain the normative frame/bounds contract; generated example
 regressions validate against both their actual Core types and these schemas.
+
+The v0.4.25 foundation adds `footprint/v1/footprint.schema.json`, validated
+against actual pure domain fixture outputs, and
+`connection-profile/v1/profile.schema.json`, a transport-shape contract for the
+future #777 importer/exporter. Schema validation cannot authenticate a Core,
+accept trust, grant access or prove runtime health. Normative semantics and
+Host Platform boundaries are specified in
+[Capability-first](../docs/spec/capability-first-v0425.md)
+([Deutsch](../docs/de/spec/capability-first-v0425.md)).

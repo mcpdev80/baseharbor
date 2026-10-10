@@ -43,3 +43,12 @@ schemas, Go wire types, OpenAPI or Protobuf definitions.
 Coverage pending for v0.4.23: complete configuration consumers, interactive
 terminal runtime/browser qualification and real remote/Console integration are tracked in #609,
 #806, #807 and #808. Do not treat an entry in this register as live support.
+
+## v0.4.25 contract foundation
+
+| Surface | Canonical artifact | Boundary |
+| --- | --- | --- |
+| Minimal intent / stable identity | [Capability-first](../spec/capability-first-v0425.md), application resolver APIs | Existing Manifest v1 and Store owner; no read-time identity allocation |
+| Read-only footprint | `contracts/footprint/v1/footprint.schema.json`, `internal/application/footprint.go` | baseharbor.footprint/v1; no provisioning or invented sizing |
+| #777 connection-profile transport | `contracts/connection-profile/v1/profile.schema.json`, [Specification](../spec/capability-first-v0425.md) | Shape/semantics only; import/export implementation deferred |
+| Host Platform | [Specification](../spec/capability-first-v0425.md) | Semantic adapter boundary only; platform implementation deferred |
