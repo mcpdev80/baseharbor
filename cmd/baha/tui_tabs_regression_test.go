@@ -91,3 +91,18 @@ func TestTUICoreNoTargetLoadsEveryView(t *testing.T) {
 		t.Fatalf("missing distinct results: %+v", msg)
 	}
 }
+
+func TestTUICoreOverviewInvokesSelectedTargetRuntimeInventory(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv("PATH", t.TempDir()) // No engine: require truthful unavailable telemetry.
+	m := tuiModel{ctx: context.Background(), coreMode: true}
+	msg := m.loadStatus()().(tuiStatusMsg)
+	if msg.err != nil {
+		t.Fatal(msg.err)
+	}
+	for _, want := range []string{target.Name, "Current Device", "Runtime resources (selected Target)", "Runtime Explorer unavailable"} {
+		if !strings.Contains(msg.coreView, want) {
+			t.Fatalf("missing actual inventory view %q: %s", want, msg.coreView)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -120,6 +121,9 @@ func (m tuiModel) loadStatus() tea.Cmd {
 				return msg
 			}
 			msg.coreView = fmt.Sprintf("Current Core\nTarget       %s (%s)\nRuntime      %s\nAccess       %s\n", target.Name, targetSelectionOrigin(m.ctx), target.RuntimeProvider, target.AccessProvider) + currentDeviceResources() + "\n" + renderTargetApplicationInventory(target.Name)
+			inventoryCtx, cancelInventory := context.WithTimeout(m.ctx, 10*time.Second)
+			msg.coreView += "\n" + renderTargetRuntimeInventory(inventoryCtx, target.Name)
+			cancelInventory()
 			status, err := inspectControlPlane(m.ctx)
 			if err != nil {
 				msg.coreStatus = "Core status unavailable: " + err.Error() + "\nNext: baha doctor --verbose\n"
