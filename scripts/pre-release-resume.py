@@ -257,6 +257,10 @@ def validate_manifest(manifest, key, run, candidate, demo, attempt):
         raise ValueError('journey runtime or duration differs')
 
 
+class MissingRootManifest(ValueError):
+    """A bounded, digest-authenticated ZIP contains no reusable gate proof."""
+
+
 def read_archive(data, expected_digest):
     if len(data) > 128 * 1024 * 1024 or 'sha256:' + hashlib.sha256(data).hexdigest() != expected_digest:
         raise ValueError('artifact archive digest or size differs')
@@ -272,7 +276,7 @@ def read_archive(data, expected_digest):
             raise ValueError('unsafe artifact archive entry')
         names.add(info.filename)
     if 'manifest.json' not in names:
-        raise ValueError('artifact root manifest is missing')
+        raise MissingRootManifest('artifact root manifest is missing')
     raw = archive.read('manifest.json')
     if len(raw) > 1024 * 1024:
         raise ValueError('manifest exceeds limit')
@@ -316,7 +320,16 @@ def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expect
                     artifact.get('workflow_run', {}).get('head_sha') != candidate):
                 raise ValueError('origin pin artifact source differs')
             data = api.archive(artifact)
-            manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            try:
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            except MissingRootManifest:
+                # Failed producers may upload diagnostic failure.json before a
+                # proof exists. This is not a source pin or successful evidence;
+                # keep the failed observation pending in collect(). All ZIP
+                # digest, size and path checks have already succeeded.
+                if job.get('status') == 'completed' and job.get('conclusion') != 'success':
+                    continue
+                raise
             pin = manifest.get('demo_ref')
             if (manifest.get('schema') != SCHEMAS[key.split('/')[0]] or
                     manifest.get('candidate_sha') != candidate or

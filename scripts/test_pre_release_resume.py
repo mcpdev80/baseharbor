@@ -109,6 +109,44 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof['origin']['demo_ref'], 'b' * 40)
         self.assertEqual(proof['manifest'], manifest())
 
+    def test_failed_consumer_failure_report_does_not_block_valid_origin_proof(self):
+        # The original pre-release uploaded failure.json, not a proof manifest,
+        # when consumer qualification failed before evidence generation.
+        key = 'integration/docker/remote-target'
+        self.api.jobs[1].append(dict(self.api.job(1, conclusion='failure'),
+                                    id=201, name='Integration · ' + key))
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as output:
+            output.writestr('failure.json', '{"result":"failure"}')
+        data = stream.getvalue()
+        self.api.data[10] = data
+        bad = {'id': 10, 'name': resume.artifact_name(key, 1, 1),
+               'expired': False, 'digest': 'sha256:' + hashlib.sha256(data).hexdigest(),
+               'workflow_run': {'id': 1, 'head_sha': 'a' * 40}}
+        self.api.artifacts[1].append(bad)
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+        self.assertEqual([p['gate'] for p in result['proofs']], ['atomic/static/mcp'])
+        self.assertIn(key, result['pending'])
+        self.assertIn('failure', result['pending'][key])
+        self.assertFalse((self.root / '10.zip').exists())
+        # Even a failed job's diagnostic archive must retain authentic ZIP bytes.
+        bad['digest'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(ValueError, 'digest'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+
+    def test_successful_job_without_root_manifest_is_never_accepted(self):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as output:
+            output.writestr('failure.json', '{}')
+        data = stream.getvalue()
+        self.api.data[1] = data
+        self.api.artifacts[1][0]['digest'] = 'sha256:' + hashlib.sha256(data).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'root manifest is missing'):
+            resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                           'v0.4.24', [1], self.root)
+
     def test_v024_missing_origin_pin_fails_closed_instead_of_falling_back(self):
         self.api.artifacts[2] = []
         with self.assertRaisesRegex(ValueError, 'origin Demo pin is unavailable'):
