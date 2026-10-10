@@ -365,7 +365,8 @@ jobs:
     needs: source
     if: >-
       needs.source.outputs.light_docker_count != '0' || needs.source.outputs.light_podman_count != '0' ||
-      needs.source.outputs.heavy_docker_count != '0' || needs.source.outputs.heavy_podman_count != '0'
+      needs.source.outputs.heavy_docker_count != '0' || needs.source.outputs.heavy_podman_count != '0' ||
+      needs.source.outputs.journey_count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -847,7 +848,7 @@ jobs:
           test "$PODMAN_RESULT" = success || { test "$PODMAN_RESULT" = skipped && test "$PODMAN_COUNT" = 0; }
 
   reference_journey:
-    if: ${{ needs.source.result == 'success' && needs.source.outputs.journey_count != '0' }}
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.runtime_candidate.result == 'success' && (needs.integration_core_docker.result == 'success' || needs.integration_core_docker.result == 'skipped') && (needs.integration_core_podman.result == 'success' || needs.integration_core_podman.result == 'skipped') && needs.source.outputs.journey_count != '0' }}
     name: Reference Journey · ${{ matrix.runtime }} · Full E2E
     needs: [source, runtime_candidate, integration_core_docker, integration_core_podman]
     strategy:
