@@ -3,17 +3,17 @@
 BaseHarbor übersetzt portable Anforderungen einer Anwendung in verifizierte Infrastruktur.
 
 ```text
-Anwendung
-   ↓
-Portable Anforderungen
-   ↓
-Umgebung + Richtlinie
-   ↓
+Application
+    ↓
+Portable Intent
+    ↓
+Environment + Policy
+    ↓
 BaseHarbor Core
-   ↓
-Runtime- + Fähigkeits- + Auslieferungs-Provider
-   ↓
-Verifiziertes Ergebnis
+    ↓
+Runtime + Capability + Delivery Providers
+    ↓
+Verified Result
 ```
 
 ## Core-Installation
@@ -51,15 +51,15 @@ Fehlende Messungen werden ausdrücklich als nicht verfügbar ausgewiesen.
 Die öffentlichen Repositories [BaseHarbor Console](https://github.com/mcpdev80/baseharbor-console) und [BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector) konsumieren vom Core kontrollierte Verträge und erzeugen keine neue Autorität.
 
 ```text
-CLI / JSON / MCP / geschütztes HTTP / Console
-                         ↓
-                  BaseHarbor Core
-                         ↓
-                 Runtime-Semantik
-                         ↓
-                Target-Access-Grenze
-                         ↓
-       lokale/native API oder optionaler Connector
+CLI / JSON / MCP / protected HTTP / Console
+                    ↓
+             BaseHarbor Core
+                    ↓
+           runtime semantics
+                    ↓
+          Target Access boundary
+                    ↓
+   local/native API or optional Connector
 ```
 
 Die Console ist reine Client-/Projektionsfläche: kein Console-eigenes RBAC, keine zweite Deployment-Datenbank, kein eigener Secret Store und kein direkter Zugriff auf Runtime oder Connector. Der Node Connector ist ein optionaler, outbound-initiierter und authentifizierter Target-Access-Transport für entfernte Nicht-Kubernetes-Hosts: kein Control Plane, kein Runtime Provider und kein autonomer Agent. Kubernetes/OpenShift verwenden normalerweise ihre nativen authentifizierten APIs.
@@ -87,7 +87,15 @@ bleiben spätere Runtime Provider. Siehe [Workload-Quellen](workload-sources.md)
 ## Drei Provider-Achsen
 
 ```text
-runtime != capability != delivery
+Repository
+    ↓
+Workload Source Adapter
+    ↓
+Normalized Workload Evidence
+    ↓
+Inspection / adoption
+    ↓
+Portable Application Intent
 ```
 
 - Runtime-Provider: wo Workloads laufen.
@@ -101,9 +109,7 @@ Aktuell verwendet Docker Docker Compose. Podman übersetzt dieselben Workload-/R
 Wo anwendbar:
 
 ```text
-application
-shared
-external
+runtime != capability != delivery
 ```
 
 BaseHarbor verändert nur Ressourcen, die es besitzt.
@@ -123,7 +129,9 @@ Applications verwenden `<app>.<domain>`, Application-Management `<app>-<service>
 ## Lebenszyklus
 
 ```text
-planen -> vorprüfen -> anwenden -> verifizieren
+application
+shared
+external
 ```
 
 CLI, JSON und MCP benutzen dieselbe Semantik.
@@ -131,3 +139,36 @@ CLI, JSON und MCP benutzen dieselbe Semantik.
 Keine Schnittstelle darf Policy, Besitzprüfung, Verifikation oder Secret-Schutz umgehen. Menschliche Doku erklärt Nutzung und Konzepte; technische Referenzen und Spezifikationen definieren exaktes beziehungsweise normatives Verhalten. ADRs begründen Entscheidungen, GitHub Issues planen zukünftige Arbeit und Release Notes dokumentieren ausgeliefertes Verhalten.
 
 Normative Details stehen ausschließlich in den englischen [Spezifikationen](https://mcpdev80.github.io/baseharbor/spec/).
+
+
+## Weitere unveränderte technische Beispiele
+
+```text
+plan -> preflight -> apply -> verify
+```
+
+```text
+https://<app>.baha.localhost
+                    |
+                    v
+          Target dev gateway
+                    |
+                    v
+      owned provider/runtime network
+                    |
+                    v
+        verified internal upstream
+```
+
+```text
+Human docs      -> explain use and concepts
+Reference       -> exact public behavior
+Specs           -> normative contracts
+Schemas/code    -> machine-readable authority
+ADRs            -> decisions and rationale
+GitHub Issues   -> future planning
+Releases        -> delivered history
+```
+
+
+Technische Kennungen: `pgadmin.<domain>`, `cache.<domain>`, `storage.<domain>`, `auth.<domain>`, `secrets.<domain>`, `metrics.<domain>`.

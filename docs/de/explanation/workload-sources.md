@@ -17,11 +17,13 @@ CLI, JSON und MCP verwenden `baseharbor.workload-source-resolution/v1`. Zuständ
 
 Ein eindeutiger Source benötigt keine Metadatei. Bei mehreren tragfähigen Kandidaten fragt geführte Adoption einmal und speichert die Auswahl in `baseharbor.repository.yaml`:
 
-```yaml
-version: 1
-workload-source:
-  kind: kubernetes
-  path: deploy/k8s
+```text
+Repository
+  -> Workload Source Adapter
+  -> Normalized Workload Evidence
+  -> repository inspection / adoption
+  -> portable Application Intent
+  -> Runtime Provider
 ```
 
 Das ist commitfähige Repository-Metadaten, kein portabler Intent und kein geschützter Runtime-Zustand.
@@ -36,11 +38,77 @@ Quadlet erkennt `.container`, `.pod`, `.network`, `.volume` und `.kube`; fehlend
 
 Adapter-Tests, kontrollierte Konformitätsfälle, Cross-Source-Parität und 30 gepinnte reale Repositorys sind getrennte Prüfungen. Im Core-Checkout:
 
-```bash
+```text
+Workload Source != Runtime Provider
+Workload Source != Delivery Provider
+Workload Source != Development Adapter
+Workload Source != Portable Application Intent
+```
+
+Vollständige Modelle: [kanonische Erklärung (EN)](https://mcpdev80.github.io/baseharbor/explanation/workload-sources/).
+
+
+## Weitere unveränderte technische Beispiele
+
+```json
+{
+  "schema_version": "baseharbor.workload-source-resolution/v1",
+  "state": "selected",
+  "reason": "production_candidate_dominates",
+  "candidate_count": 3,
+  "selected": {
+    "kind": "compose",
+    "path": "docker/docker-compose.yml"
+  }
+}
+```
+
+```text
+baseharbor.repository.yaml
+```
+
+```yaml
+version: 1
+workload-source:
+  kind: kubernetes
+  path: deploy/k8s
+```
+
+```text
+source-adapter-unit
+  -> focused positive and negative adapter tests
+
+source-conformance
+  -> controlled fixtures with known semantic ground truth
+  -> broken/adversarial inputs
+  -> fail-closed security bounds
+
+source-cross-parity
+  -> one reference application represented as Compose, Quadlet and Kubernetes YAML
+  -> equivalent normalized semantics where representable
+
+source-realworld
+  -> 10 Compose + 10 Quadlet + 10 Kubernetes public repositories
+  -> pinned revisions + documented quality/pattern tags
+```
+
+```text
+testdata/adoption-conformance/
+testdata/adoption-realworld/
+```
+
+```text
 scripts/adoption-conformance.sh unit
 scripts/adoption-conformance.sh conformance
 scripts/adoption-conformance.sh parity
 scripts/adoption-conformance.sh realworld
 ```
 
-Vollständige Modelle: [kanonische Erklärung (EN)](https://mcpdev80.github.io/baseharbor/explanation/workload-sources/).
+
+Technische Kennungen: `single_candidate`, `explicit_repository_selection`, `multiple_viable_candidates`, `cross_family_ambiguity`, `only_low_confidence_candidates`, `no_supported_source`, `invalid_repository_metadata`, `unsupported_repository_metadata`, `${VAR:-default}`, `${VAR-default}`, `${VAR}`, `scripts/realworld-workload-source-corpus.sh`.
+
+## Compose include in v0.4.24
+
+Die Repository-Erkennung unterstützt Compose `include` nicht. Includes können Service-Graph, Pfadbasen, Umgebungsdateien und Vertrauensgrenzen verändern. BaseHarbor verweigert sie vor Adoption oder Mutation mit Ursache `compose_include_unsupported`; ein unvollständiger Service-Graph wird niemals als vollständig gemeldet.
+
+Prüfe zuerst alle eingebundenen Dateien. Rendere vertrauenswürdige lokale Quellen in eine **separate** flache Datei: `docker compose -f compose.yaml config --no-interpolate --output compose.baseharbor.yaml`. Behalte die Originale. Schütze die gerenderte Datei: Auch mit `--no-interpolate` können Werte aus `env_file` eingebettet werden; Ausgaben mit Zugangsdaten gehören nicht ins Repository. Prüfe Pfade, Profile, Secrets und den vollständigen Service-Graph und wähle anschließend `compose.baseharbor.yaml` ausdrücklich in `baha init`. Podman-Nutzer können auf einem vertrauenswürdigen Docker-Compose-Host rendern; die Deployment-Runtime muss nicht gewechselt werden. Führe Compose nicht gegen unvertrauenswürdige Remote-Includes aus.

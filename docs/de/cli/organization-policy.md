@@ -6,10 +6,9 @@ Organisationskonfiguration liefert Unternehmens-Defaults, ohne Application Inten
 
 Für ein vom Plattformteam bereitgestelltes gültiges Organisationsartefakt:
 
-```bash
-baha config organization set --source local --location "$HOME/company/baseharbor-config" --environment dev
-baha config organization show --environment dev -o json
-baha config organization check
+```text
+baha policy check
+baha policy explain
 ```
 
 Das Verzeichnis enthält eine Organisationskonfiguration, keinen Application-Vertrag.
@@ -17,10 +16,26 @@ Das Verzeichnis enthält eine Organisationskonfiguration, keinen Application-Ver
 Im Application-Repository die Zielumgebung prüfen:
 
 ```bash
-baha policy check -e test
-baha policy explain -e test
+baha config organization set --source local \
+  --location "$HOME/company/baseharbor-config" --environment dev
+baha config organization show --environment dev -o json
+baha config organization check
 ```
 
 `check` bewertet den aufgelösten Kontext; `explain` zeigt die maßgebliche Regel. Fehlende Provider oder abgelehnte Anforderungen müssen vor Apply korrigiert werden. Überschreibbare Defaults ersetzen keine verbindliche Policy.
 
 Weiter: [Konzept](../explanation/organization-configuration.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/organization-policy/).
+
+
+## Ergänzende Befehlsreferenz
+
+Die folgenden unveränderten Beispiele und Bezeichner entsprechen der englischen Referenz.
+
+```bash
+baha policy check -e test
+baha policy explain -e test
+```
+
+
+
+Technische Bezeichner: `baha config ...`, `baseharbor.yaml`.

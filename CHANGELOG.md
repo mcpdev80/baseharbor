@@ -4,6 +4,53 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [0.4.24] - Unreleased
+
+### Added
+
+- Task-first human CLI entry point `baha new`, repository-aware application lifecycle and Core/Target selection with `baha use`.
+- Target-aware machine, JSON and MCP integrations; guided Node enrollment and operator workflows.
+- Native provider-update admission, bounded SQL restore receipts and HA recovery orchestration.
+- Physical PostgreSQL basebackup/WAL recovery, safe restore into new owned volumes, authenticated etcd mTLS snapshot/restore, three-member quorum boot, live DCS cutover and SQL-marker rollback to the selected backup state.
+- Ownership-aware host-trust uninstallation with preservation of foreign certificates.
+- EN/DE CLI, recovery, Node and Console release-candidate documentation.
+
+### Changed
+
+- SQL and cache operations use `baha app sql` and `baha app cache`, not legacy provider-specific aliases.
+- Root-level `baha down` and `baha destroy` distinguish application repository context from installation-wide lifecycle.
+- `baha update --check` reports availability of admissible installed-Core provider reconciliation.
+- Console and Node Connector support the version-matched Core workflows for setup, remote application lifecycle, logs, terminal, authorization and credential/CA rotation.
+
+### Fixed
+
+- Configuration prompts reject EOF/non-terminal input before writes; isolated state roots, native workload bindings, live readiness after reconciliation, recovery-safe rebootstrap, consented port fallback and explicit unsupported Compose includes improve everyday developer workflows (#864–#871).
+
+- Identity bootstrap uses the existing immutable release-catalog Keycloak pin rather than following upstream tag drift. HA recovery capture waits at most 90 seconds for verified healthy standbys to reach zero replay lag; unknown state, split brain and leader changes remain immediate failures.
+
+- Quick init accepts explicit noninteractive Core bootstrap consent and recognizes real terminals; stopped development routes retain truthful diagnostics, fresh managed certificates do not warn before their renewal window, and MCP stdio flushes decoded replies before EOF (#827–#831).
+
+- Shared Core Identity receives PostgreSQL CA overlap and final trust before old SQL trust is retired; rotation verifies real Identity authentication, and Core Doctor checks live Identity rather than SQL/Secrets alone.
+
+- Local Docker is verified rootless by default, all runtime commands use the selected endpoint, and protected daemon bindings prevent implicit engine changes across CLI/MCP or legacy Core cleanup (#863). Target/status/Doctor expose the actual socket and mode.
+
+- App `down` rejects unsupported options with typed errors.
+- Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
+- Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
+- PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
+- Implicit HA removed from default provider topology; native HA requires explicit intent, component overrides remain authoritative and existing installations cannot silently change membership.
+- Shared providers are owned once per Core/Target: Keycloak and Shared SQL consumers reuse Core PostgreSQL with separate databases/users; Shared Valkey uses isolated ACL users and key namespaces. Empty SQL-only consumer modules do not masquerade as physical providers (#857).
+- Configured-only application destruction verifies absent Core/gateway resources and preserves foreign/shared data. `app init --agents` updates only bounded guidance, including JSON/non-TTY use; precise error hints and Doctor distinguish uninstalled Core from broken retained state (#858–#860).
+- Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
+- Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
+
+### Support boundaries
+
+- Provider updates require compatible release-pinned images, verified ownership and backups. PostgreSQL major upgrades and unsupported provider upgrade paths remain blocked.
+- Shared native PostgreSQL HA and physical backup-state recovery are supported; application-scoped PostgreSQL HA, cross-host failover and automatic plaintext-to-mTLS DCS migration remain unsupported.
+- Existing installations do not silently change topology. SQL transactions with unknown commit outcomes are not automatically replayed.
+- Implementation and complete pre-release validation are finished. Publication remains pending, so this version is still Unreleased.
+
 ## [0.4.23] - 2026-10-08
 
 ### Added
