@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,8 +17,11 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestBug864PromptEOFNeverWrites(t *testing.T) {
@@ -236,5 +241,74 @@ func TestBug866WorkloadAccessEnvironmentIncludesNativeBindings(t *testing.T) {
 	}
 	if _, err := repositoryWorkloadEnvironment(context.Background(), r, files); err == nil {
 		t.Fatal("missing runtime bindings hidden")
+	}
+}
+
+func TestBug865ForeignOrganizationAndSessionAreIsolated(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Chdir(t.TempDir())
+	foreign, err := orgconfig.ActivePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(foreign), 0700); err != nil {
+		t.Fatal(err)
+	}
+	const corrupt = "foreign-installation-invalid-config"
+	if err := os.WriteFile(foreign, []byte(corrupt), 0600); err != nil {
+		t.Fatal(err)
+	}
+	foreignSession, err := operatorauth.SessionPath("docker-dev", "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", "  "+root+"  ")
+	configureTestTarget(t)
+	if path, err := orgconfig.ActivePath(); err != nil || path != filepath.Join(root, "config", "organization", "active.json") {
+		t.Fatal("organization isolation", path, err)
+	}
+	if path, err := operatorauth.SessionPath("docker-dev", "prod"); err != nil || path == foreignSession || path != filepath.Join(root, "cache", "sessions", "operator-docker-dev-prod.json") {
+		t.Fatal("operator session isolation", path, err)
+	}
+	if _, found, err := orgconfig.LoadActiveOptional(); err != nil || found {
+		t.Fatal("foreign organization read", err)
+	}
+	var out bytes.Buffer
+	if err := runWithIO(context.Background(), []string{"target", "--json"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	var cliResult any
+	if err := json.Unmarshal(out.Bytes(), &cliResult); err != nil {
+		t.Fatal(err)
+	}
+	session := workspaceMutationClient(t)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.target", Arguments: map[string]any{}})
+	if err != nil || result.IsError {
+		t.Fatal("isolated MCP target", err)
+	}
+	encoded, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mcpResult any
+	if err := json.Unmarshal(encoded, &mcpResult); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cliResult, mcpResult) {
+		t.Fatal("isolated CLI/JSON/MCP target drift")
+	}
+	if data, err := os.ReadFile(foreign); err != nil || string(data) != corrupt {
+		t.Fatal("foreign organization modified", err)
+	}
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	// With no override the foreign organization is visible and rejected, not silently ignored.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(filepath.Dir(filepath.Dir(foreign))))
+	if _, _, err := orgconfig.LoadActiveOptional(); err == nil {
+		t.Fatal("corrupt foreign configuration accepted")
 	}
 }

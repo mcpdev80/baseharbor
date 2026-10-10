@@ -391,6 +391,10 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}); err != nil {
 		return err
 	}
+	// Provider ownership survives failed workload convergence and remains available for safe cleanup.
+	if err := e.recordRealizedProviders(); err != nil {
+		return err
+	}
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
 	}
@@ -438,11 +442,6 @@ func (e *applicationApplyExecution) startRepositoryWorkload(ctx context.Context)
 }
 
 func (e *applicationApplyExecution) recordVerifiedDeployment(ctx context.Context) error {
-	registryResources := managedLogsRegistryResources(e.providers.logs)
-	registryResources = append(registryResources, managedTracesRegistryResources(e.providers.traces)...)
-	if err := application.ReconcileReferenceProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest, registryResources...); err != nil {
-		return fmt.Errorf("record provider registry after successful convergence: %w", err)
-	}
 	if err := recordRepositoryAppliedFingerprint(ctx, e.resolved, e.files); err != nil {
 		return fmt.Errorf("record successfully applied repository desired state: %w", err)
 	}
@@ -458,4 +457,13 @@ func (e *applicationApplyExecution) recordVerifiedDeployment(ctx context.Context
 		fmt.Fprintln(e.out, "  Environment contract: baha app env --path")
 	}
 	return reportApplicationConvergence(e.term, status)
+}
+
+func (e *applicationApplyExecution) recordRealizedProviders() error {
+	registryResources := managedLogsRegistryResources(e.providers.logs)
+	registryResources = append(registryResources, managedTracesRegistryResources(e.providers.traces)...)
+	if err := application.ReconcileReferenceProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest, registryResources...); err != nil {
+		return fmt.Errorf("record provider registry after provider realization: %w", err)
+	}
+	return nil
 }

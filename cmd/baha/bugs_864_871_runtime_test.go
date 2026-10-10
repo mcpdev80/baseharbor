@@ -34,7 +34,11 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 			if err := os.WriteFile(application.RepositoryManifestName, []byte(m.YAML()), 0600); err != nil {
 				t.Fatal(err)
 			}
-			compose := "services:\n  app:\n    image: docker.io/library/alpine:3.23\n    command: [sh, -ec, 'echo application-started; sleep 600']\n"
+			image, commandText := "docker.io/library/alpine:3.23", "echo application-started; sleep 600"
+			if managed {
+				image, commandText = "docker.io/library/python:3.13-alpine", "echo application-started; exec python -m http.server 8080"
+			}
+			compose := fmt.Sprintf("services:\n  app:\n    image: %s\n    command: [sh, -ec, '%s']\n", image, commandText)
 			var occupied net.Listener
 			if managed {
 				occupied, err = net.Listen("tcp4", "127.0.0.1:0")
@@ -62,6 +66,28 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 				if err := runWithIO(ctx, args, &output, &output); err != nil {
 					t.Fatalf("CLI %v failed: %s", args, finalBugDiagnostic(target, err, output.String()))
 				}
+			}
+			if managed {
+				broken := strings.Replace(compose, commandText, "echo intentional-startup-failure; exit 7", 1)
+				if err := os.WriteFile("compose.yaml", []byte(broken), 0600); err != nil {
+					t.Fatal(err)
+				}
+				output.Reset()
+				if err := runWithIO(ctx, []string{"--plain", "up", "--yes"}, &output, &output); err == nil {
+					t.Fatal("failed workload accepted")
+				}
+				rec, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+				if err != nil || !found || rec.Observed.Ready {
+					t.Fatal("failed workload marked ready", err)
+				}
+				command("app", "destroy", "--yes")
+				if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || found {
+					t.Fatal("failed candidate retained deployment", err)
+				}
+				if err := os.WriteFile("compose.yaml", []byte(compose), 0600); err != nil {
+					t.Fatal(err)
+				}
+				t.Log("failed initial workload retained provider ownership; owned cleanup completed before retry")
 			}
 			command("--plain", "up", "--yes")
 			if strings.Contains(output.String(), "application and requested infrastructure verified") != managed {
