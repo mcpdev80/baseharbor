@@ -84,7 +84,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				if arg != "--quick" {
 					continue
 				}
-				if len(forwarded) != 1 || len(injected) > 0 {
+				if !quickAdoptionOnlyArguments(forwarded) || len(injected) > 0 {
 					return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 				}
 				detected, err := detectAppProject(cwd)
@@ -111,7 +111,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			if arg != "--quick" {
 				continue
 			}
-			if len(forwarded) != 1 || len(injected) > 0 {
+			if !quickAdoptionOnlyArguments(forwarded) || len(injected) > 0 {
 				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 			}
 			if hasLocalManifest {

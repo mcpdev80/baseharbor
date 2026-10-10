@@ -33,8 +33,36 @@ func TestInspectLifecycleManagedIssuerState(t *testing.T) {
 	if got.Source != PKIManagedLocal || got.LifecycleOwner != "issuer" || got.RenewalMode != "automatic-reconcile" {
 		t.Fatalf("unexpected lifecycle observation: %+v", got)
 	}
-	if got.Health != "warn" {
-		t.Fatalf("health = %q, want warn", got.Health)
+	if got.Health != "ok" || got.Warning != "" {
+		t.Fatalf("fresh automatically renewed certificate should be healthy: %+v", got)
+	}
+}
+
+func TestAutomaticCertificateHealthUsesActionableRenewalWindow(t *testing.T) {
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name      string
+		remaining time.Duration
+		want      string
+	}{
+		{"fresh thirty day certificate", 30*24*time.Hour - time.Second, "ok"},
+		{"before renewal window", 7*24*time.Hour + time.Second, "ok"},
+		{"renewal window reached", 7 * 24 * time.Hour, "critical"},
+		{"renewal overdue", time.Hour, "critical"},
+		{"expired", -time.Second, "critical"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			health, warning := lifecycleHealthAt(now.Add(tc.remaining), "automatic-reconcile", now)
+			if health != tc.want || (health == "ok" && warning != "") || (health != "ok" && warning == "") {
+				t.Fatalf("health=%s warning=%q", health, warning)
+			}
+		})
+	}
+	if health, warning := lifecycleHealthAt(time.Time{}, "automatic-reconcile", now); health != "unknown" || warning == "" {
+		t.Fatal("missing expiry was treated as healthy")
+	}
+	if health, warning := lifecycleHealthAt(now.Add(20*24*time.Hour), "replace-and-reconcile", now); health != "warn" || warning == "" {
+		t.Fatal("operator-owned replacement warning disappeared")
 	}
 }
 

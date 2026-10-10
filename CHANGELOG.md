@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Quick init accepts explicit noninteractive Core bootstrap consent and recognizes real terminals; stopped development routes retain truthful diagnostics, fresh managed certificates do not warn before their renewal window, and MCP stdio flushes decoded replies before EOF (#827–#831).
+
 - Shared Core Identity receives PostgreSQL CA overlap and final trust before old SQL trust is retired; rotation verifies real Identity authentication, and Core Doctor checks live Identity rather than SQL/Secrets alone.
 
 - Local Docker is verified rootless by default, all runtime commands use the selected endpoint, and protected daemon bindings prevent implicit engine changes across CLI/MCP or legacy Core cleanup (#863). Target/status/Doctor expose the actual socket and mode.

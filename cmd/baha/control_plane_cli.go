@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"io"
+	"strings"
 )
 
 func controlPlaneDownCLI(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -17,6 +18,11 @@ func controlPlaneDownCLI(ctx context.Context, args []string, out, errOut io.Writ
 		return err
 	}
 	if len(filtered) != 0 {
+		for _, arg := range filtered {
+			if strings.HasPrefix(arg, "-") {
+				return usageError("down does not accept unknown option "+arg, "Run 'baha down --help'; use --json for structured results.")
+			}
+		}
 		return usageError("down does not accept positional arguments", "Use --json for structured results.")
 	}
 	progress := out

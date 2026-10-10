@@ -24,6 +24,18 @@ func TestAppDownRejectsUnknownOptionsBeforeRuntime(t *testing.T) {
 	}
 }
 
+func TestRootDownDistinguishesUnknownOptionsFromPositionals(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, tc := range []struct{ arg, want string }{{"--bogus", "unknown option --bogus"}, {"--yes", "down does not accept --yes"}, {"foo", "positional arguments"}} {
+		var out bytes.Buffer
+		err := runWithIO(context.Background(), []string{"down", tc.arg}, &out, &out)
+		var usage *cli.UsageError
+		if !errors.As(err, &usage) || !strings.Contains(usage.Message, tc.want) {
+			t.Fatalf("%s: %v", tc.arg, err)
+		}
+	}
+}
+
 func TestHumanNewExplicitObjectKinds(t *testing.T) {
 	for _, tc := range []struct {
 		kind string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -597,13 +598,13 @@ func (c *applicationStatusCollection) collectCanonicalDevelopmentCheck(ctx conte
 		return
 	}
 	hosts, err := applicationCanonicalRouteHosts(c.resolved.Target.Name, c.manifest)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		c.result.AddCheck("canonical-development-urls", false, err.Error())
 		return
 	}
 	if len(hosts) == 0 {
 		if requiresDeclaredDevelopmentGatewaySurface(c.manifest) {
-			c.result.AddCheck("canonical-development-urls", false, "development gateway is required but the application contract defines no canonical route; declare the required exposure.http or management surface")
+			c.result.AddCheck("canonical-development-urls", false, "declared development routes are not installed or have been stopped; run 'baha up' to restore them, then 'baha status' and 'baha doctor'")
 		}
 		return
 	}
