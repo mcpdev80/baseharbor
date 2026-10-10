@@ -104,7 +104,7 @@ For v0.4.24, the final Connector commit's `integration-candidate.json` binds the
 
 `scripts/ecosystem_release_pins.py` validates all bindings and resolves the public consumer evidence manifest. The pre-release workflow accepts an optional exact `consumer_ref`, or resolves the reviewed Connector integration branch once and freezes its 40-character SHA. Approval retains that immutable consumer origin; release revalidation resolves the same commits. The complete native Connector job also verifies the exact Console browser receipt, so its authenticated artifact can prove Console integration without repeating the same journey. All existing atomic gates remain required.
 
-Preparing these inputs does not start or approve a pre-release. The tested SHA matrix and completed pre-release validation are recorded in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837); v0.4.24 remains Unreleased until separately authorized.
+Preparing these inputs does not start or approve a pre-release. The tested SHA matrix and completed pre-release validation are recorded in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 ## Release artifacts
 

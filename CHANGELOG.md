@@ -4,7 +4,7 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
-## [0.4.24] - Unreleased
+## [0.4.24] - 2026-10-11
 
 ### Added
 
@@ -49,7 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Provider updates require compatible release-pinned images, verified ownership and backups. PostgreSQL major upgrades and unsupported provider upgrade paths remain blocked.
 - Shared native PostgreSQL HA and physical backup-state recovery are supported; application-scoped PostgreSQL HA, cross-host failover and automatic plaintext-to-mTLS DCS migration remain unsupported.
 - Existing installations do not silently change topology. SQL transactions with unknown commit outcomes are not automatically replayed.
-- Implementation and complete pre-release validation are finished. Publication remains pending, so this version is still Unreleased.
 
 ## [0.4.23] - 2026-10-08
 

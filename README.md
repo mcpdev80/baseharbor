@@ -26,9 +26,9 @@ on your own machine, no vendor, no lock-in.
   </a>
 </p>
 
-## v0.4.24 candidate
+## BaseHarbor v0.4.24
 
-Implementation and pre-release validation are complete; publication is pending. This README and the EN/DE documentation describe v0.4.24. Install the [latest published release](https://github.com/mcpdev80/baseharbor/releases/latest) for stable use; use the reviewed [v0.4.24 candidate](https://github.com/mcpdev80/baseharbor/tree/work/v0.4.24-core-ha-updates) when following candidate-only workflows.
+This README and the EN/DE documentation describe v0.4.24. Installation binaries and published versions are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
 
 ## BaseHarbor Core
 

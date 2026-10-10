@@ -31,7 +31,7 @@ Use `baha --help` or `baha COMMAND --help`; developer tasks appear first, and sp
 
 `baha update --check` inspects published BaseHarbor releases and compares the installed owned Core providers with the selected immutable release catalog. JSON reports `core_plan` and any `core_inspection_error`; unknown inventory is not assumed supported.
 
-`baha update --yes` updates BaseHarbor itself and reconciles only admitted Core provider changes after verified backup, ownership and recovery checks. PostgreSQL major changes and unsupported HA transitions remain excluded. v0.4.24 is unreleased; checking an available release does not publish this candidate.
+`baha update --yes` updates BaseHarbor itself and reconciles only admitted Core provider changes after verified backup, ownership and recovery checks. PostgreSQL major changes and unsupported HA transitions remain excluded.
 
 Use `baha app update` for application source/Git updates. It is a different operation from BaseHarbor/Core updates. See the [Core provider update specification](../spec/core-provider-update-v1.md) for exact admission and recovery boundaries.
 

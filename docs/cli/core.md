@@ -89,6 +89,6 @@ JSON and the MCP destroy operations return `resources`, `preserved` and `results
 
 ## Provider update and point recovery
 
-`baha update --check` inspects a published release without changing providers. A supported update requires `--yes`, immutable image identities and verified recovery points. v0.4.24 remains Unreleased; these commands do not publish a candidate.
+`baha update --check` inspects a published release without changing providers. A supported update requires `--yes`, immutable image identities and verified recovery points.
 
 `baha update --recover --version VERSION --yes` explicitly restores the owned HA PostgreSQL and DCS to that update’s verified backup point and retains displaced volumes. It does not replace the CLI. Transactions after the backup point are lost; an update failure never triggers this rewind automatically. Unknown commit/fencing states require reconciliation. See the [provider update contract](../spec/core-provider-update-v1.md) for topology and version boundaries.

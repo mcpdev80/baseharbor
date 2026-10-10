@@ -83,7 +83,7 @@ Der Anbietervertrag darf keine spezifische Low-Level-OCI-Laufzeitimplementierung
 
 ## Komponieren-Spezifikation
 
-Upstream:https://github.com/compose-spec/compose-spec/blob/main/spec.md  
+Upstream:https://github.com/compose-spec/compose-spec/blob/main/spec.md
 Schema:https://github.com/compose-spec/compose-spec/blob/main/schema/compose-spec.json
 
 ### Bestehende Normen
@@ -246,7 +246,7 @@ Portable Belichtungsabsicht muss stabil bleiben, ob durch das lokale Gateway, Ku
 
 ## Spezifikation für die Servicebindung
 
-Upstream:https://github.com/servicebinding/spec  
+Upstream:https://github.com/servicebinding/spec
 Projekt:https://servicebinding.io/
 
 ### Bestehende Normen

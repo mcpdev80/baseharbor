@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plan and verify exact gate coverage with immutable, input-equivalent origins."""
 import argparse
+import datetime
 import functools
 import hashlib
 import io
@@ -396,7 +397,8 @@ def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expect
     if len(pins) > 1:
         raise ValueError('origin run contains inconsistent Demo pins')
     if not pins:
-        if any(key_from_job(job['name'], expected) is not None for job in jobs):
+        if any(key_from_job(job['name'], expected) is not None and
+               job.get('conclusion') != 'skipped' for job in jobs):
             raise ValueError('origin Demo pin is unavailable; cannot reuse older proof')
         return None
     pin = pins.pop()
@@ -404,6 +406,44 @@ def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expect
     if inputs.pin(candidate, tag, demo_ref=pin) != pin:
         raise ValueError('origin Demo immutable Core pin differs')
     return pin
+
+
+def executed_jobs(jobs, expected):
+    """Ignore only exact successful execution copies created by partial reruns."""
+    def times(job):
+        try:
+            return tuple(datetime.datetime.fromisoformat(job[field].replace('Z', '+00:00'))
+                         for field in ['created_at', 'started_at', 'completed_at'])
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+
+    def execution(job):
+        return digest({field: job.get(field) for field in [
+            'run_id', 'name', 'head_sha', 'status', 'conclusion', 'started_at',
+            'completed_at', 'steps', 'runner_id', 'runner_name', 'labels']})
+
+    originals = []
+    for job in jobs:
+        stamp = times(job)
+        if (stamp and stamp[0] <= stamp[1] <= stamp[2] and job.get('steps') and
+                job.get('status') == 'completed' and job.get('conclusion') == 'success' and
+                type(job.get('run_attempt')) is int and type(job.get('id')) is int):
+            originals.append((job, execution(job)))
+    result = []
+    for job in jobs:
+        stamp = times(job)
+        copied = (key_from_job(job.get('name', ''), expected) is not None and
+                  stamp and stamp[1] <= stamp[2] < stamp[0] and
+                  job.get('status') == 'completed' and job.get('conclusion') == 'success')
+        if copied:
+            if (type(job.get('run_attempt')) is not int or type(job.get('id')) is not int or
+                    not any(original['run_attempt'] < job['run_attempt'] and
+                            original['id'] < job['id'] and signature == execution(job)
+                            for original, signature in originals)):
+                raise ValueError('copied successful job has no matching original execution')
+            continue
+        result.append(job)
+    return result
 
 
 def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
@@ -426,7 +466,7 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
-        jobs = api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs')
+        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs'), expected)
         archives = {}
         origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
                                      artifacts, jobs, expected, archives)

@@ -1,8 +1,8 @@
 # Release Notes
 
-## Aktueller Kandidat
+## Aktuelle Version
 
-[BaseHarbor v0.4.24](v0.4.24.md): Implementierung und Pre-Release-Abnahme sind abgeschlossen. Die Veröffentlichung steht noch aus.
+[BaseHarbor v0.4.24](v0.4.24.md): Entwickler-Highlights und Kompatibilitätshinweise.
 
 Die Nachweise beziehen sich auf den geprüften gemeinsamen Code-Kandidaten. Dokumentationskorrekturen ändern dessen Runtime-Abnahme nicht.
 
