@@ -390,17 +390,19 @@ class GitFingerprintTests(unittest.TestCase):
 
     def test_v024_backup_fixture_change_preserves_only_unaffected_atomic_proofs(self):
         product = self.v024_inventory()
-        path = self.demo / 'tests/backup-restore/run.sh'
-        path.parent.mkdir(parents=True)
-        path.write_text('old recovery contract\n')
-        original = self.commit(self.demo)
-        path.write_text('corrected recovery contract\n')
-        changed = self.commit(self.demo)
-        for key, same in [('atomic/docker/identity', True), ('atomic/podman/security', True),
-                          ('atomic/podman/backup-restore', False), ('journey/docker', False)]:
-            with self.subTest(key=key):
-                self.assertEqual(self.inputs.fingerprint(product, original, 'v0.4.24', key) ==
-                                 self.inputs.fingerprint(product, changed, 'v0.4.24', key), same)
+        for name in ['tests/backup-restore/run.sh', 'tests/native-default-topology.py',
+                     'tests/native_default_topology_test.py']:
+            path = self.demo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('old recovery contract\n')
+            original = self.commit(self.demo)
+            path.write_text('corrected recovery contract\n')
+            changed = self.commit(self.demo)
+            for key, same in [('atomic/docker/identity', True), ('atomic/podman/security', True),
+                              ('atomic/podman/backup-restore', False), ('journey/docker', False)]:
+                with self.subTest(path=name, key=key):
+                    self.assertEqual(self.inputs.fingerprint(product, original, 'v0.4.24', key) ==
+                                     self.inputs.fingerprint(product, changed, 'v0.4.24', key), same)
 
     def test_v024_collector_metadata_and_rebound_demo_pin_preserve_native_execution(self):
         product = self.v024_inventory()

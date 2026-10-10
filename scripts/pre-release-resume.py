@@ -145,7 +145,9 @@ class GitInputs:
                                 and not key.startswith('journey/'))
                         # Atomic bootstrap does not source this isolated gate.
                         and not (tag == 'v0.4.24' and key.startswith('atomic/')
-                                 and path == 'tests/backup-restore/run.sh'
+                                 and path in {'tests/backup-restore/run.sh',
+                                              'tests/native-default-topology.py',
+                                              'tests/native_default_topology_test.py'}
                                  and not key.endswith('/backup-restore'))
                         # pin() separately requires this exact Core binding on
                         # both candidate and original v0.4.24 Demo revisions.
