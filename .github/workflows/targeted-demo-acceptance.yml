@@ -36,8 +36,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: targeted-atomic-${{ github.ref_name }}-${{ inputs.runtime }}-${{ inputs.gate }}
-  cancel-in-progress: true
+  group: baseharbor-release-qualification
+  cancel-in-progress: false
 
 jobs:
   resolve:
@@ -64,6 +64,7 @@ jobs:
           DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
           DISPATCH_RUNTIME: ${{ inputs.runtime }}
           DISPATCH_GATE: ${{ inputs.gate }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -87,9 +88,16 @@ jobs:
             ref="$GITHUB_SHA"
             version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
             test -n "$version"
-            demo_ref_file="docs/releases/v${version}.demo-ref"
-            test -s "$demo_ref_file"
-            demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+            if [ "$version" = 0.4.24 ]; then
+              demo_ref="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/work/v0.4.24-ecosystem-release --jq '.object.sha')"
+              [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+              demo_core="$(gh api "repos/mcpdev80/baseharbor-demo/contents/baseharbor-core.ref?ref=$demo_ref" --jq '.content' | base64 --decode | tr -d '[:space:]')"
+              test "$demo_core" = "$ref"
+            else
+              demo_ref_file="docs/releases/v${version}.demo-ref"
+              test -s "$demo_ref_file"
+              demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+            fi
             [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
           fi
 
@@ -127,7 +135,7 @@ jobs:
     needs: resolve
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 1
       matrix:
         include: ${{ fromJSON(needs.resolve.outputs.gates) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml

@@ -38,6 +38,10 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: baseharbor-release-qualification
+  cancel-in-progress: false
+
 jobs:
   source:
     if: ${{ !startsWith(github.ref_name, 'validation/evidence/') }}
