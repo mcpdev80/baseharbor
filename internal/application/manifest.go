@@ -199,9 +199,6 @@ func New(name, environment string, sql, cache, secrets bool) Manifest {
 	if environment == "" {
 		environment = "dev"
 	}
-	if !sql && !cache && !secrets {
-		sql = true
-	}
 	return Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
 }
 

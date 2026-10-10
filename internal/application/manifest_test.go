@@ -110,9 +110,9 @@ secrets:
 	}
 }
 
-func TestManifestDefaultsToSQL(t *testing.T) {
+func TestManifestDoesNotDefaultToSQL(t *testing.T) {
 	m := New("demo", "", false, false, false)
-	if m.Environment != "dev" || !m.Services.SQL {
+	if m.Environment != "dev" || m.Services.SQL || m.Services.Cache || m.Services.Secrets {
 		t.Fatalf("unexpected defaults: %#v", m)
 	}
 }

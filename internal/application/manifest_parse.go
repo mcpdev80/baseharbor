@@ -31,6 +31,7 @@ type manifestYAMLParser struct {
 	availabilityComponent  string
 	consumptionIndex       int
 	serviceSeen            map[string]string
+	appSeen                map[string]bool
 }
 
 func newManifestYAMLParser() *manifestYAMLParser {
@@ -40,6 +41,7 @@ func newManifestYAMLParser() *manifestYAMLParser {
 		metricsIndex:           -1,
 		runtimePermissionIndex: -1,
 		serviceSeen:            map[string]string{},
+		appSeen:                map[string]bool{},
 		consumptionIndex:       -1,
 	}
 }
@@ -65,13 +67,7 @@ func ParseYAML(input string) (Manifest, error) {
 	if err := scanner.Err(); err != nil {
 		return Manifest{}, err
 	}
-	if parser.manifest.ApplicationID == "" {
-		return Manifest{}, fmt.Errorf("application id is required")
-	}
-	if err := ValidateApplicationID(parser.manifest.ApplicationID); err != nil {
-		return Manifest{}, err
-	}
-	if err := parser.manifest.Validate(); err != nil {
+	if err := parser.manifest.ValidateIntent(); err != nil {
 		return Manifest{}, err
 	}
 	return parser.manifest, nil
@@ -194,7 +190,7 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 		return nil
 	case p.section == "app":
 		return p.parseAppField(lineNo, trim)
-	case p.section == "services" && strings.HasSuffix(trim, ":"):
+	case p.section == "services":
 		return p.parseServiceSection(lineNo, trim)
 	case p.section == "secrets" && (trim == "required:" || trim == "optional:"):
 		p.secretField = strings.TrimSuffix(trim, ":")
@@ -235,6 +231,10 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 	if !ok {
 		return fmt.Errorf("line %d: expected key: value", lineNo)
 	}
+	if p.appSeen[key] {
+		return fmt.Errorf("line %d: duplicate app field %q", lineNo, key)
+	}
+	p.appSeen[key] = true
 	switch key {
 	case "id":
 		p.manifest.ApplicationID = strings.TrimSpace(value)
@@ -249,7 +249,10 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 }
 
 func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error {
-	rawService := strings.TrimSuffix(trim, ":")
+	rawService, value, ok := strings.Cut(trim, ":")
+	if !ok {
+		return fmt.Errorf("line %d: expected service: true|false or service:", lineNo)
+	}
 	switch rawService {
 	case "sql", "cache", "key_value", "document_database", "messaging_queue", "messaging_pubsub", "messaging_stream", "object_storage", "secrets", "identity", "observability":
 		p.service = rawService
@@ -260,6 +263,16 @@ func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error 
 		return fmt.Errorf("line %d: duplicate service %q", lineNo, rawService)
 	}
 	p.serviceSeen[p.service] = rawService
+	value = strings.TrimSpace(value)
+	if value != "" {
+		if value != "true" && value != "false" {
+			return fmt.Errorf("line %d: expected service: true|false", lineNo)
+		}
+		if err := p.parseServiceField(lineNo, "enabled: "+value); err != nil {
+			return err
+		}
+		p.service = ""
+	}
 	return nil
 }
 
