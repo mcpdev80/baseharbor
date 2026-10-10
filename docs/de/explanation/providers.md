@@ -45,3 +45,68 @@ Der gemeinsam genutzte PostgreSQL-Referenzprovider besitzt genau eine interne Ad
 Jede registrierte SQL-Ressource besitzt eine eigene Datenbank, eine eigene Rolle mit minimalen Rechten und eine geschützte Zugangsdaten-Referenz. Anwendungsbindungen enthalten ausschließlich Host, Port, Datenbank, App-Rolle, App-Zugangsdaten und Vertrauensmaterial dieser Ressource. Provider-weite Administrationszugangsdaten verlassen die Provider-Grenze niemals.
 
 Sicherung, Wiederherstellung und Löschen leiten ihren Ressourcensatz aus der geschützten Registrierung ab. Mehrdeutiger Besitz führt zu einem sicheren Abbruch; rekonstruierte Namen allein autorisieren keine Löschung.
+
+
+## Weitere unveränderte technische Beispiele
+
+```text
+runtime != capability != delivery
+```
+
+```text
+one shared PostgreSQL provider
+├── app-a database + least-privilege role
+├── app-b database + least-privilege role
+└── app-c database + least-privilege role
+```
+
+```text
+provider_instance_id != application_id != deployment_id
+```
+
+
+Technische Kennungen: `database.sql`, `messaging.pubsub`, `messaging.stream`, `object-storage.s3`.
+
+
+## Explizite HA und native Provider-Topologie
+
+Bei einer frischen Installation wählen fehlendes `ha` und `ha: false` die Standardtopologie. `ha: true` wählt die unterstützte native Topologie; ein Komponenten-Override hat Vorrang vor der globalen Anforderung. Feste native Mitgliederzahlen werden vor Änderungen geprüft. Unabhängige logische Instanzen bleiben unabhängige Datenbestände, auch wenn ihre Namen mit einer Zahl enden.
+
+Der folgende Audit umfasst Core und gebündelte Application-Provider. Die Zahlen beschreiben Daten- oder Dienstrollen, nicht die gesamte Containerzahl. Runtime-Status und Doctor vergleichen geschützte gespeicherte Compose-Definitionen mit den laufenden Diensten der ausgewählten Runtime. Sie melden angeforderte/aktive HA, Datenmitglieder, Dienstmitglieder, konfigurierte Replikation, Hilfsrollen und die tatsächliche Ausfalldomäne Runtime-Host. Nicht erhobene Replikations- oder Failover-Nachweise werden ausdrücklich benannt; mehrere Container allein beweisen keine Replikation.
+
+| Provider | Standardtopologie | Explizite native HA | Datenreplikation | Hilfsdienste | Ressourcenbedarf / Audit-Ergebnis |
+| --- | --- | --- | --- | --- | --- |
+| Core PostgreSQL | Ein PostgreSQL-Datenmitglied | Drei Patroni-Datenmitglieder und drei etcd-Voter | Streaming-WAL an zwei Standbys | Stabiler SQL-Proxy, Administrationsclient, Initialisierungs-/TLS-Jobs | Ein statt drei Daten-Volumes, zusätzlich drei HA-DCS-Volumes; Proxy/Admin sind keine Datenbankreplikate |
+| Core OpenBao | Ein OpenBao-Prozess mit Core-SQL-Datenbank | Drei OpenBao-Prozesse mit gemeinsamer Core-HA-SQL-Datenbank | SQL-Replikation gehört PostgreSQL; OpenBao-Prozesse sind keine getrennten Kopien des Datenbestands | Stabiler API-Proxy und Administrationsclient | Ein statt drei Anwendungsprozesse; SQL-Speicher wird einmal gezählt |
+| Core / Shared Keycloak | Ein Identity-Prozess, eigene Datenbank/Benutzer auf Core-SQL | Drei Identity-Prozesse auf demselben Core-HA-SQL | Core-WAL-Replikation; kein zusätzliches SQL-Deployment | Ein Identity-Zugangs-Gateway | Ein physischer Shared-Identity-Provider; App-Realms/Clients sind logische Consumer |
+| Shared PostgreSQL | Verwendet das einzelne Core-SQL-Mitglied | Verwendet drei Core-Patroni-Mitglieder; unpassende Consumer-Overrides werden abgelehnt | Dieselbe Core-WAL-Replikation | Vorhandene Core-Helfer, optionale UI | Getrennte eigene Datenbanken/Benutzer; keine Environment-/Boundary-Deployments oder zusätzlichen Daten-Volumes |
+| Application PostgreSQL | Ein isoliertes SQL-Mitglied pro logischer Instanz | Application-Platzierung lehnt HA ausdrücklich ab; für HA den nativen Shared-Provider verwenden | Keine im isolierten Single-Modus | Optionale Administration/UI | Bisher stillschweigende Single-Realisierung angeforderter HA scheitert jetzt vor Änderungen; diese Platzierungsgrenze bleibt ausdrücklich bestehen |
+| SeaweedFS | Ein kombiniertes Master-/Volume-/Filer-/S3-Mitglied | Ungerade Mitgliederzahl ab drei; Standard drei | Native Volume-Replikation `100` und koordinierte Filer-Metadaten; Single verwendet `000` | Stabiler authentifizierter TLS-S3-Gateway; optionale Managementdienste | Ein statt N Daten-Volumes; der unbedingte Drei-Node-Standard ist entfernt |
+| Prometheus | Ein Scraper/TSDB | Standardmäßig zwei unabhängige Scraper/TSDBs; explizite Anzahl ab zwei | Null Replikate eines gemeinsamen Datenbestands: jede TSDB speichert ihre eigene Scrape-Historie | Stabiler authentifizierter Zugangs-Gateway | Ein statt N TSDB-Volumes; der unbedingte Zwei-Instanzen-Standard ist entfernt |
+| OpenTelemetry Collector | Ein Receiver | Standardmäßig zwei Receiver; explizite Anzahl ab zwei | Keine Datenreplikate; Receiver sind zustandslos | Stabiler authentifizierter OTLP-Gateway | Ein statt N Collector-Prozesse; der unbedingte Zwei-Receiver-Standard ist entfernt |
+| Loki | Ein Datendienst mit lokalem Speicher | Drei native Lese-/Schreibmitglieder mit Replikationsfaktor zwei | Zwei Ingester-Kopien; langfristige Objekte verwenden die ausdrücklich angeforderte Object-Storage-Topologie | Alloy-Sammlung und authentifizierter Zugangs-Gateway | Ein statt drei lokale WAL-/Daten-Volumes; Loki-HA aktiviert nicht implizit S3-HA |
+| Tempo | Ein Prozess mit lokalem Speicher | Verteilte native Rollen: zwei Distributoren, sechs Live Stores über drei Partitionen/zwei logische Zonen, drei Block Builder, zwei Query Frontends, zwei Querier, ein Backend Scheduler und zwei Backend Worker | Zwei Live-Store-Eigentümer pro Partition; drei Redpanda-Broker; Object Storage folgt seiner eigenen Anforderung | Kafka-Initialisierung und authentifizierter Query-Zugang | Achtzehn Tempo-Dienstrollen plus drei Redpanda-Datenbroker; `instances: 2` ist eine native Topologieangabe, nicht die gesamte Containerzahl zwei |
+| Valkey Cache / dauerhaftes Key-Value | Shared: ein Provider pro Core/Target; AppScoped: ein Mitglied pro angeforderter Instanz | Ein Primary, N−1 Replikate und drei Sentinels; Standard N=3 | Native Primary-/Replica-Replikation | Zugangs-Gateway, HA-Sentinels, optionale Operator-UI | Eigene Shared-ACL-Benutzer und Key-/Channel-Namensräume; kein Daten-Volume pro Consumer |
+| RabbitMQ | Ein Broker pro logischer Instanz | Ungerade Mitgliederzahl ab drei; Standard drei | Provider-native Quorum Queues / replizierte Streams | Stabiler Access-Proxy und optionaler Managementzugang | Ein statt N Broker-Daten-Volumes; die explizite Mitgliederanforderung bestimmt die Replikationstopologie |
+| MongoDB | Ein Standalone-Datenmitglied pro logischer Instanz | Ungerade Mitgliederzahl ab drei; Standard drei | Natives Replica Set mit Primary/Secondaries | Optionale Management-UI und deren Zugangs-Gateway | Ein statt N Daten-Volumes; Standalone wird nicht als Replica Set bezeichnet |
+| Gateways, Administrationsclients, Init-Jobs, Alloy und UI-Dienste | Starten nur für ihre angeforderte technische/Management-Rolle | Kein unabhängiger Daten-HA-Standard | Keine Replikate des Provider-Datenbestands | Diese Dienste sind selbst Hilfsrollen | CPU/RAM und eigener UI-Zustand zählen weiterhin zum Gesamtbedarf; sie werden nicht allein zur Verringerung der Containerzahl entfernt |
+
+Die Ressourcenangaben beschreiben Prozesse und persistente Speicherbereiche. CPU/RAM-Verbrauch hängt von Workload, Aufbewahrung und Image-Konfiguration ab; erfundene Messwerte oder allgemeine Mindestwerte werden nicht behauptet. Die Runtime-Abnahme zeichnet native Mitglieder-/Hilfsnamen auf und prüft authentifizierte Readiness, wiederholte Reconciliation und besitzgebundenes Löschen.
+
+Status und Doctor unterscheiden angefordertes HA, native lebende Daten-/Dienstmitglieder, Hilfsrollen, konfigurierte Replikation und authentifizierten Replikationsnachweis. Core- und Identity-SQL verwenden native Patroni-Primary-/Replica-Health-Rollen; Valkey prüft Replikationsverbindungen und Sentinel-Quorum, MongoDB Primary-/Secondary-Rollen und RabbitMQ die native Cluster-Mitgliedschaft. RabbitMQ-Datenreplikation bleibt vom Queue-Typ abhängig. Reine Anzahlen melden `ha-active=unknown` statt bewiesenem HA; eine lebende Replikationsbeobachtung ist kein destruktiver Failover-Test.
+
+### Bestehende Installationen und Recovery
+
+Bestehende Single- oder HA-Datentopologie bleibt erhalten. Eine widersprüchliche explizite oder standardmäßige Manifest-Anforderung scheitert vor Änderungen an gespeichertem Compose, Zugangsdaten oder nativen Mitgliedern; Wartung ohne neue Topologieanforderung verwendet die gespeicherte Mitgliederzahl. Es gibt keine automatische destruktive Cluster-zu-Single-Migration. Die native Abnahme versucht außerdem eine widersprüchliche Anforderung und prüft unveränderte laufende Containeridentitäten.
+
+Provider-SQL-Recovery verwendet die geschützte Operator-Identität der Installation ausschließlich innerhalb der Wiederherstellung der Provider-eigenen Datenbank. Versionsbedingt hinzugefügte Abhängigkeiten werden nur innerhalb der gebundenen Provider-Datenbank entfernt; der vollständige Schema-/Daten-Restore läuft in einer Transaktion. Archiv-Dekodierung scheitert vor Datenbankänderungen; dekodiertes SQL bleibt temporär und besitzgeschützt. Das ursprüngliche Compose wird vor Änderungen zusammen mit dem Datenbankbackup gesichert. Das verifizierte Archiv erhält ursprünglichen Besitz und ACLs; Application-Zugangsdaten behalten minimale Rechte. OpenBao wird vor der Readiness-Prüfung entsiegelt. Recovery eines ausgefallenen Providers akzeptiert einen entfernten oder gestoppten Container nur, wenn geschütztes gespeichertes Compose und freigegebene unveränderliche Original-/Ziel-Image-Digests die besitzgebundene Quelle beweisen; die normale Upgrade-Auswahl erfordert weiterhin lebendes natives Inventar.
+
+Das Tracking-Issue ist [#851](https://github.com/mcpdev80/baseharbor/issues/851), direkt integriert in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837). Runtime-Nachweise und finaler Kandidat werden dort festgehalten. Dieser Audit allein erklärt keine Release-Bereitschaft und behauptet keine grünen Ergebnisse ausstehender Runtime-Gates.
+
+### Shared-Provider-Besitz
+
+Shared-Provider sind physische Installations-/Target-Ressourcen. Environments und Sharing-Boundaries sind logische Consumer; Prometheus, Loki und Tempo verwenden ein kanonisches Shared-Deployment. Explizite AppScoped-Provider behalten unabhängige Deployments und Lifecycle. AppScoped-Keycloak behält sein eigenes SQL-Deployment; Shared-Keycloak verwendet die eigene Datenbank `baseharbor_identity` auf Core PostgreSQL.
+
+Shared-Valkey-Clients müssen jeden Key/Channel präfixieren: Binding `baseharbor-key-prefix` oder `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`, einschließlich Varianten für benannte Instanzen. Consumer-ACLs sperren administrative Suche, Skripte, Datenbankauswahl und fremde Namensräume. Clients mit unverändertem globalem Keyspace müssen ausdrücklich AppScoped wählen. Application-Destroy entfernt nur die eigene Datenbank/Benutzer oder ACL-Benutzer/Namensraum. Shared-Consumer-Credential-/PKI-Rotation benötigt eine Core-eigene Transaktion und wird derzeit ausdrücklich abgelehnt.
+
+Gespeicherte Environment-/Boundary-Deployments oder eine eigene Shared-Keycloak-Datenbank scheitern vor Reconciliation/Update: Backup-verifizierte Migration ist derzeit nicht unterstützt; bestehende Daten und Compose bleiben erhalten. Keine stille Konvertierung oder Löschung. [#857](https://github.com/mcpdev80/baseharbor/issues/857) verfolgt Implementierung und native Abnahme; ausstehende Gates werden nicht als erfolgreich dargestellt.

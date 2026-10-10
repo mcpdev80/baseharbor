@@ -28,3 +28,6 @@ err := durableKV.Set(ctx, "user:42:notifications", "enabled", 0).Err()
 Null-Ablaufzeit erhält den Eintrag bis zum Löschen. Fehler behandeln und diese Daten in den Recovery-Plan aufnehmen. Valkey als gemeinsames Referenzprodukt macht dauerhafte Daten nicht zu disposable Cache.
 
 Mit `baha doctor` prüfen; danach [Backup/Restore](backup-restore.md). [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/durable-key-value/).
+
+
+Technische Bezeichner: `go-redis`, `baseharbor.yaml`.

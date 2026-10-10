@@ -3,7 +3,7 @@
 Mit installiertem `baha` in einem übergeordneten Verzeichnis ohne `orders-api`:
 
 ```bash
-baha app new orders-api --stack go --http --sql
+baha new application orders-api --stack go --http --sql
 cd orders-api
 baha plan
 baha up -e dev
@@ -17,7 +17,7 @@ baha app env --format json
 Nach erfolgreichem Deployment:
 
 ```bash
-baha app psql
+baha app sql
 ```
 
 In dieser PostgreSQL-Sitzung:
@@ -37,3 +37,24 @@ Shared PostgreSQL ist ein Target-eigener Provider mit getrennten Application-Dat
 Für bewusst dedizierten Placement existiert `BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application`. Zusätzliche Instanzen können mehr Ressourcen benötigen; die Core-Capability bleibt verpflichtend.
 
 Weiter: [Backup/Restore](backup-restore.md), [exakte SQL-Erklärung (EN)](https://mcpdev80.github.io/baseharbor/how-to/postgres/).
+
+
+## Weitere technische Beispiele
+
+```text
+one shared PostgreSQL provider
+├── baseharbor_admin        BaseHarbor control plane only
+├── app-a/dev/default      own database + own role + own credential
+├── app-a/dev/analytics    own database + own role + own credential
+└── app-b/dev/default      own database + own role + own credential
+```
+
+```text
+App A role -> App A database  ALLOW
+App A role -> App B database  DENY
+App B role -> App B database  ALLOW
+App B role -> App A database  DENY
+```
+
+
+Technische Bezeichner: `baha inspect .`, `baha init`.

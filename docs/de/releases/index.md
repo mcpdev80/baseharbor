@@ -2,15 +2,11 @@
 
 ## Aktueller Kandidat
 
-[BaseHarbor v0.4.23](v0.4.23.md) befindet sich in Vorbereitung. Die Version ist
-noch nicht veröffentlicht und noch nicht für den Pre-Release freigegeben.
+[BaseHarbor v0.4.24](v0.4.24.md): Implementierung und Pre-Release-Abnahme sind abgeschlossen. Die Veröffentlichung steht noch aus.
 
-Die endgültige Abnahme bindet Code, Demo, Dokumentation und Consumer-Nachweise
-an den geprüften Kandidaten. Fehlende Pflichtnachweise verhindern die Freigabe.
+Die Nachweise beziehen sich auf den geprüften gemeinsamen Code-Kandidaten. Dokumentationskorrekturen ändern dessen Runtime-Abnahme nicht.
 
-## Veröffentlichte Versionen
+## Ältere Release Notes
 
-Die letzte veröffentlichte Version ist
-[v0.4.22 (EN)](https://mcpdev80.github.io/baseharbor/releases/v0.4.22/).
-Das vollständige [Release-Archiv (EN)](https://mcpdev80.github.io/baseharbor/releases/)
-enthält die bisherigen Versionen.
+- [v0.4.23](v0.4.23.md)
+- [Release-Archiv (EN)](https://mcpdev80.github.io/baseharbor/releases/)
