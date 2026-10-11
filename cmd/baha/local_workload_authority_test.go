@@ -146,6 +146,18 @@ func TestLocalWorkloadAuthorityPreservesAllNonlocalAndPolicyBoundaries(t *testin
 			if scenario == "local-podman" && native.observations != 1 {
 				t.Fatal("Podman authority inferred from provider kind without actual local observation")
 			}
+			observation := collectOperatorAuthObservationWithLocalAuthority(ctx, target.Name, "prod", func(observeCtx context.Context, target, environment string) (operatorauth.LocalRuntimeAuthority, bool, error) {
+				return verifiedLocalWorkloadAuthorityWithRuntime(observeCtx, target, environment, resolve)
+			})
+			// Status observes its own read operation; this cannot authorize the
+			// original management mutation, whose proof above remains denied.
+			if allowed || scenario == "management-operation" {
+				if observation.Mode != "local-runtime" || observation.Status != "READY" || observation.Principal != "" {
+					t.Fatalf("verified local authority was misreported: %+v", observation)
+				}
+			} else if observation.Status == "READY" && observation.Mode == "local-runtime" {
+				t.Fatalf("unverified boundary reported local authority: %+v", observation)
+			}
 			if _, principal := operatorauth.PrincipalFromContext(ctx); principal {
 				t.Fatal("adapter manufactured a principal")
 			}

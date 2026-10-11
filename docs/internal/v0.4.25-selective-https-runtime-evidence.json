@@ -61,10 +61,66 @@
           "artifact_digest": "sha256:38ad4969af2070726a56ecc00aff94a49b9721a97093dc682f112bad672771b6"
         }
       ]
+    },
+    {
+      "candidate_sha": "c2b0930a8932c0a6d2abd70c9a78e19f92b32364",
+      "candidate_tree": "e07b847d879ab3269a66f6c65f06c816dbd628eb",
+      "workflow_run_id": 38148847169,
+      "attempt": 1,
+      "test_result": "PASS",
+      "workflow_result": "FAIL",
+      "complete_runtime_union_converged": true,
+      "scope": "Only HTTPS add/remove/re-add qualified: actual complete container union 3/1/3, selected Caddy 1/0/1, verified TLS routes and preserved public CA/system identity; unrelated later local-prod doctor failed before stdio. This does not qualify local-prod or the complete workflow.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114497826807,
+          "conclusion": "failure",
+          "https_test_result": "PASS",
+          "test_seconds": 57.7,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "artifact_id": 11706181368,
+          "artifact_digest": "sha256:d9948163b18acec8fc5db2439c9d56651576684bdf0532c9131cfab55d9c2486"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114497827011,
+          "conclusion": "failure",
+          "https_test_result": "PASS",
+          "test_seconds": 54.01,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "actual_container_boot_definitions_by_phase": [
+            true,
+            false,
+            true
+          ],
+          "artifact_id": 11706366195,
+          "artifact_digest": "sha256:182a451cb73b764876d56f5a92083a68da592ff5d52415407a1878dacc69a5b8"
+        }
+      ]
     }
   ],
   "not_qualified": [
-    "Gateway last-consumer retirement on matching changed source",
     "All required selective runtime gates on one final integrated SHA",
     "Full provider/direct mutation impacts and confirmed replacement/destructive paths",
     "Candidate-compatible complete ecosystem readiness"
