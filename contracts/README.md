@@ -52,3 +52,9 @@ acknowledgements, not a permanent developer-choice veto. Data deletion still nee
 separate explicit consent. The schemas contain authorized references and locations,
 never secret values. Domain fixtures and offline conformance tests prove shared
 CLI/JSON/MCP semantics; runtime authorities collect/verify actual evidence.
+
+The control contract permits optional object-shaped `error.details` on typed
+errors, executions and events. Core attaches the current redacted provider impact
+plan there when explicit acknowledgements are missing or stale. Consumers must
+preserve the failed state and show the plan; receiving details grants no consent
+or authority. Provider details retain their own versioned domain schema.

@@ -114,6 +114,13 @@ Das Ausführungsmodell zeigt:
 - strukturiertes Ergebnis oder eingegebener Fehler;
 - Start-/Endzeitstempel.
 
+Typisierte Fehler können in Fehlerantwort, Ausführung und Ereignis ein
+objektförmiges Feld `details` enthalten. Bei Provider-Änderungen liefert Core darin
+den aktuellen, bereinigten Folgenplan gemäß dem versionierten Provider-Impact-Vertrag.
+Consumer müssen den Fehlerzustand beibehalten und die Folgen anzeigen. Die Details
+erteilen keine Freigabe; ein erneuter Versuch benötigt weiterhin die Bestätigungen
+für den aktuellen Plan und eine separate ausdrückliche Zustimmung zur Datenlöschung.
+
 Die Eingabe der Operation wird nicht in normalen Metadaten der Ausführung beibehalten.
 Executor weist unbekannte Felder zurück, dupliziert Schlüssel in jeder Tiefe, nicht Objekteingabe,
 ungültige UTF-8, Verschachtelung über 64 Levels und hintere JSON-Werte ohne

@@ -2,9 +2,13 @@ package contracts_test
 
 import (
 	"encoding/json"
-	"github.com/mcpdev80/baseharbor/internal/application"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/contracts"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // All machine interfaces serialize this same domain output; presentation is not
@@ -52,6 +56,28 @@ func TestProviderImpactMachineSchemasAndSharedFixtures(t *testing.T) {
 			value := jsonValue(t, plan)
 			if err := schema.Validate(value); err != nil {
 				t.Fatal(err)
+			}
+			failure := &machine.Error{Code: machine.ErrorPolicyDenied, Message: "Provider changes need current acknowledgements", CauseCode: "provider_change_consent_required", Details: plan}
+			wire, err := json.Marshal(machine.ResultError(failure))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := contracts.ValidateMachineControlRecord("error_result", wire); err != nil {
+				t.Fatalf("HTTP error envelope rejects the actual provider impact plan: %v", err)
+			}
+			now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+			actor := machine.ActorRef{Mode: "operator", Subject: "fixture"}
+			context := machine.OperationContext{Target: plan.Target, Environment: manifest.Environment, Application: manifest.Name}
+			execution := machine.Execution{ContractVersion: "v1", ExecutionID: "exec_0123456789abcdef0123456789abcdef", OperationID: "apply", Actor: actor, Context: context, State: machine.ExecutionFailed, StartedAt: &now, FinishedAt: &now, Error: failure}
+			event := machine.MachineEvent{ContractVersion: "v1", Sequence: 1, OccurredAt: now, Kind: machine.EventOperationFailed, ExecutionID: execution.ExecutionID, OperationID: execution.OperationID, Actor: &actor, Context: &context, State: execution.State, Error: failure}
+			for record, value := range map[string]any{"execution": execution, "event": event} {
+				wire, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := contracts.ValidateMachineControlRecord(record, wire); err != nil {
+					t.Fatalf("%s rejects the actual provider impact plan: %v", record, err)
+				}
 			}
 			if err := consentSchema.Validate(jsonValue(t, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: true, DeleteData: plan.Destructive})); err != nil {
 				t.Fatal(err)

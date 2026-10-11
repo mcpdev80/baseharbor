@@ -84,6 +84,9 @@ func TestMachineControlSchemasRejectAmbiguousAndIncompleteRecords(t *testing.T) 
 		{"event", `{"contract_version":"v2","sequence":1,"occurred_at":"2026-10-06T00:00:00Z","kind":"operation.started"}`},
 		{"error_result", `{"contract_version":"v1","error":{"code":"x"}}`},
 		{"error_result", `{"contract_version":"v1","error":{"code":"x","message":"y"},"unknown":true}`},
+		{"error_result", `{"contract_version":"v1","error":{"code":"x","message":"y","details":null}}`},
+		{"error_result", `{"contract_version":"v1","error":{"code":"x","message":"y","details":[]}}`},
+		{"error_result", `{"contract_version":"v1","error":{"code":"x","message":"y","details":"not structured"}}`},
 		{"error_result", `{"contract_version":"v1","error":{"code":"x","message":"y"}} {}`},
 	} {
 		if contracts.ValidateMachineControlRecord(test.record, []byte(test.data)) == nil {

@@ -114,6 +114,13 @@ The execution model exposes:
 - structured result or typed error;
 - start/finish timestamps.
 
+Typed errors may include an object-shaped `details` field in the error response,
+execution and event. Provider-change failures expose the current redacted impact
+plan through this field, using the versioned provider-impact contract. Consumers
+must preserve the failed state and display the consequences. Details do not grant
+approval; any retry still requires the current plan-bound acknowledgements and
+separate explicit consent for data deletion.
+
 Operation input is not retained in ordinary execution metadata. The semantic
 executor rejects unknown fields, duplicate keys at every depth, non-object input,
 invalid UTF-8, nesting beyond 64 levels and trailing JSON values without
