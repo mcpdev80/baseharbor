@@ -40,8 +40,9 @@ type machineProviderAddInput struct {
 }
 
 type machineProviderRemoveInput struct {
-	ID       string `json:"id" jsonschema:"registered external provider id"`
-	Approval bool   `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit aggregate plan acknowledgement; ordinary approval does not authorize provider consequences"`
+	ID                    string                             `json:"id" jsonschema:"registered external provider id"`
+	Approval              bool                               `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
 }
 
 type machineOrganizationInput struct {

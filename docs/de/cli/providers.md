@@ -28,3 +28,5 @@ Weiter: [Provider-Modell](../explanation/providers.md), [externe Provider](../ho
 
 
 Technische Bezeichner: `database.sql`, `cache.key-value`, `database.key-value`, `database.document`, `object-storage.s3`, `baha provider list`, `baha provider inspect company-db`, `baha provider verify company-db`.
+
+Beim Entfernen einer externen Registrierung wird ein gemeinsamer Folgenplan über gespeicherte Targets geprüft, auch für Targets außerhalb der aktuellen Konfiguration. `--yes` bestätigt nur den Befehl. Betroffene oder unbekannte Verbraucherfolgen benötigen zwei ausdrückliche Bestätigungen des gesamten Plans; JSON/MCP/HTTP verwenden `provider_change_consent`. CLI-Automatisierung übergibt dasselbe Objekt durch `BASEHARBOR_PROVIDER_CHANGE_CONSENT`. Fremde Infrastruktur, Zugangsdaten und laufende Workload-Konfiguration bleiben unverändert. Verifizierte Bindungsentfernung wird getrennt ausgewiesen; unbekannter Zugriff, Ablauf, Erneuerung und Wiederherstellung bleiben teilweise, ohne zugesagten Ersatz.

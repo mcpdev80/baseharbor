@@ -230,22 +230,19 @@ func providerRemoveCommand() *cli.Command {
 			if strings.TrimSpace(id) == "" || !yes {
 				return usageError("baha provider remove requires ID and explicit --yes", "Example: baha provider remove company-db --yes")
 			}
-			item, err := application.InspectExternalProvider(id)
+			var input io.Reader
+			var impactOutput io.Writer
+			if format != outputJSON {
+				input, impactOutput = providerExternalInput, out
+			}
+			result, err := removeExternalProviderWithImpact(ctx, id, input, impactOutput)
 			if err != nil {
 				return err
 			}
-			if err := application.RemoveExternalProvider(id); err != nil {
-				return err
-			}
-			result := struct {
-				ID             string `json:"id"`
-				Removed        bool   `json:"removed"`
-				ForeignMutated bool   `json:"foreign_mutated"`
-			}{ID: item.ID, Removed: true, ForeignMutated: false}
 			if format == outputJSON {
 				return writeJSON(out, result)
 			}
-			fmt.Fprintf(out, "Removed BaseHarbor registration for external provider %s. Foreign infrastructure was not modified.\n", item.ID)
+			fmt.Fprintf(out, "Removed BaseHarbor registration for external provider %s. Foreign infrastructure was not modified. Live consumer verification: %s.\n", result.ID, result.Scope.Status)
 			return nil
 		},
 	}
