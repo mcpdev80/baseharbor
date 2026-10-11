@@ -21,10 +21,23 @@ type operatorAuthObservation struct {
 }
 
 func collectOperatorAuthObservation(ctx context.Context, target, environment string) operatorAuthObservation {
+	return collectOperatorAuthObservationWithLocalAuthority(ctx, target, environment, verifiedLocalWorkloadAuthority)
+}
+
+func collectOperatorAuthObservationWithLocalAuthority(ctx context.Context, target, environment string, observe func(context.Context, string, string) (operatorauth.LocalRuntimeAuthority, bool, error)) operatorAuthObservation {
 	if !operatorauth.ManagedEnvironment(environment) {
 		return operatorAuthObservation{
 			Mode: "trusted-local", Status: "READY", Session: "trusted-local",
 			Principal: "local-operator",
+		}
+	}
+	if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
+		// Re-observe the same invocation's private local authority. A persisted
+		// environment label is not evidence that an OIDC session is required.
+		if _, local, err := observe(localWorkloadScope(ctx, "observe"), target, environment); err != nil {
+			return operatorAuthObservation{Mode: "local-runtime", Status: "DEGRADED", Session: "none", Detail: err.Error()}
+		} else if local {
+			return operatorAuthObservation{Mode: "local-runtime", Status: "READY", Session: "not-required", Detail: "verified local runtime authority; no operator OIDC session is required for this invocation"}
 		}
 	}
 	cfg, found, err := resolveStoredOperatorAuthBoundary(target, environment)
