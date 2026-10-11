@@ -213,6 +213,30 @@ unfinished operations/material actions for the existing idempotent replan/retry
 lifecycle. It is not a scheduler or new persistence authority. Interrupted handoff,
 rollback/reconnection work and irreversible effects remain visible in receipts.
 
+### Global registration changes across Targets
+
+A global external-provider registration has its existing registration owner, not
+an invented runtime Target. `ComposeProviderImpactScope` composes unchanged
+`ProviderImpactPlan` outputs for every observed Target. The adapter inventories
+configured and retained Target state, applied and interrupted deployment bindings,
+and independent management consumers before declaring the scope complete.
+This projection performs no additional resolution and creates no state owner.
+
+The aggregate PlanID binds the registration owner/content revision, all Target
+plans and their actual consequences. Leaf consent cannot approve the whole scope;
+changed registration, Target membership, binding or consequence requires fresh
+consent. Countdown samples alone do not invalidate unchanged absolute validity.
+Unknown/incomplete or destructive scope shows **Achtung** and uses the same two
+acknowledgements and separate destructive consent as single-Target changes.
+
+`RecordProviderImpactScopeResult` validates each Target's execution through the
+existing receipt authority. Registration-entry deletion alone never proves
+consumer reconfiguration or all-Target success. Missing/unknown owner or Target
+receipts remain partial; preserved registration/ownership supports fresh replan
+and retry. External infrastructure, data and credentials remain outside local
+registration-removal authority. The runtime/transport adapter must still observe,
+authorize, revalidate, execute and verify each requested operation.
+
 ### Existing ancillary realizations
 
 `ResolutionSnapshot.Ancillary` observes existing gateway/sidecar realizations from

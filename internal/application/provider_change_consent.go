@@ -10,16 +10,27 @@ func (e *ProviderChangeError) Error() string { return "provider change: " + e.Co
 // Complete=false never vetoes an informed developer's choice. Lack of an
 // alternative requires two stages; ordinary consent cannot imply data deletion.
 func ValidateProviderChangeConsent(current ProviderImpactPlan, consent ProviderChangeConsent) error {
-	if current.Version != ProviderImpactVersion || current.PlanID == "" || current.ConfirmationsRequired < 1 || current.ConfirmationsRequired > 2 {
+	if err := validateProviderConsentRequirements(current.Version, current.PlanID, current.ConfirmationsRequired); err != nil {
+		return err
+	}
+	return validateProviderConsent(current.PlanID, current.ConfirmationsRequired, current.Destructive, consent)
+}
+
+func validateProviderConsentRequirements(version, planID string, confirmations int) error {
+	if version != ProviderImpactVersion || planID == "" || confirmations < 1 || confirmations > 2 {
 		return &ProviderChangeError{Code: "invalid-impact-plan"}
 	}
-	if consent.PlanID != current.PlanID {
+	return nil
+}
+
+func validateProviderConsent(planID string, confirmations int, destructive bool, consent ProviderChangeConsent) error {
+	if consent.PlanID != planID {
 		return &ProviderChangeError{Code: "stale-impact-consent"}
 	}
-	if !consent.First || (current.ConfirmationsRequired == 2 && !consent.Second) {
+	if !consent.First || (confirmations == 2 && !consent.Second) {
 		return &ProviderChangeError{Code: "impact-confirmation-required"}
 	}
-	if current.Destructive && !consent.DeleteData {
+	if destructive && !consent.DeleteData {
 		return &ProviderChangeError{Code: "data-deletion-consent-required"}
 	}
 	return nil

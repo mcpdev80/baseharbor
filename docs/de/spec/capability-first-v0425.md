@@ -223,6 +223,34 @@ nur unerledigte Operationen/Materialaktionen an den bestehenden idempotenten
 Replan-/Retry-Lifecycle. Kein Scheduler, kein neuer State-Owner. Unterbrochene
 Übergabe, Rollback/Wiederverbindung und irreversible Folgen bleiben sichtbar.
 
+### Globale Registrierungsänderungen über mehrere Targets
+
+Eine globale External-Provider-Registrierung verwendet ihren bestehenden
+Registrierungsowner, keinen erfundenen Runtime-Target. `ComposeProviderImpactScope`
+führt unveränderte `ProviderImpactPlan`-Ergebnisse aller beobachteten Targets zusammen.
+Der Adapter inventarisiert konfigurierte und erhaltene Target-States, angewandte
+und unterbrochene Deployment-Bindings sowie unabhängige Management-Verbraucher,
+bevor er den Umfang als vollständig ausweist. Diese Projektion führt keine neue
+Auflösung durch und erzeugt keinen weiteren State-Owner.
+
+Die gemeinsame PlanID bindet Registrierungsowner/-Revision, sämtliche Target-Pläne
+und deren tatsächliche Folgen. Eine einzelne Target-Bestätigung autorisiert nicht
+den gesamten Umfang; geänderte Registrierung, Target-Mitgliedschaft, Bindings oder
+Folgen benötigen neue Zustimmung. Countdown-Messwerte allein entwerten unveränderte
+absolute Gültigkeiten nicht. Unbekannter/unvollständiger oder destruktiver Umfang
+zeigt **Achtung** und verwendet dieselben zwei Bestätigungen sowie die gesonderte
+Löschzustimmung wie Änderungen eines einzelnen Targets.
+
+`RecordProviderImpactScopeResult` prüft die Ausführung jedes Targets über die
+bestehende Ergebnisautorität. Das Löschen des Registrierungseintrags allein belegt
+keine Verbraucherkonfiguration oder vollständigen Erfolg auf allen Targets.
+Fehlende/unbekannte Owner- oder Target-Nachweise bleiben teilweise; erhaltene
+Registrierung/Ownership ermöglicht neue Planung und Wiederaufnahme. Externe
+Infrastruktur, Daten und Credentials bleiben außerhalb der lokalen
+Registrierungsentfernungsautorität. Der Runtime-/Transportadapter muss jede
+gewählte Operation weiterhin beobachten, autorisieren, erneut prüfen, ausführen
+und verifizieren.
+
 ### Bestehende Ancillary-Realisierungen
 
 `ResolutionSnapshot.Ancillary` beobachtet bestehende Gateway-/Sidecar-Realisierungen
