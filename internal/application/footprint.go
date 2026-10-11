@@ -314,6 +314,15 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		}
 		result.Requirements = append(result.Requirements, entry)
 	}
+	// These existing intents are not represented by PortableContract's service
+	// projection. Their lifecycle/consumption dependency plan must be verified
+	// before reporting a Core-free result; never infer no dependency from absence.
+	if len(m.Runtime.Permissions) > 0 || len(m.Consumes) > 0 {
+		result.Complete = false
+		if result.Core != CoreRequired {
+			result.Core = CoreUnknown
+		}
+	}
 	for _, instance := range snapshot.Registry.Instances {
 		if !selected[instance.ID] && len(snapshot.Registry.BindingsForProviderInstance(instance.ID)) == 0 {
 			result.Unused = append(result.Unused, instance.ID)

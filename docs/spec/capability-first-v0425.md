@@ -74,7 +74,7 @@ Cross-Target facts, cycles, missing dependencies and foreign resources fail clos
 
 | Case | Result / required behavior |
 | --- | --- |
-| No capabilities | Core not required; no selected provider resources; existing unused resources retained |
+| No capability/runtime/consumption requirements | Core not required; no selected provider resources; existing unused resources retained |
 | Automatic compatible instance | Select one compatible eligible instance; no question unless ambiguous |
 | Existing binding | Reuse UUID/environment/resource binding; explicit disagreement fails |
 | Explicit missing / incompatible | Typed missing / incompatible error before mutation |
@@ -187,3 +187,5 @@ No host probing with persistent effects from inspection/footprint.
 
 
 Normative offline schemas: `contracts/footprint/v1/footprint.schema.json` and `contracts/connection-profile/v1/profile.schema.json`. Profile shape validation never proves valid CA material, fingerprint agreement, expiry, tenant uniqueness or authorization; later importers must enforce these semantic checks and allow only reviewed non-secret extensions.
+
+Existing Runtime.Permissions and Consumes are not service requirements in the portable projection. Their unmodeled dependencies force complete=false and Core unknown unless a selected provider already proves Core required. Absence from the service projection never proves Core-less safety; lifecycle consumers must verify the existing broker/consumption plan before mutation. This is a conservative limitation, not a second intent model.

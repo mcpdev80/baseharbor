@@ -77,7 +77,7 @@ fremde Ressourcen werden klar abgelehnt.
 
 | Fall | Ergebnis / Verhalten |
 | --- | --- |
-| Keine Capabilities | Core nicht erforderlich; keine gewählten Provider-Ressourcen; ungenutzte bestehende Ressourcen erhalten |
+| Keine Capability-/Runtime-/Consumption-Anforderungen | Core nicht erforderlich; keine gewählten Provider-Ressourcen; ungenutzte bestehende Ressourcen erhalten |
 | Automatic, kompatible Instanz | Genau eine zulässige kompatible Instanz auswählen; Frage nur bei Mehrdeutigkeit |
 | Bestehendes Binding | UUID-/Environment-/Resource-Binding wiederverwenden; expliziter Widerspruch scheitert |
 | Explizit missing / incompatible | Typisierter Fehler vor Änderungen |
@@ -192,3 +192,5 @@ Kein Host-Probing mit dauerhaften Effekten aus Inspektion/Footprint.
 
 
 Normative Offline-Schemas: `contracts/footprint/v1/footprint.schema.json` und `contracts/connection-profile/v1/profile.schema.json`. Profile-Shape-Validierung beweist weder gültiges CA-Material, Fingerprint-Übereinstimmung, Ablaufzeit, eindeutige Tenants noch Autorisierung; spätere Importer müssen diese Semantik prüfen und nur geprüfte nicht geheime Extensions zulassen.
+
+Bestehende Runtime.Permissions und Consumes sind keine Service-Anforderungen in der portablen Projektion. Nicht modellierte Abhängigkeiten erzwingen complete=false und Core unknown, sofern ein gewählter Provider Core required nicht bereits beweist. Fehlen in der Service-Projektion beweist keine Core-lose Sicherheit; Lifecycle-Verbraucher müssen vor Änderungen den bestehenden Broker-/Consumption-Plan prüfen. Dies ist eine konservative Grenze, kein zweites Intent-Modell.

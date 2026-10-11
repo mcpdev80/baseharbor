@@ -395,3 +395,27 @@ func TestFootprintUnusedRespectsTargetWideConsumers(t *testing.T) {
 		t.Fatal("another app's provider was classified unused or selected")
 	}
 }
+
+func TestFootprintUnprojectedDependenciesNeverClaimCoreless(t *testing.T) {
+	base := WithWorkloadComponents(Manifest{Version: 1, ApplicationID: contractAppID, Name: "myapp", Environment: "dev"}, "api")
+	permissions := WithRuntimePermission(base, "object-storage.s3/v1", []string{"api"}, "runtime.get")
+	consumes := base
+	consumes.Consumes = []ConsumptionRequirement{{Name: "api", ApplicationID: contractOtherID, Component: "api", Interface: "http", Protocol: "http"}}
+	for _, m := range []Manifest{permissions, consumes} {
+		got, err := ResolveFootprint(m, contractSnapshot(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Core != CoreUnknown || got.Complete {
+			t.Fatal("unmodeled dependency was reported Core-free and complete")
+		}
+		m.Services.SQL = true
+		got, err = ResolveFootprint(m, contractSnapshot(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Core != CoreRequired || got.Complete {
+			t.Fatal("known Core need or unknown additional dependencies lost")
+		}
+	}
+}
