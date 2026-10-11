@@ -82,6 +82,7 @@ class ContractCheckTests(unittest.TestCase):
                 self.assertEqual(os.environ['BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(ValueError):
@@ -93,6 +94,7 @@ class ContractCheckTests(unittest.TestCase):
                     '^TestSelectiveIdentityRuntimeAddRemoveReAdd$',
                     '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
+                    '^TestSelectiveSecretsRuntimeAddRemoveReAdd$',
                     '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
                     '^TestApplicationCapabilityLifecycleExistingCore$'}
         for runtime in ['docker', 'podman']:
