@@ -53,5 +53,78 @@
     "Production nondev Identity ordering helper must preserve existing callbacks during reapply and verify actual realized origins before READY; driver prerequisite alone does not fix orchestration",
     "All remaining provider mutations and final Core/Demo/Console/NodeConnector source/native/browser matrix",
     "Release docs/audit/issue acceptance on final immutable candidate"
+  ],
+  "qualified_native_attempts": [
+    {
+      "commit": "b51778a51b004d566955ecc8112b32808b020ecf",
+      "tree": "ddc53f4b68c14be23175c499636ff9a1d1902fd7",
+      "run_id": 38163907788,
+      "run_attempt": 1,
+      "conclusion": "success",
+      "scope": "Isolated selected Secrets add/remove/re-add plus default data-preserving destroy/re-add, actual original application secret read and successful cleanup; shared two-app fixture not executed.",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38163907788",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114542359506,
+          "test_seconds": 258.75,
+          "selected_provider_counts": [
+            7,
+            0,
+            7
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            9,
+            1,
+            9
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711412527,
+          "artifact_digest": "sha256:2101f7afa82630ae2b633018dd2103998b663dbd9d3b4446d58c50632a16d7f8"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114542359685,
+          "test_seconds": 266.07,
+          "selected_provider_counts": [
+            6,
+            0,
+            6
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            8,
+            1,
+            8
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711153478,
+          "artifact_digest": "sha256:17aea1cd161e9e3e51956bf3836cb1860c465142bbbc34945784fdbcaeb3488d"
+        }
+      ],
+      "verified_assertions": [
+        "Fresh Core/total containers 0/0",
+        "Selected Secrets provider/broker absent when disabled and restored when re-enabled",
+        "Protected provider ENV and one actual owned persistent volume retained",
+        "Default destroy records same canonical runtime-retired deployment owner and archived live intent",
+        "Actual default-retired selected provider containers absent; protected ENV and data volume retained",
+        "Structured result preserves owner and reports no data deletion",
+        "Same application/deployment identity reactivated and original secret readable through actual application secret API",
+        "Both tests including cleanup completed successfully; cleanup's native container inventory requires zero remaining containers"
+      ],
+      "limitations": [
+        "No shared two-app, production OAuth, all-family handoff, actual interrupted native retry or final ecosystem qualification claimed.",
+        "Canonical retirement receipt intentionally retains partial status for unverified broader function/recovery knowledge; this scoped actual secret-read proof does not make all consequences complete."
+      ]
+    }
   ]
 }
