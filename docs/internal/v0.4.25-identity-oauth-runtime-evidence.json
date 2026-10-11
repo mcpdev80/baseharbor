@@ -196,12 +196,82 @@
           "artifact_digest": "sha256:5e24bd1c428d5ae90e28bf1796debbfdd52cab2ff9cdea25767109122d29cef0"
         }
       ]
+    },
+    {
+      "candidate_sha": "99ce5649558e875552064bbd62107d2ff307bdc0",
+      "candidate_tree": "f25b8395f92068dbb0455284a4ea940a97d966fb",
+      "workflow_run_id": 38166868000,
+      "attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Both engines complete actual selected Identity add/remove/re-add: real user authorization-code/S256 PKCE, wrong-verifier rejection, signed JWKS ID-token, matching userinfo, refresh before/after provider restart, disabled refresh rejection and fresh login preserving user subject. Actual two-app first removal preserves sibling OIDC/provider readiness; last-consumer removal verifies selected Identity container absence. Two owned data volumes and protected provider ENV retained, canonical identity and verified deployment remain stable. Actual callback exposures converge 1/0/1 and unrelated container realization is rejected. Both cleanup assertions require zero remaining actual native containers and pass.",
+      "qualified": [
+        "Exact-source selected Identity native add/remove/re-add",
+        "Actual end-user OAuth/PKCE/JWKS/ID-token/userinfo and retained refresh/session/subject behavior",
+        "Two-app sibling OIDC/provider readiness and last-consumer selected runtime withdrawal",
+        "Retained owned data volumes and protected configuration; canonical identity/verified deployment",
+        "Successful actual zero-container cleanup"
+      ],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114551130944,
+          "test_seconds": 247.51,
+          "actual_identity_counts": [
+            5,
+            0,
+            5
+          ],
+          "actual_total_counts": [
+            8,
+            1,
+            8
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11712652563,
+          "artifact_name": "coreless-docker-38166868000-1",
+          "artifact_digest": "sha256:cb22c493439b0103c322ca48209a3a9d89e9dab6538aca890118538a4b280411"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114551130762,
+          "test_seconds": 239.18,
+          "actual_identity_counts": [
+            3,
+            0,
+            3
+          ],
+          "actual_total_counts": [
+            6,
+            1,
+            6
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11712388157,
+          "artifact_name": "coreless-podman-38166868000-1",
+          "artifact_digest": "sha256:a3bc38a1c56e700deba296dd2e71c9d7d3535e5cf1cecd313d56c1f66d9c672a"
+        }
+      ]
     }
   ],
   "not_qualified": [
-    "Complete shared/last-consumer Identity retirement and successful zero-container cleanup",
-    "Production initial Identity plus public HTTPS exposure callback preparation",
-    "Actual Console browser and Connector mTLS/remote lifecycle",
+    "Controlled interrupted native Identity handoff/retry and independent management behavior",
+    "Actual Console browser and current Connector mTLS/remote lifecycle",
     "All provider and mutation consequences on one final immutable ecosystem matrix"
-  ]
+  ],
+  "production_callback_evidence": "v0.4.25-production-identity-ordering-evidence.json"
 }
