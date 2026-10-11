@@ -1,0 +1,40 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selective-backend-retained-consumer-data",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "d5376b250c647e72e5e31143fbf80d3d74d65d52",
+      "candidate_tree": "2c0c00eba8e61cd1f52fe62bc557f1fd5c4bd84d",
+      "workflow_run_id": 38152029767,
+      "result": "CANCELLED",
+      "observed": "Pending run was evicted by a distinct candidate in the branch-wide GitHub concurrency group before native jobs started. No data or runtime acceptance."
+    },
+    {
+      "candidate_sha": "7ad3c0335ac0d36608061ff3fb10daaece748b14",
+      "candidate_tree": "5738eb0a4dea95cf822fc8476d883295673b4b92",
+      "workflow_run_id": 38152484610,
+      "workflow_run_attempt": 1,
+      "result": "FAIL",
+      "observed": "Fresh isolated SQL initialization/apply and status reach the first actual consumer-authenticated TLS data operation, which fails. Removal/re-add data checks and cache subcase were not qualified. Sensitive provider error bodies are withheld. Subsequent static regression reproduces a workload SQL host of postgres with standalone canonical runtime alias postgres-access; the changed-source native rerun must establish correction.",
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114508609660,
+          "test_seconds": 34.35,
+          "artifact_id": 11707825139,
+          "artifact_digest": "sha256:adb738172a03a74b1f5ca52d2e1a869f35bdff71b40387720737213d51701925"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114508609813,
+          "test_seconds": 38.21,
+          "artifact_id": 11707555732,
+          "artifact_digest": "sha256:264dfc545a2d75a289c119184e28931b9481b1ef210bce8a56fb133cc701e431"
+        }
+      ]
+    }
+  ],
+  "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate."
+}

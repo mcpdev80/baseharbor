@@ -272,6 +272,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 			values[postgresRuntimeKey(instance, "PASSWORD")] = password
 			values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
 			values[postgresContainerHostKey(instance)] = "postgres"
+			if state.CoreSQL == nil {
+				values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
+			}
 		}
 	}
 
