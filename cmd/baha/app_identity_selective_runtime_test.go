@@ -77,12 +77,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cleanupCancel()
+		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			t.Errorf("isolated workload cleanup: %v", err)
+		}
 		placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}
 		if _, err := identityprovider.RetireKeycloakRuntime(cleanupCtx, provider, initialized.Manifest, placement, initialized.TargetStateRoot, target.Name); err != nil && !os.IsNotExist(err) {
 			t.Errorf("isolated Identity container cleanup: %v", err)
-		}
-		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("isolated workload cleanup: %v", err)
 		}
 	})
 	var originalEnv [32]byte
@@ -104,6 +104,11 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		}
 		out.Reset()
 		if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+			// Keep the exact failing readiness checks in the bounded receipt.
+			if current, statusErr := resolveApplication(ctx, application.Store{}, nil, "status"); statusErr == nil {
+				status, _, inspectErr := collectResolvedApplicationStatus(ctx, current)
+				t.Logf("failed apply readiness: %+v inspection=%v", status, inspectErr)
+			}
 			t.Fatalf("Identity phase %d enabled=%t: %v\n%s", phase, enabled, err, out.String())
 		}
 		resolved, err = resolveApplication(ctx, application.Store{}, nil, "status")

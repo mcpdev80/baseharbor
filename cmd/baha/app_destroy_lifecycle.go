@@ -453,14 +453,11 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 func (e *applicationDestroyExecution) cleanupKeycloakIdentity(ctx context.Context) error {
 	var issuer serviceaccess.Issuer
 	if devaccess.Enabled(e.manifest.Environment) {
-		if e.platformFiles.Compose == "" {
-			var err error
-			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
-			if err != nil {
-				return fmt.Errorf("load managed trust plane for identity cleanup: %w", err)
-			}
+		var err error
+		issuer, err = resolveApplicationServiceIssuer(ctx, e.resolved, e.compose)
+		if err != nil {
+			return fmt.Errorf("load selected trust authority for identity cleanup: %w", err)
 		}
-		issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 	}
 	driver := identityprovider.NewKeycloakDriver(
 		e.compose, e.manifest, e.files, issuer,

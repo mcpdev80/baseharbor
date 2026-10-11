@@ -67,3 +67,25 @@ func TestApplicationServiceIssuerRejectsDamagedRuntimeAndChangedTarget(t *testin
 		t.Fatal("changed Target accepted")
 	}
 }
+
+func TestIdentityVerificationWithoutCapabilityDoesNotRequireTrustPlane(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	if err := verifyExistingManagedIdentity(context.Background(), nil, resolved, nil); err != nil {
+		t.Fatal("zero-capability verification required a trust plane", err)
+	}
+	if _, err := os.Stat(resolved.TargetStateRoot); !os.IsNotExist(err) {
+		t.Fatal("readiness inspection created service authority state")
+	}
+}
+
+func TestAbsentStandaloneIdentityCleanupDoesNotRequireCoreOrCreateAuthority(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	resolved.Manifest.Services.Identity = true
+	execution := applicationDestroyExecution{resolved: resolved, manifest: resolved.Manifest}
+	if err := execution.cleanupKeycloakIdentity(context.Background()); err != nil {
+		t.Fatal("absent standalone Identity required Core for cleanup", err)
+	}
+	if _, err := os.Stat(resolved.TargetStateRoot); !os.IsNotExist(err) {
+		t.Fatal("absent module cleanup created replacement authority")
+	}
+}
