@@ -316,5 +316,6 @@ func observeApplicationProviderFacts(ctx context.Context, resolved resolvedAppli
 	observeBrokerProviderFacts(ctx, resolved, facts)
 	observeNativeBackendProviderFacts(ctx, resolved, facts)
 	observeApplicationBrokerFacts(ctx, resolved, facts)
+	observeApplicationExposureFacts(ctx, resolved, facts)
 	return facts
 }

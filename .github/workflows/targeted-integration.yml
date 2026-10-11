@@ -86,7 +86,7 @@ jobs:
           go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
       - name: Verify fresh workload with zero Core containers
-        if: ${{ !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
+        if: ${{ !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -107,8 +107,16 @@ jobs:
         run: |
           set -euo pipefail
           go test ./cmd/baha -run '^TestSelectiveBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/backend-lifecycle.log"
+      - name: Verify selected HTTPS add remove re-add without Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        env:
+          BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/https-lifecycle.log"
       - name: Qualify changed volume recovery helper
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         env:
           BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
         shell: bash
@@ -117,7 +125,7 @@ jobs:
           go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
       - name: Build integrated exact-SHA management runtime image
         id: runtime_image
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         shell: bash
         run: |
           set -euo pipefail
