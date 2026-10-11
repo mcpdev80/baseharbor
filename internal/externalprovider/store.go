@@ -187,7 +187,7 @@ func validateStoreRegistrations(registrations []Registration) error {
 		}
 		seen[registration.ID] = true
 		if err := registration.Validate(); err != nil {
-			return fmt.Errorf("validate external provider %q: %w", registration.ID, err)
+			return fmt.Errorf("validate external provider registry entry: %w", err)
 		}
 	}
 	return nil

@@ -51,3 +51,30 @@ func TestUnknownRegistryFieldsDoNotExposeRejectedMaterialOrRewriteOwner(t *testi
 		})
 	}
 }
+
+func TestInvalidRegistrationDiagnosticsDoNotExposeRejectedOwnerMaterial(t *testing.T) {
+	registration := registryIntegrityFixture()
+	registration.ID = "token=sentinel-secret"
+	registration.Endpoint = "invalid"
+	encoded, err := json.Marshal(Document{Version: StoreVersion, Registrations: []Registration{registration}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Path: filepath.Join(t.TempDir(), "providers.json")}
+	if err := os.WriteFile(store.Path, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, inspect := range []func() error{
+		func() error { _, err := store.Load(); return err },
+		func() error { _, err := store.List(); return err },
+		func() error { return store.Register(registryIntegrityFixture()) },
+	} {
+		if err := inspect(); err == nil || strings.Contains(err.Error(), "sentinel-secret") {
+			t.Fatal("invalid registration was accepted or reflected into ordinary diagnostics")
+		}
+	}
+	after, err := os.ReadFile(store.Path)
+	if err != nil || string(after) != string(encoded) {
+		t.Fatal("invalid registration recovery bytes were overwritten")
+	}
+}
