@@ -265,7 +265,7 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 	t.Helper()
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
 	manifest := application.New("provider-only-readiness", "dev", true, false, false)
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -328,7 +328,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	if manifest.Services.Secrets || !application.RequiresRuntimeBroker(manifest) {
 		t.Fatal("fixture must require a broker without application secrets")
 	}
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	compose := `services:

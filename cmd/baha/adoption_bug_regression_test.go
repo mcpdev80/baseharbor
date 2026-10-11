@@ -102,7 +102,7 @@ func TestStandalonePreflightCLIAndMCPRejectMissingWorkloadExposure(t *testing.T)
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
 	manifest := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
-	mustWriteWizardTestFile(t, application.RepositoryManifestName, manifest.YAML())
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest)
 	var out, errOut bytes.Buffer
 	if err := runWithIO(context.Background(), []string{"app", "preflight", "--json"}, &out, &errOut); err == nil {
 		t.Fatal("CLI accepted missing exposure")

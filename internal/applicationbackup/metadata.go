@@ -29,7 +29,7 @@ func ApplicationManifestFromPayload(payload Payload) (application.Manifest, erro
 	if raw == nil {
 		return application.Manifest{}, errors.New("backup does not contain application manifest metadata")
 	}
-	m, err := application.ParseYAML(string(raw))
+	m, err := application.ParseCanonicalYAML(string(raw))
 	if err != nil {
 		return application.Manifest{}, errors.New("backup application manifest is invalid")
 	}

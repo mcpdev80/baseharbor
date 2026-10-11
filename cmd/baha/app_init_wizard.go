@@ -146,7 +146,7 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
 		fmt.Fprintln(out, "----------------------------------------")
-		fmt.Fprint(out, m.YAML())
+		fmt.Fprint(out, m.AuthoredYAML())
 		fmt.Fprintln(out, "----------------------------------------")
 	}
 	confirm, err := promptYesNo(reader, out, "Write baseharbor.yaml?", true)

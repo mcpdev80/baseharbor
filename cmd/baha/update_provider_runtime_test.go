@@ -225,7 +225,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderValkey), string(capability.ScopeShared))
 	manifest := application.WithHA(application.New("provider-upgrade-acceptance", "dev", true, true, true), ha)
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {

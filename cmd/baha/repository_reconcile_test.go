@@ -16,7 +16,6 @@ func TestReportRepositoryContractEvolutionShowsNewCapability(t *testing.T) {
 	manifestPath := filepath.Join(root, application.RepositoryManifestName)
 	if err := os.WriteFile(manifestPath, []byte(`version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:
@@ -49,7 +48,6 @@ func TestReportRepositoryContractEvolutionShowsRuntimeOperationWithoutGrantingIt
 	manifestPath := filepath.Join(root, application.RepositoryManifestName)
 	if err := os.WriteFile(manifestPath, []byte(`version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:

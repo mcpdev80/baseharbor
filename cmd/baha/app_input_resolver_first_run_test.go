@@ -27,7 +27,7 @@ func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *tes
 		t.Fatal(err)
 	}
 	manifestPath := filepath.Join(repo, application.RepositoryManifestName)
-	if err := os.WriteFile(manifestPath, []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {

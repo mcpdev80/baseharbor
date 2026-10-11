@@ -263,6 +263,14 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 	if resolved.SourceAvailable {
 		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
 		if sourceErr == nil {
+			if selection.Manifest.Name != record.Identity.Application || selection.Manifest.Environment != record.Identity.Environment {
+				return resolvedApplication{}, fmt.Errorf("registered source does not match authoritative deployment name/environment")
+			}
+			// Authored intent never supplies identity. This read projects the ID
+			// from the existing authoritative deployment; it allocates no state.
+			if selection.Manifest.ApplicationID == "" {
+				selection.Manifest.ApplicationID = record.Identity.ApplicationID
+			}
 			if selection.Manifest.ApplicationID != record.Identity.ApplicationID {
 				return resolvedApplication{}, fmt.Errorf(
 					"registered source resolves application_id %q, expected %q",

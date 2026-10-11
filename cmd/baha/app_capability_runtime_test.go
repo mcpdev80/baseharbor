@@ -79,7 +79,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			case "https":
 				m = application.WithHTTPExposure(m, "web", "api", 8080, "https")
 			}
-			if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0600); err != nil {
+			if err := writeInitializedAuthoredManifest(t, "baseharbor.yaml", m, 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
@@ -151,7 +151,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 				}
 				reduced := sqlFirst.Manifest
 				reduced.Services.SQL = false
-				if err := os.WriteFile(sqlFirst.ManifestPath, []byte(reduced.YAML()), 0600); err != nil {
+				if err := writeInitializedAuthoredManifest(t, sqlFirst.ManifestPath, reduced, 0600); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Chdir(sqlFirst.RepositoryRoot); err != nil {

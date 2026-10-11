@@ -74,7 +74,7 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 		return "", err
 	}
 	path := filepath.Join(sourceRoot, application.RepositoryManifestName)
-	if err := os.WriteFile(path, []byte(m.YAML()), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(m.AuthoredYAML()), 0o600); err != nil {
 		_ = os.RemoveAll(root)
 		return "", err
 	}

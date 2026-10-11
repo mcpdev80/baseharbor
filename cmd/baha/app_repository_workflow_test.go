@@ -25,7 +25,7 @@ func TestRepositoryManifestResolvesWithoutApplicationName(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := application.New("mailflow", "dev", true, false, false)
-	if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, "baseharbor.yaml", m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	nested := filepath.Join(root, "frontend", "src")
@@ -72,7 +72,7 @@ func TestRepositoryEnvWithoutNameMasksNamedServiceURLs(t *testing.T) {
 	}
 	m := application.New("mailflow", "dev", false, false, false)
 	m = application.WithSQLInstances(m, "primary", "analytics")
-	if err := os.WriteFile("baseharbor.yaml", []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, "baseharbor.yaml", m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testDeploymentStore(t, target, m)

@@ -52,7 +52,7 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 		}
 		return applicationAdoptionResult{}, err
 	}
-	if _, err := file.WriteString(m.YAML()); err != nil {
+	if _, err := file.WriteString(m.AuthoredYAML()); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
 		return applicationAdoptionResult{}, err
@@ -68,6 +68,13 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 			_ = os.Remove(path)
 			return applicationAdoptionResult{}, err
 		}
+	}
+	// Initialization owns the generated identity. Keep it in the existing
+	// canonical Store while the authored contract contains only application needs.
+	owner := application.Store{Root: filepath.Join(absolute, ".baseharbor", "apps")}
+	if _, err := owner.Sync(m); err != nil {
+		_ = os.Remove(path)
+		return applicationAdoptionResult{}, err
 	}
 	return result, nil
 }

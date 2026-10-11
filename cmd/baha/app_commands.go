@@ -141,7 +141,7 @@ func appManifestShowCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(out, resolved.Manifest.YAML())
+			fmt.Fprint(out, resolved.Manifest.AuthoredYAML())
 			return nil
 		},
 	}
