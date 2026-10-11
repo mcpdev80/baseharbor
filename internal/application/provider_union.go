@@ -32,6 +32,7 @@ type ProviderChange struct {
 }
 
 type ProviderPlan struct {
+	ConsumerActivity map[string]bool              `json:"consumer_activity,omitempty"`
 	Impact           *ProviderImpactPlan          `json:"impact,omitempty"`
 	Version          string                       `json:"version"`
 	Target           string                       `json:"target"`
@@ -49,7 +50,7 @@ type ProviderPlan struct {
 // changes only through existing plan/preflight/confirm/apply/verify authority.
 func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent, inventoryComplete bool) (ProviderPlan, error) {
 	p := ProviderPlan{Version: ProviderPlanVersion, Target: snapshot.Target, Complete: inventoryComplete,
-		Consumers: map[string]Footprint{}, Required: []string{}, Changes: []ProviderChange{}, ReleasedBindings: []capability.ProviderBinding{}}
+		ConsumerActivity: map[string]bool{}, Consumers: map[string]Footprint{}, Required: []string{}, Changes: []ProviderChange{}, ReleasedBindings: []capability.ProviderBinding{}}
 	if snapshot.Target == "" {
 		return ProviderPlan{}, fmt.Errorf("selected Target is required")
 	}
@@ -65,6 +66,7 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 			return ProviderPlan{}, fmt.Errorf("missing or duplicate consumer key %q", consumer.Key)
 		}
 		seen[consumer.Key] = true
+		p.ConsumerActivity[consumer.Key] = consumer.Active
 		m := consumer.Manifest
 		if err := m.ValidateIntent(); err != nil {
 			return ProviderPlan{}, fmt.Errorf("consumer %s: %w", consumer.Key, err)

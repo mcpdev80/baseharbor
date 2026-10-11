@@ -1,0 +1,381 @@
+[
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": []
+        }
+      }
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": true,
+      "providers": {
+        "sql": {
+          "realization": {
+            "instance_id": "sql",
+            "kind": "postgresql",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "sql/data",
+              "kind": "database",
+              "location": {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "required": true,
+          "evidence": "actual applied SQL binding"
+        }
+      ],
+      "continuations": []
+    },
+    "requests": [
+      {
+        "instance_id": "sql",
+        "operation": "stop",
+        "consumers": [],
+        "materials": []
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  sql: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": true,
+    "expect_destructive": false,
+    "name": "stop-retains-actual-location"
+  },
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": []
+        }
+      }
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": true,
+      "providers": {
+        "sql": {
+          "realization": {
+            "instance_id": "sql",
+            "kind": "postgresql",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "sql/data",
+              "kind": "database",
+              "location": {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "required": true,
+          "evidence": "actual applied SQL binding"
+        }
+      ],
+      "continuations": []
+    },
+    "requests": [
+      {
+        "instance_id": "sql",
+        "operation": "destroy",
+        "consumers": [],
+        "materials": [
+          {
+            "material_id": "sql/data",
+            "disposition": "deleted",
+            "supported": true,
+            "verified": false
+          }
+        ]
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  sql: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": true,
+    "expect_destructive": true,
+    "name": "explicit-deletion-no-destination"
+  },
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": []
+        }
+      }
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": false,
+      "providers": {},
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "required": true,
+          "evidence": "actual applied SQL binding"
+        }
+      ],
+      "continuations": []
+    },
+    "requests": [
+      {
+        "instance_id": "sql",
+        "operation": "stop",
+        "consumers": [],
+        "materials": []
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  sql: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": false,
+    "expect_destructive": false,
+    "name": "unknown-no-alternative"
+  },
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "stopped-but-owned",
+          "core": "not-required",
+          "dependencies": []
+        }
+      }
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": true,
+      "providers": {
+        "sql": {
+          "realization": {
+            "instance_id": "sql",
+            "kind": "postgresql",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "stopped-but-owned",
+            "locations": [
+              {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "sql/data",
+              "kind": "database",
+              "location": {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "required": true,
+          "evidence": "actual applied SQL binding"
+        }
+      ],
+      "continuations": []
+    },
+    "requests": [
+      {
+        "instance_id": "sql",
+        "operation": "resume",
+        "consumers": [],
+        "materials": []
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  sql: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": true,
+    "expect_destructive": false,
+    "name": "restart-keeps-data"
+  }
+]

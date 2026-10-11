@@ -42,3 +42,13 @@ accept trust, grant access or prove runtime health. Normative semantics and
 Host Platform boundaries are specified in
 [Capability-first](../docs/spec/capability-first-v0425.md)
 ([Deutsch](../docs/de/spec/capability-first-v0425.md)).
+
+Provider lifecycle consequences are packaged as `provider-impact/v1/impact.schema.json`
+with `consent.schema.json` for the existing authority acknowledgement projection,
+and verified/partial execution receipts as `provider-impact/v1/result.schema.json`.
+`provider-plan` embeds the same optional impact result through its canonical schema
+reference. Unknown or alternative-less outcomes require Achtung and two plan-bound
+acknowledgements, not a permanent developer-choice veto. Data deletion still needs
+separate explicit consent. The schemas contain authorized references and locations,
+never secret values. Domain fixtures and offline conformance tests prove shared
+CLI/JSON/MCP semantics; runtime authorities collect/verify actual evidence.

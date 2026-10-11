@@ -80,12 +80,7 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 		b, _ := json.Marshal(canonical.Bindings[j])
 		return string(a) < string(b)
 	})
-	raw, err := json.Marshal(struct {
-		Plan     ProviderImpactPlan
-		Registry capability.Registry
-		Facts    map[string]ProviderFact
-		Union    ProviderPlan
-	}{p, canonical, snapshot.Facts, union})
+	raw, err := impactDigestInput(p, canonical, snapshot, union)
 	if err != nil {
 		return p, err
 	}
@@ -103,7 +98,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 	if instance.Ownership == capability.OwnershipExternal && r.Operation != "unbind" && r.Operation != "disable" && r.Operation != "replace" && r.Operation != "rebind" {
 		return ProviderImpact{}, false, false, false, &ProviderChangeError{Code: "external-provider-runtime-not-owned"}
 	}
-	imp := ProviderImpact{InstanceID: r.InstanceID, Operation: r.Operation, Scenario: "provider-changed", Selection: r.Selection, Before: before,
+	imp := ProviderImpact{RequestedConsumers: append([]string{}, r.Consumers...), InstanceID: r.InstanceID, Operation: r.Operation, Scenario: "provider-changed", Selection: r.Selection, Before: before,
 		Dependencies: appendDependencies(s.Facts[instance.ID].Dependencies), Dependents: []string{}, Functions: []FunctionConsequence{}, Materials: []MaterialConsequence{}, Effects: []OperationalConsequence{}, Notices: []string{}}
 	if imp.Selection == "" {
 		imp.Selection = "automatic"
@@ -118,6 +113,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 	fact, observed := o.Providers[instance.ID]
 	known = known && observed && fact.InventoryComplete && s.Facts[instance.ID].Dependencies != nil
 	imp.Effects = append(imp.Effects, fact.Effects...)
+	imp.Prerequisites = append([]ProviderPrerequisite{}, fact.Prerequisites...)
 	if !observed || !fact.InventoryComplete {
 		imp.Notices = append(imp.Notices, "material inventory is incomplete; unlisted material is not claimed preserved or deleted")
 	}
@@ -134,6 +130,18 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 		}
 		after, verified := observedRealization(replacement, s, o)
 		replacementReady = verified && after.Supported && after.Verified && after.State == ProviderRunning
+		for _, fp := range union.Consumers {
+			for _, req := range fp.Requirements {
+				if req.InstanceID == instance.ID && !replacement.Provider.Supports(req.Requirement.Kind) {
+					replacementReady = false
+				}
+			}
+		}
+		for _, use := range uses {
+			if use.InstanceID == instance.ID && !knownProviderFunction(replacement.Provider, use.Function) {
+				replacementReady = false
+			}
+		}
 		for _, b := range s.Registry.BindingsForProviderInstance(instance.ID) {
 			if !replacement.Provider.Supports(b.Resource.Kind) {
 				replacementReady = false
@@ -161,6 +169,10 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 		}
 		if (r.Operation == "unbind" || r.Operation == "disable" || r.Operation == "rebind") && len(r.Consumers) > 0 && !containsString(r.Consumers, use.Consumer) {
 			continue
+		}
+		if r.ReplacementID != "" {
+			verified := verifiedFunctionContinuation(o, use, r.ReplacementID)
+			imp.Prerequisites = append(imp.Prerequisites, ProviderPrerequisite{Kind: "consumer-rebind", Subject: use.Consumer + "/" + use.Function, Supported: verified, Verified: verified, Consequence: "without verified rebind, consumer continuity is not claimed"})
 		}
 		f := FunctionConsequence{Consumer: use.Consumer, Function: use.Function, Via: via, Required: use.Required, Outcome: "remains", ValidUntil: use.ValidUntil, Behavior: use.Behavior, Evidence: use.Evidence}
 		if interruptsProvider(r.Operation) {

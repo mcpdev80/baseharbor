@@ -31,7 +31,14 @@ func impactFixture(t *testing.T) (ResolutionSnapshot, ProviderPlan, ProviderImpa
 	o := ProviderImpactObservation{Revision: "owner/1", InventoryComplete: true, Providers: map[string]ProviderImpactFact{}}
 	for _, i := range r.Instances {
 		s.Facts[i.ID] = ProviderFact{Target: s.Target, State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{}}
-		o.Providers[i.ID] = impactProvider(i, s.Target, "database")
+		materialKind := "database"
+		if i.ID == "secrets" {
+			materialKind = "secret"
+		}
+		if i.ID == "identity" {
+			materialKind = "realm"
+		}
+		o.Providers[i.ID] = impactProvider(i, s.Target, materialKind)
 	}
 	for _, id := range []string{"identity", "secrets"} {
 		f := s.Facts[id]
@@ -144,7 +151,7 @@ func TestProviderImpactMaterialDeletionRetentionAndSecureTransfer(t *testing.T) 
 	transfer.Supported = true
 	transfer.Verified = true
 	transfer.Evidence = "secure handoff verification receipt"
-	transfer.AccessAfter = &ProviderAccess{Method: "verified secure provider delivery"}
+	transfer.AccessAfter = &ProviderAccess{Method: "verified secure provider delivery", Security: capability.SecureBinding{Secrets: []capability.SecretReference{{Name: "api", Reference: "baseharbor://secrets/receiver/api"}}}}
 	secure, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop", Materials: []MaterialDisposition{transfer}}}, o)
 	if err != nil || !secure.Complete {
 		t.Fatalf("%+v %v", secure, err)
@@ -250,5 +257,137 @@ func TestProviderImpactSecretReferencesNeverLeak(t *testing.T) {
 	o.Providers["secrets"] = f
 	if _, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o); err == nil || containsString([]string{err.Error()}, "secret") {
 		t.Fatal("unsafe endpoint accepted or echoed")
+	}
+}
+
+func TestProviderImpactReplacementNeedsActualRebindAndAggregateDependencies(t *testing.T) {
+	s, u, o := impactFixture(t)
+	replacement := capability.ProviderInstance{ID: "identity-replacement", Provider: capability.Keycloak, Scope: capability.ScopeShared, SharingBoundary: "replacement", Ownership: capability.OwnershipBaseHarbor}
+	if err := s.Registry.Register(replacement); err != nil {
+		t.Fatal(err)
+	}
+	s.Facts[replacement.ID] = ProviderFact{Target: "local", State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{"sql"}}
+	o.Providers[replacement.ID] = impactProvider(replacement, "local", "realm")
+	requests := []ProviderChangeRequest{{InstanceID: "identity", Operation: "replace", ReplacementID: replacement.ID, Selection: "explicit"}}
+	unverified, err := DescribeProviderChanges(s, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unverified.Impacts[0].Functions[0].Outcome != "unavailable" || unverified.ConfirmationsRequired != 2 {
+		t.Fatal("running replacement assumed consumer rebind")
+	}
+	for _, use := range o.Functions {
+		if use.InstanceID == "identity" {
+			o.Continuations = append(o.Continuations, ProviderFunctionContinuation{Consumer: use.Consumer, Function: use.Function, From: "identity", To: replacement.ID, Supported: true, Verified: true, Evidence: "verified management OIDC rebind"})
+		}
+	}
+	verified, err := DescribeProviderChanges(s, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Impacts[0].After.InstanceID != replacement.ID || verified.Impacts[0].Functions[0].Outcome != "changed" || verified.Impacts[0].Selection != "explicit" {
+		t.Fatalf("%+v", verified)
+	}
+	// Removing the replacement's SQL dependency in the same aggregate invalidates
+	// continuation even though its own endpoint was verified before this change.
+	requests = append(requests, ProviderChangeRequest{InstanceID: "sql", Operation: "stop"})
+	aggregate, err := DescribeProviderChanges(s, u, requests, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aggregate.Impacts[0].Functions[0].Outcome != "unavailable" || aggregate.ConfirmationsRequired != 2 {
+		t.Fatal("aggregate invalidated dependency ignored")
+	}
+}
+
+func TestProviderImpactScopedUnbindRetainsOtherAppAndRetryScope(t *testing.T) {
+	s, u, o := impactFixture(t)
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "unbind", Consumers: []string{"app/one"}}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Impacts[0].Scenario != "provider-still-used" || len(p.Impacts[0].Functions) != 1 || p.Impacts[0].Functions[0].Consumer != "app/one" {
+		t.Fatalf("%+v", p)
+	}
+	result, err := RecordProviderChangeResult(p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := PendingProviderChanges(p, result)
+	if err != nil || len(retry) != 1 || !reflect.DeepEqual(retry[0].Consumers, []string{"app/one"}) {
+		t.Fatalf("%+v %v", retry, err)
+	}
+}
+
+func TestProviderImpactUnpersistedJobsSessionsAndMissingMetadataAreUnknown(t *testing.T) {
+	s, u, o := impactFixture(t)
+	f := o.Providers["secrets"]
+	f.Materials[0].Location = nil
+	f.Materials[0].Kind = "session"
+	o.Providers["secrets"] = f
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Complete || p.Impacts[0].Materials[0].After.Disposition != "unknown" || p.ConfirmationsRequired != 2 {
+		t.Fatal("session assumed disposable")
+	}
+	// No provider-specific usage contract means unknown, not safe.
+	o.Functions = append(o.Functions, ProviderFunctionUse{Consumer: "app/one", InstanceID: "secrets", Function: "undeclared.function", Required: true, Evidence: "adapter custom use"})
+	p, err = DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o)
+	if err != nil || p.Complete {
+		t.Fatal("undeclared semantics reported known")
+	}
+}
+
+func TestProviderImpactIntentRemovalAndSamplingDoNotInventDemandOrStaleConsent(t *testing.T) {
+	s, u, o := impactFixture(t)
+	u.ConsumerActivity["app/one"] = false
+	delete(u.Consumers, "app/one")
+	u.ConsumerActivity["app/two"] = false
+	delete(u.Consumers, "app/two")
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range p.Impacts[0].Functions {
+		if f.Required {
+			t.Fatal("inactive consumer still requires function")
+		}
+	}
+	if p.Impacts[0].Scenario != "capability-no-longer-requested" {
+		t.Fatal(p.Impacts[0].Scenario)
+	}
+	bytes := int64(4096)
+	fact := s.Facts["secrets"]
+	fact.MemoryBytes = Quantity{Value: &bytes, Classification: "measured", Source: "new sample"}
+	s.Facts["secrets"] = fact
+	next, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o)
+	if err != nil || next.PlanID != p.PlanID {
+		t.Fatal("incidental sampling invalidated identical effects")
+	}
+	fact.Dependencies = []string{}
+	s.Facts["secrets"] = fact
+	changed, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}, o)
+	if err != nil || changed.PlanID == p.PlanID {
+		t.Fatal("dependency change did not invalidate consent")
+	}
+}
+
+func TestProviderImpactSecureTransferNeedsDeliveryReference(t *testing.T) {
+	s, u, o := impactFixture(t)
+	m := o.Providers["secrets"].Materials[0]
+	dest := ResourceLocation{Owner: "owned-existing-store", Target: "local", Kind: "external-store", Reference: "authorized-store/1"}
+	action := MaterialDisposition{MaterialID: m.ID, Disposition: "transferred", Destination: &dest, AccessAfter: &ProviderAccess{Method: "unverified plaintext fallback"}, Supported: true, Verified: true, Evidence: "not proof of secure delivery"}
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop", Materials: []MaterialDisposition{action}}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Complete || p.ConfirmationsRequired != 2 {
+		t.Fatal("method label presumed secure delivery")
+	}
+	action.Evidence = "https://user:password@example.test"
+	if _, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop", Materials: []MaterialDisposition{action}}}, o); err == nil {
+		t.Fatal("credential-bearing evidence leaked")
 	}
 }

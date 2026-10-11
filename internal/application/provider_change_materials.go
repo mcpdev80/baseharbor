@@ -39,7 +39,8 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 			attention = true
 			meaning = "no destination; deletion"
 		case "transferred":
-			if !d.Supported || !d.Verified || d.Destination == nil || d.Evidence == "" || (securityMaterial(m.Kind) && d.AccessAfter == nil) {
+			imp.Prerequisites = append(imp.Prerequisites, ProviderPrerequisite{Kind: "material-handoff", Subject: m.ID, Supported: d.Supported, Verified: d.Verified, Evidence: d.Evidence, Consequence: "without verified handoff/access, old-provider removal has no verified material delivery"})
+			if !d.Supported || !d.Verified || d.Destination == nil || d.Evidence == "" || (securityMaterial(m.Kind) && !hasSecureDeliveryReference(d.AccessAfter)) {
 				known = false
 				attention = true
 				meaning = "supported secure handoff/access is not verified; this proposal is not a successful continuation"
@@ -64,7 +65,7 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 				attention = true
 			}
 		}
-		if !m.Verified || m.Evidence == "" {
+		if !m.Verified || m.Evidence == "" || m.Ownership == "" {
 			known = false
 		}
 		imp.Materials = append(imp.Materials, MaterialConsequence{Before: m, After: d, Meaning: meaning})
@@ -104,4 +105,11 @@ func validateDisposition(d MaterialDisposition) error {
 		}
 	}
 	return validateProviderAccess(d.AccessAfter)
+}
+
+func hasSecureDeliveryReference(a *ProviderAccess) bool {
+	if a == nil {
+		return false
+	}
+	return a.Security.Identity != nil || len(a.Security.Secrets) > 0 || len(a.Security.Credentials) > 0 || len(a.Security.Trust) > 0
 }

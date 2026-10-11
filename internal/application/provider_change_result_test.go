@@ -53,3 +53,26 @@ func TestProviderImpactFinalPartialRetryIsActual(t *testing.T) {
 		t.Fatalf("lost actual failure/location: %+v %v", partial, err)
 	}
 }
+
+func TestProviderImpactFinalMustAccountForRecoveryAndActualAccess(t *testing.T) {
+	s, u, o := impactFixture(t)
+	f := o.Providers["identity"]
+	f.Materials[0].Recovery = []ResourceLocation{{Owner: "identity", Target: "local", Kind: "backup", Reference: "backup/verified-owned-realm"}}
+	o.Providers["identity"] = f
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := appliedOutcome(p.Impacts[0])
+	actual.Materials[0].Recovery = nil
+	result, err := RecordProviderChangeResult(p, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" {
+		t.Fatal("missing recovery material reported preserved")
+	}
+	actual = appliedOutcome(p.Impacts[0])
+	actual.After.Access = &ProviderAccess{Method: "unauthenticated unexpected service"}
+	result, err = RecordProviderChangeResult(p, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" {
+		t.Fatal("unexpected access/security change passed verification")
+	}
+}

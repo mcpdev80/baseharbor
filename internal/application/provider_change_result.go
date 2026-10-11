@@ -126,7 +126,7 @@ func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact) bool
 			return false
 		}
 	} else {
-		if out.After == nil || !out.After.Verified || out.After.Evidence == "" || out.After.InstanceID != imp.After.InstanceID || out.After.Kind != imp.After.Kind || out.After.Target != imp.After.Target || out.After.State != imp.After.State {
+		if out.After == nil || !out.After.Verified || out.After.Evidence == "" || out.After.InstanceID != imp.After.InstanceID || out.After.Kind != imp.After.Kind || out.After.Target != imp.After.Target || out.After.State != imp.After.State || out.After.Ownership != imp.After.Ownership || out.After.Scope != imp.After.Scope || out.After.Owner != imp.After.Owner || !recoveryPreserved(imp.After.Locations, out.After.Locations) || !sameAccess(imp.After.Access, out.After.Access) {
 			return false
 		}
 	}
@@ -139,12 +139,40 @@ func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact) bool
 	}
 	for _, m := range imp.Materials {
 		got, exists := actual[m.Before.ID]
-		if !exists || !got.Verified || got.Evidence == "" || got.Disposition != m.After.Disposition {
+		if !exists || !got.Verified || got.Evidence == "" || got.Disposition != m.After.Disposition || !recoveryPreserved(m.Before.Recovery, got.Recovery) {
 			return false
 		}
-		if m.After.Destination != nil && (got.Location == nil || *got.Location != *m.After.Destination) {
+		if !sameAccess(m.After.AccessAfter, got.Access) || (m.After.Destination != nil && (got.Location == nil || *got.Location != *m.After.Destination)) {
 			return false
 		}
 	}
 	return true
+}
+
+func sameLocation(a, b *ResourceLocation) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+func recoveryPreserved(before, after []ResourceLocation) bool {
+	for _, expected := range before {
+		found := false
+		for _, actual := range after {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func sameAccess(a, b *ProviderAccess) bool {
+	left, _ := json.Marshal(a)
+	right, _ := json.Marshal(b)
+	return string(left) == string(right)
 }

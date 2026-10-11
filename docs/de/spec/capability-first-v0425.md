@@ -101,8 +101,9 @@ Closure. `ConsumerIntent` projiziert einen bestehenden App- oder unabhängigen
 Management-Owner: Key, Active, Manifest, Preferences, DependencyRoots. Inaktive Einträge behalten
 die Identität und geben Bindings frei. Der Aufrufer beweist die vollständige
 Target-Inventarisierung aus bestehenden autoritativen Ownern. Nicht zugeordnete
-Bindings oder unverifizierbare Facts machen den Plan unvollständig und blockieren
-sämtliche Stop-/Entfernungsentscheidungen.
+Bindings oder unverifizierbare Facts machen den Plan unvollständig. Automatische
+Konvergenz erhält dann Ressourcen; absichtliche Änderungen nutzen die konkrete
+Folgenanalyse und Bestätigung unten.
 
 `baseharbor.provider-plan/v1` enthält Verbraucher-Footprints, benötigte Provider-
 IDs, freizugebende Bindings und Änderungen mit Ownership-/Evidenznachweis:
@@ -120,8 +121,9 @@ Alle Änderungen tragen `PreserveData=true`. Pläne erlauben keinen direkten
 Runtime-Eingriff. Session 2 verwendet sie im bestehenden
 plan -> preflight -> confirm -> apply -> verify. Daten-/Recovery-Elemente einzeln
 mit Grund erhalten; Löschung benötigt explizite destruktive Zustimmung und
-Ownership-Nachweis. Weiterhin verwendete Shared- und fremde/externe Ressourcen
-niemals löschen. Wiederholtes Apply, unterbrochener Retry und Deaktivieren/
+Ownership-Nachweis. Automatische Konvergenz erhält weiterhin verwendete Shared-
+Ressourcen; absichtliche eigene Entfernung nennt sämtliche betroffenen Verbraucher.
+Fremde/externe Infrastruktur wird niemals gelöscht. Wiederholtes Apply, unterbrochener Retry und Deaktivieren/
 Reaktivieren konvergieren idempotent. Capability-Entfernung gehört zu v0.4.25.
 
 Human-CLI, JSON und MCP verwenden dieselben Domain-Ergebnisse und vorhandene
@@ -129,6 +131,129 @@ Machine-Fehler-/Exit-/Autorisierungszuordnung. ResolutionError bleibt typisiert.
 Fixtures: `internal/application/testdata/v0425-resolution.json`; Union-Invarianten:
 `internal/application/provider_union_test.go`. Vollständiger Provider-/Capability-
 Wizard: v0.4.26. #777-Profile-/Host-Verträge unten bleiben reine Spezifikation.
+
+## Provider-Wechsel: Folgen und Entwicklerentscheidung
+
+Entwickler dürfen Funktionen hinzufügen, ändern, ersetzen, deaktivieren und
+entfernen, auch ohne Fortführung oder mit vollständiger Löschung. Fehlende
+Alternativen sind offengelegte Folgen, kein dauerhaftes Verbot. Alternativlose,
+unbekannte oder destruktive Ergebnisse zeigen **Achtung** und benötigen **zwei
+unabhängige ausdrückliche Bestätigungen des konkreten aktuellen Plans**.
+Datenlöschung benötigt zusätzlich die bestehende getrennte destruktive Freigabe.
+Normale Apply-Zustimmung bestätigt weder beide Stufen noch implizit Datenlöschung.
+
+`DescribeProviderChanges(snapshot, union, requests, observation)` ergänzt dieselbe
+aufgelöste Verbraucherunion. Keine zweite Provider-Auflösung und keine Änderungen
+am State. Adapter direkter Provider-Operationen und App-/Target-Lifecycles
+projizieren ihre Aufträge in diese API. `ProviderPlan.Impact` trägt das optionale
+gemeinsame Ergebnis `baseharbor.provider-impact/v1`; CLI, JSON/MCP und späterer
+Wizard verwenden es unverändert. Ausführung erfolgt durch bestehende
+plan/preflight/confirmation/apply/verify-Autoritäten.
+
+| Domain-Ergebnis | Verbindliche Bedeutung |
+| --- | --- |
+| before / after | Tatsächlicher Provider-Typ/Instanz, Target, Scope/Owner, Orte und sichere Zugriffs-/Security-Referenzen; vorgeschlagenes After ist kein Ausführungsnachweis |
+| dependencies / dependents / functions | Betroffene Apps und unabhängige Management-/Console-Verbraucher; transitiver Dependency-Pfad, notwendiger/optionaler Bedarf, verlorene/geänderte/erhaltene Funktion und beobachtetes Ablauf-/Validierungsverhalten |
+| scenario | Capability nicht mehr benötigt; Provider trotz verbleibendem Bedarf entfernt; Ersatz; Provider weiterhin von anderem Verbraucher verwendet; ungenutzter Provider |
+| materials | Einzelnes aktuelles Material und Ort, Recovery-Referenzen, geplantes retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown-Ergebnis und Ziel/Zugriff |
+| prerequisites | Konkrete Übergabe, Rebind oder adapterspezifische Verifikation, Unterstützung/Nachweis und Folge fehlender Verifikation; kein erfundener Fallback |
+| effects | Tatsächlich relevante Vorher-/Nachher-Änderungen bei Verfügbarkeit, Konsistenz, Dauerhaftigkeit, Aufbewahrung, Protokoll, Policy/TLS/HA, Zustellung, Routing, Wiederverbindung oder Recovery aus dem Adapter |
+| complete | Vollständigkeit des Wissens; false benötigt Achtung/zwei Bestätigungen und verbietet die informierte Entscheidung nicht |
+| plan_id / revision | Deterministischer Hash aus Folgen, relevantem Binding-/Ownership-/Dependency-State und Revision bestehender Owner; wesentliche Änderungen entwerten alte Zustimmung |
+| confirmations_required / destructive | Eine normale Stufe oder zwei für alternativlose/unbekannte/destruktive Folgen; explizite Datenlöschung bleibt getrennt |
+
+`ProviderPlan.ConsumerActivity` enthält auch explizit inaktive Verbraucher aus
+denselben Intents; vergangene Runtime-Nutzung wird nicht als aktueller Bedarf
+interpretiert. Nur Mengen-Messrauschen entwertet unveränderte Folgen nicht.
+
+`ProviderImpactObservation` projiziert bestehende Installation-, Deployment-,
+Runtime-, Registry-, Credential-, Zertifikats- und Recovery-Owner nur vorübergehend.
+`IntegrationDescriptor.ChangeContract()` beschreibt Funktionen, Material- und
+Betriebsinventar des ausgelieferten Providers. `ReferenceIntegrations()` iterieren;
+keine zweite Provider-Registry oder feste Produkt-Warnliste. Unbekannte Extension-
+Verträge und fehlende Beobachtungen bleiben sichtbar unbekannt. Sie werden niemals
+pauschal als sicher oder erfolgreich fortgeführt dargestellt.
+
+Verbraucherspezifische `Continuations` beweisen unterstützten Ersatz und
+verifiziertes Rebind. Ein laufender kompatibler Ersatz allein genügt nicht.
+Sichere Übergabe/Zugriff verifizieren, bevor Fortführung behauptet oder die alte
+Realisierung entfernt wird. Ohne Übergabe darf der Entwickler stattdessen den
+Funktionsverlust zweimal bestätigen und die Entfernung ausführen. Erhaltener,
+nicht zugänglicher Speicher ist Recovery, keine Secret-Auslieferung, Token-Vergabe
+oder Zertifikatserneuerung. Keine Secrets in Klartext-Manifeste, Repositories,
+Logs oder erfundene Ersatzspeicher schreiben. Absichtliches Entfernen benötigter
+Authentifizierung zeigt betroffenen Dienst/Zugriff als nicht verfügbar; es
+aktiviert niemals stillschweigend unauthentifiziertes Management.
+
+Nur tatsächliche OpenBao-Nutzung erzeugt Folgen für Secret-Policies, dynamische
+Credentials oder PKI. Lease-Ablauf/Widerruf und Downstream-Gültigkeit benötigen
+Nachweise; exportierte Credentials beweisen keine Fortführung. Aktuelle Token-/
+Zertifikatsgültigkeit unterscheidet sich von künftiger Vergabe, Erneuerung,
+JWKS-Refresh, Sessions und Widerruf. Beobachtete Offline-Validierung mit Ablauf
+kann geänderte statt sofort nicht verfügbare Validierung bedeuten. Keine pauschal
+sofort ungültigen Tokens/Zertifikate erfinden. Caches, Jobs, Sessions, Queues und
+Telemetriepuffer sind nicht automatisch entbehrlich. Unbekannte Aufbewahrung/Orte
+bleiben unbekannt. Erhaltenes Material bleibt am tatsächlichen Ort; gelöschtes
+Material bedeutet **kein Ziel; Löschung**. Bestehende Owner beweisen Ownership und
+autorisierte Referenzen. Zwei Bestätigungen geben keine Rechte auf fremde externe
+Ressourcen.
+
+Mehrere Änderungen bilden einen Gesamtplan. Entfernung einer Dependency des
+Ersatzproviders entwertet seine Fortführung; SQL-Stop nennt abhängige Identity-/
+Broker-Funktionen. Verbraucherbezogenes Unbind erhält die Runtime anderer
+Verbraucher und nennt den verlorenen Zugriff. Automatische Konvergenz nach dem
+letzten Verbraucher erhält Daten; explizite vollständige Löschung inventarisiert
+vor Zustimmung jedes betroffene Element.
+
+`ValidateProviderChangeConsent` prüft beide Stufen, aktuellen Plan-Hash und getrennte
+Löschfreigabe. Bestehende interaktive/nichtinteraktive Autoritätsadapter erheben die
+Bestätigungen; keine zusätzlichen CLI-Flags oder unabhängige Frontend-Policy.
+Unmittelbar vor Änderungen aus aktuellen autoritativen Beobachtungen neu planen.
+Veraltete Pläne erneut anzeigen und bestätigen. Technisch nicht unterstützte
+Übergabe ehrlich melden, niemals als erfolgreiche Verlagerung darstellen.
+
+`RecordProviderChangeResult` übernimmt tatsächliche verifizierte Ausführungs-
+ergebnisse, meldet complete/partial/failed, echte Endorte und ausstehende Schritte.
+Vorgeschlagenes After niemals als erledigt übernehmen. Fehlendes Material,
+abweichende Behandlung oder fehlender Recovery-Nachweis bleibt Teilfehler.
+`PendingProviderChanges` behält den ursprünglichen Verbraucherscope und liefert
+nur unerledigte Operationen/Materialaktionen an den bestehenden idempotenten
+Replan-/Retry-Lifecycle. Kein Scheduler, kein neuer State-Owner. Unterbrochene
+Übergabe, Rollback/Wiederverbindung und irreversible Folgen bleiben sichtbar.
+
+### Abdeckung ausgelieferter Provider
+
+Die Tabelle inventarisiert die deklarative Abdeckung. Adapter liefern
+**tatsächliche** Daten-/Zugriffsorte und Nutzung; Materialarten sind mögliche
+Inventarkategorien, keine Behauptung, dass jede Instanz alles enthält.
+Runtime-Einstiegspunkte und native Abnahme gehören zu den konsumierenden
+Lifecycle-Tests. Reservierte runtime-broker/runtime-executor-Konstanten besitzen
+keine ausgelieferte Capability-Integration; unbekannte Extensions bleiben unbekannt.
+
+| Registrierter Provider | Relevante Funktionen/Materialinventar | Autorität für Orte/Zugriff und konkrete Folgen |
+| --- | --- | --- |
+| PostgreSQL | Transaktionen/Abfragen; Datenbank, Schemas, WAL, Credentials, Backups | Bestehende Datenbank-/Runtime-/Recovery-Owner; Transaktionen, Konsistenz, Dauerhaftigkeit, Reconnect und Recovery |
+| Valkey | Cache/durable KV, tatsächliche Sessions/Jobs; Snapshots/AOF | Bestehende Runtime-/Daten-Owner; Ablauf/Eviction, Dauerhaftigkeit und relevanter flüchtiger Verlust |
+| OpenBao | Tatsächliche Secret-/Policy-, Lease-/PKI-Nutzung; Secrets, Schlüssel/Zertifikate, Recovery | Bestehende Credential-/OpenBao-/PKI-Owner und gewählter Backing Store; sichere Auslieferung, Erneuerung, Widerruf und Ablauf |
+| Caddy | HTTP-Routing und tatsächliche TLS-/Erneuerungsnutzung; Routen/Konfiguration, Schlüssel/Zertifikate | Bestehende Exposure-/PKI-/Runtime-Owner; DNS/Routen, HTTPS-Verfügbarkeit und künftige Erneuerung |
+| SeaweedFS | Objektlesen/-schreiben; Objekte/Dateien, Metadaten, Credentials, Backups | Bestehende S3-/Runtime-/Recovery-Owner; Dauerhaftigkeit, S3-Kompatibilität, Rechte und Aufbewahrung |
+| OpenTelemetry Collector | Empfang/Weiterleitung; tatsächliche Puffer/Konfiguration | Bestehende Telemetrie-/Runtime-Owner; Zustellungslücken, Pufferverlust, Routing und Aufbewahrung |
+| External OTLP | Tatsächlicher Empfang/Weiterleitung und registrierte Referenzen | Externer Registrierungs-/Zugriffsowner; nur Unbind-/Rebind-Folgen, keine Löschung fremder Infrastruktur |
+| Prometheus | Ingest/Query und tatsächliche Regeln; Metriken, WAL, Konfiguration | Bestehende Metrik-/Runtime-/Daten-Owner; Scrape-Lücken, Aufbewahrung, Abfragezugriff und Recovery |
+| Loki | Ingest/Query; Logs, WAL/Index, Konfiguration | Bestehende Log-/Runtime-/Storage-Owner; Zustellungslücken, Aufbewahrung und Abfragezugriff |
+| Tempo | Ingest/Query; Traces, WAL/Index, Konfiguration | Bestehende Trace-/Runtime-/Storage-Owner; Zustellungslücken, Aufbewahrung und Abfragezugriff |
+| Keycloak | Tatsächliches Login/SSO, Vergabe/Validierung/JWKS, Sessions/Refresh; Benutzer/Realms/Clients/Signierschlüssel/Tokens | Bestehende Identity-/Datenbank-/Zugriffsowner; Login/Refresh, gecachte Gültigkeit und authentifizierte Management-Verfügbarkeit |
+| External OIDC | Tatsächliche OIDC-Verbraucher und registrierte Referenzen | Externer Registrierungs-/Zugriffsowner; lokale Binding-Entfernung, keine Löschung fremder Benutzer/Realms |
+| RabbitMQ | Tatsächliche Queue-/PubSub-/Stream-Nutzung; Nachrichten/In-flight, Offsets/Topologie/Credentials | Bestehende Messaging-/Runtime-/Storage-Owner; Reihenfolge, Acknowledgements, Zustellung, Dauerhaftigkeit und Reconnect |
+| MongoDB | Lesen/Schreiben/Transaktionen; Dokumente/Indizes/Oplog, Credentials/Backups | Bestehende Document-/Runtime-/Storage-/Recovery-Owner; Konsistenz, Dauerhaftigkeit, Protokoll und Reconnect |
+
+Fixtures: `internal/application/testdata/v0425-provider-impact.json` und
+`v0425-provider-impact-consent.json`. Domain-Tests umfassen jeden registrierten
+Provider, negative Ownership/unbekannten State, Provider-Kaskaden und zwei Apps/
+Console, Ersatzverifikation, gemeinsame Dependency-Entfernung, begrenzten Retry,
+tatsächliche finale und teilweise Ergebnisse. Offline-Schemas prüfen identische
+Machine-Ergebnisse und lehnen Secret-Inhalte sowie einstufige unbekannte/
+destruktive Bestätigung ab. Vollständiger Capability-/Provider-Wizard: v0.4.26.
 
 ## #777 portabler Connection-Profile-Transport (nur Vertrag)
 

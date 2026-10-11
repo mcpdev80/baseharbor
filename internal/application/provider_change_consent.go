@@ -32,23 +32,37 @@ func PendingProviderChanges(plan ProviderImpactPlan, result ProviderChangeResult
 	if result.PlanID != plan.PlanID {
 		return nil, &ProviderChangeError{Code: "stale-impact-result"}
 	}
+	validated, err := RecordProviderChangeResult(plan, result.Outcomes)
+	if err != nil {
+		return nil, err
+	}
 	outcomes := map[string]string{}
-	for _, out := range result.Outcomes {
+	actual := map[string]ProviderExecutionOutcome{}
+	for _, out := range validated.Outcomes {
 		key := out.InstanceID + "/" + out.Operation
 		if _, duplicate := outcomes[key]; duplicate {
 			return nil, fmt.Errorf("duplicate provider outcome")
 		}
 		outcomes[key] = out.Status
+		actual[key] = out
 	}
 	pending := []ProviderChangeRequest{}
 	for _, impact := range plan.Impacts {
 		if outcomes[impact.InstanceID+"/"+impact.Operation] != "applied" {
-			r := ProviderChangeRequest{InstanceID: impact.InstanceID, Operation: impact.Operation, Selection: impact.Selection}
+			r := ProviderChangeRequest{InstanceID: impact.InstanceID, Operation: impact.Operation, Selection: impact.Selection, Consumers: append([]string{}, impact.RequestedConsumers...)}
 			if impact.After != nil && impact.After.InstanceID != impact.InstanceID {
 				r.ReplacementID = impact.After.InstanceID
 			}
 			for _, m := range impact.Materials {
-				r.Materials = append(r.Materials, m.After)
+				done := false
+				for _, got := range actual[impact.InstanceID+"/"+impact.Operation].Materials {
+					if got.MaterialID == m.Before.ID && got.Verified && got.Evidence != "" && got.Disposition == m.After.Disposition && sameLocation(got.Location, m.After.Destination) {
+						done = true
+					}
+				}
+				if !done {
+					r.Materials = append(r.Materials, m.After)
+				}
 			}
 			pending = append(pending, r)
 		}

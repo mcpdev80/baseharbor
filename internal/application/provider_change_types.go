@@ -65,7 +65,17 @@ type OperationalConsequence struct {
 	Evidence string `json:"evidence,omitempty"`
 }
 
+type ProviderPrerequisite struct {
+	Kind        string `json:"kind"`
+	Subject     string `json:"subject"`
+	Supported   bool   `json:"supported"`
+	Verified    bool   `json:"verified"`
+	Evidence    string `json:"evidence,omitempty"`
+	Consequence string `json:"consequence"`
+}
+
 type ProviderImpactFact struct {
+	Prerequisites     []ProviderPrerequisite   `json:"prerequisites"`
 	Realization       ProviderRealization      `json:"realization"`
 	Materials         []ProviderMaterial       `json:"materials"`
 	InventoryComplete bool                     `json:"inventory_complete"`
@@ -129,18 +139,20 @@ type MaterialConsequence struct {
 }
 
 type ProviderImpact struct {
-	InstanceID   string                   `json:"instance_id"`
-	Operation    string                   `json:"operation"`
-	Scenario     string                   `json:"scenario"`
-	Selection    string                   `json:"selection"`
-	Before       ProviderRealization      `json:"before"`
-	After        *ProviderRealization     `json:"after,omitempty"`
-	Dependencies []string                 `json:"dependencies"`
-	Dependents   []string                 `json:"dependents"`
-	Functions    []FunctionConsequence    `json:"functions"`
-	Materials    []MaterialConsequence    `json:"materials"`
-	Effects      []OperationalConsequence `json:"effects"`
-	Notices      []string                 `json:"notices"`
+	Prerequisites      []ProviderPrerequisite   `json:"prerequisites"`
+	RequestedConsumers []string                 `json:"requested_consumers"`
+	InstanceID         string                   `json:"instance_id"`
+	Operation          string                   `json:"operation"`
+	Scenario           string                   `json:"scenario"`
+	Selection          string                   `json:"selection"`
+	Before             ProviderRealization      `json:"before"`
+	After              *ProviderRealization     `json:"after,omitempty"`
+	Dependencies       []string                 `json:"dependencies"`
+	Dependents         []string                 `json:"dependents"`
+	Functions          []FunctionConsequence    `json:"functions"`
+	Materials          []MaterialConsequence    `json:"materials"`
+	Effects            []OperationalConsequence `json:"effects"`
+	Notices            []string                 `json:"notices"`
 }
 
 type ProviderImpactPlan struct {

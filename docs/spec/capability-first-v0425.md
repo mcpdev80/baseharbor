@@ -95,7 +95,8 @@ active consumer to `ResolveFootprint` and unions its full dependency closure.
 management owner: Key, Active, Manifest, Preferences, DependencyRoots. Inactive entries retain
 identity and release bindings. The caller proves complete Target inventory from
 authoritative existing owners. Unaccounted bindings or unverifiable facts make
-the plan incomplete, blocking all stop/remove decisions.
+the plan incomplete. Automatic convergence then preserves resources; intentional
+changes use the concrete consequence analysis and acknowledgement below.
 
 `baseharbor.provider-plan/v1` contains per-consumer footprints, required provider
 IDs, released bindings and ownership/evidence-backed changes:
@@ -113,7 +114,9 @@ All changes carry `PreserveData=true`. These are plans, not permissions to invok
 runtime mutation directly. Session 2 consumes them through existing
 plan -> preflight -> confirm -> apply -> verify. Preserve each data/recovery item
 with an individual reason; deletion requires explicit destructive consent and
-ownership proof. Shared-still-used and external/foreign resources are never deleted.
+ownership proof. Automatic convergence preserves shared-still-used resources;
+intentional owned removal discloses every affected consumer. External/foreign
+infrastructure is never deleted.
 Repeat apply, interrupted retry and disable/re-enable converge idempotently.
 Capability removal belongs to v0.4.25, not a later reclamation project.
 
@@ -122,6 +125,125 @@ error/exit/authorization mappings. ResolutionError remains typed. Fixtures:
 `internal/application/testdata/v0425-resolution.json`; union invariants:
 `internal/application/provider_union_test.go`. The full provider/capability wizard
 is v0.4.26; #777 profile/host contracts below remain specification only.
+
+## Provider changes: consequences and developer choice
+
+Developers may add, change, replace, disable and remove functionality, including
+choosing no continuation or complete deletion. Missing alternatives are disclosed
+consequences, not a permanent policy veto. An alternative-less, unknown or
+destructive outcome displays **Achtung** and requires **two independently explicit
+acknowledgements of the concrete current plan**. Data deletion additionally needs
+the existing distinct destructive authorization. Ordinary apply consent does not
+implicitly acknowledge either stage or delete data.
+
+`DescribeProviderChanges(snapshot, union, requests, observation)` enriches the same
+resolved consumer union. It neither resolves another provider graph nor mutates
+state. Direct provider operations and app/Target lifecycle adapters project their
+requests into this API. `ProviderPlan.Impact` carries the shared optional result;
+CLI, JSON/MCP and the later wizard consume the same `baseharbor.provider-impact/v1`.
+The existing plan/preflight/confirmation/apply/verify authorities execute it.
+
+| Domain result | Required meaning |
+| --- | --- |
+| before / after | Actual provider kind/instance, Target, scope/owner, locations and safe access/security references; proposed After is not an execution receipt |
+| dependencies / dependents / functions | Affected apps and independent management/Console consumers; transitive dependency path, required/optional need, lost/changed/remaining function and observed expiry/validation behavior |
+| scenario | Capability no longer requested; provider removed while still required; replacement; provider still used by another consumer; unused provider |
+| materials | Individual current material and location, recovery references, intended retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown disposition and destination/access |
+| prerequisites | Concrete handoff, rebind or adapter-specific verification, support/evidence and consequence if unverified; no fictional fallback |
+| effects | Applicable actual before/after availability, consistency, durability, retention, protocol, policy/TLS/HA, delivery, routing, reconnection or recovery changes from the adapter |
+| complete | Knowledge completeness; false requires Achtung/two acknowledgements and does not prohibit the informed choice |
+| plan_id / revision | Deterministic digest of consequences plus relevant binding/ownership/dependency state and existing-owner revision; materially changed facts invalidate old consent |
+| confirmations_required / destructive | One ordinary stage, or two for alternative-less/unknown/destructive effects; explicit data-deletion consent remains separate |
+
+`ProviderPlan.ConsumerActivity` includes explicitly inactive consumers from the
+same intents; past runtime use is not mistaken for current need. Incidental
+quantity sampling does not invalidate otherwise identical consequences.
+
+`ProviderImpactObservation` is an ephemeral projection of existing installation,
+deployment, runtime, registry, credential, certificate and recovery owners.
+`IntegrationDescriptor.ChangeContract()` supplies the shipped provider's function,
+material and operational inventory requirements. Iterate `ReferenceIntegrations()`;
+there is no second provider registry or fixed product warning engine. Unknown
+extension contracts and missing observations are visibly unknown. They are never
+reported generically safe or successfully continued.
+
+Consumer-specific `Continuations` prove a supported replacement and verified
+rebind. A running compatible replacement by itself is insufficient. Verify secure
+handoff/access before claiming continued function or deleting the old realization.
+If no handoff exists, the developer can instead acknowledge the resulting lost
+function twice and continue the requested removal. Retained inaccessible storage
+is recovery, not secret delivery, token issuance or certificate renewal. Do not
+write secrets to plaintext manifests, repositories, logs or an invented fallback.
+Intentional removal of required authentication shows the affected service/access
+as unavailable; it never silently enables unauthenticated management.
+
+Only actual OpenBao usages produce secret-policy, dynamic-credential or PKI
+consequences. Lease expiry/revocation and downstream validity require real evidence;
+exporting a credential is not continuity proof. Current token/certificate validity
+is distinct from future issuance, renewal, JWKS refresh, sessions and revocation.
+Observed offline validation and expiry may produce changed rather than instantly
+unavailable validation. Do not invent uniformly invalid tokens or certificates.
+Caches, jobs, sessions, queues and telemetry buffers are not automatically
+considered disposable. Unknown retention/location remains unknown. Retained
+material stays at its actual location; deleted material says **no destination;
+deletion**. Ownership and authorized references must be proven by existing owners.
+Two acknowledgements grant no authority over somebody else's external resources.
+
+Multiple changes form one aggregate plan. Removing a replacement's dependency
+invalidates its continuation; stopping SQL identifies dependent Identity/broker
+functions. Scoped unbinding preserves the other consumers' runtime and reports
+which consumer loses access. Automatic last-consumer convergence preserves data;
+explicit fully destructive requests inventory every affected item before consent.
+
+`ValidateProviderChangeConsent` checks both stages, current plan digest and separate
+deletion consent. Existing interactive and noninteractive authority adapters collect
+acknowledgements; no extra CLI flags or independent frontend policy engine. Always
+replan from current authoritative observations immediately before mutation. A stale
+plan must be displayed and acknowledged again. Technical inability to execute an
+unsupported handoff is reported honestly, not disguised as successful relocation.
+
+`RecordProviderChangeResult` accepts actual verified execution outcomes, reports
+complete/partial/failed state, actual final locations and every pending operation.
+It never copies proposed After into an accomplished result. Missing material,
+changed disposition or missing recovery evidence remains a partial failure.
+`PendingProviderChanges` preserves the original consumer scope and returns only
+unfinished operations/material actions for the existing idempotent replan/retry
+lifecycle. It is not a scheduler or new persistence authority. Interrupted handoff,
+rollback/reconnection work and irreversible effects remain visible in receipts.
+
+### Shipped provider coverage
+
+This is the inventory of declaration-level coverage. The adapter must provide
+**actual** data/access locations and usage; the material kinds below are potential
+inventory categories, not assertions that every instance has every item. Runtime
+entry-point coverage and native acceptance belong to the consuming lifecycle tests.
+Reserved runtime-broker/runtime-executor kind constants have no shipped capability
+integration; undeclared extension contracts remain unknown.
+
+| Registered provider | Relevant functions/material inventory | Location/access authority and specific consequences |
+| --- | --- | --- |
+| PostgreSQL | Transactions/queries; database, schemas, WAL, credentials, backups | Existing database/runtime/recovery owners; transactions, consistency, durability, reconnect and recovery |
+| Valkey | Cache/durable KV, actual sessions/jobs; snapshots/AOF | Existing runtime/data owners; expiry/eviction, durability and meaningful transient loss |
+| OpenBao | Actual secret/policy, lease and PKI usage; secrets, keys/certificates, recovery | Existing credential/OpenBao/PKI owners and selected backing store; secure delivery, renewal, revocation and expiry |
+| Caddy | HTTP routing and actual TLS/renewal; routes/configuration, keys/certificates | Existing exposure/PKI/runtime owners; DNS/routes, HTTPS availability and future renewal |
+| SeaweedFS | Object read/write; objects/files, metadata, credentials, backups | Existing S3/runtime/recovery owners; durability, S3 compatibility, permissions and retention |
+| OpenTelemetry Collector | Receive/forward; actual buffers/configuration | Existing telemetry/runtime owners; forwarding gaps, buffer loss, routing and retention |
+| External OTLP | Actual receive/forward and registered references | External registration/access owner; unbind/rebind effects only, no foreign infrastructure deletion |
+| Prometheus | Ingest/query and actual rules; metrics, WAL, configuration | Existing metrics/runtime/data owners; scrape gaps, retention, query access and recovery |
+| Loki | Ingest/query; logs, WAL/index, configuration | Existing logs/runtime/storage owners; delivery gaps, retention and query access |
+| Tempo | Ingest/query; traces, WAL/index, configuration | Existing traces/runtime/storage owners; delivery gaps, retention and query access |
+| Keycloak | Actual login/SSO, issuance/validation/JWKS, sessions/refresh; users/realms/clients/signing keys/tokens | Existing Identity/database/access owners; login/refresh, cached validity and authenticated management availability |
+| External OIDC | Actual OIDC consumers and registered references | External registration/access owner; local binding removal, no foreign user/realm destruction |
+| RabbitMQ | Actual queue/pubsub/stream users; messages/in-flight, offsets/topology/credentials | Existing messaging/runtime/storage owners; ordering, acknowledgements, delivery, durability and reconnect |
+| MongoDB | Read/write/transactions; documents/indexes/oplog, credentials/backups | Existing document/runtime/storage/recovery owners; consistency, durability, protocol and reconnect |
+
+Fixtures: `internal/application/testdata/v0425-provider-impact.json` and
+`v0425-provider-impact-consent.json`. Domain tests cover every registered provider,
+negative ownership/unknown state, cross-provider and two-app/Console effects,
+replacement verification, aggregate dependency removal, scoped retry, actual final
+and partial dispositions. Offline schemas validate identical machine results and
+reject secret-content fields or one-stage unknown/destructive acknowledgements.
+The complete capability/provider wizard remains v0.4.26.
 
 ## #777 portable connection-profile transport (contract only)
 

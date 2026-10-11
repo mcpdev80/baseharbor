@@ -28,13 +28,35 @@ func dependencyPath(s ResolutionSnapshot, root, target string, visiting map[stri
 
 func observedFunctionUses(s ResolutionSnapshot, union ProviderPlan, actual []ProviderFunctionUse) []ProviderFunctionUse {
 	result := append([]ProviderFunctionUse(nil), actual...)
+	for index, use := range result {
+		if active, known := union.ConsumerActivity[use.Consumer]; known {
+			if !active {
+				result[index].Required = false
+			} else if fp, exists := union.Consumers[use.Consumer]; exists {
+				selected := false
+				for _, group := range [][]ProviderFootprint{fp.Existing, fp.Additional} {
+					for _, provider := range group {
+						if provider.InstanceID == use.InstanceID {
+							selected = true
+						}
+					}
+				}
+				if !selected {
+					result[index].Required = false
+				}
+			}
+		}
+	}
 	for _, b := range s.Registry.Bindings {
 		consumer := "application/" + b.ApplicationID + "/" + b.Environment
+		matches := []string{}
 		for key, fp := range union.Consumers {
 			if fp.ApplicationID == b.ApplicationID {
-				consumer = key
-				break
+				matches = append(matches, key)
 			}
+		}
+		if len(matches) == 1 {
+			consumer = matches[0]
 		}
 		found := false
 		for _, use := range result {
@@ -44,12 +66,10 @@ func observedFunctionUses(s ResolutionSnapshot, union ProviderPlan, actual []Pro
 			}
 		}
 		if !found {
-			required := false
-			if fp, active := union.Consumers[consumer]; active {
-				for _, req := range fp.Requirements {
-					if req.InstanceID == b.ProviderInstanceID && req.Requirement.Kind == b.Resource.Kind && req.Requirement.Name == b.Resource.Name {
-						required = true
-					}
+			required := true
+			for _, released := range union.ReleasedBindings {
+				if released == b {
+					required = false
 				}
 			}
 			result = append(result, ProviderFunctionUse{Consumer: consumer, InstanceID: b.ProviderInstanceID, Function: string(b.Resource.Kind), Required: required, Evidence: "authoritative provider binding"})

@@ -129,6 +129,18 @@ func validateImpactObservation(o ProviderImpactObservation) error {
 			}
 		}
 	}
+	for _, c := range o.Continuations {
+		if c.Consumer == "" || c.Function == "" || c.From == "" || c.To == "" || (c.Verified && (!c.Supported || c.Evidence == "")) {
+			return fmt.Errorf("invalid consumer continuation verification")
+		}
+	}
+	for _, use := range o.Providers {
+		for _, p := range use.Prerequisites {
+			if p.Kind == "" || p.Subject == "" || p.Consequence == "" || (p.Verified && p.Evidence == "") {
+				return fmt.Errorf("invalid prerequisite verification")
+			}
+		}
+	}
 	for _, use := range o.Functions {
 		if use.Consumer == "" || use.InstanceID == "" || use.Function == "" {
 			return fmt.Errorf("function use requires consumer, instance and function")
@@ -181,10 +193,10 @@ func validateObservationOwners(s ResolutionSnapshot, o ProviderImpactObservation
 			continue
 		}
 		r := f.Realization
-		if r.Kind != i.Provider.Kind || r.Scope != i.Scope || r.Ownership != i.Ownership || (i.Scope == "application" && r.Owner != i.OwnerApplicationID) || r.Target != s.Target {
+		if r.Kind != i.Provider.Kind || r.Scope != i.Scope || r.Ownership != i.Ownership || (i.Scope == "application" && r.Owner != i.OwnerApplicationID) || r.Target == "" {
 			return &ProviderChangeError{Code: "provider-observation-ownership-mismatch"}
 		}
-		if observed, ok := s.Facts[i.ID]; ok && r.Verified && r.State != observed.State {
+		if observed, ok := s.Facts[i.ID]; ok && r.Verified && (r.State != observed.State || r.Target != observed.Target) {
 			return &ProviderChangeError{Code: "provider-observation-state-mismatch"}
 		}
 	}
