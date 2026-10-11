@@ -11,20 +11,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Core-less supported local application lifecycle on Docker and rootless Podman, without management login or implicit service installation.
-- Minimal Manifest v1 authoring with stable generated application identity and optional services.
+- Minimal Manifest v1 authoring with stable system-generated application identity and optional services; developer-authored `app.id` is rejected before mutation.
 - Shared capability/provider resolution and truthful versioned footprint across CLI, JSON, MCP and HTTP.
 - EN/DE capability-first contracts, connection-profile transport schema and permanent complete ecosystem pre-release-readiness policy.
 
 ### Changed
 
-- SQL is requested explicitly; managed Core provisioning follows resolved requirements and authorization.
-- Capability removal preserves shared provider ownership and makes retained resources visible.
+- Services are requested explicitly; selected provider realization follows resolved requirements and genuine dependencies rather than a mandatory application Core bundle.
+- Selective SQL, cache and Identity lifecycle releases removed capability bindings and retires unneeded owned runtime while preserving active shared consumers and persistent data/recovery material.
+- Provider-change contracts describe consumer functions, dependencies, actual material locations and verified continuation; unknown or alternative-less effects require two concrete-plan acknowledgements, with independent destructive consent for data deletion.
 - Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
 
 ### Compatibility
 
 - Explicit management Core installation and TLS/OIDC/HA/recovery invariants remain unchanged.
-- Full native managed Core topology remains. Unsupported native BYO realization fails closed; automatic reclamation and future UI/onboarding/host features remain deferred.
+- Unsupported native BYO realization fails before provisioning; there is no authored-ID migration or obsolete-syntax compatibility promise.
+- Capability/provider wizard, future UI/onboarding and host features remain deferred. Selective lifecycle and provider-removal acceptance belong to this release.
+- Candidate qualification remains incomplete until the full selective lifecycle, provider mutation coverage and exact-candidate Demo/Console/Connector acceptance pass; scoped native successes do not establish pre-release readiness.
 
 ## [0.4.24] - 2026-10-11
 
