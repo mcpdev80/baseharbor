@@ -73,10 +73,16 @@ func appendApplicationBrokerDependencies(resolved resolvedApplication, observati
 			return err
 		}
 		state := application.ProviderNewRequired
+		ownerReference := owner.manifest.ApplicationID
 		if owner.existing {
 			state = application.ProviderUnverifiable
+			ownerReference = files.Dir
 		}
-		fact := application.ProviderFact{Target: resolved.Target.Name, Ancillary: true, OwnerReference: files.Dir, State: state, Core: application.CoreRequired, Dependencies: roots, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Classification: "unknown"}}
+		// Before first apply, the deployment UUID is only a fresh proposal on
+		// each read. Bind consent to the canonical application owner instead of
+		// claiming that proposal's runtime path as already allocated authority.
+		// Existing deployments retain their actual protected runtime location.
+		fact := application.ProviderFact{Target: resolved.Target.Name, Ancillary: true, OwnerReference: ownerReference, State: state, Core: application.CoreRequired, Dependencies: roots, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Classification: "unknown"}}
 		if observed, ok := observations[instance.ID]; ok {
 			fact = observed
 			fact.Dependencies = roots

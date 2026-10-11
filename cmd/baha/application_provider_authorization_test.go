@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -47,6 +49,59 @@ func TestBrokerPrerequisiteDecisionIsReadOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(r.TargetStateRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("prerequisite decision materialized broker runtime: %v", err)
+	}
+}
+
+func TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges(t *testing.T) {
+	configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	t.Chdir(selection.RepositoryRoot)
+	intent := "version: 1\napp:\n  name: selective-secrets\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  secrets: true\nsecrets:\n  required:\n    - name: API_TOKEN\n      generate:\n        type: hex\n        bytes: 32\n"
+	if err := os.WriteFile(filepath.Join(selection.RepositoryRoot, "baseharbor.yaml"), []byte(intent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := machineNoninteractiveContext(context.Background())
+	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	r, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := buildResolvedApplicationPlan(ctx, r)
+	if err != nil || first.ProviderPlan.Impact == nil {
+		t.Fatalf("Secrets impact unavailable: %v", err)
+	}
+	consent := application.ProviderChangeConsent{PlanID: first.ProviderPlan.Impact.PlanID, First: true, Second: true}
+	for attempt := 0; attempt < 4; attempt++ {
+		r, err = resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := revalidateApplicationProviderIntent(ctx, r); err != nil {
+			t.Fatalf("intent revalidation: %v", err)
+		}
+		next, err := buildResolvedApplicationPlan(ctx, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next.ProviderPlan.Impact.PlanID != consent.PlanID {
+			t.Fatalf("an unallocated deployment proposal invalidates the existing consent")
+		}
+		if err := authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &consent), r, nil, io.Discard); err != nil {
+			t.Fatalf("unchanged Secrets authority invalidates the plan at attempt %d: %v", attempt, err)
+		}
+	}
+	if records, err := deployment.ListDeployments(r.Target.Name); err != nil || len(records) != 0 {
+		t.Fatalf("planning/consent allocated deployment authority: records=%d error=%v", len(records), err)
+	}
+	if err := os.WriteFile(r.ManifestPath, []byte(strings.Replace(intent, "bytes: 32", "bytes: 48", 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var failure *machine.Error
+	err = authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &consent), r, nil, io.Discard)
+	if !errors.As(err, &failure) || failure.Code != machine.ErrorConflict {
+		t.Fatalf("changed repository intent accepted earlier consent: %v", err)
 	}
 }
 
