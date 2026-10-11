@@ -1,0 +1,67 @@
+{
+  "core": "5acd98a84aa27638679481614c2d09b74257f749",
+  "demo": "b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63",
+  "scope": "actual CLI/stdio source compatibility; no native/browser/Connector acceptance",
+  "checks": [
+    {
+      "gate": "config-matrix",
+      "exit_code": 1,
+      "seconds": 1.67
+    },
+    {
+      "gate": "init",
+      "exit_code": 0,
+      "seconds": 0.47
+    },
+    {
+      "gate": "mcp",
+      "exit_code": 0,
+      "seconds": 0.17
+    },
+    {
+      "gate": "agent",
+      "exit_code": 0,
+      "seconds": 0.07
+    },
+    {
+      "gate": "shell-ux",
+      "exit_code": 0,
+      "seconds": 0.22
+    }
+  ],
+  "all_final_source_checks_passed": true,
+  "retries": [
+    {
+      "gate": "config-matrix",
+      "exit_code": 0,
+      "seconds": 1.33,
+      "reason": "initial harness omitted DEMO_SUITE and invoked standalone native profiles under static runtime; actual source-only contract matrix passed and retry uses declared atomic static-contract mode without source change"
+    }
+  ],
+  "core_tree": "57a43eaa7b73b3e4f8e2add11bab58e11e0e77f3",
+  "demo_tree": "0030e33682891707df0a1602ce0fb8149e4ca282",
+  "binary_sha256": "c83791dfd22fa588b62a2cf971484da6f1928ea5d17b5f15dbe04080c777adb5",
+  "pre_release_ready": false,
+  "native_acceptance": false,
+  "observed": [
+    "21 valid capability contracts plan after explicit initialization",
+    "7 invalid contracts rejected for their intended validation reason without authored/canonical mutation",
+    "Actual CLI source-only init and stdio MCP adoption",
+    "Actual stdio MCP discovery and bounded agent operation contract",
+    "Actual Bash completion, shell integration and Target-aware prompt"
+  ],
+  "logs": {
+    "mcp/run.log": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a",
+    "init/run.log": "21a3b5dbd16bbd9378faf7fb3ab1ed5c9b89beded65e1741d5cf29fba6faef2e",
+    "config-matrix/run.log": "45d74552a81f34c5101ddfb868912daced3a9c3a061613b782177dce1a6e52c5",
+    "agent/run.log": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4",
+    "shell-ux/run.log": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8",
+    "config-matrix/retry.log": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+  },
+  "not_qualified": [
+    "Final immutable Core/Demo/Console/Connector matrix",
+    "Native Docker/Podman Demo provider lifecycle",
+    "Authenticated Console browser and Connector mTLS/remote lifecycle",
+    "Complete pre-release approval"
+  ]
+}
