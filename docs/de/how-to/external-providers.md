@@ -13,7 +13,11 @@ BaseHarbor owns the binding/reference
 BaseHarbor does not own the foreign service
 ```
 
-Kein Passwort in den Endpunkt einbetten. `--trust system` verlangt ein gültiges System-Trust-Zertifikat, deaktiviert keine TLS-Prüfung. Eigene PKI/Auth nutzt die expliziten Referenzoptionen aus `baha provider add --help`.
+Endpunkte müssen absolute URLs ohne Benutzerinformationen, Query-Parameter oder
+Fragmente sein. Zugangsdaten und TLS-Material werden über geschützte
+Zugangsdaten-/Trust-Referenzen bereitgestellt. `--trust system` verlangt ein
+gültiges System-Trust-Zertifikat, deaktiviert keine TLS-Prüfung. Eigene PKI/Auth
+nutzt die expliziten Referenzoptionen aus `baha provider add --help`.
 
 Registrierung migriert keine Daten und wählt den Provider nicht automatisch für jede SQL-Anforderung. Effektive Provider-/Organisationskonfiguration und Application-Plan bestimmen Placement und Auswahl.
 

@@ -61,8 +61,8 @@ func (r Registration) Validate() error {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("external provider endpoint must be an absolute URL")
 	}
-	if u.User != nil {
-		return errors.New("external provider endpoint must not contain credentials")
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return errors.New("external provider endpoint must not contain credentials, query or fragment; use credential and trust references")
 	}
 	if err := r.Trust.Validate(); err != nil {
 		return err
