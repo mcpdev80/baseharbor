@@ -64,7 +64,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	}
 	writeIntent(true)
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
 		t.Fatalf("initialize authored ID-free workload: %v\n%s", err, out.String())
 	}
 	initialized, err := resolveApplication(ctx, application.Store{}, nil, "plan")

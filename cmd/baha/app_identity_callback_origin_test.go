@@ -46,7 +46,7 @@ func TestManagedIdentityCallbackOriginsFollowEffectiveTargetGateway(t *testing.T
 	preferred := listener.Addr().(*net.TCPAddr).Port
 	listener.Close()
 	native := identityOriginRuntime{port: preferred}
-	manifest := application.Manifest{Name: "callback-proof", Environment: "dev"}
+	manifest := application.Manifest{Name: "callback-proof", Environment: "dev", Exposures: []application.HTTPExposureRequirement{{Name: "custom-route", Service: "api", Protocol: "https", Visibility: "public", Port: 8080}}}
 	identity := &managedIdentityExecution{target: target.Name, manifest: manifest, runtime: native}
 	realization := identityOriginExposure{state: exposure.PublishedState{Host: "irrelevant.native.host", Routes: []exposure.Route{{Name: "custom-route", Service: "api", Visibility: "public", Protocol: "https", PublishedPort: 443}}}}
 	lifecycle := exposure.NewLifecycle("irrelevant.native.host", "local", realization)
@@ -54,9 +54,14 @@ func TestManagedIdentityCallbackOriginsFollowEffectiveTargetGateway(t *testing.T
 		t.Fatal(err)
 	}
 	prepared := &managedExposureExecution{driver: lifecycle}
+	fresh := &managedExposureExecution{driver: exposure.NewLifecycle("irrelevant.native.host", "local", realization)}
 	host, err := devaccess.ApplicationHost(target.Name, manifest.Name, "api")
 	if err != nil {
 		t.Fatal(err)
+	}
+	freshOrigins, err := managedIdentityExposureOrigins(identity, fresh)
+	if err != nil || !reflect.DeepEqual(freshOrigins, []string{fmt.Sprintf("https://%s:%d", host, preferred)}) {
+		t.Fatalf("pre-realization callback missing: %v %v", freshOrigins, err)
 	}
 	origins, err := managedIdentityExposureOrigins(identity, prepared)
 	if err != nil || !reflect.DeepEqual(origins, []string{fmt.Sprintf("https://%s:%d", host, preferred)}) {
@@ -125,8 +130,19 @@ func TestSelectiveIdentityOAuthFixtureUsesValidSourceOnlyInitialization(t *testi
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+	if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &out, &out); err != nil {
 		t.Fatalf("actual source-only OAuth initialization failed: %v", err)
+	}
+	resolved, err := resolveApplication(t.Context(), application.Store{}, nil, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := loadRepositoryInitStateFromStateRoot(resolved.stateRoot())
+	if err != nil || input.Hostname == "" || input.TLSMode != "local" {
+		t.Fatalf("callback deployment inputs missing: %+v %v", input, err)
+	}
+	if _, err := prepareManagedExposure(t.Context(), identityOriginRuntime{}, resolved); err != nil {
+		t.Fatalf("actual callback provider preflight failed: %v", err)
 	}
 	after, err := os.ReadFile("baseharbor.yaml")
 	if err != nil || string(after) != authored {

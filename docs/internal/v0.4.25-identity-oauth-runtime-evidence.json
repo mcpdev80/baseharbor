@@ -33,6 +33,35 @@
           "artifact_digest": "sha256:4e3c2e30bff49513f89bcc46e0248405d21bd167b1deadc3078dd2d7ab79f7dc"
         }
       ]
+    },
+    {
+      "candidate_sha": "2e335a3c5c334cf76d94537f9a265492ec94a34e",
+      "candidate_tree": "12225a7673b21569b27d1b388dda035850906f64",
+      "workflow_run_id": 38152580994,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Authored callback manifest now validates, but quick source-only initialization supplies no deployment hostname/TLS inputs. Managed exposure preflight rejects apply before runtime materialization. Destroy preflight also rejects this incomplete preparation; final native inventory remained empty. No OAuth login or callback acceptance reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114508896073,
+          "test_seconds": 0.63,
+          "artifact_id": 11707401832,
+          "artifact_name": "coreless-docker-38152580994-1",
+          "artifact_digest": "sha256:7f48ae4bde26f8f3c1b85f7e1a1aa9144f5418047443e8ac37e29f5afbbf5201"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114508895989,
+          "test_seconds": 0.5,
+          "artifact_id": 11707765454,
+          "artifact_name": "coreless-podman-38152580994-1",
+          "artifact_digest": "sha256:48e4fbea511566d8079489c0cb78f5bc30974d87cbf956b0d89ede072bce3c87"
+        }
+      ]
     }
   ],
   "not_qualified": [

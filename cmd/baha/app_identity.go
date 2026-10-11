@@ -118,6 +118,14 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 		return nil, nil
 	}
 	state := prepared.driver.State()
+	// Before realization, development callback origins already follow the
+	// declared public route names and the selected Target gateway. Resolve
+	// those logical origins without pretending the provider has materialized.
+	if identity != nil && devaccess.Enabled(identity.manifest.Environment) && len(state.Routes) == 0 {
+		for _, route := range identity.manifest.Exposures {
+			state.Routes = append(state.Routes, exposure.Route{Name: route.Name, Service: route.Service, Protocol: route.Protocol, Visibility: route.Visibility})
+		}
+	}
 	seen := map[string]struct{}{}
 	var origins []string
 	publicCount := 0
