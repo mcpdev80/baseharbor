@@ -105,6 +105,21 @@ Bindings oder unverifizierbare Facts machen den Plan unvollständig. Automatisch
 Konvergenz erhält dann Ressourcen; absichtliche Änderungen nutzen die konkrete
 Folgenanalyse und Bestätigung unten.
 
+Bei einer unterbrochenen bestehenden Bereitstellung darf
+`ConsumerIntent.RetainedIntents` kanonische angewendete/ausstehende Manifeste unter
+DERSELBEN aktiven systemeigenen App-ID und Umgebung projizieren. Jedes nutzt das
+bestehende `ResolveFootprint` und relevante ausdrückliche Präferenzen; Anforderungen
+und Provider-/Dependency-Closure werden zu einem Verbraucher zusammengeführt.
+Erhaltene Capability-Bindings werden nicht freigegeben, nur weil das gewünschte
+Manifest sie nicht mehr anfordert. Runtime-Roots allein erhalten diese Bindings
+nicht. Der Adapter liefert die beobachtete Dependency-Root-Union aller kanonischen
+Projektionen einschließlich Runtime-Berechtigungen/Consumption. Abweichende oder
+fehlende Owner sowie inaktive erhaltene Projektionen sind ungültig; unbekannte
+erhaltene Anforderungen machen das Inventar unvollständig. Erst der verifizierte
+Lifecycle-Abschluss entfernt die erhaltene Projektion und erlaubt die normale
+Konvergenz nach dem letzten Verbraucher. Keine neue Identität, gespeicherte
+Manifest-Authority oder Provider-Auflösung wird eingeführt.
+
 `baseharbor.provider-plan/v1` enthält Verbraucher-Footprints, benötigte Provider-
 IDs, freizugebende Bindings und Änderungen mit Ownership-/Evidenznachweis:
 

@@ -19,6 +19,9 @@ type ConsumerIntent struct {
 	Manifest        Manifest             `json:"manifest"`
 	DependencyRoots []string             `json:"dependency_roots"`
 	Preferences     []ProviderPreference `json:"preferences,omitempty"`
+	// RetainedIntents are existing canonical pending/applied records of THIS
+	// active app/environment owner, never another consumer or authored identity.
+	RetainedIntents []Manifest `json:"retained_intents,omitempty"`
 }
 
 type ProviderChange struct {
@@ -85,20 +88,15 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 			owners[owner] = true
 		}
 		wanted := map[capability.Requirement]bool{}
+		if err := validateRetainedConsumerIntents(consumer); err != nil {
+			return ProviderPlan{}, fmt.Errorf("consumer %s: %w", consumer.Key, err)
+		}
 		if consumer.Active {
-			reqs, err := requestedCapabilities(m)
-			if err != nil {
-				return ProviderPlan{}, err
-			}
-			for _, req := range reqs {
-				wanted[req] = true
-			}
-			consumerSnapshot := snapshot
-			consumerSnapshot.DependencyRoots = consumer.DependencyRoots
-			fp, err := ResolveFootprint(m, consumerSnapshot, consumer.Preferences)
+			fp, requirements, err := resolveRetainedConsumerFootprint(snapshot, consumer)
 			if err != nil {
 				return ProviderPlan{}, fmt.Errorf("consumer %s: %w", consumer.Key, err)
 			}
+			wanted = requirements
 			p.Consumers[consumer.Key] = fp
 			if !fp.Complete {
 				p.Complete = false

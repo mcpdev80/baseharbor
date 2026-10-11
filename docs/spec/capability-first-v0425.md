@@ -98,6 +98,19 @@ authoritative existing owners. Unaccounted bindings or unverifiable facts make
 the plan incomplete. Automatic convergence then preserves resources; intentional
 changes use the concrete consequence analysis and acknowledgement below.
 
+For an interrupted existing deployment, `ConsumerIntent.RetainedIntents` may
+project canonical applied/pending manifests under the SAME active system app ID
+and environment. Each uses the existing `ResolveFootprint` and relevant explicit
+preferences; requirements and provider/dependency closure are deduplicated into
+one consumer. Retained capability bindings are not released merely because the
+desired manifest no longer requests them. Runtime roots alone cannot preserve
+those bindings. The adapter supplies the observed dependency-root union for all
+canonical projections, including runtime permissions/consumption. Different or
+missing owners and inactive retained projections are invalid; unknown retained
+requirements keep inventory incomplete. Only verified lifecycle completion removes
+the retained projection and permits ordinary last-consumer convergence. No new
+identity, stored manifest owner or resolver is introduced.
+
 `baseharbor.provider-plan/v1` contains per-consumer footprints, required provider
 IDs, released bindings and ownership/evidence-backed changes:
 
