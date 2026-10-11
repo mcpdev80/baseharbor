@@ -69,15 +69,19 @@ type ProviderFact struct {
 // ResolutionSnapshot is an ephemeral view of authoritative Target state.
 // Registry is the existing capability.Registry; Facts are observer/plan input.
 type ResolutionSnapshot struct {
-	Target   string                  `json:"target"`
-	Registry capability.Registry     `json:"registry"`
-	Facts    map[string]ProviderFact `json:"facts"`
+	// DependencyRoots are verified broker/consumption dependencies from existing
+	// plans for this consumer. Nil is unknown; [] verifies no extra resources.
+	DependencyRoots []string                `json:"dependency_roots"`
+	Target          string                  `json:"target"`
+	Registry        capability.Registry     `json:"registry"`
+	Facts           map[string]ProviderFact `json:"facts"`
 }
 
 type ProviderPreference struct {
 	Requirement capability.Requirement `json:"requirement"`
 	// Empty means automatic. Preference is deployment intent, never manifest.
-	InstanceID string `json:"instance_id,omitempty"`
+	InstanceID   string                  `json:"instance_id,omitempty"`
+	ProviderKind capability.ProviderKind `json:"provider_kind,omitempty"`
 }
 
 type RequirementResolution struct {
@@ -88,15 +92,16 @@ type RequirementResolution struct {
 }
 
 type ProviderFootprint struct {
-	InstanceID  string                       `json:"instance_id"`
-	Scope       capability.ProviderScope     `json:"scope"`
-	Ownership   capability.ProviderOwnership `json:"ownership"`
-	Shared      bool                         `json:"shared"`
-	Consumers   int                          `json:"consumers"`
-	State       ProviderState                `json:"state"`
-	Core        CoreRequirement              `json:"core"`
-	MemoryBytes Quantity                     `json:"memory_bytes"`
-	Containers  Quantity                     `json:"containers"`
+	Dependencies []string                     `json:"dependencies"`
+	InstanceID   string                       `json:"instance_id"`
+	Scope        capability.ProviderScope     `json:"scope"`
+	Ownership    capability.ProviderOwnership `json:"ownership"`
+	Shared       bool                         `json:"shared"`
+	Consumers    int                          `json:"consumers"`
+	State        ProviderState                `json:"state"`
+	Core         CoreRequirement              `json:"core"`
+	MemoryBytes  Quantity                     `json:"memory_bytes"`
+	Containers   Quantity                     `json:"containers"`
 }
 
 type Footprint struct {
@@ -150,19 +155,9 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 	if err := snapshot.Registry.Validate(); err != nil {
 		return Footprint{}, fmt.Errorf("Target registry: %w", err)
 	}
-	known := map[capability.Requirement]bool{}
-	for _, req := range reqs {
-		known[req] = true
-	}
-	prefs := map[capability.Requirement]string{}
-	for _, pref := range preferences {
-		if !known[pref.Requirement] {
-			return Footprint{}, fmt.Errorf("provider preference for unrequested capability")
-		}
-		if _, exists := prefs[pref.Requirement]; exists {
-			return Footprint{}, fmt.Errorf("duplicate provider preference")
-		}
-		prefs[pref.Requirement] = pref.InstanceID
+	prefs, kinds, err := resolvePreferences(reqs, preferences)
+	if err != nil {
+		return Footprint{}, err
 	}
 	instances := map[string]capability.ProviderInstance{}
 	for _, instance := range snapshot.Registry.Instances {
@@ -249,7 +244,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		}
 		fp := ProviderFootprint{InstanceID: id, Scope: instance.Scope, Ownership: instance.Ownership,
 			Shared: instance.Scope == capability.ScopeShared, Consumers: len(snapshot.Registry.BindingsForProviderInstance(id)),
-			State: fact.State, Core: fact.Core, MemoryBytes: fact.MemoryBytes, Containers: fact.Containers}
+			State: fact.State, Core: fact.Core, Dependencies: appendDependencies(fact.Dependencies), MemoryBytes: fact.MemoryBytes, Containers: fact.Containers}
 		if fact.State == ProviderNewRequired {
 			result.Additional = append(result.Additional, fp)
 		} else {
@@ -278,7 +273,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		}
 		if id == "" {
 			for _, instance := range snapshot.Registry.Instances {
-				if instance.Provider.Supports(req.Kind) && eligibleInstance(instance, m) {
+				if instance.Provider.Supports(req.Kind) && eligibleInstance(instance, m) && (kinds[req] == "" || instance.Provider.Kind == kinds[req]) {
 					if id != "" {
 						return Footprint{}, &ResolutionError{Code: "ambiguous", Requirement: req}
 					}
@@ -289,6 +284,9 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		entry := RequirementResolution{Requirement: req, Binding: "requested/unbound"}
 		if id == "" {
 			result.Complete = false
+			if kinds[req] != "" {
+				return Footprint{}, &ResolutionError{Code: "missing", Requirement: req}
+			}
 			if result.Core != CoreRequired {
 				result.Core = CoreUnknown
 			}
@@ -299,7 +297,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		if !exists {
 			return Footprint{}, &ResolutionError{Code: "missing", Requirement: req, InstanceID: id}
 		}
-		if !instance.Provider.Supports(req.Kind) {
+		if !instance.Provider.Supports(req.Kind) || (kinds[req] != "" && instance.Provider.Kind != kinds[req]) {
 			return Footprint{}, &ResolutionError{Code: "incompatible", Requirement: req, InstanceID: id}
 		}
 		state, err := include(id)
@@ -314,10 +312,15 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		}
 		result.Requirements = append(result.Requirements, entry)
 	}
+	for _, root := range snapshot.DependencyRoots {
+		if _, err := include(root); err != nil {
+			return Footprint{}, err
+		}
+	}
 	// These existing intents are not represented by PortableContract's service
 	// projection. Their lifecycle/consumption dependency plan must be verified
 	// before reporting a Core-free result; never infer no dependency from absence.
-	if len(m.Runtime.Permissions) > 0 || len(m.Consumes) > 0 {
+	if (len(m.Runtime.Permissions) > 0 || len(m.Consumes) > 0) && snapshot.DependencyRoots == nil {
 		result.Complete = false
 		if result.Core != CoreRequired {
 			result.Core = CoreUnknown
@@ -346,4 +349,31 @@ func eligibleInstance(instance capability.ProviderInstance, m Manifest) bool {
 	default:
 		return false
 	}
+}
+
+func appendDependencies(dependencies []string) []string {
+	if dependencies == nil {
+		return nil
+	}
+	return append([]string{}, dependencies...)
+}
+
+func resolvePreferences(reqs []capability.Requirement, preferences []ProviderPreference) (map[capability.Requirement]string, map[capability.Requirement]capability.ProviderKind, error) {
+	known := map[capability.Requirement]bool{}
+	for _, req := range reqs {
+		known[req] = true
+	}
+	prefs := map[capability.Requirement]string{}
+	kinds := map[capability.Requirement]capability.ProviderKind{}
+	for _, pref := range preferences {
+		if !known[pref.Requirement] {
+			return nil, nil, fmt.Errorf("provider preference for unrequested capability")
+		}
+		if _, exists := prefs[pref.Requirement]; exists {
+			return nil, nil, fmt.Errorf("duplicate provider preference")
+		}
+		prefs[pref.Requirement] = pref.InstanceID
+		kinds[pref.Requirement] = pref.ProviderKind
+	}
+	return prefs, kinds, nil
 }

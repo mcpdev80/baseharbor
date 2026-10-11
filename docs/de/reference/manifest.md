@@ -9,13 +9,13 @@ app:
   environment: dev
 ```
 
-`services` und eine selbst eingetragene `app.id` sind optional. Explizite
-Initialisierung vergibt eine dauerhafte ID im bestehenden kanonischen
-Repository-Store, ohne dieses YAML umzuschreiben. Lesen vergibt keine ID.
-Bestehende explizite IDs müssen zum registrierten Eigentum passen. Services
-verwenden weiterhin die verschachtelte Syntax, etwa `services.sql: true`.
-Es gibt kein neues Top-Level-SQL-Format. Initialisierung und Betrieb benötigen
-weiterhin eine echte unterstützte Workload.
+`services` ist optional; keine impliziten Services. Entwickler dürfen `app.id`
+nicht setzen: das Feld wird vor Änderungen abgelehnt. Explizite Initialisierung
+vergibt einmal eine dauerhafte ID im bestehenden systemeigenen Store. Lesen und
+Parsen vergeben keine IDs. Interne Records/Machine-Ausgaben behalten kanonische
+IDs. SQL bleibt `services.sql: true`; Provider-Auswahl und Platzierung bleiben
+in bestehenden Target-/Deployment-Bindings. Kein neues Top-Level-SQL-Format,
+keine Migration alter Autoren-IDs. Betrieb benötigt eine unterstützte Workload.
 
 
 Das Application-Manifest beschreibt portablen Application-Intent.
@@ -29,7 +29,6 @@ In das Manifest gehören ausschließlich Application-Anforderungen. Runtime-/Pro
 | Feld | Bedeutung |
 | --- | --- |
 | `version` | Version des Application-Vertrags |
-| `app.id` | Stabile opake `application_id` im portablen Repository-Vertrag |
 | `app.name` | Menschenlesbarer Application-Name |
 | `app.environment` | Deklarierter beziehungsweise voreingestellter Umgebungskontext |
 | `services` | Anforderungen an Application-Fähigkeiten |

@@ -9,12 +9,13 @@ app:
   environment: dev
 ```
 
-`services` and an authored `app.id` are optional. Explicit initialization assigns
-one durable ID in the existing canonical repository store, without rewriting
-this YAML. Reads do not allocate IDs. Existing explicit IDs must agree with
-registered ownership. Services retain the nested syntax, for example
-`services.sql: true`; no top-level SQL shorthand is introduced. A real supported
-workload is still required to initialize or run the application.
+`services` is optional; no services are implicit. Developers must not set
+`app.id`: authored IDs are rejected before mutation. Explicit initialization
+generates one durable ID in the existing system-owned Store. Reading/parsing
+never allocates IDs. Internal records/machine outputs retain canonical IDs. SQL
+remains `services.sql: true`; provider and placement live in existing Target/
+deployment bindings. No top-level SQL shorthand or authored-ID migration.
+Execution still requires a supported workload.
 
 
 The application manifest is portable Application Intent.
@@ -30,7 +31,6 @@ Runtime/provider implementation details, generated credentials, private keys, ma
 | Field | Meaning |
 |---|---|
 | `version` | application contract version |
-| `app.id` | stable opaque `application_id` owned by the portable repository contract |
 | `app.name` | human-readable application name |
 | `app.environment` | declared/default environment context where supported |
 | `services` | declared application capability needs |

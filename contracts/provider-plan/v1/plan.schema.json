@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-plan/v1/plan.schema.json",
+  "title": "baseharbor.provider-plan/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "target",
+    "complete",
+    "consumers",
+    "required",
+    "changes",
+    "released_bindings"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.provider-plan/v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "consumers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/footprint/v1/footprint.schema.json"
+      }
+    },
+    "required": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "action",
+          "reason",
+          "ownership",
+          "consumers",
+          "preserve_data"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "enum": [
+              "add",
+              "reuse",
+              "restart",
+              "stop",
+              "remove-runtime",
+              "preserve"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownership": {
+            "enum": [
+              "baseharbor",
+              "external"
+            ]
+          },
+          "consumers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "preserve_data": {
+            "const": true
+          }
+        }
+      }
+    },
+    "released_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "application_id",
+          "resource",
+          "provider_instance_id"
+        ],
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "environment": {
+            "type": "string"
+          },
+          "provider_instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resource": {
+            "type": "object",
+            "required": [
+              "application",
+              "kind",
+              "name",
+              "provider"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "application": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

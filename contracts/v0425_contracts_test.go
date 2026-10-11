@@ -2,12 +2,14 @@ package contracts_test
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/contracts"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 func contractSchema(t *testing.T, path string) *jsonschema.Resolved {
@@ -20,7 +22,17 @@ func contractSchema(t *testing.T, path string) *jsonschema.Resolved {
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := schema.Resolve(nil)
+	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{Loader: func(uri *url.URL) (*jsonschema.Schema, error) {
+		raw, err := contracts.ReadSchema(uri.String())
+		if err != nil {
+			return nil, err
+		}
+		var loaded jsonschema.Schema
+		if err := json.Unmarshal(raw, &loaded); err != nil {
+			return nil, err
+		}
+		return &loaded, nil
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,5 +112,29 @@ func TestConnectionProfileSchemaRejectsAuthorityAndLocalState(t *testing.T) {
 	input["version"] = "baseharbor.connection-profile/v99"
 	if err := resolved.Validate(input); err == nil {
 		t.Fatal("accepted unknown transport version")
+	}
+}
+
+func TestProviderPlanSchemaEnforcesDataPreservation(t *testing.T) {
+	resolved := contractSchema(t, "provider-plan/v1/plan.schema.json")
+	plan, err := application.ResolveProviderPlan(application.ResolutionSnapshot{Target: "local", Registry: capability.NewRegistry()}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(plan)
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolved.Validate(value); err != nil {
+		t.Fatal(err)
+	}
+	value["changes"] = []any{map[string]any{"instance_id": "sql/shared", "action": "stop", "reason": "last consumer released", "ownership": "baseharbor", "consumers": []any{}, "preserve_data": true}}
+	if err := resolved.Validate(value); err != nil {
+		t.Fatal(err)
+	}
+	value["changes"].([]any)[0].(map[string]any)["preserve_data"] = false
+	if err := resolved.Validate(value); err == nil {
+		t.Fatal("plan schema authorized automatic data deletion")
 	}
 }

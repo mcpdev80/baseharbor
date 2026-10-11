@@ -172,7 +172,8 @@
         "state",
         "core",
         "memory_bytes",
-        "containers"
+        "containers",
+        "dependencies"
       ],
       "properties": {
         "instance_id": {
@@ -220,6 +221,17 @@
         },
         "containers": {
           "$ref": "#/$defs/quantity"
+        },
+        "dependencies": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Selected provider dependency IDs; null means unverified, empty array means verified none."
         }
       }
     }

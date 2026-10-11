@@ -2,6 +2,7 @@ package application
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"reflect"
 	"testing"
@@ -62,5 +63,101 @@ func TestProviderUnionUnknownInventoryCannotRemove(t *testing.T) {
 	p, err := ResolveProviderPlan(snapshot, nil, false)
 	if err != nil || p.Complete || p.Changes[0].Action != "preserve" {
 		t.Fatalf("%+v %v", p, err)
+	}
+}
+
+func TestProviderUnionDependencyClosurePreservesSharedSQL(t *testing.T) {
+	r := capability.NewRegistry()
+	for _, i := range []capability.ProviderInstance{
+		{ID: "sql/shared", Provider: capability.PostgreSQL, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
+		{ID: "identity/shared", Provider: capability.Provider{Kind: capability.ProviderKeycloak, Capabilities: []capability.Kind{capability.Identity}}, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
+	} {
+		if err := r.Register(i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := ResolutionSnapshot{Target: "test", Registry: r, Facts: map[string]ProviderFact{
+		"sql/shared":      {Target: "test", State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{}},
+		"identity/shared": {Target: "test", State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{"sql/shared"}},
+	}}
+	sql := New("app", "test", true, false, false)
+	id := New("console", "test", false, false, false)
+	id.Services.Identity = true
+	consumers := []ConsumerIntent{{Key: "app", Active: true, Manifest: sql}, {Key: "console", Active: true, Manifest: id}}
+	p, err := ResolveProviderPlan(s, consumers, true)
+	if err != nil || !p.Complete || len(p.Required) != 2 {
+		t.Fatalf("%+v %v", p, err)
+	}
+	consumers[0].Active = false
+	p, err = ResolveProviderPlan(s, consumers, true)
+	if err != nil || len(p.Required) != 2 {
+		t.Fatalf("dependency removed: %+v %v", p, err)
+	}
+	consumers[0].Active = true
+	consumers[1].Active = false
+	p, err = ResolveProviderPlan(s, consumers, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range p.Changes {
+		if c.InstanceID == "sql/shared" && c.Action != "reuse" {
+			t.Fatal("shared SQL stopped")
+		}
+		if c.InstanceID == "identity/shared" && c.Action != "stop" {
+			t.Fatal("unused Identity retained running")
+		}
+	}
+	// Never trust a complete caller inventory when a registered owner is omitted.
+	resource, _ := capability.Resolve("foreign", capability.Requirement{Kind: capability.SQL, Name: "default"}, capability.PostgreSQL)
+	s.Registry.Bindings = append(s.Registry.Bindings, capability.ProviderBinding{ApplicationID: contractOtherID, Environment: "test", Resource: resource, ProviderInstanceID: "sql/shared"})
+	p, err = ResolveProviderPlan(s, nil, true)
+	if err != nil || p.Complete {
+		t.Fatalf("unaccounted owner accepted: %+v %v", p, err)
+	}
+	for _, c := range p.Changes {
+		if c.Action != "preserve" {
+			t.Fatal("unaccounted inventory authorizes mutation")
+		}
+	}
+}
+
+func TestExplicitProviderTypeNegotiationUsesExistingRegistry(t *testing.T) {
+	s := contractSnapshot()
+	m := contractSQL()
+	req := capability.Requirement{Kind: capability.SQL, Name: "default"}
+	for _, tc := range []struct {
+		kind capability.ProviderKind
+		code string
+	}{{capability.ProviderPostgreSQL, ""}, {capability.ProviderValkey, "missing"}} {
+		_, err := ResolveFootprint(m, s, []ProviderPreference{{Requirement: req, ProviderKind: tc.kind}})
+		if tc.code == "" && err != nil {
+			t.Fatal(err)
+		}
+		if tc.code != "" {
+			var re *ResolutionError
+			if !errors.As(err, &re) || re.Code != tc.code {
+				t.Fatalf("%v", err)
+			}
+		}
+	}
+}
+
+func TestVerifiedConsumptionRootsUseSameDependencyResolver(t *testing.T) {
+	m := WithWorkloadComponents(Manifest{Version: 1, ApplicationID: contractAppID, Name: "myapp", Environment: "dev"}, "api")
+	m.Consumes = []ConsumptionRequirement{{Name: "api", ApplicationID: contractOtherID, Component: "api", Interface: "http", Protocol: "http"}}
+	s := contractSnapshot()
+	s.DependencyRoots = []string{"sql/shared"}
+	fp, err := ResolveFootprint(m, s, nil)
+	if err != nil || !fp.Complete || len(fp.Existing) != 1 {
+		t.Fatalf("verified closure missing: %+v %v", fp, err)
+	}
+	s.DependencyRoots = []string{}
+	fp, err = ResolveFootprint(m, s, nil)
+	if err != nil || !fp.Complete || len(fp.Existing) != 0 || fp.Core != CoreNotRequired {
+		t.Fatalf("verified direct consumption: %+v %v", fp, err)
+	}
+	s.DependencyRoots = []string{"missing"}
+	if _, err = ResolveFootprint(m, s, nil); err == nil {
+		t.Fatal("invalid extra root accepted")
 	}
 }

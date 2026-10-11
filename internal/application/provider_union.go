@@ -14,10 +14,11 @@ const ProviderPlanVersion = "baseharbor.provider-plan/v1"
 // the same Manifest capability projection; no mandatory bundle is inferred.
 // Inactive entries release bindings but retain identity for safe removal/retry.
 type ConsumerIntent struct {
-	Key         string               `json:"key"`
-	Active      bool                 `json:"active"`
-	Manifest    Manifest             `json:"manifest"`
-	Preferences []ProviderPreference `json:"preferences,omitempty"`
+	Key             string               `json:"key"`
+	Active          bool                 `json:"active"`
+	Manifest        Manifest             `json:"manifest"`
+	DependencyRoots []string             `json:"dependency_roots"`
+	Preferences     []ProviderPreference `json:"preferences,omitempty"`
 }
 
 type ProviderChange struct {
@@ -85,7 +86,9 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 			for _, req := range reqs {
 				wanted[req] = true
 			}
-			fp, err := ResolveFootprint(m, snapshot, consumer.Preferences)
+			consumerSnapshot := snapshot
+			consumerSnapshot.DependencyRoots = consumer.DependencyRoots
+			fp, err := ResolveFootprint(m, consumerSnapshot, consumer.Preferences)
 			if err != nil {
 				return ProviderPlan{}, fmt.Errorf("consumer %s: %w", consumer.Key, err)
 			}
@@ -121,7 +124,7 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 	sort.Strings(p.Required)
 	for _, instance := range snapshot.Registry.Instances {
 		fact, observed := snapshot.Facts[instance.ID]
-		refs := required[instance.ID]
+		refs := append([]string{}, required[instance.ID]...)
 		sort.Strings(refs)
 		action, reason := "preserve", "inventory or ownership is not verified"
 		if instance.Ownership == capability.OwnershipExternal {
