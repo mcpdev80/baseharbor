@@ -34,11 +34,12 @@ func TestFootprintSchemaMatchesDomainFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixtures []struct {
-		Name        string                           `json:"name"`
-		Manifest    string                           `json:"manifest"`
-		Snapshot    application.ResolutionSnapshot   `json:"snapshot"`
-		Preferences []application.ProviderPreference `json:"preferences"`
-		ErrorCode   string                           `json:"error_code"`
+		Name          string                           `json:"name"`
+		ApplicationID string                           `json:"application_id"`
+		Manifest      string                           `json:"manifest"`
+		Snapshot      application.ResolutionSnapshot   `json:"snapshot"`
+		Preferences   []application.ProviderPreference `json:"preferences"`
+		ErrorCode     string                           `json:"error_code"`
 	}
 	if err := json.Unmarshal(raw, &fixtures); err != nil {
 		t.Fatal(err)
@@ -52,6 +53,7 @@ func TestFootprintSchemaMatchesDomainFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			m.ApplicationID = f.ApplicationID
 			fp, err := application.ResolveFootprint(m, f.Snapshot, f.Preferences)
 			if err != nil {
 				t.Fatal(err)

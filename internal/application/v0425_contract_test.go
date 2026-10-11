@@ -21,14 +21,15 @@ func TestV0425PublishedResolutionFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixtures []struct {
-		Name        string               `json:"name"`
-		Manifest    string               `json:"manifest"`
-		Snapshot    ResolutionSnapshot   `json:"snapshot"`
-		Preferences []ProviderPreference `json:"preferences"`
-		ErrorCode   string               `json:"error_code"`
-		Core        CoreRequirement      `json:"core"`
-		Existing    int                  `json:"existing"`
-		Additional  int                  `json:"additional"`
+		Name          string               `json:"name"`
+		ApplicationID string               `json:"application_id"`
+		Manifest      string               `json:"manifest"`
+		Snapshot      ResolutionSnapshot   `json:"snapshot"`
+		Preferences   []ProviderPreference `json:"preferences"`
+		ErrorCode     string               `json:"error_code"`
+		Core          CoreRequirement      `json:"core"`
+		Existing      int                  `json:"existing"`
+		Additional    int                  `json:"additional"`
 	}
 	if err := json.Unmarshal(data, &fixtures); err != nil {
 		t.Fatal(err)
@@ -39,6 +40,7 @@ func TestV0425PublishedResolutionFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			m.ApplicationID = fixture.ApplicationID
 			before, _ := json.Marshal(fixture.Snapshot)
 			got, err := ResolveFootprint(m, fixture.Snapshot, fixture.Preferences)
 			after, _ := json.Marshal(fixture.Snapshot)
@@ -302,9 +304,6 @@ func TestFootprintCorelessAndUnboundAreDifferent(t *testing.T) {
 	got, err = ResolveFootprint(contractSQL(), s, nil)
 	if err != nil || got.Core != CoreUnknown || got.Requirements[0].Binding != "requested/unbound" {
 		t.Fatalf("unbound=%#v %v", got, err)
-	}
-	if !reflect.DeepEqual(ManagementCoreRequirements(), []capability.Kind{capability.SQL, capability.Secrets, capability.Identity}) {
-		t.Fatal("#810 weakened")
 	}
 }
 

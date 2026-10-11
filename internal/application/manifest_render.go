@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+// AuthoredYAML serializes portable developer intent without system-owned identity.
+func (m Manifest) AuthoredYAML() string {
+	m.ApplicationID = ""
+	return m.YAML()
+}
+
+// YAML serializes a canonical BaseHarbor-owned record including internal identity.
 func (m Manifest) YAML() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "version: %d\napp:\n", m.Version)

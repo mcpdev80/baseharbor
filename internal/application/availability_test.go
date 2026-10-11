@@ -16,7 +16,7 @@ func TestAvailabilityIntentRoundTrip(t *testing.T) {
 	if !strings.Contains(data, "ha: true\n") || !strings.Contains(data, "instances: 5\n") || !strings.Contains(data, "logs:\n    ha: false\n") {
 		t.Fatalf("availability intent missing from YAML:\n%s", data)
 	}
-	got, err := ParseYAML(data)
+	got, err := ParseCanonicalYAML(data)
 	if err != nil {
 		t.Fatal(err)
 	}

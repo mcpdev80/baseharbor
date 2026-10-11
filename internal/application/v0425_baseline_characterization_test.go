@@ -14,7 +14,7 @@ func TestV0425BaselineExplicitServices(t *testing.T) {
 		{true, true, false}, {true, false, true}, {false, true, true}, {true, true, true},
 	} {
 		m := New("baseline", "dev", flags[0], flags[1], flags[2])
-		got, err := ParseYAML(m.YAML())
+		got, err := ParseCanonicalYAML(m.YAML())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -28,7 +28,8 @@ func TestV0425BaselineReadPreservesIdentityAndAuthoring(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, RepositoryManifestName)
 	m := WithRequiredSecrets(New("baseline", "dev", true, true, true), "API_TOKEN")
-	authored := "# developer-owned comment\n" + m.YAML()
+	m.ApplicationID = ""
+	authored := "# developer-owned comment\n" + m.AuthoredYAML()
 	if err := os.WriteFile(path, []byte(authored), 0o600); err != nil {
 		t.Fatal(err)
 	}

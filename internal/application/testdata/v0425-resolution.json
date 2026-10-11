@@ -1,7 +1,7 @@
 [
   {
     "name": "automatic",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -33,11 +33,12 @@
     "error_code": "",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "explicit",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -77,11 +78,12 @@
     "error_code": "",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "missing",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -121,11 +123,12 @@
     "error_code": "missing",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "incompatible",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -165,11 +168,12 @@
     "error_code": "incompatible",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "ambiguous",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -214,11 +218,12 @@
     "error_code": "ambiguous",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "shared-reused",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -274,11 +279,12 @@
     "error_code": "",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "foreign",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -320,11 +326,12 @@
     "error_code": "foreign",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "external-byo",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -357,11 +364,12 @@
     "error_code": "",
     "core": "not-required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "stopped-owned",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -393,11 +401,12 @@
     "error_code": "",
     "core": "required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "unverifiable",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -422,11 +431,12 @@
     "error_code": "",
     "core": "unknown",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "newly-required",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nservices:\n  sql: true\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -458,11 +468,12 @@
     "error_code": "",
     "core": "required",
     "existing": 0,
-    "additional": 1
+    "additional": 1,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "https-only",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\nworkload:\n  components:\n    - app\nexposure:\n  http:\n    - name: web\n      service: app\n      port: 8080\n      protocol: https\n      visibility: public\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\nworkload:\n  components:\n    - app\nexposure:\n  http:\n    - name: web\n      service: app\n      port: 8080\n      protocol: https\n      visibility: public\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -494,11 +505,12 @@
     "error_code": "",
     "core": "not-required",
     "existing": 1,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   },
   {
     "name": "coreless",
-    "manifest": "version: 1\napp:\n  id: 11111111-1111-4111-8111-111111111111\n  name: myapp\n  environment: dev\n",
+    "manifest": "version: 1\napp:\n  name: myapp\n  environment: dev\n",
     "snapshot": {
       "target": "local",
       "registry": {
@@ -530,6 +542,7 @@
     "error_code": "",
     "core": "not-required",
     "existing": 0,
-    "additional": 0
+    "additional": 0,
+    "application_id": "11111111-1111-4111-8111-111111111111"
   }
 ]

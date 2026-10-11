@@ -10,6 +10,7 @@ import (
 )
 
 type manifestYAMLParser struct {
+	canonical              bool
 	manifest               Manifest
 	section                string
 	service                string
@@ -48,7 +49,18 @@ func newManifestYAMLParser() *manifestYAMLParser {
 
 // ParseYAML parses the intentionally small v1 manifest grammar without adding a runtime dependency.
 func ParseYAML(input string) (Manifest, error) {
+	return parseManifestYAML(input, false)
+}
+
+// ParseCanonicalYAML reads BaseHarbor-owned records, not developer input.
+// It uses the same grammar and preserves existing internal IDs without allocation.
+func ParseCanonicalYAML(input string) (Manifest, error) {
+	return parseManifestYAML(input, true)
+}
+
+func parseManifestYAML(input string, canonical bool) (Manifest, error) {
 	parser := newManifestYAMLParser()
+	parser.canonical = canonical
 	scanner := bufio.NewScanner(strings.NewReader(input))
 
 	lineNo := 0
@@ -237,6 +249,9 @@ func (p *manifestYAMLParser) parseAppField(lineNo int, trim string) error {
 	p.appSeen[key] = true
 	switch key {
 	case "id":
+		if !p.canonical {
+			return fmt.Errorf("line %d: app.id is system-owned; remove app.id from the developer manifest and run explicit application initialization; BaseHarbor generates and persists the identity", lineNo)
+		}
 		p.manifest.ApplicationID = strings.TrimSpace(value)
 	case "name":
 		p.manifest.Name = strings.TrimSpace(value)

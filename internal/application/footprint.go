@@ -347,8 +347,3 @@ func eligibleInstance(instance capability.ProviderInstance, m Manifest) bool {
 		return false
 	}
 }
-
-// ManagementCoreRequirements preserves #810 independently of Application needs.
-func ManagementCoreRequirements() []capability.Kind {
-	return []capability.Kind{capability.SQL, capability.Secrets, capability.Identity}
-}
