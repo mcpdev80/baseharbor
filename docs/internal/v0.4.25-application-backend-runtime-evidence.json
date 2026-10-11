@@ -1,0 +1,16 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selective-application-backend-retained-data",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "759631b0dcc68230d75a9379ec232e7b71ae7b90",
+      "candidate_tree": "c4f5cc1d6ec30f0b28ffbc241ddcc64946607724",
+      "workflow_run_id": 38156091072,
+      "workflow_run_attempt": 1,
+      "result": "FAIL",
+      "observed": "Workflow transfer was truncated; GitHub rejected the workflow before jobs started. Zero native journeys executed. Local original workflow passed actionlint, but uploaded blob differed from the intended local hash. Complete original workflow restored with the narrow foundation selection change; its uploaded blob must match the full local file before branch publication. No runtime or data acceptance."
+    }
+  ]
+}
