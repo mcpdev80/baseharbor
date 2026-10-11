@@ -54,6 +54,8 @@ func (q Quantity) Validate() error {
 }
 
 type ProviderFact struct {
+	Ancillary      bool   `json:"ancillary,omitempty"`
+	OwnerReference string `json:"owner_reference,omitempty"`
 	// Target must match the selected snapshot, including dependencies.
 	Target string        `json:"target"`
 	State  ProviderState `json:"state"`
@@ -69,6 +71,7 @@ type ProviderFact struct {
 // ResolutionSnapshot is an ephemeral view of authoritative Target state.
 // Registry is the existing capability.Registry; Facts are observer/plan input.
 type ResolutionSnapshot struct {
+	Ancillary []capability.ProviderInstance `json:"ancillary,omitempty"`
 	// DependencyRoots are verified broker/consumption dependencies from existing
 	// plans for this consumer. Nil is unknown; [] verifies no extra resources.
 	DependencyRoots []string                `json:"dependency_roots"`
@@ -92,6 +95,7 @@ type RequirementResolution struct {
 }
 
 type ProviderFootprint struct {
+	Ancillary    bool                         `json:"ancillary,omitempty"`
 	Dependencies []string                     `json:"dependencies"`
 	InstanceID   string                       `json:"instance_id"`
 	Scope        capability.ProviderScope     `json:"scope"`
@@ -159,9 +163,9 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 	if err != nil {
 		return Footprint{}, err
 	}
-	instances := map[string]capability.ProviderInstance{}
-	for _, instance := range snapshot.Registry.Instances {
-		instances[instance.ID] = instance
+	instances, err := indexResolutionInstances(snapshot)
+	if err != nil {
+		return Footprint{}, err
 	}
 	selected := map[string]bool{}
 	visiting := map[string]bool{}
@@ -242,7 +246,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		if err := fact.Containers.Validate(); err != nil {
 			return "", err
 		}
-		fp := ProviderFootprint{InstanceID: id, Scope: instance.Scope, Ownership: instance.Ownership,
+		fp := ProviderFootprint{Ancillary: fact.Ancillary, InstanceID: id, Scope: instance.Scope, Ownership: instance.Ownership,
 			Shared: instance.Scope == capability.ScopeShared, Consumers: len(snapshot.Registry.BindingsForProviderInstance(id)),
 			State: fact.State, Core: fact.Core, Dependencies: appendDependencies(fact.Dependencies), MemoryBytes: fact.MemoryBytes, Containers: fact.Containers}
 		if fact.State == ProviderNewRequired {
@@ -326,7 +330,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 			result.Core = CoreUnknown
 		}
 	}
-	for _, instance := range snapshot.Registry.Instances {
+	for _, instance := range orderedResolutionInstances(instances) {
 		if !selected[instance.ID] && len(snapshot.Registry.BindingsForProviderInstance(instance.ID)) == 0 {
 			result.Unused = append(result.Unused, instance.ID)
 		}

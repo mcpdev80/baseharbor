@@ -57,6 +57,10 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 	if err := snapshot.Registry.Validate(); err != nil {
 		return ProviderPlan{}, err
 	}
+	instances, err := indexResolutionInstances(snapshot)
+	if err != nil {
+		return ProviderPlan{}, err
+	}
 	seen := map[string]bool{}
 	owners := map[string]bool{}
 	required := map[string][]string{}
@@ -125,7 +129,7 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 		p.Required = append(p.Required, id)
 	}
 	sort.Strings(p.Required)
-	for _, instance := range snapshot.Registry.Instances {
+	for _, instance := range orderedResolutionInstances(instances) {
 		fact, observed := snapshot.Facts[instance.ID]
 		refs := append([]string{}, required[instance.ID]...)
 		sort.Strings(refs)

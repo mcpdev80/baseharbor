@@ -377,5 +377,244 @@
     "expect_complete": true,
     "expect_destructive": false,
     "name": "restart-keeps-data"
+  },
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          },
+          {
+            "id": "identity",
+            "provider": {
+              "kind": "keycloak",
+              "capabilities": [
+                "identity.oidc"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": []
+        },
+        "identity": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": [
+            "sql",
+            "native/shared-gateway"
+          ]
+        },
+        "native/shared-gateway": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": [],
+          "ancillary": true,
+          "owner_reference": "installation/existing-owner"
+        }
+      },
+      "ancillary": [
+        {
+          "id": "native/shared-gateway",
+          "provider": {
+            "kind": "caddy",
+            "capabilities": null
+          },
+          "scope": "shared",
+          "ownership": "baseharbor"
+        }
+      ]
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": true,
+      "providers": {
+        "sql": {
+          "realization": {
+            "instance_id": "sql",
+            "kind": "postgresql",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "sql/data",
+              "kind": "database",
+              "location": {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        },
+        "identity": {
+          "realization": {
+            "instance_id": "identity",
+            "kind": "keycloak",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "identity",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/identity"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "identity/data",
+              "kind": "realm",
+              "location": {
+                "owner": "identity",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/identity"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        },
+        "native/shared-gateway": {
+          "realization": {
+            "instance_id": "native/shared-gateway",
+            "kind": "caddy",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "installation/existing-owner",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "native/shared-gateway",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/native/shared-gateway"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint",
+            "ancillary": true
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "native/shared-gateway/data",
+              "kind": "configuration",
+              "location": {
+                "owner": "native/shared-gateway",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/native/shared-gateway"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "identity",
+          "function": "identity.login",
+          "required": true,
+          "evidence": "actual OIDC application binding"
+        }
+      ],
+      "continuations": []
+    },
+    "requests": [
+      {
+        "instance_id": "native/shared-gateway",
+        "operation": "stop",
+        "consumers": [],
+        "materials": []
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  identity: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": true,
+    "expect_destructive": false,
+    "name": "existing-shared-gateway-ancillary-dependency"
   }
 ]

@@ -59,6 +59,14 @@ func (d IntegrationDescriptor) ChangeContract() (ProviderChangeContract, bool) {
 		c.Functions = []string{"queue.publish", "queue.consume", "pubsub.delivery", "stream.read", "stream.write"}
 		c.MaterialKinds = []string{"queue", "message", "in-flight", "stream", "offset", "topology", "credentials"}
 		c.Aspects = []string{"ordering", "delivery", "acknowledgement", "durability", "protocol", "reconnection", "recovery"}
+	case ProviderRuntimeBroker:
+		c.Functions = []string{"runtime.authorize", "runtime.credentials", "runtime.policy"}
+		c.MaterialKinds = []string{"policy", "credentials", "configuration", "certificate", "recovery"}
+		c.Aspects = []string{"authorization", "credential-renewal", "tls", "availability", "reconnection", "recovery"}
+	case ProviderRuntimeExecutor:
+		c.Functions = []string{"runtime.execute", "runtime.observe", "runtime.control"}
+		c.MaterialKinds = []string{"in-flight", "configuration", "certificate", "credentials"}
+		c.Aspects = []string{"execution", "in-flight-work", "authorization", "tls", "availability", "reconnection"}
 	case ProviderMongoDB:
 		c.Functions = []string{"document.read", "document.write", "document.transactions"}
 		c.MaterialKinds = []string{"document", "index", "oplog", "credentials", "backup"}

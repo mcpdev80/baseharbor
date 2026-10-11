@@ -211,14 +211,33 @@ unfinished operations/material actions for the existing idempotent replan/retry
 lifecycle. It is not a scheduler or new persistence authority. Interrupted handoff,
 rollback/reconnection work and irreversible effects remain visible in receipts.
 
+### Existing ancillary realizations
+
+`ResolutionSnapshot.Ancillary` observes existing gateway/sidecar realizations from
+runtime/route owners. `ProviderFact.Ancillary` and `OwnerReference` identify them;
+`ProviderFootprint` and impact realizations retain that distinction. This is an
+ephemeral inventory alongside the existing registry, not another registration or
+state owner. Ancillary `Provider.Capabilities` is empty: Automatic does not offer
+these as application providers, and explicit capability selection is incompatible.
+The same dependency closure includes their actual IDs only through verified
+provider dependencies or consumer roots. The same union accounts for shared users,
+owned retirement, unknown state and impact. No unconditional sidecar/Core package.
+
+A Target-owned shared gateway uses its real existing installation/route owner and
+no fabricated application UUID. It does not claim that Caddy's selectable provider
+integration supports generic Shared placement. App sidecars retain their actual
+system-owned app ID. Runtime broker/executor metadata describes actual authorization,
+credential, execution/control and in-flight effects; usages still require observation.
+
 ### Shipped provider coverage
 
 This is the inventory of declaration-level coverage. The adapter must provide
 **actual** data/access locations and usage; the material kinds below are potential
 inventory categories, not assertions that every instance has every item. Runtime
 entry-point coverage and native acceptance belong to the consuming lifecycle tests.
-Reserved runtime-broker/runtime-executor kind constants have no shipped capability
-integration; undeclared extension contracts remain unknown.
+Existing runtime-broker/runtime-executor sidecars have ancillary-only consequence
+metadata, not shipped selectable capability integrations. Undeclared extension
+contracts remain unknown.
 
 | Registered provider | Relevant functions/material inventory | Location/access authority and specific consequences |
 | --- | --- | --- |
@@ -235,6 +254,8 @@ integration; undeclared extension contracts remain unknown.
 | Keycloak | Actual login/SSO, issuance/validation/JWKS, sessions/refresh; users/realms/clients/signing keys/tokens | Existing Identity/database/access owners; login/refresh, cached validity and authenticated management availability |
 | External OIDC | Actual OIDC consumers and registered references | External registration/access owner; local binding removal, no foreign user/realm destruction |
 | RabbitMQ | Actual queue/pubsub/stream users; messages/in-flight, offsets/topology/credentials | Existing messaging/runtime/storage owners; ordering, acknowledgements, delivery, durability and reconnect |
+| Ancillary runtime broker | Actual authorization/credentials/policy; configuration, certificates/recovery | Existing broker/runtime/credential owners; authorization, renewal, TLS and availability |
+| Ancillary runtime executor | Actual execute/observe/control; in-flight/configuration, certificates/credentials | Existing executor/runtime owners; in-flight work, authorization/TLS and reconnect |
 | MongoDB | Read/write/transactions; documents/indexes/oplog, credentials/backups | Existing document/runtime/storage/recovery owners; consistency, durability, protocol and reconnect |
 
 Fixtures: `internal/application/testdata/v0425-provider-impact.json` and

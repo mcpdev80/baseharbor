@@ -187,13 +187,17 @@ func validateRequestStrings(r ProviderChangeRequest) error {
 }
 
 func validateObservationOwners(s ResolutionSnapshot, o ProviderImpactObservation) error {
-	for _, i := range s.Registry.Instances {
+	instances, err := indexResolutionInstances(s)
+	if err != nil {
+		return err
+	}
+	for _, i := range instances {
 		f, ok := o.Providers[i.ID]
 		if !ok {
 			continue
 		}
 		r := f.Realization
-		if r.Kind != i.Provider.Kind || r.Scope != i.Scope || r.Ownership != i.Ownership || (i.Scope == "application" && r.Owner != i.OwnerApplicationID) || r.Target == "" {
+		if r.Ancillary != s.Facts[i.ID].Ancillary || r.Kind != i.Provider.Kind || r.Scope != i.Scope || r.Ownership != i.Ownership || ((i.Scope == "application" || s.Facts[i.ID].Ancillary) && r.Owner != observationOwner(i, s)) || r.Target == "" {
 			return &ProviderChangeError{Code: "provider-observation-ownership-mismatch"}
 		}
 		if observed, ok := s.Facts[i.ID]; ok && r.Verified && (r.State != observed.State || r.Target != observed.Target) {

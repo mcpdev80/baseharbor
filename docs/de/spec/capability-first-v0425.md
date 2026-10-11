@@ -221,14 +221,35 @@ nur unerledigte Operationen/Materialaktionen an den bestehenden idempotenten
 Replan-/Retry-Lifecycle. Kein Scheduler, kein neuer State-Owner. Unterbrochene
 Übergabe, Rollback/Wiederverbindung und irreversible Folgen bleiben sichtbar.
 
+### Bestehende Ancillary-Realisierungen
+
+`ResolutionSnapshot.Ancillary` beobachtet bestehende Gateway-/Sidecar-Realisierungen
+aus Runtime-/Routenownern. `ProviderFact.Ancillary` und `OwnerReference` kennzeichnen
+sie; `ProviderFootprint` und Impact-Realisierungen erhalten diese Unterscheidung.
+Das ist ein vorübergehendes Inventar neben der bestehenden Registry, keine zweite
+Registrierung oder State-Autorität. Ancillary-`Provider.Capabilities` ist leer:
+Automatic bietet sie nicht als App-Provider an; explizite Capability-Auswahl ist
+inkompatibel. Dieselbe Dependency-Closure übernimmt ihre tatsächlichen IDs nur aus
+verifizierten Provider-Dependencies oder Verbraucherroots. Dieselbe Union erfasst
+Shared-Nutzer, eigene Entfernung, unbekannten State und Folgen. Kein verpflichtendes
+Sidecar-/Core-Paket.
+
+Ein Target-eigener Shared-Gateway verwendet seinen tatsächlichen bestehenden
+Installation-/Routenowner ohne erfundene Application-UUID. Er behauptet keine
+allgemeine Shared-Platzierung der auswählbaren Caddy-Integration. App-Sidecars
+behalten ihre tatsächliche systemeigene App-ID. Broker-/Executor-Metadaten
+beschreiben tatsächliche Autorisierungs-/Credential-, Ausführungs-/Steuerungs- und
+In-flight-Folgen; Nutzung benötigt weiterhin Beobachtungen.
+
 ### Abdeckung ausgelieferter Provider
 
 Die Tabelle inventarisiert die deklarative Abdeckung. Adapter liefern
 **tatsächliche** Daten-/Zugriffsorte und Nutzung; Materialarten sind mögliche
 Inventarkategorien, keine Behauptung, dass jede Instanz alles enthält.
 Runtime-Einstiegspunkte und native Abnahme gehören zu den konsumierenden
-Lifecycle-Tests. Reservierte runtime-broker/runtime-executor-Konstanten besitzen
-keine ausgelieferte Capability-Integration; unbekannte Extensions bleiben unbekannt.
+Lifecycle-Tests. Bestehende runtime-broker/runtime-executor-Sidecars besitzen ausschließlich
+Ancillary-Folgenmetadaten, keine auswählbare Capability-Integration. Unbekannte
+Extensions bleiben unbekannt.
 
 | Registrierter Provider | Relevante Funktionen/Materialinventar | Autorität für Orte/Zugriff und konkrete Folgen |
 | --- | --- | --- |
@@ -245,6 +266,8 @@ keine ausgelieferte Capability-Integration; unbekannte Extensions bleiben unbeka
 | Keycloak | Tatsächliches Login/SSO, Vergabe/Validierung/JWKS, Sessions/Refresh; Benutzer/Realms/Clients/Signierschlüssel/Tokens | Bestehende Identity-/Datenbank-/Zugriffsowner; Login/Refresh, gecachte Gültigkeit und authentifizierte Management-Verfügbarkeit |
 | External OIDC | Tatsächliche OIDC-Verbraucher und registrierte Referenzen | Externer Registrierungs-/Zugriffsowner; lokale Binding-Entfernung, keine Löschung fremder Benutzer/Realms |
 | RabbitMQ | Tatsächliche Queue-/PubSub-/Stream-Nutzung; Nachrichten/In-flight, Offsets/Topologie/Credentials | Bestehende Messaging-/Runtime-/Storage-Owner; Reihenfolge, Acknowledgements, Zustellung, Dauerhaftigkeit und Reconnect |
+| Ancillary Runtime-Broker | Tatsächliche Autorisierung/Credentials/Policy; Konfiguration, Zertifikate/Recovery | Bestehende Broker-/Runtime-/Credential-Owner; Autorisierung, Erneuerung, TLS und Verfügbarkeit |
+| Ancillary Runtime-Executor | Tatsächliches Execute/Observe/Control; In-flight/Konfiguration, Zertifikate/Credentials | Bestehende Executor-/Runtime-Owner; In-flight-Arbeit, Autorisierung/TLS und Reconnect |
 | MongoDB | Lesen/Schreiben/Transaktionen; Dokumente/Indizes/Oplog, Credentials/Backups | Bestehende Document-/Runtime-/Storage-/Recovery-Owner; Konsistenz, Dauerhaftigkeit, Protokoll und Reconnect |
 
 Fixtures: `internal/application/testdata/v0425-provider-impact.json` und

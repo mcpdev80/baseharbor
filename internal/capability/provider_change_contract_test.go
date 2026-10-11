@@ -15,3 +15,15 @@ func TestEveryRegisteredProviderHasChangeContract(t *testing.T) {
 		t.Fatal("undeclared provider reported covered")
 	}
 }
+
+func TestAncillaryMetadataDoesNotInventSelectableIntegrations(t *testing.T) {
+	for _, kind := range []ProviderKind{ProviderRuntimeBroker, ProviderRuntimeExecutor} {
+		c, ok := (IntegrationDescriptor{Provider: Provider{Kind: kind}}).ChangeContract()
+		if !ok || len(c.Functions) == 0 || len(c.MaterialKinds) == 0 {
+			t.Fatal("missing existing sidecar consequences")
+		}
+		if _, err := ReferenceIntegration(kind); err == nil {
+			t.Fatal("ancillary metadata became a selectable provider integration")
+		}
+	}
+}

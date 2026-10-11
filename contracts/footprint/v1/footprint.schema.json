@@ -232,6 +232,9 @@
             "minLength": 1
           },
           "description": "Selected provider dependency IDs; null means unverified, empty array means verified none."
+        },
+        "ancillary": {
+          "type": "boolean"
         }
       }
     }

@@ -20,6 +20,7 @@ type ProviderAccess struct {
 }
 
 type ProviderRealization struct {
+	Ancillary  bool                         `json:"ancillary,omitempty"`
 	InstanceID string                       `json:"instance_id"`
 	Kind       capability.ProviderKind      `json:"kind"`
 	Target     string                       `json:"target"`

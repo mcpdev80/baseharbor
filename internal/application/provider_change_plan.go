@@ -26,9 +26,9 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 	if err := validateImpactObservation(observation); err != nil {
 		return p, err
 	}
-	instances := map[string]capability.ProviderInstance{}
-	for _, i := range snapshot.Registry.Instances {
-		instances[i.ID] = i
+	instances, err := indexResolutionInstances(snapshot)
+	if err != nil {
+		return p, err
 	}
 	if err := validateObservationOwners(snapshot, observation); err != nil {
 		return p, err
@@ -103,10 +103,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 	if imp.Selection == "" {
 		imp.Selection = "automatic"
 	}
-	if d, err := capability.ReferenceIntegration(instance.Provider.Kind); err != nil {
-		known = false
-		imp.Notices = append(imp.Notices, "provider change metadata is unknown")
-	} else if _, ok := d.ChangeContract(); !ok {
+	if _, ok := (capability.IntegrationDescriptor{Provider: instance.Provider}).ChangeContract(); !ok {
 		known = false
 		imp.Notices = append(imp.Notices, "provider change metadata is unknown")
 	}
@@ -258,7 +255,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 func observedRealization(i capability.ProviderInstance, s ResolutionSnapshot, o ProviderImpactObservation) (ProviderRealization, bool) {
 	f, ok := o.Providers[i.ID]
 	if !ok {
-		return ProviderRealization{InstanceID: i.ID, Kind: i.Provider.Kind, Target: s.Target, Scope: i.Scope, Ownership: i.Ownership, Owner: i.OwnerApplicationID, State: s.Facts[i.ID].State, Locations: []ResourceLocation{}}, false
+		return ProviderRealization{Ancillary: s.Facts[i.ID].Ancillary, InstanceID: i.ID, Kind: i.Provider.Kind, Target: s.Target, Scope: i.Scope, Ownership: i.Ownership, Owner: observationOwner(i, s), State: s.Facts[i.ID].State, Locations: []ResourceLocation{}}, false
 	}
 	return f.Realization, f.Realization.Verified && f.Realization.Evidence != ""
 }

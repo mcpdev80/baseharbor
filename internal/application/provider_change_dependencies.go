@@ -112,10 +112,6 @@ func knownProviderFunction(p capability.Provider, name string) bool {
 			return true
 		}
 	}
-	d, err := capability.ReferenceIntegration(p.Kind)
-	if err != nil {
-		return false
-	}
-	c, ok := d.ChangeContract()
+	c, ok := (capability.IntegrationDescriptor{Provider: p}).ChangeContract()
 	return ok && containsString(c.Functions, name)
 }

@@ -336,6 +336,9 @@
         },
         "evidence": {
           "type": "string"
+        },
+        "ancillary": {
+          "type": "boolean"
         }
       }
     },
