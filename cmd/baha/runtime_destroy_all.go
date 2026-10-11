@@ -407,7 +407,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: record.Identity.Target, Resource: "deployment-fallback", Detail: err.Error()})
 		return
 	}
-	resolved, err := resolveRegisteredApplication(target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
+	resolved, err := resolveRegisteredApplication(parent, target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
 	if err == nil && strings.TrimSpace(target.RuntimeProvider) != "" {
 		compose, composeErr := detectRuntimeForTarget(parent, target)
 		if composeErr != nil {

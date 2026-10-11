@@ -128,7 +128,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		)
 	}
 
-	resolved, err := resolveRegisteredApplication(target, targetRoot, args[0], environment, command)
+	resolved, err := resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -178,7 +178,7 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	}, nil
 }
 
-func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
+func resolveRegisteredApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
 	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -279,6 +279,10 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 					selection.Manifest.ApplicationID,
 					record.Identity.ApplicationID,
 				)
+			}
+			selection, sourceErr = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
+			if sourceErr != nil {
+				return resolvedApplication{}, sourceErr
 			}
 			resolved.DeploymentIdentity.Application = selection.Manifest.Name
 			resolved.Manifest = selection.Manifest
