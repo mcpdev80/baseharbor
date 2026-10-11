@@ -70,3 +70,33 @@ func TestProviderMaterialInventoryReportsSkippedSubtreeAtItsActualLocation(t *te
 		t.Fatalf("skipped subtree has no bounded unknown-location receipt: %+v %t %v", materials, complete, err)
 	}
 }
+
+func TestProviderMaterialInventoryDoesNotAdoptProtectedHardLinkToForeignMaterial(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(t.TempDir(), "recovery-key")
+	if err := os.WriteFile(foreign, []byte("foreign-recovery-material"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(root, "private-key")
+	if err := os.Link(foreign, linked); err != nil {
+		t.Fatal(err)
+	}
+	materials, complete, err := observeOwnedProviderFiles("canonical-owner", "isolated", "identity/shared", root)
+	if err != nil || complete || len(materials) != 1 {
+		t.Fatalf("linked material inventory: count=%d complete=%t err=%v", len(materials), complete, err)
+	}
+	material := materials[0]
+	if material.Verified || material.Ownership != "" || material.Kind != "unknown" || material.Location == nil || material.Location.Reference != linked {
+		t.Fatal("a protected hard link was adopted as destructively owned material")
+	}
+	encoded, err := json.Marshal(materials)
+	if err != nil || strings.Contains(string(encoded), "foreign-recovery-material") || strings.Contains(string(encoded), foreign) {
+		t.Fatal("inventory exposed foreign material or its outside path")
+	}
+	if data, err := os.ReadFile(foreign); err != nil || string(data) != "foreign-recovery-material" {
+		t.Fatal("inspection changed foreign recovery material")
+	}
+}

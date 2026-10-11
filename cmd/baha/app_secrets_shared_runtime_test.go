@@ -22,9 +22,41 @@ type sharedSecretsRuntimeApplication struct {
 	secret   [32]byte
 }
 
+func TestSharedSecretsRuntimeFixtureUsesActualSourceOnlyInitialization(t *testing.T) {
+	configureTestTarget(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{true, false, true} {
+		writeSharedSecretsRuntimeIntent(t, root, enabled)
+		authored, err := os.ReadFile("baseharbor.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest, err := application.ParseYAML(string(authored))
+		if err != nil || manifest.ApplicationID != "" || manifest.Services.Secrets != enabled || len(manifest.Workload.Components) != 1 || manifest.Workload.Components[0] != "api" {
+			t.Fatalf("invalid shared Secrets fixture: enabled=%t error=%v", enabled, err)
+		}
+		var output bytes.Buffer
+		if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--quick", "--json"}, &output, &output); err != nil {
+			t.Fatalf("actual source-only shared Secrets initialization: %v", err)
+		}
+		resolved, err := resolveApplication(t.Context(), application.Store{}, nil, "plan")
+		if err != nil || resolved.Manifest.ApplicationID == "" || resolved.Manifest.Services.Secrets != enabled {
+			t.Fatalf("source-only fixture lacks resolved system identity/intent: %v", err)
+		}
+		after, err := os.ReadFile("baseharbor.yaml")
+		if err != nil || !bytes.Equal(after, authored) {
+			t.Fatal("source-only initialization rewrote developer-authored input")
+		}
+	}
+}
+
 func writeSharedSecretsRuntimeIntent(t *testing.T, root string, enabled bool) {
 	t.Helper()
-	content := fmt.Sprintf("version: 1\napp:\n  name: shared-secrets-sibling\n  environment: dev\nworkload:\n  components: [api]\nservices:\n  secrets: %t\n", enabled)
+	content := fmt.Sprintf("version: 1\napp:\n  name: shared-secrets-sibling\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  secrets: %t\n", enabled)
 	if enabled {
 		content += "secrets:\n  required:\n    - name: API_TOKEN\n      generate:\n        type: hex\n        bytes: 32\n"
 	}
@@ -56,8 +88,10 @@ func createSharedSecretsRuntimeApplication(t *testing.T, ctx context.Context, pr
 		defer cancel()
 		inSelectiveIdentityRepository(t, sibling.root, func() {
 			files := application.RuntimeFilesFor(sibling.resolved.Store, sibling.resolved.Manifest)
-			if _, err := runtimebroker.RetireContainer(cleanup, provider, sibling.resolved.Manifest, files); err != nil && !os.IsNotExist(err) {
-				t.Errorf("isolated sibling broker cleanup: %v", err)
+			if application.RequiresRuntimeBroker(sibling.resolved.Manifest) {
+				if _, err := runtimebroker.RetireContainer(cleanup, provider, sibling.resolved.Manifest, files); err != nil && !os.IsNotExist(err) {
+					t.Errorf("isolated sibling broker cleanup: %v", err)
+				}
 			}
 			if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 				t.Errorf("isolated sibling workload cleanup: %v", err)
