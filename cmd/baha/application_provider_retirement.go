@@ -28,7 +28,8 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 		return application.ProviderPlan{}, err
 	}
 	for _, change := range plan.Changes {
-		if !released[change.InstanceID] || len(change.Consumers) > 0 || change.Ownership == capability.OwnershipExternal {
+		controlPlaneStorage := change.InstanceID == application.RuntimeStorageDependencyID(resolved.Target.Name)
+		if (!released[change.InstanceID] && !controlPlaneStorage && !ownedControlPlaneSecrets(registry, change.InstanceID)) || len(change.Consumers) > 0 || change.Ownership == capability.OwnershipExternal {
 			continue
 		}
 		if !plan.Complete || change.Action == "preserve" {
@@ -37,7 +38,7 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 		for _, instance := range registry.Instances {
 			sharedBackend := instance.Scope == capability.ScopeShared && (instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey)
 			nativeBackend := applicationNativeBackendInstance(instance, resolved.Manifest)
-			if instance.ID == change.InstanceID && instance.Provider.Kind != capability.ProviderKeycloak && !sharedBackend && !nativeBackend {
+			if instance.ID == change.InstanceID && instance.Provider.Kind != capability.ProviderKeycloak && !ownedControlPlaneSecrets(registry, instance.ID) && !sharedBackend && !nativeBackend {
 				return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_retirement_adapter_unavailable", Resource: instance.ID, Message: "This provider has no verified data-preserving retirement adapter.", Next: "Keep the existing capability until its runtime retirement adapter is available."}
 			}
 		}
@@ -46,6 +47,9 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 }
 
 func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedApplication, provider bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, plan application.ProviderPlan, out io.Writer) error {
+	if err := retireUnneededApplicationBroker(ctx, resolved, provider, plan, out); err != nil {
+		return err
+	}
 	if err := retireApplicationNativeBackendServices(ctx, resolved, provider, plan, out); err != nil {
 		return err
 	}
@@ -85,6 +89,9 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 				}
 				continue
 			}
+			if ownedControlPlaneSecrets(registry, instance.ID) {
+				continue
+			}
 			if instance.Provider.Kind != capability.ProviderKeycloak {
 				return fmt.Errorf("unsupported provider retirement %s", instance.ID)
 			}
@@ -106,5 +113,25 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 			fmt.Fprintf(out, "Retained Identity files at %s; runtime retirement does not verify continued login, token behavior or recovery usability.\n", filepath.Join(resolved.TargetStateRoot, "providers", "keycloak"))
 		}
 	}
-	return nil
+	root, err := targetRuntimeStateRoot(resolved.Target)
+	if err != nil {
+		return err
+	}
+	result, err := application.RetireUnneededControlPlaneServices(ctx, provider, root, resolved.Target.Name, plan, registry)
+	for _, resource := range result.Removed {
+		fmt.Fprintf(out, "Removed %s %s after owned runtime inspection\n", resource.Kind, resource.Name)
+	}
+	for _, item := range result.Retained {
+		fmt.Fprintf(out, "Retained %s %s: %s\n", item.Resource.Kind, item.Resource.Name, item.Reason)
+	}
+	return err
+}
+
+func ownedControlPlaneSecrets(registry capability.Registry, id string) bool {
+	for _, instance := range registry.Instances {
+		if instance.ID == id && instance.Provider.Kind == capability.ProviderOpenBao && instance.Scope == capability.ScopeShared && instance.Ownership == capability.OwnershipBaseHarbor {
+			return true
+		}
+	}
+	return false
 }

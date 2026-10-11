@@ -125,7 +125,13 @@ func observeIdentityImpact(ctx context.Context, resolved resolvedApplication, in
 			return nil
 		}
 		location := application.ResourceLocation{Owner: fact.Realization.Owner, Target: resolved.Target.Name, Kind: "path", Reference: path}
-		fact.Materials = append(fact.Materials, application.ProviderMaterial{ID: instance.ID + "/path/" + path, Kind: "configuration", Ownership: capability.OwnershipBaseHarbor, Location: &location, Recovery: []application.ResourceLocation{}, Verified: true, Evidence: fmt.Sprintf("protected retained file; size=%d mtime=%d; contents not exposed", info.Size(), info.ModTime().UnixNano())})
+		material := application.ProviderMaterial{ID: instance.ID + "/path/" + path, Kind: "configuration", Ownership: capability.OwnershipBaseHarbor, Location: &location, Recovery: []application.ResourceLocation{}, Verified: true, Evidence: fmt.Sprintf("protected retained file; size=%d mtime=%d; contents not exposed", info.Size(), info.ModTime().UnixNano())}
+		if err := inspectProviderCertificateMaterial(path, info, &material); err != nil {
+			complete = false
+			material.Verified = false
+			material.Evidence = "protected material could not be fully inspected; certificate validity remains unknown"
+		}
+		fact.Materials = append(fact.Materials, material)
 		return nil
 	})
 	// Files and volumes are observed, but live session/token behavior and

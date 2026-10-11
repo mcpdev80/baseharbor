@@ -130,6 +130,9 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 		snapshot.Facts[instance.ID] = fact
 	}
 	appendSharedBackendDependencyObservations(resolved, observations, &snapshot)
+	if err := appendApplicationBrokerDependencies(resolved, observations, &snapshot); err != nil {
+		return application.ResolutionSnapshot{}, nil, err
+	}
 	// Observe backing modules in the same resolver without creating competing
 	// selectable offers or another persistent ownership record. Identity may
 	// reference this exact module even when the desired app has no broker.
@@ -233,15 +236,19 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	footprint, err := resolveApplicationLifecycleFootprintWithFacts(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return applicationLifecyclePlan{}, err
+	}
+	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
+	if err != nil {
+		return applicationLifecyclePlan{}, classifyApplicationResolutionError(err)
 	}
 	retained, err := removedApplicationProviderBindings(resolved)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	union, err := resolveApplicationProviderPlan(resolved, observeApplicationProviderFacts(ctx, resolved))
+	union, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
@@ -251,7 +258,7 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 		return applicationLifecyclePlan{}, err
 	}
 	if len(requests) > 0 {
-		impact, err := resolveApplicationProviderImpact(ctx, resolved, union, requests)
+		impact, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
 		if err != nil {
 			return applicationLifecyclePlan{}, err
 		}
@@ -308,5 +315,6 @@ func observeApplicationProviderFacts(ctx context.Context, resolved resolvedAppli
 	observeSharedBackendProviderFacts(ctx, resolved, facts)
 	observeBrokerProviderFacts(ctx, resolved, facts)
 	observeNativeBackendProviderFacts(ctx, resolved, facts)
+	observeApplicationBrokerFacts(ctx, resolved, facts)
 	return facts
 }

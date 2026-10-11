@@ -138,7 +138,7 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 		// Runtime identity files are installed atomically and mutable development
 		// images can change behind the same tag. Recreate the broker so readiness
 		// always verifies the desired identity rather than a stale container.
-		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+		if _, err := runtimebroker.RetireContainer(ctx, compose, m, files); err != nil {
 			return fmt.Errorf("recreate application runtime broker for desired identity: %w", err)
 		}
 	}

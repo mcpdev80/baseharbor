@@ -8,7 +8,9 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
+	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 )
 
@@ -41,6 +43,9 @@ func (deploymentRuntimeOwnershipResolver) ResolveContainer(
 				err,
 			)
 		}
+		if manifest.ApplicationID != record.Identity.ApplicationID || manifest.Name != record.Identity.Application || manifest.Environment != record.Identity.Environment {
+			return runtimeexplorer.OwnershipEvidence{}, invalidProviderConsumerInventory(fmt.Errorf("runtime deployment intent differs from its owner"))
+		}
 		files := application.RuntimeFilesFor(application.Store{Namespace: target}, manifest)
 		expectedProject := application.WorkloadProjectNameForRuntime(manifest, files)
 		if strings.TrimSpace(container.Project) != expectedProject {
@@ -56,6 +61,13 @@ func (deploymentRuntimeOwnershipResolver) ResolveContainer(
 		if workloadComponent(manifest, container.Service) {
 			relationship.Component = container.Service
 		} else {
+			known, err := declaredNativeRuntimeContainer(manifest, files, provider, container)
+			if err != nil {
+				return runtimeexplorer.OwnershipEvidence{}, err
+			}
+			if !known {
+				continue // A matching project label alone is not a provider owner.
+			}
 			relationship.Provider = container.Service
 		}
 		matches = append(matches, runtimeexplorer.OwnershipEvidence{
@@ -81,6 +93,22 @@ func (deploymentRuntimeOwnershipResolver) ResolveContainer(
 			resource: container.ID,
 		}
 	}
+}
+
+func declaredNativeRuntimeContainer(m application.Manifest, files application.RuntimeFiles, kind runtimecontract.ProviderKind, container runtimecontract.RuntimeContainer) (bool, error) {
+	resources, err := application.NativeBackendResources(m, files)
+	if err != nil {
+		return false, err
+	}
+	if application.RequiresRuntimeBroker(m) {
+		resources = append(resources, bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-" + runtimebroker.ServiceName + "-1"})
+	}
+	for _, resource := range resources {
+		if bhruntime.ContainerMatchesProjectResource(kind, container, files.Project, resource) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func workloadComponent(manifest application.Manifest, service string) bool {

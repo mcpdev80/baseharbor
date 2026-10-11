@@ -70,7 +70,7 @@ func executeRuntimeMutation(ctx context.Context, input machineRuntimeMutationInp
 			false,
 		)
 	}
-	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{Resource: ref, Operation: operation})
+	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{Resource: resource.Ref, Operation: operation})
 }
 
 func (e *bahaMachineExecutor) executeHTTPRuntimeMutation(

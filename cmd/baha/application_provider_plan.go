@@ -22,6 +22,10 @@ func resolveApplicationProviderPlan(resolved resolvedApplication, observations m
 	if err != nil {
 		return application.ProviderPlan{}, err
 	}
+	return resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
+}
+
+func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (application.ProviderPlan, error) {
 	consumers := []application.ConsumerIntent{{Key: "application/" + resolved.Manifest.ApplicationID + "/" + resolved.Manifest.Environment, Active: true, Manifest: resolved.Manifest, Preferences: preferences, DependencyRoots: []string{}}}
 	records, err := deployment.ListDeployments(resolved.Target.Name)
 	if err != nil {
@@ -83,6 +87,9 @@ func resolveApplicationProviderPlan(resolved resolvedApplication, observations m
 		consumers[index].DependencyRoots, err = application.RuntimeDependencyRoots(consumers[index].Manifest, snapshot.Registry)
 		if err != nil {
 			return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
+		}
+		if application.RequiresRuntimeBroker(consumers[index].Manifest) {
+			consumers[index].DependencyRoots = append(consumers[index].DependencyRoots, application.RuntimeBrokerDependency(resolved.Target.Name, consumers[index].Manifest).ID)
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)

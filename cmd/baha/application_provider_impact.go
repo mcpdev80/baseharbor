@@ -64,11 +64,7 @@ func nativeBackendChangeRequests(resolved resolvedApplication, existing []applic
 	return existing, nil
 }
 
-func resolveApplicationProviderImpact(ctx context.Context, resolved resolvedApplication, union application.ProviderPlan, requests []application.ProviderChangeRequest) (application.ProviderImpactPlan, error) {
-	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
-	if err != nil {
-		return application.ProviderImpactPlan{}, err
-	}
+func resolveApplicationProviderImpact(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, union application.ProviderPlan, requests []application.ProviderChangeRequest) (application.ProviderImpactPlan, error) {
 	observation := observeApplicationProviderImpact(ctx, resolved, snapshot)
 	// Impact is derived presentation metadata, not another authoritative input.
 	// Exclude an earlier attachment from the plan-bound revalidation hash.

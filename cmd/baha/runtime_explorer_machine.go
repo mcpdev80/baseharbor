@@ -267,49 +267,14 @@ func executeHTTPRuntimeExplorerRead(
 }
 
 func executeRuntimeOperation(ctx context.Context, input machineRuntimeOperateInput) (runtimeexplorer.OperationResult, error) {
-	explorer, target, err := runtimeExplorerForTarget(ctx, input.Target)
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	capabilities, err := explorer.Capabilities(ctx, target)
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	provider := strings.TrimSpace(input.Provider)
-	if provider == "" {
-		provider = capabilities.Provider
-	}
 	operation := runtimeexplorer.Operation(strings.ToLower(strings.TrimSpace(input.Operation)))
 	switch operation {
 	case runtimeexplorer.OperationStart, runtimeexplorer.OperationStop, runtimeexplorer.OperationRestart:
 	default:
-		return runtimeexplorer.OperationResult{}, machine.NewError(
-			machine.ErrorValidationFailed,
-			"Runtime operate accepts only start, stop or restart.",
-			"Use the protected exec stream for explicit runtime commands.",
-			false,
-		)
+		return runtimeexplorer.OperationResult{}, machine.NewError(machine.ErrorValidationFailed, "Runtime operate accepts only start, stop or restart.", "Use the protected exec stream for explicit runtime commands.", false)
 	}
-	resource, err := explorer.Inspect(ctx, runtimeexplorer.ResourceRef{
-		Provider:   provider,
-		Target:     target,
-		Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(input.Kind)),
-		ResourceID: strings.TrimSpace(input.ResourceID),
-	})
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	environment := strings.TrimSpace(input.Environment)
-	if environment != "" && resource.Relationship.Environment != "" && resource.Relationship.Environment != environment {
-		return runtimeexplorer.OperationResult{}, machine.NewError(
-			machine.ErrorPolicyDenied,
-			"Runtime resource is outside the authorized environment.",
-			"Retry with the resource environment after obtaining the required operator authorization.",
-			false,
-		)
-	}
-	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{
-		Resource:  resource.Ref,
-		Operation: operation,
-	})
+	return executeRuntimeMutation(ctx, machineRuntimeMutationInput{
+		Target: input.Target, Environment: input.Environment, Provider: input.Provider,
+		Kind: input.Kind, ResourceID: input.ResourceID,
+	}, operation)
 }

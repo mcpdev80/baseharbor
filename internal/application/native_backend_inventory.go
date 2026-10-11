@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -75,7 +76,7 @@ func CheckExistingNativeBackendInventory(files RuntimeFiles, candidates ...Manif
 			return errors.New("native backend owner files are unprotected or noncanonical")
 		}
 	}
-	actual, err := os.ReadFile(files.Compose)
+	actual, err := readProtectedNativeBackendDefinition(files.Compose)
 	if err != nil {
 		return err
 	}
@@ -89,6 +90,37 @@ func CheckExistingNativeBackendInventory(files RuntimeFiles, candidates ...Manif
 		}
 	}
 	return ErrRuntimeDefinitionChanged
+}
+
+func readProtectedNativeBackendDefinition(path string) ([]byte, error) {
+	expected, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !expected.Mode().IsRegular() || expected.Mode().Perm()&0077 != 0 || expected.Size() > 4<<20 {
+		return nil, errors.New("native backend definition is not a bounded protected owner file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	actual, err := file.Stat()
+	if err != nil || !os.SameFile(expected, actual) {
+		return nil, errors.New("native backend definition owner changed during inspection")
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !current.Mode().IsRegular() || !os.SameFile(expected, current) {
+		return nil, errors.New("native backend definition path changed during inspection")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 4<<20 {
+		return nil, errors.New("native backend definition exceeds bounded inspection")
+	}
+	return data, nil
 }
 
 // NativeBackendInstanceResources attributes only renderer-defined services to
