@@ -49,7 +49,7 @@
     "note": "Touched canonical source paths compared unchanged before narrow lease integration; peer commits, evidence and local unpublished work preserved."
   },
   "remaining": [
-    "Affected native Secrets/default destroy/re-add and actual partial cleanup/retry evidence",
+    "Actual interrupted native retry/recovery proof and final immutable candidate requalification",
     "Production nondev Identity ordering helper must preserve existing callbacks during reapply and verify actual realized origins before READY; driver prerequisite alone does not fix orchestration",
     "All remaining provider mutations and final Core/Demo/Console/NodeConnector source/native/browser matrix",
     "Release docs/audit/issue acceptance on final immutable candidate"
@@ -124,6 +124,77 @@
       "limitations": [
         "No shared two-app, production OAuth, all-family handoff, actual interrupted native retry or final ecosystem qualification claimed.",
         "Canonical retirement receipt intentionally retains partial status for unverified broader function/recovery knowledge; this scoped actual secret-read proof does not make all consequences complete."
+      ]
+    },
+    {
+      "commit": "fb73233136eb9aba40be7cef56830d6346f982ea",
+      "tree": "05e33c0b171c8cc9c5de8cea2c49cce18002b29d",
+      "run_id": 38164567322,
+      "run_attempt": 1,
+      "conclusion": "success",
+      "scope": "Actual shared two-app selected Secrets lifecycle, sibling secret continuity, last-consumer withdrawal, retained default destroy/re-add and cleanup.",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38164567322",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114544329242,
+          "test_seconds": 356.5,
+          "observed_provider_counts_before_last_consumer_withdrawal": [
+            7,
+            7,
+            7
+          ],
+          "main_broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "observed_total_counts_before_last_consumer_withdrawal": [
+            9,
+            10,
+            10
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11712005742,
+          "artifact_digest": "sha256:ab541d112bf5d38bdc80a170fe9f6c8404d4cd6b254aaa4a8e69cb4007cce55c"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114544329506,
+          "test_seconds": 309.58,
+          "observed_provider_counts_before_last_consumer_withdrawal": [
+            6,
+            6,
+            6
+          ],
+          "main_broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "observed_total_counts_before_last_consumer_withdrawal": [
+            8,
+            9,
+            9
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711563343,
+          "artifact_digest": "sha256:e45ef6a3516e0c22de11a8512a7d80e4164df647a4d4b2f10c792f008814cb49"
+        }
+      ],
+      "verified_assertions": [
+        "Fresh Core/total native container inventory 0/0",
+        "Main Secrets removal preserves actual sibling workload/broker and original secret access",
+        "Last sibling consumer removal verifies provider and broker absence with two actual workloads remaining",
+        "Owned volume and protected provider ENV retained across removals and re-add",
+        "Actual rootless Podman container boot definitions follow current provider/broker need",
+        "Default retirement preserves canonical owner, archived live intent, volume and ENV",
+        "Same application/deployment identity reactivated and original secret read through application secret API",
+        "Both tests and cleanup passed; cleanup requires zero remaining native containers"
+      ],
+      "limitations": [
+        "Phase count log is captured before last sibling withdrawal; its retained-provider count is not an absence assertion. Actual last-consumer absence is asserted separately.",
+        "No production OAuth, all-family mutation/handoff, interrupted native retry or final ecosystem qualification claimed."
       ]
     }
   ]
