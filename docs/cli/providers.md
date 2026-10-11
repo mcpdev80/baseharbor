@@ -4,11 +4,6 @@ The provider area covers provider authoring and provider lifecycle concepts.
 
 ## Provider authoring
 
-```text
-baha provider init
-baha provider test
-```
-
 Provider extensions implement versioned BaseHarbor contracts rather than embedding product names into Application Intent.
 
 ## Capability provider model
@@ -44,5 +39,11 @@ baha provider test ./company-sql-provider -o json
 The first command writes a provider descriptor and reference implementation skeleton. Inspect the generated contract and implement its operations before treating the provider as production-ready. `provider test` runs the descriptor/contract checks; it does not prove that an arbitrary external database is reachable or authorized.
 
 For an existing service registration, use `baha provider list`, `baha provider inspect company-db` and `baha provider verify company-db` after registering it as described in [External / BYO providers](../how-to/external-providers.md).
+
+```bash
+baha provider list
+baha provider inspect company-db
+baha provider verify company-db
+```
 
 Removing an external registration reviews one aggregate plan across persisted Targets, including Targets absent from current configuration. `--yes` approves the command only. Affected or unknown consumer outcomes require two explicit acknowledgements of the aggregate plan; JSON/MCP/HTTP use `provider_change_consent`. CLI automation supplies the same object through `BASEHARBOR_PROVIDER_CHANGE_CONSENT`. Foreign infrastructure, credentials and running workload configuration are unchanged. Verified binding removal is reported separately; unknown access, expiry, renewal and recovery remain partial, without a promised replacement.
