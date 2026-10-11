@@ -82,7 +82,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 			return fmt.Errorf("load shared PostgreSQL credential %s: %w", instance, err)
 		}
 		script := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(resource.Database))
-		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", script)
+		out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "sh", "-ec", script)
 		if err != nil {
 			return fmt.Errorf("verify shared PostgreSQL %s with application credential: %w", instance, err)
 		}
@@ -93,7 +93,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 			return fmt.Errorf("verify shared PostgreSQL %s ownership: %w", instance, err)
 		}
 		adminDBDeny := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d postgres -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username))
-		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", adminDBDeny); err == nil {
+		if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "sh", "-ec", adminDBDeny); err == nil {
 			return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to provider administration database postgres", app.Application, instance)
 		}
 		for otherKey, otherApp := range state.Applications {
@@ -102,7 +102,7 @@ func VerifySharedPostgreSQL(ctx context.Context, compose bhruntime.RuntimeProvid
 			}
 			for otherInstance, other := range otherApp.SQL {
 				deny := fmt.Sprintf("PGPASSWORD=%s psql -h postgres-access -U %s -d %s -tAc 'SELECT 1'", shellQuote(password), shellQuote(resource.Username), shellQuote(other.Database))
-				if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "sh", "-ec", deny); err == nil {
+				if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "sh", "-ec", deny); err == nil {
 					return fmt.Errorf("shared PostgreSQL isolation failed: %s/%s can connect to %s/%s database %s", app.Application, instance, otherApp.Application, otherInstance, other.Database)
 				}
 			}
@@ -185,7 +185,7 @@ func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPo
 		return verifyCoreSQLResourceOwnership(ctx, executor, state, resource)
 	}
 	query := fmt.Sprintf("SELECT r.rolname FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba WHERE d.datname=%s", quotePostgresLiteral(resource.Database))
-	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
+	out, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", query)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func verifySharedPostgresDatabaseOwnership(ctx context.Context, compose sharedPo
 		return fmt.Errorf("database %q owner is %q, expected %q", resource.Database, strings.TrimSpace(out), resource.Username)
 	}
 	roleQuery := fmt.Sprintf("SELECT r.rolname FROM pg_roles r WHERE r.rolname=%s AND r.rolsuper=false AND r.rolcreatedb=false AND r.rolcreaterole=false AND r.rolreplication=false AND r.rolbypassrls=false AND r.rolinherit=false AND NOT EXISTS (SELECT 1 FROM pg_auth_members am WHERE am.member=r.oid OR am.roleid=r.oid)", quotePostgresLiteral(resource.Username))
-	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
+	role, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-tAc", roleQuery)
 	if err != nil {
 		return err
 	}
@@ -477,15 +477,15 @@ func ReleaseSharedBackendApplication(ctx context.Context, compose bhruntime.Runt
 				continue
 			}
 			terminate := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s AND pid <> pg_backend_pid()", quotePostgresLiteral(resource.Database))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", terminate); err != nil {
 				return fmt.Errorf("terminate shared PostgreSQL connections for %s: %w", instance, err)
 			}
 			dropDB := fmt.Sprintf("DROP DATABASE %s", quotePostgresIdent(resource.Database))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropDB); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropDB); err != nil {
 				return fmt.Errorf("drop shared PostgreSQL database for %s: %w", instance, err)
 			}
 			dropRole := fmt.Sprintf("DROP ROLE %s", quotePostgresIdent(resource.Username))
-			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(m.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropRole); err != nil {
+			if _, err := compose.ExecProject(ctx, shared.Project, shared.Compose, shared.Env, sharedPostgresService(state.Environment), "psql", "-h", sharedPostgresAlias(), "-U", "baseharbor_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", dropRole); err != nil {
 				return fmt.Errorf("drop shared PostgreSQL role for %s: %w", instance, err)
 			}
 			if err := removeSharedBackendCredential(shared.Dir, resource.CredentialReference); err != nil {

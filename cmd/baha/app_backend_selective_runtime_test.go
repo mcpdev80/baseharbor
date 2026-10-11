@@ -21,7 +21,11 @@ func TestSelectiveBackendRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Skip("requires isolated exact-SHA Docker/rootless Podman backend acceptance")
 	}
 	for _, service := range []string{"sql", "cache"} {
-		t.Run(service, func(t *testing.T) { qualifySelectiveBackendLifecycle(t, service) })
+		if !t.Run(service, func(t *testing.T) { qualifySelectiveBackendLifecycle(t, service) }) {
+			// Partial native cleanup failure must not contaminate or falsely
+			// qualify a subsequent capability on the same isolated host.
+			break
+		}
 	}
 }
 
@@ -78,6 +82,15 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cleanupCancel()
+		// Apply can fail after materializing a canonical provider but before
+		// returning readiness. Inspect its existing owner instead of relying
+		// on the successful-loop snapshot or guessing container names.
+		partial, inspectErr := application.ExistingSharedBackendInventoryAt(initialized.TargetStateRoot, target.Name, "core")
+		if inspectErr == nil {
+			inventory = partial
+		} else if !os.IsNotExist(inspectErr) {
+			t.Errorf("partial backend cleanup ownership inspection: %v", inspectErr)
+		}
 		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated backend app cleanup: %v", err)
 		}

@@ -1,0 +1,46 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-sql-cache-add-remove-re-add",
+  "test": "TestSelectiveBackendRuntimeAddRemoveReAdd",
+  "observed_at": "2026-10-11",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "d8356a64867330a10a6ab1cf78edbe21cd19005e",
+      "candidate_tree": "f9b016c4a135a05f7cd5794773347f15100a2995",
+      "workflow_run_id": 38144752945,
+      "attempt": 1,
+      "conclusion": "failure",
+      "reason": "The actual shared physical PostgreSQL service is shared-postgres-core; logical app environment selection attempted nonexistent shared-postgres-dev. SQL failed before readiness. Its partial container was not cleaned by the success-only fixture snapshot and contaminated the subsequent cache subcase; neither capability is qualified.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114485660993,
+          "conclusion": "failure",
+          "artifact_id": 11703944005,
+          "artifact_name": "coreless-docker-38144752945-1",
+          "artifact_digest": "sha256:16464cc270bf1fc41f067b2edfd2fde6aaeaad9462d85b30505f90d57e859924"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114485660811,
+          "conclusion": "failure",
+          "artifact_id": 11703669602,
+          "artifact_name": "coreless-podman-38144752945-1",
+          "artifact_digest": "sha256:12b7410790051e020a7a4f0b7098158a7168a3a70e32eb67d464d0f45b4dcbca"
+        }
+      ]
+    }
+  ],
+  "not_qualified": [
+    "Fresh SQL-only and cache-only complete native add/remove/re-add",
+    "All required selective runtime gates on one final integrated SHA",
+    "Authenticated end-user OAuth and token/session behavior",
+    "All provider and direct mutation paths, explicit replacement/destructive consent and recovery",
+    "Candidate-compatible Demo, Console, Node Connector and full ecosystem readiness"
+  ]
+}
