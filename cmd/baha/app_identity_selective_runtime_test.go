@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -55,7 +56,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeIntent := func(enabled bool) {
-		content := fmt.Sprintf("version: 1\napp:\n  name: selective-identity\n  environment: prod\nservices:\n  identity: %t\n", enabled)
+		content := fmt.Sprintf("version: 1\napp:\n  name: selective-identity\n  environment: dev\nservices:\n  identity: %t\n", enabled)
 		if err := os.WriteFile("baseharbor.yaml", []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -156,6 +157,10 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		}
 		identityCount := 0
 		appFiles := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+		gatewayFiles, err := devgateway.FilesFor(target.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, container := range containers {
 			matched := false
 			for _, resource := range resources {
@@ -167,6 +172,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 			}
 			workload := bhruntime.ProjectResource{Kind: "container", Name: appFiles.Project + "-api-1"}
 			matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, appFiles.Project, workload)
+			// The selected development Identity access route uses its own TLS
+			// gateway. It is an actual dependency, never a full Core exemption.
+			if enabled {
+				gateway := bhruntime.ProjectResource{Kind: "container", Name: gatewayFiles.Project + "-dev-gateway-1"}
+				matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, gatewayFiles.Project, gateway)
+			}
 			if !matched {
 				t.Fatalf("unexpected realization in isolated runtime: project=%s service=%s", container.Project, container.Service)
 			}

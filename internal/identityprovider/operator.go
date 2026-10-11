@@ -182,7 +182,9 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	if err := admin.reconcileUser(ctx, operatorRealm("dev"), username, password, true); err != nil {
+	// Apply/re-add preserves existing credentials. Credential rotation remains
+	// a distinct explicit mutation; a retained account is not a reset request.
+	if err := admin.reconcileUserWithPolicy(ctx, operatorRealm("dev"), username, password, true, true); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	return managed, nil
