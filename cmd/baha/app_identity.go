@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -23,6 +24,7 @@ type managedIdentityExecution struct {
 	provider  capability.ProviderKind
 	target    string
 	manifest  application.Manifest
+	runtime   bhruntime.RuntimeProvider
 }
 
 func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
@@ -53,6 +55,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 		provider: identity.Resource.Provider,
 		target:   resolved.Target.Name,
 		manifest: m,
+		runtime:  compose,
 	}
 	switch identity.Resource.Provider {
 	case capability.ProviderKeycloak:
@@ -134,7 +137,7 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 			if err != nil {
 				return nil, err
 			}
-			origin = devaccess.CanonicalURL(host)
+			origin = devgateway.URLForRuntime(identity.target, host, identity.runtime)
 		} else {
 			host := strings.TrimSpace(state.Host)
 			if host == "" || route.PublishedPort < 1 {
@@ -206,7 +209,7 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Runtim
 					if err != nil {
 						return err
 					}
-					origin = devaccess.CanonicalURL(host)
+					origin = devgateway.URLForRuntime(resolved.Target.Name, host, compose)
 				} else {
 					origin = route.Protocol + "://" + net.JoinHostPort(state.Host, strconv.Itoa(route.PublishedPort))
 				}

@@ -15,13 +15,14 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
+	"github.com/mcpdev80/baseharbor/internal/exposure"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // This gate does not install management Core or the runtime broker. Its scope
 // is actual selected Identity discovery/JWKS readiness, native add/remove/re-add
-// and retained credentials/data. Interactive end-user OAuth remains separate.
+// and retained credentials/data, plus actual end-user OAuth/PKCE and sessions.
 func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	if os.Getenv("BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE") != "1" {
 		t.Skip("requires isolated exact-SHA Docker/rootless Podman Identity acceptance")
@@ -57,6 +58,9 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	}
 	writeIntent := func(enabled bool) {
 		content := fmt.Sprintf("version: 1\napp:\n  name: selective-identity\n  environment: dev\nservices:\n  identity: %t\n", enabled)
+		if enabled {
+			content += "identity:\n  callback_paths:\n    - /oauth/callback\nexposure:\n  http:\n    - name: oauth\n      service: api\n      port: 8080\n      protocol: https\n      visibility: public\n"
+		}
 		if err := os.WriteFile("baseharbor.yaml", []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -77,6 +81,9 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cleanupCancel()
+		if _, err := exposure.RetireRuntime(cleanupCtx, provider, initialized.Manifest, application.RuntimeFilesFor(initialized.Store, initialized.Manifest)); err != nil && !os.IsNotExist(err) {
+			t.Errorf("isolated callback exposure cleanup: %v", err)
+		}
 		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated workload cleanup: %v", err)
 		}
@@ -93,6 +100,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 	})
 	var originalEnv [32]byte
 	var retained []bhruntime.ProjectResource
+	var oauth *identityOAuthRuntimeSession
 	for phase, enabled := range []bool{true, false, true} {
 		writeIntent(enabled)
 		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
@@ -167,7 +175,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 			t.Fatal(err)
 		}
 		identityCount := 0
+		callbackCount := 0
 		appFiles := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+		callbackInventory, err := exposure.ExistingRuntimeInventory(initialized.Manifest, appFiles)
+		if err != nil {
+			t.Fatal(err)
+		}
 		gatewayFiles, err := devgateway.FilesFor(target.Name)
 		if err != nil {
 			t.Fatal(err)
@@ -179,6 +192,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 					identityCount++
 					matched = true
 					break
+				}
+			}
+			for _, resource := range callbackInventory.Resources {
+				if bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, callbackInventory.State.Project, resource) {
+					callbackCount++
+					matched = true
 				}
 			}
 			workload := bhruntime.ProjectResource{Kind: "container", Name: appFiles.Project + "-api-1"}
@@ -193,14 +212,25 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 				t.Fatalf("unexpected realization in isolated runtime: project=%s service=%s", container.Project, container.Service)
 			}
 		}
+		if (enabled && callbackCount != 1) || (!enabled && callbackCount != 0) {
+			t.Fatalf("phase %d actual callback exposure count=%d", phase, callbackCount)
+		}
 		if (enabled && identityCount == 0) || (!enabled && identityCount != 0) {
 			t.Fatalf("phase %d native Identity count=%d", phase, identityCount)
 		}
 		if enabled {
+			if phase == 0 {
+				oauth = startIdentityOAuthRuntimeSession(t, ctx, resolved, files)
+				oauth.refresh(t, ctx)
+			} else {
+				oauth.refresh(t, ctx)
+				oauth.login(t, ctx, false)
+			}
 			if err := application.VerifyIdentityBinding(resolved.Manifest, appFiles); err != nil {
 				t.Fatal(err)
 			}
 		} else {
+			oauth.assertUnavailable(t, ctx)
 			t.Log("Identity runtime removed; owned volumes and credential/configuration files retained")
 		}
 		if data, err := os.ReadFile("baseharbor.yaml"); err != nil || strings.Contains(string(data), applicationID) {
@@ -209,7 +239,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(resolved.TargetStateRoot, "service-access", "issuer")); err != nil {
 			t.Fatal("standalone service issuer is missing")
 		}
-		t.Logf("runtime=%s phase=%d Identity=%t selected Identity containers=%d actual total=%d retained data volumes=%d", provider.Kind(), phase, enabled, identityCount, len(containers), len(retained))
+		t.Logf("runtime=%s phase=%d Identity=%t selected Identity containers=%d actual total=%d retained data volumes=%d selected callback exposures=%d", provider.Kind(), phase, enabled, identityCount, len(containers), len(retained), callbackCount)
 	}
 	qualifySharedIdentityConsumers(t, ctx, provider, initialized, originalEnv, retained)
 }
