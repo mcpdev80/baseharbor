@@ -27,6 +27,17 @@ nur bestehende systemeigene Store-/Backup-Adapter verwenden diesen Zugang.
 Ausgaben weg. Interne IDs und Machine-Ausgaben bleiben gültig und werden beim
 Lesen niemals neu erzeugt.
 
+MCP `app.create` und `app.adopt` nehmen dasselbe typisierte Intent ohne
+`ApplicationID` entgegen. Ihre Eingabeschemas stammen aus den kanonischen
+Manifest-Typen, lassen das systemeigene Feld weg und lehnen mitgelieferte Werte
+vor Änderungen ab. `Version`, `Name` und `Environment` sind Pflichtfelder;
+weggelassene Anforderungssektionen erhalten leere Standardwerte. Ausführbare
+Anforderungen und Quellauswahl werden weiterhin geprüft. Autorisierung erfolgt
+vor dem Speichern der Identität; Ergebnisse enthalten die tatsächlich erzeugte
+kanonische ID. Wiederholte Adoption überschreibt keine Autorenquelle. Nach einer
+unterbrochenen Adoption liefert ein erhaltener kanonischer Owner beim Wiederholen
+dieselbe ID.
+
 | Operation | Identität und Schreibverhalten |
 | --- | --- |
 | Parse / inspect / plan | Keine Vergabe oder Speicherung; nur bestehende autoritative Claims auflösen |

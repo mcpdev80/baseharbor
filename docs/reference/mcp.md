@@ -16,6 +16,12 @@ baha agent describe -o json
 
 ## Semantic tools
 
+For `baseharbor.app.create` and `baseharbor.app.adopt`, declare `Version`, `Name`,
+`Environment` and the application requirements in `intent`. Omit `ApplicationID`:
+BaseHarbor assigns and persists it during authorized creation and returns it in
+the result. Use `tools/list` for the complete generated input schema. Existing
+repository intent is never overwritten by adoption.
+
 The complete current registry is checked against actual MCP discovery by the source tests. The table is generated from the typed operation metadata; handwritten partial tool lists are not authoritative.
 
 <!-- BEGIN GENERATED MCP REGISTRY -->

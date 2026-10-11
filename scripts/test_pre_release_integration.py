@@ -45,11 +45,41 @@ class ContractCheckTests(unittest.TestCase):
             with patch.dict(os.environ, {'BASEHARBOR_TEST_RUNTIME': runtime}, clear=True):
                 self.assertTrue(integration.configure_runtime_environment(gate))
                 self.assertEqual(os.environ['BASEHARBOR_CORELESS_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
-                self.assertEqual(len(integration.CHECKS[gate]), 3)
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(ValueError):
                     integration.configure_runtime_environment(gate)
+
+    def test_release_proof_requires_each_selective_fixture_on_both_engines(self):
+        required = {'^TestCorelessFreshWorkloadRuntimeLifecycle$',
+                    '^TestSelectiveIdentityRuntimeAddRemoveReAdd$',
+                    '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
+                    '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
+                    '^TestApplicationCapabilityLifecycleExistingCore$'}
+        for runtime in ['docker', 'podman']:
+            selections = integration.CHECKS['integration/' + runtime + '/coreless-lifecycle']
+            expressions = [args[args.index('-run') + 1] for args in selections]
+            self.assertEqual(set(expressions), required)
+            self.assertEqual(len(expressions), len(required))
+            for expression in expressions:
+                name = expression.removeprefix('^').removesuffix('$')
+                package = selections[expressions.index(expression)][0].removeprefix('./')
+                sources = pathlib.Path(__file__).resolve().parents[1].joinpath(package)
+                self.assertTrue(any('func ' + name + '(' in p.read_text()
+                                    for p in sources.glob('*_test.go')), name)
+
+    def test_backend_subcase_skip_rejects_otherwise_passing_native_proof(self):
+        with self.assertRaises(ValueError):
+            self.check([{'Action': 'pass', 'Package': 'core',
+                         'Test': 'TestSelectiveIdentityRuntimeAddRemoveReAdd'},
+                        {'Action': 'pass', 'Package': 'core',
+                         'Test': 'TestSelectiveBackendRuntimeAddRemoveReAdd/sql'},
+                        {'Action': 'skip', 'Package': 'core',
+                         'Test': 'TestSelectiveBackendRuntimeAddRemoveReAdd/cache'},
+                        {'Action': 'pass', 'Package': 'core',
+                         'Test': 'TestSelectiveBackendRuntimeAddRemoveReAdd'}])
 
     def test_zero_exit_without_tests_is_rejected(self):
         with self.assertRaises(ValueError):

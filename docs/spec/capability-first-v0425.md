@@ -26,6 +26,16 @@ existing system-owned Store/backup adapters may use it. `YAML` serializes intern
 records, while `AuthoredYAML` omits the ID from developer outputs. Internal IDs and
 machine results remain valid and must never be regenerated during reading.
 
+MCP `app.create` and `app.adopt` accept the same typed intent without
+`ApplicationID`. Their input schemas derive from the canonical Manifest types,
+omit that system-owned field and reject a supplied value before mutation.
+`Version`, `Name` and `Environment` are required; omitted requirement sections
+use their empty defaults. Executable requirements and source selection are still
+validated. Authorization precedes identity persistence; outputs include the
+actual generated canonical ID. Repeated adoption never overwrites authored
+source. A retained canonical owner after an interrupted adoption supplies the
+same ID on retry.
+
 | Operation | Identity and mutation contract |
 | --- | --- |
 | Parse / inspect / plan | No allocation or persistence; resolve existing authoritative claims only |

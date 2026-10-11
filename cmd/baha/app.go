@@ -50,6 +50,15 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 	if err != nil {
 		return "", err
 	}
+	records, err := deployment.ListDeployments(target.Name)
+	if err != nil {
+		return "", err
+	}
+	for _, record := range records {
+		if record.Identity.Application == m.Name && record.Identity.Environment == m.Environment {
+			return "", fmt.Errorf("%w: %s/%s/%s [%s]", application.ErrExists, target.Name, m.Name, m.Environment, record.Identity.DeploymentID)
+		}
+	}
 	if existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
 		return "", err
 	} else if found {

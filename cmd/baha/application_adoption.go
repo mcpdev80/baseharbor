@@ -20,9 +20,6 @@ type applicationAdoptionResult struct {
 }
 
 func persistRepositoryApplication(ctx context.Context, root string, m application.Manifest, selected *repositoryinspect.WorkloadSourceCandidate) (applicationAdoptionResult, error) {
-	if err := application.ValidateApplicationID(m.ApplicationID); err != nil {
-		return applicationAdoptionResult{}, err
-	}
 	if err := m.Validate(); err != nil {
 		return applicationAdoptionResult{}, err
 	}
@@ -45,11 +42,33 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	} else if len(m.Workload.Components) > 0 && len(inspection.WorkloadSourceCandidates) > 1 && inspection.SelectedWorkloadSource == nil {
 		return applicationAdoptionResult{}, machine.Wrap(machine.ErrorValidationFailed, errors.New("repository workload source is ambiguous"), "Inspect the repository and provide an explicit workload source choice.", false)
 	}
+	owner := application.Store{Root: filepath.Join(absolute, ".baseharbor", "apps")}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return applicationAdoptionResult{}, err
+	}
+	snapshot, err := repositoryIdentityClaims(target, absolute, owner, m)
+	if err != nil {
+		return applicationAdoptionResult{}, err
+	}
+	m, err = application.ResolveIdentity(m, snapshot)
+	if err != nil {
+		return applicationAdoptionResult{}, err
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return applicationAdoptionResult{}, fmt.Errorf("%s already exists; edit the existing application contract instead", path)
 		}
+		return applicationAdoptionResult{}, err
+	}
+	// Claim the authored path before initialization, so rejecting an existing
+	// manifest cannot allocate or persist identity. Retain a canonical identity
+	// after a later write failure so an authorized retry reuses the same owner.
+	m, err = owner.InitializeIdentity(m, snapshot)
+	if err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
 		return applicationAdoptionResult{}, err
 	}
 	if _, err := file.WriteString(m.AuthoredYAML()); err != nil {
@@ -71,7 +90,6 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	}
 	// Initialization owns the generated identity. Keep it in the existing
 	// canonical Store while the authored contract contains only application needs.
-	owner := application.Store{Root: filepath.Join(absolute, ".baseharbor", "apps")}
 	if _, err := owner.Sync(m); err != nil {
 		_ = os.Remove(path)
 		return applicationAdoptionResult{}, err

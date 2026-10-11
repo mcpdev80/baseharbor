@@ -21,10 +21,14 @@ CHECKS = {
         ['./internal/development', '-run', '^TestGeneratedTemplatesNativeBuild$', '-timeout', '20m']],
     'integration/docker/coreless-lifecycle': [
         ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestSelectiveIdentityRuntimeAddRemoveReAdd$', '-timeout', '20m'],
+        ['./cmd/baha', '-run', '^TestSelectiveBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/podman/coreless-lifecycle': [
         ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestSelectiveIdentityRuntimeAddRemoveReAdd$', '-timeout', '20m'],
+        ['./cmd/baha', '-run', '^TestSelectiveBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/static/public-contracts': [
@@ -67,6 +71,8 @@ def configure_runtime_environment(gate):
         raise ValueError('selected runtime differs from the prepared qualification host')
     if gate.endswith('/coreless-lifecycle'):
         os.environ['BASEHARBOR_CORELESS_ACCEPTANCE'] = '1'
+        os.environ['BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE'] = '1'
+        os.environ['BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE'] = '1'
         os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'] = '1'
         return True
     os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'
