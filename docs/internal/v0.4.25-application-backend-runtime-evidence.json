@@ -11,6 +11,31 @@
       "workflow_run_attempt": 1,
       "result": "FAIL",
       "observed": "Workflow transfer was truncated; GitHub rejected the workflow before jobs started. Zero native journeys executed. Local original workflow passed actionlint, but uploaded blob differed from the intended local hash. Complete original workflow restored with the narrow foundation selection change; its uploaded blob must match the full local file before branch publication. No runtime or data acceptance."
+    },
+    {
+      "candidate_sha": "232290731ec806cb04a922282eb364c8a223de0f",
+      "candidate_tree": "c5a42981de5736ea8fb47cee8f4191ea0568465a",
+      "workflow_run_id": 38156395413,
+      "workflow_run_attempt": 1,
+      "result": "FAIL",
+      "cleanup_outcome": "success",
+      "observed": "Both engines start actual selected messaging without Core, complete TLS-authenticated durable publish with publisher confirmation, then remove selected containers while retaining one owned data volume and matching Podman native boot retirement. Re-add reaches actual Ready but fails the original consumer-credential identity assertion: desired-only runtime.env serialization dropped private credentials while the capability was disabled, causing regenerated credentials. Durable message recovery and document subcase are not qualified. Actual owned cleanup asserts zero remaining containers. Static EnsureRuntime true/false/true reproduces private credential loss for messaging and documents, and verifies the correction retains existing private values without exposing disabled credentials in application.env.",
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114520157791,
+          "test_seconds": 72.58,
+          "artifact_id": 11707824948,
+          "artifact_digest": "sha256:b1f628766be048e075f04d816527254d27aeaf0237d5c85f9172d35f59077cb0"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114520157844,
+          "test_seconds": 83.15,
+          "artifact_id": 11708646573,
+          "artifact_digest": "sha256:3d5685e3e8738be11e199360f6aeb9f95d854ed4756da2f4d6d6f49691396d9b"
+        }
+      ]
     }
   ]
 }
