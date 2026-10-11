@@ -29,6 +29,12 @@ func indexResolutionInstances(s ResolutionSnapshot) (map[string]capability.Provi
 		if i.Ownership != capability.OwnershipBaseHarbor {
 			return nil, fmt.Errorf("ancillary runtime must have proven BaseHarbor ownership")
 		}
+		if i.Provider.Kind == capability.ProviderRuntimeExecutor && i.Scope != capability.ScopeShared {
+			return nil, fmt.Errorf("native runtime executor uses its existing shared physical owner")
+		}
+		if (i.Provider.Kind == capability.ProviderRuntimeBroker || i.Provider.Kind == capability.ProviderRuntimeWorkload) && i.Scope != capability.ScopeApplication {
+			return nil, fmt.Errorf("native broker/workload uses its existing application owner")
+		}
 		switch i.Scope {
 		case capability.ScopeShared:
 			if i.OwnerApplicationID != "" || i.OwnerApplication != "" {

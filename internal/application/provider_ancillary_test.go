@@ -69,9 +69,9 @@ func TestObservedSharedGatewayUsesSameClosureWithoutCapabilityOffer(t *testing.T
 
 func TestAncillarySidecarOwnershipAndRetirement(t *testing.T) {
 	s, _, _ := impactFixture(t)
-	executor := capability.ProviderInstance{ID: "native/runtime-executor", Provider: capability.Provider{Kind: capability.ProviderRuntimeExecutor}, Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor, OwnerApplicationID: contractAppID, OwnerApplication: "one", OwnerEnvironment: "dev"}
+	executor := RuntimeExecutorDependency("local")
 	s.Ancillary = []capability.ProviderInstance{executor}
-	s.Facts[executor.ID] = ProviderFact{Target: "local", State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{}, Ancillary: true, OwnerReference: "application/" + contractAppID}
+	s.Facts[executor.ID] = ProviderFact{Target: "local", State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{}, Ancillary: true, OwnerReference: "runtime/bh-local-shared/runtime-executor"}
 	m := New("one", "dev", false, false, false)
 	m.ApplicationID = contractAppID
 	u, err := ResolveProviderPlan(s, []ConsumerIntent{{Key: "app/one", Active: true, Manifest: m, DependencyRoots: []string{executor.ID}}}, true)

@@ -17,7 +17,7 @@ func TestEveryRegisteredProviderHasChangeContract(t *testing.T) {
 }
 
 func TestAncillaryMetadataDoesNotInventSelectableIntegrations(t *testing.T) {
-	for _, kind := range []ProviderKind{ProviderRuntimeBroker, ProviderRuntimeExecutor} {
+	for _, kind := range []ProviderKind{ProviderRuntimeBroker, ProviderRuntimeExecutor, ProviderRuntimeWorkload} {
 		c, ok := (IntegrationDescriptor{Provider: Provider{Kind: kind}}).ChangeContract()
 		if !ok || len(c.Functions) == 0 || len(c.MaterialKinds) == 0 {
 			t.Fatal("missing existing sidecar consequences")

@@ -9,7 +9,7 @@ import (
 // creation, reactivation, change and removal. This is declaration qualification;
 // existing adapters must separately provide actual consumer/native receipts.
 func TestProviderChangeWholeCatalogLifecycleConsequences(t *testing.T) {
-	descriptors := append(capability.ReferenceIntegrations(), capability.IntegrationDescriptor{Provider: capability.Provider{Kind: capability.ProviderRuntimeBroker}, SupportedScopes: []capability.ProviderScope{capability.ScopeApplication}}, capability.IntegrationDescriptor{Provider: capability.Provider{Kind: capability.ProviderRuntimeExecutor}, SupportedScopes: []capability.ProviderScope{capability.ScopeApplication}})
+	descriptors := append(capability.ReferenceIntegrations(), capability.IntegrationDescriptor{Provider: capability.Provider{Kind: capability.ProviderRuntimeBroker}, SupportedScopes: []capability.ProviderScope{capability.ScopeApplication}}, capability.IntegrationDescriptor{Provider: capability.Provider{Kind: capability.ProviderRuntimeExecutor}, SupportedScopes: []capability.ProviderScope{capability.ScopeShared}}, capability.IntegrationDescriptor{Provider: capability.Provider{Kind: capability.ProviderRuntimeWorkload}, SupportedScopes: []capability.ProviderScope{capability.ScopeApplication}})
 	for _, descriptor := range descriptors {
 		t.Run(string(descriptor.Provider.Kind), func(t *testing.T) {
 			scope := descriptor.SupportedScopes[0]
@@ -26,7 +26,7 @@ func TestProviderChangeWholeCatalogLifecycleConsequences(t *testing.T) {
 			if scope == capability.ScopeExternal {
 				instance.Reference = "existing-registration"
 			}
-			ancillary := descriptor.Provider.Kind == capability.ProviderRuntimeBroker || descriptor.Provider.Kind == capability.ProviderRuntimeExecutor
+			ancillary := descriptor.Provider.Kind == capability.ProviderRuntimeBroker || descriptor.Provider.Kind == capability.ProviderRuntimeExecutor || descriptor.Provider.Kind == capability.ProviderRuntimeWorkload
 			registry := capability.NewRegistry()
 			if !ancillary {
 				if err := registry.Register(instance); err != nil {
@@ -57,10 +57,11 @@ func TestProviderChangeWholeCatalogLifecycleConsequences(t *testing.T) {
 				if ancillary {
 					f := snapshot.Facts[i.ID]
 					f.Ancillary = true
-					f.OwnerReference = i.OwnerApplicationID
+					f.OwnerReference = "runtime/" + i.ID
 					snapshot.Facts[i.ID] = f
 					observed := observation.Providers[i.ID]
 					observed.Realization.Ancillary = true
+					observed.Realization.Owner = f.OwnerReference
 					observation.Providers[i.ID] = observed
 				}
 			}

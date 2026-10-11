@@ -239,7 +239,18 @@ Sidecar-/Core-Paket.
 Ein Target-eigener Shared-Gateway verwendet seinen tatsächlichen bestehenden
 Installation-/Routenowner ohne erfundene Application-UUID. Er behauptet keine
 allgemeine Shared-Platzierung der auswählbaren Caddy-Integration. App-Sidecars
-behalten ihre tatsächliche systemeigene App-ID. Broker-/Executor-Metadaten
+behalten ihre tatsächliche systemeigene App-ID. Der native Executor verwendet
+Shared-Scope und seinen einzigen bestehenden Target-Projektowner
+(`RuntimeExecutorDependency`); alle App-/Management-Roots referenzieren dieselbe
+physische ID. Er gehört nie einer einzelnen App und wird nicht über getrennte
+App-Aliase mehrfach gezählt. Der Broker je App verwendet Application-Scope.
+
+Gewöhnliche deklarierte Workload-Komponenten erhalten eigene Ancillary-Metadaten
+`runtime-workload` (`RuntimeWorkloadDependency`), auch bei Apps ohne Capabilities.
+Sie sind keine privilegierten Executor und keine auswählbaren Capability-Provider.
+Tatsächlicher Betrieb/Zugriff, laufende Arbeit, Konfiguration und Volume-Folgen
+benötigen Beobachtungen; ein passendes Projektlabel autorisiert keine undeklarierte
+Komponente. Broker-/Executor-Metadaten
 beschreiben tatsächliche Autorisierungs-/Credential-, Ausführungs-/Steuerungs- und
 In-flight-Folgen; Nutzung benötigt weiterhin Beobachtungen.
 
@@ -269,6 +280,7 @@ Extensions bleiben unbekannt.
 | External OIDC | Tatsächliche OIDC-Verbraucher und registrierte Referenzen | Externer Registrierungs-/Zugriffsowner; lokale Binding-Entfernung, keine Löschung fremder Benutzer/Realms |
 | RabbitMQ | Tatsächliche Queue-/PubSub-/Stream-Nutzung; Nachrichten/In-flight, Offsets/Topologie/Credentials | Bestehende Messaging-/Runtime-/Storage-Owner; Reihenfolge, Acknowledgements, Zustellung, Dauerhaftigkeit und Reconnect |
 | Ancillary Runtime-Broker | Tatsächliche Autorisierung/Credentials/Policy; Konfiguration, Zertifikate/Recovery | Bestehende Broker-/Runtime-/Credential-Owner; Autorisierung, Erneuerung, TLS und Verfügbarkeit |
+| Ancillary Runtime-Workload | Tatsächlicher Komponentenbetrieb/-zugriff; In-flight/Konfiguration und Volumes | Bestehender App-/Deployment-Owner; Ausfall/Reconnect und beobachteter Materialerhalt, keine privilegierte Executor-Autorität |
 | Ancillary Runtime-Executor | Tatsächliches Execute/Observe/Control; In-flight/Konfiguration, Zertifikate/Credentials | Bestehende Executor-/Runtime-Owner; In-flight-Arbeit, Autorisierung/TLS und Reconnect |
 | MongoDB | Lesen/Schreiben/Transaktionen; Dokumente/Indizes/Oplog, Credentials/Backups | Bestehende Document-/Runtime-/Storage-/Recovery-Owner; Konsistenz, Dauerhaftigkeit, Protokoll und Reconnect |
 

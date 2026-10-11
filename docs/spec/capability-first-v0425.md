@@ -228,7 +228,17 @@ owned retirement, unknown state and impact. No unconditional sidecar/Core packag
 A Target-owned shared gateway uses its real existing installation/route owner and
 no fabricated application UUID. It does not claim that Caddy's selectable provider
 integration supports generic Shared placement. App sidecars retain their actual
-system-owned app ID. Runtime broker/executor metadata describes actual authorization,
+system-owned app ID. The native executor uses Shared scope and its single existing
+Target project owner (`RuntimeExecutorDependency`); every app/management root
+references that same physical ID. It is never owned by one app or counted through
+independent app aliases. The per-app broker uses Application scope.
+
+Ordinary declared workload components use distinct `runtime-workload` ancillary
+metadata (`RuntimeWorkloadDependency`), including zero-capability apps. They are
+not privileged executors or selectable capability providers. Actual run/access,
+in-flight work, configuration and volume consequences require observation;
+a matching project label does not authorize an undeclared component.
+Runtime broker/executor metadata describes actual authorization,
 credential, execution/control and in-flight effects; usages still require observation.
 
 ### Shipped provider coverage
@@ -257,6 +267,7 @@ contracts remain unknown.
 | External OIDC | Actual OIDC consumers and registered references | External registration/access owner; local binding removal, no foreign user/realm destruction |
 | RabbitMQ | Actual queue/pubsub/stream users; messages/in-flight, offsets/topology/credentials | Existing messaging/runtime/storage owners; ordering, acknowledgements, delivery, durability and reconnect |
 | Ancillary runtime broker | Actual authorization/credentials/policy; configuration, certificates/recovery | Existing broker/runtime/credential owners; authorization, renewal, TLS and availability |
+| Ancillary runtime workload | Actual component run/access; in-flight/configuration and volumes | Existing application/deployment owner; outage/reconnect and observed material retention, never privileged executor authority |
 | Ancillary runtime executor | Actual execute/observe/control; in-flight/configuration, certificates/credentials | Existing executor/runtime owners; in-flight work, authorization/TLS and reconnect |
 | MongoDB | Read/write/transactions; documents/indexes/oplog, credentials/backups | Existing document/runtime/storage/recovery owners; consistency, durability, protocol and reconnect |
 
