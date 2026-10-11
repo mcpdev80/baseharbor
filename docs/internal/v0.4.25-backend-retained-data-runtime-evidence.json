@@ -107,8 +107,64 @@
           "artifact_digest": "sha256:937a5de298959c72dd48622dcf14841ad042137e5280d79843fa349d1983aae0"
         }
       ]
+    },
+    {
+      "candidate_sha": "0f17b28c1399e96cbc8338d4f4c1e46ceca9fcc1",
+      "candidate_tree": "1843583403674ce65334725109fb0db7f6469e4d",
+      "workflow_run_id": 38155284560,
+      "workflow_run_attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Actual single-app and two-app shared SQL/cache lifecycle passes on both engines. Removing A preserves B TLS-authenticated per-consumer data. Removing B last stops the selected provider with both workloads and one owned data volume retained. Re-adding A then B restores each distinct system-identity-derived marker under unchanged original consumer credentials/database identity. Adding B preserves every prior protected provider environment entry while adding its own credential entries; the complete expanded environment remains byte-identical throughout subsequent removal/re-add. Stable canonical IDs and verified deployment records remain. Podman native container boot definitions match each required/disabled phase. Owned cleanup asserts zero remaining containers.",
+      "inventory": {
+        "shared_sql_selected_running": [
+          1,
+          0,
+          1,
+          1
+        ],
+        "shared_sql_total_containers": [
+          3,
+          2,
+          3,
+          3
+        ],
+        "shared_cache_selected_running": [
+          2,
+          0,
+          2,
+          2
+        ],
+        "shared_cache_total_containers": [
+          4,
+          2,
+          4,
+          4
+        ],
+        "retained_owned_data_volumes_per_backend": 1
+      },
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114516884381,
+          "test_seconds": 289.03,
+          "sql_seconds": 149.55,
+          "cache_seconds": 139.48,
+          "artifact_id": 11708342712,
+          "artifact_digest": "sha256:ac1d6e156c83e4fbb675b18aa477d5990fa94e1be679561843686c423fa8b4e3"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114516884539,
+          "test_seconds": 320.33,
+          "sql_seconds": 167.18,
+          "cache_seconds": 153.14,
+          "artifact_id": 11708622006,
+          "artifact_digest": "sha256:c189ad01cee4dc7058a41e1aa75e9c02539ba973979cec839b7f61bfa7b3b72d"
+        }
+      ]
     }
   ],
   "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate.",
-  "qualified_scope": "Isolated selected SQL/cache actual consumer credentials, TLS access, seeded data, owned-volume/configuration retention and native boot definitions on 9d813bfcee248b7d16cf9e0eab65ab7602ebb771 only."
+  "qualified_scope": "Exact-source isolated SQL/cache single-app and two-app shared lifecycle, actual consumer-authenticated TLS data retention, last-consumer retirement, retained credentials/volumes/environment, Podman boot definitions and owned cleanup. Other provider families, universal mutations, final ecosystem matrix and complete pre-release acceptance remain unqualified."
 }

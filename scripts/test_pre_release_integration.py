@@ -93,6 +93,7 @@ class ContractCheckTests(unittest.TestCase):
                     '^TestCorelessLocalProdRuntimeLifecycle$',
                     '^TestSelectiveIdentityRuntimeAddRemoveReAdd$',
                     '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
+                    '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
                     '^TestSelectiveSecretsRuntimeAddRemoveReAdd$',
                     '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
