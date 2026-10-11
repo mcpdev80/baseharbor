@@ -21,6 +21,7 @@ CHECKS = {
         ['./internal/development', '-run', '^TestGeneratedTemplatesNativeBuild$', '-timeout', '20m']],
     'integration/docker/coreless-lifecycle': [
         ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestCorelessLocalProdRuntimeLifecycle$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestSelectiveIdentityRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$', '-timeout', '15m'],
@@ -28,6 +29,7 @@ CHECKS = {
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/podman/coreless-lifecycle': [
         ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestCorelessLocalProdRuntimeLifecycle$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestSelectiveIdentityRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$', '-timeout', '15m'],

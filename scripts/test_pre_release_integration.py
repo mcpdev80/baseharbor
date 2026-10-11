@@ -84,6 +84,7 @@ class ContractCheckTests(unittest.TestCase):
 
     def test_release_proof_requires_each_selective_fixture_on_both_engines(self):
         required = {'^TestCorelessFreshWorkloadRuntimeLifecycle$',
+                    '^TestCorelessLocalProdRuntimeLifecycle$',
                     '^TestSelectiveIdentityRuntimeAddRemoveReAdd$',
                     '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
