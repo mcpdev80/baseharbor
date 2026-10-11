@@ -115,7 +115,7 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 			t.Errorf("isolated backend cleanup leaves containers=%d inspection=%v", len(containers), err)
 		}
 	})
-	var originalEnv [32]byte
+	var originalEnv, originalConsumer [32]byte
 	var volumes []bhruntime.ProjectResource
 	for phase, enabled := range []bool{true, false, true} {
 		writeIntent(enabled)
@@ -163,6 +163,9 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 			if !application.ResourceNamedExists(actual, volume) {
 				t.Fatal("backend removal lost retained owned data volume")
 			}
+		}
+		if enabled {
+			qualifySelectedBackendData(t, ctx, provider, resolved, inventory, service, phase, &originalConsumer)
 		}
 		assertSelectedBackendNativeInventory(t, ctx, provider, resolved, inventory, service, phase, enabled, len(volumes))
 		if data, err := os.ReadFile("baseharbor.yaml"); err != nil || strings.Contains(string(data), initialized.Manifest.ApplicationID) {
