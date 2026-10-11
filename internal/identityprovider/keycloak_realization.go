@@ -92,6 +92,11 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 		}
 		return KeycloakInstance{}, err
 	}
+	if isDevelopmentIdentityEnvironment(r.app.Environment) {
+		if err := ensureLocalKeycloakDevelopmentRoute(ctx, r.app, r.namespace, r.runtime, r.issuer, files); err != nil {
+			return KeycloakInstance{}, err
+		}
+	}
 	return r.instance(ctx, files, publicBase)
 }
 
@@ -159,11 +164,11 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 	}
 
 	workloadBase := files.PublicURL
-	trustBundle := append([]byte(nil), files.PublicAccess.Material.CA...)
+	trustBundle, err := os.ReadFile(files.PublicAccess.Material.CA)
+	if err != nil {
+		return KeycloakInstance{}, err
+	}
 	if isDevelopmentIdentityEnvironment(r.app.Environment) {
-		if err := ensureLocalKeycloakDevelopmentRoute(ctx, r.app, r.namespace, r.runtime, r.issuer, files); err != nil {
-			return KeycloakInstance{}, err
-		}
 		gatewayFiles, err := devgateway.FilesFor(localKeycloakTargetName(r.namespace))
 		if err != nil {
 			return KeycloakInstance{}, err

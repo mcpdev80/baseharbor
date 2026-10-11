@@ -211,4 +211,5 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		}
 		t.Logf("runtime=%s phase=%d Identity=%t selected Identity containers=%d actual total=%d retained data volumes=%d", provider.Kind(), phase, enabled, identityCount, len(containers), len(retained))
 	}
+	qualifySharedIdentityConsumers(t, ctx, provider, initialized, originalEnv, retained)
 }

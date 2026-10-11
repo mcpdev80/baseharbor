@@ -65,15 +65,83 @@
           "retained_credential_configuration_digest_unchanged": true
         }
       ],
-      "qualified": ["Only the explicitly listed completed phase observations on this SHA; no complete gate or re-add result."]
+      "qualified": [
+        "Only the explicitly listed completed phase observations on this SHA; no complete gate or re-add result."
+      ]
+    },
+    {
+      "candidate_sha": "34b382b32f2ae72e429595bb7b723b010b70cb0b",
+      "candidate_tree": "ae1b42547790dfcadc62b8db32876c5e2e2c2fe3",
+      "workflow_run_id": 38140963814,
+      "docker_job_id": 114474571761,
+      "podman_job_id": 114474571616,
+      "conclusion": "failure",
+      "reason": "Both engines completed add/remove preserving two data volumes and protected configuration. Re-add stopped at developer-account ownership verification: the marker was undeclared in the strict Keycloak user profile.",
+      "qualified": []
     }
   ],
   "not_qualified": [
-    "Complete Docker/rootless Podman Identity true-false-true acceptance on a final integrated SHA",
+    "All required selective runtime gates on ONE final integrated SHA; later source changes require their affected qualification.",
     "End-user authenticated OAuth/PKCE login, token refresh and existing session behavior",
     "Two applications sharing Identity and last-consumer convergence",
     "The complete capability/provider and direct mutation-path matrix",
     "Explicit developer credential change consent and continuity",
     "Candidate-compatible Demo, Console and Node Connector and ecosystem readiness"
-  ]
+  ],
+  "qualified_one_app_lifecycle": {
+    "candidate_sha": "6e50f900555b58fc82f8536d107626e77bca147b",
+    "candidate_tree": "989502f58761b93afffb2c20f19ecf2cf1ebe146",
+    "workflow_run_id": 38141876601,
+    "attempt": 1,
+    "test_result": "PASS",
+    "scope": "One isolated real app: Identity true-false-true; selected native inventory, actual OIDC discovery/JWKS/binding/provider and workload/TLS readiness, stable system identity, retained data/credentials, zero remaining test containers after cleanup. No interactive end-user OAuth proof.",
+    "runtime_jobs": [
+      {
+        "runtime": "docker",
+        "job_id": 114477219721,
+        "conclusion": "success",
+        "rootless": true,
+        "go_version": "go1.25.0 linux/amd64",
+        "selected_identity_containers_by_phase": [
+          5,
+          0,
+          5
+        ],
+        "actual_total_containers_by_phase": [
+          7,
+          1,
+          7
+        ],
+        "retained_owned_data_volumes": 2,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11702653039,
+        "artifact_name": "coreless-docker-38141876601-1",
+        "artifact_digest": "sha256:29fb7b8a8d56c7acf6ddfcd1667b81c4fb00d85561b1f29e28409de7efe348f7"
+      },
+      {
+        "runtime": "podman",
+        "job_id": 114477219638,
+        "conclusion": "success",
+        "rootless": true,
+        "go_version": "go1.25.0 linux/amd64",
+        "selected_identity_containers_by_phase": [
+          3,
+          0,
+          3
+        ],
+        "actual_total_containers_by_phase": [
+          5,
+          1,
+          5
+        ],
+        "retained_owned_data_volumes": 2,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11702779521,
+        "artifact_name": "coreless-podman-38141876601-1",
+        "artifact_digest": "sha256:d967785cb6407e4ee4b5e4683d645b63adce07af7d77df3d9a4b4161acfc039e"
+      }
+    ]
+  }
 }

@@ -68,7 +68,7 @@ func ConfigureDomain(target, value string) (string, error) {
 }
 
 func ApplicationHost(target, app, service string) (string, error) {
-	domain, err := EnsureDomain(target)
+	domain, err := effectiveDomain(target)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +84,7 @@ func ApplicationHost(target, app, service string) (string, error) {
 }
 
 func SharedHost(target, service string) (string, error) {
-	domain, err := EnsureDomain(target)
+	domain, err := effectiveDomain(target)
 	if err != nil {
 		return "", err
 	}
@@ -103,6 +103,17 @@ func SharedHost(target, service string) (string, error) {
 		service = "auth-admin"
 	}
 	return service + "." + domain, nil
+}
+
+// Host calculation is a read path. A missing domain has the documented default;
+// only explicit configuration/initialization may persist that default. Damaged
+// existing state must remain an error rather than be replaced while inspecting.
+func effectiveDomain(target string) (string, error) {
+	domain, err := LoadDomain(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return DefaultDomain, nil
+	}
+	return domain, err
 }
 
 func ExposureService(routeName string, publicExposureCount int) string {
