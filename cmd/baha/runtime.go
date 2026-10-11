@@ -139,6 +139,12 @@ func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Write
 	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
 		return err
 	}
+	return materializeControlPlaneProviders(parent, in, out, opts)
+}
+
+// The caller owns authorization: explicit management uses the wrapper above;
+// application apply invokes this only for its acknowledged real dependencies.
+func materializeControlPlaneProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}

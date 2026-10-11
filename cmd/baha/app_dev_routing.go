@@ -151,7 +151,10 @@ func diagnoseDevelopmentGatewayVerification(err error) error {
 
 func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
 	if !requiresDevelopmentGateway(e.manifest) {
-		return nil
+		if !devaccess.Enabled(e.manifest.Environment) {
+			return nil
+		}
+		return removeApplicationGatewayOwners(ctx, e.compose, e.resolved, "app/"+e.manifest.Name+"/"+e.manifest.Environment)
 	}
 	target := e.resolved.Target.Name
 	if _, err := devaccess.EnsureDomain(target); err != nil {

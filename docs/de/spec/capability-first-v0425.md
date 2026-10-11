@@ -502,3 +502,26 @@ Kein Host-Probing mit dauerhaften Effekten aus Inspektion/Footprint.
 
 
 Normative Offline-Schemas: `contracts/footprint/v1/footprint.schema.json` und `contracts/connection-profile/v1/profile.schema.json`. Profile-Shape-Validierung beweist weder gültiges CA-Material, Fingerprint-Übereinstimmung, Ablaufzeit, eindeutige Tenants noch Autorisierung; spätere Importer müssen diese Semantik prüfen und nur geprüfte nicht geheime Extensions zulassen.
+
+## Lokale Workload-Autorisierung
+
+Die portable Umgebung `test` oder `prod` fordert allein kein Operator-OIDC an.
+Eine tatsächliche lokale CLI-/JSON- oder stdio-Ausführung kann nach Prüfung
+`local-runtime`-Autorität für genau eine App-Operation auf einem Target und in
+einer Umgebung verwenden. Der Adapter beobachtet die ausgewählte lokale
+Docker-Engine samt Binding oder die native rootless Linux-Podman-`info`-Auswahl.
+Diese Autorität ist Ausführungskontext, kein OIDC-Principal, portabler Input oder
+zusätzlicher Identity-Owner.
+
+Explizite gespeicherte beziehungsweise über die Umgebung gesetzte Operator-
+OIDC-Policy, eine unabhängig angeforderte Management-Installation einschließlich
+eines gültigen partiellen Owners, Tenant-Scope, Remote und HTTP behalten ihre
+bestehende Authentifizierung. HTTP entfernt geerbte lokale Autorität. Unklarer
+Engine-/Owner-State wird nicht als lokaler Nachweis ausgegeben. Autorisierte
+App-Operationen dürfen echte Provider-Abhängigkeiten materialisieren; explizite
+Management-Befehle behalten ihre eigene Autorisierung. Lokale Autorität erteilt
+keine Provider-Änderungsbestätigung und keinen Consent zur Datenlöschung. Die
+zwei Bestätigungen des aktuellen Plans bleiben getrennt.
+
+Domain-/Adapter-Negativtests prüfen die Implementierung. Tatsächliche lokale
+Produktions-CLI- und stdio-Runtime-Abnahme auf dem Kandidaten bleibt erforderlich.

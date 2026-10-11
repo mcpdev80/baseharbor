@@ -472,3 +472,24 @@ No host probing with persistent effects from inspection/footprint.
 
 
 Normative offline schemas: `contracts/footprint/v1/footprint.schema.json` and `contracts/connection-profile/v1/profile.schema.json`. Profile shape validation never proves valid CA material, fingerprint agreement, expiry, tenant uniqueness or authorization; later importers must enforce these semantic checks and allow only reviewed non-secret extensions.
+
+## Local workload authorization
+
+A portable `test` or `prod` environment does not by itself request operator
+OIDC. An actual local CLI/JSON or local stdio invocation may use verified
+`local-runtime` authority for one application operation on one Target and
+environment. The adapter observes the selected local Docker engine/binding or
+native rootless Linux Podman `info` selection. This authority is invocation
+context, not an OIDC principal, portable input or another identity registry.
+
+Explicit stored/environment operator OIDC policy, an independent management
+installation (including a valid partial owner), tenant scope, remote execution
+and HTTP retain their existing authenticated boundaries. HTTP strips inherited
+local authority. Unknown engine/owner state never fabricates a local proof.
+Application authorization may provision its genuine provider dependencies;
+explicit management commands keep their own authorization. Local authority does
+not grant provider-change confirmations or destructive data consent. The two
+current-plan acknowledgements remain separate.
+
+The implementation has domain/adapter negative tests. Actual local production
+CLI and stdio runtime acceptance remains required on the qualified candidate.

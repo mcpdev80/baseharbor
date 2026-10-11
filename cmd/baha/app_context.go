@@ -66,10 +66,12 @@ func (r resolvedApplication) stateRoot() string {
 }
 
 func resolveApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, error) {
+	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
 func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolvedApplication, error) {
+	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
 	if err != nil {
 		return resolvedApplication{}, err

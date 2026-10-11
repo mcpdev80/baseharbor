@@ -217,7 +217,7 @@ func materializeResolvedApplicationBroker(ctx context.Context, resolved resolved
 	// selected SQL storage. Identity is not a dependency of this realization.
 	selected := withTargetOverride(ctx, resolved.Target.Name)
 	options := runtimeUpOptions{Yes: true, HA: application.ComponentHA(resolved.Manifest, "secrets"), ControlPlaneOnly: true}
-	if err := runtimeUpGuidedProviders(selected, in, out, options); err != nil {
+	if err := materializeControlPlaneProviders(selected, in, out, options); err != nil {
 		return err
 	}
 	return ensureRepositoryOpenBaoReady(selected, in, out, io.Discard, options)

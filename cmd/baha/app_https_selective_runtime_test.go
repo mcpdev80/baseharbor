@@ -123,7 +123,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 			}
 			workload := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}
 			gatewayResource := bhruntime.ProjectResource{Kind: "container", Name: gateway.Project + "-dev-gateway-1"}
-			if !matched && !bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, workload) && !bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, gateway.Project, gatewayResource) {
+			if !matched && !bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, workload) && !(enabled && bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, gateway.Project, gatewayResource)) {
 				t.Fatalf("HTTPS-only materialized unrequested project=%s service=%s", container.Project, container.Service)
 			}
 		}

@@ -197,6 +197,7 @@ func mcpCommand(store application.Store) *cli.Command {
 }
 
 func runMCPServer(ctx context.Context, store application.Store) error {
+	ctx = withLocalInvocation(ctx, "stdio")
 	return newMCPServer(store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
 }
 
@@ -264,7 +265,18 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 		}
 	}
 	if operatorauth.ManagedEnvironment(environment) {
+		ctx = localWorkloadScope(ctx, operationID)
+		if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
+			if authority, local, err := verifiedLocalWorkloadAuthority(ctx, target, environment); err != nil {
+				return err
+			} else if local {
+				ctx = operatorauth.WithVerifiedLocalRuntimeAuthority(ctx, authority)
+			}
+		}
 		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+			if machine.Classify(err).Code == machine.ErrorRuntimeUnavailable {
+				return err
+			}
 			return &machine.Error{
 				Code:        machine.ErrorAuthenticationFailed,
 				CauseCode:   "operator_authentication_required",

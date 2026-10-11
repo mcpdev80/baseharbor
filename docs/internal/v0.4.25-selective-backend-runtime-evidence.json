@@ -37,7 +37,7 @@
     }
   ],
   "not_qualified": [
-    "Changed selected container/boot definition retirement and preserved unknown/incomplete inventory on a matching native SHA",
+    "Preserved unknown/incomplete inventory guard on an actual damaged native Target; local negative tests alone do not qualify that native failure case",
     "All required selective runtime gates on one final integrated SHA",
     "Authenticated end-user OAuth and token/session behavior",
     "All provider and direct mutation paths, explicit replacement/destructive consent and recovery",
@@ -116,6 +116,89 @@
         "artifact_id": 11704307112,
         "artifact_name": "coreless-podman-38145289955-1",
         "artifact_digest": "sha256:459ae4834c178c58e8b9006689a05f173f7f3a80fb33e1a28b4edf22e49def7f"
+      }
+    ]
+  },
+  "qualified_selected_boot_retirement": {
+    "candidate_sha": "1c9121188ded4f45b417e9ae3874a56c4d827506",
+    "candidate_tree": "ccd3a4e937d8f8efacd6eede8a7fb57048b7dccb",
+    "workflow_run_id": 38146849837,
+    "attempt": 1,
+    "test_result": "PASS",
+    "scope": "Fresh isolated SQL-only and cache-only actual workload true-false-true; canonical selected native container retirement, actual rootless Podman .container boot definitions present/absent/present, no management Core/Identity/Bao, stable system app ID and verified converged deployment, one retained owned data volume per capability, unchanged protected provider configuration, zero containers after cleanup. Does not prove seeded user-data recovery usability, two-app backend sharing, all mutation paths or final readiness.",
+    "runtime_jobs": [
+      {
+        "runtime": "docker",
+        "rootless": true,
+        "job_id": 114491912467,
+        "conclusion": "success",
+        "go_version": "go1.25.0 linux/amd64",
+        "sql_selected_running_by_phase": [
+          1,
+          0,
+          1
+        ],
+        "sql_actual_total_by_phase": [
+          2,
+          1,
+          2
+        ],
+        "cache_selected_running_by_phase": [
+          2,
+          0,
+          2
+        ],
+        "cache_actual_total_by_phase": [
+          3,
+          1,
+          3
+        ],
+        "retained_owned_data_volumes_per_capability": 1,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11705212861,
+        "artifact_name": "coreless-docker-38146849837-1",
+        "artifact_digest": "sha256:af3a9cc188a993eeb0a032d755749fab155b12e06aad245a188e23670e8cd34b",
+        "test_seconds": 123.67
+      },
+      {
+        "runtime": "podman",
+        "rootless": true,
+        "job_id": 114491912715,
+        "conclusion": "success",
+        "go_version": "go1.25.0 linux/amd64",
+        "sql_selected_running_by_phase": [
+          1,
+          0,
+          1
+        ],
+        "sql_actual_total_by_phase": [
+          2,
+          1,
+          2
+        ],
+        "cache_selected_running_by_phase": [
+          2,
+          0,
+          2
+        ],
+        "cache_actual_total_by_phase": [
+          3,
+          1,
+          3
+        ],
+        "retained_owned_data_volumes_per_capability": 1,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11705053220,
+        "artifact_name": "coreless-podman-38146849837-1",
+        "artifact_digest": "sha256:af1a6254fe8299ff2e3909b6c1656d62b014e1f4a0e40e5427acb6d8b310e786",
+        "test_seconds": 134.53,
+        "actual_container_boot_definitions_by_phase": [
+          true,
+          false,
+          true
+        ]
       }
     ]
   }

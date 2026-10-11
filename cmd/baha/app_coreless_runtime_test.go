@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,7 +59,14 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	assertCorelessHost(t, ctx, runtime, target)
 	root := t.TempDir()
 	t.Chdir(root)
-	authored := "version: 1\napp:\n  name: coreless-http\n  environment: dev\n"
+	environment := strings.TrimSpace(os.Getenv("BASEHARBOR_CORELESS_ENVIRONMENT"))
+	if environment == "" {
+		environment = "dev"
+	}
+	if environment != "dev" && environment != "prod" {
+		t.Fatal("coreless acceptance environment must be dev or prod")
+	}
+	authored := fmt.Sprintf("version: 1\napp:\n  name: coreless-http\n  environment: %s\n", environment)
 	if err := os.WriteFile("baseharbor.yaml", []byte(authored), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +170,9 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	body, err := runtime.ExecProjectFiles(ctx, workload.Project, root, "api", []string{workload.Compose, workload.Override}, "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/').read().decode())")
 	if err != nil || strings.TrimSpace(body) != "ready" {
 		t.Fatalf("real HTTP probe: %q %v", body, err)
+	}
+	if environment == "prod" {
+		qualifyActualLocalStdioWorkloadAuthority(t, ctx, target, m)
 	}
 	for i := 0; i < 2; i++ {
 		out.Reset()

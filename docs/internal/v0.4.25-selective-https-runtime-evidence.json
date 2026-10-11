@@ -1,0 +1,72 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-https-add-remove-re-add",
+  "test": "TestSelectiveHTTPSRuntimeAddRemoveReAdd",
+  "observed_at": "2026-10-11",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "4074684d0f95e071c4d53945dc8d07755840a845",
+      "candidate_tree": "44cf30a11eed7531eba4539a9d089701dffa6a7c",
+      "workflow_run_id": 38147584820,
+      "attempt": 1,
+      "test_result": "PASS",
+      "complete_runtime_union_converged": false,
+      "scope": "Actual selected Caddy runtime and Podman boot definitions converge true-false-true, actual TLS/browser workload route verified when enabled, public CA and system ID retained, verified deployment record, no SQL/Secrets/Identity/management Core, cleanup has zero containers. The disabled phase mistakenly allowed the residual own gateway, so this is NOT full runtime-union acceptance. Corrected fixture and gateway-owner retirement require a matching follow-up SHA.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114494070749,
+          "conclusion": "success",
+          "test_seconds": 59.12,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            2,
+            3
+          ],
+          "artifact_id": 11705114043,
+          "artifact_name": "coreless-docker-38147584820-1",
+          "artifact_digest": "sha256:c0a2d995fddd2a28dcb5699ddfc1d314b9f3f7db83032058b05ea27d3a7c5659"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114494070853,
+          "conclusion": "success",
+          "test_seconds": 50.33,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            2,
+            3
+          ],
+          "actual_container_boot_definitions_by_phase": [
+            true,
+            false,
+            true
+          ],
+          "artifact_id": 11704674169,
+          "artifact_name": "coreless-podman-38147584820-1",
+          "artifact_digest": "sha256:38ad4969af2070726a56ecc00aff94a49b9721a97093dc682f112bad672771b6"
+        }
+      ]
+    }
+  ],
+  "not_qualified": [
+    "Gateway last-consumer retirement on matching changed source",
+    "All required selective runtime gates on one final integrated SHA",
+    "Full provider/direct mutation impacts and confirmed replacement/destructive paths",
+    "Candidate-compatible complete ecosystem readiness"
+  ]
+}
