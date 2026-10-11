@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -13,11 +14,33 @@ import (
 
 type sharedConvergenceRuntime struct {
 	bhruntime.RuntimeProvider
-	resources []bhruntime.ProjectResource
-	running   map[string]bool
-	project   string
-	mutations int
-	foreign   bool
+	resources   []bhruntime.ProjectResource
+	running     map[string]bool
+	project     string
+	mutations   int
+	foreign     bool
+	definitions map[string]bool
+}
+
+func (r *sharedConvergenceRuntime) Kind() bhruntime.ProviderKind { return bhruntime.ProviderDocker }
+
+func (r *sharedConvergenceRuntime) RetireOwnedProjectContainers(_ context.Context, project string, selected []bhruntime.ProjectResource) error {
+	r.mutations++
+	removed := map[bhruntime.ProjectResource]bool{}
+	for _, resource := range selected {
+		removed[resource] = true
+		service := strings.TrimSuffix(strings.TrimPrefix(resource.Name, project+"-"), "-1")
+		delete(r.running, service)
+		delete(r.definitions, service)
+	}
+	retained := []bhruntime.ProjectResource{}
+	for _, resource := range r.resources {
+		if !removed[resource] {
+			retained = append(retained, resource)
+		}
+	}
+	r.resources = retained
+	return nil
 }
 
 func (r *sharedConvergenceRuntime) InspectProjectResources(context.Context, string, []bhruntime.ProjectResource) ([]bhruntime.ProjectResource, error) {
@@ -38,15 +61,23 @@ func (r *sharedConvergenceRuntime) UpProjectFilesSelected(_ context.Context, _, 
 		return errors.New("empty selection would start all retained providers")
 	}
 	r.mutations++
+	if r.definitions == nil {
+		r.definitions = map[string]bool{}
+	}
 	for _, service := range services {
+		r.definitions[service] = true
 		r.running[service] = true
+		resource := bhruntime.ProjectResource{Kind: "container", Name: r.project + "-" + service + "-1"}
+		if !ResourceNamedExists(r.resources, resource) {
+			r.resources = append(r.resources, resource)
+		}
 	}
 	return nil
 }
 func (r *sharedConvergenceRuntime) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
 	var result []bhruntime.RuntimeContainer
 	for service, running := range r.running {
-		result = append(result, bhruntime.RuntimeContainer{Project: r.project, Service: service, Running: running})
+		result = append(result, bhruntime.RuntimeContainer{Name: r.project + "-" + service + "-1", Project: r.project, Service: service, Running: running})
 	}
 	return result, nil
 }
@@ -103,12 +134,46 @@ func TestSharedBackendResolvedConsumerConvergencePreservesDataAndCredentials(t *
 				if runtime.running[service] != wanted {
 					t.Fatalf("phase %+v: shared service %s running=%v", phase, service, runtime.running[service])
 				}
+				if runtime.definitions[service] != wanted {
+					t.Fatalf("phase %+v: shared service %s boot definition retained or recreated after retirement", phase, service)
+				}
 			}
 		}
 		for path, content := range material {
 			actual, err := os.ReadFile(path)
 			if err != nil || string(actual) != content {
 				t.Fatalf("retained material changed: %s %v", path, err)
+			}
+		}
+	}
+	// Automatic convergence must honor the common plan's preserve decision,
+	// including unknown runtime facts and unaccounted consumer inventory.
+	for _, incomplete := range []bool{false, true} {
+		snapshot := ResolutionSnapshot{Target: "isolated", Registry: registry, DependencyRoots: []string{}, Facts: map[string]ProviderFact{}}
+		for _, instance := range registry.Instances {
+			state := ProviderRunning
+			if instance.Provider.Kind == capability.ProviderValkey && !incomplete {
+				state = ProviderUnverifiable
+			}
+			snapshot.Facts[instance.ID] = ProviderFact{Target: "isolated", State: state, Core: CoreNotRequired, Dependencies: []string{}}
+		}
+		plan, err := ResolveProviderPlan(snapshot, []ConsumerIntent{{Key: "one", Active: true, Manifest: first, DependencyRoots: []string{}}, {Key: "two", Active: true, Manifest: second, DependencyRoots: []string{}}}, !incomplete)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, service := range inventory.Services[capability.ProviderValkey] {
+			runtime.running[service] = true
+			resource := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-" + service + "-1"}
+			if !ResourceNamedExists(runtime.resources, resource) {
+				runtime.resources = append(runtime.resources, resource)
+			}
+		}
+		if _, err := ConvergeExistingSharedBackendRuntime(context.Background(), runtime, data, "isolated", plan, registry); err != nil {
+			t.Fatal(err)
+		}
+		for _, service := range inventory.Services[capability.ProviderValkey] {
+			if !runtime.running[service] {
+				t.Fatalf("incomplete=%t automatic convergence retired a preserved provider", incomplete)
 			}
 		}
 	}

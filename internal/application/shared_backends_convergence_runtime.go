@@ -37,6 +37,22 @@ func sharedBackendSelectedServices(inventory SharedBackendInventory, plan Provid
 		instances[instance.ID] = instance
 	}
 	kinds := map[capability.ProviderKind]bool{}
+	retirable := map[capability.ProviderKind]bool{}
+	preserved := map[capability.ProviderKind]bool{}
+	actions := map[string]string{}
+	for _, change := range plan.Changes {
+		actions[change.InstanceID] = change.Action
+	}
+	for _, instance := range registry.Instances {
+		if instance.Scope != capability.ScopeShared || instance.Ownership != capability.OwnershipBaseHarbor {
+			continue
+		}
+		if actions[instance.ID] == "stop" || actions[instance.ID] == "remove-runtime" {
+			retirable[instance.Provider.Kind] = true
+		} else {
+			preserved[instance.Provider.Kind] = true
+		}
+	}
 	ancillary := map[string]bool{}
 	for _, footprint := range plan.Consumers {
 		for _, group := range [][]ProviderFootprint{footprint.Existing, footprint.Additional} {
@@ -62,7 +78,7 @@ func sharedBackendSelectedServices(inventory SharedBackendInventory, plan Provid
 	for kind, services := range inventory.Services {
 		if kinds[kind] {
 			wanted = append(wanted, services...)
-		} else {
+		} else if plan.Complete && retirable[kind] && !preserved[kind] {
 			unwanted = append(unwanted, services...)
 		}
 	}
@@ -97,16 +113,27 @@ func ConvergeExistingSharedBackendRuntime(ctx context.Context, provider bhruntim
 	if err != nil {
 		return result, err
 	}
-	if len(unwanted) > 0 {
-		if err := provider.StopProjectFilesSelected(ctx, inventory.Files.Project, inventory.Files.Dir, environment, unwanted, inventory.Files.Compose); err != nil {
-			return result, fmt.Errorf("stop unused shared backend services; retain owner for retry: %w", err)
-		}
-	}
 	// An empty selected-services slice means ALL services in native Up, so never
 	// call it when the last consumer was removed.
 	if len(wanted) > 0 {
 		if err := provider.UpProjectFilesSelected(ctx, inventory.Files.Project, inventory.Files.Dir, environment, wanted, inventory.Files.Compose); err != nil {
 			return result, fmt.Errorf("start selected shared backend services; retain owner for retry: %w", err)
+		}
+	}
+	// Keep required siblings available before retiring released services; a
+	// failed start must preserve the existing runtime for recovery and retry.
+	if len(unwanted) > 0 {
+		native, ok := provider.(bhruntime.RuntimeServiceRetirementProvider)
+		if !ok {
+			return result, errors.New("shared backend retirement requires a verified selected-container adapter")
+		}
+		selected := []bhruntime.ProjectResource{}
+		for _, service := range unwanted {
+			selected = append(selected, bhruntime.ProjectResource{Kind: "container", Name: inventory.Files.Project + "-" + service + "-1"})
+		}
+		result, err = bhruntime.RetireOwnedServices(ctx, native, inventory.Files.Project, inventory.Resources, selected)
+		if err != nil {
+			return result, fmt.Errorf("retire unused shared backend services; retain owner for retry: %w", err)
 		}
 	}
 	after, err := provider.InspectProjectResources(ctx, inventory.Files.Project, inventory.Resources)
@@ -118,7 +145,13 @@ func ConvergeExistingSharedBackendRuntime(ctx context.Context, provider bhruntim
 			if !ResourceNamedExists(after, resource) {
 				return result, fmt.Errorf("shared backend convergence lost volume %s; retain owner for recovery", resource.Name)
 			}
-			result.Retained = append(result.Retained, bhruntime.RetainedRuntimeResource{Resource: resource, Reason: "persistent shared data remains at its existing owned volume; no database, credential or recovery deletion"})
+			alreadyRetained := false
+			for _, retained := range result.Retained {
+				alreadyRetained = alreadyRetained || retained.Resource == resource
+			}
+			if !alreadyRetained {
+				result.Retained = append(result.Retained, bhruntime.RetainedRuntimeResource{Resource: resource, Reason: "persistent shared data remains at its existing owned volume; no database, credential or recovery deletion"})
+			}
 		}
 	}
 	containers, err := provider.ListRuntimeContainers(ctx)

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -205,6 +206,22 @@ func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, pro
 	}
 	if (enabled && running == 0) || (!enabled && running != 0) {
 		t.Fatalf("backend=%s phase=%d required=%t running=%d", service, phase, enabled, running)
+	}
+	if provider.Kind() == bhruntime.ProviderPodman {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, selected := range inventory.Services[kind] {
+			// Native rootless Quadlet uses the real user's unit directory,
+			// independently of the isolated BaseHarbor config/Target state.
+			path := filepath.Join(home, ".config", "containers", "systemd", inventory.Files.Project+"-"+selected+".container")
+			_, err := os.Lstat(path)
+			if (enabled && err != nil) || (!enabled && !os.IsNotExist(err)) {
+				t.Fatalf("backend=%s phase=%d boot definition does not match selected need: %v", service, phase, err)
+			}
+		}
+		t.Logf("rootless Podman backend=%s phase=%d actual container boot definitions match selected need=%t", service, phase, enabled)
 	}
 	t.Logf("runtime=%s backend=%s phase=%d required=%t selected running=%d actual total=%d retained owned data volumes=%d", provider.Kind(), service, phase, enabled, running, len(containers), retainedVolumes)
 }
