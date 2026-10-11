@@ -1,6 +1,6 @@
 # Unterstützte Operationen automatisieren
 
-`baha agent describe -o json` und MCP `tools/list` zeigen tatsächliche IDs, Inputs, Sicherheit und Genehmigung. Dateireferenzen gelten auf dem Host, auf dem `baha mcp serve` läuft. Test/Prod benötigen den konfigurierten authentifizierten Operator.
+`baha agent describe -o json` und MCP `tools/list` zeigen tatsächliche IDs, Inputs, Sicherheit und Genehmigung. Dateireferenzen gelten auf dem Host, auf dem `baha mcp serve` läuft. Bei unterstützten lokalen Workloads können CLI/stdio verifizierten lokalen Runtime-Zugriff ohne gesonderten OIDC-Login verwenden, auch in `test`/`prod`, wenn keine Operator-Policy oder Management-Nutzung OIDC verlangt. Remote-Zugriff, geschütztes HTTP, Tenant-Scope und ausdrücklich verwaltete Operationen behalten ihre Operator-Authentifizierung.
 
 ## Intent erzeugen und lesen
 
@@ -10,7 +10,7 @@ baha --no-input app show orders --json
 baha --no-input app list --json
 ```
 
-Das erzeugt Intent, keine Container. MCP `baseharbor.app.create` erhält einen vollständigen typisierten `intent` mit eigener stabiler Application-UUID. Discovery ist maßgeblich für Property-Namen. Bestehender Intent wird nicht überschrieben.
+Das erzeugt Intent, keine Container. MCP `baseharbor.app.create` erhält typisierten `intent` ohne `ApplicationID`: BaseHarbor vergibt und speichert die Identität bei autorisierter Erstellung und liefert sie im Ergebnis. Client-seitig gesetzte IDs werden vor Änderungen abgewiesen. Discovery ist maßgeblich für die Property-Namen des Authoring-Schemas. Bestehender Intent wird nicht überschrieben.
 
 Repository-Adoption verwendet `app init` beziehungsweise MCP `baseharbor.app.adopt`. Deployment-Inputs werden explizit konfiguriert; fehlende oder mehrdeutige Werte erzeugen Fehler statt Prompts. Quick Init bewahrt eine vorhandene Contract-Identität; Änderungen der Source bedeuten keine automatische Übernahme neuer Capabilities.
 
@@ -24,7 +24,6 @@ Die Eingabedatei außerhalb von Git vorbereiten und schützen:
   "arguments": {
     "intent": {
       "Version": 1,
-      "ApplicationID": "32e1d8df-82a9-4c38-88f4-3b69b156fab8",
       "Name": "orders",
       "Environment": "dev",
       "Services": {"SQL": true}
@@ -49,7 +48,7 @@ Für genaue MCP-Payloads, Workspace-Mapping und weitere Recipes: [kanonische Mas
 ```bash
 git clone https://github.com/mcpdev80/baseharbor-demo.git
 cd baseharbor-demo
-git checkout 37c3b91287978351d0c23643ce9782c9de224a10
+git checkout b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63
 baha app inspect .
 baha --no-input app init --quick --json
 baha app preflight --json

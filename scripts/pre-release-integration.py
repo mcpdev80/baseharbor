@@ -36,7 +36,9 @@ CHECKS = {
         ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/static/public-contracts': [
-        ['./contracts/...', './internal/machine', './internal/machinereadmodels']],
+        ['./contracts/...', './internal/machine', './internal/machinereadmodels'],
+        ['./cmd/baha', '-run', '^TestExternalProviderRemoval'],
+        ['./internal/application', '-run', '^TestExternalRemoval']],
     'integration/static/configuration-policy': [
         ['./internal/orgconfig', './internal/policy'],
         ['./cmd/baha', '-run', '^(TestOrganization|TestHTTPEnvironmentIsAnExplicitOrganizationResolverInput)']],

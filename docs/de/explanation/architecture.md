@@ -18,7 +18,7 @@ Verified Result
 
 ## Core-Installation
 
-Der BaseHarbor Core besteht verbindlich aus **SQL + Secrets + Identity**:
+Ein ausdrücklich installierter Management-Core besteht aus **SQL + Secrets + Identity**:
 PostgreSQL, OpenBao und Keycloak. Die Web Console bleibt optional und verbindet sich
 mit genau einem ausgewählten Core derselben Installation/Sicherheitsgrenze.
 Same-Origin-HTTPS ist die Standardtopologie.
@@ -28,8 +28,10 @@ Installations-ID, getrennte Capability-Zustände und echte Readiness-Prüfungen 
 Teilfehler sichtbar. Retry reconciliert eigene Ressourcen; fremde oder mehrdeutige
 Zustände werden weder übernommen noch ersetzt.
 
-Der erste Application-Flow bietet die Einrichtung bei Bedarf an und läuft danach
-weiter. Die Maschinenrolle Development/Deployment steuert Workspace-/Source-Defaults;
+Der Application-Lifecycle stellt nur angeforderte Provider und ihre echten Abhängigkeiten
+bereit. Ein unterstützter lokaler Workload ohne verwaltete Service-Anforderungen benötigt
+kein Service-Paket; ausdrücklich aktivierte Management-/Console-Verbraucher behalten
+ihre eigenen Sicherheitsabhängigkeiten. Die Maschinenrolle Development/Deployment steuert Workspace-/Source-Defaults;
 TLS und geschützte Zugangsdaten gelten in beiden Fällen.
 Gewöhnliche lokale Entwicklungsarbeit erfordert keinen interaktiven Login.
 
@@ -40,8 +42,8 @@ geprüft. Veränderte oder nicht verfügbare Bindungen blockieren bereits vor na
 Workload-Inspektion oder Mutation. Ein ausgewählter Remote-Core wird niemals
 implizit durch einen lokalen Core ersetzt.
 
-Die Core-Capabilities sind verpflichtend; Provider können shared oder pro Application
-isoliert platziert sein. Zusätzliche Isolation kann zusätzliche Instanzen und
+Die Management-Core-Abhängigkeiten bleiben während seiner Nutzung verpflichtend;
+Application-Provider können shared oder pro Application isoliert platziert sein. Zusätzliche Isolation kann zusätzliche Instanzen und
 Ressourcenverbrauch erzeugen. Messwerte müssen Topologie/Placement, stabilisierten
 Idle-Verbrauch, Startup-/Konvergenz-Peak und gleichzeitigen Core-Gesamtverbrauch nennen.
 Fehlende Messungen werden ausdrücklich als nicht verfügbar ausgewiesen.

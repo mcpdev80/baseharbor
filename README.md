@@ -30,7 +30,7 @@ on your own machine, no vendor, no lock-in.
 
 This branch documents the v0.4.25 candidate; the latest published baseline is v0.4.24. Installation binaries and published versions are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
 
-A supported local application with no managed service requirements can run without Core or login. SQL is requested explicitly; minimal Manifest v1 authoring does not require a manually entered app.id. See [candidate notes](docs/releases/v0.4.25.md).
+A supported local application with no managed service requirements can run without Core or login. SQL is requested explicitly; developer-authored Manifest v1 must omit app.id; BaseHarbor assigns the identity once. See [candidate notes](docs/releases/v0.4.25.md).
 
 ## BaseHarbor Core
 
@@ -40,8 +40,9 @@ TLS and protected credentials also apply to local development.
 
 Core bootstrap does not require an application or repository. The first application
 flow offers setup when needed and continues after verified Core readiness.
-Core capabilities are mandatory; provider placement may be shared or
-application-isolated. Additional isolation can add provider instances and resource use.
+These dependencies belong to the explicitly enabled management Core. Application
+providers are selected from requested capabilities and genuine dependencies;
+placement may be shared or application-isolated. Additional isolation can add provider instances and resource use.
 Measured memory figures must distinguish idle/stabilized usage, startup/convergence
 peak and the simultaneous Core total; unavailable measurements are reported explicitly.
 
@@ -69,9 +70,9 @@ baha up            # provision, connect, secure, verify
 baha status        # done — with evidence, not guesswork
 ```
 
-Your app ends up at a stable, verified HTTPS URL (`demo.baha.localhost`
-by default), with identity, secrets and metrics on their own canonical
-hostnames — no port hunting, no certificate setup.
+When HTTPS exposure is requested, your app receives a stable, verified HTTPS URL
+(`demo.baha.localhost` by default). Identity, secrets and metrics are provisioned
+only when selected or genuinely required by another enabled consumer.
 
 Your app receives normal bindings (`DATABASE_URL`, `REDIS_URL`,
 `S3_ENDPOINT`, `OIDC_ISSUER`, …) and keeps using its normal libraries.

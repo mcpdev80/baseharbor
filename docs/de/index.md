@@ -24,13 +24,13 @@ baha up
 baha status
 ```
 
-`baha init` übernimmt das Repository und verwendet einen vorhandenen Core oder führt durch die benötigte Einrichtung. Core bedeutet **SQL + Secrets + Identity**; die Console ist optional. `baha up` gleicht die Anwendung ab. Status unterscheidet verifizierte Readiness von einem lediglich laufenden Workload.
+`baha init` übernimmt das Repository und speichert die systemseitig vergebene Application-Identität. `baha up` stellt angeforderte Provider und ihre echten Abhängigkeiten bereit oder verwendet vorhandene. Eine unterstützte lokale Anwendung ohne angeforderte verwaltete Dienste benötigt keine unbeteiligten Service-Container und keinen Pflicht-Login. Ein ausdrücklich aktivierter Management-Core oder eine Console hat eigene Sicherheitsabhängigkeiten. Status unterscheidet verifizierte Readiness von einem lediglich laufenden Workload.
 
 ## Mit deinen gewohnten Werkzeugen entwickeln
 
 Anwendungscode und Bibliotheken bleiben erhalten. BaseHarbor erkennt unterstützte Compose-, Quadlet- und Kubernetes-Workload-Quellen, löst providerneutrale Anforderungen auf und liefert geschützte Bindings. Mehrdeutige oder [nicht unterstützte Quellen](explanation/workload-sources.md) erfordern vor dem Deployment eine konkrete nächste Aktion.
 
-## Mit gemeinsamem oder isoliertem Core betreiben
+## Mit gemeinsamen oder isolierten Providern betreiben
 
 Wähle eine unterstützte Provider-Platzierung und ein verwaltetes lokales oder registriertes Remote-Target. Ownership, TLS, Berechtigungen und erhaltene Daten bleiben im gesamten Lifecycle ausdrücklich geprüft. Die [Core-Ressourcenbeobachtungen](explanation/core-resources.md) unterscheiden gemessene Referenz-Topologien von Planungsbudgets und dem zusätzlichen Verbrauch durch Isolation.
 

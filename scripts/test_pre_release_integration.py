@@ -15,6 +15,11 @@ spec.loader.exec_module(integration)
 
 
 class ContractCheckTests(unittest.TestCase):
+    def test_public_contracts_require_aggregate_provider_transport_authority(self):
+        selections = integration.CHECKS['integration/static/public-contracts']
+        self.assertIn(['./cmd/baha', '-run', '^TestExternalProviderRemoval'], selections)
+        self.assertIn(['./internal/application', '-run', '^TestExternalRemoval'], selections)
+
     def test_candidate_label_cannot_qualify_changed_or_untracked_source(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
