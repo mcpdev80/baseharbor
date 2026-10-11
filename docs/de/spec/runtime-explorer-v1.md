@@ -31,6 +31,15 @@ Jede Ressource MUSS eine stabile Referenz mit:
 
 Runtime-native Display-Namen sind Metadaten, nicht BaseHarbor logische Identität.
 
+Clients MÜSSEN Ressourcen-IDs als opake Referenzen behandeln. Lokale, durch
+Quadlet verwaltete Podman-Container verwenden die vorhandene geschützte
+Unit-Datei als stabile Referenz, da ein gesteuerter Stop den nativen Container
+entfernen kann. Start, Stop und Neustart laufen über den systemd-Supervisor;
+Logs, Exec und Terminal verwenden den aktuell nachgewiesenen nativen Container.
+Ein fehlender Container gilt nur dann als gestoppt, wenn die vorhandene Unit
+beobachtet inaktiv oder fehlgeschlagen ist. Laufender Container und Bereitschaft
+der Anwendung bleiben getrennte Beobachtungen.
+
 ## Art der Ressourcen
 
 v1 definiert additive Ressourcenarten für:

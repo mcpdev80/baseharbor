@@ -31,6 +31,14 @@ Every resource MUST expose a stable reference containing:
 
 Runtime-native display names are metadata, not BaseHarbor logical identity.
 
+Clients MUST treat resource IDs as opaque. Local Podman containers managed by
+Quadlet use the existing protected unit definition as their stable reference,
+because a supervised stop can remove the native container. Start, stop and
+restart operate through that unit's systemd supervisor; logs, exec and terminal
+resolve its current verified native container. An absent container is reported
+as stopped only when the existing unit is observed inactive or failed. Native
+running state and application readiness remain distinct observations.
+
 ## Resource kinds
 
 v1 defines additive resource kinds for:

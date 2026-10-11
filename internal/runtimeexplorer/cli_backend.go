@@ -19,6 +19,13 @@ type DirectContainerRuntime interface {
 	DirectStream(context.Context, ...string) (io.ReadCloser, error)
 }
 
+// Native supervisors retain their existing owner identity across container recreation.
+type supervisedContainerRuntime interface {
+	ExplorerRuntimeContainers(context.Context) ([]runtimecontract.RuntimeContainer, error)
+	ExplorerContainerNativeID(context.Context, string) (string, error)
+	ExplorerOperateContainer(context.Context, string, string) (string, error)
+}
+
 type CLIContainerBackend struct {
 	runtime DirectContainerRuntime
 }
@@ -35,6 +42,9 @@ func (b *CLIContainerBackend) Kind() runtimecontract.ProviderKind {
 }
 
 func (b *CLIContainerBackend) ListRuntimeContainers(ctx context.Context) ([]runtimecontract.RuntimeContainer, error) {
+	if supervised, ok := b.runtime.(supervisedContainerRuntime); ok {
+		return supervised.ExplorerRuntimeContainers(ctx)
+	}
 	return b.runtime.ListRuntimeContainers(ctx)
 }
 
@@ -42,6 +52,11 @@ func (b *CLIContainerBackend) ContainerLogs(ctx context.Context, id string, sinc
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil, errors.New("runtime container id is required")
+	}
+	var err error
+	id, err = b.nativeContainerID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	args := []string{"container", "logs"}
 	if since != nil {
@@ -61,6 +76,16 @@ func (b *CLIContainerBackend) OperateContainer(ctx context.Context, id string, o
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return "", errors.New("runtime container id is required")
+	}
+	if supervised, ok := b.runtime.(supervisedContainerRuntime); ok && operation != OperationExec {
+		return supervised.ExplorerOperateContainer(ctx, id, string(operation))
+	}
+	if supervised, ok := b.runtime.(supervisedContainerRuntime); ok && operation == OperationExec {
+		var err error
+		id, err = supervised.ExplorerContainerNativeID(ctx, id)
+		if err != nil {
+			return "", err
+		}
 	}
 	switch operation {
 	case OperationStart:

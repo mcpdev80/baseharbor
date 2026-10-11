@@ -48,7 +48,7 @@ func (runtimeMutationAuthority) AuthorizeRuntimeMutation(ctx context.Context, re
 			valid = valid && !*actual.State.Ready && (actual.State.Observed == "exited" || actual.State.Observed == "stopped" || actual.State.Observed == "created")
 		}
 		if request.Operation != runtimeexplorer.OperationStop {
-			valid = valid && *actual.State.Ready
+			valid = valid && actual.State.Observed == "running"
 		}
 		if mutationErr != nil || observeErr != nil || err != nil || !owner.Verified || !valid {
 			return &result, &machine.Error{Code: machine.ErrorConflict, CauseCode: "runtime_mutation_partial", Message: "Runtime operation is incomplete; inspect the actual state and retained owner before retrying.", Details: struct {

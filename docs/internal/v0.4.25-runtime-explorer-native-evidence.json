@@ -27,6 +27,31 @@
           "artifact_digest": "sha256:d9a239eb6a1b1855df52f8498da93592179a991d2b6bea3f9f08bb1a84da5981"
         }
       ]
+    },
+    {
+      "candidate_sha": "48cc8fd5442a7a72644c6660602800ff25569e26",
+      "candidate_tree": "f25b9f9cdf192a83ebcb0432a9b9e0b217b21782",
+      "workflow_run_id": 38182057134,
+      "result": "FAIL",
+      "observed": "Both runtimes reject stop without both acknowledgements. Docker acknowledged stop verifies retained recovery owner; start observes running with starting health and is incorrectly rejected. Podman raw container stop bypasses Quadlet supervision, fails rootless network cleanup, and loses the original native container ID. No complete native Explorer acceptance is claimed.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114596510585,
+          "test_seconds": 40.48,
+          "artifact_id": 11718326573,
+          "artifact_digest": "sha256:edba39637623a127580a457f4ce5ac1ba1954d51a2708f8b3a96542241d5a7d0"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114596510773,
+          "test_seconds": 32.2,
+          "artifact_id": 11718606838,
+          "artifact_digest": "sha256:ff68c845a0e95e08336adad2b22fd266b61205b022b310f0397bacd247a1811b"
+        }
+      ]
     }
   ]
 }

@@ -279,7 +279,7 @@ func (s *Service) Operate(ctx context.Context, request OperationRequest) (Operat
 	if err != nil {
 		return OperationResult{}, err
 	}
-	if current.Ownership != resource.Ownership || current.Relationship != resource.Relationship || !reflect.DeepEqual(current.State, resource.State) {
+	if current.Ownership != resource.Ownership || current.Relationship != resource.Relationship || !reflect.DeepEqual(current.State, resource.State) || !reflect.DeepEqual(current.References, resource.References) {
 		return OperationResult{}, errors.New("runtime resource owner changed after acknowledgement")
 	}
 	mutationErr := ctx.Err()
@@ -348,6 +348,17 @@ func (s *Service) containerResource(ctx context.Context, container runtimecontra
 			"runtime.project": container.Project,
 			"runtime.service": container.Service,
 		},
+	}
+	if proof, ok := s.backend.(interface {
+		ContainerResourceEvidence(context.Context, string) (map[string]string, error)
+	}); ok {
+		refs, err := proof.ContainerResourceEvidence(ctx, container.ID)
+		if err != nil {
+			return Resource{}, err
+		}
+		for key, value := range refs {
+			resource.References[key] = value
+		}
 	}
 	if err := resource.Validate(); err != nil {
 		return Resource{}, err

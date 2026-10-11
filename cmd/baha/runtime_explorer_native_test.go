@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -53,5 +54,25 @@ func qualifyActualRuntimeExplorerConsent(t *testing.T, ctx context.Context, reso
 			t.Fatalf("actual acknowledged operation=%s: %+v %v", operation, result, err)
 		}
 		t.Logf("Actual native Runtime Explorer %s: state=%s, same resource ID, unchanged recovery owner, consequence receipt partial (function/transient effects unverified)", operation, result.State.Observed)
+		if operation != runtimeexplorer.OperationStop {
+			settle, cancel := context.WithTimeout(ctx, 90*time.Second)
+			for {
+				actual, inspectErr := explorer.Inspect(settle, resource.Ref)
+				if inspectErr != nil {
+					cancel()
+					t.Fatal(inspectErr)
+				}
+				if actual.State.Ready != nil && *actual.State.Ready {
+					break
+				}
+				select {
+				case <-settle.Done():
+					cancel()
+					t.Fatal("actual restarted workload did not regain native readiness")
+				case <-time.After(250 * time.Millisecond):
+				}
+			}
+			cancel()
+		}
 	}
 }

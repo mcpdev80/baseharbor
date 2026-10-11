@@ -119,3 +119,28 @@ func TestRuntimeImpactReportsPartialCommandFailureAndUnhealthyRunningStop(t *tes
 		t.Fatal("command failure lost actual partial receipt")
 	}
 }
+
+func TestRuntimeStartReportsStartingHealthWithoutInventingApplicationReadiness(t *testing.T) {
+	resource, _ := runtimeImpactFixture(t)
+	ready := false
+	resource.State = runtimeexplorer.ResourceState{Observed: "exited", Ready: &ready}
+	plan, err := planRuntimeMutation(resource, runtimeexplorer.OperationStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
+	verify, err := (runtimeMutationAuthority{}).AuthorizeRuntimeMutation(withProviderChangeConsent(t.Context(), &ack), resource, runtimeexplorer.OperationRequest{Resource: resource.Ref, Operation: runtimeexplorer.OperationStart})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := resource
+	actual.State = runtimeexplorer.ResourceState{Observed: "running", Health: "starting", Ready: &ready}
+	receipt, err := verify(t.Context(), actual, nil)
+	if err != nil || receipt == nil || receipt.Status != "partial" || *actual.State.Ready {
+		t.Fatalf("native start conflated with application readiness: %+v %v", receipt, err)
+	}
+	actual.State.Observed = "exited"
+	if _, err := verify(t.Context(), actual, nil); err == nil {
+		t.Fatal("absent running state reported as successful start")
+	}
+}
