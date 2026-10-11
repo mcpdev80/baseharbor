@@ -129,6 +129,22 @@ Unmanaged and external resources MUST NOT be treated as BaseHarbor-owned for mut
 
 All machine-facing mutations remain subject to the shared Machine Operator Authorization, policy, safety and audit boundaries.
 
+Before a direct `start`, `stop` or `restart`, the configured Runtime Explorer
+service requires the existing Target/deployment consequence authority. Both
+`runtime.operate` and the individual machine operations accept
+`provider_change_consent` with the current displayed scope `plan_id`, `first`
+and `second` acknowledgements. Unknown cross-consumer, transient-data, access,
+renewal and recovery effects require **Achtung** and both acknowledgements;
+ordinary operation approval does not replace either stage. Changed native
+state, Target binding or recovery-owner bytes invalidate the prior plan.
+
+The result includes the shared `provider_change_result`. It reports observed
+native state and retained owner evidence; unknown function/material effects
+remain partial. A failed backend command still triggers observation and partial
+result projection. Direct service callers cannot omit the authority hook. This
+contract does not claim that native stop restores authentication, data recovery
+or availability, or that restart preserves in-flight work.
+
 ## Logs and metrics
 
 Log access uses a stable runtime resource reference and optional bounded history selectors.

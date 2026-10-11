@@ -171,6 +171,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if err != nil || strings.TrimSpace(body) != "ready" {
 		t.Fatalf("real HTTP probe: %q %v", body, err)
 	}
+	qualifyActualRuntimeExplorerConsent(t, ctx, resolved)
 	if environment == "prod" {
 		qualifyActualLocalStdioWorkloadAuthority(t, ctx, target, m)
 	}

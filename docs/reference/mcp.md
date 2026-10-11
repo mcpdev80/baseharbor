@@ -86,9 +86,9 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.runtime.list` | `read_only` | true | false |
 | `baseharbor.runtime.inspect` | `read_only` | true | false |
 | `baseharbor.runtime.metrics` | `read_only` | true | false |
-| `baseharbor.runtime.start` | `mutating` | true | false |
-| `baseharbor.runtime.stop` | `mutating` | true | false |
-| `baseharbor.runtime.restart` | `mutating` | true | false |
+| `baseharbor.runtime.start` | `mutating` | true | true |
+| `baseharbor.runtime.stop` | `mutating` | true | true |
+| `baseharbor.runtime.restart` | `mutating` | true | true |
 | `baseharbor.app.list` | `read_only` | false | false |
 | `baseharbor.inspect` | `read_only` | false | false |
 | `baseharbor.workspace.list` | `read_only` | false | false |

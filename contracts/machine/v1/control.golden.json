@@ -580,7 +580,7 @@
             "id": "runtime.start",
             "description": "Start one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.start"
@@ -589,7 +589,7 @@
             "id": "runtime.stop",
             "description": "Stop one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.stop"
@@ -598,7 +598,7 @@
             "id": "runtime.restart",
             "description": "Restart one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.restart"

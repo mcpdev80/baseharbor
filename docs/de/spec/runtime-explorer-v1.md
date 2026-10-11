@@ -129,6 +129,24 @@ Nicht verwaltete und externe Ressourcen MÜSSEN NICHT als BaseHarbor-eigene Muta
 
 Alle maschinenseitigen Mutationen unterliegen weiterhin der gemeinsamen Maschinenbediener-Genehmigungs-, Richtlinien-, Sicherheits- und Audit-Grenze.
 
+Vor direktem `start`, `stop` oder `restart` verlangt der konfigurierte Runtime
+Explorer die bestehende Folgen- und Bestätigungsautorität des Targets und
+Deployments. `runtime.operate` und die einzelnen Maschinenoperationen nehmen
+`provider_change_consent` mit der aktuellen Scope-`plan_id` und den zwei
+Bestätigungen `first` und `second` entgegen. Unbekannte Folgen für andere
+Verbraucher, flüchtige Daten, Zugriff, Erneuerung oder Recovery erfordern
+**Achtung** und beide Bestätigungen. Normale Operationsfreigabe ersetzt keine
+Stufe. Veränderte native Zustände, Target-Bindings oder Recovery-Owner machen
+den vorherigen Plan ungültig.
+
+Das Ergebnis enthält den gemeinsamen `provider_change_result` mit beobachtetem
+Runtime-Zustand und geprüftem erhaltenem Owner. Unbekannte Funktions- und
+Materialfolgen bleiben unvollständig. Auch nach einem fehlgeschlagenen nativen
+Befehl werden tatsächlicher Zustand und Teilergebnis ermittelt. Direkte
+Service-Aufrufe können die Autorität nicht umgehen. Ein Runtime-Stop beweist
+weder funktionierende Authentifizierung noch Recovery oder Verfügbarkeit;
+Restart garantiert keinen Erhalt laufender Arbeit.
+
 ## Protokolle und Metriken
 
 Der Protokollzugriff verwendet eine stabile Laufzeit-Ressource-Referenz und optional gebundene Historien-Selektoren.
