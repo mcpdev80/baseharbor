@@ -40,7 +40,7 @@ func validateProviderConsent(planID string, confirmations int, destructive bool,
 // not schedule or mutate; the existing lifecycle replans and obtains fresh
 // consent if the resulting plan changes. Applied outcomes are not replayed.
 func PendingProviderChanges(plan ProviderImpactPlan, result ProviderChangeResult) ([]ProviderChangeRequest, error) {
-	if result.PlanID != plan.PlanID {
+	if result.Version != ProviderImpactVersion || result.PlanID != plan.PlanID {
 		return nil, &ProviderChangeError{Code: "stale-impact-result"}
 	}
 	validated, err := RecordProviderChangeResult(plan, result.Outcomes)
@@ -72,7 +72,7 @@ func PendingProviderChanges(plan ProviderImpactPlan, result ProviderChangeResult
 			for _, m := range impact.Materials {
 				done := false
 				for _, got := range actual[impact.InstanceID+"/"+impact.Operation].Materials {
-					if got.MaterialID == m.Before.ID && got.Verified && got.Evidence != "" && got.Disposition == m.After.Disposition && sameLocation(got.Location, m.After.Destination) && sameAccess(got.Access, m.After.AccessAfter) && recoveryPreserved(expectedMaterialRecovery(m, plan.Impacts), got.Recovery) {
+					if materialOutcomeMatches(got, m, plan.Impacts) {
 						done = true
 					}
 				}

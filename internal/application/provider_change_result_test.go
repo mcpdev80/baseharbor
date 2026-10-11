@@ -139,3 +139,60 @@ func TestProviderImpactRetryIncludesIncompleteAccessAndRecovery(t *testing.T) {
 		t.Fatal("verified complete material handoff replayed")
 	}
 }
+
+func TestProviderImpactUnknownMaterialCannotCompleteOrLeaveRetry(t *testing.T) {
+	s, u, o := impactFixture(t)
+	fact := o.Providers["identity"]
+	fact.Materials[0].Location = nil
+	o.Providers["identity"] = fact
+	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateProviderChangeConsent(plan, ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: true}); err != nil {
+		t.Fatal("unknown material must allow the acknowledged change", err)
+	}
+	actual := appliedOutcome(plan.Impacts[0])
+	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" {
+		t.Fatalf("unknown material became verified completion: %+v %v", result, err)
+	}
+	pending, err := PendingProviderChanges(plan, result)
+	if err != nil || len(pending) != 1 || len(pending[0].Materials) != 1 {
+		t.Fatalf("unknown material disappeared from retry: %+v %v", pending, err)
+	}
+}
+
+func TestProviderImpactRetryRejectsForeignReceiptVersion(t *testing.T) {
+	s, u, o := impactFixture(t)
+	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{appliedOutcome(plan.Impacts[0])})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.Version = "unrecognized-receipt/v1"
+	if _, err := PendingProviderChanges(plan, result); err == nil {
+		t.Fatal("unrecognized receipt suppressed planned operations")
+	}
+}
+
+func TestProviderImpactUnexpectedMaterialLocationRemainsPending(t *testing.T) {
+	s, u, o := impactFixture(t)
+	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop", Materials: []MaterialDisposition{{MaterialID: "data/identity", Disposition: "revoked", Supported: true}}}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := appliedOutcome(plan.Impacts[0])
+	actual.Materials[0].Location = plan.Impacts[0].Materials[0].Before.Location
+	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" || result.Outcomes[0].Materials[0].Location == nil {
+		t.Fatalf("unexpected actual location lost or marked complete: %+v %v", result, err)
+	}
+	pending, err := PendingProviderChanges(plan, result)
+	if err != nil || len(pending) != 1 || len(pending[0].Materials) != 1 {
+		t.Fatalf("mismatched final location vanished from retry: %+v %v", pending, err)
+	}
+}

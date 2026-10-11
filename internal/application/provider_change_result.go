@@ -166,14 +166,19 @@ func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact, aggr
 	}
 	for _, m := range imp.Materials {
 		got, exists := actual[m.Before.ID]
-		if !exists || !got.Verified || got.Evidence == "" || got.Disposition != m.After.Disposition || !recoveryPreserved(expectedMaterialRecovery(m, aggregate), got.Recovery) {
-			return false
-		}
-		if !sameAccess(m.After.AccessAfter, got.Access) || (m.After.Destination != nil && (got.Location == nil || *got.Location != *m.After.Destination)) {
+		if !exists || !materialOutcomeMatches(got, m, aggregate) {
 			return false
 		}
 	}
 	return true
+}
+
+// Final receipts and retry exclusion use the same actual material checks.
+// An acknowledged unknown disposition permits execution, never completion.
+func materialOutcomeMatches(got MaterialOutcome, expected MaterialConsequence, aggregate []ProviderImpact) bool {
+	return got.MaterialID == expected.Before.ID && got.Disposition != "unknown" && got.Verified && got.Evidence != "" &&
+		got.Disposition == expected.After.Disposition && sameLocation(got.Location, expected.After.Destination) &&
+		sameAccess(got.Access, expected.After.AccessAfter) && recoveryPreserved(expectedMaterialRecovery(expected, aggregate), got.Recovery)
 }
 
 func sameLocation(a, b *ResourceLocation) bool {

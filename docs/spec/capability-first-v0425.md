@@ -346,6 +346,9 @@ Retry retains selected consumer actions and obtains consent against the fresh pl
 A material step is complete for retry only when its verified disposition, final
 location, delivery/access references and preserved recovery references all match;
 the correct destination alone cannot hide an incomplete secure handoff.
+Final receipts and retry exclusion use the same material checks. An unknown
+material disposition remains unfinished even when the adapter verifies that
+uncertainty; acknowledging the change does not establish material completion.
 Recovery references follow explicitly selected owned backup transfers/deletions
 across the aggregate plan. A complete owned deletion may include its inventoried
 backups with destructive consent; unselected or foreign recovery stays protected.

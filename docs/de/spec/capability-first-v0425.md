@@ -369,6 +369,9 @@ Ein Materialschritt gilt bei Wiederholung erst als erledigt, wenn geprüfte
 Disposition, Endstandort, Zustellungs-/Zugriffsreferenzen und erhaltene
 Recovery-Referenzen übereinstimmen; das richtige Ziel allein verdeckt keine
 unvollständige sichere Übergabe.
+Abschlussbelege und Wiederholungsausschluss verwenden dieselben Materialprüfungen.
+Eine unbekannte Materialdisposition bleibt unerledigt, auch wenn der Adapter diese
+Unsicherheit bestätigt; die Zustimmung zur Änderung belegt keinen Materialabschluss.
 Recovery-Referenzen folgen ausdrücklich gewählten eigenen Backup-Übergaben oder
 -Löschungen im aggregierten Plan. Eine vollständige eigene Löschung darf inventarisierte
 Backups mit destruktiver Zustimmung einschließen; nicht gewählte oder fremde
