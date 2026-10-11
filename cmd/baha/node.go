@@ -105,7 +105,7 @@ func nodeCommand() *cli.Command {
 			{Name: "connect", Summary: "Enroll this host and start the rootless connector service", Usage: "baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]", Run: nodeConnect},
 			{Name: "list", Summary: "List configured remote connector nodes", Usage: "baha node list [--json]", Run: nodeList},
 			{Name: "status", Summary: "Inspect Core enrollment state for a remote node", Usage: "baha node status TARGET [--json]", Run: nodeStatus},
-			{Name: "disconnect", Summary: "Revoke a node identity and remove its empty Target registration", Usage: "baha node disconnect TARGET --yes [--json]", Run: nodeDisconnect},
+			{Name: "disconnect", Summary: "Revoke node access after impact acknowledgement and retain recovery owners", Usage: "baha node disconnect TARGET --yes [--json]", Run: nodeDisconnect},
 		},
 	}
 }
@@ -660,24 +660,10 @@ func nodeDisconnect(ctx context.Context, args []string, out, errOut io.Writer) e
 	if !yes {
 		return machine.NewError(machine.ErrorApprovalRequired, "node disconnect requires explicit approval", "Re-run with --yes after reviewing the Target.", false)
 	}
-	record, err := loadNodeRecord(positional[0])
-	if err != nil {
-		return err
+	if deployment.ValidateTargetName(positional[0]) != nil {
+		return nodeDisconnectOwnerError()
 	}
-	if _, err := requestNodeLifecycle(ctx, record, targetenrollment.DisconnectPath); err != nil {
-		return err
-	}
-	if _, err := deleteTargetDefinition(ctx, record.TargetID); err != nil {
-		return fmt.Errorf("node identity revoked but Target cleanup failed: %w", err)
-	}
-	path, _ := nodeRecordPath(record.TargetID)
-	_ = os.Remove(path)
-	result := map[string]any{"contract_version": machine.ContractVersion, "target_id": record.TargetID, "node_id": record.NodeID, "revoked": true, "deleted": true}
-	if format == outputJSON {
-		return writeJSON(out, result)
-	}
-	fmt.Fprintf(out, "Node %s disconnected and Target %s removed.\n", record.NodeID, record.TargetID)
-	return nil
+	return runNodeDisconnectWithImpact(ctx, positional[0], format, out)
 }
 
 func nodeConnect(ctx context.Context, args []string, out, errOut io.Writer) error {

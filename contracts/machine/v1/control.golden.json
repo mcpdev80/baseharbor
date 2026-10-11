@@ -452,7 +452,7 @@
           },
           {
             "id": "node.disconnect",
-            "description": "Revoke a remote node identity before removing its empty Target registration.",
+            "description": "Revoke remote node access after concrete impact acknowledgement and preserve registration/recovery owners.",
             "safety": "destructive",
             "confirmation_required": true,
             "policy_required": false,

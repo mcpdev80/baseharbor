@@ -83,7 +83,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha node` | Enroll and manage remote Docker or Podman nodes | `baha node [add\|connect\|list\|status\|disconnect]` | [↗](applications.md) |
 | `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] [--target NAME] --runtime docker\|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
 | `baha node connect` | Enroll this host and start the rootless connector service | `baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]` | [↗](applications.md) |
-| `baha node disconnect` | Revoke a node identity and remove its empty Target registration | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
+| `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |

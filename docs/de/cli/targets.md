@@ -60,14 +60,18 @@ baha node connect /path/to/node-a.json
 
 Der Connector erzeugt seinen privaten Schlüssel ausschließlich lokal, verwendet die bestehende Bootstrap-API und baut anschließend die outbound-initiierte mTLS-Verbindung als rootless User-Service auf. Token und Nonce werden weder als Prozessargumente noch in Logs ausgegeben. Non-TTY-Automation verwendet die expliziten Optionen aus `baha node add --help` und fragt niemals interaktiv nach.
 
-Zum Entfernen wird zuerst der Zustand geprüft und anschließend die Sperrung ausdrücklich bestätigt:
+Zum Trennen wird der Zustand geprüft und der konkrete aktuelle Plan in zwei ausdrücklichen Schritten bestätigt:
 
 ```bash
 baha node status node-a
 baha node disconnect node-a --yes
 ```
 
-Der Core widerruft die Connector-Zulassung, bevor das leere Target entfernt wird. Ein altes, weiterhin CA-vertrauenswürdiges Zertifikat kann sich dadurch nicht unbemerkt erneut verbinden. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
+Disconnect widerruft den Connector-Zugang und übergibt sein aktuelles Zertifikat zum Widerruf an den Aussteller. Target-Definition, Node-Registrierung, Provider-Bindings und Deployment-Recovery bleiben erhalten. Native Workloads, Provider-Daten und fremde Infrastruktur werden nicht gelöscht; erhaltenes Material belegt keinen weiter funktionierenden Service-Zugang.
+
+Prüfe den aktuellen konkreten Plan vor der Bestätigung. `--yes` und MCP `approval=true` geben nur den allgemeinen Auftrag frei. Unbekannte Remote-Folgen und der Verlust des Steuerungszugangs erfordern **Achtung** und zwei getrennte ausdrückliche Bestätigungen dieses Plans. JSON-Clients verwenden `BASEHARBOR_PROVIDER_CHANGE_CONSENT` für einen vertrauenswürdigen CLI-Aufruf; MCP verwendet `provider_change_consent`. Ohne Bestätigungen wird der strukturierte Plan ohne Widerruf zurückgegeben. Core-HTTP-Clients erhalten den maßgeblichen Plan über `POST /api/v1/connectors/disconnect-plan` und bestätigen dessen aktuelle Scope-ID über `POST /api/v1/connectors/disconnect`; der Plan-Endpunkt führt übermittelte Bestätigungen nie aus.
+
+Das Ergebnis trennt Zugangswiderruf, Zertifikatswiderruf, erhaltene Eigentümer und ungeprüfte Remote-Daten/-Zugänge. Fehler beim Aussteller oder bei der Recovery-Prüfung bleiben Teilergebnisse; der Eigentümer bleibt für einen erneut geprüften Versuch erhalten. CLI/MCP verbinden bekannte lokale Recovery-Eigentümer mit dem authentifizierten Core-Plan; direktes Core-HTTP deckt dessen eigene maßgebliche Eigentümer ab. Ein Wiederanschluss benötigt das vorhandene autorisierte Enrollment-/Renewal-Verfahren und umgeht mTLS nicht. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
 
 `--provider` bleibt Alias von `--runtime-provider`; nicht lokaler Zugriff braucht einen ausdrücklichen `--access-provider`.
 

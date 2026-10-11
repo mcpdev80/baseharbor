@@ -71,14 +71,18 @@ baha node connect /path/to/node-a.json
 
 The remote command consumes the bundle through the existing Connector bootstrap API, keeps the private key local, installs the rootless user service, and establishes outbound mTLS. Token and nonce values are never accepted as process arguments or written to logs. For automation, provide the explicit `node add` options shown by `--help`; non-TTY mode never prompts.
 
-To retire a node, inspect it first and then explicitly approve revocation:
+To disconnect a node, inspect its state and review both explicit acknowledgements of the concrete current plan:
 
 ```bash
 baha node status node-a
 baha node disconnect node-a --yes
 ```
 
-Disconnect revokes Core admission before the empty Target registration is removed. An old CA-trusted connector certificate therefore cannot silently reconnect.
+Disconnect revokes Connector admission and submits its current certificate for issuer revocation. It preserves the Target definition, node registration, provider bindings and deployment recovery owners. Native workloads, provider data and foreign infrastructure are not destroyed; retained material does not prove continued service access.
+
+Review the current concrete plan before confirming. `--yes` and MCP `approval=true` provide ordinary operation approval only. Unknown remote consequences and loss of control access require **Achtung** and two independently explicit acknowledgements of that plan. JSON clients supply `BASEHARBOR_PROVIDER_CHANGE_CONSENT` for a trusted CLI invocation; MCP uses `provider_change_consent`. Missing consent returns the structured plan without revocation. Core HTTP callers obtain the authoritative plan through `POST /api/v1/connectors/disconnect-plan` and acknowledge its current scope ID through `POST /api/v1/connectors/disconnect`; the plan route never executes supplied consent.
+
+The result separates admission revocation, certificate revocation, retained owners and unverified remote data/access. A partial issuer or recovery failure remains partial and retains the owner needed for a newly reviewed retry. CLI/MCP aggregate known local recovery owners with the authenticated Core plan; direct Core HTTP covers its own authoritative owners. Reconnection needs existing authorized enrollment/renewal and never bypasses mTLS.
 
 Kubernetes/OpenShift can use native API access without a Node Connector:
 
