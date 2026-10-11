@@ -36,6 +36,36 @@
           "artifact_digest": "sha256:3d5685e3e8738be11e199360f6aeb9f95d854ed4756da2f4d6d6f49691396d9b"
         }
       ]
+    },
+    {
+      "candidate_sha": "a4386364c4c44a6ed02dfd5970caadc6eeaf1ed5",
+      "candidate_tree": "d760c3dcb0f71db966e922e0eaa84b72ce717806",
+      "workflow_run_id": 38157648282,
+      "workflow_run_attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "On both engines, actual messaging queue/pubsub/stream semantic readiness and confirmed durable message publish succeed under the real application TLS trust and consumer credentials. Selective removal converges two selected containers to zero while preserving one owned data volume; re-add restores identical original consumer credentials and delivers the original persistent message, which is acknowledged. Actual document database insert/read succeeds through TLS and application credentials; selective removal converges its one selected container to zero with its owned data volume retained, and re-add reads the original document under identical credentials/database. Canonical application IDs and verified deployment records remain, unrelated Core/provider realization is rejected. Podman native container boot definitions are present/absent/present. Each isolated cleanup asserts zero containers.",
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114523821063,
+          "test_seconds": 170.93,
+          "messaging_seconds": 91.73,
+          "document_seconds": 79.2,
+          "artifact_id": 11709322072,
+          "artifact_digest": "sha256:1fd2608c3a2e99ae007edd3b012dfccec08e80800c3c9d79fab020633d521363"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114523821260,
+          "test_seconds": 146.74,
+          "messaging_seconds": 76.92,
+          "document_seconds": 69.82,
+          "artifact_id": 11709426718,
+          "artifact_digest": "sha256:b797d4cce665306aa219ac097e8888b471ac939fc42146491d136faf31dcb0af"
+        }
+      ]
     }
-  ]
+  ],
+  "qualified_scope": "Exact-source isolated application-scoped messaging and document database add/remove/re-add, actual TLS-authenticated retained message/document and consumer credentials, selected native container/boot retirement, retained volumes, stable canonical IDs/verified deployment and owned cleanup. Shared all-family consumer transitions, universal mutations, authenticated ecosystem matrix and complete pre-release remain unqualified."
 }

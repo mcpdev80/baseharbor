@@ -698,19 +698,7 @@ func writeBinding(dir string, values map[string]string) error {
 }
 
 func writeOwnerOnlyFile(path string, content []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, content, 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writePrivateRuntimeOwnerFile(path, content)
 }
 
 func readRuntimeEnv(path string) (map[string]string, error) {

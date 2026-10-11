@@ -163,6 +163,35 @@
           "artifact_digest": "sha256:c189ad01cee4dc7058a41e1aa75e9c02539ba973979cec839b7f61bfa7b3b72d"
         }
       ]
+    },
+    {
+      "candidate_sha": "0027a6a96f45ccc863ee174373ff4edc68001a37",
+      "candidate_tree": "57420ef110d77dbb7b68dec98811eab21c17b6b4",
+      "workflow_run_id": 38157155281,
+      "workflow_run_attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Both engines repeat the complete single-app and two-app shared SQL/cache lifecycle with distinct consumer markers and unchanged original credentials, retained owned data volumes and expanded provider environment. The data probe no longer exec-replaces its cleanup shell; after every actual TLS-authenticated consumer operation it verifies absence of its temporary trust files in the actual selected native service. Native Podman container boot definitions match required/disabled phases, and owned cleanup asserts zero containers.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114522383888,
+          "test_seconds": 326.34,
+          "sql_seconds": 171.62,
+          "cache_seconds": 154.71,
+          "artifact_id": 11709735607,
+          "artifact_digest": "sha256:399ed7dbad78eea44c4a3fbc7628ea8c635252dc167f87f4464321f2b288aa4a"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114522383982,
+          "test_seconds": 327.56,
+          "sql_seconds": 166.05,
+          "cache_seconds": 161.51,
+          "artifact_id": 11709471127,
+          "artifact_digest": "sha256:268796eb10ebf91d24c956558ef7a61607899f4da0052392b68c389dbd58e7ec"
+        }
+      ]
     }
   ],
   "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate.",
