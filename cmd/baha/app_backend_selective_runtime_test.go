@@ -168,13 +168,16 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 			qualifySelectedBackendData(t, ctx, provider, resolved, inventory, service, phase, &originalConsumer)
 		}
 		assertSelectedBackendNativeInventory(t, ctx, provider, resolved, inventory, service, phase, enabled, len(volumes))
+		if phase == 2 {
+			qualifySharedBackendConsumers(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
+		}
 		if data, err := os.ReadFile("baseharbor.yaml"); err != nil || strings.Contains(string(data), initialized.Manifest.ApplicationID) {
 			t.Fatal("backend lifecycle wrote a developer-supplied ID into authored intent")
 		}
 	}
 }
 
-func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, resolved resolvedApplication, inventory application.SharedBackendInventory, service string, phase int, enabled bool, retainedVolumes int) {
+func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, resolved resolvedApplication, inventory application.SharedBackendInventory, service string, phase int, enabled bool, retainedVolumes int, siblings ...resolvedApplication) {
 	t.Helper()
 	kind := capability.ProviderPostgreSQL
 	if service == "cache" {
@@ -203,7 +206,13 @@ func assertSelectedBackendNativeInventory(t *testing.T, ctx context.Context, pro
 			}
 		}
 		workload := bhruntime.ProjectResource{Kind: "container", Name: appFiles.Project + "-api-1"}
-		if !matched && !bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, appFiles.Project, workload) {
+		matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, appFiles.Project, workload)
+		for _, sibling := range siblings {
+			files := application.RuntimeFilesFor(sibling.Store, sibling.Manifest)
+			resource := bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}
+			matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource)
+		}
+		if !matched {
 			t.Fatalf("unrequested runtime realization: project=%s service=%s", container.Project, container.Service)
 		}
 	}

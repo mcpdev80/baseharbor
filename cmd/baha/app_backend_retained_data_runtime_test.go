@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,11 +55,12 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 	input := append([]byte(binding.Password+"\n"), ca...)
 	defer clear(input)
 	const trustScript = "IFS= read -r password || exit 1\ntrust=$(mktemp /tmp/baha-retained-data-ca.XXXXXX) || exit 1\ntrap 'rm -f \"$trust\"' EXIT\ncat >\"$trust\"\n"
+	marker := fmt.Sprintf("retained-%x", sha256.Sum256([]byte(resolved.Manifest.ApplicationID)))
 	var result string
 	if service == "sql" {
 		query := "SELECT value FROM public.baha_retained_data_marker"
 		if phase == 0 {
-			query = "CREATE TABLE public.baha_retained_data_marker(value text NOT NULL); INSERT INTO public.baha_retained_data_marker VALUES ('retained'); SELECT value FROM public.baha_retained_data_marker"
+			query = fmt.Sprintf("CREATE TABLE public.baha_retained_data_marker(value text NOT NULL); INSERT INTO public.baha_retained_data_marker VALUES ('%s'); SELECT value FROM public.baha_retained_data_marker", marker)
 		}
 		script := trustScript + "export PGPASSWORD=\"$password\" PGSSLMODE=verify-full PGSSLROOTCERT=\"$trust\" PGCONNECT_TIMEOUT=5\nexec psql --no-psqlrc -h \"$1\" -p \"$2\" -U \"$3\" -d \"$4\" -Atq -v ON_ERROR_STOP=1 -c \"$5\""
 		result, err = provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, input, services[0], "sh", "-ec", script, "--", host, port, binding.Username, binding.Database, query)
@@ -68,7 +70,7 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 		args := []string{host, port, binding.Username, command, key}
 		if phase == 0 {
 			args[3] = "SET"
-			args = append(args, "retained")
+			args = append(args, marker)
 		}
 		script := trustScript + "export VALKEYCLI_AUTH=\"$password\"\nexec valkey-cli --no-auth-warning --tls --cacert \"$trust\" -h \"$1\" -p \"$2\" --user \"$3\" --raw \"$4\" \"$5\" ${6:+\"$6\"}"
 		result, err = provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, input, services[0], append([]string{"sh", "-ec", script, "--"}, args...)...)
@@ -76,7 +78,7 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 	if err != nil {
 		t.Fatal("actual consumer-authenticated backend data operation failed")
 	}
-	expected := "retained"
+	expected := marker
 	if service == "cache" && phase == 0 {
 		expected = "OK"
 	}
