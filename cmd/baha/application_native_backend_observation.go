@@ -32,7 +32,7 @@ func retainedApplicationBackendIntent(resolved resolvedApplication) (application
 		intent = json.RawMessage(previous)
 	}
 	var m application.Manifest
-	if len(intent) == 0 || json.Unmarshal(intent, &m) != nil || m.ApplicationID != resolved.Manifest.ApplicationID || m.Name != resolved.Manifest.Name || m.Environment != resolved.Manifest.Environment {
+	if len(intent) == 0 || json.Unmarshal(intent, &m) != nil || m.ApplicationID != resolved.Manifest.ApplicationID || m.Environment != resolved.Manifest.Environment {
 		return application.Manifest{}, invalidProviderConsumerInventory(fmt.Errorf("native backend intent differs from deployment owner"))
 	}
 	return m, m.Validate()
@@ -44,10 +44,14 @@ func nativeBackendInventory(resolved resolvedApplication) (application.RuntimeFi
 		return application.RuntimeFiles{}, prior, nil, err
 	}
 	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
-	if err := application.CheckExistingNativeBackendInventory(files, prior, resolved.Manifest); err != nil {
+	intents, err := nativeBackendOwnerIntents(resolved)
+	if err != nil {
 		return files, prior, nil, err
 	}
-	resources, err := application.NativeBackendResources(prior, files)
+	if err := application.CheckExistingNativeBackendInventory(files, intents...); err != nil {
+		return files, prior, nil, err
+	}
+	resources, err := nativeBackendOwnedResourceUnion(intents, files, nil)
 	return files, prior, resources, err
 }
 
@@ -55,7 +59,7 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 	if isRemoteApplication(resolved) {
 		return
 	}
-	files, prior, expected, err := nativeBackendInventory(resolved)
+	files, _, expected, err := nativeBackendInventory(resolved)
 	if err != nil {
 		return
 	}
@@ -74,8 +78,12 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 	if err != nil {
 		return
 	}
+	intents, err := nativeBackendOwnerIntents(resolved)
+	if err != nil {
+		return
+	}
 	for _, instance := range registry.Instances {
-		resources, err := application.NativeBackendInstanceResources(prior, files, instance)
+		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
 		if err != nil {
 			continue
 		}

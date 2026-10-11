@@ -42,7 +42,7 @@ func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider b
 		cleanupCtx, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 2*time.Minute)
 		defer cancel()
 		inSelectiveIdentityRepository(t, siblingRoot, func() {
-			if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
 				t.Errorf("shared backend sibling cleanup: %v", err)
 			}
 		})

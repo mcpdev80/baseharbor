@@ -292,17 +292,21 @@ func removedApplicationProviderBindings(resolved resolvedApplication) ([]capabil
 	return removed, nil
 }
 
-func checkRetainedApplicationProviderOwnership(resolved resolvedApplication) error {
+func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved resolvedApplication) error {
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
 		return err
 	}
+	facts := observeApplicationProviderFacts(ctx, resolved)
 	for _, instance := range registry.Instances {
 		if instance.Scope != capability.ScopeApplication || instance.OwnerApplicationID != resolved.Manifest.ApplicationID || (instance.OwnerEnvironment != "" && instance.OwnerEnvironment != resolved.Manifest.Environment) {
 			continue
 		}
 		if len(registry.BindingsForProviderInstance(instance.ID)) == 0 {
-			return &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_reclamation_required", Resource: instance.ID, Message: "An unused application-owned provider still has retained ownership and may contain data.", Next: "Restore its original capability and placement before explicit destroy; separate ownership-checked reclamation is deferred by #872."}
+			fact, verified := facts[instance.ID]
+			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || fact.Containers.Value == nil {
+				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available."}
+			}
 		}
 	}
 	return nil
@@ -314,8 +318,13 @@ func observeApplicationProviderFacts(ctx context.Context, resolved resolvedAppli
 	facts := observeIdentityProviderFacts(ctx, resolved)
 	observeSharedBackendProviderFacts(ctx, resolved, facts)
 	observeBrokerProviderFacts(ctx, resolved, facts)
-	observeNativeBackendProviderFacts(ctx, resolved, facts)
 	observeApplicationBrokerFacts(ctx, resolved, facts)
-	observeApplicationExposureFacts(ctx, resolved, facts)
+	owners, err := applicationRuntimeOwners(resolved)
+	if err == nil {
+		for _, owner := range owners {
+			observeNativeBackendProviderFacts(ctx, owner, facts)
+			observeApplicationExposureFacts(ctx, owner, facts)
+		}
+	}
 	return facts
 }

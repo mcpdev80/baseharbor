@@ -102,7 +102,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 			return
 		}
 		files := application.RuntimeFilesFor(current.Store, current.Manifest)
-		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
 			t.Errorf("application backend cleanup: %v", err)
 		}
 		if _, err := os.Lstat(files.Compose); err == nil {

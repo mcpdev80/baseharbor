@@ -92,7 +92,7 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 		} else if !os.IsNotExist(inspectErr) {
 			t.Errorf("partial backend cleanup ownership inspection: %v", inspectErr)
 		}
-		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
 			t.Errorf("isolated backend app cleanup: %v", err)
 		}
 		if inventory.Files.Project != "" {

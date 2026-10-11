@@ -94,7 +94,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					return
 				}
 				defer os.Chdir(previous)
-				if err := runWithIO(machineNoninteractiveContext(cleanupCtx), []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+				if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(cleanupCtx)); err != nil {
 					parent.Errorf("isolated %s cleanup: %v", kind, err)
 				}
 			})

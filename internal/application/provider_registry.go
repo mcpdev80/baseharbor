@@ -249,6 +249,21 @@ func ReleaseApplicationProviderRegistry(m Manifest) error {
 	return ReleaseApplicationProviderRegistryAt(dataDir, m)
 }
 
+// Release runtime consumer references while preserving every existing owner.
+// External resources are never deletion targets of reference release.
+func ReleaseApplicationProviderReferencesAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	return store.Update(func(registry *capability.Registry) error {
+		instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		registry.Instances = instances
+		return nil
+	})
+}
+
 func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {

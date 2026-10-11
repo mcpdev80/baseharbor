@@ -119,8 +119,8 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
-		{Name: "retained provider ownership", Run: func(context.Context) error {
-			return checkRetainedApplicationProviderOwnership(e.resolved)
+		{Name: "retained provider ownership", Run: func(ctx context.Context) error {
+			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
 		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
@@ -170,7 +170,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return err
 		}})
 	}
-	if m.Services.Secrets {
+	if e.fullReset && m.Services.Secrets {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {

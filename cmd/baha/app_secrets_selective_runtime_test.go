@@ -98,7 +98,7 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 				t.Errorf("isolated Secrets broker retirement: %v", err)
 			}
 		}
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
 			t.Errorf("isolated Secrets workload cleanup: %v", err)
 		}
 		if inspectErr == nil {
@@ -259,5 +259,10 @@ func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 		}
 		t.Logf("runtime=%s Secrets phase=%d need=%t actual provider=%d broker=%d total=%d retained owned data volumes=%d; stable system ID and verified deployment", provider.Kind(), phase, enabled, providerCount, brokerCount, len(containers), len(volumes))
 	}
+	current, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualifySecretsDefaultRuntimeRetirement(t, ctx, provider, root, current, originalSecret, originalEnv, volumes)
 	t.Log("generated app secret actually read before removal and after re-add: protected retained value unchanged, no plaintext output")
 }

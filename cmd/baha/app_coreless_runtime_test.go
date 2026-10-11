@@ -103,7 +103,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
-		if err := runWithIO(machineNoninteractiveContext(cleanupCtx), []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(cleanupCtx)); err != nil {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
@@ -181,8 +181,8 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 		}
 		assertCorelessHost(t, ctx, runtime, target)
 	}
-	if _, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || found {
-		t.Fatalf("destroy left deployment registry entry: %v", err)
+	if record, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil || !found || record.Observed.State != "runtime-retired" || record.Observed.Ready || record.Identity != resolved.DeploymentIdentity {
+		t.Fatalf("default destroy lost canonical recovery owner: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("destroy removed authored intent: %v", err)

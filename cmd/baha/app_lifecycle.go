@@ -201,11 +201,39 @@ func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose b
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
-		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
+		Summary: "Retire owned application runtime while retaining data and recovery state",
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows an ownership-verified destruction plan and individually lists retained repository Compose data volumes. --yes authorizes managed infrastructure removal, not deletion of repository data. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
+		Long:    "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return executeApplicationDestroyLifecycle(ctx, store, args, out, errOut)
+			filtered, format, err := parseReadOutputArgs(args, "app destroy")
+			if err != nil {
+				return err
+			}
+			if format != outputJSON {
+				return executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut)
+			}
+			execution, err := newApplicationDestroyExecution(ctx, store, filtered, io.Discard, io.Discard)
+			if err != nil {
+				return err
+			}
+			if !execution.confirmed && !execution.fullReset && !isRemoteApplication(execution.resolved) {
+				_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, execution.resolved)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, plan)
+			}
+			if err := executeApplicationDestroyLifecycle(ctx, store, filtered, io.Discard, io.Discard); err != nil {
+				return err
+			}
+			if !execution.confirmed {
+				return nil
+			}
+			result, err := applicationDestroyResult(execution.resolved, execution.fullReset)
+			if err != nil {
+				return err
+			}
+			return writeJSON(out, result)
 		},
 	}
 }
@@ -240,6 +268,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	defer unlock()
+	if !execution.fullReset {
+		return execution.retireRuntimePreservingData(ctx, out)
+	}
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}

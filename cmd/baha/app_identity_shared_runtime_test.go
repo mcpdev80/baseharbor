@@ -38,7 +38,7 @@ func qualifySharedIdentityConsumers(t *testing.T, ctx context.Context, provider 
 	})
 	t.Cleanup(func() {
 		inSelectiveIdentityRepository(t, siblingRoot, func() {
-			if err := runWithIO(machineNoninteractiveContext(context.Background()), []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(context.Background())); err != nil {
 				t.Errorf("isolated sibling cleanup: %v", err)
 			}
 		})

@@ -93,7 +93,7 @@ func createSharedSecretsRuntimeApplication(t *testing.T, ctx context.Context, pr
 					t.Errorf("isolated sibling broker cleanup: %v", err)
 				}
 			}
-			if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+			if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
 				t.Errorf("isolated sibling workload cleanup: %v", err)
 			}
 		})

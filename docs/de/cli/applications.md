@@ -82,6 +82,18 @@ Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
 Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
 bleiben erforderlich.
 
+Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
+App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
+kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert
+das Deployment anhand des aktuellen App-Bedarfs erneut. Runtime-Abbau und
+vollständige Datenlöschung sind getrennte Entscheidungen. Provider-Folgen
+werden mit `Achtung` angezeigt und erfordern zwei ausdrückliche Bestätigungen
+desselben aktuellen Plans; `--yes` ersetzt keine dieser Bestätigungen. Das
+strukturierte Destroy-Ergebnis enthält erhaltenes Material und das gemeinsame
+Provider-Änderungsergebnis. Verifizierter Runtime-Abbau beweist weder weitere
+Secret-Auslieferung noch Login, Zertifikatserneuerung oder nutzbare Recovery.
+Ungeprüfte Folgen bleiben im Ergebnis ausdrücklich unvollständig.
+
 Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
 und kein Live-Nachweis. Angeforderte managed Capabilities werden mit ausgewählten

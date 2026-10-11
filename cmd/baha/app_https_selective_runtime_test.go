@@ -83,7 +83,7 @@ func TestSelectiveHTTPSRuntimeAddRemoveReAdd(t *testing.T) {
 		if _, err := exposure.RetireRuntime(cleanup, provider, initialized.Manifest, files); err != nil && !os.IsNotExist(err) {
 			t.Errorf("isolated HTTPS provider cleanup: %v", err)
 		}
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
 			t.Errorf("isolated HTTPS workload cleanup: %v", err)
 		}
 		if containers, err := provider.ListRuntimeContainers(cleanup); err != nil || len(containers) != 0 {

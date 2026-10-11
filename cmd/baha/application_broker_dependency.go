@@ -48,11 +48,17 @@ func applicationBrokerOwners(resolved resolvedApplication) ([]applicationBrokerO
 		if prior := record.Applied.GeneratedState["previous_intent"]; prior != "" {
 			intents = append(intents, json.RawMessage(prior))
 		}
-		for _, intent := range intents {
+		if retained := record.Applied.GeneratedState["retired_intent"]; retained != "" {
+			intents = append(intents, json.RawMessage(retained))
+		}
+		for index, intent := range intents {
 			var m application.Manifest
 			id := record.Identity
-			if json.Unmarshal(intent, &m) != nil || m.ApplicationID != id.ApplicationID || m.Name != id.Application || m.Environment != id.Environment {
+			if json.Unmarshal(intent, &m) != nil || m.ApplicationID != id.ApplicationID || (index == 0 && m.Name != id.Application) || m.Environment != id.Environment {
 				return nil, invalidProviderConsumerInventory(fmt.Errorf("broker intent differs from deployment owner"))
+			}
+			if err := m.Validate(); err != nil {
+				return nil, invalidProviderConsumerInventory(err)
 			}
 			add(m, true, store)
 		}

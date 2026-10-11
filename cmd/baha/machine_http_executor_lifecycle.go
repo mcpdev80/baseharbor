@@ -287,6 +287,7 @@ func (e *bahaMachineExecutor) executeHTTPDestroy(
 	if err := decodeHTTPInput(raw, &input); err != nil {
 		return nil, err
 	}
+	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	if err := bindHTTPApplicationSelectors(operationContext, &input.Target, &input.Environment, &input.Name); err != nil {
 		return nil, err
 	}
@@ -311,7 +312,7 @@ func (e *bahaMachineExecutor) executeHTTPDestroy(
 		return nil, err
 	}
 	reportHTTPProgress(report, "destroy", "Owned application resources removed.", 100)
-	return applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name), nil
+	return applicationDestroyResult(resolved, input.FullReset)
 }
 
 func ensureResolvedHTTPContext(operationContext machine.OperationContext, resolved resolvedApplication) error {

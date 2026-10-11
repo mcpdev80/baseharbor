@@ -666,6 +666,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("destroy", "Permanently remove BaseHarbor-owned application runtime resources and state. Explicit approval is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineDestroyInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
@@ -687,7 +688,10 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
+		result, err := applicationDestroyResult(resolved, input.FullReset)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
 		return nil, result, nil
 	})
 }

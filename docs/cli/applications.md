@@ -113,6 +113,17 @@ workload observations; stop/up and repeated destroy retain their existing
 ownership checks. This does not authorize `baha serve`: its management security
 requirements and explicit management Core installation remain unchanged.
 
+Default local `baha app destroy` retires the owned runtime and application routes,
+while keeping persistent data, credentials, recovery material and the canonical
+deployment identity. `baha app apply` reactivates that deployment from the current
+application intent. Runtime removal and complete data deletion are separate
+choices. Provider consequences are displayed with `Achtung` and require two
+explicit acknowledgements of the same current plan; `--yes` alone supplies
+neither acknowledgement. The structured destroy result reports retained material
+and the common provider-change receipt. A verified runtime removal does not
+establish continued secret delivery, login, certificate renewal or recovery
+usability; unverified consequences remain partial in the receipt.
+
 Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
 projected new binding is `requested/unbound`, never live evidence. Requested
 managed capabilities resolve to selected providers and their genuine dependencies;

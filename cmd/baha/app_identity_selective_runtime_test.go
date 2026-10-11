@@ -81,7 +81,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if _, err := exposure.RetireRuntime(cleanupCtx, provider, initialized.Manifest, application.RuntimeFilesFor(initialized.Store, initialized.Manifest)); err != nil && !os.IsNotExist(err) {
 			t.Errorf("isolated callback exposure cleanup: %v", err)
 		}
-		if err := runWithIO(cleanupCtx, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
+		if err := destroySelectiveApplicationWithConsent(cleanupCtx); err != nil {
 			t.Errorf("isolated workload cleanup: %v", err)
 		}
 		placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}

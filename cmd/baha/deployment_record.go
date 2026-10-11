@@ -57,6 +57,9 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			Ready: false,
 		},
 	}
+	if err := retainDeploymentGeneratedState(&record, false); err != nil {
+		return deployment.DeploymentRecord{}, err
+	}
 	// Preserve the previous authoritative realization until convergence and
 	// verification finish. An interrupted apply must still know what runtime
 	// was previously requested, even after the repository intent changed.
@@ -71,7 +74,7 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 				previous = json.RawMessage(retained)
 			}
 			var prior application.Manifest
-			if len(previous) == 0 || json.Unmarshal(previous, &prior) != nil || prior.ApplicationID != resolved.Manifest.ApplicationID || prior.Name != resolved.Manifest.Name || prior.Environment != resolved.Manifest.Environment {
+			if len(previous) == 0 || json.Unmarshal(previous, &prior) != nil || prior.ApplicationID != resolved.Manifest.ApplicationID || prior.Environment != resolved.Manifest.Environment {
 				return deployment.DeploymentRecord{}, invalidProviderConsumerInventory(fmt.Errorf("previous deployment intent does not match its owner"))
 			}
 			record.Applied.GeneratedState["previous_intent"] = string(previous)
@@ -127,6 +130,9 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 			State: state,
 			Ready: ready,
 		},
+	}
+	if err := retainDeploymentGeneratedState(&record, ready); err != nil {
+		return err
 	}
 	if ready {
 		record.Observed.VerifiedAt = time.Now().UTC()
