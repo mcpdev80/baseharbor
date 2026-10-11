@@ -101,7 +101,13 @@ func startIdentityOAuthRuntimeSession(t *testing.T, ctx context.Context, resolve
 	// The renderer supplies the actual registered origin below, not a test-only
 	// client or a relaxed wildcard in Keycloak.
 	session.callback = identityOAuthFixtureCallback(t, resolved)
-	provisionIdentityOAuthFixtureUser(t, ctx, files, issuer, resolved.Manifest.Name, session.username, session.password)
+	// Native retirement inventory intentionally contains only resource identity.
+	// Load the existing complete access projection without materializing state.
+	adminFiles, err := identityprovider.ExistingKeycloakFilesAt(resolved.Manifest, resolved.TargetStateRoot, resolved.Target.Name)
+	if err != nil || adminFiles.Dir != files.Dir || adminFiles.Project != files.Project {
+		t.Fatal("OAuth administration does not match the observed existing provider owner")
+	}
+	provisionIdentityOAuthFixtureUser(t, ctx, adminFiles, issuer, resolved.Manifest.Name, session.username, session.password)
 	session.login(t, ctx, true)
 	session.login(t, ctx, false)
 	return session

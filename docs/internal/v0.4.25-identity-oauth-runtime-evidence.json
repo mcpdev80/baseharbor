@@ -93,6 +93,37 @@
           "artifact_digest": "sha256:029b242b503035542dcc78e1b8cf558958090817625a1a48b7c0ac901b157451"
         }
       ]
+    },
+    {
+      "candidate_sha": "0dc768e71838e7f301d5f4911c674691aed3ff9c",
+      "candidate_tree": "b74fd4e276124c693b3d45804244264d12605bc0",
+      "workflow_run_id": 38153696041,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Initial actual apply and status, including the public callback TLS route, complete successfully on both engines after the existing public leaf is supplied to issuer renewal. OAuth helper then uses retirement inventory rather than complete existing access files and cannot build its admin-trust client; no end-user login is reached. Actual owned cleanup completes without reported failure and verifies zero remaining test containers.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114512184743,
+          "test_seconds": 76.05,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11707488886,
+          "artifact_name": "coreless-docker-38153696041-1",
+          "artifact_digest": "sha256:e4ec742eb6fd47356fc7ac3ef56fe19686458f3066bc757941134554488591ae"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114512184905,
+          "test_seconds": 114.46,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11708035346,
+          "artifact_name": "coreless-podman-38153696041-1",
+          "artifact_digest": "sha256:ec6283bb5d255ebe10338d2663d6c2b3253edf7bc53b48560bd1b7b83da0cab5"
+        }
+      ]
     }
   ],
   "not_qualified": [
