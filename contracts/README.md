@@ -34,7 +34,8 @@ terminal schemas remain the normative frame/bounds contract; generated example
 regressions validate against both their actual Core types and these schemas.
 
 The v0.4.25 foundation adds `footprint/v1/footprint.schema.json`, validated
-against actual pure domain fixture outputs, and
+against actual pure domain fixture outputs, `provider-plan/v1/plan.schema.json`
+for the shared consumer union and data-preserving add/remove plan, and
 `connection-profile/v1/profile.schema.json`, a transport-shape contract for the
 future #777 importer/exporter. Schema validation cannot authenticate a Core,
 accept trust, grant access or prove runtime health. Normative semantics and

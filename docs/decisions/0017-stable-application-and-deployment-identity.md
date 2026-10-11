@@ -4,6 +4,12 @@
 
 Accepted for v0.4.19.
 
+Application-ID placement is superseded for v0.4.25 by
+[Capability-first contracts](../spec/capability-first-v0425.md) and #872.
+Developer manifests MUST NOT contain app.id. Internal canonical state owns the
+ID. Stable UUID identity and deployment ownership remain; the text below records
+the historical placement decision, not current authoring instructions.
+
 ## Context
 
 Human-readable application names, environments, target names, repository paths and runtime-specific names are useful selectors, but they are mutable. They must not be the durable primary key for BaseHarbor ownership, reconciliation or persisted deployment state.
