@@ -161,3 +161,20 @@ func TestVerifiedConsumptionRootsUseSameDependencyResolver(t *testing.T) {
 		t.Fatal("invalid extra root accepted")
 	}
 }
+
+func TestProviderUnionInvalidUnusedStateBlocksAllRetirement(t *testing.T) {
+	s := contractSnapshot()
+	// Inactive or unbound providers still need a valid ownership/state observation.
+	fact := s.Facts["sql/shared"]
+	fact.State = "stale"
+	s.Facts["sql/shared"] = fact
+	p, err := ResolveProviderPlan(s, nil, true)
+	if err != nil || p.Complete {
+		t.Fatalf("invalid inventory accepted: %+v %v", p, err)
+	}
+	for _, change := range p.Changes {
+		if change.Action != "preserve" {
+			t.Fatal("invalid state authorizes removal")
+		}
+	}
+}

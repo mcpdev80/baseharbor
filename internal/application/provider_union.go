@@ -147,7 +147,8 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 				reason = "unmaterialized and not required"
 			}
 		}
-		if !observed || fact.Target != snapshot.Target || fact.Dependencies == nil || fact.State == ProviderUnverifiable || fact.State == ProviderForeign || (instance.Scope == capability.ScopeApplication && !owners[instance.OwnerApplicationID+"/"+instance.OwnerEnvironment]) {
+		verifiedState := fact.State == ProviderRunning || fact.State == ProviderStoppedOwned || fact.State == ProviderNewRequired
+		if !observed || !verifiedState || fact.Target != snapshot.Target || fact.Dependencies == nil || (instance.Scope == capability.ScopeApplication && !owners[instance.OwnerApplicationID+"/"+instance.OwnerEnvironment]) {
 			action = "preserve"
 			reason = "runtime ownership/state is unverifiable"
 			p.Complete = false
