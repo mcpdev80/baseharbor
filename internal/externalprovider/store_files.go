@@ -44,7 +44,18 @@ func checkStoreFile(path string) (os.FileInfo, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("external provider registry requires a protected regular owner file")
 	}
+	if err := checkStoreOwner(info); err != nil {
+		return nil, err
+	}
 	return info, nil
+}
+
+func checkStoreOwner(info os.FileInfo) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
+		return errors.New("external provider registry requires an exclusively owned file")
+	}
+	return nil
 }
 
 func readStoreFile(path string) ([]byte, error) {
@@ -64,7 +75,7 @@ func readStoreFile(path string) ([]byte, error) {
 	}
 	defer file.Close()
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(before, opened) {
+	if err != nil || !os.SameFile(before, opened) || checkStoreOwner(opened) != nil {
 		return nil, errors.New("external provider registry owner changed during inspection")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxRegistryBytes+1))
@@ -140,7 +151,7 @@ func openStoreLock(path string) (*os.File, error) {
 	}
 	opened, err := file.Stat()
 	after, inspectErr := checkStoreFile(path)
-	if err != nil || inspectErr != nil || !os.SameFile(opened, after) {
+	if err != nil || inspectErr != nil || !os.SameFile(opened, after) || checkStoreOwner(opened) != nil {
 		file.Close()
 		return nil, errors.New("external provider registry lock owner changed")
 	}
