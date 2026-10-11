@@ -319,6 +319,11 @@ selected function outcome, dependencies, credential references and locations,
 and credential owner, synchronization and rotation before/after. An unselected
 local authentication mode never becomes a fallback. Unsupported/unverified actions
 remain unknown and can be explicitly accepted; they are never reported working.
+Selected action dependencies are checked through the existing transitive provider
+graph on the actual Target. A stopped, removed, foreign, unobserved or cyclic
+prerequisite, or an unknown dependency closure, makes continuation unknown even
+when the action's directly named provider is running. Aggregate changes cannot
+claim continuity through a dependency they interrupt.
 Credential references stay identical unless their change is explicitly selected.
 Adapters additionally verify that retained **values** and established synchronization
 remain consistent; this pure result neither reads nor regenerates passwords.

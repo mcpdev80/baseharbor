@@ -149,17 +149,33 @@ func describeConsumerTransition(f *FunctionConsequence, use ProviderFunctionUse,
 			}
 		}
 		for _, dep := range a.Dependencies {
-			if fact, exists := snapshot.Facts[dep]; !exists || fact.State != ProviderRunning || fact.Dependencies == nil {
-				f.Outcome = "unknown"
-				known, attention = false, true
-			}
-			if change, exists := changes[dep]; exists && interruptsProvider(change.Operation) {
+			if !consumerDependencyAvailable(snapshot, changes, dep, map[string]bool{}) {
 				f.Outcome = "unknown"
 				known, attention = false, true
 			}
 		}
 	}
 	return known, attention
+}
+
+// Verify continuation against the SAME observed dependency graph, including
+// aggregate changes. This selects no provider and modifies no union or owner.
+func consumerDependencyAvailable(snapshot ResolutionSnapshot, changes map[string]ProviderChangeRequest, id string, visiting map[string]bool) bool {
+	fact, exists := snapshot.Facts[id]
+	if !exists || visiting[id] || fact.Target != snapshot.Target || fact.State != ProviderRunning || fact.Dependencies == nil {
+		return false
+	}
+	if change, exists := changes[id]; exists && interruptsProvider(change.Operation) {
+		return false
+	}
+	visiting[id] = true
+	defer delete(visiting, id)
+	for _, dependency := range fact.Dependencies {
+		if !consumerDependencyAvailable(snapshot, changes, dependency, visiting) {
+			return false
+		}
+	}
+	return true
 }
 
 func sameConsumerTransition(expected, actual *ConsumerTransition) bool {

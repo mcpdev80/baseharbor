@@ -338,6 +338,11 @@ und Standorte sowie Credential-Owner, Synchronisierung und Rotation vorher/nachh
 Ein nicht ausgewählter lokaler Authentifizierungsmodus wird niemals zum Fallback.
 Nicht unterstützte oder ungeprüfte Aktionen bleiben unbekannt und dürfen explizit
 akzeptiert werden; sie werden niemals als funktionierend gemeldet.
+Abhängigkeiten gewählter Aktionen werden im bestehenden transitiven Providergraphen
+auf dem tatsächlichen Target geprüft. Gestoppte, entfernte, fremde, unbeobachtete
+oder zyklische Voraussetzungen sowie unbekannte Abhängigkeitsketten machen die
+Fortsetzung unbekannt, auch wenn der direkt benannte Provider läuft. Aggregierte
+Änderungen dürfen keine Fortsetzung über eine unterbrochene Abhängigkeit behaupten.
 Credential-Referenzen bleiben gleich, sofern ihre Änderung nicht ausdrücklich
 gewählt wurde. Adapter prüfen zusätzlich, dass erhaltene **Werte** und tatsächlich
 bestehende Synchronisierung konsistent bleiben; dieses reine Ergebnis liest oder

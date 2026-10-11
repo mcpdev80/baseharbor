@@ -211,6 +211,69 @@ func TestProviderChangeSelectedModeDependencyMustBeObserved(t *testing.T) {
 	}
 }
 
+func TestProviderChangeSelectedModeAccountsForTransitiveDependencies(t *testing.T) {
+	for _, condition := range []string{"available", "aggregate-stop", "stopped", "missing", "unknown-closure", "foreign-target", "cycle"} {
+		t.Run(condition, func(t *testing.T) {
+			s, u, o := impactFixture(t)
+			action := localAuthAction()
+			action.Dependencies = []string{"secrets"} // The existing secrets provider depends on SQL.
+			o.ConsumerActions = []ConsumerTransition{action}
+			requests := []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop", ConsumerActions: []string{action.ID}}}
+			sql := s.Facts["sql"]
+			switch condition {
+			case "aggregate-stop":
+				requests = append(requests, ProviderChangeRequest{InstanceID: "sql", Operation: "stop"})
+			case "stopped":
+				sql.State = ProviderStoppedOwned
+			case "missing":
+				delete(s.Facts, "sql")
+				delete(o.Providers, "sql")
+			case "unknown-closure":
+				sql.Dependencies = nil
+			case "foreign-target":
+				sql.Target = "other"
+			case "cycle":
+				sql.Dependencies = []string{"secrets"}
+			}
+			if condition != "missing" {
+				s.Facts["sql"] = sql
+				fact := o.Providers["sql"]
+				fact.Realization.State, fact.Realization.Target = sql.State, sql.Target
+				o.Providers["sql"] = fact
+			}
+			plan, err := DescribeProviderChanges(s, u, requests, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected := false
+			for _, impact := range plan.Impacts {
+				if impact.InstanceID != "identity" {
+					continue
+				}
+				for _, function := range impact.Functions {
+					if function.Transition == nil {
+						continue
+					}
+					selected = true
+					if condition == "available" {
+						if function.Outcome != "changed" || !plan.Complete {
+							t.Fatal("available transitive dependency lost verified continuation")
+						}
+					} else if function.Outcome != "unknown" || plan.Complete || plan.ConfirmationsRequired != 2 {
+						t.Fatalf("unavailable transitive dependency concealed: %+v", function)
+					}
+				}
+			}
+			if !selected {
+				t.Fatal("selected consumer transition disappeared")
+			}
+			if err := ValidateProviderChangeConsent(plan, ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: true}); err != nil {
+				t.Fatal("disclosed uncertainty must not veto the developer's choice", err)
+			}
+		})
+	}
+}
+
 func TestProviderChangeCountdownDoesNotInvalidateConcreteConsent(t *testing.T) {
 	s, u, o := impactFixture(t)
 	fact := o.Providers["secrets"]
