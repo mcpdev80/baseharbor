@@ -113,6 +113,7 @@ func applySelectiveIdentityIntent(t *testing.T, ctx context.Context) resolvedApp
 	}
 	var output bytes.Buffer
 	if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &output, &output); err != nil {
+		t.Logf("shared Identity failed common union: complete=%t changes=%+v", plan.ProviderPlan.Complete, plan.ProviderPlan.Changes)
 		t.Fatalf("shared Identity apply: %v\n%s", err, output.String())
 	}
 	return resolved

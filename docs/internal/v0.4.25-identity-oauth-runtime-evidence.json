@@ -124,11 +124,83 @@
           "artifact_digest": "sha256:ec6283bb5d255ebe10338d2663d6c2b3253edf7bc53b48560bd1b7b83da0cab5"
         }
       ]
+    },
+    {
+      "candidate_sha": "3028e8b371f044395c9a33f2b7b99aa5b8909b4e",
+      "candidate_tree": "389ddea6b191585d0b3fa834e320c0e6751360d8",
+      "workflow_run_id": 38154917957,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Both engines completed actual canonical callback TLS, mismatched S256 PKCE rejection, real end-user form authorization-code login, signed JWKS ID-token and matching userinfo, refresh before/after provider restart, disabled refresh rejection, and fresh login with the retained subject after re-enable. First of two consumer removal preserves actual sibling OIDC/provider readiness. Last sibling removal fails common provider retirement because the aggregate native owner inventory is incomplete; retained app-owned Caddy from the first consumer is not observed in sibling context. Main app destroy preflight also rejects retained unbound app-owned provider ownership. Cleanup leaves one test workload container on each engine. Overall native test and workflow are FAIL.",
+      "qualified": [],
+      "observed_passing_assertions": [
+        "canonical callback TLS",
+        "actual mismatched S256 verifier rejected",
+        "actual end-user authorization-code login and signed JWKS ID token",
+        "actual matching bearer userinfo",
+        "actual refresh and subject continuity across disable/re-enable",
+        "disabled actual refresh refused",
+        "two-consumer first removal preserves live sibling"
+      ],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114515805256,
+          "test_seconds": 208.49,
+          "actual_identity_counts": [
+            5,
+            0,
+            5
+          ],
+          "actual_total_counts": [
+            8,
+            1,
+            8
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_failed_cleanup": 1,
+          "artifact_id": 11707903121,
+          "artifact_name": "coreless-docker-38154917957-1",
+          "artifact_digest": "sha256:78e72d6e42dc065dbbee9f3f2d61c94ddf5514a460b7d64b0270a6ef5f0e95a0"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114515804991,
+          "test_seconds": 235.02,
+          "actual_identity_counts": [
+            3,
+            0,
+            3
+          ],
+          "actual_total_counts": [
+            6,
+            1,
+            6
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_failed_cleanup": 1,
+          "artifact_id": 11707439212,
+          "artifact_name": "coreless-podman-38154917957-1",
+          "artifact_digest": "sha256:5e24bd1c428d5ae90e28bf1796debbfdd52cab2ff9cdea25767109122d29cef0"
+        }
+      ]
     }
   ],
   "not_qualified": [
-    "Changed real end-user authorization-code/S256 PKCE, refresh/session, disabled access and re-enabled user/session continuity",
-    "Changed native callback origin on Docker and rootless Podman",
+    "Complete shared/last-consumer Identity retirement and successful zero-container cleanup",
+    "Production initial Identity plus public HTTPS exposure callback preparation",
     "Actual Console browser and Connector mTLS/remote lifecycle",
     "All provider and mutation consequences on one final immutable ecosystem matrix"
   ]
