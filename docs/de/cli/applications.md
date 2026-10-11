@@ -84,22 +84,36 @@ bleiben erforderlich.
 
 Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
 (`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
-und kein Live-Nachweis. Native managed Capabilities benötigen weiterhin die
-bestehende vollständige Management-Core-Topologie; selektive Installation ist
-nicht verfügbar. Abhängigkeiten und inkrementelle Speicher-/Containerwerte
-bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Ownership-geprüfte
-App-Backend-Inventare können gemessene Containerzahlen liefern; andere Provider
-bleiben bis zu ihrer nativen Beobachtung `unverifiable`. Nichtinteraktives
-App-`--yes` installiert keinen fehlenden Core. Management-Core nach Prüfung
-seiner Auswirkungen explizit installieren.
+und kein Live-Nachweis. Angeforderte managed Capabilities werden mit ausgewählten
+Providern und ihren echten Abhängigkeiten realisiert. Ein bedingungsloses
+SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Ein unabhängig aktivierter
+Management-Core behält seine Sicherheitsvoraussetzungen. Speicher-/Containerwerte
+bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Provider-Beobachtungen
+bleiben bis zum geprüften nativen Inventar `unverifiable`. Nichtinteraktives
+App-`--yes` autorisiert keine Einrichtung des Management-Core.
 
-Kompatible bestehende native Placements werden wiederverwendet. Eine notwendige
-Provider-Migration sowie nicht unterstützte native BYO-Placements werden vor
-Provisionierung abgelehnt; externe OIDC-/OTLP-Adapter bleiben erhalten.
-Capability-Entfernung löst das App-Binding und erhält die Provider-Ownership,
-auch für Target-weite Shared-Ressourcen. `unused` schließt Provider aus, die
-noch eine andere App bindet. Automatische Garbage Collection und Migration sind
-nicht verfügbar. Ungenutzter App-eigener Provider-Zustand blockiert Destroy, bis
-die ursprüngliche Capability und ihr Placement zur expliziten Bereinigung
-wiederhergestellt sind. Eine separate ownership-geprüfte Reclamation ist gemäß
-#872 abgegrenzt.
+Kompatible native Placements werden wiederverwendet. Nicht unterstützte native
+BYO- oder Ersatzadapter werden vor Provisionierung abgelehnt; externe OIDC-/OTLP-
+Adapter bleiben unterstützt. Der Plan nennt die tatsächlichen Ausführungsgrenzen,
+ohne einen funktionierenden Ersatz zu behaupten. Es gibt keine Migration alter
+Manifest-Formate.
+
+Capability-Entfernung löst das App-Binding und gleicht die verbleibenden
+Target-weiten Abhängigkeiten ab. Eigene Runtime-Dienste ohne verbleibenden
+Verbraucher werden entfernt. Anforderungen anderer Apps oder unabhängig aktivierter
+Management-Verbraucher erhalten gemeinsam genutzte Dienste. Persistente Daten,
+Credentials und Recovery-Material bleiben standardmäßig an ihren eigenen Orten.
+Erhaltenes Material ermöglicht Wiederherstellung; es belegt keinen weiter
+funktionierenden Dienstzugriff. Unterstütztes Wiederhinzufügen verwendet die
+bestehende Systemidentität und den geschützten Provider-Zustand erneut.
+
+Bewusste Provider-Änderungen zeigen betroffene Verbraucher, verlorene Funktionen,
+gewählte Fortsetzung und erhaltenes/gelöschtes Material. Alternativlose,
+destruktive oder unbekannte Folgen werden mit **Achtung** angezeigt und erfordern
+zwei ausdrückliche Bestätigungen des aktuellen Plans. Gewöhnliches `--yes`
+ersetzt weder diese Bestätigungen noch die Zustimmung zur Datenlöschung.
+Tatsächliche Berechtigung, Ownership und Prüfung nach der Änderung bleiben
+Voraussetzung. Fehlgeschlagene oder unterbrochene Ausführung bleibt teilweise
+erledigt und wiederaufnehmbar. Der v0.4.25-Kandidat benötigt weiterhin die vollständige
+Abnahme aller Provider, Mutationspfade und des nativen Ecosystems. Einzelne grüne
+Fixtures belegen keine Pre-Release-Bereitschaft.
