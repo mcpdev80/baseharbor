@@ -36,7 +36,9 @@ func (s Store) Load() (Document, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&doc); err != nil {
-		return Document{}, fmt.Errorf("decode external provider registry: %w", err)
+		// Decoder diagnostics can echo arbitrary rejected JSON field names.
+		// Keep the protected recovery input out of ordinary errors.
+		return Document{}, errors.New("decode external provider registry: invalid structure or unknown field")
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return Document{}, errors.New("external provider registry contains trailing data")
