@@ -48,3 +48,14 @@ func TestCanonicalIdentityAndAuthoredSerializationBoundary(t *testing.T) {
 		t.Fatal("serialization changed system identity")
 	}
 }
+
+func TestCanonicalRecordMissingIdentityFailsWithoutAllocation(t *testing.T) {
+	input := "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  sql: true\n"
+	if _, err := ParseCanonicalYAML(input); err == nil {
+		t.Fatal("corrupt internal identity accepted")
+	}
+	m, err := ParseYAML(input)
+	if err != nil || m.ApplicationID != "" {
+		t.Fatalf("authored identity allocated: %v", err)
+	}
+}

@@ -55,7 +55,14 @@ func ParseYAML(input string) (Manifest, error) {
 // ParseCanonicalYAML reads BaseHarbor-owned records, not developer input.
 // It uses the same grammar and preserves existing internal IDs without allocation.
 func ParseCanonicalYAML(input string) (Manifest, error) {
-	return parseManifestYAML(input, true)
+	m, err := parseManifestYAML(input, true)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err := ValidateApplicationID(m.ApplicationID); err != nil {
+		return Manifest{}, fmt.Errorf("canonical application identity: %w", err)
+	}
+	return m, nil
 }
 
 func parseManifestYAML(input string, canonical bool) (Manifest, error) {

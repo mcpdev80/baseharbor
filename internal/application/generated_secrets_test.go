@@ -37,8 +37,8 @@ secrets:
 	if len(GeneratedSecretRequirements(m)) != 2 {
 		t.Fatalf("generated requirements = %d", len(GeneratedSecretRequirements(m)))
 	}
-	normalized := m.YAML()
-	roundTripped, err := ParseCanonicalYAML(normalized)
+	normalized := m.AuthoredYAML()
+	roundTripped, err := ParseYAML(normalized)
 	if err != nil {
 		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
 	}
