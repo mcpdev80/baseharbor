@@ -65,6 +65,35 @@
           "artifact_digest": "sha256:b797d4cce665306aa219ac097e8888b471ac939fc42146491d136faf31dcb0af"
         }
       ]
+    },
+    {
+      "candidate_sha": "7b46cef93a40a95f58af4954feb280b9fab2b92d",
+      "candidate_tree": "f12c713f3e3997885d1c588774d0b04e9645efa1",
+      "workflow_run_id": 38158361057,
+      "workflow_run_attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Requalification after protecting the common private owner writer. Both engines pass actual TLS-authenticated durable messaging publish/recovery and document insert/recovery under unchanged original application credentials, selective native container retirement with owned volumes retained, verified deployment identity and isolated cleanup. This source predates the new default runtime retirement path; default app.destroy acceptance and the complete ecosystem matrix remain unqualified.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114525900690,
+          "test_seconds": 140.83,
+          "messaging_seconds": 76.97,
+          "document_seconds": 63.86,
+          "artifact_id": 11708703281,
+          "artifact_digest": "sha256:a205c8488600cbd4c3398a839010d06eb16a4d00623c8fb46b0e56547eba9fb2"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114525900833,
+          "test_seconds": 148.56,
+          "messaging_seconds": 82.63,
+          "document_seconds": 65.93,
+          "artifact_id": 11708807846,
+          "artifact_digest": "sha256:c3c80316e47df3291e18563e91ddf156c6f481c42581a8a3d8620181974fe554"
+        }
+      ]
     }
   ],
   "qualified_scope": "Exact-source isolated application-scoped messaging and document database add/remove/re-add, actual TLS-authenticated retained message/document and consumer credentials, selected native container/boot retirement, retained volumes, stable canonical IDs/verified deployment and owned cleanup. Shared all-family consumer transitions, universal mutations, authenticated ecosystem matrix and complete pre-release remain unqualified."
