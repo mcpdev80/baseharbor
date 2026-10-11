@@ -39,6 +39,8 @@ baha provider verify company-db
 
 Der externe Dienst bleibt Eigentum seines Operators. [Kanonische Anleitung (EN)](https://mcpdev80.github.io/baseharbor/how-to/external-providers/).
 
+Metadaten der Registrierung sind öffentlich. API-/Zugriffsschlüssel, Autorisierungsheader, Passwörter, Tokens und andere Zugangsdaten gehören in geschützte Credential-Referenzen; entsprechende Metadatenschlüssel werden unabhängig von Groß-/Kleinschreibung und Trennzeichen abgewiesen.
+
 
 ## Weitere technische Beispiele
 

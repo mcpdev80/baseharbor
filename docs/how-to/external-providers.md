@@ -47,6 +47,8 @@ Endpoints must be absolute URLs without user information, query parameters or fr
 
 Registration records the external provider and verification checks endpoint/trust. It does not migrate application data or automatically select this provider for every SQL request: configure placement through your effective provider/organization configuration and inspect `baha plan` in the application repository.
 
+Registration metadata is public. Keep API/access keys, authorization headers, passwords, tokens and other credentials in protected credential references; credential-bearing metadata keys are rejected regardless of case or separators.
+
 To remove only this registration when it is no longer needed:
 
 ```bash

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
@@ -72,8 +73,7 @@ func (r Registration) Validate() error {
 		if strings.TrimSpace(k) == "" {
 			return errors.New("external provider metadata key is empty")
 		}
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "password") || strings.Contains(lk, "secret") || strings.Contains(lk, "token") || strings.Contains(lk, "private") {
+		if credentialMetadataKey(k) {
 			return errors.New("external provider metadata key may contain secret material; use credential/trust references")
 		}
 		if strings.ContainsAny(v, "\r\n") {
@@ -81,6 +81,21 @@ func (r Registration) Validate() error {
 		}
 	}
 	return nil
+}
+
+func credentialMetadataKey(key string) bool {
+	compact := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, key)
+	for _, sensitive := range []string{"password", "secret", "token", "private", "credential", "apikey", "accesskey", "passphrase"} {
+		if strings.Contains(compact, sensitive) {
+			return true
+		}
+	}
+	return compact == "authorization" || compact == "proxyauthorization"
 }
 
 func (t Trust) Validate() error {
