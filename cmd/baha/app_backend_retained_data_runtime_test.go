@@ -62,7 +62,7 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 		if phase == 0 {
 			query = fmt.Sprintf("CREATE TABLE public.baha_retained_data_marker(value text NOT NULL); INSERT INTO public.baha_retained_data_marker VALUES ('%s'); SELECT value FROM public.baha_retained_data_marker", marker)
 		}
-		script := trustScript + "export PGPASSWORD=\"$password\" PGSSLMODE=verify-full PGSSLROOTCERT=\"$trust\" PGCONNECT_TIMEOUT=5\nexec psql --no-psqlrc -h \"$1\" -p \"$2\" -U \"$3\" -d \"$4\" -Atq -v ON_ERROR_STOP=1 -c \"$5\""
+		script := trustScript + "export PGPASSWORD=\"$password\" PGSSLMODE=verify-full PGSSLROOTCERT=\"$trust\" PGCONNECT_TIMEOUT=5\npsql --no-psqlrc -h \"$1\" -p \"$2\" -U \"$3\" -d \"$4\" -Atq -v ON_ERROR_STOP=1 -c \"$5\""
 		result, err = provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, input, services[0], "sh", "-ec", script, "--", host, port, binding.Username, binding.Database, query)
 	} else {
 		key := read("baseharbor-key-prefix") + "baha_retained_data_marker"
@@ -72,7 +72,7 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 			args[3] = "SET"
 			args = append(args, marker)
 		}
-		script := trustScript + "export VALKEYCLI_AUTH=\"$password\"\nexec valkey-cli --no-auth-warning --tls --cacert \"$trust\" -h \"$1\" -p \"$2\" --user \"$3\" --raw \"$4\" \"$5\" ${6:+\"$6\"}"
+		script := trustScript + "export VALKEYCLI_AUTH=\"$password\"\nvalkey-cli --no-auth-warning --tls --cacert \"$trust\" -h \"$1\" -p \"$2\" --user \"$3\" --raw \"$4\" \"$5\" ${6:+\"$6\"}"
 		result, err = provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, input, services[0], append([]string{"sh", "-ec", script, "--"}, args...)...)
 	}
 	if err != nil {
@@ -84,6 +84,9 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 	}
 	if strings.TrimSpace(result) != expected {
 		t.Fatal("actual backend data did not survive removal and re-add")
+	}
+	if _, err := provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, nil, services[0], "sh", "-ec", `test -z "$(find /tmp -maxdepth 1 -name 'baha-retained-data-ca.*' -print -quit)"`); err != nil {
+		t.Fatal("backend data probe retained temporary trust material")
 	}
 	t.Logf("backend=%s phase=%d actual consumer credential and TLS authenticated data assertion passed", service, phase)
 }
