@@ -82,6 +82,31 @@
           "artifact_digest": "sha256:3eb04888346b6234df550049dfe838db5bc768bd580baee15376260aee05e68b"
         }
       ]
+    },
+    {
+      "candidate_sha": "8ffda5788049be8ad8c122ceb0dc562531031b0e",
+      "candidate_tree": "6462fc92b465833c90758bc6b1a6adfc4a3dcfa7",
+      "workflow_run_id": 38154610694,
+      "workflow_run_attempt": 1,
+      "result": "FAIL",
+      "cleanup_outcome": "success",
+      "observed": "Both engines complete two-app shared SQL: removing A preserves B actual TLS-authenticated retained data, removing B last stops the selected provider with two workloads and its owned data volume retained, re-adding both preserves distinct per-application markers and original credentials. Native Podman container boot definitions match each phase. Cache single-app add/remove/re-add and sibling initialization pass, then the fixture rejects legitimate additional per-consumer entries in the canonical protected provider environment. Shared cache retirement/re-add is not qualified. Corrected fixture must require all original entries unchanged, allow the added consumer entries, and preserve the complete expanded environment across retirement/re-add. Both isolated cleanups assert zero containers.",
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114514893026,
+          "test_seconds": 263.76,
+          "artifact_id": 11707049548,
+          "artifact_digest": "sha256:4d8192ce53a3ccdc5922d9661d661638f209b1fe7def7a9d565cfe5cf3b2d057"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114514893216,
+          "test_seconds": 261.5,
+          "artifact_id": 11708321454,
+          "artifact_digest": "sha256:937a5de298959c72dd48622dcf14841ad042137e5280d79843fa349d1983aae0"
+        }
+      ]
     }
   ],
   "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate.",

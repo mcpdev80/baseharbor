@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,10 @@ func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider b
 	firstRoot, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
+	}
+	initialEnvironment, err := os.ReadFile(inventory.Files.Env)
+	if err != nil || sha256.Sum256(initialEnvironment) != originalEnv {
+		t.Fatal("shared backend initial provider configuration changed")
 	}
 	siblingRoot := t.TempDir()
 	write := func(root, name string, enabled bool) {
@@ -60,6 +65,23 @@ func qualifySharedBackendConsumers(t *testing.T, ctx context.Context, provider b
 	if sibling.Manifest.ApplicationID == first.Manifest.ApplicationID {
 		t.Fatal("independent backend consumers share a system identity")
 	}
+	// The canonical cache environment adds the second consumer's own credential
+	// entries. Preserve every existing entry while allowing those additions;
+	// subsequent retirement/re-add must preserve this complete two-app snapshot.
+	expandedEnvironment, err := os.ReadFile(inventory.Files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := map[string]bool{}
+	for _, line := range strings.Split(string(expandedEnvironment), "\n") {
+		entries[line] = true
+	}
+	for _, line := range strings.Split(string(initialEnvironment), "\n") {
+		if !entries[line] {
+			t.Fatal("new consumer replaced retained provider configuration")
+		}
+	}
+	originalEnv = sha256.Sum256(expandedEnvironment)
 	roots := []string{firstRoot, siblingRoot}
 	apps := []resolvedApplication{first, sibling}
 	identities := []*[32]byte{&firstIdentity, &siblingIdentity}
