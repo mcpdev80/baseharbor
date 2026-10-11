@@ -58,7 +58,8 @@ Technische Bezeichner: `baseharbor.yaml`, `baseharbor.workload-source-resolution
 
 ## Lokale Workload ohne managed Capabilities (v0.4.25)
 
-Ein minimales `baseharbor.yaml` darf `app.id` und `services` auslassen:
+Ein selbst geschriebenes `baseharbor.yaml` darf keine `app.id` enthalten;
+`services` ist optional:
 
 ```yaml
 version: 1

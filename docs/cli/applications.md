@@ -91,7 +91,7 @@ For adoption, start inside your existing repository with `baha inspect .`, then 
 
 ## Local workload without managed capabilities (v0.4.25)
 
-A minimal `baseharbor.yaml` may omit `app.id` and `services`:
+A developer-authored `baseharbor.yaml` must omit `app.id`; `services` is optional:
 
 ```yaml
 version: 1
