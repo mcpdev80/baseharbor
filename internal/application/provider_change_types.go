@@ -35,14 +35,15 @@ type ProviderRealization struct {
 }
 
 type ProviderMaterial struct {
-	ID        string             `json:"id"`
-	Kind      string             `json:"kind"`
-	Location  *ResourceLocation  `json:"location,omitempty"`
-	Recovery  []ResourceLocation `json:"recovery"`
-	Access    *ProviderAccess    `json:"access,omitempty"`
-	ExpiresAt string             `json:"expires_at,omitempty"`
-	Verified  bool               `json:"verified"`
-	Evidence  string             `json:"evidence,omitempty"`
+	Ownership capability.ProviderOwnership `json:"ownership"`
+	ID        string                       `json:"id"`
+	Kind      string                       `json:"kind"`
+	Location  *ResourceLocation            `json:"location,omitempty"`
+	Recovery  []ResourceLocation           `json:"recovery"`
+	Access    *ProviderAccess              `json:"access,omitempty"`
+	ExpiresAt string                       `json:"expires_at,omitempty"`
+	Verified  bool                         `json:"verified"`
+	Evidence  string                       `json:"evidence,omitempty"`
 }
 
 // Function use is actual observed usage. PKI, dynamic leases, cached token
@@ -71,11 +72,22 @@ type ProviderImpactFact struct {
 	Effects           []OperationalConsequence `json:"effects"`
 }
 
+type ProviderFunctionContinuation struct {
+	Consumer  string `json:"consumer"`
+	Function  string `json:"function"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Supported bool   `json:"supported"`
+	Verified  bool   `json:"verified"`
+	Evidence  string `json:"evidence,omitempty"`
+}
+
 type ProviderImpactObservation struct {
-	Revision          string                        `json:"revision"`
-	InventoryComplete bool                          `json:"inventory_complete"`
-	Providers         map[string]ProviderImpactFact `json:"providers"`
-	Functions         []ProviderFunctionUse         `json:"functions"`
+	Continuations     []ProviderFunctionContinuation `json:"continuations"`
+	Revision          string                         `json:"revision"`
+	InventoryComplete bool                           `json:"inventory_complete"`
+	Providers         map[string]ProviderImpactFact  `json:"providers"`
+	Functions         []ProviderFunctionUse          `json:"functions"`
 }
 
 // Transfers describe an existing supported adapter operation. Supported and
@@ -163,6 +175,8 @@ type MaterialOutcome struct {
 }
 
 type ProviderExecutionOutcome struct {
+	Verified   bool                 `json:"verified"`
+	Evidence   string               `json:"evidence,omitempty"`
 	InstanceID string               `json:"instance_id"`
 	Operation  string               `json:"operation"`
 	Status     string               `json:"status"` // applied, failed, pending

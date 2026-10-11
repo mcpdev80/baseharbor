@@ -32,6 +32,7 @@ type ProviderChange struct {
 }
 
 type ProviderPlan struct {
+	Impact           *ProviderImpactPlan          `json:"impact,omitempty"`
 	Version          string                       `json:"version"`
 	Target           string                       `json:"target"`
 	Complete         bool                         `json:"complete"`
