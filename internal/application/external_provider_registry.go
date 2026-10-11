@@ -94,57 +94,6 @@ func InspectExternalProvider(id string) (externalprovider.Registration, error) {
 	return store.Inspect(id)
 }
 
-func RemoveExternalProvider(id string) error {
-	dataDir, err := bhruntime.DataDir("")
-	if err != nil {
-		return err
-	}
-	return RemoveExternalProviderAt(dataDir, id)
-}
-
-func RemoveExternalProviderAt(dataDir, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("external provider id is required")
-	}
-	store, err := externalProviderStoreAt(dataDir)
-	if err != nil {
-		return err
-	}
-	reg, err := store.Inspect(id)
-	if err != nil {
-		return err
-	}
-	registryStore, err := referenceProviderRegistryStoreAt(dataDir)
-	if err != nil {
-		return err
-	}
-	instanceID := externalProviderInstanceID(reg.Provider.Kind, id)
-	if err := registryStore.Update(func(registry *capability.Registry) error {
-		// An interrupted removal may already have released the unbound registry
-		// projection while the original registration owner remains. Its validated
-		// ID still identifies that projection; retry must finish the registration
-		// change without inventing an instance or mutating foreign infrastructure.
-		found := false
-		for _, instance := range registry.Instances {
-			if instance.ID == instanceID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil
-		}
-		return registry.UnregisterExternal(instanceID)
-	}); err != nil {
-		return err
-	}
-	if err := store.Remove(id); err != nil {
-		return err
-	}
-	return nil
-}
-
 func VerifyExternalProvider(ctx context.Context, id string) (externalprovider.Verification, error) {
 	store, err := externalProviderStore()
 	if err != nil {

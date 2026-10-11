@@ -31,7 +31,7 @@ func TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry(t *testi
 	if err := os.Symlink(foreign, store.Path+".lock"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RemoveExternalProviderAt(root, reg.ID); err == nil {
+	if err := removeExternalProviderWithAcknowledgedScopeForTest(root, reg.ID); err == nil {
 		t.Fatal("interrupted registration change reported success")
 	}
 	retained, err := store.Inspect(reg.ID)
@@ -44,7 +44,7 @@ func TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry(t *testi
 	if err := os.Remove(store.Path + ".lock"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RemoveExternalProviderAt(root, reg.ID); err != nil {
+	if err := removeExternalProviderWithAcknowledgedScopeForTest(root, reg.ID); err != nil {
 		t.Fatalf("retained owner could not complete retry: %v", err)
 	}
 	if _, err := store.Inspect(reg.ID); err == nil {
