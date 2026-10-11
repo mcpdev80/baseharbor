@@ -77,7 +77,6 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	appFiles := application.RuntimeFilesFor(initialized.Store, initialized.Manifest)
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(machineNoninteractiveContext(context.Background()), 3*time.Minute)
 		defer stop()
@@ -85,8 +84,11 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 		if inspectErr != nil && !os.IsNotExist(inspectErr) {
 			t.Errorf("partial Secrets owner inspection: %v", inspectErr)
 		}
-		if _, err := runtimebroker.RetireContainer(cleanup, provider, initialized.Manifest, appFiles); err != nil && !os.IsNotExist(err) {
-			t.Errorf("isolated Secrets broker retirement: %v", err)
+		if current, err := resolveApplication(cleanup, application.Store{}, nil, "status"); err == nil {
+			appFiles := application.RuntimeFilesFor(current.Store, current.Manifest)
+			if _, err := runtimebroker.RetireContainer(cleanup, provider, current.Manifest, appFiles); err != nil && !os.IsNotExist(err) {
+				t.Errorf("isolated Secrets broker retirement: %v", err)
+			}
 		}
 		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated Secrets workload cleanup: %v", err)
@@ -127,6 +129,10 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 		if current.DeploymentRecord == nil || !current.DeploymentRecord.Observed.Ready || current.DeploymentRecord.Applied.GeneratedState["previous_intent"] != "" {
 			t.Fatal("Secrets apply lacks verified converged deployment record")
 		}
+		// The first apply allocates the canonical deployment owner. Never use
+		// an earlier read's unpersisted deployment proposal for secret access,
+		// native inventory or cleanup.
+		appFiles := application.RuntimeFilesFor(current.Store, current.Manifest)
 		if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("Secrets capability allocated independent management installation: %v", err)
 		}
