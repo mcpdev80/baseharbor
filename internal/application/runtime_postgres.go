@@ -487,6 +487,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 		return fmt.Errorf("inspect application runtime environment: %w", err)
 	}
 
+	if err := validateProtectedRuntimeValues(values); err != nil {
+		return err
+	}
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return err
 	}
@@ -511,7 +514,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			continue
 		}
 		if err := validatePortValue(value, key); err != nil {
-			return err
+			return errors.New("protected application runtime environment contains an invalid port reference")
 		}
 		port, _ := strconv.Atoi(value)
 		excluded[port] = struct{}{}
@@ -698,6 +701,9 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 }
 
 func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
+	if err := validateProtectedRuntimeValues(values); err != nil {
+		return err
+	}
 	if err := writeOwnerOnlyFile(path, []byte(runtimeEnvContent(m, values))); err != nil {
 		return fmt.Errorf("write application runtime environment: %w", err)
 	}
@@ -775,6 +781,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			}
 		}
 	}
+	appendRetainedRuntimeValues(&b, values)
 	return b.String()
 }
 
