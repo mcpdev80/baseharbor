@@ -62,6 +62,37 @@
           "artifact_digest": "sha256:48e4fbea511566d8079489c0cb78f5bc30974d87cbf956b0d89ede072bce3c87"
         }
       ]
+    },
+    {
+      "candidate_sha": "327174f82611d4c9b81c848d90e68420d75c868f",
+      "candidate_tree": "f28b3ae2878c6909d74fcfe47a1cd7f57559bc8e",
+      "workflow_run_id": 38153108787,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Actual Keycloak, its SQL and workload materialized; read-only discovery/binding/provider checks pass. Adding the public callback route fails managed gateway certificate reconciliation because the common PKI constructor omits the existing public leaf passed to LocalIssuer.Renew. The issuer correctly rejects the empty renewal identity. Canonical callback TLS remains failed. Cleanup cannot reconcile the failed gateway definition and leaves two test containers. End-user OAuth was not reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114510457349,
+          "test_seconds": 64.57,
+          "actual_test_containers_after_failed_cleanup": 2,
+          "artifact_id": 11707646387,
+          "artifact_name": "coreless-docker-38153108787-1",
+          "artifact_digest": "sha256:e03a4718034c822cfaa8cae4cfb8df95599f665b8f81a9c91afb548295f4d929"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114510457190,
+          "test_seconds": 70.54,
+          "actual_test_containers_after_failed_cleanup": 2,
+          "artifact_id": 11706953806,
+          "artifact_name": "coreless-podman-38153108787-1",
+          "artifact_digest": "sha256:029b242b503035542dcc78e1b8cf558958090817625a1a48b7c0ac901b157451"
+        }
+      ]
     }
   ],
   "not_qualified": [
