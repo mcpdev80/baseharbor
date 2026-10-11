@@ -108,13 +108,19 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 				return err
 			}
 			result, err := identityprovider.RetireKeycloakRuntime(ctx, provider, resolved.Manifest, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
-			if err != nil {
-				return err
+			// A failed native operation can still have removed some containers.
+			// Report its inspected partial result before retaining the owner and
+			// returning the failure; never turn a command error into success.
+			for _, resource := range result.Removed {
+				fmt.Fprintf(out, "Removed %s %s after owned runtime inspection\n", resource.Kind, resource.Name)
 			}
 			for _, item := range result.Retained {
 				fmt.Fprintf(out, "Retained %s %s: %s\n", item.Resource.Kind, item.Resource.Name, item.Reason)
 			}
 			fmt.Fprintf(out, "Retained Identity files at %s; runtime retirement does not verify continued login, token behavior or recovery usability.\n", files.Dir)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)

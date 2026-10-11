@@ -63,7 +63,7 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 				matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource)
 			}
 			if matched {
-				if strings.HasPrefix(container.Service, "keycloak-db-") || strings.HasPrefix(container.Name, files.Project+"-keycloak-db-") {
+				if container.Service == "keycloak-db" || strings.HasPrefix(container.Service, "keycloak-db-") || strings.HasPrefix(container.Name, files.Project+"-keycloak-db-") {
 					sqlCount++
 					if container.Running {
 						sqlState = application.ProviderRunning

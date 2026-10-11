@@ -5,10 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -101,39 +97,9 @@ func observeIdentityImpact(ctx context.Context, resolved resolvedApplication, in
 		fact.Realization.Locations = append(fact.Realization.Locations, location)
 		fact.Materials = append(fact.Materials, application.ProviderMaterial{ID: instance.ID + "/volume/" + resource.Name, Kind: "database", Ownership: capability.OwnershipBaseHarbor, Location: &location, Recovery: []application.ResourceLocation{}, Verified: true, Evidence: "owned persistent Identity/SQL volume; contents and backups not inspected"})
 	}
-	count := 0
-	err = filepath.WalkDir(files.Dir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		count++
-		if count > 10000 {
-			return fmt.Errorf("Identity material inventory exceeds bounded inspection")
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
-			complete = false
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.Mode().IsRegular() || entry.Name() == ".lifecycle.lock" {
-			return nil
-		}
-		location := application.ResourceLocation{Owner: fact.Realization.Owner, Target: resolved.Target.Name, Kind: "path", Reference: path}
-		material := application.ProviderMaterial{ID: instance.ID + "/path/" + path, Kind: "configuration", Ownership: capability.OwnershipBaseHarbor, Location: &location, Recovery: []application.ResourceLocation{}, Verified: true, Evidence: fmt.Sprintf("protected retained file; size=%d mtime=%d; contents not exposed", info.Size(), info.ModTime().UnixNano())}
-		if err := inspectProviderCertificateMaterial(path, info, &material); err != nil {
-			complete = false
-			material.Verified = false
-			material.Evidence = "protected material could not be fully inspected; certificate validity remains unknown"
-		}
-		fact.Materials = append(fact.Materials, material)
-		return nil
-	})
+	materials, filesComplete, err := observeOwnedProviderFiles(fact.Realization.Owner, resolved.Target.Name, instance.ID, files.Dir)
+	fact.Materials = append(fact.Materials, materials...)
+	complete = complete && filesComplete
 	// Files and volumes are observed, but live session/token behavior and
 	// SQL contents/backup verification have not been projected by this adapter.
 	// Do not call the entire impact inventory complete from file ownership alone.

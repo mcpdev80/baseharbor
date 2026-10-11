@@ -1,0 +1,79 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-identity-add-remove-re-add",
+  "test": "TestSelectiveIdentityRuntimeAddRemoveReAdd",
+  "observed_at": "2026-10-11",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "c5446c28d1e5784f331998d22ab7022ada5c652f",
+      "candidate_tree": "22ea042fa8239d5fbcf3679e675e51511956c09e",
+      "workflow_run_id": 38139853235,
+      "docker_job_id": 114471285228,
+      "podman_job_id": 114471285305,
+      "conclusion": "failure",
+      "reason": "The prod fixture omitted required operator OIDC configuration; init rejected it before runtime materialization.",
+      "qualified": []
+    },
+    {
+      "candidate_sha": "769cbdc6f08934e5643f134c7e03c73bcb7c5503",
+      "candidate_tree": "2bf676da487e939449cc055676f0088dd10c2671",
+      "workflow_run_id": 38140094623,
+      "docker_job_id": 114472011322,
+      "podman_job_id": 114472011421,
+      "conclusion": "failure",
+      "reason": "Selected Identity, developer OIDC, actual HTTP workload and TLS gateway provisioned, but final readiness and cleanup still used unconditional Core trust-plane lookup.",
+      "qualified": []
+    },
+    {
+      "candidate_sha": "9110d511d07c605ad8a97b9bc88788fa1a3e3c7d",
+      "candidate_tree": "962602f8fcd05fcab5249b352d19bbd9e447b250",
+      "workflow_run_id": 38140506036,
+      "conclusion": "cancelled",
+      "reason": "A concurrent shared-branch checkpoint cancelled the active jobs through workflow concurrency; re-add was not qualified.",
+      "runtime_observations": [
+        {
+          "runtime": "docker",
+          "job_id": 114473230538,
+          "rootless": true,
+          "phase": 0,
+          "identity_requested": true,
+          "selected_identity_containers": 5,
+          "actual_total_containers": 7,
+          "retained_owned_data_volumes": 2
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114473230546,
+          "rootless": true,
+          "phase": 0,
+          "identity_requested": true,
+          "selected_identity_containers": 3,
+          "actual_total_containers": 5,
+          "retained_owned_data_volumes": 2
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114473230546,
+          "rootless": true,
+          "phase": 1,
+          "identity_requested": false,
+          "selected_identity_containers": 0,
+          "actual_total_containers": 1,
+          "retained_owned_data_volumes": 2,
+          "retained_credential_configuration_digest_unchanged": true
+        }
+      ],
+      "qualified": ["Only the explicitly listed completed phase observations on this SHA; no complete gate or re-add result."]
+    }
+  ],
+  "not_qualified": [
+    "Complete Docker/rootless Podman Identity true-false-true acceptance on a final integrated SHA",
+    "End-user authenticated OAuth/PKCE login, token refresh and existing session behavior",
+    "Two applications sharing Identity and last-consumer convergence",
+    "The complete capability/provider and direct mutation-path matrix",
+    "Explicit developer credential change consent and continuity",
+    "Candidate-compatible Demo, Console and Node Connector and ecosystem readiness"
+  ]
+}

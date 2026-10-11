@@ -39,7 +39,7 @@ permissions:
 
 concurrency:
   group: targeted-integration-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' }}
+  cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:
   coreless_runtime:
