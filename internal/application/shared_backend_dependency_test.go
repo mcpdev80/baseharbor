@@ -39,3 +39,14 @@ func TestSharedBackendSelectiveDependencyPreservesExistingBinding(t *testing.T) 
 		t.Fatal("existing provider binding overwritten")
 	}
 }
+
+func TestRetainedCacheDoesNotInventStandaloneSQLMigration(t *testing.T) {
+	issuer := newSharedCoreTestIssuer(t, t.TempDir(), "local", false)
+	state := sharedBackendState{Applications: map[string]sharedBackendAppState{"cache-only": {Application: "cache-only", Environment: "dev", Cache: map[string]sharedValkeyResource{}}}}
+	if _, err := selectSharedBackendDependency(&state, New("sql", "dev", true, false, false), issuer, "local"); err != nil {
+		t.Fatalf("cache-only retained state falsely treated as an SQL migration: %v", err)
+	}
+	if state.CoreSQL == nil {
+		t.Fatal("selected SQL dependency omitted")
+	}
+}

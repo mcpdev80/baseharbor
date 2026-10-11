@@ -50,37 +50,42 @@ func RetireOwnedRuntime(ctx context.Context, provider RuntimeRetirementProvider,
 		if !seen[resource] {
 			return result, errors.New("runtime retirement observation contains an unplanned resource")
 		}
-		if resource.Kind == "volume" {
-			result.Retained = append(result.Retained, RetainedRuntimeResource{Resource: resource, Reason: "persistent data preserved; deletion requires explicit consent and ownership proof"})
-		}
 	}
-	if err := provider.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-		return result, fmt.Errorf("retire owned runtime; retain ownership state for retry: %w", err)
-	}
+	// An interrupted Down may have applied only part of the approved change.
+	// Inspect actual disposition even on failure; initial inventory is not a
+	// receipt proving preservation after a mutation.
+	downErr := provider.DownProject(ctx, files.Project, files.Compose, files.Env)
 	after, err := provider.InspectProjectResources(ctx, files.Project, expected)
 	if err != nil {
-		return result, fmt.Errorf("verify retired runtime; retain ownership state for retry: %w", err)
+		return result, errors.Join(downErr, fmt.Errorf("verify retired runtime; retain ownership state for retry: %w", err))
 	}
 	remaining := map[ProjectResource]bool{}
+	var verificationErr error
 	for _, resource := range after {
 		if !seen[resource] {
 			return result, errors.New("runtime retirement verification contains an unplanned resource")
 		}
 		remaining[resource] = true
 		if resource.Kind == "container" {
-			return result, fmt.Errorf("retired runtime container remains: %s", resource.Name)
+			verificationErr = errors.Join(verificationErr, fmt.Errorf("retired runtime container remains: %s", resource.Name))
+		}
+		if resource.Kind == "volume" {
+			result.Retained = append(result.Retained, RetainedRuntimeResource{Resource: resource, Reason: "persistent data verified at its existing volume; deletion requires explicit consent and ownership proof"})
 		}
 		if resource.Kind == "network" {
-			result.Retained = append(result.Retained, RetainedRuntimeResource{Resource: resource, Reason: "network remains in use; runtime owner preserved connected consumers"})
+			result.Retained = append(result.Retained, RetainedRuntimeResource{Resource: resource, Reason: "network remains at its existing owner; preserve connected consumers and retry state"})
 		}
 	}
 	for _, resource := range before {
 		if resource.Kind == "volume" && !remaining[resource] {
-			return result, fmt.Errorf("runtime retirement lost persistent volume %s; retain ownership state for recovery", resource.Name)
+			verificationErr = errors.Join(verificationErr, fmt.Errorf("runtime retirement lost persistent volume %s; retain ownership state for recovery", resource.Name))
 		}
 		if !remaining[resource] {
 			result.Removed = append(result.Removed, resource)
 		}
 	}
-	return result, nil
+	if downErr != nil {
+		downErr = fmt.Errorf("retire owned runtime; retain ownership state for retry: %w", downErr)
+	}
+	return result, errors.Join(downErr, verificationErr)
 }

@@ -89,3 +89,23 @@ func TestRetireOwnedRuntimeRejectsUnplannedObservation(t *testing.T) {
 		t.Fatal("unplanned observation authorized mutation")
 	}
 }
+
+func TestInterruptedRetirementReturnsOnlyVerifiedActualDisposition(t *testing.T) {
+	container := ProjectResource{Kind: "container", Name: "identity"}
+	volume := ProjectResource{Kind: "volume", Name: "identity-data"}
+	interrupted := errors.New("interrupted")
+	for _, after := range [][]ProjectResource{{volume}, {container}} {
+		r := &retirementRuntime{before: []ProjectResource{container, volume}, after: after, downErr: interrupted}
+		result, err := RetireOwnedRuntime(context.Background(), r, Files{Project: "owned", Compose: "owned.yaml", Env: "owned.env"}, r.before)
+		if !errors.Is(err, interrupted) || r.inspections != 2 {
+			t.Fatalf("interruption concealed or actual disposition not inspected: %+v %v", result, err)
+		}
+		retainedVolume := false
+		for _, retained := range result.Retained {
+			retainedVolume = retainedVolume || retained.Resource == volume
+		}
+		if retainedVolume != reflect.DeepEqual(after, []ProjectResource{volume}) {
+			t.Fatalf("initial inventory was incorrectly presented as final preservation: %+v", result)
+		}
+	}
+}

@@ -35,7 +35,7 @@ func selectSharedBackendDependency(state *sharedBackendState, m Manifest, issuer
 	if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
 		return bhruntime.Files{}, errors.New("shared backend dependency does not belong to the selected Target")
 	}
-	if state.CoreSQL == nil && (state.PostgresAdminCredential != "" || len(state.Applications) > 0) {
+	if sharedBackendUsesStandalonePostgres(*state) {
 		return bhruntime.Files{}, errors.New("retained standalone providers cannot be implicitly migrated into management SQL")
 	}
 	if state.CoreSQL != nil && (state.CoreSQL.Project != core.Project || state.CoreSQL.Compose != core.Compose || state.CoreSQL.Env != core.Env) {

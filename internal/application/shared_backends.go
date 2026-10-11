@@ -155,7 +155,7 @@ func HasApplicationScopedRuntimeServices(m Manifest) bool {
 	return false
 }
 
-func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, dataDir, namespace string, m Manifest, files RuntimeFiles) (bool, error) {
+func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, dataDir, namespace string, m Manifest, files RuntimeFiles, plans ...ProviderPlan) (bool, error) {
 	if !HasSharedBackends(m) {
 		return false, nil
 	}
@@ -171,6 +171,18 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		return false, fmt.Errorf("shared provider lifecycle is already active: %w", err)
 	}
 	defer unlock()
+	if len(plans) > 1 {
+		return false, errors.New("shared backend reconciliation accepts one resolved consumer plan")
+	}
+	if len(plans) == 1 {
+		if _, err := os.Lstat(shared.State); err == nil {
+			if _, err := ExistingSharedBackendInventoryAt(dataDir, namespace, m.Environment); err != nil {
+				return false, err
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
 	state, err := loadSharedBackendState(shared.State, m.Environment)
 	if err != nil {
 		return false, err
@@ -291,7 +303,7 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		if err := compose.ConfigProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
 			return false, fmt.Errorf("validate shared backend runtime: %w", err)
 		}
-		if err := compose.UpProject(ctx, shared.Project, shared.Compose, shared.Env); err != nil {
+		if err := startSharedBackendRuntime(ctx, compose, dataDir, namespace, m, shared, plans); err != nil {
 			return false, fmt.Errorf("start shared backend runtime: %w", err)
 		}
 	}

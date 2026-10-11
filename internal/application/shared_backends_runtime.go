@@ -297,23 +297,23 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 	if err := writeOwnerOnlyFile(files.Env, []byte(env.String())); err != nil {
 		return err
 	}
+	return os.WriteFile(files.Compose, []byte(sharedBackendCompose(files, state)), 0o600)
+}
 
+// Keep canonical shape reconstruction read-only for ownership/impact checks.
+func sharedBackendCompose(files SharedBackendFiles, state sharedBackendState) string {
+	appKeys := make([]string, 0, len(state.Applications))
+	for key := range state.Applications {
+		appKeys = append(appKeys, key)
+	}
+	sort.Strings(appKeys)
 	var b strings.Builder
 	if sharedBackendHasRuntimeServices(state) {
 		b.WriteString("services:\n")
 	} else {
 		b.WriteString("services: {}\n")
 	}
-	hasPostgres := state.PostgresAdminCredential != ""
-	if !hasPostgres {
-		for _, app := range state.Applications {
-			if len(app.SQL) > 0 {
-				hasPostgres = true
-				break
-			}
-		}
-	}
-	hasPostgres = hasPostgres && state.CoreSQL == nil
+	hasPostgres := sharedBackendUsesStandalonePostgres(state)
 	if hasPostgres {
 		writeSharedPostgresCompose(&b, state)
 	}
@@ -370,7 +370,22 @@ func renderSharedBackendRuntime(files SharedBackendFiles, state sharedBackendSta
 		b.WriteString("    external: true\n")
 	}
 	writeSharedValkeyHANetworks(&b, state, appKeys)
-	return os.WriteFile(files.Compose, []byte(b.String()), 0o600)
+	return b.String()
+}
+
+func sharedBackendUsesStandalonePostgres(state sharedBackendState) bool {
+	if state.CoreSQL != nil {
+		return false
+	}
+	if state.PostgresAdminCredential != "" {
+		return true
+	}
+	for _, app := range state.Applications {
+		if len(app.SQL) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func sharedBackendHasRuntimeServices(state sharedBackendState) bool {
