@@ -83,7 +83,6 @@
   "not_qualified": [
     "All required selective runtime gates on ONE final integrated SHA; later source changes require their affected qualification.",
     "End-user authenticated OAuth/PKCE login, token refresh and existing session behavior",
-    "Two applications sharing Identity and last-consumer convergence",
     "The complete capability/provider and direct mutation-path matrix",
     "Explicit developer credential change consent and continuity",
     "Candidate-compatible Demo, Console and Node Connector and ecosystem readiness"
@@ -141,6 +140,68 @@
         "artifact_id": 11702779521,
         "artifact_name": "coreless-podman-38141876601-1",
         "artifact_digest": "sha256:d967785cb6407e4ee4b5e4683d645b63adce07af7d77df3d9a4b4161acfc039e"
+      }
+    ]
+  },
+  "qualified_shared_consumer_lifecycle": {
+    "candidate_sha": "4cef6fae7f1a5fa99ac57a6d25e7e23260e96400",
+    "candidate_tree": "14e64878accd868842276f9984e8da3149fb391f",
+    "workflow_run_id": 38143140494,
+    "attempt": 1,
+    "test_result": "PASS",
+    "scope": "One actual app true-false-true followed by a second actual initialized app on the same Target. First removal preserves sibling OIDC/provider readiness and the selected native module; last removal converges selected Identity containers to zero while retaining two owned data volumes and unchanged protected configuration. Cleanup leaves zero containers. No authenticated end-user OAuth/session proof.",
+    "runtime_jobs": [
+      {
+        "runtime": "docker",
+        "rootless": true,
+        "job_id": 114480918722,
+        "conclusion": "success",
+        "go_version": "go1.25.0 linux/amd64",
+        "duration_seconds": 223.58,
+        "selected_identity_containers_by_phase": [
+          5,
+          0,
+          5
+        ],
+        "actual_total_containers_by_phase": [
+          7,
+          1,
+          7
+        ],
+        "first_removal_sibling_ready": true,
+        "selected_identity_containers_after_last_removal": 0,
+        "retained_owned_data_volumes": 2,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11704265605,
+        "artifact_name": "coreless-docker-38143140494-1",
+        "artifact_digest": "sha256:1ecde3e5a909c90346d28ff043c8cae152e68369da4d81f31bfb4b5cd1110dfe"
+      },
+      {
+        "runtime": "podman",
+        "rootless": true,
+        "job_id": 114480918934,
+        "conclusion": "success",
+        "go_version": "go1.25.0 linux/amd64",
+        "duration_seconds": 250.66,
+        "selected_identity_containers_by_phase": [
+          3,
+          0,
+          3
+        ],
+        "actual_total_containers_by_phase": [
+          5,
+          1,
+          5
+        ],
+        "first_removal_sibling_ready": true,
+        "selected_identity_containers_after_last_removal": 0,
+        "retained_owned_data_volumes": 2,
+        "credential_configuration_digest_unchanged": true,
+        "actual_total_containers_after_cleanup": 0,
+        "artifact_id": 11703074330,
+        "artifact_name": "coreless-podman-38143140494-1",
+        "artifact_digest": "sha256:2848b34f92b1b9f4ee1455a5cf8387d0ab3a3ebc4e83af223f371b021dfb25aa"
       }
     ]
   }

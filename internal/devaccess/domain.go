@@ -30,14 +30,7 @@ func LoadDomain(target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", errors.New("development domain state must be a regular non-symlink file")
-	}
-	data, err := os.ReadFile(path)
+	data, err := readDeveloperStateFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -53,15 +46,7 @@ func ConfigureDomain(target, value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", fmt.Errorf("create development domain state: %w", err)
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(domain+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := writeDeveloperStateFile(path, []byte(domain+"\n")); err != nil {
 		return "", err
 	}
 	return domain, nil

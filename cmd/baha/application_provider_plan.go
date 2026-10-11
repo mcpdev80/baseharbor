@@ -46,10 +46,10 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		// application's own convergence completes.
 		if previous := record.Applied.GeneratedState["previous_intent"]; previous != "" {
 			var prior application.Manifest
-			if json.Unmarshal([]byte(previous), &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Name != id.Application || prior.Environment != id.Environment {
+			if json.Unmarshal([]byte(previous), &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Environment != id.Environment {
 				return application.ProviderPlan{}, invalidProviderConsumerInventory(fmt.Errorf("deployment %s has invalid previous intent", id.DeploymentID))
 			}
-			consumers = append(consumers, application.ConsumerIntent{Key: "deployment/" + id.DeploymentID + "/previous", Active: true, Manifest: prior, DependencyRoots: []string{}})
+			consumers[len(consumers)-1].RetainedIntents = []application.Manifest{prior}
 		}
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)
@@ -84,12 +84,22 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		if consumers[index].Key == "installation/"+state.ID {
 			continue
 		}
-		consumers[index].DependencyRoots, err = application.RuntimeDependencyRoots(consumers[index].Manifest, snapshot.Registry)
-		if err != nil {
-			return application.ProviderPlan{}, invalidProviderConsumerInventory(err)
-		}
-		if application.RequiresRuntimeBroker(consumers[index].Manifest) {
-			consumers[index].DependencyRoots = append(consumers[index].DependencyRoots, application.RuntimeBrokerDependency(resolved.Target.Name, consumers[index].Manifest).ID)
+		intents := append([]application.Manifest{consumers[index].Manifest}, consumers[index].RetainedIntents...)
+		for _, intent := range intents {
+			roots, rootErr := application.RuntimeDependencyRoots(intent, snapshot.Registry)
+			if rootErr != nil {
+				return application.ProviderPlan{}, invalidProviderConsumerInventory(rootErr)
+			}
+			if roots == nil {
+				// Unknown consumption dependencies stay unknown for the common
+				// resolver; an interrupted owner cannot make them complete.
+				consumers[index].DependencyRoots = nil
+				break
+			}
+			consumers[index].DependencyRoots = append(consumers[index].DependencyRoots, roots...)
+			if application.RequiresRuntimeBroker(intent) {
+				consumers[index].DependencyRoots = append(consumers[index].DependencyRoots, application.RuntimeBrokerDependency(resolved.Target.Name, intent).ID)
+			}
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)
