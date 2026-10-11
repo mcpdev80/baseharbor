@@ -90,10 +90,11 @@ type machineApplicationInput struct {
 }
 
 type machineApplyInput struct {
-	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
-	Name                string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
-	Environment         string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
-	SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	SkipMemoryPreflight   bool                               `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
 }
 
 type machineAppNewInput struct {

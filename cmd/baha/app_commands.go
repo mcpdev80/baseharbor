@@ -180,6 +180,11 @@ func appPlanCommand(store application.Store) *cli.Command {
 				fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
 			}
 			fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+			if plan.ProviderPlan.Impact != nil {
+				if err := printProviderImpact(out, *plan.ProviderPlan.Impact); err != nil {
+					return err
+				}
+			}
 			fmt.Fprintln(out, "No changes were made.")
 			return nil
 		},

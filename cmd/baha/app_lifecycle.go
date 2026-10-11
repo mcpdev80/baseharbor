@@ -11,7 +11,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -67,6 +66,11 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
 		return err
 	}
+	unlock, err := lockApplicationTargetLifecycle(resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	m := resolved.Manifest
 	runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
 	resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
@@ -187,16 +191,8 @@ func runBestEffortDevelopmentRouteSuspension(term *cli.Terminal, suspend func() 
 }
 
 func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, m application.Manifest) error {
-	if !requiresDevelopmentGateway(m) {
-		return nil
-	}
-	files, err := existingTargetRuntimeFiles(ctx)
-	if err != nil {
-		return fmt.Errorf("load target runtime for development route suspension: %w", err)
-	}
-	issuer := openbao.NewServiceIssuer(compose, files)
 	owner := "app/" + m.Name + "/" + m.Environment
-	if err := devgateway.RemoveOwners(ctx, compose, issuer, resolved.Target.Name, owner); err != nil {
+	if err := removeApplicationGatewayOwners(ctx, compose, resolved, owner); err != nil {
 		return fmt.Errorf("suspend canonical development routes before application down: %w", err)
 	}
 	return nil
@@ -239,6 +235,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		}
 		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "ownership verified", "retained remote Application publication destroyed with owned cleanup verified")
 	}
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
 	}

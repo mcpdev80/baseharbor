@@ -64,6 +64,7 @@ type Error struct {
 	Next        string    `json:"next,omitempty"`
 	Resource    string    `json:"resource,omitempty"`
 	Remediation string    `json:"remediation_class,omitempty"`
+	Details     any       `json:"details,omitempty"`
 	Cause       error     `json:"-"`
 }
 

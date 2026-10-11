@@ -366,6 +366,21 @@ func (c Compose) StopOwnedProjectContainers(ctx context.Context, project string)
 }
 
 func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
+	return c.removeOwnedProjectResources(ctx, project, resources, true)
+}
+
+// RetireOwnedProjectContainers never requests removal of anonymous or named
+// volumes. Destructive cleanup remains a separate, explicitly authorized path.
+func (c Compose) RetireOwnedProjectContainers(ctx context.Context, project string, resources []ProjectResource) error {
+	for _, resource := range resources {
+		if resource.Kind != "container" {
+			return errors.New("runtime retirement accepts only containers")
+		}
+	}
+	return c.removeOwnedProjectResources(ctx, project, resources, false)
+}
+
+func (c Compose) removeOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource, deleteAnonymousVolumes bool) error {
 	if c.command == "" {
 		return ErrRuntimeNotFound
 	}
@@ -385,7 +400,11 @@ func (c Compose) DestroyOwnedProjectResources(ctx context.Context, project strin
 			var args []string
 			switch resource.Kind {
 			case "container":
-				args = []string{"container", "rm", "-f", "-v", resource.Name}
+				args = []string{"container", "rm", "-f"}
+				if deleteAnonymousVolumes {
+					args = append(args, "-v")
+				}
+				args = append(args, resource.Name)
 			case "network":
 				args = []string{"network", "rm", resource.Name}
 			case "volume":

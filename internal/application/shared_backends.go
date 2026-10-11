@@ -143,7 +143,7 @@ func HasApplicationScopedRuntimeServices(m Manifest) bool {
 	if len(SQLInstanceNames(m)) > 0 && !UsesSharedPostgreSQL(m) {
 		return true
 	}
-	if len(CacheInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
+	if len(ValkeyInstanceNames(m)) > 0 && !UsesSharedValkey(m) {
 		return true
 	}
 	if len(RabbitMQInstanceNames(m)) > 0 {

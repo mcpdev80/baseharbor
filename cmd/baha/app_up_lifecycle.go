@@ -39,7 +39,18 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 	if isRemoteApplication(execution.resolved) {
 		return executeRemoteApplicationApply(ctx, execution.resolved, out)
 	}
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return err
+	}
+	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return err
+	}
+	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return err
 	}
 	if err := execution.runPreflight(ctx); err != nil {
@@ -184,7 +195,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
-			if !requiresManagedServiceIssuer(m) && !application.RequiresRuntimeBroker(m) {
+			if !application.RequiresRuntimeBroker(m) {
 				return nil
 			}
 			var err error
@@ -198,16 +209,10 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			if !requiresManagedServiceIssuer(m) {
 				return nil
 			}
-			if e.coreRuntime == nil {
-				return unavailableApplicationCoreRuntime()
-			}
-			e.issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
-			status, err := e.issuer.Status(ctx)
+			var err error
+			e.issuer, err = resolveApplicationServiceIssuer(ctx, e.resolved, e.compose)
 			if err != nil {
-				return fmt.Errorf("managed service PKI is not ready: %w", err)
-			}
-			if !status.Ready {
-				return errors.New("managed service PKI is not ready")
+				return fmt.Errorf("managed service PKI preflight: %w", err)
 			}
 			return nil
 		}},
@@ -246,6 +251,9 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 }
 
 func (e *applicationUpExecution) startManagedRuntime(ctx context.Context) error {
+	if err := materializeApplicationServiceIssuer(e.issuer); err != nil {
+		return fmt.Errorf("prepare managed service PKI: %w", err)
+	}
 	if err := application.EnsureBackendServiceAccess(ctx, e.issuer, e.files, e.manifest); err != nil {
 		return fmt.Errorf("reconcile managed backend service access: %w", err)
 	}

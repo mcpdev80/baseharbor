@@ -88,10 +88,10 @@ func developmentExposureUpstream(project, routeName, protocol string, port int) 
 }
 
 func requiresDevelopmentGateway(m application.Manifest) bool {
-	if !devaccess.Enabled(m.Environment) {
-		return false
-	}
-	return (application.HasExplicitWorkload(m) && (application.HasManagedRuntimeServices(m) || application.RequiresRuntimeBroker(m))) || requiresDeclaredDevelopmentGatewaySurface(m)
+	// A database/cache/broker connection does not request an HTTP frontend.
+	// Only declared exposure or an actual selected management/login surface
+	// requires the development gateway.
+	return requiresDeclaredDevelopmentGatewaySurface(m)
 }
 
 func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {
@@ -99,7 +99,7 @@ func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {
 		return false
 	}
 	return len(m.Exposures) > 0 ||
-		m.Services.Identity ||
+		hasManagedDevelopmentIdentity(m) ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
 		m.Services.KeyValueManagementUI ||
@@ -115,7 +115,7 @@ func requiresDevelopmentManagementAccess(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
 	}
-	return m.Services.Identity ||
+	return hasManagedDevelopmentIdentity(m) ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
 		m.Services.KeyValueManagementUI ||
@@ -302,7 +302,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 }
 
 func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Context, plan *developmentRoutePlan) error {
-	if !e.manifest.Services.Identity {
+	if !hasManagedDevelopmentIdentity(e.manifest) {
 		return nil
 	}
 	placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderKeycloak)

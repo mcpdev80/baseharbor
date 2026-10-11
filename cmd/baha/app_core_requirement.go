@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // Resolve only through the existing Target registry and native provider plan.
@@ -20,13 +20,22 @@ func resolveApplicationLifecycleFootprint(resolved resolvedApplication) (applica
 }
 
 func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication, observations map[string]application.ProviderFact) (application.Footprint, error) {
-	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observations)
 	if err != nil {
 		return application.Footprint{}, err
 	}
+	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
+	return footprint, classifyApplicationResolutionError(err)
+}
+
+func applicationLifecycleSnapshot(resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
+	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return application.ResolutionSnapshot{}, nil, err
+	}
 	planned, err := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
 	if err != nil {
-		return application.Footprint{}, err
+		return application.ResolutionSnapshot{}, nil, err
 	}
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
@@ -34,7 +43,7 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 		}
 		for _, instance := range planned.Instances {
 			if instance.ID == binding.ProviderInstanceID && instance.Ownership == capability.OwnershipExternal && instance.Provider.Kind != capability.ProviderExternalOIDC && instance.Provider.Kind != capability.ProviderExternalOTLP {
-				return application.Footprint{}, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "external_provider_adapter_unavailable", Resource: instance.ID, Message: "The selected BYO provider has no compatible application lifecycle adapter.", Next: "Use an existing supported binding; BaseHarbor will neither install Core nor replace this external provider."}
+				return application.ResolutionSnapshot{}, nil, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "external_provider_adapter_unavailable", Resource: instance.ID, Message: "The selected BYO provider has no compatible application lifecycle adapter.", Next: "Use an existing supported binding; BaseHarbor will neither install Core nor replace this external provider."}
 			}
 		}
 	}
@@ -44,7 +53,7 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 		}
 		for _, wanted := range planned.Bindings {
 			if wanted.ApplicationID == old.ApplicationID && wanted.Environment == resolved.Manifest.Environment && wanted.Resource.Kind == old.Resource.Kind && wanted.Resource.Name == old.Resource.Name && wanted.ProviderInstanceID != old.ProviderInstanceID {
-				return application.Footprint{}, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_binding_migration_required", Message: "The existing provider binding differs from the current native placement plan.", Next: "Restore the existing placement; provider migration requires an explicit supported operation."}
+				return application.ResolutionSnapshot{}, nil, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_binding_migration_required", Message: "The existing provider binding differs from the current native placement plan.", Next: "Restore the existing placement; provider migration requires an explicit supported operation."}
 			}
 		}
 	}
@@ -54,7 +63,7 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 	}
 	contract, err := application.PortableContractFromManifest(resolved.Manifest)
 	if err != nil {
-		return application.Footprint{}, err
+		return application.ResolutionSnapshot{}, nil, err
 	}
 	requested := map[capability.Requirement]bool{}
 	for _, requirement := range contract.Capabilities {
@@ -81,12 +90,25 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 			}
 		}
 	}
-	planned.Bindings = actualBindings
-	snapshot := application.ResolutionSnapshot{Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
+	planned.Bindings = registry.Bindings
+	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
+	snapshot.DependencyRoots, err = application.RuntimeDependencyRoots(resolved.Manifest, planned)
+	if err != nil {
+		return application.ResolutionSnapshot{}, nil, err
+	}
 	for _, instance := range planned.Instances {
-		// Native managed providers use the existing Core PKI lifecycle. This
-		// preserves the full management topology rather than inventing slim SQL.
-		fact := application.ProviderFact{Target: resolved.Target.Name, Core: application.CoreRequired, State: application.ProviderNewRequired}
+		// Standalone native realizations use service-access PKI without a
+		// management installation. Embedded provider dependencies remain in
+		// their canonical renderer; no unrelated provider bundle is inferred.
+		fact := application.ProviderFact{Target: resolved.Target.Name, Core: application.CoreNotRequired, State: application.ProviderNewRequired, Dependencies: []string{}}
+		if instance.Provider.Kind == capability.ProviderOpenBao {
+			fact.Core = application.CoreRequired
+			fact.Dependencies = []string{application.RuntimeStorageDependencyID(resolved.Target.Name)}
+		}
+		if instance.Scope == capability.ScopeShared && instance.Ownership == capability.OwnershipBaseHarbor && (instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey) {
+			module := application.SharedBackendRuntimeDependency(resolved.Target.Name, instance.Provider.Kind)
+			fact.Dependencies = []string{module.ID}
+		}
 		if existing[instance.ID] {
 			// Registry presence is not a live or stopped-state observation.
 			fact.State = application.ProviderUnverifiable
@@ -98,10 +120,40 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 		if observation, ok := observations[instance.ID]; ok && existing[instance.ID] {
 			fact = observation
 		}
+		if instance.Provider.Kind == capability.ProviderKeycloak && instance.Ownership == capability.OwnershipBaseHarbor {
+			var dependencyErr error
+			fact, dependencyErr = appendIdentitySQLDependency(resolved, instance, fact, observations, &snapshot)
+			if dependencyErr != nil {
+				return application.ResolutionSnapshot{}, nil, dependencyErr
+			}
+		}
 		snapshot.Facts[instance.ID] = fact
 	}
-	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
-	return footprint, classifyApplicationResolutionError(err)
+	appendSharedBackendDependencyObservations(resolved, observations, &snapshot)
+	// Observe backing modules in the same resolver without creating competing
+	// selectable offers or another persistent ownership record. Identity may
+	// reference this exact module even when the desired app has no broker.
+	storage := application.RuntimeStorageDependency(resolved.Target.Name)
+	needed := false
+	retainedBroker := false
+	for _, fact := range snapshot.Facts {
+		for _, id := range fact.Dependencies {
+			needed = needed || id == storage.ID
+			retainedBroker = retainedBroker || id == storage.ID && fact.State != application.ProviderNewRequired
+		}
+	}
+	if needed {
+		snapshot.Ancillary = append(snapshot.Ancillary, storage)
+		fact := application.ProviderFact{Target: resolved.Target.Name, State: application.ProviderNewRequired, Core: application.CoreRequired, Dependencies: []string{}, Ancillary: true, OwnerReference: "runtime/" + bhruntime.SharedProjectName(resolved.Target.Name)}
+		if retainedBroker {
+			fact.State = application.ProviderUnverifiable
+		}
+		if observation, ok := observations[storage.ID]; ok {
+			fact = observation
+		}
+		snapshot.Facts[storage.ID] = fact
+	}
+	return snapshot, preferences, nil
 }
 
 // Translate domain outcomes once at the common CLI/JSON/MCP/HTTP consumer.
@@ -143,30 +195,29 @@ func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplic
 	if len(footprint.Requirements) == 0 && !application.HasExplicitWorkload(resolved.Manifest) {
 		return &machine.Error{Code: machine.ErrorInvalidWorkload, CauseCode: "workload_missing", Message: "Application has no supported workload or requested runtime services.", Next: "Add a supported Compose workload and initialize the application before starting it."}
 	}
-	retained, err := removedApplicationProviderBindings(resolved)
-	if err != nil {
+	if footprint.Core == application.CoreUnknown {
+		return &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "provider_dependencies_unverifiable", Message: "Selected consumer dependencies have no verified realization inventory.", Next: "Resolve the existing consumption and Target dependency bindings before applying."}
+	}
+	if _, err := resolveApplicationProviderPlan(resolved, nil); err != nil {
 		return err
 	}
-	for _, binding := range retained {
-		fmt.Fprintf(out, "Unused application resource retained: %s/%s on %s; no provider stop or reclamation is performed.\n", binding.Resource.Kind, binding.Resource.Name, binding.ProviderInstanceID)
-	}
-	for _, instanceID := range footprint.Unused {
-		fmt.Fprintf(out, "Unused Target provider retained: %s; reclamation requires an explicit ownership-checked operation.\n", instanceID)
-	}
-	if footprint.Core == application.CoreNotRequired && !requiresManagedServiceIssuer(resolved.Manifest) && !application.RequiresRuntimeBroker(resolved.Manifest) {
+	return nil
+}
+
+// Materialization belongs to the acknowledged mutation phase, never to the
+// read-only prerequisite decision used by init and plan.
+func materializeResolvedApplicationBroker(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) error {
+	if !application.RequiresRuntimeBroker(resolved.Manifest) {
 		return nil
 	}
-	if footprint.Core == application.CoreUnknown && !requiresManagedServiceIssuer(resolved.Manifest) && !application.RequiresRuntimeBroker(resolved.Manifest) {
-		return &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "provider_dependencies_unverifiable", Message: "The selected consumption dependencies have no verified provider realization inventory.", Next: "Resolve the existing consumption/Target bindings before applying; unknown dependencies do not authorize Core installation."}
+	// The broker's actual authorization/PKI dependency is OpenBao and its
+	// selected SQL storage. Identity is not a dependency of this realization.
+	selected := withTargetOverride(ctx, resolved.Target.Name)
+	options := runtimeUpOptions{Yes: true, HA: application.ComponentHA(resolved.Manifest, "secrets"), ControlPlaneOnly: true}
+	if err := runtimeUpGuidedProviders(selected, in, out, options); err != nil {
+		return err
 	}
-	fmt.Fprintln(out, "Selected managed providers require the existing SQL/Secrets/Identity Core topology; selective provider installation is unavailable.")
-	fmt.Fprintln(out, "Incremental memory and container counts are unknown until live runtime evidence is available.")
-	terminalInput := requiredSecretInputIsTerminal(in) || (isBufferedCoreInput(in) && (requiredSecretInputIsTerminal(runtimeInput) || requiredSecretInputIsTerminal(appInitInput)))
-	if noInput(ctx) || !terminalInput {
-		ctx = context.WithValue(ctx, assumeYesKey{}, false)
-		ctx = machineNoninteractiveContext(ctx)
-	}
-	return applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), in, out)
+	return ensureRepositoryOpenBaoReady(selected, in, out, io.Discard, options)
 }
 
 // All read surfaces share the same desired plan and Target resolver snapshot.
@@ -174,6 +225,7 @@ type applicationLifecyclePlan struct {
 	application.Plan
 	Footprint         application.Footprint        `json:"footprint"`
 	RetainedResources []capability.ProviderBinding `json:"retained_resources,omitempty"`
+	ProviderPlan      application.ProviderPlan     `json:"provider_plan"`
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
@@ -189,7 +241,23 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
-	return applicationLifecyclePlan{Plan: plan, Footprint: footprint, RetainedResources: retained}, nil
+	union, err := resolveApplicationProviderPlan(resolved, observeApplicationProviderFacts(ctx, resolved))
+	if err != nil {
+		return applicationLifecyclePlan{}, err
+	}
+	requests := applicationProviderChangeRequests(union)
+	requests, err = nativeBackendChangeRequests(resolved, requests)
+	if err != nil {
+		return applicationLifecyclePlan{}, err
+	}
+	if len(requests) > 0 {
+		impact, err := resolveApplicationProviderImpact(ctx, resolved, union, requests)
+		if err != nil {
+			return applicationLifecyclePlan{}, err
+		}
+		union.Impact = &impact
+	}
+	return applicationLifecyclePlan{Plan: plan, Footprint: footprint, RetainedResources: retained, ProviderPlan: union}, nil
 }
 
 func removedApplicationProviderBindings(resolved resolvedApplication) ([]capability.ProviderBinding, error) {
@@ -233,75 +301,12 @@ func checkRetainedApplicationProviderOwnership(resolved resolvedApplication) err
 	return nil
 }
 
-// Measure only app-scoped backend containers whose ownership was checked by
-// the existing runtime owner. Shared/remote/BYO and unknown dependencies stay
-// explicitly unverifiable; no estimate is inferred from registry metadata.
+// Observe existing native owners even after their capability leaves desired
+// intent. The common resolver remains the sole dependency/removal authority.
 func observeApplicationProviderFacts(ctx context.Context, resolved resolvedApplication) map[string]application.ProviderFact {
-	facts := map[string]application.ProviderFact{}
-	if isRemoteApplication(resolved) || !application.HasApplicationScopedRuntimeServices(resolved.Manifest) {
-		return facts
-	}
-	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
-	if err != nil {
-		return facts
-	}
-	runtime, err := detectRuntimeForTarget(ctx, resolved.Target)
-	if err != nil {
-		return facts
-	}
-	owned, err := application.InspectOwnedRuntimeResourcesForFiles(ctx, runtime, resolved.Manifest, files)
-	if err != nil || len(owned) == 0 {
-		return facts
-	}
-	containers, err := runtime.ListRuntimeContainers(ctx)
-	if err != nil {
-		return facts
-	}
-	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
-	if err != nil {
-		return facts
-	}
-	for _, instance := range registry.Instances {
-		if instance.Scope != capability.ScopeApplication || instance.OwnerApplicationID != resolved.Manifest.ApplicationID || instance.OwnerEnvironment != resolved.Manifest.Environment {
-			continue
-		}
-		prefix := ""
-		switch instance.Provider.Kind {
-		case capability.ProviderPostgreSQL:
-			prefix = "postgres-"
-		case capability.ProviderValkey:
-			prefix = "valkey-"
-		case capability.ProviderRabbitMQ:
-			prefix = "rabbitmq-"
-		case capability.ProviderMongoDB:
-			prefix = "mongodb-"
-		default:
-			continue
-		}
-		// Multiple logical resources have distinct instances. Without the existing
-		// provider-specific inventory mapping, a project count cannot be attributed.
-		peers := 0
-		for _, peer := range registry.Instances {
-			if peer.Scope == instance.Scope && peer.OwnerApplicationID == instance.OwnerApplicationID && peer.OwnerEnvironment == instance.OwnerEnvironment && peer.Provider.Kind == instance.Provider.Kind {
-				peers++
-			}
-		}
-		if peers != 1 {
-			continue
-		}
-		count := int64(0)
-		running := false
-		for _, container := range containers {
-			if container.Project == files.Project && (strings.HasPrefix(container.Service, prefix) || container.Service == strings.TrimSuffix(prefix, "-")) {
-				count++
-				running = running || container.Running
-			}
-		}
-		state := application.ProviderStoppedOwned
-		if running {
-			state = application.ProviderRunning
-		}
-		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreRequired, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "ownership-checked runtime container inventory for " + files.Project}}
-	}
+	facts := observeIdentityProviderFacts(ctx, resolved)
+	observeSharedBackendProviderFacts(ctx, resolved, facts)
+	observeBrokerProviderFacts(ctx, resolved, facts)
+	observeNativeBackendProviderFacts(ctx, resolved, facts)
 	return facts
 }

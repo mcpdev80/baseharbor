@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -54,6 +56,26 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			State: state,
 			Ready: false,
 		},
+	}
+	// Preserve the previous authoritative realization until convergence and
+	// verification finish. An interrupted apply must still know what runtime
+	// was previously requested, even after the repository intent changed.
+	if state == "applying" {
+		current, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+		if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+			return deployment.DeploymentRecord{}, loadErr
+		}
+		if loadErr == nil {
+			previous := current.Applied.Intent
+			if retained := current.Applied.GeneratedState["previous_intent"]; retained != "" {
+				previous = json.RawMessage(retained)
+			}
+			var prior application.Manifest
+			if len(previous) == 0 || json.Unmarshal(previous, &prior) != nil || prior.ApplicationID != resolved.Manifest.ApplicationID || prior.Name != resolved.Manifest.Name || prior.Environment != resolved.Manifest.Environment {
+				return deployment.DeploymentRecord{}, invalidProviderConsumerInventory(fmt.Errorf("previous deployment intent does not match its owner"))
+			}
+			record.Applied.GeneratedState["previous_intent"] = string(previous)
+		}
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		return deployment.DeploymentRecord{}, err

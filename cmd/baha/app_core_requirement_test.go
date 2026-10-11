@@ -61,7 +61,7 @@ func TestCoreDecisionMissingSourceFailsBeforeBootstrap(t *testing.T) {
 	}
 }
 
-func TestManagedCoreDecisionNonTTYYesDoesNotBootstrap(t *testing.T) {
+func TestSelectiveSQLDecisionNonTTYYesDoesNotBootstrap(t *testing.T) {
 	resolved := corelessResolvedFixture(t)
 	resolved.Manifest.Services.SQL = true
 	previous := applicationCoreBootstrap
@@ -72,12 +72,8 @@ func TestManagedCoreDecisionNonTTYYesDoesNotBootstrap(t *testing.T) {
 	t.Cleanup(func() { applicationCoreBootstrap = previous })
 	var out bytes.Buffer
 	err := requireResolvedApplicationCore(withAssumeYes(machineNoninteractiveContext(context.Background()), true), resolved, strings.NewReader(""), &out)
-	var failure *machine.Error
-	if !errors.As(err, &failure) || failure.CauseCode != "core_required" {
-		t.Fatalf("missing typed Core requirement: %v", err)
-	}
-	if !strings.Contains(out.String(), "container counts are unknown") {
-		t.Fatal("Core impact not visible")
+	if err != nil {
+		t.Fatalf("SQL-only unexpectedly requires Core: %v", err)
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)
 	if err != nil {
@@ -184,7 +180,7 @@ func TestCapabilityRemovalThenOtherDestroyRetainsUnboundSharedOwnership(t *testi
 		t.Fatalf("explicit app destroy reclaimed target-owned provider inventory: %+v %v", registry, err)
 	}
 	footprint, err := resolveApplicationLifecycleFootprint(resolved)
-	if err != nil || len(footprint.Unused) != 1 {
+	if err != nil || len(footprint.Unused) != 2 {
 		t.Fatalf("retained unused provider invisible: %+v %v", footprint, err)
 	}
 }
@@ -196,8 +192,13 @@ func TestFootprintPlanDoesNotClaimProjectedRegistrationIsLiveOrBound(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Footprint.Requirements) != 1 || plan.Footprint.Requirements[0].Binding != "requested/unbound" || len(plan.Footprint.Additional) != 1 || plan.Footprint.Additional[0].Containers.Classification != "unknown" || plan.Footprint.Complete {
+	if len(plan.Footprint.Requirements) != 1 || plan.Footprint.Requirements[0].Binding != "requested/unbound" || len(plan.Footprint.Additional) != 2 {
 		t.Fatalf("invented live footprint: %+v", plan.Footprint)
+	}
+	for _, provider := range plan.Footprint.Additional {
+		if provider.State != application.ProviderNewRequired || provider.Containers.Classification != "unknown" {
+			t.Fatalf("projected binding/module claimed live: %+v", provider)
+		}
 	}
 }
 
@@ -220,7 +221,7 @@ func TestUnverifiedConsumptionDoesNotInstallCore(t *testing.T) {
 	}
 }
 
-func TestManagedCoreDecisionReaderWithoutTTYDoesNotBootstrap(t *testing.T) {
+func TestSelectiveSQLDecisionReaderWithoutTTYDoesNotBootstrap(t *testing.T) {
 	resolved := corelessResolvedFixture(t)
 	resolved.Manifest.Services.SQL = true
 	previous := applicationCoreBootstrap
@@ -230,8 +231,7 @@ func TestManagedCoreDecisionReaderWithoutTTYDoesNotBootstrap(t *testing.T) {
 	}
 	t.Cleanup(func() { applicationCoreBootstrap = previous })
 	err := requireResolvedApplicationCore(withAssumeYes(context.Background(), true), resolved, strings.NewReader(""), io.Discard)
-	var failure *machine.Error
-	if !errors.As(err, &failure) || failure.CauseCode != "core_required" {
-		t.Fatalf("missing explicit Core installation requirement: %v", err)
+	if err != nil {
+		t.Fatalf("SQL-only unexpectedly requires Core: %v", err)
 	}
 }

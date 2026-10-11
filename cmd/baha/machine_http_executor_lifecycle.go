@@ -51,6 +51,7 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 	ctx = withTargetOverride(ctx, input.Target)
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	args := machineApplicationArgs(input.Name, input.Environment)
 
 	reportHTTPProgress(report, "resolve", "Resolving application and target.", 10)
