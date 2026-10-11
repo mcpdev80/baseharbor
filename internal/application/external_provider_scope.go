@@ -197,6 +197,9 @@ func verifyExternalRemovalRegistryOwner(path string) error {
 		if !ok || stat.Uid != uint32(os.Getuid()) {
 			return &ProviderChangeError{Code: "provider-registry-ownership-unverifiable"}
 		}
+		if candidate != path && candidate != path+".lock" && (!info.IsDir() || info.Mode().Perm()&0022 != 0) {
+			return &ProviderChangeError{Code: "provider-registry-ownership-unverifiable"}
+		}
 		if candidate == path || candidate == path+".lock" {
 			if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || stat.Nlink != 1 {
 				return &ProviderChangeError{Code: "provider-registry-ownership-unverifiable"}
