@@ -559,18 +559,7 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
 		return nil
 	}
-	files, err := existingTargetRuntimeFiles(ctx)
-	if err != nil {
-		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
-	}
-	issuer := openbao.NewServiceIssuer(e.compose, files)
-	if err := devgateway.RemoveOwners(
-		ctx,
-		e.compose,
-		issuer,
-		e.resolved.Target.Name,
-		appOwner,
-	); err != nil {
+	if err := removeApplicationGatewayOwners(ctx, e.compose, e.resolved, appOwner); err != nil {
 		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
 	return nil

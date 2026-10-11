@@ -84,6 +84,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		if _, err := identityprovider.RetireKeycloakRuntime(cleanupCtx, provider, initialized.Manifest, placement, initialized.TargetStateRoot, target.Name); err != nil && !os.IsNotExist(err) {
 			t.Errorf("isolated Identity container cleanup: %v", err)
 		}
+		if err := removeApplicationGatewayOwners(cleanupCtx, provider, initialized, "app/"+initialized.Manifest.Name+"/"+initialized.Manifest.Environment, "shared/keycloak"); err != nil {
+			t.Errorf("isolated Identity gateway cleanup: %v", err)
+		}
+		if containers, err := provider.ListRuntimeContainers(cleanupCtx); err != nil || len(containers) != 0 {
+			t.Errorf("isolated native cleanup did not remove all test containers: count=%d inspection=%v", len(containers), err)
+		}
 	})
 	var originalEnv [32]byte
 	var retained []bhruntime.ProjectResource
