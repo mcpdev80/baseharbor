@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Services are requested explicitly; selected provider realization follows resolved requirements and genuine dependencies rather than a mandatory application Core bundle.
 - Selective SQL, cache and Identity lifecycle releases removed capability bindings and retires unneeded owned runtime while preserving active shared consumers and persistent data/recovery material.
 - Provider-change contracts describe consumer functions, dependencies, actual material locations and verified continuation; unknown or alternative-less effects require two concrete-plan acknowledgements, with independent destructive consent for data deletion.
+- Default application runtime retirement preserves its canonical owner, archived live intent, protected credentials and data for same-owner reactivation; selective Secrets re-add restores actual original secret access.
+- Managed production OIDC callbacks reconcile only after the actual public HTTPS exposure is realized; reapply/start preserve the verified client and user session.
+- Node disconnect shares a concrete impact plan, independent acknowledgements, current authority revalidation and truthful final/partial results across CLI, MCP and Core HTTP.
 - Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
 
 ### Compatibility
