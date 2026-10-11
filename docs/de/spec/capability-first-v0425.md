@@ -310,7 +310,11 @@ bestehenden geschützten Runtime-Owner. Identity-Entfernung setzt diese nicht zu
 `remaining_validity_seconds` für Token, Zertifikate und Leases. Fehlende aktuelle
 Gültigkeitsevidenz bleibt unbekannt; abgelaufene Offline-Validierung ist nicht
 verfügbar. Erhaltene Zertifikatsdateien bedeuten weder unbegrenztes TLS noch künftige
-Erneuerung. `ProviderMaterial.Retention` prüft getrennt das Überleben von Stoppen
+Erneuerung.
+Der Zustimmungs-Digest ignoriert nur den laufenden Restgültigkeits-Countdown;
+absolute Ablaufzeit, tatsächlich abgelaufene/gültige Folgen und geändertes Material
+erfordern weiterhin neue Zustimmung.
+`ProviderMaterial.Retention` prüft getrennt das Überleben von Stoppen
 und Runtime-Entfernung für bedeutsamen flüchtigen Zustand: Cache, Sessions, Jobs,
 Queues/Nachrichten, laufende Arbeit, Telemetriepuffer, Leases und Token. Ein Volume
 allein reicht nicht; nachgewiesener Verlust ist einzeln nicht wiederherstellbar und

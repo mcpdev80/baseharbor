@@ -41,5 +41,24 @@ func impactDigestInput(p ProviderImpactPlan, registry capability.Registry, s Res
 		Released  []capability.ProviderBinding
 		Activity  map[string]bool
 		Ancillary []capability.ProviderInstance
-	}{p, registry, facts, consumers, union.Required, union.ReleasedBindings, union.ConsumerActivity, ancillary})
+	}{stableValidityImpact(p), registry, facts, consumers, union.Required, union.ReleasedBindings, union.ConsumerActivity, ancillary})
+}
+
+// Countdown samples change with observation time, while authority and absolute
+// validity do not. Expiry still changes the function outcome and consent digest.
+// Copy projections so calculating the digest never edits the displayed result.
+func stableValidityImpact(p ProviderImpactPlan) ProviderImpactPlan {
+	stable := p
+	stable.Impacts = append([]ProviderImpact(nil), p.Impacts...)
+	for i, impact := range p.Impacts {
+		stable.Impacts[i].Functions = append([]FunctionConsequence(nil), impact.Functions...)
+		for j := range stable.Impacts[i].Functions {
+			stable.Impacts[i].Functions[j].RemainingValiditySeconds = nil
+		}
+		stable.Impacts[i].Materials = append([]MaterialConsequence(nil), impact.Materials...)
+		for j := range stable.Impacts[i].Materials {
+			stable.Impacts[i].Materials[j].RemainingValiditySeconds = nil
+		}
+	}
+	return stable
 }

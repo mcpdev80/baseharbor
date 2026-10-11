@@ -210,3 +210,56 @@ func TestProviderChangeSelectedModeDependencyMustBeObserved(t *testing.T) {
 		t.Fatal("selected mode used an invented or unobserved dependency")
 	}
 }
+
+func TestProviderChangeCountdownDoesNotInvalidateConcreteConsent(t *testing.T) {
+	s, u, o := impactFixture(t)
+	fact := o.Providers["secrets"]
+	fact.Materials[0].ExpiresAt = "2026-10-12T10:00:00Z"
+	o.Providers["secrets"] = fact
+	request := []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}, {InstanceID: "secrets", Operation: "stop"}}
+	before, err := DescribeProviderChanges(s, u, request, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.ObservedAt = "2026-10-11T10:00:01Z"
+	later, err := DescribeProviderChanges(s, u, request, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.PlanID != later.PlanID {
+		t.Fatal("countdown sampling invalidated unchanged concrete consent")
+	}
+	for _, impact := range later.Impacts {
+		if impact.InstanceID == "secrets" && (impact.Materials[0].RemainingValiditySeconds == nil || *impact.Materials[0].RemainingValiditySeconds != 86399) {
+			t.Fatal("digest normalization mutated the displayed validity")
+		}
+	}
+	// Absolute validity is authoritative material state and must invalidate consent.
+	fact.Materials[0].ExpiresAt = "2026-10-12T09:00:00Z"
+	o.Providers["secrets"] = fact
+	changed, err := DescribeProviderChanges(s, u, request, o)
+	if err != nil || changed.PlanID == before.PlanID {
+		t.Fatal("changed actual expiry reused stale consent")
+	}
+}
+
+func TestProviderChangeMaterialExpiryInvalidatesConsentWithoutValidationFunction(t *testing.T) {
+	s, u, o := impactFixture(t)
+	fact := o.Providers["secrets"]
+	fact.Materials[0].Kind = "certificate"
+	fact.Materials[0].ExpiresAt = "2026-10-11T10:00:01Z"
+	o.Providers["secrets"] = fact
+	request := []ProviderChangeRequest{{InstanceID: "secrets", Operation: "stop"}}
+	before, err := DescribeProviderChanges(s, u, request, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.ObservedAt = "2026-10-11T10:00:02Z"
+	expired, err := DescribeProviderChanges(s, u, request, o)
+	if err != nil || expired.PlanID == before.PlanID {
+		t.Fatal("actual certificate expiry reused obsolete consent despite no validation function")
+	}
+	if expired.Impacts[0].Materials[0].RemainingValiditySeconds == nil || *expired.Impacts[0].Materials[0].RemainingValiditySeconds != 0 {
+		t.Fatal("expired material retained positive validity")
+	}
+}

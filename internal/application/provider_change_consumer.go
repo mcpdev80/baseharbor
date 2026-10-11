@@ -125,7 +125,7 @@ func describeConsumerTransition(f *FunctionConsequence, use ProviderFunctionUse,
 				seconds = 0
 			}
 			f.RemainingValiditySeconds = &seconds
-			if seconds == 0 && interruptsProvider(r.Operation) {
+			if !until.After(at) && interruptsProvider(r.Operation) {
 				f.Outcome = "unavailable"
 			}
 		}

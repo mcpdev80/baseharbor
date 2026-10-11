@@ -296,6 +296,9 @@ Identity removal must not reset either merely because an issuer disappears.
 `remaining_validity_seconds` for tokens, certificates and leases. Missing current
 validity evidence stays unknown; expired offline validation is unavailable.
 Retained certificate files imply neither indefinite TLS nor future renewal.
+
+The consent digest ignores only the changing remaining-validity countdown; absolute
+expiry, actual expired/valid consequences and changed material still require fresh consent.
 `ProviderMaterial.Retention` separately verifies survival of stop and runtime
 removal for meaningful transient state: cache, sessions, jobs, queues/messages,
 in-flight work, telemetry buffers, leases and tokens. A volume alone is insufficient;

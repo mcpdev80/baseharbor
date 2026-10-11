@@ -88,7 +88,12 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 					seconds = 0
 				}
 				consequence.RemainingValiditySeconds = &seconds
-				consequence.Meaning += "; finite observed validity; future renewal is not implied by retention"
+				if !until.After(at) {
+					consequence.Meaning += "; actual material validity has expired"
+				} else {
+					consequence.Meaning += "; material remains valid until its stated expiry"
+				}
+				consequence.Meaning += "; future renewal is not implied by retention"
 			}
 		}
 		imp.Materials = append(imp.Materials, consequence)
