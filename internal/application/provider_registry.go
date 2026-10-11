@@ -280,6 +280,22 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 	if err != nil {
 		return err
 	}
+	// Runtime permission delivery uses the existing OpenBao realization even
+	// when the application does not request managed secrets. Register that
+	// dependency without manufacturing a portable capability or binding.
+	if RequiresRuntimeBroker(m) && !m.Services.Secrets {
+		resource := capability.Resource{Application: m.Name, Kind: capability.Secrets, Name: "default", Provider: capability.ProviderOpenBao}
+		instance, err := referenceProviderInstance(m, resource)
+		if err != nil {
+			return err
+		}
+		if instance.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("runtime broker requires its supported managed OpenBao realization")
+		}
+		if err := registry.Register(instance); err != nil {
+			return err
+		}
+	}
 
 	var metricsPolicy MetricsDeploymentPolicy
 	metricsPolicyResolved := false

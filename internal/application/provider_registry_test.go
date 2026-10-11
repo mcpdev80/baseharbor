@@ -177,8 +177,12 @@ func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testin
 		t.Fatal(err)
 	}
 
-	if len(registry.Instances) != 1 {
+	if len(registry.Instances) != 2 {
 		t.Fatalf("instances=%#v", registry.Instances)
+	}
+	roots, err := RuntimeDependencyRoots(m, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("runtime broker roots=%v err=%v", roots, err)
 	}
 	if len(registry.Bindings) != 1 {
 		t.Fatalf("bindings=%#v", registry.Bindings)
