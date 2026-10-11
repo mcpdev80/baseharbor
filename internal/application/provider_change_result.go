@@ -37,7 +37,7 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 			}
 			// Partial/unexpected effects must stay visible instead of being called a
 			// successful execution of the proposed plan.
-			if !outcomeMatchesImpact(out, imp) {
+			if !outcomeMatchesImpact(out, imp, plan.Impacts) {
 				out.Status = "failed"
 				out.ErrorCode = "actual-disposition-differs"
 			}
@@ -141,7 +141,7 @@ func validateExecutionOutcome(out ProviderExecutionOutcome) error {
 	return nil
 }
 
-func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact) bool {
+func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact, aggregate []ProviderImpact) bool {
 	if imp.After == nil {
 		if out.After != nil {
 			return false
@@ -166,7 +166,7 @@ func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact) bool
 	}
 	for _, m := range imp.Materials {
 		got, exists := actual[m.Before.ID]
-		if !exists || !got.Verified || got.Evidence == "" || got.Disposition != m.After.Disposition || !recoveryPreserved(m.Before.Recovery, got.Recovery) {
+		if !exists || !got.Verified || got.Evidence == "" || got.Disposition != m.After.Disposition || !recoveryPreserved(expectedMaterialRecovery(m, aggregate), got.Recovery) {
 			return false
 		}
 		if !sameAccess(m.After.AccessAfter, got.Access) || (m.After.Destination != nil && (got.Location == nil || *got.Location != *m.After.Destination)) {

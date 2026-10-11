@@ -305,6 +305,12 @@ Actual execution receipts must account for each affected function, selected
 consumer action and operational effect. Missing reconfiguration or changed owner,
 credential reference, synchronization, rotation or guarantee remains partial/failed.
 Retry retains selected consumer actions and obtains consent against the fresh plan.
+A material step is complete for retry only when its verified disposition, final
+location, delivery/access references and preserved recovery references all match;
+the correct destination alone cannot hide an incomplete secure handoff.
+Recovery references follow explicitly selected owned backup transfers/deletions
+across the aggregate plan. A complete owned deletion may include its inventoried
+backups with destructive consent; unselected or foreign recovery stays protected.
 
 | Provider and existing implementation authority | Necessary provider-specific analysis/actions for add/change/remove |
 | --- | --- |

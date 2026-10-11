@@ -321,6 +321,14 @@ Verbraucheraktion und betriebliche Auswirkung belegen. Fehlende Umkonfiguration
 oder abweichende Owner, Credential-Referenzen, Synchronisierung, Rotation oder
 Garantien bleiben teilweise/fehlgeschlagen. Wiederholung erhält gewählte Aktionen
 und holt Zustimmung zum aktuellen Plan ein.
+Ein Materialschritt gilt bei Wiederholung erst als erledigt, wenn geprüfte
+Disposition, Endstandort, Zustellungs-/Zugriffsreferenzen und erhaltene
+Recovery-Referenzen übereinstimmen; das richtige Ziel allein verdeckt keine
+unvollständige sichere Übergabe.
+Recovery-Referenzen folgen ausdrücklich gewählten eigenen Backup-Übergaben oder
+-Löschungen im aggregierten Plan. Eine vollständige eigene Löschung darf inventarisierte
+Backups mit destruktiver Zustimmung einschließen; nicht gewählte oder fremde
+Recovery-Ressourcen bleiben geschützt.
 
 | Provider und bestehende Implementierungsautorität | Erforderliche providerspezifische Analyse/Aktionen bei Hinzufügen/Ändern/Entfernen |
 | --- | --- |

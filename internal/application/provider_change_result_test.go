@@ -99,3 +99,43 @@ func TestProviderImpactRuntimeStopAloneCannotVerifyConsumerFunctions(t *testing.
 		t.Fatal("unexpected actual function result lost or falsely completed")
 	}
 }
+
+func TestProviderImpactRetryIncludesIncompleteAccessAndRecovery(t *testing.T) {
+	s, u, o := impactFixture(t)
+	fact := o.Providers["identity"]
+	fact.Materials[0].Recovery = []ResourceLocation{{Owner: "identity", Target: "local", Kind: "backup", Reference: "backup/realm"}}
+	o.Providers["identity"] = fact
+	plan, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, which := range []string{"access", "recovery"} {
+		t.Run(which, func(t *testing.T) {
+			actual := appliedOutcome(plan.Impacts[0])
+			if which == "access" {
+				actual.Materials[0].Access = &ProviderAccess{Method: "unexpected unverified delivery"}
+			} else {
+				actual.Materials[0].Recovery = nil
+			}
+			result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+			if err != nil || result.Status == "complete" {
+				t.Fatal("incomplete handoff was declared complete")
+			}
+			pending, err := PendingProviderChanges(plan, result)
+			if err != nil || len(pending) != 1 || len(pending[0].Materials) != 1 || pending[0].Materials[0].MaterialID != fact.Materials[0].ID {
+				t.Fatalf("retry omitted incomplete %s: %+v %v", which, pending, err)
+			}
+		})
+	}
+	// A fully verified material must not be replayed when another provider step is pending.
+	actual := appliedOutcome(plan.Impacts[0])
+	actual.Status = "pending"
+	result, err := RecordProviderChangeResult(plan, []ProviderExecutionOutcome{actual})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := PendingProviderChanges(plan, result)
+	if err != nil || len(pending) != 1 || len(pending[0].Materials) != 0 {
+		t.Fatal("verified complete material handoff replayed")
+	}
+}

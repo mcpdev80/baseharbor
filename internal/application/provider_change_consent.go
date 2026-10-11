@@ -61,7 +61,7 @@ func PendingProviderChanges(plan ProviderImpactPlan, result ProviderChangeResult
 			for _, m := range impact.Materials {
 				done := false
 				for _, got := range actual[impact.InstanceID+"/"+impact.Operation].Materials {
-					if got.MaterialID == m.Before.ID && got.Verified && got.Evidence != "" && got.Disposition == m.After.Disposition && sameLocation(got.Location, m.After.Destination) {
+					if got.MaterialID == m.Before.ID && got.Verified && got.Evidence != "" && got.Disposition == m.After.Disposition && sameLocation(got.Location, m.After.Destination) && sameAccess(got.Access, m.After.AccessAfter) && recoveryPreserved(expectedMaterialRecovery(m, plan.Impacts), got.Recovery) {
 						done = true
 					}
 				}
