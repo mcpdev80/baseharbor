@@ -47,7 +47,7 @@ func TestManifestWithoutBackendOrExplicitWorkloadStillFails(t *testing.T) {
 	}
 }
 
-func TestSecretsOnlyApplicationStillFailsClosed(t *testing.T) {
+func TestSecretsOnlyApplicationRequiresRealWorkload(t *testing.T) {
 	m := Manifest{
 		Version:     CurrentVersion,
 		Name:        "secret-only",
@@ -58,8 +58,12 @@ func TestSecretsOnlyApplicationStillFailsClosed(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatalf("manifest syntax should be valid before runtime capability check: %v", err)
 	}
+	if err := CheckSupportedRuntimeServices(m); err != nil {
+		t.Fatalf("secrets broker with a real workload must not require implicit SQL: %v", err)
+	}
+	m.Workload.Components = nil
 	if err := CheckSupportedRuntimeServices(m); err == nil {
-		t.Fatal("managed secrets without PostgreSQL or Valkey must remain unsupported")
+		t.Fatal("secrets-only intent without workload must fail closed")
 	}
 }
 

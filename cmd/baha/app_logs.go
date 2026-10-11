@@ -124,9 +124,8 @@ func convergeManagedLogsBeforeWorkload(ctx context.Context, out io.Writer, files
 		if err := reconcileApplicationProviderLogOverride(ctx, prepared.runtime, prepared.manifest, files, "", false); err != nil {
 			return err
 		}
-		if err := logsprovider.UnregisterApplicationAt(ctx, prepared.runtime, prepared.issuer, prepared.dataDir, prepared.namespace, prepared.manifest); err != nil {
-			return err
-		}
+		// Disabling a capability is not consent to reclaim its provider. Native
+		// registrations/resources remain retained until explicit owned destroy.
 		if err := reconcileRuntimeComponentLogOverrides(ctx, prepared.runtime, prepared.manifest, files, prepared.dataDir, prepared.namespace); err != nil {
 			return err
 		}

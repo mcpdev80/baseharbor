@@ -7,6 +7,7 @@ on:
     branches:
       - 'runtime-validation/ha/**'
       - 'work/v0.4.24-core-ha-updates'
+      - 'work/v0.4.25-contract-minimal-core'
   workflow_dispatch:
     inputs:
       gate:
@@ -15,6 +16,7 @@ on:
         default: app-backup-restore
         type: choice
         options:
+          - coreless-runtime
           - app-backup-restore
           - metrics
           - openbao-backup
@@ -40,6 +42,69 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' }}
 
 jobs:
+  coreless_runtime:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
+    name: Core-less application · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CORELESS_ACCEPTANCE: "1"
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout integrated exact SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Verify exact SHA input
+        env:
+          CANDIDATE_SHA: ${{ inputs.ref || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify fresh workload with zero Core containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/coreless-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/coreless-evidence/candidate-sha.txt"
+          go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
+          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
+      - name: Qualify changed volume recovery helper
+        env:
+          BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
+      - name: Verify explicit management Core and individual capability reuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestApplicationCapabilityLifecycleExistingCore$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/managed-capabilities.log"
+      - name: Retain exact-SHA runtime evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: coreless-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-evidence
+          if-no-files-found: warn
+          retention-days: 30
+
   shared_provider_contracts:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[provider-contracts]') }}
     name: Shared provider unit and contract verification
@@ -59,7 +124,7 @@ jobs:
           go vet ./...
 
   focused:
-    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

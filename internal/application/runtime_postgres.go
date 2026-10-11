@@ -53,7 +53,7 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 		return fmt.Errorf("%w: application-scoped PostgreSQL is single-instance; select native shared placement for HA", ErrUnsupportedService)
 	}
 	if !HasManagedRuntimeServices(m) {
-		if m.Services.Secrets {
+		if m.Services.Secrets && !HasExplicitWorkload(m) {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
 		}
 		if HasObjectStorage(m) || HasExplicitWorkload(m) {

@@ -119,6 +119,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "retained provider ownership", Run: func(context.Context) error {
+			return checkRetainedApplicationProviderOwnership(e.resolved)
+		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
 		}},
@@ -153,6 +156,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks,
 			preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(e.files) }},
 			preflight.Check{Name: "runtime configuration", Run: func(ctx context.Context) error {
+				if !application.HasApplicationScopedRuntimeServices(m) {
+					return nil
+				}
 				return e.compose.ConfigProject(ctx, e.runtimeProject, e.files.Compose, e.files.Env)
 			}},
 		)
@@ -352,7 +358,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return fmt.Errorf("release application resources from shared data providers: %w", err)
 		}
 	}
-	if e.runtimeErr == nil {
+	if e.runtimeErr == nil && application.HasApplicationScopedRuntimeServices(m) {
 		if err := e.compose.DestroyProject(ctx, e.runtimeProject, e.files.Compose, e.files.Env); err != nil {
 			return err
 		}

@@ -54,19 +54,19 @@ func TestCorelessIntentWithoutWorkloadCannotMaterializeRuntime(t *testing.T) {
 	}
 }
 
-func TestCorelessUpBaselineStillRequiresCorePreflight(t *testing.T) {
+func TestCorelessUpSkipsCorePreflight(t *testing.T) {
 	m := application.New("workload", "dev", false, false, false)
 	m.Services.SQL = false
 	m = application.WithWorkloadComponents(m, "api")
 	e := applicationUpExecution{manifest: m}
-	seen := map[string]bool{}
 	for _, check := range e.preflightChecks() {
-		seen[check.Name] = true
+		if check.Name == "BaseHarbor control-plane runtime" || check.Name == "managed service PKI" {
+			if err := check.Run(context.Background()); err != nil {
+				t.Fatalf("workload-only preflight required Core: %v", err)
+			}
+		}
 	}
-	if !seen["BaseHarbor control-plane runtime"] || !seen["managed service PKI"] {
-		t.Fatal("baseline Core prerequisite changed before resolver handoff")
-	}
-	if !requiresDevelopmentGateway(m) || !requiresManagedServiceIssuer(m) {
-		t.Fatal("baseline implicit development gateway dependency changed")
+	if requiresDevelopmentGateway(m) || requiresManagedServiceIssuer(m) {
+		t.Fatal("plain workload acquired implicit development gateway dependency")
 	}
 }

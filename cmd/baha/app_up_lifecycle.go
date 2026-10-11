@@ -39,7 +39,7 @@ func executeApplicationUpLifecycle(ctx context.Context, store application.Store,
 	if isRemoteApplication(execution.resolved) {
 		return executeRemoteApplicationApply(ctx, execution.resolved, out)
 	}
-	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
+	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return err
 	}
 	if err := execution.runPreflight(ctx); err != nil {
@@ -184,6 +184,9 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			return err
 		}},
 		{Name: "BaseHarbor control-plane runtime", Run: func(ctx context.Context) error {
+			if !requiresManagedServiceIssuer(m) && !application.RequiresRuntimeBroker(m) {
+				return nil
+			}
 			var err error
 			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
 			if err != nil {
@@ -192,6 +195,9 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			return nil
 		}},
 		{Name: "managed service PKI", Run: func(ctx context.Context) error {
+			if !requiresManagedServiceIssuer(m) {
+				return nil
+			}
 			if e.coreRuntime == nil {
 				return unavailableApplicationCoreRuntime()
 			}
@@ -218,7 +224,7 @@ func (e *applicationUpExecution) preflightChecks() []preflight.Check {
 			return application.CheckReferenceProviderRegistryAt(e.resolved.TargetStateRoot, m)
 		}},
 		{Name: "runtime configuration", Run: func(ctx context.Context) error {
-			if !application.HasManagedRuntimeServices(m) {
+			if !application.HasApplicationScopedRuntimeServices(m) {
 				return nil
 			}
 			return e.compose.ConfigProject(ctx, e.files.Project, e.files.Compose, e.files.Env)

@@ -156,7 +156,7 @@ func (e *bahaMachineExecutor) executeHTTPApplicationRead(ctx context.Context, op
 		if err != nil {
 			return nil, err
 		}
-		return application.BuildPlan(resolved.Manifest)
+		return buildResolvedApplicationPlan(ctx, resolved)
 	case "status":
 		return collectApplicationStatusResult(ctx, e.store, args)
 	case "doctor":

@@ -55,3 +55,50 @@ Exakte Referenz: [Application-Befehle (EN)](https://mcpdev80.github.io/baseharbo
 
 
 Technische Bezeichner: `baseharbor.yaml`, `baseharbor.workload-source-resolution/v1`, `baha status`, `baha plan`, `baha doctor`, `baha app ...`, `DATABASE_URL`, `DATABASE_CA_FILE`, `REDIS_URL`, `REDIS_CA_FILE`.
+
+## Lokale Workload ohne managed Capabilities (v0.4.25)
+
+Ein minimales `baseharbor.yaml` darf `app.id` und `services` auslassen:
+
+```yaml
+version: 1
+app:
+  name: my-app
+  environment: dev
+```
+
+Lege eine unterstützte, eindeutig auswählbare Compose-Workload im Repository ab
+und führe `baha app init --quick`, `baha app plan --json` und `baha app apply` aus.
+Init vergibt über den geschützten Repository-App-Store eine stabile ID, ohne das
+autorierte YAML umzuschreiben. Lesebefehle vergeben keine ID. Fehlende oder
+mehrdeutige Source ist ein Fehler und kein READY-Deployment.
+
+Eine echte lokale Workload ohne angeforderte managed Capabilities überspringt
+im vorhandenen Lifecycle Core, managed Gateway und Broker. Es braucht weder
+Profil-Schalter noch implizites SQL oder Core-Login. Status und Doctor verwenden
+echte Workload-Beobachtungen; Stop/Up und wiederholtes Destroy behalten die
+Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
+Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
+bleiben erforderlich.
+
+Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
+(`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
+und kein Live-Nachweis. Native managed Capabilities benötigen weiterhin die
+bestehende vollständige Management-Core-Topologie; selektive Installation ist
+nicht verfügbar. Abhängigkeiten und inkrementelle Speicher-/Containerwerte
+bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Ownership-geprüfte
+App-Backend-Inventare können gemessene Containerzahlen liefern; andere Provider
+bleiben bis zu ihrer nativen Beobachtung `unverifiable`. Nichtinteraktives
+App-`--yes` installiert keinen fehlenden Core. Management-Core nach Prüfung
+seiner Auswirkungen explizit installieren.
+
+Kompatible bestehende native Placements werden wiederverwendet. Eine notwendige
+Provider-Migration sowie nicht unterstützte native BYO-Placements werden vor
+Provisionierung abgelehnt; externe OIDC-/OTLP-Adapter bleiben erhalten.
+Capability-Entfernung löst das App-Binding und erhält die Provider-Ownership,
+auch für Target-weite Shared-Ressourcen. `unused` schließt Provider aus, die
+noch eine andere App bindet. Automatische Garbage Collection und Migration sind
+nicht verfügbar. Ungenutzter App-eigener Provider-Zustand blockiert Destroy, bis
+die ursprüngliche Capability und ihr Placement zur expliziten Bereinigung
+wiederhergestellt sind. Eine separate ownership-geprüfte Reclamation ist gemäß
+#872 abgegrenzt.
