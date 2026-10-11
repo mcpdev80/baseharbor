@@ -200,3 +200,38 @@ func TestFootprintPlanDoesNotClaimProjectedRegistrationIsLiveOrBound(t *testing.
 		t.Fatalf("invented live footprint: %+v", plan.Footprint)
 	}
 }
+
+func TestUnverifiedConsumptionDoesNotInstallCore(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	resolved.Manifest.Consumes = []application.ConsumptionRequirement{{Name: "api", Component: "api", Interface: "http"}}
+	previous := applicationCorePrerequisite
+	applicationCorePrerequisite = func(context.Context, io.Reader, io.Writer) error {
+		t.Fatal("unknown consumption provisioned Core")
+		return nil
+	}
+	t.Cleanup(func() { applicationCorePrerequisite = previous })
+	err := requireResolvedApplicationCore(context.Background(), resolved, strings.NewReader(""), io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "provider_dependencies_unverifiable" {
+		t.Fatalf("unknown dependencies authorized mutation: %v", err)
+	}
+	if _, err := os.Stat(resolved.TargetStateRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unknown consumption mutated Target: %v", err)
+	}
+}
+
+func TestManagedCoreDecisionReaderWithoutTTYDoesNotBootstrap(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	resolved.Manifest.Services.SQL = true
+	previous := applicationCoreBootstrap
+	applicationCoreBootstrap = func(context.Context, io.Reader, io.Writer, runtimeUpOptions) (coreinstallation.State, error) {
+		t.Fatal("non-TTY reader installed Core without noninteractive flag")
+		return coreinstallation.State{}, nil
+	}
+	t.Cleanup(func() { applicationCoreBootstrap = previous })
+	err := requireResolvedApplicationCore(withAssumeYes(context.Background(), true), resolved, strings.NewReader(""), io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "core_required" {
+		t.Fatalf("missing explicit Core installation requirement: %v", err)
+	}
+}

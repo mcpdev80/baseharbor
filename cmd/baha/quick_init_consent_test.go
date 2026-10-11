@@ -42,7 +42,7 @@ func TestQuickInitYesAcceptsConsentButKeepsBootstrapFailureAtomic(t *testing.T) 
 			t.Chdir(httpsAdoptionFixture(t, false))
 			old, oldInput := applicationCoreBootstrap, appInitInput
 			t.Cleanup(func() { applicationCoreBootstrap, appInitInput = old, oldInput })
-			appInitInput = strings.NewReader("")
+			appInitInput = interactiveCoreInput(t, "")
 			called := false
 			failure := errors.New("bootstrap blocked safely")
 			applicationCoreBootstrap = func(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) (coreinstallation.State, error) {

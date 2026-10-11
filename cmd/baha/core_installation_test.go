@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/creack/pty"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
@@ -69,7 +70,7 @@ func TestCoreBootstrapDeclineOrFailureDoesNotWriteApplication(t *testing.T) {
 				calls++
 				return coreinstallation.State{}, errors.New("Core bootstrap failed")
 			}
-			appInitInput = strings.NewReader(answer)
+			appInitInput = interactiveCoreInput(t, answer)
 			if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err == nil {
 				t.Fatal("application success after missing Core")
 			}
@@ -93,11 +94,28 @@ func TestCoreFirstAppInitContinuesAfterSuccessfulBootstrap(t *testing.T) {
 		calls++
 		return coreinstallation.State{Ready: true}, nil
 	}
-	appInitInput = strings.NewReader("y\n1\n")
+	appInitInput = interactiveCoreInput(t, "y\n1\n")
 	if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat("baseharbor.yaml"); err != nil || calls != 1 {
 		t.Fatalf("original workflow did not continue: %v, calls=%d", err, calls)
 	}
+}
+
+// Application consent tests must prove a real TTY. A string reader is piped
+// input and cannot authorize implicit application-triggered Core installation.
+func interactiveCoreInput(t *testing.T, answer string) *os.File {
+	t.Helper()
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skipf("interactive consent requires PTY support: %v", err)
+	}
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	if answer != "" {
+		if _, err := master.Write([]byte(answer)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return slave
 }

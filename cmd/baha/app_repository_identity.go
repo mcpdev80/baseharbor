@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
@@ -46,6 +47,13 @@ func resolveRepositoryLifecycleIntent(ctx context.Context, target deployment.Res
 			return selection, &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "application_initialization_required", Message: "Application identity has not been initialized.", Next: "Run baha app init once; the authored manifest will remain unchanged."}
 		}
 		if err := preflightRepositoryWorkload(resolvedApplication{Manifest: m, RepositoryRoot: selection.RepositoryRoot, FromRepository: true}); err != nil {
+			return selection, err
+		}
+		stateRoot, err := deployment.TargetStateRoot(target.Name)
+		if err != nil {
+			return selection, err
+		}
+		if _, err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Load(); err != nil {
 			return selection, err
 		}
 		if err := authorizeMCPOperation(ctx, "app.adopt", target.Name, m.Environment, "", selection.ManifestPath); err != nil {

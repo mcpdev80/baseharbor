@@ -126,10 +126,15 @@ func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplic
 	if footprint.Core == application.CoreNotRequired && !requiresManagedServiceIssuer(resolved.Manifest) && !application.RequiresRuntimeBroker(resolved.Manifest) {
 		return nil
 	}
+	if footprint.Core == application.CoreUnknown && !requiresManagedServiceIssuer(resolved.Manifest) && !application.RequiresRuntimeBroker(resolved.Manifest) {
+		return &machine.Error{Code: machine.ErrorCapabilityMissing, CauseCode: "provider_dependencies_unverifiable", Message: "The selected consumption dependencies have no verified provider realization inventory.", Next: "Resolve the existing consumption/Target bindings before applying; unknown dependencies do not authorize Core installation."}
+	}
 	fmt.Fprintln(out, "Selected managed providers require the existing SQL/Secrets/Identity Core topology; selective provider installation is unavailable.")
 	fmt.Fprintln(out, "Incremental memory and container counts are unknown until live runtime evidence is available.")
-	if noInput(ctx) || (!readerIsTerminal(in) && !isBufferedCoreInput(in)) {
+	terminalInput := requiredSecretInputIsTerminal(in) || (isBufferedCoreInput(in) && (requiredSecretInputIsTerminal(runtimeInput) || requiredSecretInputIsTerminal(appInitInput)))
+	if noInput(ctx) || !terminalInput {
 		ctx = context.WithValue(ctx, assumeYesKey{}, false)
+		ctx = machineNoninteractiveContext(ctx)
 	}
 	return applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), in, out)
 }

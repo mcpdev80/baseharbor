@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -74,5 +75,26 @@ func TestMinimalRepositoryMissingSourceDoesNotInitialize(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing source allocated state: %v", err)
+	}
+}
+
+func TestMinimalInitializationRejectsCorruptTargetBeforeAllocating(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(stateRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateRoot, "provider-registry.json"), []byte("{corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveRepositoryLifecycleIntent(context.Background(), target, selection, "apply"); err == nil {
+		t.Fatal("corrupt Target accepted for identity mutation")
+	}
+	if _, err := os.Stat(filepath.Join(selection.RepositoryRoot, ".baseharbor")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("corrupt Target allocated identity: %v", err)
 	}
 }

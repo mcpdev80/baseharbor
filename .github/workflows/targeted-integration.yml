@@ -74,6 +74,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Prepare verified rootless runtime
+        id: runtime_setup
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Verify fresh workload with zero Core containers
         shell: bash
@@ -85,6 +86,7 @@ jobs:
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
           go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
       - name: Qualify changed volume recovery helper
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' }}
         env:
           BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
         shell: bash
@@ -92,6 +94,7 @@ jobs:
           set -euo pipefail
           go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
       - name: Verify explicit management Core and individual capability reuse
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail

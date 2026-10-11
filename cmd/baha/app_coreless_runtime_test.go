@@ -102,6 +102,12 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	for _, command := range [][]string{{"app", "plan", "--json"}, {"app", "apply", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"app", "up", "--skip-memory-preflight"}} {
 		out.Reset()
 		if err := runWithIO(ctx, command, &out, &out); err != nil {
+			for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+				t.Logf("secret-free workload failure: %v", cause)
+			}
+			if inventory, inspectErr := runtime.ListRuntimeContainers(ctx); inspectErr == nil {
+				t.Logf("workload inventory: %+v", inventory)
+			}
 			t.Fatalf("%v: %v\n%s", command, err, out.String())
 		}
 		assertCorelessHost(t, ctx, runtime, target)
@@ -153,7 +159,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("workload missing: %v", err)
 	}
-	body, err := runtime.ExecProjectFiles(ctx, workload.Project, root, "api", []string{workload.Compose, workload.Override}, "wget", "-q", "-O", "-", "http://127.0.0.1:8080")
+	body, err := runtime.ExecProjectFiles(ctx, workload.Project, root, "api", []string{workload.Compose, workload.Override}, "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/').read().decode())")
 	if err != nil || strings.TrimSpace(body) != "ready" {
 		t.Fatalf("real HTTP probe: %q %v", body, err)
 	}
@@ -197,15 +203,15 @@ func assertCorelessHost(t *testing.T, ctx context.Context, runtime bhruntime.Run
 
 const corelessHTTPWorkload = `services:
   api:
-    image: alpine:3.22
+    image: docker.io/library/python:3.13-alpine
     user: "1000:1000"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
-    command: [sh, -ec, "mkdir -p /tmp/www; printf ready >/tmp/www/index.html; exec httpd -f -p 8080 -h /tmp/www"]
+    command: [sh, -ec, "mkdir -p /tmp/www; printf ready >/tmp/www/index.html; exec python -m http.server 8080 --directory /tmp/www"]
     healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080]
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/')"]
       interval: 1s
       timeout: 2s
       retries: 30
