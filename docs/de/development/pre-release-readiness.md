@@ -18,3 +18,24 @@ nach Promotion; zuvor werden Kandidaten-Build und Workflow geprüft.
 Vorhandene grüne Gates werden nur wiederverwendet, wenn der Evidence-Verifier
 die unveränderten Eingaben bestätigt. Nur betroffene Gates erneut ausführen.
 Die Vorbereitung allein erlaubt keinen Pre-Release-Start.
+
+## Parallele lokale Prüfungen
+
+Unabhängige lokale Prüfungen laufen gemeinsam auf einer isolierten Kopie des
+aktuellen Codes, einschließlich vorgemerkter, weiterer und unversionierter Änderungen:
+
+```bash
+python scripts/local-qualification.py --jobs 4 --race-package ./internal/application --race-package ./contracts
+```
+
+Betroffene Race-Pakete werden mit wiederholtem `--race-package` gewählt; `--go`
+wählt ein installiertes Go-Programm. Der Runner teilt Compiler-Caches, begrenzt
+parallele Prüfungen und protokolliert Commit/Tree sowie Status, Dauer und Log jeder
+Prüfung im ausgegebenen Ergebnisverzeichnis. Fehler, Abbruch und Zeitüberschreitung
+lassen die Gesamtprüfung fehlschlagen. Änderungen nach der Kopie verändern den
+geprüften Stand nicht. Go-Tests, Vet, CLI-Build, Skript-Tests, Doku-Audit,
+Lesbarkeit und strikte EN/DE-Builds laufen unabhängig. Runtime-Abnahmevariablen
+werden ausgeschlossen: Native Docker-/Podman-Gates bleiben separat auf ihren
+exakten Eingaben qualifiziert. Lokaler Erfolg ist keine Ecosystem- oder
+Pre-Release-Bereitschaft. Unverändert qualifizierte Eingaben über den vorhandenen
+Evidence-Verifier wiederverwenden, statt die gesamte lokale Suite zu wiederholen.
