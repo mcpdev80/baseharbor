@@ -101,5 +101,17 @@ func RetireKeycloakRuntime(ctx context.Context, provider bhruntime.RuntimeRetire
 	if err != nil {
 		return bhruntime.RuntimeRetirement{}, err
 	}
-	return bhruntime.RetireOwnedRuntime(ctx, provider, bhruntime.Files{Project: files.Project, Compose: files.Compose, Env: files.Env}, resources)
+	native, ok := provider.(bhruntime.RuntimeServiceRetirementProvider)
+	if !ok {
+		return bhruntime.RuntimeRetirement{}, errors.New("Identity retirement requires a data-preserving selected-container runtime adapter")
+	}
+	selected := []bhruntime.ProjectResource{}
+	for _, resource := range resources {
+		if resource.Kind == "container" {
+			selected = append(selected, resource)
+		}
+	}
+	// Shared modules use the same project. Retiring this realization must never
+	// bring down sibling SQL/cache/control-plane or workload services.
+	return bhruntime.RetireOwnedServices(ctx, native, files.Project, resources, selected)
 }

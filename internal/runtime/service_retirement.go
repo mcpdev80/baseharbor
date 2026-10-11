@@ -85,6 +85,9 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 			verificationErr = errors.Join(verificationErr, fmt.Errorf("retired container remains: %s", resource.Name))
 		} else {
 			reason := "resource remains with its existing owner for active consumers and retry"
+			if resource.Kind == "network" {
+				reason = "owned network remains as existing module/retry state; selected container retirement does not verify attachment release or authorize network reclamation"
+			}
 			if resource.Kind == "volume" {
 				reason = "persistent volume remains at its existing location; data deletion requires separate explicit consent and ownership proof"
 			}

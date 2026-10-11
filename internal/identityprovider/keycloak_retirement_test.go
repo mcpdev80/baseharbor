@@ -12,12 +12,16 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
 
-type keycloakRetirementRuntime struct{ removed bool }
+type keycloakRetirementRuntime struct {
+	removed  bool
+	down     bool
+	selected []bhruntime.ProjectResource
+}
 
 func (r *keycloakRetirementRuntime) InspectProjectResources(_ context.Context, _ string, expected []bhruntime.ProjectResource) ([]bhruntime.ProjectResource, error) {
 	var observed []bhruntime.ProjectResource
 	for _, resource := range expected {
-		if !r.removed || resource.Kind == "volume" {
+		if !r.removed || resource.Kind != "container" {
 			observed = append(observed, resource)
 		}
 	}
@@ -25,6 +29,20 @@ func (r *keycloakRetirementRuntime) InspectProjectResources(_ context.Context, _
 }
 
 func (r *keycloakRetirementRuntime) DownProject(context.Context, string, string, string) error {
+	r.down = true
+	return nil
+}
+
+func (r *keycloakRetirementRuntime) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
+	return nil, nil
+}
+func (r *keycloakRetirementRuntime) RetireOwnedProjectContainers(_ context.Context, _ string, selected []bhruntime.ProjectResource) error {
+	for _, resource := range selected {
+		if resource.Kind != "container" {
+			return bhruntime.ErrResourceOwnership
+		}
+	}
+	r.selected = append([]bhruntime.ProjectResource{}, selected...)
 	r.removed = true
 	return nil
 }
@@ -62,6 +80,9 @@ func TestStandaloneIdentityRetirementAndReAddPreserveAuthorityAndCredentials(t *
 			result, err := RetireKeycloakRuntime(context.Background(), runtime, app, placement, root, "isolated")
 			if err != nil || len(result.Retained) < 2 || len(result.Removed) == 0 {
 				t.Fatalf("retirement did not preserve Identity data: %+v %v", result, err)
+			}
+			if runtime.down || len(runtime.selected) == 0 {
+				t.Fatal("Identity retirement used whole-project shutdown or omitted selection")
 			}
 			if len(inventory) == 0 {
 				t.Fatal("missing actual module inventory")

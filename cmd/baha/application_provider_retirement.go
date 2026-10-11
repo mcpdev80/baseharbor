@@ -103,6 +103,10 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 			if err := removeApplicationGatewayOwners(ctx, provider, resolved, owners...); err != nil {
 				return fmt.Errorf("retire Identity gateway routes: %w", err)
 			}
+			files, _, err := identityprovider.ExistingKeycloakRuntimeInventoryAt(resolved.Manifest, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
+			if err != nil {
+				return err
+			}
 			result, err := identityprovider.RetireKeycloakRuntime(ctx, provider, resolved.Manifest, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
 			if err != nil {
 				return err
@@ -110,7 +114,7 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 			for _, item := range result.Retained {
 				fmt.Fprintf(out, "Retained %s %s: %s\n", item.Resource.Kind, item.Resource.Name, item.Reason)
 			}
-			fmt.Fprintf(out, "Retained Identity files at %s; runtime retirement does not verify continued login, token behavior or recovery usability.\n", filepath.Join(resolved.TargetStateRoot, "providers", "keycloak"))
+			fmt.Fprintf(out, "Retained Identity files at %s; runtime retirement does not verify continued login, token behavior or recovery usability.\n", files.Dir)
 		}
 	}
 	root, err := targetRuntimeStateRoot(resolved.Target)

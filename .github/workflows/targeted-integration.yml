@@ -86,13 +86,21 @@ jobs:
           go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
       - name: Verify fresh workload with zero Core containers
-        if: ${{ !contains(github.event.head_commit.message, '[coreless-managed-only]') }}
+        if: ${{ !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
         shell: bash
         run: |
           set -euo pipefail
           go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
+      - name: Verify selected Identity add remove re-add without management Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
+        env:
+          BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestSelectiveIdentityRuntimeAddRemoveReAdd$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/identity-lifecycle.log"
       - name: Qualify changed volume recovery helper
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
         env:
           BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
         shell: bash
@@ -101,7 +109,7 @@ jobs:
           go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
       - name: Build integrated exact-SHA management runtime image
         id: runtime_image
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
         shell: bash
         run: |
           set -euo pipefail
