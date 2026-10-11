@@ -81,6 +81,16 @@ func CheckExistingNativeBackendInventory(files RuntimeFiles, candidates ...Manif
 		return err
 	}
 	for _, m := range candidates {
+		if err := m.ValidateIntent(); err != nil {
+			return err
+		}
+	}
+	for _, m := range candidates {
+		// A validated empty withdrawal has no executable definition. Retained
+		// applied/previous owners must still prove the actual protected bytes.
+		if m.Validate() != nil {
+			continue
+		}
 		canonical, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
 		if err != nil {
 			return err

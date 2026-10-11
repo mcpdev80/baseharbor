@@ -1,0 +1,60 @@
+{
+  "schema_version": "v0.4.25-empty-withdrawal-source-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "qualified_source": {
+    "commit": "49754f9016e2cf08ffd2a5de5650e03d49c4fc70",
+    "tree": "de429faee55e39985c2b60a2941491250de99eb2",
+    "parent": "9c8fba1df046c58084d08d6688ef67b6f42af577",
+    "run_id": 38162055600,
+    "run_attempt": 1,
+    "source_job_id": 114536838358,
+    "workflow_policy_job_id": 114536838651,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38162055600"
+  },
+  "scope": [
+    "Validate all canonical native backend candidate intents before accepting matching protected definition",
+    "Validated non-executable empty withdrawal supplies no native renderer definition",
+    "Executable applied/previous/archived canonical candidate still must match existing protected file bytes",
+    "Retired canonical owner projection accepts valid portable empty intent and retains UUID/environment checks",
+    "Actual apply/executable validation unchanged"
+  ],
+  "regressions": [
+    "First empty candidate does not hide retained prior canonical native backend",
+    "Empty withdrawal alone cannot prove existing native ownership",
+    "Fabricated services:{} definition rejected",
+    "Malformed later candidate cannot be hidden behind earlier matching canonical definition",
+    "Archived runtime resource union retained alongside canonical retired intent",
+    "Read-only compose, ENV and deployment record remain unchanged",
+    "Existing foreign/symlink/modified-definition and retained-owner rejection regressions remain passing"
+  ],
+  "validation": [
+    "Existing Source Preflight formatting/readability/full package unit tests/vet",
+    "Existing enrollment/operator/Node-disconnect boundary races; new retirement tests ran as unit tests, not targeted race/native tests",
+    "EN/DE strict build/parity/audit, workflow/actionlint and Linux amd64/arm64 snapshot build"
+  ],
+  "native_boundary": {
+    "qualified": false,
+    "previous_failure": {
+      "commit": "5543a77888441bb603f175a40291e3b39d6929c3",
+      "run_id": 38158814751,
+      "docker_job_id": 114527246248,
+      "podman_job_id": 114527246069,
+      "result": "failed default runtime retirement; possible partial mutations; cleanup not proven",
+      "permanent_receipt": "v0.4.25-selective-secrets-runtime-evidence.json"
+    },
+    "remaining": [
+      "Re-run affected real shared Secrets/default destroy/re-add gate on Docker/rootless Podman",
+      "Actual interrupted native state and same-owner retry",
+      "End-user OAuth gate after production nondev origin ordering is implemented",
+      "Final ecosystem matrix and other mutation authorities"
+    ]
+  },
+  "integration": {
+    "parent": "bcd7c2b05b369b7e62fb05625d924a1962ff3f39",
+    "parent_tree": "4b15bd91c2929b65105a456fcc5df2cedfc1a5c9",
+    "note": "Canonical touched paths checked unchanged against qualified proposal base; existing Node integration and peer evidence preserved. Isolated proposal avoids writing or discarding peer local unpublished changes."
+  }
+}

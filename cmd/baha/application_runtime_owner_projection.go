@@ -40,7 +40,7 @@ func applicationRuntimeOwners(resolved resolvedApplication) ([]resolvedApplicati
 			if len(intent) == 0 || json.Unmarshal(intent, &m) != nil || m.ApplicationID != id.ApplicationID || m.Environment != id.Environment || (index == 0 && m.Name != id.Application) {
 				return nil, invalidProviderConsumerInventory(fmt.Errorf("runtime intent differs from deployment owner"))
 			}
-			if err := m.Validate(); err != nil {
+			if err := m.ValidateIntent(); err != nil {
 				return nil, invalidProviderConsumerInventory(err)
 			}
 			owner := resolved
