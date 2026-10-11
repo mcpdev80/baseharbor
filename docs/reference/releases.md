@@ -1,5 +1,6 @@
 # Releases and versioning
 
+[Pre-release readiness](../development/pre-release-readiness.md)
 BaseHarbor uses Semantic Versioning for normal releases with Git tags prefixed by `v`. During the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
 Examples: `v0.3.0`, `v0.4.15`, `v0.4.15.1`, `v1.0.0`.
@@ -78,7 +79,7 @@ Evidence rule: the release issue and release notes must identify the exact BaseH
 
 Normal releases are prepared on `develop` and promoted to `main` only after the release candidate is proven. Hotfix releases follow the main-based workflow above.
 
-The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](https://github.com/mcpdev80/baseharbor/blob/work/v0.4.24-core-ha-updates/docs/internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
+The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
 
 1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.

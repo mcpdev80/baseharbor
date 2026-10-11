@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       consumer_ref:
-        description: Optional exact v0.4.24 Connector candidate SHA; defaults to the reviewed integration branch
+        description: Optional exact Connector candidate SHA; defaults to the reviewed integration branch
         required: false
         default: ''
         type: string
@@ -128,8 +128,8 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
-          if [ "$tag" = v0.4.24 ]; then
-            python3 scripts/ecosystem_release_pins.py --core "$(git rev-parse HEAD)" \
+          if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ]; then
+            python3 scripts/ecosystem_release_pins.py --tag "$tag" --core "$(git rev-parse HEAD)" \
               --connector "$INPUT_CONSUMER_REF" --demo "$INPUT_DEMO_REF" \
               --output "docs/releases/$tag.consumer-pins.json" > "$RUNNER_TEMP/v024-consumers.json"
             pinned_demo_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/v024-consumers.json")"
@@ -1258,6 +1258,108 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  integration_coreless_docker:
+    name: Integration · integration/docker/coreless-lifecycle
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/docker/coreless-lifecycle
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/coreless-lifecycle-docker"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-docker-coreless-lifecycle-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-lifecycle-docker
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_coreless_podman:
+    name: Integration · integration/podman/coreless-lifecycle
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/podman/coreless-lifecycle
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/coreless-lifecycle-podman"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-podman-coreless-lifecycle-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-lifecycle-podman
+          if-no-files-found: error
+          retention-days: 90
+
   integration_remote_target_docker:
     name: Integration · integration/docker/remote-target
     needs: source
@@ -1271,16 +1373,16 @@ jobs:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1317,16 +1419,16 @@ jobs:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1363,16 +1465,16 @@ jobs:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1412,16 +1514,16 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Verify every required input-bound proof and create release approval
         id: approval

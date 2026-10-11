@@ -2,41 +2,33 @@
 
 Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, ohne dass du Provider-Interna verstehen oder das Manifest manuell bearbeiten musst.
 
-## Core-Einrichtung
+## Mit den Anforderungen der Anwendung beginnen
 
-Vor der ersten Application benötigt BaseHarbor seinen Core: **SQL + Secrets + Identity**
-(PostgreSQL, OpenBao und Keycloak). Die Web Console ist optional.
+Eine unterstützte lokale Workload ohne verwaltete Capabilities läuft ohne
+Core-Installation und Login. Repository inspizieren und initialisieren, dann
+über den bestehenden Application-Lifecycle planen und starten. SQL ist kein
+impliziter Default. Ein leeres Verzeichnis benötigt weiterhin eine echte
+unterstützte Workload; Intent allein bedeutet nicht READY.
 
-Beim ersten `baha init` oder Application-Start bietet BaseHarbor die Einrichtung an:
+Benötigen ausgewählte Capabilities verwaltete Infrastruktur, verwendet
+BaseHarbor eine kompatible eigene Installation oder fragt interaktiv nach
+expliziter Einrichtung. Ein ausdrücklich installierter Management-Core stellt
+weiterhin **SQL + Secrets + Identity** (PostgreSQL, OpenBao und Keycloak) bereit.
+Die Web Console bleibt optional. TLS und geschützte Zugangsdaten gelten weiter
+für verwaltete Services.
 
-```text
-BaseHarbor needs its Core services before the first application can run.
-Set them up now? [Y/n]
-```
+Fehlt der benötigte Core bei nichtinteraktiver App-Ausführung, folgt
+`core_required`; Application-`--yes` erlaubt keinen Core-Bootstrap.
+Automation kann zuerst explizit `baha up --control-plane-only` ausführen.
+Außerhalb eines App-Repositories prüft `baha status` diese Installation.
+Retry verwendet denselben eigenen Core nach geprüfter Readiness.
 
-Danach fragt der Wizard nach der Maschinenrolle:
-
-```text
-Is this installation running on a machine where you write code?
-  1. Yes, this is a development machine
-  2. No, this is a deployment machine
-```
-
-Die Rolle steuert nur Workspace-/Source-Defaults; TLS und geschützte Zugangsdaten
-bleiben verpflichtend. Nach geprüfter Readiness aller drei Core-Capabilities setzt
-derselbe Application-Ablauf fort. Retry verwendet dieselbe eigene Installation
-und erzeugt keinen zweiten Core.
-
-Core-only ohne Repository/Application verwendet den bestehenden Pfad
-`baha up --control-plane-only`; `baha status` außerhalb eines Application-Repositories zeigt den Zustand.
-Maschinenpfade liefern ohne ausdrücklichen Bootstrap-Auftrag den typisierten
-Fehler `core_required`; sie richten keinen Core stillschweigend ein.
-
-Shared ist der einfache Standard. Pro Application isolierte Provider können
-zusätzliche Instanzen und Ressourcen verbrauchen. Die [gemessenen Core-Ressourcen](../explanation/core-resources.md)
-beschreiben die geprüfte Referenz-Topologie. Planungsbudgets sind keine
-Messwerte. Core-Idle, Startup-Peak und gleichzeitiger Gesamtverbrauch werden erst
-nach Messung der konkreten Runtime/Topologie als solche ausgewiesen.
+Shared-Placement verwendet kompatible Provider erneut. Isolierte Provider können
+zusätzliche Ressourcen benötigen; verwaltete native Capabilities verwenden die
+volle bestehende Core-Topologie. [Core-Ressourcen](../explanation/core-resources.md)
+und App-Footprint unterscheiden Messung, Schätzung und unbekannte Werte.
+Die [Application-Befehle](../cli/applications.md) beschreiben unterstützten
+Core-losen Betrieb und seine Grenzen.
 
 ## Konkretes Beispiel: Go-API mit SQL
 

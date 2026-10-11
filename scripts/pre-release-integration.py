@@ -19,6 +19,14 @@ CHECKS = {
     'integration/podman/core-bootstrap': [
         ['./cmd/baha', '-run', '^TestCoreOnlyBootstrapRuntimeAcceptance$', '-timeout', '28m'],
         ['./internal/development', '-run', '^TestGeneratedTemplatesNativeBuild$', '-timeout', '20m']],
+    'integration/docker/coreless-lifecycle': [
+        ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
+    'integration/podman/coreless-lifecycle': [
+        ['./cmd/baha', '-run', '^TestCorelessFreshWorkloadRuntimeLifecycle$', '-timeout', '15m'],
+        ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
+        ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/static/public-contracts': [
         ['./contracts/...', './internal/machine', './internal/machinereadmodels']],
     'integration/static/configuration-policy': [
@@ -52,11 +60,15 @@ def checked_tests(command, output, timeout=900):
 
 
 def configure_runtime_environment(gate):
-    if not gate.endswith('/core-bootstrap'):
+    if not gate.endswith(('/core-bootstrap', '/coreless-lifecycle')):
         return False
     expected = gate.split('/')[1]
     if os.environ.get('BASEHARBOR_TEST_RUNTIME') != expected:
         raise ValueError('selected runtime differs from the prepared qualification host')
+    if gate.endswith('/coreless-lifecycle'):
+        os.environ['BASEHARBOR_CORELESS_ACCEPTANCE'] = '1'
+        os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'] = '1'
+        return True
     os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'
     os.environ['BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE'] = '1'
     os.environ['BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE'] = '1'
@@ -101,7 +113,7 @@ def main():
                 'workflow_run_attempt': int(attempt), 'requirements_digest': resume.digest(requirements),
                 'id': runtime + '/' + gate, 'runtime': runtime, 'gate': gate,
                 'outcome': 'success', 'cleanup_outcome': 'success' if runtime_bootstrap else 'skipped',
-                'qualification_scope': 'core-bootstrap-runtime' if runtime_bootstrap else 'core-source-contracts', 'checks': checks}
+                'qualification_scope': args.gate.split('/')[-1] + '-runtime' if runtime_bootstrap else 'core-source-contracts', 'checks': checks}
     resume.validate_manifest(manifest, args.gate, int(run), args.candidate, args.demo, int(attempt))
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 

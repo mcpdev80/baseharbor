@@ -39,6 +39,18 @@ class ContractCheckTests(unittest.TestCase):
             self.assertFalse(integration.configure_runtime_environment('integration/static/public-contracts'))
             self.assertEqual(dict(os.environ), {})
 
+    def test_coreless_gates_require_selected_runtime_and_enable_real_tests(self):
+        for runtime in ['docker', 'podman']:
+            gate = 'integration/' + runtime + '/coreless-lifecycle'
+            with patch.dict(os.environ, {'BASEHARBOR_TEST_RUNTIME': runtime}, clear=True):
+                self.assertTrue(integration.configure_runtime_environment(gate))
+                self.assertEqual(os.environ['BASEHARBOR_CORELESS_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
+                self.assertEqual(len(integration.CHECKS[gate]), 3)
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(ValueError):
+                    integration.configure_runtime_environment(gate)
+
     def test_zero_exit_without_tests_is_rejected(self):
         with self.assertRaises(ValueError):
             self.check([{'Action': 'pass', 'Package': 'empty/package'}])

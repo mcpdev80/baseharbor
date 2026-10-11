@@ -1,5 +1,6 @@
 # Veröffentlichungen und Versionierung
 
+[Pre-Release-Bereitschaft](../development/pre-release-readiness.md)
 BaseHarbor verwendet Semantic Versioning für normale Versionen mit Git-Tags, die von `v`. Während der v0.4 Linie verwenden Notfall-Hotfixes den dokumentierten Vier-Teil ` MAJOR.MINOR.PATCH.HOTFIX`Erweiterung.
 
 Beispiele:`v0.3.0 `, ` v0.4.15 `, ` v0.4.15.1 `, ` v1.0.0`.

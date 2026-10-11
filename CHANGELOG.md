@@ -4,6 +4,28 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [Unreleased]
+
+## [0.4.25] - 2026-10-11
+
+### Added
+
+- Core-less supported local application lifecycle on Docker and rootless Podman, without management login or implicit service installation.
+- Minimal Manifest v1 authoring with stable generated application identity and optional services.
+- Shared capability/provider resolution and truthful versioned footprint across CLI, JSON, MCP and HTTP.
+- EN/DE capability-first contracts, connection-profile transport schema and permanent complete ecosystem pre-release-readiness policy.
+
+### Changed
+
+- SQL is requested explicitly; managed Core provisioning follows resolved requirements and authorization.
+- Capability removal preserves shared provider ownership and makes retained resources visible.
+- Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
+
+### Compatibility
+
+- Explicit management Core installation and TLS/OIDC/HA/recovery invariants remain unchanged.
+- Full native managed Core topology remains. Unsupported native BYO realization fails closed; automatic reclamation and future UI/onboarding/host features remain deferred.
+
 ## [0.4.24] - 2026-10-11
 
 ### Added

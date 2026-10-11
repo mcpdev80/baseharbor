@@ -1,5 +1,22 @@
 # Manifest reference
 
+## Minimal authoring
+
+```yaml
+version: 1
+app:
+  name: myapp
+  environment: dev
+```
+
+`services` and an authored `app.id` are optional. Explicit initialization assigns
+one durable ID in the existing canonical repository store, without rewriting
+this YAML. Reads do not allocate IDs. Existing explicit IDs must agree with
+registered ownership. Services retain the nested syntax, for example
+`services.sql: true`; no top-level SQL shorthand is introduced. A real supported
+workload is still required to initialize or run the application.
+
+
 The application manifest is portable Application Intent.
 
 ## Top-level rule

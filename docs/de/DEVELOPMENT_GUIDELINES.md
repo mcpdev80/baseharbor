@@ -1,5 +1,7 @@
 # Leitlinien für die Entwicklung von BaseHarbor
 
+
+Release-Bereitschaft richtet sich nach `docs/internal/pre-release-documentation-audit.md`; grüne Core-Tests allein bedeuten niemals Pre-Release-ready.
 Diese Regeln gelten für Code, Tests, Dokumentation und Anbieter-/Laufzeitarbeit.
 
 ## Prinzip der Projekttechnik

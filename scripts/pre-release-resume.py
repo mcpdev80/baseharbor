@@ -235,7 +235,7 @@ class GitInputs:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
     def pin(self, candidate, tag, demo_ref=None):
-        if tag == 'v0.4.24':
+        if tag in {'v0.4.24', 'v0.4.25'}:
             # Consumers can pin an existing Core SHA; Core cannot also embed
             # their future commit without a circular Git object dependency.
             resolved = self.demo_ref if demo_ref is None else demo_ref
@@ -357,7 +357,7 @@ class GitHub:
 
 def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
     """Recover the immutable origin pin from digest-verified gate archives."""
-    if tag != 'v0.4.24':
+    if tag not in {'v0.4.24', 'v0.4.25'}:
         return inputs.pin(candidate, tag)
     pins = set()
     for job in jobs:
@@ -619,7 +619,7 @@ def main():
                     'gate_count': len(requirements), 'requirements_digest': digest(requirements),
                     'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
                     'coverage_digest': digest(coverage)}
-        if args.tag == 'v0.4.24':
+        if args.tag in {'v0.4.24', 'v0.4.25'}:
             consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
             if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
                 raise ValueError('v0.4.24 requires an immutable complete consumer origin')

@@ -1,5 +1,8 @@
 # Release notes
 
+[v0.4.25 candidate](v0.4.25.md) — Core-less application path and minimal authoring; not yet published.
+
+
 Release notes record delivered behavior. Future planning belongs in GitHub Issues.
 
 [v0.4.24](v0.4.24.md) — developer highlights and compatibility notes.

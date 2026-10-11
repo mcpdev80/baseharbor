@@ -26,13 +26,15 @@ on your own machine, no vendor, no lock-in.
   </a>
 </p>
 
-## BaseHarbor v0.4.24
+## BaseHarbor v0.4.25 candidate
 
-This README and the EN/DE documentation describe v0.4.24. Installation binaries and published versions are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
+This branch documents the v0.4.25 candidate; the latest published baseline is v0.4.24. Installation binaries and published versions are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
+
+A supported local application with no managed service requirements can run without Core or login. SQL is requested explicitly; minimal Manifest v1 authoring does not require a manually entered app.id. See [candidate notes](docs/releases/v0.4.25.md).
 
 ## BaseHarbor Core
 
-The Core has three mandatory capabilities: **SQL, Secrets and Identity**.
+An explicitly installed management Core has three mandatory capabilities: **SQL, Secrets and Identity**.
 The reference providers are PostgreSQL, OpenBao and Keycloak. The Web Console is optional.
 TLS and protected credentials also apply to local development.
 

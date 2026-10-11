@@ -1,5 +1,23 @@
 # Manifest-Referenz
 
+## Minimales Manifest
+
+```yaml
+version: 1
+app:
+  name: myapp
+  environment: dev
+```
+
+`services` und eine selbst eingetragene `app.id` sind optional. Explizite
+Initialisierung vergibt eine dauerhafte ID im bestehenden kanonischen
+Repository-Store, ohne dieses YAML umzuschreiben. Lesen vergibt keine ID.
+Bestehende explizite IDs müssen zum registrierten Eigentum passen. Services
+verwenden weiterhin die verschachtelte Syntax, etwa `services.sql: true`.
+Es gibt kein neues Top-Level-SQL-Format. Initialisierung und Betrieb benötigen
+weiterhin eine echte unterstützte Workload.
+
+
 Das Application-Manifest beschreibt portablen Application-Intent.
 
 ## Grundregel
