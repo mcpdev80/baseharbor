@@ -237,7 +237,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return err
 	}
 	if err := activity(ctx, e.term, "Reconciling application identity", func(progress io.Writer) error {
-		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
+		return provisionManagedIdentityBeforeExposure(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
 		return err
 	}
@@ -408,6 +408,11 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}
 	if err := activity(ctx, e.term, "Verifying application exposure", func(progress io.Writer) error {
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, e.term, "Verifying identity callback access", func(progress io.Writer) error {
+		return verifyManagedIdentityAfterExposure(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
 		return err
 	}

@@ -25,6 +25,7 @@ type managedIdentityExecution struct {
 	target    string
 	manifest  application.Manifest
 	runtime   bhruntime.RuntimeProvider
+	files     application.RuntimeFiles
 }
 
 func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
@@ -56,6 +57,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 		target:   resolved.Target.Name,
 		manifest: m,
 		runtime:  compose,
+		files:    files,
 	}
 	switch identity.Resource.Provider {
 	case capability.ProviderKeycloak:
@@ -99,6 +101,9 @@ func provisionAndVerifyManagedIdentity(ctx context.Context, out io.Writer, prepa
 		if err != nil {
 			return err
 		}
+		if managedIdentityNeedsRealizedExposure(prepared) && len(origins) == 0 {
+			return fmt.Errorf("managed identity cannot be verified before its public exposure is realized")
+		}
 		if err := prepared.keycloak.SetApplicationOrigins(origins); err != nil {
 			return err
 		}
@@ -126,15 +131,19 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 			state.Routes = append(state.Routes, exposure.Route{Name: route.Name, Service: route.Service, Protocol: route.Protocol, Visibility: route.Visibility})
 		}
 	}
+	return managedIdentityOriginsForRoutes(identity, state.Host, state.Routes)
+}
+
+func managedIdentityOriginsForRoutes(identity *managedIdentityExecution, host string, routes []exposure.Route) ([]string, error) {
 	seen := map[string]struct{}{}
 	var origins []string
 	publicCount := 0
-	for _, route := range state.Routes {
+	for _, route := range routes {
 		if !strings.EqualFold(route.Visibility, "internal") {
 			publicCount++
 		}
 	}
-	for _, route := range state.Routes {
+	for _, route := range routes {
 		if strings.EqualFold(route.Visibility, "internal") {
 			continue
 		}
@@ -147,8 +156,8 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 			}
 			origin = devgateway.URLForRuntime(identity.target, host, identity.runtime)
 		} else {
-			host := strings.TrimSpace(state.Host)
-			if host == "" || route.PublishedPort < 1 {
+			host := strings.TrimSpace(host)
+			if host == "" || route.PublishedPort < 1 || route.PublishedPort > 65535 || (route.ProviderProtocol != "" && route.ProviderProtocol != route.Protocol) {
 				return nil, fmt.Errorf("managed application exposure is incomplete for identity redirect resolution")
 			}
 			origin = route.Protocol + "://" + net.JoinHostPort(host, strconv.Itoa(route.PublishedPort))

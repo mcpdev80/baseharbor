@@ -100,7 +100,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestSelectiveIdentityRuntimeAddRemoveReAdd$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/identity-lifecycle.log"
+          selection='^TestSelectiveIdentityRuntimeAddRemoveReAdd$'
+          if [ '${{ contains(github.event.head_commit.message, '[coreless-production-identity]') }}' = true ]; then
+            selection='^TestProductionIdentityRuntimeRealizedCallbackAndReapply$'
+          fi
+          go test ./cmd/baha -run "$selection" -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/identity-lifecycle.log"
       - name: Verify selected SQL and cache add remove re-add without Core
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
         env:

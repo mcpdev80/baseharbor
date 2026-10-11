@@ -107,7 +107,7 @@ func startIdentityOAuthRuntimeSession(t *testing.T, ctx context.Context, resolve
 	if err != nil || adminFiles.Dir != files.Dir || adminFiles.Project != files.Project {
 		t.Fatal("OAuth administration does not match the observed existing provider owner")
 	}
-	provisionIdentityOAuthFixtureUser(t, ctx, adminFiles, issuer, resolved.Manifest.Name, session.username, session.password)
+	provisionIdentityOAuthFixtureUser(t, ctx, adminFiles, issuer, resolved.Manifest.Name, session.username, session.password, resolved.Manifest.Environment)
 	session.login(t, ctx, true)
 	session.login(t, ctx, false)
 	return session
@@ -128,6 +128,9 @@ func identityOAuthRandom(t *testing.T) string {
 
 func identityOAuthFixtureCallback(t *testing.T, resolved resolvedApplication) string {
 	t.Helper()
+	if resolved.Manifest.Environment == "prod" {
+		return productionIdentityOAuthCallback(t, resolved)
+	}
 	host, err := devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "api")
 	if err != nil {
 		t.Fatal("OAuth callback origin invalid")
@@ -136,7 +139,7 @@ func identityOAuthFixtureCallback(t *testing.T, resolved resolvedApplication) st
 	return devgateway.URLForTarget(resolved.Target.Name, host) + "/oauth/callback"
 }
 
-func provisionIdentityOAuthFixtureUser(t *testing.T, ctx context.Context, files identityprovider.KeycloakFiles, issuer, applicationName, username, password string) {
+func provisionIdentityOAuthFixtureUser(t *testing.T, ctx context.Context, files identityprovider.KeycloakFiles, issuer, applicationName, username, password, environment string) {
 	t.Helper()
 	values := map[string]string{}
 	for index, path := range []string{files.Env, filepath.Join(files.Dir, "active-admin.env")} {
@@ -177,7 +180,7 @@ func provisionIdentityOAuthFixtureUser(t *testing.T, ctx context.Context, files 
 		Attributes map[string]string `json:"attributes"`
 	}
 	identityOAuthDecode(t, response, http.StatusOK, &realm)
-	if realm.Attributes["baseharbor.owner"] != "baseharbor" || realm.Attributes["baseharbor.application"] != applicationName || realm.Attributes["baseharbor.environment"] != "dev" {
+	if realm.Attributes["baseharbor.owner"] != "baseharbor" || realm.Attributes["baseharbor.application"] != applicationName || realm.Attributes["baseharbor.environment"] != environment {
 		t.Fatal("OAuth fixture cannot create a user in an unowned realm")
 	}
 	body, err := json.Marshal(map[string]any{"username": username, "firstName": "Native", "lastName": "Fixture", "email": "native-oauth@example.invalid", "emailVerified": true, "enabled": true, "requiredActions": []string{}, "credentials": []map[string]any{{"type": "password", "value": password, "temporary": false}}})
