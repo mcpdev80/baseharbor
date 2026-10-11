@@ -11,7 +11,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
@@ -95,6 +94,9 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 			return err
 		}},
 		{Name: "runtime configuration", Run: func(ctx context.Context) error {
+			if !application.HasApplicationScopedRuntimeServices(m) {
+				return nil
+			}
 			return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 		}},
 		{Name: "runtime ownership", Run: func(ctx context.Context) error {
@@ -147,8 +149,10 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 	}
 
 	project := runtimeProject
-	if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
-		return err
+	if application.HasApplicationScopedRuntimeServices(m) {
+		if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
 	}
 	after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
 	if err != nil {
@@ -183,7 +187,7 @@ func runBestEffortDevelopmentRouteSuspension(term *cli.Terminal, suspend func() 
 }
 
 func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, m application.Manifest) error {
-	if !devaccess.Enabled(m.Environment) {
+	if !requiresDevelopmentGateway(m) {
 		return nil
 	}
 	files, err := existingTargetRuntimeFiles(ctx)

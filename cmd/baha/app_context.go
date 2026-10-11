@@ -101,6 +101,13 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		}
 		selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
 		if err == nil {
+			if authErr := ensureOperatorAuthForBoundary(ctx, target.Name, selection.Manifest.Environment); authErr != nil {
+				return resolvedApplication{}, authErr
+			}
+			selection, err = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
+			if err != nil {
+				return resolvedApplication{}, err
+			}
 			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection)
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr

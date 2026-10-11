@@ -91,7 +91,7 @@ func requiresDevelopmentGateway(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
 	}
-	return application.HasExplicitWorkload(m) || requiresDeclaredDevelopmentGatewaySurface(m)
+	return (application.HasExplicitWorkload(m) && (application.HasManagedRuntimeServices(m) || application.RequiresRuntimeBroker(m))) || requiresDeclaredDevelopmentGatewaySurface(m)
 }
 
 func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {

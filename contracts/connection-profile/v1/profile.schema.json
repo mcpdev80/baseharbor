@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/connection-profile/v1/profile.schema.json",
+  "title": "baseharbor.connection-profile/v1 (transport only; implementation deferred)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "name",
+    "core",
+    "trust",
+    "targets"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.connection-profile/v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "core": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installation_id",
+        "url"
+      ],
+      "properties": {
+        "installation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/@]+(?:/|$)"
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ca_pem",
+        "sha256"
+      ],
+      "properties": {
+        "ca_pem": {
+          "type": "string",
+          "pattern": "^-----BEGIN CERTIFICATE-----"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "tenant_id",
+          "runtime_provider"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9.-]*$"
+          },
+          "tenant_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "runtime_provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuer",
+        "client_id",
+        "scopes"
+      ],
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/@]+(?:/|$)"
+        },
+        "client_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^ \\t\\r\\n]+$"
+          }
+        }
+      }
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9.-]+/[a-z0-9._-]+$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    }
+  }
+}

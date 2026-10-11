@@ -361,8 +361,13 @@ func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) 
 	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "prod" {
 		t.Fatalf("destroying dev changed prod binding: %#v", registry.Bindings)
 	}
-	if len(registry.Instances) != 1 || registry.Instances[0].ID != prodID || registry.Instances[0].OwnerEnvironment != "" {
-		t.Fatalf("destroying dev changed shared provider instance: %#v", registry.Instances)
+	if len(registry.Instances) != 2 {
+		t.Fatalf("destroying dev discarded retained shared provider ownership: %#v", registry.Instances)
+	}
+	for _, instance := range registry.Instances {
+		if (instance.ID != devID && instance.ID != prodID) || instance.OwnerEnvironment != "" {
+			t.Fatalf("destroying dev changed shared provider instance: %#v", instance)
+		}
 	}
 }
 

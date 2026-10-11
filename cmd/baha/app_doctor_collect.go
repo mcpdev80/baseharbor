@@ -225,6 +225,9 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 			if c.runtimeErr != nil {
 				return c.runtimeErr
 			}
+			if !application.HasApplicationScopedRuntimeServices(m) {
+				return nil
+			}
 			return c.compose.ConfigProject(ctx, c.files.Project, c.files.Compose, c.files.Env)
 		}},
 		{Name: "running services", Run: func(ctx context.Context) error {
@@ -232,6 +235,9 @@ func (c *applicationDoctorCollector) baseChecks() []preflight.Check {
 				return c.runtimeErr
 			}
 			var err error
+			if !application.HasApplicationScopedRuntimeServices(m) {
+				return nil
+			}
 			c.running, err = c.compose.RunningServicesProject(ctx, c.files.Project, c.files.Compose, c.files.Env)
 			return err
 		}},

@@ -120,8 +120,8 @@ func TestDevelopmentGatewayAllowsNonRoutableWorkload(t *testing.T) {
 	m := application.New("worker", "dev", false, false, false)
 	m.Services.SQL = false
 	m = application.WithWorkloadComponents(m, "worker")
-	if !requiresDevelopmentGateway(m) {
-		t.Fatal("development workload should still participate in route reconciliation")
+	if requiresDevelopmentGateway(m) {
+		t.Fatal("plain development workload must not implicitly provision a gateway")
 	}
 	if requiresDeclaredDevelopmentGatewaySurface(m) {
 		t.Fatal("non-routable workload must not require a canonical development URL")

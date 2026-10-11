@@ -14,6 +14,7 @@ english = {
 german = {
     p.relative_to(docs / "de").as_posix()
     for p in (docs / "de").rglob("*.md")
+    if not p.relative_to(docs / "de").as_posix().startswith(excluded)
 }
 missing_de = sorted(english - german)
 missing_en = sorted(german - english)

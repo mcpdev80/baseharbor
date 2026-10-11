@@ -88,3 +88,47 @@ baha plan
 The scaffold declares SQL and cache intent, adds Go clients, and records `DATABASE_URL`/`DATABASE_CA_FILE` and `REDIS_URL`/`REDIS_CA_FILE` binding names. It does not create shop-specific endpoints or tables. After deployment with `baha up`, inspect the workload with `baha app logs app` and the masked bindings with `baha app env --format json`.
 
 For adoption, start inside your existing repository with `baha inspect .`, then `baha init`. Do not create a second scaffold over existing application files.
+
+## Local workload without managed capabilities (v0.4.25)
+
+A minimal `baseharbor.yaml` may omit `app.id` and `services`:
+
+```yaml
+version: 1
+app:
+  name: my-app
+  environment: dev
+```
+
+Place a supported, unambiguous Compose workload in the repository, then run
+`baha app init --quick`, `baha app plan --json` and `baha app apply`.
+Initialization assigns a stable ID through the protected repository application
+store without rewriting authored YAML. Read commands never allocate an ID.
+Absent or ambiguous source is an error, not a READY deployment.
+
+For a genuine workload without requested managed capabilities, the existing
+local lifecycle skips Core, managed gateway and broker provisioning. No profile
+switch, implicit SQL or Core login is needed. Status and doctor use real
+workload observations; stop/up and repeated destroy retain their existing
+ownership checks. This does not authorize `baha serve`: its management security
+requirements and explicit management Core installation remain unchanged.
+
+Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
+projected new binding is `requested/unbound`, never live evidence. Native
+managed capabilities still use the existing complete management Core topology;
+selective provider installation is unavailable. Dependencies and incremental
+memory/container quantities remain unknown when actual attribution is missing.
+Ownership-checked app-scoped backend inventory can supply measured container
+counts; other providers remain `unverifiable` until their native observation.
+Non-interactive app `--yes` does not install a missing Core. Install management
+Core explicitly after reviewing its impact.
+
+Existing compatible native placements are reused. A binding that would require
+provider migration fails before provisioning. Unsupported native BYO placements
+also fail before provisioning; external OIDC/OTLP retain their existing
+adapters. Capability removal releases the application's binding and retains
+provider ownership, including Target-wide shared resources. `unused` excludes
+providers still bound by another app. Automatic garbage collection and migration
+are not provided. Unused app-owned provider state blocks destroy until the
+original capability/placement is restored for explicit cleanup; a separate
+ownership-checked reclamation operation is deferred by #872.

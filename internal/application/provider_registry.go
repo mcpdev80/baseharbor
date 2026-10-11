@@ -42,19 +42,33 @@ func CheckReferenceProviderRegistry(m Manifest) error {
 }
 
 func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
+	_, err := PreviewReferenceProviderRegistryAt(dataDir, m)
+	return err
+}
+
+// PreviewReferenceProviderRegistryAt uses the existing provider registration
+// plan without writing Target state. Removed capability instances retain their
+// ownership; releasing a binding does not reclaim a provider.
+func PreviewReferenceProviderRegistryAt(dataDir string, m Manifest) (capability.Registry, error) {
 	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
-		return err
+		return capability.Registry{}, err
 	}
 	registry, err := store.Load()
 	if err != nil {
-		return err
+		return capability.Registry{}, err
 	}
-	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
+	releaseManagedBindingsPreservingInstances(&registry, m)
 	if err := registerReferenceProviders(&registry, m); err != nil {
-		return err
+		return capability.Registry{}, err
 	}
-	return registry.Validate()
+	return registry, registry.Validate()
+}
+
+func releaseManagedBindingsPreservingInstances(registry *capability.Registry, m Manifest) {
+	instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
+	registry.Instances = instances
 }
 
 func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Resource) error {
@@ -71,7 +85,7 @@ func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
+		releaseManagedBindingsPreservingInstances(registry, m)
 		if err := registerReferenceProviders(registry, m); err != nil {
 			return err
 		}
@@ -96,7 +110,7 @@ func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional [
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
+	releaseManagedBindingsPreservingInstances(&registry, m)
 	if err := registerReferenceProviders(&registry, m); err != nil {
 		return err
 	}
@@ -241,7 +255,18 @@ func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
+		var retained []capability.ProviderInstance
+		for _, instance := range registry.Instances {
+			if instance.Scope == capability.ScopeShared {
+				retained = append(retained, instance)
+			}
+		}
 		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		for _, instance := range retained {
+			if err := registry.Register(instance); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }

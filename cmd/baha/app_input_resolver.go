@@ -103,8 +103,27 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			if readerIsTerminal(appInitInput) {
 				ctx = context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(appInitInput))
 			}
-			if err := applicationCorePrerequisite(ctx, applicationInput(ctx, appInitInput), out); err != nil {
-				return err
+			if containsQuickAdoptionOption(forwarded) {
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				m, err := manifestFromDetectedProject(detected, true)
+				if err != nil {
+					return err
+				}
+				target, err := effectiveTarget(ctx)
+				if err != nil {
+					return err
+				}
+				root, err := targetDataRoot(target)
+				if err != nil {
+					return err
+				}
+				intent := resolvedApplication{Target: target, TargetStateRoot: root, Manifest: m, FromRepository: true, RepositoryRoot: cwd}
+				if err := requireResolvedApplicationCore(ctx, intent, applicationInput(ctx, appInitInput), out); err != nil {
+					return err
+				}
 			}
 		}
 		for _, arg := range forwarded {
@@ -115,10 +134,11 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 			}
 			if hasLocalManifest {
-				m, err := application.LoadManifestFile(manifestPath)
+				resolved, err := resolveApplication(ctx, store, nil, "init")
 				if err != nil {
 					return err
 				}
+				m := resolved.Manifest
 				if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
 					return err
 				}
@@ -179,6 +199,15 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func containsQuickAdoptionOption(args []string) bool {
+	for _, arg := range args {
+		if arg == "--quick" {
+			return true
+		}
+	}
+	return false
 }
 
 func currentRepositoryManifest(cwd string) (string, bool, error) {

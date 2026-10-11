@@ -145,7 +145,7 @@ func registerMCPApplicationReadTools(server *mcp.Server, store application.Store
 		if err := authorizeResolvedMCPOperation(ctx, "plan", resolved, ""); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := application.BuildPlan(resolved.Manifest)
+		result, err := buildResolvedApplicationPlan(ctx, resolved)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
