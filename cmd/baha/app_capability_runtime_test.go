@@ -100,7 +100,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			})
 			if kind == "https" {
 				out.Reset()
-				if err := runWithIO(ctx, []string{"app", "init", "--input", "hostname=capability-https.baha.localhost", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
+				if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes"}, &out, &out); err != nil {
 					t.Fatalf("HTTPS inputs: %v\n%s", err, out.String())
 				}
 			}
