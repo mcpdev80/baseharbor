@@ -34,7 +34,56 @@
           "artifact_digest": "sha256:264dfc545a2d75a289c119184e28931b9481b1ef210bce8a56fb133cc701e431"
         }
       ]
+    },
+    {
+      "candidate_sha": "9d813bfcee248b7d16cf9e0eab65ab7602ebb771",
+      "candidate_tree": "ad8a1de1d2b30dadf8fb846d2eefaab3e0bcfe19",
+      "workflow_run_id": 38153022742,
+      "workflow_run_attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Actual application credentials and CA/hostname-verified SQL TLS write/read succeed before removal and after re-add. Actual cache username/password and CA-verified TLS SET/GET succeed across the same lifecycle. Consumer credential/database identity hashes remain unchanged; one actual owned data volume and protected provider environment remain per backend. Authenticated returned marker content matches; no secret values or provider error bodies are printed. Canonical system identity and verified deployment remain stable. Native Podman container boot definitions are inspected as present/absent/present; owned cleanup asserts no remaining containers.",
+      "inventory": {
+        "sql_selected_running": [
+          1,
+          0,
+          1
+        ],
+        "sql_total_containers": [
+          2,
+          1,
+          2
+        ],
+        "cache_selected_running": [
+          2,
+          0,
+          2
+        ],
+        "cache_total_containers": [
+          3,
+          1,
+          3
+        ],
+        "retained_owned_volumes_per_backend": 1
+      },
+      "runtime_jobs": [
+        {
+          "runtime": "podman",
+          "job_id": 114510205474,
+          "test_seconds": 138.14,
+          "artifact_id": 11707033665,
+          "artifact_digest": "sha256:54227d2e64d3ebc163fc20f8b6e7c24ed13af2a1bb0a95ea9123c72fcf8f5532"
+        },
+        {
+          "runtime": "docker",
+          "job_id": 114510205614,
+          "test_seconds": 121.31,
+          "artifact_id": 11707816075,
+          "artifact_digest": "sha256:3eb04888346b6234df550049dfe838db5bc768bd580baee15376260aee05e68b"
+        }
+      ]
     }
   ],
-  "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate."
+  "scope_boundary": "Only actual credential/TLS authenticated SQL and cache seeded-data retention across add/remove/re-add is requested here. Volume existence, historical gates, local compilation or skipped native tests cannot supply this proof. Shared consumer, management, other provider and final ecosystem acceptance remain separate.",
+  "qualified_scope": "Isolated selected SQL/cache actual consumer credentials, TLS access, seeded data, owned-volume/configuration retention and native boot definitions on 9d813bfcee248b7d16cf9e0eab65ab7602ebb771 only."
 }
