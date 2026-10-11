@@ -80,6 +80,11 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 		normalized = append(normalized, raw)
 	}
 	normalized = sortedUnique(normalized)
+	if strings.Join(d.origins, "\x00") != strings.Join(normalized, "\x00") {
+		// Newly realized callback origins need actual client reconciliation,
+		// even when the provider was already provisioned before exposure.
+		d.provisioned = false
+	}
 	d.origins = normalized
 	return nil
 }

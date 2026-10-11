@@ -24,7 +24,7 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 	if len(previous) == 0 || json.Unmarshal(previous, &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Environment != id.Environment {
 		return record, invalidProviderConsumerInventory(fmt.Errorf("retirement intent differs from deployment owner"))
 	}
-	if err := prior.Validate(); err != nil {
+	if err := prior.ValidateIntent(); err != nil {
 		return record, invalidProviderConsumerInventory(err)
 	}
 	result, err := application.RecordProviderChangeResult(plan, nil)
@@ -39,7 +39,7 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 		record.Applied.GeneratedState = map[string]string{}
 	}
 	record.Applied.GeneratedState["previous_intent"] = string(previous)
-	if record.Observed.State != "runtime-retired" || record.Applied.GeneratedState["retired_intent"] == "" {
+	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && record.Observed.State != "runtime-retired") {
 		record.Applied.GeneratedState["retired_intent"] = string(record.Applied.Intent)
 	}
 	record.Applied.GeneratedState["provider_change_result"] = string(encoded)

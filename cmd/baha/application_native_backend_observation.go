@@ -35,7 +35,7 @@ func retainedApplicationBackendIntent(resolved resolvedApplication) (application
 	if len(intent) == 0 || json.Unmarshal(intent, &m) != nil || m.ApplicationID != resolved.Manifest.ApplicationID || m.Environment != resolved.Manifest.Environment {
 		return application.Manifest{}, invalidProviderConsumerInventory(fmt.Errorf("native backend intent differs from deployment owner"))
 	}
-	return m, m.Validate()
+	return m, m.ValidateIntent()
 }
 
 func nativeBackendInventory(resolved resolvedApplication) (application.RuntimeFiles, application.Manifest, []bhruntime.ProjectResource, error) {

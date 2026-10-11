@@ -1,0 +1,57 @@
+{
+  "schema_version": "v0.4.25-retired-owner-chain-source-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "qualified_source": {
+    "commit": "7c692078d6a7483676ed5202b6f69e4533f27d66",
+    "tree": "31a021eff696dd244230ba9cd25c013abb8bb211",
+    "parent": "97484f308280972c4046033b2bc17ec414caabe0",
+    "run_id": 38163419907,
+    "run_attempt": 1,
+    "source_job_id": 114540910703,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38163419907"
+  },
+  "scope": [
+    "Broker and retained backend read projections validate portable retired intents with existing canonical ownership checks",
+    "Pending repeat retirement validates portable owner and retains archived live intent across interrupted attempts",
+    "Native helper records safe stage evidence after actual canonical/volume/ENV/result assertions",
+    "Changed normalized Keycloak origins invalidate completed provisioning so the existing capability lifecycle actually reconciles the client"
+  ],
+  "regressions": [
+    "Retired canonical owner preserves actual archived broker owner in its original Store",
+    "Inactive backend canonical intent remains inactive while archived resource observation remains available",
+    "Three repeated interrupted pending retirements preserve exact archived live owner and final canonical ID",
+    "Read-only projection leaves deployment owner bytes unchanged",
+    "First realized, changed-port and withdrawn Keycloak origins invoke provider reconciliation rather than premature no-op",
+    "Equivalent normalized or invalid origins do not repeat existing provisioning"
+  ],
+  "keycloak_prerequisite_source": {
+    "commit": "97484f308280972c4046033b2bc17ec414caabe0",
+    "tree": "28bc660a9f22b3e7c0a1ef5eb7f877f4fa7c39a0",
+    "run_id": 38163002714,
+    "run_attempt": 1,
+    "source_job_id": 114539669814,
+    "workflow_policy_job_id": 114539669594,
+    "conclusion": "success",
+    "note": "Functional source fixture observes Apply invocation/error only; real redirect/client secret/realm/user preservation and production end-user OAuth not qualified."
+  },
+  "checks": [
+    "Formatting/source readability and all contract/internal/spec/command units/vet with existing database fixture",
+    "Existing enrollment/operator/Node authority race checks; new owner-chain/Keycloak tests ran as unit tests",
+    "Both strict documentation builds, EN/DE parity/audit, workflow policy/actionlint and Linux snapshot build"
+  ],
+  "failed_native_attempt": "v0.4.25-empty-withdrawal-source-evidence.json",
+  "integration": {
+    "parent": "187cc459b1926784ed1931c12f13e2dc255e7eca",
+    "tree": "4eb4a5d7635572bf3ae0236286c2136c00af6c10",
+    "note": "Touched canonical source paths compared unchanged before narrow lease integration; peer commits, evidence and local unpublished work preserved."
+  },
+  "remaining": [
+    "Affected native Secrets/default destroy/re-add and actual partial cleanup/retry evidence",
+    "Production nondev Identity ordering helper must preserve existing callbacks during reapply and verify actual realized origins before READY; driver prerequisite alone does not fix orchestration",
+    "All remaining provider mutations and final Core/Demo/Console/NodeConnector source/native/browser matrix",
+    "Release docs/audit/issue acceptance on final immutable candidate"
+  ]
+}

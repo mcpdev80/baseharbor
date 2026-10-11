@@ -57,7 +57,7 @@ func applicationBrokerOwners(resolved resolvedApplication) ([]applicationBrokerO
 			if json.Unmarshal(intent, &m) != nil || m.ApplicationID != id.ApplicationID || (index == 0 && m.Name != id.Application) || m.Environment != id.Environment {
 				return nil, invalidProviderConsumerInventory(fmt.Errorf("broker intent differs from deployment owner"))
 			}
-			if err := m.Validate(); err != nil {
+			if err := m.ValidateIntent(); err != nil {
 				return nil, invalidProviderConsumerInventory(err)
 			}
 			add(m, true, store)

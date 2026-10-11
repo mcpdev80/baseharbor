@@ -39,6 +39,7 @@ func qualifySecretsDefaultRuntimeRetirement(t *testing.T, ctx context.Context, p
 	if err != nil || record.Identity != before.DeploymentIdentity || record.Observed.State != "runtime-retired" || record.Observed.Ready || record.Applied.GeneratedState["previous_intent"] != "" || record.Applied.GeneratedState["retired_intent"] == "" {
 		t.Fatalf("retirement lost verified canonical owner: %v", err)
 	}
+	t.Log("default retirement: canonical runtime-retired owner and archived live intent verified")
 	inventory, err := bhruntime.ExistingControlPlaneRuntimeInventory(root, bhruntime.SharedProjectName(before.Target.Name))
 	if err != nil {
 		t.Fatal(err)
@@ -61,10 +62,12 @@ func qualifySecretsDefaultRuntimeRetirement(t *testing.T, ctx context.Context, p
 	if err != nil || sha256.Sum256(data) != originalEnv {
 		t.Fatal("default retirement changed protected provider material")
 	}
+	t.Logf("default retirement: actual selected provider containers absent; %d owned data volumes and protected ENV retained", len(volumes))
 	result, err := applicationDestroyResult(before, false)
 	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted || result.ProviderChangeResult == nil {
 		t.Fatalf("default retirement receipt: %v", err)
 	}
+	t.Log("default retirement: retained-owner structured result verified; beginning same-owner reactivation")
 	applySelectiveIdentityIntent(t, ctx)
 	after, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil || after.Manifest.ApplicationID != before.Manifest.ApplicationID || after.DeploymentIdentity != before.DeploymentIdentity {
