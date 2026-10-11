@@ -21,6 +21,14 @@ import (
 )
 
 func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
+	runSelectiveSecretsRuntimeLifecycle(t, false)
+}
+
+func TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer(t *testing.T) {
+	runSelectiveSecretsRuntimeLifecycle(t, true)
+}
+
+func runSelectiveSecretsRuntimeLifecycle(t *testing.T, shared bool) {
 	if os.Getenv("BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE") != "1" {
 		t.Skip("requires isolated exact-SHA Docker/rootless Podman Secrets acceptance with matching runtime image")
 	}
@@ -115,7 +123,11 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 	})
 	var originalSecret, originalEnv [32]byte
 	var volumes []bhruntime.ProjectResource
+	var sibling *sharedSecretsRuntimeApplication
 	for phase, enabled := range []bool{true, false, true} {
+		if shared && phase == 1 {
+			sibling = createSharedSecretsRuntimeApplication(t, ctx, provider, root, initialized.Manifest.ApplicationID)
+		}
 		writeIntent(enabled)
 		applySelectiveIdentityIntent(t, ctx)
 		current, err := resolveApplication(ctx, application.Store{}, nil, "status")
@@ -184,8 +196,21 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 			t.Fatal(err)
 		}
 		providerCount, brokerCount := 0, 0
+		siblingBrokerCount, siblingWorkloadCount := 0, 0
 		for _, container := range containers {
 			matched := false
+			if sibling != nil {
+				files := application.RuntimeFilesFor(sibling.resolved.Store, sibling.resolved.Manifest)
+				project := runtimebroker.ProjectNameForRuntime(sibling.resolved.Manifest, files)
+				if bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, project, bhruntime.ProjectResource{Kind: "container", Name: project + "-broker-1"}) {
+					siblingBrokerCount++
+					matched = true
+				}
+				if bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, bhruntime.ProjectResource{Kind: "container", Name: files.Project + "-api-1"}) {
+					siblingWorkloadCount++
+					matched = true
+				}
+			}
 			for _, resource := range inventory.Resources {
 				if resource.Kind == "container" && bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, inventory.Files.Project, resource) {
 					providerCount++
@@ -202,8 +227,12 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 				t.Fatalf("Secrets-only materialized unrequested project=%s service=%s", container.Project, container.Service)
 			}
 		}
-		if (enabled && (providerCount == 0 || brokerCount != 1)) || (!enabled && (providerCount != 0 || brokerCount != 0)) {
+		needed := enabled || (sibling != nil && phase == 1)
+		if (needed && providerCount == 0) || (!needed && providerCount != 0) || (enabled && brokerCount != 1) || (!enabled && brokerCount != 0) {
 			t.Fatalf("Secrets phase=%d need=%t actual provider=%d broker=%d", phase, enabled, providerCount, brokerCount)
+		}
+		if sibling != nil && (siblingWorkloadCount != 1 || (phase == 1 && siblingBrokerCount != 1) || (phase == 2 && siblingBrokerCount != 0)) {
+			t.Fatal("shared Secrets change did not preserve the sibling workload and requested broker lifecycle")
 		}
 		if provider.Kind() == bhruntime.ProviderPodman {
 			home, err := os.UserHomeDir()
@@ -215,10 +244,18 @@ func TestSelectiveSecretsRuntimeAddRemoveReAdd(t *testing.T) {
 					continue
 				}
 				_, err := os.Lstat(filepath.Join(home, ".config", "containers", "systemd", strings.TrimSuffix(resource.Name, "-1")+".container"))
-				if (enabled && err != nil) || (!enabled && !os.IsNotExist(err)) {
+				resourceNeeded := needed
+				if resource.Name == runtimebroker.ProjectNameForRuntime(current.Manifest, appFiles)+"-broker-1" {
+					resourceNeeded = enabled
+				}
+				if (resourceNeeded && err != nil) || (!resourceNeeded && !os.IsNotExist(err)) {
 					t.Fatalf("Secrets phase=%d actual boot definition differs from selected need: %v", phase, err)
 				}
 			}
+		}
+		if sibling != nil && phase == 1 {
+			sibling.verifySecret(t, ctx, provider, root)
+			sibling.removeLastConsumer(t, ctx, provider, root, volumes, originalEnv)
 		}
 		t.Logf("runtime=%s Secrets phase=%d need=%t actual provider=%d broker=%d total=%d retained owned data volumes=%d; stable system ID and verified deployment", provider.Kind(), phase, enabled, providerCount, brokerCount, len(containers), len(volumes))
 	}

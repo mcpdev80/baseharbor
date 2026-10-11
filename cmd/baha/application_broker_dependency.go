@@ -17,24 +17,33 @@ import (
 type applicationBrokerOwner struct {
 	manifest application.Manifest
 	existing bool
+	store    application.Store
 }
 
 func applicationBrokerOwners(resolved resolvedApplication) ([]applicationBrokerOwner, error) {
 	owners := map[string]applicationBrokerOwner{}
-	add := func(m application.Manifest, existing bool) {
+	add := func(m application.Manifest, existing bool, store application.Store) {
 		if !application.RequiresRuntimeBroker(m) {
 			return
 		}
 		id := application.RuntimeBrokerDependency(resolved.Target.Name, m).ID
 		prior := owners[id]
-		owners[id] = applicationBrokerOwner{manifest: m, existing: existing || prior.existing}
+		if prior.existing && !existing {
+			store = prior.store
+		}
+		owners[id] = applicationBrokerOwner{manifest: m, existing: existing || prior.existing, store: store}
 	}
-	add(resolved.Manifest, false)
+	add(resolved.Manifest, false, resolved.Store)
 	records, err := deployment.ListDeployments(resolved.Target.Name)
 	if err != nil {
 		return nil, invalidProviderConsumerInventory(err)
 	}
 	for _, record := range records {
+		root, err := deployment.DeploymentRoot(record.Identity)
+		if err != nil {
+			return nil, invalidProviderConsumerInventory(err)
+		}
+		store := application.Store{Root: filepath.Join(root, "state"), Namespace: resolved.Target.Name}
 		intents := []json.RawMessage{record.Applied.Intent}
 		if prior := record.Applied.GeneratedState["previous_intent"]; prior != "" {
 			intents = append(intents, json.RawMessage(prior))
@@ -45,7 +54,7 @@ func applicationBrokerOwners(resolved resolvedApplication) ([]applicationBrokerO
 			if json.Unmarshal(intent, &m) != nil || m.ApplicationID != id.ApplicationID || m.Name != id.Application || m.Environment != id.Environment {
 				return nil, invalidProviderConsumerInventory(fmt.Errorf("broker intent differs from deployment owner"))
 			}
-			add(m, true)
+			add(m, true, store)
 		}
 	}
 	keys := []string{}
@@ -67,7 +76,7 @@ func appendApplicationBrokerDependencies(resolved resolvedApplication, observati
 	}
 	for _, owner := range owners {
 		instance := application.RuntimeBrokerDependency(resolved.Target.Name, owner.manifest)
-		files := application.RuntimeFilesFor(resolved.Store, owner.manifest)
+		files := application.RuntimeFilesFor(owner.store, owner.manifest)
 		roots, err := application.RuntimeDependencyRoots(owner.manifest, snapshot.Registry)
 		if err != nil {
 			return err
@@ -116,7 +125,7 @@ func observeApplicationBrokerFacts(ctx context.Context, resolved resolvedApplica
 		if !owner.existing {
 			continue
 		}
-		files := application.RuntimeFilesFor(resolved.Store, owner.manifest)
+		files := application.RuntimeFilesFor(owner.store, owner.manifest)
 		protected := true
 		for _, path := range []string{files.Dir, filepath.Join(files.Dir, "broker.compose.yaml")} {
 			info, err := os.Lstat(path)

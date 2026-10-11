@@ -49,6 +49,31 @@
           "artifact_digest": "sha256:0b1794a2c606fe51b2a612e24dc7e99a2d9d93e9b66c0ce9e1b7111f264f93b7"
         }
       ]
+    },
+    {
+      "candidate_sha": "dec6b0f51a529ab393466eef13e503dda5c1e067",
+      "candidate_tree": "1e9a253a28440b72fbcf5e9be849ac3588f93be8",
+      "workflow_run_id": 38150415411,
+      "result": "PASS",
+      "scope": "Actual local production CLI initialization/plan/apply/status/doctor, real HTTP workload, actual child-process stdio MCP plan/apply/status/doctor, stop/resume, repeated owned destruction and final deployment record absence. Zero unrelated management Core and no forced operator OIDC; canonical identity and authored source preserved. Only this exact source and scoped journey are qualified, not all providers or final ecosystem readiness.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114502530530,
+          "test_seconds": 29.99,
+          "artifact_id": 11705693186,
+          "artifact_digest": "sha256:ab13afcc9892e36e0f21908a62854ea0b291e119fb2979b5df3bb002f9262ff9"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114502530324,
+          "test_seconds": 72.6,
+          "artifact_id": 11705713233,
+          "artifact_digest": "sha256:963b40dbe4aba83a3afc3c4ccccea767a0310d7d81d185d7d1dc5437c63fbff5"
+        }
+      ]
     }
   ]
 }

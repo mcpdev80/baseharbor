@@ -152,7 +152,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestSelectiveSecretsRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/secrets-lifecycle.log"
+          go test ./cmd/baha -run '${{ contains(github.event.head_commit.message, '[coreless-shared-secrets]') && '^TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer$' || '^TestSelectiveSecretsRuntimeAddRemoveReAdd$' }}' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/secrets-lifecycle.log"
       - name: Verify explicit management Core and individual capability reuse
         if: ${{ !cancelled() && steps.runtime_image.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-selected-secrets]') }}
         shell: bash
