@@ -277,7 +277,6 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 			id = bound
 		}
 		if id == "" {
-			result.Complete = false
 			for _, instance := range snapshot.Registry.Instances {
 				if instance.Provider.Supports(req.Kind) && eligibleInstance(instance, m) {
 					if id != "" {
@@ -289,6 +288,7 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		}
 		entry := RequirementResolution{Requirement: req, Binding: "requested/unbound"}
 		if id == "" {
+			result.Complete = false
 			if result.Core != CoreRequired {
 				result.Core = CoreUnknown
 			}
