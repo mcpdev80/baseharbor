@@ -204,6 +204,8 @@ unsupported handoff is reported honestly, not disguised as successful relocation
 
 `RecordProviderChangeResult` accepts actual verified execution outcomes, reports
 complete/partial/failed state, actual final locations and every pending operation.
+Actual affected-function outcomes require their own consumer/root/function
+verification and evidence; a runtime stop alone is not a login/lease/PKI receipt.
 It never copies proposed After into an accomplished result. Missing material,
 changed disposition or missing recovery evidence remains a partial failure.
 `PendingProviderChanges` preserves the original consumer scope and returns only
@@ -265,6 +267,68 @@ replacement verification, aggregate dependency removal, scoped retry, actual fin
 and partial dispositions. Offline schemas validate identical machine results and
 reject secret-content fields or one-stage unknown/destructive acknowledgements.
 The complete capability/provider wizard remains v0.4.26.
+
+
+### Derived consumer actions and lifecycle coverage
+
+The lifecycle matrix covers **all declared functions and material kinds** for
+all fourteen reference integrations, for add/resume/update, stop, destroy,
+remove-runtime, disable/unbind, rebind and replacement. External runtime mutation
+is rejected for lack of authority; an intentional local loss of access remains
+possible. Declaration tests are not native execution acceptance.
+
+`ProviderImpactObservation.ConsumerActions` projects supported operations of the
+existing consumer adapter. `ProviderChangeRequest.ConsumerActions` explicitly
+selects their IDs. Each action identifies consumer/root/function, actual modes,
+selected function outcome, dependencies, credential references and locations,
+and credential owner, synchronization and rotation before/after. An unselected
+local authentication mode never becomes a fallback. Unsupported/unverified actions
+remain unknown and can be explicitly accepted; they are never reported working.
+Credential references stay identical unless their change is explicitly selected.
+Adapters additionally verify that retained **values** and established synchronization
+remain consistent; this pure result neither reads nor regenerates passwords.
+OIDC ownership is distinct from native database/service credentials. For example,
+Prometheus uses existing `devaccess` credentials and native basic authentication;
+SeaweedFS keeps native admin references in its existing protected runtime owner.
+Identity removal must not reset either merely because an issuer disappears.
+
+`ObservedAt` and actual `ValidUntil`/`ExpiresAt` derive
+`remaining_validity_seconds` for tokens, certificates and leases. Missing current
+validity evidence stays unknown; expired offline validation is unavailable.
+Retained certificate files imply neither indefinite TLS nor future renewal.
+`ProviderMaterial.Retention` separately verifies survival of stop and runtime
+removal for meaningful transient state: cache, sessions, jobs, queues/messages,
+in-flight work, telemetry buffers, leases and tokens. A volume alone is insufficient;
+verified loss is individually nonrecoverable and requires destructive consent.
+
+Actual execution receipts must account for each affected function, selected
+consumer action and operational effect. Missing reconfiguration or changed owner,
+credential reference, synchronization, rotation or guarantee remains partial/failed.
+Retry retains selected consumer actions and obtains consent against the fresh plan.
+
+| Provider and existing implementation authority | Necessary provider-specific analysis/actions for add/change/remove |
+| --- | --- |
+| PostgreSQL — `application/runtime_postgres.go`, `shared_postgres_*` | Actual SQL consumers and Identity/backing-store dependents; provision/bind and verify access; version/protocol/transactions/WAL/backup consistency; reconnect dependent consumers after selected restore/replacement; distinguish preserved database from lost endpoint |
+| Valkey — `application/shared_core_valkey.go`, `valkey_stable_verify.go`, `valkey_ha*`, `valkey_credential_rotation*` | Persistence/AOF/snapshot configuration versus cache/session/job semantics; verify access and actual expiry; rebind clients, preserve credentials; do not treat in-memory sessions/jobs as a preserved volume |
+| OpenBao — `openbao/managed_credentials.go`, `service_pki*`, `runtime_pki*`, application dynamic-secret operations | Enumerate actual KV/policy/lease/PKI consumers and backing SQL; selected secure delivery handoff with permissions/encryption checks; preserve/revoke credentials deliberately; inventory certificate/key locations, remaining validity, renewal and revocation dependencies; reconfigure each selected consumer before teardown |
+| Keycloak — `identityprovider/keycloak_files.go`, `keycloak_driver.go`, `application/identity_binding.go` | Actual shared SQL, gateway and OIDC consumers; realm/client/key/session inventory; supported login configuration change and access verification; distinguish offline token validity from JWKS/refresh/issuance; preserve separately owned native service credentials |
+| External OIDC — `identityprovider` external realization and existing registration/binding owner | Verify issuer/discovery/client compatibility and every selected consumer mode; remove local bindings only; no authority over foreign accounts, sessions or signing keys |
+| Caddy — `devgateway/render.go`, application exposure and PKI owners | Actual app/shared route users, DNS/endpoints, certificate/key references and renewal owner; verify selected routes/TLS/auth access; distinguish retained certificate validity from provider renewal and preserve unrelated routes |
+| SeaweedFS — `objectstorage/admin_credentials.go`, `pki_rotation.go`, provider realization | Actual objects/files/metadata and S3 consumers; consistency/durability/permissions and selected handoff; preserve native admin/client credentials; verify TLS reload, endpoint rebinding and object access |
+| RabbitMQ — `application/rabbitmq_credentials.go`, `rabbitmq_ha*`, credential rotation and verification | Actual queues/streams/topology, offsets, unacknowledged messages and jobs; ordering/delivery/acknowledgement and durable-versus-transient survival; preserve separate application/admin accounts; reconnect and verify publish/consume after change |
+| MongoDB — `application/mongodb_runtime.go`, `mongodb_ha*`, credential rotation and verification | Actual documents/indexes/oplog and clients; protocol/transactions/consistency/durable data; preserve credentials, rebind clients and verify read/write and selected recovery |
+| OTel Collector — `telemetry` realization, application telemetry binding and PKI reload | Actual receive/forward destinations, buffers and TLS references; delivery gaps/backpressure or irrecoverable buffered telemetry; configure and verify new routing before claiming downstream delivery |
+| External OTLP — existing registered endpoint and telemetry binding owner | Protocol/TLS/auth and chosen forwarding endpoint; verify consumer rebinding and delivery; disclose gaps; no mutation/deletion of foreign buffers/stores |
+| Prometheus — `metrics/prometheus_files.go`, `prometheus_shared.go`, topology/recovery owner | Actual scrape/query/rule users, TSDB/WAL and retention; preserve native basic-auth credentials independently of Identity; verify selected config, authentication and query access; disclose scrape gaps and lost alerts |
+| Loki — `logs/render.go`, topology and PKI reload owner | Actual log delivery/query consumers, store/index/WAL, labels/protocol/retention; rebind writers/readers and verify access/TLS; disclose log gaps and retained-but-inaccessible history |
+| Tempo — `traces/tempo_ha.go`, topology and PKI reload owner | Actual trace ingest/query consumers, buffers/store/index and retention; rebind delivery/query routes and verify TLS/access; distinguish sampling/delivery gaps from deleted history |
+| Ancillary broker/executor — `runtimebroker/compose_render.go`, existing executor/runtime owners | Existing policy, service credentials/certificates and in-flight control/work consumers; authorization and expiry/renewal dependencies; verify selected reconnect/control operation; never register these sidecars as new capability offers |
+
+The same dependency graph propagates database, gateway, secret/PKI and authentication
+changes to every actual direct and transitive consumer. Selected transition
+dependencies are evaluated against aggregate changes: removing the newly selected
+mode's dependency cannot be reported as a working continuation. Runtime mutation
+path inventory and native proof of these actions are Session 2's acceptance duty.
 
 ## #777 portable connection-profile transport (contract only)
 

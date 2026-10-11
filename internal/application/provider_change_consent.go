@@ -50,6 +50,11 @@ func PendingProviderChanges(plan ProviderImpactPlan, result ProviderChangeResult
 	for _, impact := range plan.Impacts {
 		if outcomes[impact.InstanceID+"/"+impact.Operation] != "applied" {
 			r := ProviderChangeRequest{InstanceID: impact.InstanceID, Operation: impact.Operation, Selection: impact.Selection, Consumers: append([]string{}, impact.RequestedConsumers...)}
+			for _, f := range impact.Functions {
+				if f.Transition != nil && !containsString(r.ConsumerActions, f.Transition.ID) {
+					r.ConsumerActions = append(r.ConsumerActions, f.Transition.ID)
+				}
+			}
 			if impact.After != nil && impact.After.InstanceID != impact.InstanceID {
 				r.ReplacementID = impact.After.InstanceID
 			}

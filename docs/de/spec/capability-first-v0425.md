@@ -214,6 +214,8 @@ Veraltete Pläne erneut anzeigen und bestätigen. Technisch nicht unterstützte
 
 `RecordProviderChangeResult` übernimmt tatsächliche verifizierte Ausführungs-
 ergebnisse, meldet complete/partial/failed, echte Endorte und ausstehende Schritte.
+Betroffene Funktionen benötigen eigene Verbraucher-/Root-/Funktionsverifikation
+und Nachweise; ein Runtime-Stop allein beweist keine Login-/Lease-/PKI-Folgen.
 Vorgeschlagenes After niemals als erledigt übernehmen. Fehlendes Material,
 abweichende Behandlung oder fehlender Recovery-Nachweis bleibt Teilfehler.
 `PendingProviderChanges` behält den ursprünglichen Verbraucherscope und liefert
@@ -277,6 +279,73 @@ Console, Ersatzverifikation, gemeinsame Dependency-Entfernung, begrenzten Retry,
 tatsächliche finale und teilweise Ergebnisse. Offline-Schemas prüfen identische
 Machine-Ergebnisse und lehnen Secret-Inhalte sowie einstufige unbekannte/
 destruktive Bestätigung ab. Vollständiger Capability-/Provider-Wizard: v0.4.26.
+
+
+### Abgeleitete Verbraucheraktionen und Lifecycle-Abdeckung
+
+Die Lifecycle-Matrix prüft **alle deklarierten Funktionen und Materialarten**
+aller vierzehn Referenzintegrationen für Hinzufügen/Reaktivieren/Update, Stoppen,
+Zerstören, Runtime-Entfernung, Deaktivieren/Entbinden, Neubinden und Ersetzen.
+Fremde Runtime-Mutationen werden mangels Ressourcenberechtigung zurückgewiesen;
+ein bewusst gewählter lokaler Zugriffsverlust bleibt möglich. Deklarationstests
+ersetzen keine native Ausführungsabnahme.
+
+`ProviderImpactObservation.ConsumerActions` bildet unterstützte Operationen des
+bestehenden Verbraucheradapters ab. `ProviderChangeRequest.ConsumerActions` wählt
+deren IDs ausdrücklich aus. Jede Aktion benennt Verbraucher/Wurzel/Funktion,
+tatsächliche Modi, gewähltes Funktionsergebnis, Abhängigkeiten, Credential-Referenzen
+und Standorte sowie Credential-Owner, Synchronisierung und Rotation vorher/nachher.
+Ein nicht ausgewählter lokaler Authentifizierungsmodus wird niemals zum Fallback.
+Nicht unterstützte oder ungeprüfte Aktionen bleiben unbekannt und dürfen explizit
+akzeptiert werden; sie werden niemals als funktionierend gemeldet.
+Credential-Referenzen bleiben gleich, sofern ihre Änderung nicht ausdrücklich
+gewählt wurde. Adapter prüfen zusätzlich, dass erhaltene **Werte** und tatsächlich
+bestehende Synchronisierung konsistent bleiben; dieses reine Ergebnis liest oder
+erzeugt keine Passwörter. OIDC-Ownership ist von nativen Datenbank-/Service-Zugangsdaten
+getrennt. Prometheus nutzt beispielsweise bestehende `devaccess`-Zugangsdaten und
+native Basic-Authentifizierung; SeaweedFS erhält native Admin-Referenzen beim
+bestehenden geschützten Runtime-Owner. Identity-Entfernung setzt diese nicht zurück.
+
+`ObservedAt` und tatsächliche `ValidUntil`/`ExpiresAt` ergeben
+`remaining_validity_seconds` für Token, Zertifikate und Leases. Fehlende aktuelle
+Gültigkeitsevidenz bleibt unbekannt; abgelaufene Offline-Validierung ist nicht
+verfügbar. Erhaltene Zertifikatsdateien bedeuten weder unbegrenztes TLS noch künftige
+Erneuerung. `ProviderMaterial.Retention` prüft getrennt das Überleben von Stoppen
+und Runtime-Entfernung für bedeutsamen flüchtigen Zustand: Cache, Sessions, Jobs,
+Queues/Nachrichten, laufende Arbeit, Telemetriepuffer, Leases und Token. Ein Volume
+allein reicht nicht; nachgewiesener Verlust ist einzeln nicht wiederherstellbar und
+benötigt destruktive Zustimmung.
+
+Tatsächliche Ausführungsergebnisse müssen jede betroffene Funktion, ausgewählte
+Verbraucheraktion und betriebliche Auswirkung belegen. Fehlende Umkonfiguration
+oder abweichende Owner, Credential-Referenzen, Synchronisierung, Rotation oder
+Garantien bleiben teilweise/fehlgeschlagen. Wiederholung erhält gewählte Aktionen
+und holt Zustimmung zum aktuellen Plan ein.
+
+| Provider und bestehende Implementierungsautorität | Erforderliche providerspezifische Analyse/Aktionen bei Hinzufügen/Ändern/Entfernen |
+| --- | --- |
+| PostgreSQL — `application/runtime_postgres.go`, `shared_postgres_*` | Tatsächliche SQL-Verbraucher und Identity-/Backing-Store-Abhängige; Bereitstellung/Binding und Zugriff prüfen; Version/Protokoll/Transaktionen/WAL/Backup-Konsistenz; abhängige Verbraucher nach gewähltem Restore/Ersatz neu verbinden; erhaltene Datenbank von verlorenem Endpunkt unterscheiden |
+| Valkey — `application/shared_core_valkey.go`, `valkey_stable_verify.go`, `valkey_ha*`, `valkey_credential_rotation*` | Persistenz/AOF/Snapshot gegenüber Cache-/Session-/Job-Semantik; Zugriff und tatsächliche Ablaufzeiten prüfen; Clients neu binden, Credentials erhalten; In-Memory-Sessions/Jobs nicht als erhaltenes Volume behandeln |
+| OpenBao — `openbao/managed_credentials.go`, `service_pki*`, `runtime_pki*`, dynamische App-Secret-Operationen | Tatsächliche KV-/Policy-/Lease-/PKI-Verbraucher und SQL-Backing erfassen; gewählte sichere Zustellungsübergabe mit Berechtigungs-/Verschlüsselungsprüfung; Credentials bewusst erhalten/widerrufen; Zertifikats-/Schlüsselstandorte, Restgültigkeit, Erneuerungs-/Widerrufsabhängigkeiten; gewählte Verbraucher vor Abbau umkonfigurieren |
+| Keycloak — `identityprovider/keycloak_files.go`, `keycloak_driver.go`, `application/identity_binding.go` | Tatsächliche Shared-SQL-/Gateway-/OIDC-Verbraucher; Realm-/Client-/Schlüssel-/Session-Inventar; unterstützte Login-Umkonfiguration und Zugriff prüfen; Offline-Token-Gültigkeit von JWKS/Refresh/Ausstellung trennen; separat verwaltete native Service-Credentials erhalten |
+| External OIDC — externe Realisierung in `identityprovider` und bestehender Registrierungs-/Binding-Owner | Issuer/Discovery/Client-Kompatibilität und gewählte Verbrauchermodi prüfen; nur lokale Bindings entfernen; keine Berechtigung über fremde Konten, Sessions oder Signaturschlüssel |
+| Caddy — `devgateway/render.go`, App-Exposure-/PKI-Owner | Tatsächliche App-/Shared-Routen-Verbraucher, DNS/Endpunkte, Zertifikats-/Schlüsselreferenzen und Renewal-Owner; gewählte Routen/TLS/Auth-Zugriffe prüfen; erhaltene Gültigkeit von Provider-Erneuerung trennen; andere Routen erhalten |
+| SeaweedFS — `objectstorage/admin_credentials.go`, `pki_rotation.go`, Provider-Realisierung | Tatsächliche Objekte/Dateien/Metadaten und S3-Verbraucher; Konsistenz/Dauerhaftigkeit/Berechtigungen und gewählte Übergabe; native Admin-/Client-Credentials erhalten; TLS-Reload, Endpunkt-Neubindung und Objektzugriff prüfen |
+| RabbitMQ — `application/rabbitmq_credentials.go`, `rabbitmq_ha*`, Credential-Rotation/-Prüfung | Tatsächliche Queues/Streams/Topologie, Offsets, unbestätigte Nachrichten und Jobs; Reihenfolge/Zustellung/Bestätigung sowie dauerhafter/flüchtiger Zustand; getrennte App-/Admin-Konten erhalten; nach Änderung neu verbinden und Publish/Consume prüfen |
+| MongoDB — `application/mongodb_runtime.go`, `mongodb_ha*`, Credential-Rotation/-Prüfung | Tatsächliche Dokumente/Indizes/Oplog und Clients; Protokoll/Transaktionen/Konsistenz/Dauerhaftigkeit; Credentials erhalten, Clients neu binden und Lesen/Schreiben sowie gewählte Wiederherstellung prüfen |
+| OTel Collector — Realisierung in `telemetry`, App-Telemetrie-Binding und PKI-Reload | Tatsächliche Empfangs-/Weiterleitungsziele, Puffer und TLS-Referenzen; Zustellungslücken/Rückstau oder unwiederbringliche Pufferverluste; Routing konfigurieren und prüfen, bevor Downstream-Zustellung behauptet wird |
+| External OTLP — registrierter Endpunkt und Telemetrie-Binding-Owner | Protokoll/TLS/Auth und gewählter Weiterleitungsendpunkt; Neubindung/Zustellung prüfen; Lücken benennen; keine Mutation/Löschung fremder Puffer/Stores |
+| Prometheus — `metrics/prometheus_files.go`, `prometheus_shared.go`, Topologie-/Recovery-Owner | Tatsächliche Scrape-/Query-/Rule-Verbraucher, TSDB/WAL und Aufbewahrung; native Basic-Auth-Credentials unabhängig von Identity erhalten; Konfiguration/Auth/Query-Zugriff prüfen; Scrape-Lücken und verlorene Alerts benennen |
+| Loki — `logs/render.go`, Topologie-/PKI-Reload-Owner | Tatsächliche Log-Zustellungs-/Query-Verbraucher, Store/Index/WAL, Labels/Protokoll/Aufbewahrung; Writer/Reader neu binden, Zugriff/TLS prüfen; Log-Lücken und erhaltene, aber unzugängliche Historie benennen |
+| Tempo — `traces/tempo_ha.go`, Topologie-/PKI-Reload-Owner | Tatsächliche Trace-Ingest-/Query-Verbraucher, Puffer/Store/Index/Aufbewahrung; Zustellungs-/Query-Routen neu binden und TLS/Zugriff prüfen; Sampling-/Zustellungslücken von gelöschter Historie trennen |
+| Begleitende Broker/Executor — `runtimebroker/compose_render.go`, bestehende Executor-/Runtime-Owner | Tatsächliche Policy-/Service-Credential-/Zertifikats- und laufende Control-/Work-Verbraucher; Auth-/Ablauf-/Renewal-Abhängigkeiten; gewählte Wiederverbindung/Control-Operation prüfen; Sidecars nicht als neue Capability-Angebote registrieren |
+
+Derselbe Abhängigkeitsgraph trägt Datenbank-, Gateway-, Secret-/PKI- und
+Authentifizierungsänderungen zu allen tatsächlichen direkten und transitiven
+Verbrauchern. Abhängigkeiten gewählter Übergänge werden gegen aggregierte Änderungen
+geprüft: Die Entfernung einer Abhängigkeit des neuen Modus darf nicht als
+funktionierende Fortsetzung erscheinen. Runtime-Mutationspfadinventar und native
+Nachweise dieser Aktionen gehören zur Abnahmeverantwortung von Session 2.
 
 ## #777 portabler Connection-Profile-Transport (nur Vertrag)
 

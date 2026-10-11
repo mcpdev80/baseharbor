@@ -391,6 +391,9 @@
         },
         "evidence": {
           "type": "string"
+        },
+        "retention": {
+          "$ref": "#/$defs/retention"
         }
       }
     },
@@ -482,6 +485,13 @@
         },
         "evidence": {
           "type": "string"
+        },
+        "transition": {
+          "$ref": "#/$defs/consumer_transition"
+        },
+        "remaining_validity_seconds": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -654,6 +664,10 @@
               "meaning": {
                 "type": "string",
                 "minLength": 1
+              },
+              "remaining_validity_seconds": {
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
@@ -774,6 +788,204 @@
           }
         },
         "error_code": {
+          "type": "string"
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function_outcome"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        }
+      }
+    },
+    "function_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "instance_id",
+        "function",
+        "outcome",
+        "verified"
+      ],
+      "properties": {
+        "consumer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "enum": [
+            "remains",
+            "changed",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "valid_until": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "transition": {
+          "$ref": "#/$defs/consumer_transition"
+        }
+      }
+    },
+    "consumer_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "consumer",
+        "instance_id",
+        "function",
+        "mode_before",
+        "mode_after",
+        "owner_before",
+        "owner_after",
+        "synchronization_before",
+        "synchronization_after",
+        "rotation_before",
+        "rotation_after",
+        "change_credentials",
+        "supported",
+        "verified",
+        "before",
+        "after",
+        "locations",
+        "dependencies",
+        "outcome"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "consumer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronization_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronization_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rotation_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rotation_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "change_credentials": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "before": {
+          "$ref": "#/$defs/security"
+        },
+        "after": {
+          "$ref": "#/$defs/security"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "remains",
+            "changed",
+            "unavailable",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "survives_stop",
+        "survives_runtime_removal",
+        "verified"
+      ],
+      "properties": {
+        "survives_stop": {
+          "type": "boolean"
+        },
+        "survives_runtime_removal": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
           "type": "string"
         }
       }

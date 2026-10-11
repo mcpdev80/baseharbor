@@ -616,5 +616,169 @@
     "expect_complete": true,
     "expect_destructive": false,
     "name": "existing-shared-gateway-ancillary-dependency"
+  },
+  {
+    "snapshot": {
+      "target": "local",
+      "registry": {
+        "version": 2,
+        "instances": [
+          {
+            "id": "sql",
+            "provider": {
+              "kind": "postgresql",
+              "capabilities": [
+                "database.sql"
+              ]
+            },
+            "scope": "shared",
+            "ownership": "baseharbor"
+          }
+        ]
+      },
+      "facts": {
+        "sql": {
+          "target": "local",
+          "state": "running",
+          "core": "not-required",
+          "dependencies": []
+        }
+      }
+    },
+    "observation": {
+      "revision": "owner/1",
+      "inventory_complete": true,
+      "providers": {
+        "sql": {
+          "realization": {
+            "instance_id": "sql",
+            "kind": "postgresql",
+            "target": "local",
+            "scope": "shared",
+            "ownership": "baseharbor",
+            "owner": "",
+            "state": "running",
+            "locations": [
+              {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              }
+            ],
+            "supported": true,
+            "verified": true,
+            "evidence": "verified runtime labels and endpoint"
+          },
+          "materials": [
+            {
+              "ownership": "baseharbor",
+              "id": "sql/data",
+              "kind": "database",
+              "location": {
+                "owner": "sql",
+                "target": "local",
+                "kind": "volume",
+                "reference": "volume/postgresql-data"
+              },
+              "recovery": [],
+              "verified": true,
+              "evidence": "verified owned persistent volume"
+            }
+          ],
+          "inventory_complete": true,
+          "effects": [
+            {
+              "aspect": "availability",
+              "before": "running database",
+              "after": "stopped database; reconnect required after resume",
+              "evidence": "runtime stop semantics"
+            }
+          ]
+        }
+      },
+      "functions": [
+        {
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "required": true,
+          "evidence": "actual applied SQL binding"
+        }
+      ],
+      "continuations": [],
+      "consumer_actions": [
+        {
+          "id": "sql-consumer-rebind",
+          "consumer": "app/one",
+          "instance_id": "sql",
+          "function": "sql.queries",
+          "mode_before": "current-dsn",
+          "mode_after": "explicitly-disabled-query-access",
+          "owner_before": "applicationruntimeauth",
+          "owner_after": "applicationruntimeauth",
+          "before": {
+            "credentials": [
+              {
+                "name": "existing-service",
+                "reference": "baseharbor://credentials/retained/sql"
+              }
+            ],
+            "lifecycle": {
+              "renewable": false,
+              "rotatable": false,
+              "revocable": false
+            }
+          },
+          "after": {
+            "credentials": [
+              {
+                "name": "existing-service",
+                "reference": "baseharbor://credentials/retained/sql"
+              }
+            ],
+            "lifecycle": {
+              "renewable": false,
+              "rotatable": false,
+              "revocable": false
+            }
+          },
+          "locations": [
+            {
+              "owner": "sql",
+              "target": "local",
+              "kind": "volume",
+              "reference": "volume/postgresql-data"
+            }
+          ],
+          "dependencies": [],
+          "synchronization_before": "independent service credential",
+          "synchronization_after": "same independent credential",
+          "rotation_before": "existing owner",
+          "rotation_after": "existing owner",
+          "change_credentials": false,
+          "supported": true,
+          "verified": true,
+          "evidence": "existing consumer adapter preflight",
+          "outcome": "unavailable"
+        }
+      ]
+    },
+    "requests": [
+      {
+        "instance_id": "sql",
+        "operation": "unbind",
+        "consumers": [],
+        "materials": [],
+        "consumer_actions": [
+          "sql-consumer-rebind"
+        ]
+      }
+    ],
+    "manifest": "version: 1\napp:\n  name: one\n  environment: dev\nservices:\n  sql: true\n",
+    "application_id": "11111111-1111-4111-8111-111111111111",
+    "expect_complete": true,
+    "expect_destructive": false,
+    "name": "explicit-existing-consumer-reconfiguration"
   }
 ]

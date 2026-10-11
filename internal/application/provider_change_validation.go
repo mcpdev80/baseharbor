@@ -69,6 +69,9 @@ func validateExpiry(value string) error {
 	return nil
 }
 func validateImpactObservation(o ProviderImpactObservation) error {
+	if err := validateConsumerTransitions(o); err != nil {
+		return err
+	}
 	// Validate every string, including error/evidence descriptions, without ever
 	// echoing rejected content into logs or machine errors.
 	raw, err := json.Marshal(o)
@@ -103,6 +106,9 @@ func validateImpactObservation(o ProviderImpactObservation) error {
 				return fmt.Errorf("missing/duplicate material reference")
 			}
 			seen[m.ID] = true
+			if m.Retention != nil && m.Retention.Verified && m.Retention.Evidence == "" {
+				return fmt.Errorf("material retention verification requires evidence")
+			}
 			if m.Verified && m.Evidence == "" {
 				return fmt.Errorf("verified material requires evidence")
 			}

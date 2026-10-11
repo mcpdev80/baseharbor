@@ -1,8 +1,11 @@
 package application
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
-func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact ProviderImpactFact) (bool, bool, bool, error) {
+func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact ProviderImpactFact, observedAt string) (bool, bool, bool, error) {
 	known, destructive, attention := fact.InventoryComplete, false, false
 	requested := map[string]MaterialDisposition{}
 	for _, d := range r.Materials {
@@ -32,6 +35,9 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 				d.Verified = false
 				meaning = "retention/recoverability and destination are unknown; transient sessions, jobs and in-flight work are not assumed disposable"
 			}
+		}
+		if !explicit && interruptsProvider(r.Operation) && meaningfulTransient(m.Kind) {
+			d, meaning = transientMaterialDisposition(m, r.Operation, d)
 		}
 		switch d.Disposition {
 		case "deleted":
@@ -68,7 +74,24 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 		if !m.Verified || m.Evidence == "" || m.Ownership == "" {
 			known = false
 		}
-		imp.Materials = append(imp.Materials, MaterialConsequence{Before: m, After: d, Meaning: meaning})
+		consequence := MaterialConsequence{Before: m, After: d, Meaning: meaning}
+		if m.ExpiresAt != "" {
+			if observedAt == "" {
+				known = false
+				attention = true
+				consequence.Meaning += "; current validity unverified"
+			} else {
+				at, _ := time.Parse(time.RFC3339, observedAt)
+				until, _ := time.Parse(time.RFC3339, m.ExpiresAt)
+				seconds := int64(until.Sub(at).Seconds())
+				if seconds < 0 {
+					seconds = 0
+				}
+				consequence.RemainingValiditySeconds = &seconds
+				consequence.Meaning += "; finite observed validity; future renewal is not implied by retention"
+			}
+		}
+		imp.Materials = append(imp.Materials, consequence)
 	}
 	if len(requested) > 0 {
 		return false, false, false, &ProviderChangeError{Code: "material-inventory-missing"}

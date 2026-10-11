@@ -101,6 +101,27 @@ func validateExecutionOutcome(out ProviderExecutionOutcome) error {
 			return err
 		}
 	}
+	for _, f := range out.Functions {
+		if f.Transition != nil {
+			if err := validateConsumerTransition(*f.Transition); err != nil {
+				return err
+			}
+		}
+		if f.Consumer == "" || f.InstanceID == "" || f.Function == "" {
+			return fmt.Errorf("actual function outcome requires consumer, root and function")
+		}
+		switch f.Outcome {
+		case "remains", "changed", "unavailable", "unknown":
+		default:
+			return fmt.Errorf("invalid actual function outcome")
+		}
+		if f.Verified && f.Evidence == "" {
+			return fmt.Errorf("verified function outcome requires evidence")
+		}
+		if err := validateExpiry(f.ValidUntil); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, m := range out.Materials {
 		if m.MaterialID == "" || seen[m.MaterialID] {
@@ -129,6 +150,12 @@ func outcomeMatchesImpact(out ProviderExecutionOutcome, imp ProviderImpact) bool
 		if out.After == nil || !out.After.Verified || out.After.Evidence == "" || out.After.InstanceID != imp.After.InstanceID || out.After.Kind != imp.After.Kind || out.After.Target != imp.After.Target || out.After.State != imp.After.State || out.After.Ownership != imp.After.Ownership || out.After.Scope != imp.After.Scope || out.After.Owner != imp.After.Owner || !recoveryPreserved(imp.After.Locations, out.After.Locations) || !sameAccess(imp.After.Access, out.After.Access) {
 			return false
 		}
+	}
+	if !effectOutcomesMatch(out.Effects, imp.Effects) {
+		return false
+	}
+	if !functionOutcomesMatch(out.Functions, imp.Functions) {
+		return false
 	}
 	actual := map[string]MaterialOutcome{}
 	for _, m := range out.Materials {

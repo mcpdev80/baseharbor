@@ -36,6 +36,7 @@ type ProviderRealization struct {
 }
 
 type ProviderMaterial struct {
+	Retention *MaterialRetention           `json:"retention,omitempty"`
 	Ownership capability.ProviderOwnership `json:"ownership"`
 	ID        string                       `json:"id"`
 	Kind      string                       `json:"kind"`
@@ -94,6 +95,8 @@ type ProviderFunctionContinuation struct {
 }
 
 type ProviderImpactObservation struct {
+	ObservedAt        string                         `json:"observed_at,omitempty"`
+	ConsumerActions   []ConsumerTransition           `json:"consumer_actions,omitempty"`
 	Continuations     []ProviderFunctionContinuation `json:"continuations"`
 	Revision          string                         `json:"revision"`
 	InventoryComplete bool                           `json:"inventory_complete"`
@@ -114,29 +117,33 @@ type MaterialDisposition struct {
 }
 
 type ProviderChangeRequest struct {
-	InstanceID    string                `json:"instance_id"`
-	Operation     string                `json:"operation"`
-	ReplacementID string                `json:"replacement_id,omitempty"`
-	Selection     string                `json:"selection,omitempty"` // automatic or explicit
-	Consumers     []string              `json:"consumers"`           // empty means all users
-	Materials     []MaterialDisposition `json:"materials"`
+	ConsumerActions []string              `json:"consumer_actions,omitempty"`
+	InstanceID      string                `json:"instance_id"`
+	Operation       string                `json:"operation"`
+	ReplacementID   string                `json:"replacement_id,omitempty"`
+	Selection       string                `json:"selection,omitempty"` // automatic or explicit
+	Consumers       []string              `json:"consumers"`           // empty means all users
+	Materials       []MaterialDisposition `json:"materials"`
 }
 
 type FunctionConsequence struct {
-	Consumer   string   `json:"consumer"`
-	Function   string   `json:"function"`
-	Via        []string `json:"via"`
-	Required   bool     `json:"required"`
-	Outcome    string   `json:"outcome"` // remains, changed, unavailable, unknown
-	ValidUntil string   `json:"valid_until,omitempty"`
-	Behavior   string   `json:"behavior,omitempty"`
-	Evidence   string   `json:"evidence,omitempty"`
+	Transition               *ConsumerTransition `json:"transition,omitempty"`
+	RemainingValiditySeconds *int64              `json:"remaining_validity_seconds,omitempty"`
+	Consumer                 string              `json:"consumer"`
+	Function                 string              `json:"function"`
+	Via                      []string            `json:"via"`
+	Required                 bool                `json:"required"`
+	Outcome                  string              `json:"outcome"` // remains, changed, unavailable, unknown
+	ValidUntil               string              `json:"valid_until,omitempty"`
+	Behavior                 string              `json:"behavior,omitempty"`
+	Evidence                 string              `json:"evidence,omitempty"`
 }
 
 type MaterialConsequence struct {
-	Before  ProviderMaterial    `json:"before"`
-	After   MaterialDisposition `json:"after"`
-	Meaning string              `json:"meaning"`
+	RemainingValiditySeconds *int64              `json:"remaining_validity_seconds,omitempty"`
+	Before                   ProviderMaterial    `json:"before"`
+	After                    MaterialDisposition `json:"after"`
+	Meaning                  string              `json:"meaning"`
 }
 
 type ProviderImpact struct {
@@ -187,15 +194,29 @@ type MaterialOutcome struct {
 	Evidence    string             `json:"evidence,omitempty"`
 }
 
+type ProviderFunctionOutcome struct {
+	Transition *ConsumerTransition `json:"transition,omitempty"`
+	Consumer   string              `json:"consumer"`
+	InstanceID string              `json:"instance_id"`
+	Function   string              `json:"function"`
+	Outcome    string              `json:"outcome"`
+	ValidUntil string              `json:"valid_until,omitempty"`
+	Behavior   string              `json:"behavior,omitempty"`
+	Verified   bool                `json:"verified"`
+	Evidence   string              `json:"evidence,omitempty"`
+}
+
 type ProviderExecutionOutcome struct {
-	Verified   bool                 `json:"verified"`
-	Evidence   string               `json:"evidence,omitempty"`
-	InstanceID string               `json:"instance_id"`
-	Operation  string               `json:"operation"`
-	Status     string               `json:"status"` // applied, failed, pending
-	After      *ProviderRealization `json:"after,omitempty"`
-	Materials  []MaterialOutcome    `json:"materials"`
-	ErrorCode  string               `json:"error_code,omitempty"`
+	Effects    []OperationalConsequence  `json:"effects,omitempty"`
+	Functions  []ProviderFunctionOutcome `json:"functions,omitempty"`
+	Verified   bool                      `json:"verified"`
+	Evidence   string                    `json:"evidence,omitempty"`
+	InstanceID string                    `json:"instance_id"`
+	Operation  string                    `json:"operation"`
+	Status     string                    `json:"status"` // applied, failed, pending
+	After      *ProviderRealization      `json:"after,omitempty"`
+	Materials  []MaterialOutcome         `json:"materials"`
+	ErrorCode  string                    `json:"error_code,omitempty"`
 }
 
 type ProviderChangeResult struct {

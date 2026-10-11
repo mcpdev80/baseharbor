@@ -51,6 +51,9 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 		}
 		changes[r.InstanceID] = r
 	}
+	if err := validateSelectedConsumerActions(snapshot, ordered, observation); err != nil {
+		return p, err
+	}
 	uses := observedFunctionUses(snapshot, union, observation.Functions)
 	for _, r := range ordered {
 		impact, known, destructive, attention, err := describeProviderChange(snapshot, union, observation, instances, changes, uses, r)
@@ -159,6 +162,18 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 		}
 	}
 	attention := false
+	for _, e := range imp.Effects {
+		if e.Evidence == "" {
+			known = false
+			attention = true
+		}
+	}
+	for _, q := range fact.Prerequisites {
+		if !q.Supported || !q.Verified || q.Evidence == "" {
+			known = false
+			attention = true
+		}
+	}
 	for _, use := range uses {
 		via := dependencyPath(s, use.InstanceID, instance.ID, map[string]bool{})
 		if via == nil {
@@ -193,6 +208,9 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 			f.Outcome = "changed"
 			attention = true
 		}
+		transitionKnown, transitionAttention := describeConsumerTransition(&f, use, o, r, changes, s)
+		known = known && transitionKnown
+		attention = attention || transitionAttention
 		if !knownProviderFunction(instances[use.InstanceID].Provider, use.Function) {
 			known = false
 			imp.Notices = append(imp.Notices, "actual function has no declared provider consequence contract")
@@ -224,7 +242,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 			}
 		}
 	}
-	materialKnown, destructive, materialAttention, err := describeMaterials(&imp, r, fact)
+	materialKnown, destructive, materialAttention, err := describeMaterials(&imp, r, fact, o.ObservedAt)
 	if err != nil {
 		return imp, false, false, false, err
 	}

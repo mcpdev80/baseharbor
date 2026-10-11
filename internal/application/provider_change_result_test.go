@@ -3,12 +3,15 @@ package application
 import "testing"
 
 func appliedOutcome(i ProviderImpact) ProviderExecutionOutcome {
-	out := ProviderExecutionOutcome{InstanceID: i.InstanceID, Operation: i.Operation, Status: "applied", Verified: true, Evidence: "post-operation runtime inventory", Materials: []MaterialOutcome{}}
+	out := ProviderExecutionOutcome{Effects: i.Effects, InstanceID: i.InstanceID, Operation: i.Operation, Status: "applied", Verified: true, Evidence: "post-operation runtime inventory", Materials: []MaterialOutcome{}}
 	if i.After != nil {
 		after := *i.After
 		after.Verified = true
 		after.Evidence = "actual runtime verification"
 		out.After = &after
+	}
+	for _, f := range i.Functions {
+		out.Functions = append(out.Functions, ProviderFunctionOutcome{Transition: f.Transition, Consumer: f.Consumer, InstanceID: f.Via[0], Function: f.Function, Outcome: f.Outcome, ValidUntil: f.ValidUntil, Behavior: f.Behavior, Verified: true, Evidence: "actual post-operation consumer verification"})
 	}
 	for _, m := range i.Materials {
 		out.Materials = append(out.Materials, MaterialOutcome{MaterialID: m.Before.ID, Disposition: m.After.Disposition, Location: m.After.Destination, Recovery: m.Before.Recovery, Access: m.After.AccessAfter, Verified: true, Evidence: "actual final material inventory"})
@@ -74,5 +77,25 @@ func TestProviderImpactFinalMustAccountForRecoveryAndActualAccess(t *testing.T) 
 	result, err = RecordProviderChangeResult(p, []ProviderExecutionOutcome{actual})
 	if err != nil || result.Status == "complete" {
 		t.Fatal("unexpected access/security change passed verification")
+	}
+}
+
+func TestProviderImpactRuntimeStopAloneCannotVerifyConsumerFunctions(t *testing.T) {
+	s, u, o := impactFixture(t)
+	p, err := DescribeProviderChanges(s, u, []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := appliedOutcome(p.Impacts[0])
+	actual.Functions = nil
+	result, err := RecordProviderChangeResult(p, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" {
+		t.Fatal("runtime stop was presented as verified consumer functions")
+	}
+	actual = appliedOutcome(p.Impacts[0])
+	actual.Functions[0].Outcome = "remains"
+	result, err = RecordProviderChangeResult(p, []ProviderExecutionOutcome{actual})
+	if err != nil || result.Status == "complete" || result.Outcomes[0].Functions[0].Outcome != "remains" {
+		t.Fatal("unexpected actual function result lost or falsely completed")
 	}
 }

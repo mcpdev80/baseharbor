@@ -28,7 +28,7 @@ func impactFixture(t *testing.T) (ResolutionSnapshot, ProviderPlan, ProviderImpa
 		}
 	}
 	s := ResolutionSnapshot{Target: "local", Registry: r, Facts: map[string]ProviderFact{}}
-	o := ProviderImpactObservation{Revision: "owner/1", InventoryComplete: true, Providers: map[string]ProviderImpactFact{}}
+	o := ProviderImpactObservation{ObservedAt: "2026-10-11T10:00:00Z", Revision: "owner/1", InventoryComplete: true, Providers: map[string]ProviderImpactFact{}}
 	for _, i := range r.Instances {
 		s.Facts[i.ID] = ProviderFact{Target: s.Target, State: ProviderRunning, Core: CoreNotRequired, Dependencies: []string{}}
 		materialKind := "database"
@@ -229,7 +229,7 @@ func TestProviderImpactEveryRegisteredProviderAndExternalOwnership(t *testing.T)
 				t.Fatal(err)
 			}
 			c, _ := d.ChangeContract()
-			o := ProviderImpactObservation{Revision: "owner/1", InventoryComplete: true, Providers: map[string]ProviderImpactFact{i.ID: impactProvider(i, "local", c.MaterialKinds[0])}, Functions: []ProviderFunctionUse{{Consumer: "app", InstanceID: i.ID, Function: c.Functions[0], Required: true, Evidence: "actual applied binding"}}}
+			o := ProviderImpactObservation{ObservedAt: "2026-10-11T10:00:00Z", Revision: "owner/1", InventoryComplete: true, Providers: map[string]ProviderImpactFact{i.ID: impactProvider(i, "local", c.MaterialKinds[0])}, Functions: []ProviderFunctionUse{{Consumer: "app", InstanceID: i.ID, Function: c.Functions[0], Required: true, Evidence: "actual applied binding"}}}
 			op := "stop"
 			if scope == capability.ScopeExternal {
 				op = "unbind"
