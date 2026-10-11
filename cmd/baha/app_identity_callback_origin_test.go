@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -99,5 +101,38 @@ func TestManagedIdentityCallbackOriginsFollowEffectiveTargetGateway(t *testing.T
 	origins, err = managedIdentityExposureOrigins(identity, prepared)
 	if err != nil || !reflect.DeepEqual(origins, []string{"https://" + otherHost + ":30443"}) {
 		t.Fatalf("other target origin=%v error=%v", origins, err)
+	}
+}
+
+func TestSelectiveIdentityOAuthFixtureUsesValidSourceOnlyInitialization(t *testing.T) {
+	configureTestTarget(t)
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{true, false, true} {
+		authored := selectiveIdentityOAuthRuntimeIntent(enabled)
+		manifest, err := application.ParseYAML(authored)
+		if err != nil || manifest.ApplicationID != "" || len(manifest.Workload.Components) != 1 || manifest.Workload.Components[0] != "api" || manifest.Services.Identity != enabled {
+			t.Fatalf("invalid actual OAuth fixture intent: enabled=%t error=%v", enabled, err)
+		}
+		if enabled && (len(manifest.Exposures) != 1 || manifest.Exposures[0].Service != "api" || len(manifest.Identity.CallbackPaths) != 1 || manifest.Identity.CallbackPaths[0] != "/oauth/callback") {
+			t.Fatal("OAuth route does not describe the real callback workload")
+		}
+	}
+	authored := selectiveIdentityOAuthRuntimeIntent(true)
+	if err := os.WriteFile("baseharbor.yaml", []byte(authored), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runWithIO(machineNoninteractiveContext(t.Context()), []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
+		t.Fatalf("actual source-only OAuth initialization failed: %v", err)
+	}
+	after, err := os.ReadFile("baseharbor.yaml")
+	if err != nil || string(after) != authored {
+		t.Fatal("OAuth initialization rewrote authored intent")
+	}
+	if strings.Contains(string(after), "application_id") {
+		t.Fatal("OAuth fixture wrote caller identity into authored source")
 	}
 }

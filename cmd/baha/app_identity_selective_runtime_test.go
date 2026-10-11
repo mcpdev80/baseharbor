@@ -57,10 +57,7 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeIntent := func(enabled bool) {
-		content := fmt.Sprintf("version: 1\napp:\n  name: selective-identity\n  environment: dev\nservices:\n  identity: %t\n", enabled)
-		if enabled {
-			content += "identity:\n  callback_paths:\n    - /oauth/callback\nexposure:\n  http:\n    - name: oauth\n      service: api\n      port: 8080\n      protocol: https\n      visibility: public\n"
-		}
+		content := selectiveIdentityOAuthRuntimeIntent(enabled)
 		if err := os.WriteFile("baseharbor.yaml", []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -242,4 +239,12 @@ func TestSelectiveIdentityRuntimeAddRemoveReAdd(t *testing.T) {
 		t.Logf("runtime=%s phase=%d Identity=%t selected Identity containers=%d actual total=%d retained data volumes=%d selected callback exposures=%d", provider.Kind(), phase, enabled, identityCount, len(containers), len(retained), callbackCount)
 	}
 	qualifySharedIdentityConsumers(t, ctx, provider, initialized, originalEnv, retained)
+}
+
+func selectiveIdentityOAuthRuntimeIntent(enabled bool) string {
+	content := fmt.Sprintf("version: 1\napp:\n  name: selective-identity\n  environment: dev\nworkload:\n  components:\n    - api\nservices:\n  identity: %t\n", enabled)
+	if enabled {
+		content += "identity:\n  callback_paths:\n    - /oauth/callback\nexposure:\n  http:\n    - name: oauth\n      service: api\n      port: 8080\n      protocol: https\n      visibility: public\n"
+	}
+	return content
 }

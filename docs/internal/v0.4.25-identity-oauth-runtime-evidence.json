@@ -1,0 +1,44 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-identity-end-user-oauth-lifecycle",
+  "test": "TestSelectiveIdentityRuntimeAddRemoveReAdd",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "1649513fdda070e959949c9c441f7b8923367f37",
+      "candidate_tree": "e0db3aa21003f1ebebcfdb9a32a711da46de9979",
+      "workflow_run_id": 38152214720,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "The isolated host had zero containers. Authored public callback exposure omitted required workload.components, so manifest validation rejected app init before materialization or login. No changed callback or OAuth native behavior was reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114507974054,
+          "test_seconds": 0.16,
+          "artifact_id": 11707760478,
+          "artifact_name": "coreless-docker-38152214720-1",
+          "artifact_digest": "sha256:5bba1a9a75d72805fa58031f594267f85f58132e2140e2db060a6fdb87f1079c"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114507973802,
+          "test_seconds": 0.05,
+          "artifact_id": 11707046279,
+          "artifact_name": "coreless-podman-38152214720-1",
+          "artifact_digest": "sha256:4e3c2e30bff49513f89bcc46e0248405d21bd167b1deadc3078dd2d7ab79f7dc"
+        }
+      ]
+    }
+  ],
+  "not_qualified": [
+    "Changed real end-user authorization-code/S256 PKCE, refresh/session, disabled access and re-enabled user/session continuity",
+    "Changed native callback origin on Docker and rootless Podman",
+    "Actual Console browser and Connector mTLS/remote lifecycle",
+    "All provider and mutation consequences on one final immutable ecosystem matrix"
+  ]
+}
