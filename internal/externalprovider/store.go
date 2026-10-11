@@ -1,9 +1,11 @@
 package externalprovider
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,7 +25,7 @@ type Store struct {
 }
 
 func (s Store) Load() (Document, error) {
-	data, err := os.ReadFile(s.Path)
+	data, err := readStoreFile(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Document{Version: StoreVersion}, nil
 	}
@@ -31,16 +33,19 @@ func (s Store) Load() (Document, error) {
 		return Document{}, fmt.Errorf("read external provider registry: %w", err)
 	}
 	var doc Document
-	if err := json.Unmarshal(data, &doc); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&doc); err != nil {
 		return Document{}, fmt.Errorf("decode external provider registry: %w", err)
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return Document{}, errors.New("external provider registry contains trailing data")
 	}
 	if doc.Version != StoreVersion {
 		return Document{}, fmt.Errorf("unsupported external provider registry version %d", doc.Version)
 	}
-	for _, registration := range doc.Registrations {
-		if err := registration.Validate(); err != nil {
-			return Document{}, fmt.Errorf("validate external provider %q: %w", registration.ID, err)
-		}
+	if err := validateStoreRegistrations(doc.Registrations); err != nil {
+		return Document{}, err
 	}
 	return doc, nil
 }
@@ -50,10 +55,8 @@ func (s Store) Save(doc Document) error {
 		return errors.New("external provider registry path is required")
 	}
 	doc.Version = StoreVersion
-	for _, registration := range doc.Registrations {
-		if err := registration.Validate(); err != nil {
-			return err
-		}
+	if err := validateStoreRegistrations(doc.Registrations); err != nil {
+		return err
 	}
 	sort.Slice(doc.Registrations, func(i, j int) bool { return doc.Registrations[i].ID < doc.Registrations[j].ID })
 	data, err := json.MarshalIndent(doc, "", "  ")
@@ -61,32 +64,20 @@ func (s Store) Save(doc Document) error {
 		return err
 	}
 	data = append(data, '\n')
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return err
-	}
-	tmp := s.Path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, s.Path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writeStoreFile(s.Path, data)
 }
 
 func (s Store) Update(fn func(*Document) error) error {
 	if fn == nil {
 		return errors.New("external provider registry mutation is required")
 	}
+	if err := checkStoreParents(s.Path); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(s.Path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := openStoreLock(s.Path + ".lock")
 	if err != nil {
 		return err
 	}
@@ -95,6 +86,11 @@ func (s Store) Update(fn func(*Document) error) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	opened, err := lock.Stat()
+	current, inspectErr := checkStoreFile(s.Path + ".lock")
+	if err != nil || inspectErr != nil || !os.SameFile(opened, current) {
+		return errors.New("external provider registry lock owner changed while waiting")
+	}
 
 	doc, err := s.Load()
 	if err != nil {
@@ -179,4 +175,18 @@ func equalRegistration(a, b Registration) bool {
 	aa, _ := json.Marshal(a)
 	bb, _ := json.Marshal(b)
 	return string(aa) == string(bb)
+}
+
+func validateStoreRegistrations(registrations []Registration) error {
+	seen := map[string]bool{}
+	for _, registration := range registrations {
+		if seen[registration.ID] {
+			return errors.New("external provider registry contains duplicate ownership")
+		}
+		seen[registration.ID] = true
+		if err := registration.Validate(); err != nil {
+			return fmt.Errorf("validate external provider %q: %w", registration.ID, err)
+		}
+	}
+	return nil
 }

@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
       - name: Qualify changed volume recovery helper
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') }}
         env:
           BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
         shell: bash
@@ -101,7 +101,7 @@ jobs:
           go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
       - name: Build integrated exact-SHA management runtime image
         id: runtime_image
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') }}
         shell: bash
         run: |
           set -euo pipefail

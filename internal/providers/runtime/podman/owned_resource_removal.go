@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 func (p PodmanProvider) DestroyOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource) error {
@@ -19,7 +20,32 @@ func (p PodmanProvider) RetireOwnedProjectContainers(ctx context.Context, projec
 			return errors.New("runtime retirement accepts only containers")
 		}
 	}
-	return p.removeOwnedProjectResources(ctx, project, resources, false)
+	dir, err := quadletUserUnitDir()
+	if err != nil {
+		return err
+	}
+	definitions, err := plannedQuadletRetirement(dir, project, resources)
+	if err != nil {
+		return err
+	}
+	for _, definition := range definitions {
+		if err := verifyRetiredQuadletDefinition(definition); err != nil {
+			return err
+		}
+	}
+	if err := p.removeOwnedProjectResources(ctx, project, resources, false); err != nil {
+		return err
+	}
+	if err := removeRetiredQuadletDefinitions(ctx, definitions); err != nil {
+		return err
+	}
+	// Retry must clear an earlier generator cache even if the container and
+	// its definition were already removed before daemon-reload failed.
+	if len(resources) > 0 && len(definitions) == 0 {
+		_, err = quadletSystemctlBlocking(ctx, nil, "daemon-reload")
+		return err
+	}
+	return nil
 }
 
 func (p PodmanProvider) removeOwnedProjectResources(ctx context.Context, project string, resources []ProjectResource, deleteAnonymousVolumes bool) error {
@@ -52,6 +78,12 @@ func (p PodmanProvider) removeOwnedProjectResources(ctx context.Context, project
 		unit := podmanSystemdUnitLabel(unitOut)
 		if unit == "" {
 			continue
+		}
+		if !deleteAnonymousVolumes {
+			expected := strings.TrimSuffix(resource.Name, "-1") + ".service"
+			if unit != expected {
+				return errors.New("selected container claims a foreign Quadlet service unit")
+			}
 		}
 		if _, seen := seenUnits[unit]; seen {
 			continue
