@@ -36,6 +36,11 @@ func TestRuntimeImpactRequiresTwoCurrentAcknowledgementsAndRetainsUnknownEffects
 			t.Fatal("missing or stale acknowledgement bypassed plan", err)
 		}
 	}
+	_, missingErr := (runtimeMutationAuthority{}).AuthorizeRuntimeMutation(withProviderChangeConsent(t.Context(), nil), resource, request)
+	var missing *machine.Error
+	if !errors.As(missingErr, &missing) || missing.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("omitted consent has wrong interface semantics: %v", missingErr)
+	}
 	ack := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
 	verify, err := (runtimeMutationAuthority{}).AuthorizeRuntimeMutation(withProviderChangeConsent(context.Background(), &ack), resource, request)
 	if err != nil {

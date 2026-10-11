@@ -20,7 +20,7 @@ func (runtimeMutationAuthority) AuthorizeRuntimeMutation(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
-	ack := application.ProviderChangeConsent{}
+	ack := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID}
 	if consent != nil {
 		ack = *consent
 	}
