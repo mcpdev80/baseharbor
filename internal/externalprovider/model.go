@@ -90,12 +90,12 @@ func credentialMetadataKey(key string) bool {
 		}
 		return -1
 	}, key)
-	for _, sensitive := range []string{"password", "secret", "token", "private", "credential", "apikey", "accesskey", "passphrase"} {
+	for _, sensitive := range []string{"password", "secret", "token", "private", "credential", "apikey", "accesskey", "passphrase", "authorization"} {
 		if strings.Contains(compact, sensitive) {
 			return true
 		}
 	}
-	return compact == "authorization" || compact == "proxyauthorization"
+	return compact == "basicauth" || compact == "httpbasicauth" || compact == "bearer"
 }
 
 func (t Trust) Validate() error {

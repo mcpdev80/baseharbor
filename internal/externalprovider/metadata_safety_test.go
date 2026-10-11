@@ -9,7 +9,7 @@ import (
 )
 
 func TestCredentialMetadataCannotEnterPublicRegistration(t *testing.T) {
-	for _, key := range []string{"api_key", "API-Key", "api.key", "access key", "Authorization", "Proxy-Authorization", "credentials", "client_credentials", "passphrase", "private-key", "pass_word", "access.to.ken"} {
+	for _, key := range []string{"api_key", "API-Key", "api.key", "access key", "Authorization", "Proxy-Authorization", "authorization_header", "http.authorization", "basic_auth", "http-basic-auth", "bearer", "credentials", "client_credentials", "passphrase", "private-key", "pass_word", "access.to.ken"} {
 		t.Run(key, func(t *testing.T) {
 			store := Store{Path: filepath.Join(t.TempDir(), "providers.json")}
 			reg := registryIntegrityFixture()
