@@ -182,6 +182,22 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal("capability removal erased other consumer binding")
 				}
 				t.Logf("two apps reused %s; removal retained other app live", secondID)
+				// Reattach the retained scope through the existing lifecycle so
+				// explicit app destroy can reclaim this isolated test's resources.
+				// Capability removal itself deliberately does not perform GC.
+				if err := os.WriteFile(sqlFirst.ManifestPath, []byte(sqlFirst.Manifest.YAML()), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chdir(sqlFirst.RepositoryRoot); err != nil {
+					t.Fatal(err)
+				}
+				out.Reset()
+				if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+					t.Fatalf("reattach retained test scope: %v\n%s", err, out.String())
+				}
+				if err := os.Chdir(appRoot); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}) {
 			return

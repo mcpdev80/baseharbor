@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -99,7 +100,36 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 		}
 		snapshot.Facts[instance.ID] = fact
 	}
-	return application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
+	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
+	return footprint, classifyApplicationResolutionError(err)
+}
+
+// Translate domain outcomes once at the common CLI/JSON/MCP/HTTP consumer.
+// Existing machine error envelopes and exit-code mappings remain authoritative.
+func classifyApplicationResolutionError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *machine.Error
+	if errors.As(err, &existing) {
+		return err
+	}
+	var resolution *application.ResolutionError
+	if !errors.As(err, &resolution) {
+		return err
+	}
+	code := machine.ErrorInternal
+	switch resolution.Code {
+	case "missing", "missing-dependency":
+		code = machine.ErrorNotFound
+	case "incompatible", "dependency-cycle":
+		code = machine.ErrorValidationFailed
+	case "ambiguous", "binding-conflict":
+		code = machine.ErrorConflict
+	case "foreign", "foreign-target":
+		code = machine.ErrorOwnershipAmbiguous
+	}
+	return &machine.Error{Code: code, CauseCode: "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_"), Message: err.Error(), Resource: resolution.InstanceID, Next: "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated.", Cause: err}
 }
 
 func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) error {

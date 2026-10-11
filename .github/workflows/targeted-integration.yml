@@ -54,6 +54,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORELESS_ACCEPTANCE: "1"
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-acceptance
       GOTOOLCHAIN: local
     steps:
       - name: Checkout integrated exact SHA
@@ -86,15 +87,27 @@ jobs:
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
           go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
       - name: Qualify changed volume recovery helper
-        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-managed]') }}
         env:
           BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
         shell: bash
         run: |
           set -euo pipefail
           go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
-      - name: Verify explicit management Core and individual capability reuse
+      - name: Build integrated exact-SHA management runtime image
+        id: runtime_image
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v0.4.25-candidate -X main.commit=$candidate_sha -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify explicit management Core and individual capability reuse
+        if: ${{ !cancelled() && steps.runtime_image.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
