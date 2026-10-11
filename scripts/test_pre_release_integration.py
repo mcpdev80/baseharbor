@@ -3,6 +3,7 @@ import json
 import os
 from unittest.mock import patch
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,34 @@ spec.loader.exec_module(integration)
 
 
 class ContractCheckTests(unittest.TestCase):
+    def test_candidate_label_cannot_qualify_changed_or_untracked_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL)
+            git('init', '--quiet')
+            source = root / 'fixture.go'
+            source.write_text('original source\n')
+            git('add', 'fixture.go')
+            git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                'commit', '--quiet', '-m', 'candidate')
+            candidate = git('rev-parse', 'HEAD').decode().strip()
+            integration.verify_candidate_source(candidate, root)
+            with self.assertRaises(ValueError):
+                integration.verify_candidate_source('f' * 40, root)
+            source.write_text('altered source\n')
+            with self.assertRaises(ValueError):
+                integration.verify_candidate_source(candidate, root)
+            git('add', 'fixture.go')
+            with self.assertRaises(ValueError):
+                integration.verify_candidate_source(candidate, root)
+            git('restore', '--staged', '--worktree', 'fixture.go')
+            (root / 'unexpected_test.go').write_text('extra test input\n')
+            with self.assertRaises(ValueError):
+                integration.verify_candidate_source(candidate, root)
+            (root / 'unexpected_test.go').unlink()
+            integration.verify_candidate_source(candidate, root)
+
     def check(self, events, code=0):
         with tempfile.TemporaryDirectory() as root:
             log = pathlib.Path(root) / 'go-test.jsonl'
@@ -47,6 +76,7 @@ class ContractCheckTests(unittest.TestCase):
                 self.assertEqual(os.environ['BASEHARBOR_CORELESS_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE'], '1')
+                self.assertEqual(os.environ['BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE'], '1')
                 self.assertEqual(os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'], '1')
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(ValueError):
@@ -56,6 +86,7 @@ class ContractCheckTests(unittest.TestCase):
         required = {'^TestCorelessFreshWorkloadRuntimeLifecycle$',
                     '^TestSelectiveIdentityRuntimeAddRemoveReAdd$',
                     '^TestSelectiveBackendRuntimeAddRemoveReAdd$',
+                    '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
                     '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
                     '^TestApplicationCapabilityLifecycleExistingCore$'}
         for runtime in ['docker', 'podman']:
