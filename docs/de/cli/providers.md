@@ -8,18 +8,19 @@ Referenzprodukte sind PostgreSQL für SQL, Valkey für getrennte Cache-/dauerhaf
 
 In einem Verzeichnis ohne `company-sql-provider`:
 
-```text
-baha provider init
-baha provider test
+```bash
+baha provider init company/sql --path ./company-sql-provider
+baha provider test ./company-sql-provider -o json
 ```
 
 Das Scaffold erzeugt Deskriptor und Implementierungsskelett. Vertrag und Operationen müssen implementiert sein, bevor der Provider produktionsbereit ist. Vertragsprüfungen beweisen keine Erreichbarkeit oder Berechtigung einer beliebigen Datenbank.
 
-Nach Registrierung eines vorhandenen Dienstes:
+Eine vorhandene Registrierung prüfen Sie mit:
 
 ```bash
-baha provider init company/sql --path ./company-sql-provider
-baha provider test ./company-sql-provider -o json
+baha provider list
+baha provider inspect company-db
+baha provider verify company-db
 ```
 
 Externe Registrierung überträgt keinen Infrastruktur-Besitz. Entfernen löst nur die Bindung/Referenz.

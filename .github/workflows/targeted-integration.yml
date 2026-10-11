@@ -38,7 +38,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: targeted-integration-${{ github.ref }}
+  # Independent exact-source proofs must not evict another candidate pending
+  # in GitHub's one-slot concurrency queue. Identical source refs still deduplicate.
+  group: targeted-integration-${{ github.ref }}-${{ inputs.ref || github.sha }}
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:

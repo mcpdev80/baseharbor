@@ -13,7 +13,7 @@ Provider extensions implement versioned BaseHarbor contracts rather than embeddi
 
 ## Capability provider model
 
-v0.4.19 includes bundled/reference providers for:
+The bundled reference providers cover:
 
 - PostgreSQL — `database.sql`;
 - Valkey — `cache.key-value` and `database.key-value` as distinct logical contracts;
