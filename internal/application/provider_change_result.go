@@ -59,9 +59,9 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 		}
 	}
 	sort.Slice(result.Outcomes, func(i, j int) bool { return result.Outcomes[i].InstanceID < result.Outcomes[j].InstanceID })
-	if applied == len(plan.Impacts) {
+	if plan.Complete && applied == len(plan.Impacts) {
 		result.Status = "complete"
-	} else if failed == len(plan.Impacts) {
+	} else if failed > 0 && failed == len(plan.Impacts) {
 		result.Status = "failed"
 	}
 	return result, nil

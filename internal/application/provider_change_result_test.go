@@ -196,3 +196,38 @@ func TestProviderImpactUnexpectedMaterialLocationRemainsPending(t *testing.T) {
 		t.Fatalf("mismatched final location vanished from retry: %+v %v", pending, err)
 	}
 }
+
+func TestProviderImpactIncompleteInventoryCannotBecomeOverallSuccess(t *testing.T) {
+	for _, empty := range []bool{false, true} {
+		s, u, o := impactFixture(t)
+		o.InventoryComplete = false
+		requests := []ProviderChangeRequest{{InstanceID: "identity", Operation: "stop"}}
+		if empty {
+			requests = nil
+		}
+		plan, err := DescribeProviderChanges(s, u, requests, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateProviderChangeConsent(plan, ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: true}); err != nil {
+			t.Fatal("incomplete inventory vetoed acknowledged execution", err)
+		}
+		actual := []ProviderExecutionOutcome{}
+		for _, impact := range plan.Impacts {
+			actual = append(actual, appliedOutcome(impact))
+		}
+		result, err := RecordProviderChangeResult(plan, actual)
+		if err != nil || result.Status != "partial" {
+			t.Fatalf("unknown inventory became overall success (empty=%v): %+v %v", empty, result, err)
+		}
+		for _, out := range result.Outcomes {
+			if out.Status != "applied" {
+				t.Fatal("verified individual work was lost")
+			}
+		}
+		pending, err := PendingProviderChanges(plan, result)
+		if err != nil || len(pending) != 0 {
+			t.Fatal("completed known operations must not replay; inventory needs fresh observation", pending, err)
+		}
+	}
+}

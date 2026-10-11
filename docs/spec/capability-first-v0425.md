@@ -349,6 +349,10 @@ the correct destination alone cannot hide an incomplete secure handoff.
 Final receipts and retry exclusion use the same material checks. An unknown
 material disposition remains unfinished even when the adapter verifies that
 uncertainty; acknowledging the change does not establish material completion.
+Incomplete authoritative inventory keeps the overall receipt partial, including
+when no known operation remains. Verified individual operations are still applied
+and excluded from replay; the existing lifecycle must observe and replan the
+unknown inventory before it can establish overall completion.
 Recovery references follow explicitly selected owned backup transfers/deletions
 across the aggregate plan. A complete owned deletion may include its inventoried
 backups with destructive consent; unselected or foreign recovery stays protected.

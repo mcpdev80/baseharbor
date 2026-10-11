@@ -372,6 +372,10 @@ unvollständige sichere Übergabe.
 Abschlussbelege und Wiederholungsausschluss verwenden dieselben Materialprüfungen.
 Eine unbekannte Materialdisposition bleibt unerledigt, auch wenn der Adapter diese
 Unsicherheit bestätigt; die Zustimmung zur Änderung belegt keinen Materialabschluss.
+Bei unvollständigem maßgeblichem Inventar bleibt das Gesamtergebnis teilweise,
+auch wenn keine bekannte Operation mehr offen ist. Geprüfte Einzelschritte bleiben
+ausgeführt und werden nicht wiederholt; der bestehende Lebenszyklus muss das
+unbekannte Inventar neu beobachten und planen, bevor er den Gesamtabschluss belegt.
 Recovery-Referenzen folgen ausdrücklich gewählten eigenen Backup-Übergaben oder
 -Löschungen im aggregierten Plan. Eine vollständige eigene Löschung darf inventarisierte
 Backups mit destruktiver Zustimmung einschließen; nicht gewählte oder fremde
