@@ -2,7 +2,6 @@ package externalprovider
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"sort"
 	"strings"
@@ -58,7 +57,7 @@ func (r Registration) Validate() error {
 	}
 	u, err := url.Parse(r.Endpoint)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("external provider endpoint must be an absolute URL")
+		return errors.New("external provider endpoint must be an absolute URL")
 	}
 	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return errors.New("external provider endpoint must not contain credentials, query or fragment; use credential and trust references")
@@ -75,10 +74,10 @@ func (r Registration) Validate() error {
 		}
 		lk := strings.ToLower(k)
 		if strings.Contains(lk, "password") || strings.Contains(lk, "secret") || strings.Contains(lk, "token") || strings.Contains(lk, "private") {
-			return fmt.Errorf("external provider metadata key %q may contain secret material; use credential/trust references", k)
+			return errors.New("external provider metadata key may contain secret material; use credential/trust references")
 		}
 		if strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("external provider metadata %q contains a newline", k)
+			return errors.New("external provider metadata contains a newline")
 		}
 	}
 	return nil
@@ -118,7 +117,7 @@ func (t Trust) Validate() error {
 			return errors.New("mtls trust requires client certificate/private-key references or a certificate directory")
 		}
 	default:
-		return fmt.Errorf("unsupported external provider trust mode %q", mode)
+		return errors.New("unsupported external provider trust mode; use auto, system, custom-ca or mtls")
 	}
 	return nil
 }
