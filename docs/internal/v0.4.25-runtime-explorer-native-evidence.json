@@ -52,6 +52,32 @@
           "artifact_digest": "sha256:ff68c845a0e95e08336adad2b22fd266b61205b022b310f0397bacd247a1811b"
         }
       ]
+    },
+    {
+      "candidate_sha": "594d60a9e13ead6dc19f82d15ea75d4547e576a2",
+      "candidate_tree": "3e77b611115a2fb6c0f9e4bddded13cdc6715ce2",
+      "workflow_run_id": 38183286006,
+      "result": "PASS",
+      "observed": "Both rootless runtimes run an actual fresh workload without Core/login, verify down/up and readiness, reject missing acknowledgement without runtime change, and execute acknowledged Explorer stop/start/restart through shared operation authority. Stable resource reference and protected deployment/provider recovery owners remain unchanged. Docker stop observes exited, Podman supervised stop observes stopped with retained Quadlet owner; start/restart observe running and the native workload subsequently regains readiness. Repeated default destroy leaves zero Core/total containers. Function/transient-state consequence receipts remain explicitly partial; this is bounded native acceptance, not universal consequence or ecosystem readiness.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114600196179,
+          "test_seconds": 55.78,
+          "artifact_id": 11718925569,
+          "artifact_digest": "sha256:66ecf3d0c00770fe7481b4b15b04fe91f0bdfe9e817e2463040c6b907c2e9cd3"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114600196376,
+          "test_seconds": 58.83,
+          "artifact_id": 11717509279,
+          "artifact_digest": "sha256:324707d0cc6b979736bad1c45e491012792a191ab60ca0c6810579311cb7251d"
+        }
+      ]
     }
-  ]
+  ],
+  "bounded_native_acceptance": true
 }
