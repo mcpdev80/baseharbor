@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -130,7 +129,7 @@ func (r Registration) Public() Registration {
 	out.Trust.ClientKey = referenceOnly(out.Trust.ClientKey)
 	out.Trust.ClientCertificate = referenceOnly(out.Trust.ClientCertificate)
 	out.Trust.CAReference = referenceOnly(out.Trust.CAReference)
-	out.Trust.Directory = cleanReferencePath(out.Trust.Directory)
+	out.Trust.Directory = referenceOnly(out.Trust.Directory)
 	if len(out.Metadata) > 0 {
 		keys := make([]string, 0, len(out.Metadata))
 		for k := range out.Metadata {
@@ -147,17 +146,7 @@ func (r Registration) Public() Registration {
 }
 
 func referenceOnly(v string) string {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return ""
-	}
-	return filepath.Clean(v)
-}
-
-func cleanReferencePath(v string) string {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return ""
-	}
-	return filepath.Clean(v)
+	// Public output describes the declared reference. Filesystem cleaning would
+	// corrupt resource URIs and can change paths containing symlink/.. segments.
+	return strings.TrimSpace(v)
 }
