@@ -43,7 +43,7 @@ baha provider inspect company-db
 baha provider verify company-db
 ```
 
-Endpoints must be absolute URLs without user information, query parameters or fragments. Supply credentials and TLS material through protected credential/trust references. `--trust system` requires the endpoint's certificate to validate with system trust; it does not bypass TLS verification. Use the explicit trust/credential reference options from `baha provider add --help` when your company PKI or service authentication needs them.
+Endpoints must be absolute URLs without user information, query parameters or fragments. Supply credentials and TLS material through protected credential/trust references. Credential references require a resource URI; trust references may also be file paths. References must not contain inline material, user information, query parameters or fragments. `--trust system` requires the endpoint's certificate to validate with system trust; it does not bypass TLS verification. Use the explicit trust/credential reference options from `baha provider add --help` when your company PKI or service authentication needs them.
 
 Registration records the external provider and verification checks endpoint/trust. It does not migrate application data or automatically select this provider for every SQL request: configure placement through your effective provider/organization configuration and inspect `baha plan` in the application repository.
 

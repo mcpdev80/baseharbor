@@ -15,7 +15,10 @@ BaseHarbor does not own the foreign service
 
 Endpunkte müssen absolute URLs ohne Benutzerinformationen, Query-Parameter oder
 Fragmente sein. Zugangsdaten und TLS-Material werden über geschützte
-Zugangsdaten-/Trust-Referenzen bereitgestellt. `--trust system` verlangt ein
+Zugangsdaten-/Trust-Referenzen bereitgestellt. Zugangsdatenreferenzen brauchen
+eine Ressourcen-URI; Trust-Referenzen dürfen auch Dateipfade sein. Referenzen
+dürfen kein Inline-Material, Benutzerinformationen, Query-Parameter oder
+Fragmente enthalten. `--trust system` verlangt ein
 gültiges System-Trust-Zertifikat, deaktiviert keine TLS-Prüfung. Eigene PKI/Auth
 nutzt die expliziten Referenzoptionen aus `baha provider add --help`.
 

@@ -64,6 +64,9 @@ func (r Registration) Validate() error {
 	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return errors.New("external provider endpoint must not contain credentials, query or fragment; use credential and trust references")
 	}
+	if err := validatePublicReference(r.CredentialRef, true); err != nil {
+		return err
+	}
 	if err := r.Trust.Validate(); err != nil {
 		return err
 	}
@@ -83,6 +86,11 @@ func (r Registration) Validate() error {
 }
 
 func (t Trust) Validate() error {
+	for _, reference := range []string{t.CAReference, t.ClientCertificate, t.ClientKey, t.Directory} {
+		if err := validatePublicReference(reference, false); err != nil {
+			return err
+		}
+	}
 	mode := t.Mode
 	if mode == "" {
 		mode = TrustAuto
