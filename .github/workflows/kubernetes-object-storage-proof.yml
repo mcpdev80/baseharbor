@@ -1,0 +1,85 @@
+name: "Kubernetes Object Storage Proof"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes-object-storage'
+    paths:
+      - '.ci/kubernetes-object-storage-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Object Storage · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/providers/runtime/kubernetes/core_object_storage_integration_test.go             internal/objectstorage             internal/application/object_storage_runtime.go
+          if ! git diff --exit-code --             internal/providers/runtime/kubernetes/core_object_storage_integration_test.go             internal/objectstorage             internal/application/object_storage_runtime.go; then
+            echo "Object-storage Kubernetes proof requires gofmt; diff shown above." >&2
+            exit 1
+          fi
+
+      - name: Compile focused packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes ./internal/objectstorage ./internal/application -run '^$' -count=1
+
+  object-storage:
+    needs: static
+    name: Kubernetes · SeaweedFS S3 Core Seam
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Run SeaweedFS S3 Core seam proof on k3s
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_OBJECT_STORAGE_TEST: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreObjectStorageS3Lifecycle$'             -count=1 -v
+
+      - name: Cleanup and assert proof cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+          namespace="${namespace:-default}"
+          selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-object-storage-proof'
+          kubectl delete deployment,service,configmap,secret -n "$namespace"             -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+          remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l "$selector" --no-headers 2>/dev/null || true)"
+          test -z "$remaining" || {
+            echo "Object-storage proof left BaseHarbor-owned resources:" >&2
+            echo "$remaining" >&2
+            exit 1
+          }
