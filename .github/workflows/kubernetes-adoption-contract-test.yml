@@ -1,9 +1,6 @@
 name: "Test · Kubernetes Adoption Contract"
 
 on:
-  push:
-    branches:
-      - 'test/kubernetes-adoption-contract-demo'
   workflow_dispatch:
 
 permissions:
