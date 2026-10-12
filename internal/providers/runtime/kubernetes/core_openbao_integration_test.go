@@ -348,7 +348,6 @@ func indentYAMLBlock(value string, spaces int) string {
 	return strings.Join(lines, "\n")
 }
 
-
 func kubernetesServiceDiagnostics(ctx context.Context, provider Provider, namespace, application, environment, service string) string {
 	selector := ownershipSelector(application, environment) +
 		",baseharbor.io/workload-service=" + workloadServiceLabel(service)
