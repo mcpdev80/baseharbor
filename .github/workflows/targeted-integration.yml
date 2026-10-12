@@ -26,6 +26,20 @@ on:
           - adoption-realworld-compose
           - adoption-realworld-quadlet
           - adoption-realworld-kubernetes
+          - kubernetes-core-contract
+          - kubernetes-adoption-contract
+          - kubernetes-postgres
+          - kubernetes-openbao
+          - kubernetes-identity
+          - kubernetes-exposure
+          - kubernetes-loki
+          - kubernetes-object-storage
+          - kubernetes-otlp
+          - kubernetes-prometheus
+          - kubernetes-demo
+          - kubernetes-foundation
+          - kubernetes-tempo
+          - kubernetes-valkey
       ref:
         description: Git ref or commit SHA to test
         required: true
@@ -59,7 +73,7 @@ jobs:
           go vet ./...
 
   focused:
-    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && !startsWith(inputs.gate, 'kubernetes-') }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -771,3 +785,1037 @@ jobs:
           name: final-product-bugs-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/final-bugs
           retention-days: 90
+
+  kubernetes_core_contract_core_runtime_neutrality:
+    name: Core · Runtime Neutrality
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        files="$(gofmt -l internal/application internal/openbao internal/identityprovider internal/capability)"
+        test -z "$files" || {
+          echo "gofmt required:" >&2
+          echo "$files" >&2
+          exit 1
+        }
+    - name: Run focused Core tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test             ./internal/application             ./internal/openbao             ./internal/identityprovider             ./internal/capability             ./internal/runtime             -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-core-contract' }}
+
+  kubernetes_adoption_contract_contract:
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 10
+    steps:
+    - name: Checkout BaseHarbor
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up candidate Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify Go toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        go version
+        test "$(go env GOVERSION)" = "go$(awk '$1 == "go" {print $2}' go.mod)"
+    - name: Run demo portability and target acceptance tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./cmd/baha \
+          -run '^(TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged|TestKubernetesReferenceDemoTargetAcceptance)$' \
+          -count=1 -v
+    - name: Build candidate CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+        "$RUNNER_TEMP/baha" version
+    - name: Verify pristine external demo remains untouched on ambiguous adoption
+      shell: bash
+      env:
+        DEMO_SHA: b5e428b5e1d9d385ac6be04f3d6ae77d3c4f8887
+      run: |
+        set -euo pipefail
+
+        demo="$RUNNER_TEMP/baseharbor-demo-k8s-contract"
+        rm -rf "$demo"
+        git clone --quiet https://github.com/mcpdev80/baseharbor-demo.git "$demo"
+        git -C "$demo" checkout --quiet "$DEMO_SHA"
+
+        test ! -e "$demo/baseharbor.yaml"
+        test ! -e "$demo/.baseharbor"
+
+        root_before="$(sha256sum "$demo/compose.yaml" | awk '{print $1}')"
+        companion_before="$(sha256sum "$demo/companion-app/compose.yaml" | awk '{print $1}')"
+
+        (
+          cd "$demo"
+          "$RUNNER_TEMP/baha" app inspect . >/tmp/baseharbor-demo-inspect.txt
+
+          if "$RUNNER_TEMP/baha" app init --quick >/tmp/baseharbor-demo-quick.txt 2>&1; then
+            echo "expected quick init to fail closed because the reference repo has multiple Compose files" >&2
+            exit 1
+          fi
+
+          grep -qi "multiple Compose files" /tmp/baseharbor-demo-quick.txt
+        )
+
+        test ! -e "$demo/baseharbor.yaml"
+        test ! -e "$demo/.baseharbor"
+
+        root_after="$(sha256sum "$demo/compose.yaml" | awk '{print $1}')"
+        companion_after="$(sha256sum "$demo/companion-app/compose.yaml" | awk '{print $1}')"
+
+        test "$root_before" = "$root_after"
+        test "$companion_before" = "$companion_after"
+        test -z "$(git -C "$demo" status --short)"
+    - name: Prove planned reference-demo Kubernetes resource shape
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        ns="${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}"
+        app="baseharbor-demo-shape"
+
+        cleanup() {
+          kubectl delete deployment "$app" -n "$ns" --ignore-not-found --wait=true
+          kubectl delete service "$app" -n "$ns" --ignore-not-found
+          kubectl delete secret "$app-bindings" -n "$ns" --ignore-not-found
+          kubectl delete configmap "$app-config" -n "$ns" --ignore-not-found
+        }
+        trap cleanup EXIT
+        cleanup
+
+        kubectl create secret generic "$app-bindings" -n "$ns" \
+          --from-literal=DATABASE_URL='postgresql://demo:demo@postgres:5432/demo' \
+          --from-literal=REDIS_URL='redis://valkey:6379/0' \
+          --from-literal=S3_ENDPOINT='http://object-storage:9000' \
+          --from-literal=S3_BUCKET='uploads' \
+          --from-literal=APP_SECRET='ci-only'
+
+        kubectl create configmap "$app-config" -n "$ns" \
+          --from-literal=PORT='8080'
+
+        cat <<'YAML' | sed "s/__APP__/$app/g; s/__NS__/$ns/g" | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: __APP__
+          namespace: __NS__
+          labels:
+            app.kubernetes.io/name: __APP__
+            app.kubernetes.io/managed-by: baseharbor
+            baseharbor.io/application: baseharbor-demo
+            baseharbor.io/environment: dev
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: __APP__
+          template:
+            metadata:
+              labels:
+                app.kubernetes.io/name: __APP__
+                app.kubernetes.io/managed-by: baseharbor
+                baseharbor.io/application: baseharbor-demo
+                baseharbor.io/environment: dev
+            spec:
+              containers:
+                - name: demo-app
+                  image: registry.k8s.io/pause:3.10
+                  envFrom:
+                    - configMapRef:
+                        name: __APP__-config
+                    - secretRef:
+                        name: __APP__-bindings
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: __APP__
+          namespace: __NS__
+          labels:
+            app.kubernetes.io/managed-by: baseharbor
+            baseharbor.io/application: baseharbor-demo
+            baseharbor.io/environment: dev
+        spec:
+          selector:
+            app.kubernetes.io/name: __APP__
+          ports:
+            - name: http
+              port: 8080
+              targetPort: 8080
+        YAML
+
+        kubectl rollout status deployment/"$app" -n "$ns" --timeout=120s
+
+        test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')" = "baseharbor"
+        test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.baseharbor\.io/application}')" = "baseharbor-demo"
+        test "$(kubectl get deployment "$app" -n "$ns" -o jsonpath='{.metadata.labels.baseharbor\.io/environment}')" = "dev"
+
+        test "$(kubectl get service "$app" -n "$ns" -o jsonpath='{.spec.ports[0].port}')" = "8080"
+        test "$(kubectl get secret "$app-bindings" -n "$ns" -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" = "postgresql://demo:demo@postgres:5432/demo"
+        test "$(kubectl get configmap "$app-config" -n "$ns" -o jsonpath='{.data.PORT}')" = "8080"
+
+        # The target realization must stay within the pre-existing namespace.
+        test "$(kubectl auth can-i create namespaces 2>/dev/null || true)" = "no"
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-adoption-contract' }}
+
+  kubernetes_core_services_postgres:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-postgres' }}
+    name: Kubernetes · PostgreSQL Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        files="$(gofmt -l internal/providers/runtime/kubernetes internal/application)"
+        test -z "$files" || {
+          echo "gofmt required:" >&2
+          echo "$files" >&2
+          exit 1
+        }
+    - name: Run PostgreSQL Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCorePostgresSemanticProbe$'             -count=1 -v
+    - name: Assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        remaining="$(kubectl get deployment,service -n "$namespace"             -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-postgres-proof'             --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "PostgreSQL proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+
+  kubernetes_core_services_openbao:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-openbao' }}
+    name: Kubernetes · OpenBao Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        files="$(gofmt -l internal/providers/runtime/kubernetes internal/openbao)"
+        test -z "$files" || {
+          echo "gofmt required:" >&2
+          echo "$files" >&2
+          exit 1
+        }
+    - name: Run OpenBao Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreOpenBaoPostgresStorageAndPKI$'             -count=1 -v
+    - name: Assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-openbao-proof'             --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "OpenBao proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+
+  kubernetes_core_services_identity_static:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-identity' }}
+    name: Identity · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_identity_integration_test.go
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_identity_integration_test.go; then
+          echo "Identity proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/identityprovider ./internal/application -run '^$' -count=1
+
+  kubernetes_core_services_identity:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-identity' }}
+    needs: kubernetes_core_services_identity_static
+    name: Kubernetes · Keycloak Identity Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 25
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run Keycloak identity Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreKeycloakIdentityLifecycle$'             -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-identity-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace"             -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Identity proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+
+  kubernetes_exposure_static:
+    name: Exposure · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_exposure_integration_test.go internal/exposure
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_exposure_integration_test.go internal/exposure; then
+          echo "Exposure Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/exposure -run '^$' -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-exposure' }}
+
+  kubernetes_exposure_exposure:
+    needs: kubernetes_exposure_static
+    name: Kubernetes · Exposure Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run exposure Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_EXPOSURE_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreExposureLifecycle$'             -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-exposure-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace"             -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Exposure proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-exposure' }}
+
+  kubernetes_loki_static:
+    name: Loki · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_loki_integration_test.go internal/logs/driver.go internal/logs/realization.go internal/capability/lifecycle.go internal/application/capability_model.go cmd/baha/app_logs.go
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_loki_integration_test.go internal/logs/driver.go internal/logs/realization.go internal/capability/lifecycle.go internal/application/capability_model.go cmd/baha/app_logs.go; then
+          echo "Loki Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/logs ./internal/capability ./internal/application -run '^$' -count=1
+    - name: Run focused Loki tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/logs ./internal/capability ./internal/application -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-loki' }}
+
+  kubernetes_loki_loki:
+    needs: kubernetes_loki_static
+    name: Kubernetes · Loki Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run Loki Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_LOKI_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes -run '^TestKubernetesCoreLokiLifecycle$' -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-loki-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Loki proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-loki' }}
+
+  kubernetes_object_storage_static:
+    name: Object Storage · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_object_storage_integration_test.go             internal/objectstorage             internal/application/object_storage_runtime.go
+        if ! git diff --exit-code --             internal/providers/runtime/kubernetes/core_object_storage_integration_test.go             internal/objectstorage             internal/application/object_storage_runtime.go; then
+          echo "Object-storage Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/objectstorage ./internal/application -run '^$' -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-object-storage' }}
+
+  kubernetes_object_storage_object_storage:
+    needs: kubernetes_object_storage_static
+    name: Kubernetes · SeaweedFS S3 Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run SeaweedFS S3 Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_OBJECT_STORAGE_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreObjectStorageS3Lifecycle$'             -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-object-storage-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace"             -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Object-storage proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-object-storage' }}
+
+  kubernetes_otlp_static:
+    name: OTLP · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_otlp_integration_test.go internal/telemetry internal/application/telemetry_binding.go
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_otlp_integration_test.go internal/telemetry internal/application/telemetry_binding.go; then
+          echo "OTLP Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/telemetry ./internal/application -run '^$' -count=1
+    - name: Run focused OTLP contract tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/telemetry ./internal/application -run 'OTLP|Telemetry' -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-otlp' }}
+
+  kubernetes_otlp_otlp:
+    needs: kubernetes_otlp_static
+    name: Kubernetes · OTLP Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run OTLP Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_OTLP_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes -run '^TestKubernetesCoreOTLPLifecycle$' -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-otlp-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "OTLP proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-otlp' }}
+
+  kubernetes_prometheus_static:
+    name: Prometheus · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_prometheus_integration_test.go internal/metrics/prometheus.go internal/metrics/realization.go
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_prometheus_integration_test.go internal/metrics/prometheus.go internal/metrics/realization.go; then
+          echo "Prometheus Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/metrics ./internal/application ./internal/capability -run '^$' -count=1
+    - name: Run focused Prometheus tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/metrics -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-prometheus' }}
+
+  kubernetes_prometheus_prometheus:
+    needs: kubernetes_prometheus_static
+    name: Kubernetes · Prometheus Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run Prometheus Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_PROMETHEUS_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes -run '^TestKubernetesCorePrometheusLifecycle$' -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-prometheus-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Prometheus proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-prometheus' }}
+
+  kubernetes_demo_build_artifact:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-demo' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
+    steps:
+    - name: Checkout reference demo
+      uses: actions/checkout@v7.0.1
+      with:
+        repository: mcpdev80/baseharbor-demo
+        ref: 231f97ed42f12363edc3358fab34d24930c59dc0
+    - name: Build and push ephemeral OCI image
+      id: image
+      shell: bash
+      run: |
+        set -euo pipefail
+        image="ttl.sh/baseharbor-demo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:1h"
+        docker build --pull -t "$image" demo-app
+        docker push "$image"
+        echo "reference=$image" >> "$GITHUB_OUTPUT"
+
+  kubernetes_demo_kubernetes_demo:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-demo' }}
+    needs: kubernetes_demo_build_artifact
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 15
+    steps:
+    - name: Checkout BaseHarbor
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up candidate Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Checkout pinned reference demo
+      uses: actions/checkout@v7.0.1
+      with:
+        repository: mcpdev80/baseharbor-demo
+        ref: 231f97ed42f12363edc3358fab34d24930c59dc0
+        path: .test/reference-demo
+    - name: Run real reference-demo Kubernetes lifecycle
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_DEMO_INTEGRATION: '1'
+        BASEHARBOR_DEMO_IMAGE: ${{ needs.kubernetes_demo_build_artifact.outputs.image }}
+        BASEHARBOR_DEMO_ROOT: ${{ github.workspace }}/.test/reference-demo
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes \
+          -run '^TestKubernetesReferenceDemoArtifactLifecycleOnCI$' \
+          -count=1 -v
+    - name: Verify no BaseHarbor demo resources remain
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        if kubectl get deployment,service,configmap,secret \
+          -n "${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}" \
+          -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=baseharbor-demo' \
+          -o name | grep -q .; then
+          kubectl get deployment,service,configmap,secret \
+            -n "${BASEHARBOR_K8S_NAMESPACE:-baseharbor-ci}" \
+            -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=baseharbor-demo'
+          exit 1
+        fi
+
+  kubernetes_foundation_foundation:
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up candidate Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        diff="$(gofmt -d \
+          internal/workload \
+          internal/artifact \
+          internal/providers/runtime/kubernetes \
+          internal/runtime/contract \
+          internal/runtime/model \
+          internal/application/workload_model.go \
+          internal/application/workload_model_test.go)"
+        if [ -n "$diff" ]; then
+          printf '%s\n' "$diff"
+          exit 1
+        fi
+    - name: Run foundation compatibility tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test \
+          ./internal/artifact/... \
+          ./internal/runtime \
+          ./internal/runtime/contract \
+          ./internal/runtime/model \
+          ./internal/workload \
+          ./internal/providers/runtime/kubernetes \
+          ./internal/application \
+          ./internal/deployment \
+          -count=1 -v
+
+        go test ./cmd/baha \
+          -run '^(TestRuntime|TestProvider|Test.*Workload.*)' \
+          -count=1
+    - name: Run real k3s provider lifecycle acceptance
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_INTEGRATION: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes \
+          -run '^TestKubernetesRenderedWorkloadLifecycleOnCI$' \
+          -count=1 -v
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-foundation' }}
+
+  kubernetes_tempo_static:
+    name: Tempo · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_tempo_integration_test.go internal/traces/tempo.go internal/traces/realization.go
+        if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_tempo_integration_test.go internal/traces/tempo.go internal/traces/realization.go; then
+          echo "Tempo Kubernetes proof requires gofmt; diff shown above." >&2
+          exit 1
+        fi
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/traces ./internal/telemetry ./internal/application ./internal/capability -run '^$' -count=1
+    - name: Run focused Tempo tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/traces -count=1
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-tempo' }}
+
+  kubernetes_tempo_tempo:
+    needs: kubernetes_tempo_static
+    name: Kubernetes · Tempo Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 20
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Run Tempo Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_TEMPO_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes -run '^TestKubernetesCoreTempoLifecycle$' -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-tempo-proof'
+        kubectl delete deployment,service,configmap,secret -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Tempo proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-tempo' }}
+
+  kubernetes_valkey_valkey:
+    name: Kubernetes · Valkey Core Seam
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - baseharbor
+    - k3s
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: false
+    - name: Verify formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        gofmt -w internal/providers/runtime/kubernetes/core_postgres_integration_test.go internal/providers/runtime/kubernetes/core_valkey_integration_test.go
+        git diff --exit-code -- internal/providers/runtime/kubernetes/core_postgres_integration_test.go internal/providers/runtime/kubernetes/core_valkey_integration_test.go
+    - name: Compile focused packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes ./internal/application -run TestDoesNotExist -count=1
+    - name: Run Valkey Core seam proof on k3s
+      shell: bash
+      env:
+        BASEHARBOR_KUBERNETES_CORE_SERVICES_TEST: '1'
+      run: |
+        set -euo pipefail
+        go test ./internal/providers/runtime/kubernetes -run TestKubernetesCoreValkeySemanticProbe -count=1 -v
+    - name: Cleanup and assert proof cleanup
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+        namespace="${namespace:-default}"
+        selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-valkey-proof'
+        kubectl delete deployment,service -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+        remaining="$(kubectl get deployment,service -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+        test -z "$remaining" || {
+          echo "Valkey proof left BaseHarbor-owned resources:" >&2
+          echo "$remaining" >&2
+          exit 1
+        }
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'kubernetes-valkey' }}
