@@ -37,6 +37,9 @@ func TestRetainedTempoInventoryPreservesDataOwnerAndExternalDependencies(t *test
 			if err != nil || len(resources) == 0 {
 				t.Fatalf("retained canonical Tempo owner not observed: %v", err)
 			}
+			if needed, err := ExistingRuntimeUpgradeRequiredAt(root, "isolated", m, placement); err != nil || needed {
+				t.Fatalf("current canonical runtime invented a version change: %v", err)
+			}
 			after, _ := os.ReadFile(files.Env)
 			if !bytes.Equal(before, after) {
 				t.Fatal("read-only inventory changed retained access material")
@@ -58,6 +61,9 @@ func TestRetainedTempoInventoryPreservesDataOwnerAndExternalDependencies(t *test
 			}
 			if _, _, _, err := ExistingRuntimeInventoryAt(root, "isolated", m, placement); err != nil {
 				t.Fatalf("previous exact canonical owner lost retirement authority: %v", err)
+			}
+			if needed, err := ExistingRuntimeUpgradeRequiredAt(root, "isolated", m, placement); err != nil || !needed {
+				t.Fatalf("retained previous image was silently reused without a planned update: %v", err)
 			}
 			unchanged, _ := os.ReadFile(files.Compose)
 			if string(unchanged) != legacy {

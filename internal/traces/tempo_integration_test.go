@@ -6,6 +6,7 @@ import (
 	"fmt"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,7 +49,14 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	issuer := serviceissuer.New(t)
 
 	traceResource := capability.Resource{Application: m.Name, Kind: capability.Traces, Name: "default", Provider: capability.ProviderTempo}
-	traceDriver := traces.NewDriverAt(compose, m, issuer, providerState, namespace)
+	var traceRuntime traces.Runtime = compose
+	if os.Getenv("BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE") == "1" {
+		if os.Getenv("BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE") != "1" {
+			t.Fatal("legacy version qualification requires retained-data assertions")
+		}
+		traceRuntime = &previousTempoRuntime{Runtime: compose}
+	}
+	traceDriver := traces.NewDriverAt(traceRuntime, m, issuer, providerState, namespace)
 	if err := traceDriver.Preflight(ctx, traceResource, capability.Binding{}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +70,13 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	placement, err := traces.PlacementForAt(providerState, namespace, m)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if os.Getenv("BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE") == "1" {
+		identity, err := compose.ProjectServiceImageIdentity(ctx, placement.Project, "tempo")
+		if err != nil || identity.Reference != "docker.io/grafana/tempo:3.0.2" || identity.ImageID == "" {
+			t.Fatalf("original starting image not verified: %v", err)
+		}
+		t.Log("actual isolated starting image Tempo 3.0.2 verified before the single original probe")
 	}
 	if err := containersecurity.VerifyComposeService(ctx, placement.Project, "tempo", containersecurity.Requirements{
 		ReadOnlyRootfs: true, DropAllCaps: true, NoNewPrivs: true,
@@ -118,6 +133,36 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 			t.Fatalf("collector retirement affected retained Tempo sibling: %v", err)
 		}
 		selected := capability.ProviderPlacement{Scope: placement.Scope, Ownership: capability.OwnershipBaseHarbor}
+		if os.Getenv("BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE") == "1" {
+			required, err := traces.ExistingRuntimeUpgradeRequiredAt(providerState, namespace, m, selected)
+			if err != nil || !required {
+				t.Fatalf("previous actual image not identified for upgrade: %v", err)
+			}
+			canonical, err := os.ReadFile(traceFiles.Compose)
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonical = bytes.ReplaceAll(canonical, []byte("image: docker.io/grafana/tempo:3.0.2\n"), []byte("image: "+traces.ProviderImage+"\n"))
+			if err := os.WriteFile(traceFiles.Compose, canonical, 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Normal native materialization, not forced deletion or reseeding.
+			if err := compose.UpProject(ctx, placement.Project, traceFiles.Compose, traceFiles.Env); err != nil {
+				t.Fatal(err)
+			}
+			if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
+				t.Fatalf("original 3.0.2 trace not readable after version transition: %v", err)
+			}
+			identity, err := compose.ProjectServiceImageIdentity(ctx, placement.Project, "tempo")
+			if err != nil || identity.Reference != traces.ProviderImage || identity.ImageID == "" {
+				t.Fatalf("new actual image not verified: %v", err)
+			}
+			currentEnv, _ := os.ReadFile(traceFiles.Env)
+			if !bytes.Equal(traceEnv, currentEnv) {
+				t.Fatal("version transition changed protected access environment")
+			}
+			t.Log("original 3.0.2 trace read after normal native 3.1.0 materialization, actual new image and unchanged access environment verified; no reseeding")
+		}
 		if _, err := traces.RetireRuntimeAt(ctx, native, providerState, namespace, m, selected); err != nil {
 			diagnostics, done := context.WithTimeout(context.Background(), 10*time.Second)
 			t.Log(compose.DiagnosticsProject(diagnostics, placement.Project, traceFiles.Compose, traceFiles.Env))
@@ -143,4 +188,31 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 		t.Log("original trace read after selected Collector and Tempo retirement/resume without reseeding; sibling and retained environment preserved")
 	}
 	fmt.Println("verified OTLP Collector -> Tempo trace ingestion")
+}
+
+// Qualify only the exact previously generated renderer on the isolated fixture.
+// This wrapper changes the first launch BEFORE any probe is exported. All
+// actual native operations and the later version transition remain production
+// RuntimeProvider calls; there is no mocked runtime or alternative state owner.
+type previousTempoRuntime struct {
+	traces.Runtime
+	launched bool
+}
+
+func (r *previousTempoRuntime) UpProject(ctx context.Context, project, compose, env string) error {
+	if !r.launched {
+		data, err := os.ReadFile(compose)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(data), "image: "+traces.ProviderImage+"\n") {
+			return fmt.Errorf("expected current exact isolated Tempo renderer")
+		}
+		data = bytes.ReplaceAll(data, []byte("image: "+traces.ProviderImage+"\n"), []byte("image: docker.io/grafana/tempo:3.0.2\n"))
+		if err := os.WriteFile(compose, data, 0600); err != nil {
+			return err
+		}
+		r.launched = true
+	}
+	return r.Runtime.UpProject(ctx, project, compose, env)
 }

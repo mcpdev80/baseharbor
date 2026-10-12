@@ -56,6 +56,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"
+      BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[tempo-legacy-upgrade]') && '1' || '0' }}
       BASEHARBOR_TRACES_INTEGRATION: "1"
       GOTOOLCHAIN: local
     steps:
