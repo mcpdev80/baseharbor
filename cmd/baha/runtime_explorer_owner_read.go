@@ -1,10 +1,10 @@
 package main
 
 import (
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 func runtimeMutationOwnerBytes(path string, optional bool) ([]byte, error) {
@@ -21,11 +21,7 @@ func runtimeMutationOwnerBytes(path string, optional bool) ([]byte, error) {
 	if os.IsNotExist(err) && optional {
 		return nil, nil
 	}
-	if err != nil || !expected.Mode().IsRegular() || expected.Mode().Perm()&0077 != 0 || expected.Size() > 8<<20 {
-		return nil, runtimeMutationOwnerError()
-	}
-	owner, ok := expected.Sys().(*syscall.Stat_t)
-	if !ok || owner.Uid != uint32(os.Getuid()) || owner.Nlink != 1 {
+	if err != nil || !expected.Mode().IsRegular() || expected.Size() > 8<<20 || !bhruntime.ProtectedStateOwner(path, expected) {
 		return nil, runtimeMutationOwnerError()
 	}
 	file, err := os.Open(path)
@@ -39,7 +35,8 @@ func runtimeMutationOwnerBytes(path string, optional bool) ([]byte, error) {
 	}
 	data, err := io.ReadAll(io.LimitReader(file, (8<<20)+1))
 	current, statErr := os.Lstat(path)
-	if err != nil || statErr != nil || len(data) > 8<<20 || !current.Mode().IsRegular() || !os.SameFile(expected, current) || current.Mode().Perm()&0077 != 0 {
+	if err != nil || statErr != nil || len(data) > 8<<20 || !current.Mode().IsRegular() || !os.SameFile(expected, current) || !bhruntime.ProtectedStateOwner(path, current) {
+		zeroBytes(data)
 		return nil, runtimeMutationOwnerError()
 	}
 	return data, nil

@@ -360,6 +360,13 @@ Identity removal must not reset either merely because an issuer disappears.
 validity evidence stays unknown; expired offline validation is unavailable.
 Retained certificate files imply neither indefinite TLS nor future renewal.
 
+Protected X.509 files expose `valid_from` and `expires_at` from the parsed
+certificates. A bundle uses the latest start and earliest expiry of every
+certificate, including when a key block precedes them. The current observation
+distinguishes not-yet-valid, within-window and expired material. This proves time
+bounds only; chain trust, revocation, endpoint access and future renewal still
+need actual verification. Key contents and certificate subjects are not emitted.
+
 The consent digest ignores only the changing remaining-validity countdown; absolute
 expiry, actual expired/valid consequences and changed material still require fresh consent.
 `ProviderMaterial.Retention` separately verifies survival of stop and runtime

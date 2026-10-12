@@ -54,10 +54,10 @@ func TestProviderMaterialCertificateReportsActualExpiryWithoutSecretBytes(t *tes
 			if err := inspectProviderCertificateMaterial(path, info, &material); err != nil {
 				t.Fatal(err)
 			}
-			if tc.isCertificate && (material.Kind != "certificate" || material.ExpiresAt != expires.Format(time.RFC3339) || !strings.Contains(material.Evidence, "future issuance/renewal/revocation not verified")) {
+			if tc.isCertificate && (material.Kind != "certificate" || material.ValidFrom != template.NotBefore.Format(time.RFC3339) || material.ExpiresAt != expires.Format(time.RFC3339) || !strings.Contains(material.Evidence, "future issuance/renewal/revocation not verified")) {
 				t.Fatalf("incorrect validity/continuity projection: %#v", material)
 			}
-			if !tc.isCertificate && material.ExpiresAt != "" {
+			if !tc.isCertificate && (material.Kind != "key" || material.ExpiresAt != "" || material.ValidFrom != "") {
 				t.Fatal("private key acquired invented validity")
 			}
 			raw, err := json.Marshal(material)
@@ -65,6 +65,45 @@ func TestProviderMaterialCertificateReportsActualExpiryWithoutSecretBytes(t *tes
 				t.Fatal("material contents entered result")
 			}
 		})
+	}
+}
+
+func TestProviderCertificateBundleUsesWholeWindowAndNoKeyContents(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	makeCertificate := func(from, until time.Time, serial int64) []byte {
+		t.Helper()
+		template := &x509.Certificate{SerialNumber: big.NewInt(serial), NotBefore: from, NotAfter: until, KeyUsage: x509.KeyUsageDigitalSignature}
+		der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	}
+	private, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})
+	bundle := append(secret, makeCertificate(start, start.Add(48*time.Hour), 1)...)
+	bundle = append(bundle, makeCertificate(start.Add(time.Hour), start.Add(24*time.Hour), 2)...)
+	material := application.ProviderMaterial{}
+	if err := describeProviderCertificateWindow(bundle, &material); err != nil {
+		t.Fatal(err)
+	}
+	if material.ValidFrom != start.Add(time.Hour).Format(time.RFC3339) || material.ExpiresAt != start.Add(24*time.Hour).Format(time.RFC3339) || !strings.Contains(material.Evidence, "certificates=2") {
+		t.Fatalf("bundle window: %#v", material)
+	}
+	raw, err := json.Marshal(material)
+	if err != nil || strings.Contains(string(raw), "BEGIN ") || strings.Contains(string(raw), string(secret)) {
+		t.Fatal("key contents entered result", err)
+	}
+	disjoint := append(makeCertificate(start, start.Add(time.Hour), 3), makeCertificate(start.Add(2*time.Hour), start.Add(3*time.Hour), 4)...)
+	if err := describeProviderCertificateWindow(disjoint, &application.ProviderMaterial{}); err == nil {
+		t.Fatal("disjoint certificate windows accepted")
 	}
 }
 

@@ -19,6 +19,7 @@ func TestProviderImpactRevisionIgnoresSamplesButTracksAuthority(t *testing.T) {
 	fact.MemoryBytes.Value, fact.Containers.Value = &second, &second
 	s.Facts["one"] = fact
 	o.Revision = "another-derived-revision"
+	o.ObservedAt = "2026-10-12T21:00:01Z"
 	after, err := applicationImpactRevisionInput(s, o)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("runtime sampling or derived revision invalidates approved effects")

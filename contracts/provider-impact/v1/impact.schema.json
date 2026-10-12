@@ -386,6 +386,9 @@
         "expires_at": {
           "type": "string"
         },
+        "valid_from": {
+          "type": "string"
+        },
         "verified": {
           "type": "boolean"
         },

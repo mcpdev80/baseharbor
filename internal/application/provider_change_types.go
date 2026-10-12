@@ -43,6 +43,7 @@ type ProviderMaterial struct {
 	Location  *ResourceLocation            `json:"location,omitempty"`
 	Recovery  []ResourceLocation           `json:"recovery"`
 	Access    *ProviderAccess              `json:"access,omitempty"`
+	ValidFrom string                       `json:"valid_from,omitempty"`
 	ExpiresAt string                       `json:"expires_at,omitempty"`
 	Verified  bool                         `json:"verified"`
 	Evidence  string                       `json:"evidence,omitempty"`

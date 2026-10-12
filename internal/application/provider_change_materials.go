@@ -75,24 +75,14 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 			known = false
 		}
 		consequence := MaterialConsequence{Before: m, After: d, Meaning: meaning}
-		if m.ExpiresAt != "" {
+		if m.ExpiresAt != "" || m.ValidFrom != "" {
 			if observedAt == "" {
 				known = false
 				attention = true
 				consequence.Meaning += "; current validity unverified"
 			} else {
 				at, _ := time.Parse(time.RFC3339, observedAt)
-				until, _ := time.Parse(time.RFC3339, m.ExpiresAt)
-				seconds := int64(until.Sub(at).Seconds())
-				if seconds < 0 {
-					seconds = 0
-				}
-				consequence.RemainingValiditySeconds = &seconds
-				if !until.After(at) {
-					consequence.Meaning += "; actual material validity has expired"
-				} else {
-					consequence.Meaning += "; material remains valid until its stated expiry"
-				}
+				consequence = describeMaterialValidity(consequence, at)
 				consequence.Meaning += "; future renewal is not implied by retention"
 			}
 		}
@@ -102,6 +92,31 @@ func describeMaterials(imp *ProviderImpact, r ProviderChangeRequest, fact Provid
 		return false, false, false, &ProviderChangeError{Code: "material-inventory-missing"}
 	}
 	return known, destructive, attention, nil
+}
+
+func describeMaterialValidity(consequence MaterialConsequence, at time.Time) MaterialConsequence {
+	m := consequence.Before
+	if m.ExpiresAt != "" {
+		until, _ := time.Parse(time.RFC3339, m.ExpiresAt)
+		seconds := int64(until.Sub(at).Seconds())
+		if seconds < 0 {
+			seconds = 0
+		}
+		consequence.RemainingValiditySeconds = &seconds
+		if !until.After(at) {
+			consequence.Meaning += "; actual material validity has expired"
+			return consequence
+		}
+	}
+	if m.ValidFrom != "" {
+		from, _ := time.Parse(time.RFC3339, m.ValidFrom)
+		if at.Before(from) {
+			consequence.Meaning += "; actual material validity has not begun"
+			return consequence
+		}
+	}
+	consequence.Meaning += "; within its observed time window; usable access, trust and revocation status are not implied"
+	return consequence
 }
 
 func securityMaterial(kind string) bool {

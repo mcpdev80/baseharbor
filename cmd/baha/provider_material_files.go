@@ -5,10 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // Inventory protected existing provider files without reading secret values
@@ -35,9 +35,7 @@ func observeOwnedProviderFiles(owner, target, instance, root string) ([]applicat
 			complete = false
 			return err
 		}
-		stat, ownerKnown := info.Sys().(*syscall.Stat_t)
-		ownerValid := ownerKnown && stat.Uid == uint32(os.Getuid()) && (info.IsDir() || stat.Nlink == 1)
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || !ownerValid {
+		if info.Mode()&os.ModeSymlink != 0 || !bhruntime.ProtectedStateOwner(path, info) {
 			material.Evidence = "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
 			materials = append(materials, material)
 			complete = false

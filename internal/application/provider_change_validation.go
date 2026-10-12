@@ -128,6 +128,16 @@ func validateImpactObservation(o ProviderImpactObservation) error {
 			if err := validateExpiry(m.ExpiresAt); err != nil {
 				return err
 			}
+			if err := validateExpiry(m.ValidFrom); err != nil {
+				return err
+			}
+			if m.ValidFrom != "" && m.ExpiresAt != "" {
+				from, _ := time.Parse(time.RFC3339, m.ValidFrom)
+				until, _ := time.Parse(time.RFC3339, m.ExpiresAt)
+				if !until.After(from) {
+					return fmt.Errorf("material validity window must have a later expiry")
+				}
+			}
 		}
 		for _, e := range f.Effects {
 			if e.Aspect == "" || e.Before == "" || e.After == "" {

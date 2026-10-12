@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -15,7 +16,7 @@ import (
 // Project actual existing owners into the shared impact model. Missing adapter
 // observations remain incomplete, never an invented safe disposition.
 func observeApplicationProviderImpact(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot) application.ProviderImpactObservation {
-	observation := application.ProviderImpactObservation{InventoryComplete: true, Providers: map[string]application.ProviderImpactFact{}, Functions: []application.ProviderFunctionUse{}}
+	observation := application.ProviderImpactObservation{ObservedAt: time.Now().UTC().Format(time.RFC3339), InventoryComplete: true, Providers: map[string]application.ProviderImpactFact{}, Functions: []application.ProviderFunctionUse{}}
 	instances := append([]capability.ProviderInstance{}, snapshot.Registry.Instances...)
 	instances = append(instances, snapshot.Ancillary...)
 	for _, instance := range instances {
@@ -72,6 +73,9 @@ func applicationImpactRevisionInput(snapshot application.ResolutionSnapshot, obs
 		facts[id] = fact
 	}
 	observation.Revision = ""
+	// Absolute validity bounds and the domain's current expired/not-yet-valid
+	// consequences remain bound. A fresh countdown sample is not new authority.
+	observation.ObservedAt = ""
 	return json.Marshal(struct {
 		Registry    capability.Registry
 		Ancillary   []capability.ProviderInstance

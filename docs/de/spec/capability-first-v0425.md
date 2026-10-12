@@ -382,6 +382,14 @@ bestehenden geschützten Runtime-Owner. Identity-Entfernung setzt diese nicht zu
 Gültigkeitsevidenz bleibt unbekannt; abgelaufene Offline-Validierung ist nicht
 verfügbar. Erhaltene Zertifikatsdateien bedeuten weder unbegrenztes TLS noch künftige
 Erneuerung.
+
+Geschützte X.509-Dateien liefern `valid_from` und `expires_at` aus den geparsten
+Zertifikaten. Bei Bundles gelten der späteste Beginn und das früheste Ablaufdatum
+aller Zertifikate, auch wenn zuerst ein Schlüsselblock steht. Die aktuelle
+Beobachtung unterscheidet noch nicht gültiges, innerhalb des Zeitfensters
+liegendes und abgelaufenes Material. Dies belegt nur die Zeitgrenzen; Trust-Kette,
+Widerruf, Endpunktzugriff und künftige Erneuerung benötigen tatsächliche Prüfungen.
+Schlüsselinhalte und Zertifikats-Subjects werden nicht ausgegeben.
 Der Zustimmungs-Digest ignoriert nur den laufenden Restgültigkeits-Countdown;
 absolute Ablaufzeit, tatsächlich abgelaufene/gültige Folgen und geändertes Material
 erfordern weiterhin neue Zustimmung.
