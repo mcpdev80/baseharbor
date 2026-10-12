@@ -274,7 +274,8 @@ spec:
 			"--timeout=180s",
 		)
 		if output, err := rollout.CombinedOutput(); err != nil {
-			t.Fatalf("wait for %s: %v: %s", deployment, err, strings.TrimSpace(string(output)))
+			diagnostics := kubernetesServiceDiagnostics(ctx, provider, namespace, appName, environment, strings.TrimPrefix(deployment, base+"-"))
+			t.Fatalf("wait for %s: %v: %s\n%s", deployment, err, strings.TrimSpace(string(output)), diagnostics)
 		}
 	}
 
@@ -345,4 +346,25 @@ func indentYAMLBlock(value string, spaces int) string {
 		lines[i] = prefix + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+
+func kubernetesServiceDiagnostics(ctx context.Context, provider Provider, namespace, application, environment, service string) string {
+	selector := ownershipSelector(application, environment) +
+		",baseharbor.io/workload-service=" + workloadServiceLabel(service)
+	var out strings.Builder
+	for _, args := range [][]string{
+		{"get", "pods", "-n", namespace, "-l", selector, "-o", "wide"},
+		{"describe", "pods", "-n", namespace, "-l", selector},
+		{"logs", "-n", namespace, "-l", selector, "--tail=200", "--prefix=true"},
+	} {
+		cmd := exec.CommandContext(ctx, provider.KubectlPath(), args...)
+		data, err := cmd.CombinedOutput()
+		fmt.Fprintf(&out, "\n$ kubectl %s\n%s", strings.Join(args, " "), strings.TrimSpace(string(data)))
+		if err != nil {
+			fmt.Fprintf(&out, "\n[diagnostic command error: %v]", err)
+		}
+		out.WriteString("\n")
+	}
+	return out.String()
 }
