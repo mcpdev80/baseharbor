@@ -47,9 +47,14 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 	// adapters supply function evidence; product features are not inferred.
 	// Bind consent to the current registry, dependency observations, actual
 	// inventory and file revisions. Hash input stays internal and secret-free.
+	fileRevision, fileErr := applicationImpactFileRevision(observation)
 	data, err := applicationImpactRevisionInput(snapshot, observation)
+	if fileErr != nil {
+		observation.InventoryComplete = false
+		data, err = applicationImpactRevisionInput(snapshot, observation)
+	}
 	if err == nil {
-		digest := sha256.Sum256(data)
+		digest := sha256.Sum256(append(data, []byte(fileRevision)...))
 		observation.Revision = hex.EncodeToString(digest[:])
 	} else {
 		observation.InventoryComplete = false

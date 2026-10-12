@@ -38,7 +38,7 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 		return inventory, err
 	}
 	inventory.Files = files
-	actual, err := os.ReadFile(files.Compose)
+	actual, err := readCanonicalOwnerFile(files.Compose)
 	if err != nil {
 		return inventory, err
 	}
@@ -75,24 +75,13 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 		} else {
 			return inventory, fmt.Errorf("native control-plane service %s has no canonical module owner", service)
 		}
-		inventory.Resources = append(inventory.Resources, ProjectResource{Kind: "container", Name: project + "-" + service + "-1"})
 	}
-	for key, volume := range model.Volumes {
-		name := volume.Name
-		if name == "" {
-			name = project + "_" + key
-		}
-		inventory.Resources = append(inventory.Resources, ProjectResource{Kind: "volume", Name: name})
-	}
-	for key, network := range model.Networks {
-		if network.External {
-			continue
-		}
-		name := network.Name
-		if name == "" {
-			name = project + "_" + key
-		}
-		inventory.Resources = append(inventory.Resources, ProjectResource{Kind: "network", Name: name})
+	// Use the shared protected-owner authority for resources as well as exact
+	// renderer matching. UID, hardlinks and every parent are revalidated; a
+	// matching document through a foreign link cannot authorize Core mutation.
+	inventory.Resources, err = ExistingCanonicalProjectInventory(project, files.Compose, string(actual), files.Env)
+	if err != nil {
+		return inventory, err
 	}
 	sort.Strings(inventory.SQLServices)
 	sort.Strings(inventory.SecretsServices)

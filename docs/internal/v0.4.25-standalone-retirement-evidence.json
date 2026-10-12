@@ -162,6 +162,40 @@
           "artifact_sha256": "d6d069057191f620ed1f14fb2a963eb4b1c1e5de858d52e0edad351fff1b8a96"
         }
       ]
+    },
+    {
+      "commit": "a02ccc10400a2a30a229992b5f44bf93e2c07b48",
+      "tree": "4f61e2d39ff6146952809675f11cb2b1b2a85372",
+      "run_id": 38247738911,
+      "attempt": 1,
+      "outcome": "success",
+      "tempo_image": "docker.io/grafana/tempo:3.1.0",
+      "block_write_format": "vParquet4",
+      "go_version": "1.25.0",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114805792749,
+          "outcome": "success",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "seconds": 55.8,
+          "artifact_id": 11746648916,
+          "artifact_sha256": "8d4b41804557f3837f8e2ddefb5040b3b519b7fc5c76db05ffcf7067ce689aec",
+          "s3": "unchanged previously qualified family intentionally not repeated"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114805792309,
+          "outcome": "success",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "seconds": 43.43,
+          "artifact_id": 11746274066,
+          "artifact_sha256": "b19f0633e3a9c3c39f908e0d757c0840b3d23eabd2188f168e915032ff5080f3",
+          "s3": "unchanged previously qualified family intentionally not repeated"
+        }
+      ]
     }
   ],
   "corrections_pending_native_proof": [],
@@ -173,7 +207,92 @@
       "upstream_fix": "https://github.com/grafana/tempo/pull/7986",
       "upstream_fix_release": "v3.1.0",
       "release_verified_via": "https://api.github.com/repos/grafana/tempo/releases/latest",
-      "required": "Apply the upstream fix through the existing provider upgrade/impact authority, review vParquet5 default versus retained vParquet4 material and qualify original-record continuity on Docker/Podman. No image upgrade or storage-format change is claimed in this increment."
+      "required": "Existing live 3.0.2-to-3.1.0 upgrades and HA require distinct existing upgrade/impact authority and acceptance. Current 3.1.0 canonical renderer explicitly writes vParquet4; original trace retirement/resume is qualified on both native engines. Universal lifecycle and final ecosystem readiness remain incomplete.",
+      "status": "current-renderer-retirement-resolved; existing-live-version-transition-not-qualified",
+      "resolved_by": "a02ccc10400a2a30a229992b5f44bf93e2c07b48 / run38247738911"
+    }
+  ],
+  "source_qualifications": [
+    {
+      "source": {
+        "commit": "a02ccc10400a2a30a229992b5f44bf93e2c07b48",
+        "tree": "4f61e2d39ff6146952809675f11cb2b1b2a85372",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 65.289,
+      "race_packages": [
+        "./internal/traces",
+        "./internal/telemetry",
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.198,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.517,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.704,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.694,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.884,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.548,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.714,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
     }
   ]
 }
