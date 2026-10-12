@@ -83,3 +83,35 @@ func TestApplicationStopCLIJSONMCPExposeSameRequiredAcknowledgement(t *testing.T
 		t.Fatal("CLI/MCP do not expose the same concrete current stop plan")
 	}
 }
+
+func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	executor := &bahaMachineExecutor{store: r.Store}
+	selected := machine.OperationContext{Application: r.Manifest.Name, Environment: r.Manifest.Environment, Target: r.Target.Name}
+	_, httpErr := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, json.RawMessage(`{}`), nil)
+	var httpFailure *machine.Error
+	if !errors.As(httpErr, &httpFailure) || httpFailure.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("HTTP stop did not require current impact acknowledgement: %v", httpErr)
+	}
+	httpPlan, _ := json.Marshal(httpFailure.Details)
+	local, err := buildApplicationStopPlan(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded applicationStopPlan
+	if json.Unmarshal(httpPlan, &decoded) != nil || decoded.Scope.PlanID != local.Scope.PlanID {
+		t.Fatal("HTTP stop uses a different consequence authority")
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`{"target":"foreign"}`), json.RawMessage(`{"environment":"foreign"}`), json.RawMessage(`{"name":"foreign"}`)} {
+		_, err := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, raw, nil)
+		if !errors.As(err, &httpFailure) || httpFailure.Code != machine.ErrorPolicyDenied || httpFailure.CauseCode != "operation_context_mismatch" {
+			t.Fatalf("HTTP stop escaped authorized selectors: %v", err)
+		}
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`{"approval":true}`), json.RawMessage(`{"provider_change_consent":{"first":false,"first":true}}`)} {
+		_, err := executor.Execute(t.Context(), machine.Operation{ID: "app.stop"}, selected, raw, nil)
+		if !errors.As(err, &httpFailure) || httpFailure.Code != machine.ErrorValidationFailed {
+			t.Fatalf("generic or ambiguous acknowledgement reached stop authority: %v", err)
+		}
+	}
+}

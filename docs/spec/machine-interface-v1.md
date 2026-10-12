@@ -96,3 +96,18 @@ Credential-bearing URLs MUST NOT be returned as normal machine output.
 - Docker/Compose and Podman/Quadlet MUST expose the same agent-facing semantic operations where the lifecycle operation is supported.
 
 The typed machine operation registry in `internal/machine` is the authoritative operation/safety definition.
+
+## Application stop through HTTP
+
+Core discovery now includes the existing `app.stop` operation. Its HTTP adapter
+uses the same selected deployment, provider consequence scope, independent
+plan-bound acknowledgements, ownership revalidation and actual stop result as
+CLI/JSON/MCP. The input accepts `provider_change_consent`; generic approval
+cannot substitute either required stage. A Console must acknowledge the outer
+`baseharbor.provider-impact-scope/v1` plan for that selected deployment, rather
+than one of its leaf plans. Foreign selectors and ambiguous consent objects
+are rejected before the runtime operation. Retained owners do not establish
+continued consumer functionality; incomplete consequences remain partial.
+
+Transport source checks do not replace source-matched authenticated browser or
+native runtime qualification; final v0.4.25 ecosystem acceptance remains open.

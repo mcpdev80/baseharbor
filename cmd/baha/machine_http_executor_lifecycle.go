@@ -19,6 +19,8 @@ func (e *bahaMachineExecutor) executeHTTPLifecycle(
 	report machinehttp.ProgressReporter,
 ) (any, error) {
 	switch operationID {
+	case "app.stop":
+		return e.executeHTTPApplicationStop(ctx, operationContext, raw, report)
 	case "apply":
 		return e.executeHTTPApply(ctx, operationContext, raw, report)
 	case "update":

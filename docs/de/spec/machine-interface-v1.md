@@ -96,3 +96,20 @@ URLs mit eingebetteten Zugangsdaten DÜRFEN NICHT als normale Maschinen-Ausgabe 
 - Docker/Compose und Podman/Quadlet MÜSSEN dort dieselben agentenfähigen semantischen Operationen anbieten, wo die Lifecycle-Operation unterstützt wird.
 
 Die typisierte Registry unter `internal/machine` ist die maßgebliche Definition von Maschinenoperationen und ihren Sicherheitsklassen.
+
+## Application-Stop über HTTP
+
+Die Core-Discovery enthält jetzt die vorhandene Operation `app.stop`. Der
+HTTP-Adapter nutzt dieselbe ausgewählte Deployment-Bindung, denselben
+Provider-Folgenscope, unabhängige planbezogene Bestätigungen,
+Eigentümerrevalidierung und tatsächliches Stop-Ergebnis wie CLI/JSON/MCP.
+Die Eingabe akzeptiert `provider_change_consent`; gewöhnliche Zustimmung
+ersetzt keine der erforderlichen Stufen. Eine Console bestätigt den äußeren
+Plan `baseharbor.provider-impact-scope/v1` für dieses ausgewählte Deployment
+statt eines Blattplans. Fremde Selektoren und mehrdeutige Bestätigungsobjekte
+werden vor der Runtime-Operation abgewiesen. Erhaltene Eigentümer beweisen
+keine weiterlaufenden Verbraucherfunktionen; ungeklärte Folgen bleiben teilweise.
+
+Transport-Quellprüfungen ersetzen weder authentifizierte Browser- noch native
+Runtime-Prüfungen am passenden Quellstand; die finale v0.4.25-Ökosystem-Abnahme
+ist weiter offen.
