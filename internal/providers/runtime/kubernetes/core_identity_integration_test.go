@@ -26,13 +26,13 @@ import (
 )
 
 type kubernetesKeycloakRealization struct {
-	provider     Provider
-	application  string
-	environment  string
-	namespace    string
-	stateDir     string
-	instance     identityprovider.KeycloakInstance
-	portForward  *exec.Cmd
+	provider    Provider
+	application string
+	environment string
+	namespace   string
+	stateDir    string
+	instance    identityprovider.KeycloakInstance
+	portForward *exec.Cmd
 }
 
 func (r *kubernetesKeycloakRealization) Apply(ctx context.Context) (identityprovider.KeycloakInstance, error) {
