@@ -280,19 +280,14 @@ spec:
 		return identityprovider.KeycloakInstance{}, fmt.Errorf("load Keycloak proof CA")
 	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    pool,
-				ServerName: host,
-			},
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, net.JoinHostPort(clusterIP, "8443"))
-			},
-		},
-		Timeout: 10 * time.Second,
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	tlsConfig.RootCAs = pool
+	tlsConfig.ServerName = host
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, network, net.JoinHostPort(clusterIP, "8443"))
 	}
+	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 
 	instance := identityprovider.KeycloakInstance{
 		StateDir:         r.stateDir,
