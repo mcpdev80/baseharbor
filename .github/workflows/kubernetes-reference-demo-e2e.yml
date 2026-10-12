@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-artifact:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[demo-e2e]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'runtime-validation/targeted-kubernetes-demo')
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.reference }}
@@ -35,7 +35,7 @@ jobs:
           echo "reference=$image" >> "$GITHUB_OUTPUT"
 
   kubernetes-demo:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[demo-e2e]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'runtime-validation/targeted-kubernetes-demo')
     needs: build-artifact
     runs-on: [self-hosted, Linux, X64, baseharbor, kubernetes, k3s]
     timeout-minutes: 15
