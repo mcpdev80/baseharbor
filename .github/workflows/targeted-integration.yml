@@ -275,7 +275,7 @@ jobs:
           retention-days: 30
 
   shared_provider_contracts:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[provider-contracts]') }}
+    if: ${{ github.event_name == 'push' && (github.ref_name == 'work/v0.4.24-core-ha-updates' || github.ref_name == 'work/v0.4.25-contract-minimal-core') && contains(github.event.head_commit.message, '[provider-contracts]') }}
     name: Shared provider unit and contract verification
     runs-on: ubuntu-latest
     timeout-minutes: 15

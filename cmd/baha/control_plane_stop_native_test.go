@@ -200,7 +200,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	}
 	t.Log("original SQL row and credentials read over verify-full TLS after normal Core resume; unchanged original OpenBao manager usable; no reseeding or rotation")
 	nativeTargetDefinitionRecovery(t, ctx, session, provider, files.Project, target.Name, func() {
-		if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "DO $$ BEGIN IF (SELECT value FROM core_stop_original) <> 'original-before-stop' THEN RAISE EXCEPTION 'original data changed'; END IF; END $$;"); err != nil {
+		if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "DO $$ BEGIN IF (SELECT count(*) FROM core_stop_original WHERE value='original-before-stop') <> 1 THEN RAISE EXCEPTION 'original data changed'; END IF; END $$;"); err != nil {
 			t.Fatal("original SQL/TLS data after Target configuration change", err)
 		}
 		if err := platformopenbao.CheckManager(ctx, provider, files); err != nil {
