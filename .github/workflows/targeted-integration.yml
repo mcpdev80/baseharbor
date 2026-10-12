@@ -44,6 +44,49 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:
+  standalone_retirement:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[standalone-retirement-runtime]') }}
+    name: Retained standalone data · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"
+      BASEHARBOR_TRACES_INTEGRATION: "1"
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify exact source and original authenticated retained data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          mkdir -p "$RUNNER_TEMP/standalone-retirement-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/standalone-retirement-evidence/source.txt"
+          go version > "$RUNNER_TEMP/standalone-retirement-evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-evidence/runtime-version.txt"
+          go test ./internal/objectstorage ./internal/traces -run '^(TestSeaweedRetirementRetainsOriginalAuthenticatedObject|TestManagedTempoReceivesVerificationTraceThroughCollector)$' -count=1 -v -parallel=1 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/runtime.log"
+      - name: Upload bounded receipt including failed attempts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: standalone-retirement-${{ matrix.runtime }}-${{ github.sha }}
+          path: ${{ runner.temp }}/standalone-retirement-evidence
+          if-no-files-found: error
   coreless_runtime:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
     name: Core-less application · ${{ matrix.runtime }}

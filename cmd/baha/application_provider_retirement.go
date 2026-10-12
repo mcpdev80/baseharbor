@@ -38,7 +38,7 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 		for _, instance := range registry.Instances {
 			sharedBackend := instance.Scope == capability.ScopeShared && (instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey)
 			nativeBackend := applicationNativeBackendInstance(instance, resolved.Manifest)
-			if instance.ID == change.InstanceID && instance.Provider.Kind != capability.ProviderKeycloak && !ownedControlPlaneSecrets(registry, instance.ID) && !sharedBackend && !nativeBackend && !applicationExposureInstance(instance, resolved.Manifest) {
+			if instance.ID == change.InstanceID && instance.Provider.Kind != capability.ProviderKeycloak && !ownedControlPlaneSecrets(registry, instance.ID) && !sharedBackend && !nativeBackend && !standaloneProviderKind(instance.Provider.Kind) && !applicationExposureInstance(instance, resolved.Manifest) {
 				return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_retirement_adapter_unavailable", Resource: instance.ID, Message: "This provider has no verified data-preserving retirement adapter.", Next: "Keep the existing capability until its runtime retirement adapter is available."}
 			}
 		}
@@ -94,6 +94,12 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 			}
 			if applicationExposureInstance(instance, resolved.Manifest) {
 				if err := retireApplicationExposureRuntime(ctx, resolved, provider, instance, plan, out); err != nil {
+					return err
+				}
+				continue
+			}
+			if standaloneProviderKind(instance.Provider.Kind) {
+				if err := retireStandaloneApplicationProvider(ctx, resolved, provider, instance, registry, out); err != nil {
 					return err
 				}
 				continue

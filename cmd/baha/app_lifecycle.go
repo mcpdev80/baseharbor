@@ -13,12 +13,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
-	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
-	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 func appDownCommand(store application.Store) *cli.Command {
@@ -123,21 +120,17 @@ func executeApplicationStop(ctx context.Context, resolved resolvedApplication, o
 		}
 		term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
 	}
-	if err := metricsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
-		return fmt.Errorf("stop application-scoped metrics provider: %w", err)
-	}
-	if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
-		return err
-	} else if found && tracePlacement.Scope == capability.ScopeApplication {
-		if err := tracesprovider.StopProviderAt(ctx, compose, m, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
-			return fmt.Errorf("stop application-scoped traces provider: %w", err)
-		}
-	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
 		return err
 	}
 	for _, instance := range registry.Instances {
+		if standaloneProviderKind(instance.Provider.Kind) && instance.Scope == capability.ScopeApplication && instance.Ownership == capability.OwnershipBaseHarbor && instance.OwnerApplicationID == m.ApplicationID && instance.OwnerEnvironment == m.Environment {
+			if err := retireStandaloneApplicationProvider(ctx, resolved, compose, instance, registry, out); err != nil {
+				return fmt.Errorf("stop application-scoped provider: %w", err)
+			}
+			continue
+		}
 		if instance.Provider.Kind != capability.ProviderKeycloak || instance.Scope != capability.ScopeApplication || instance.Ownership != capability.OwnershipBaseHarbor || instance.OwnerApplicationID != m.ApplicationID || instance.OwnerEnvironment != m.Environment {
 			continue
 		}
@@ -153,9 +146,6 @@ func executeApplicationStop(ctx context.Context, resolved resolvedApplication, o
 		return err
 	} else if removed {
 		term.Result("STOPPED", "workload", "repository workload containers and networks removed; application-owned volumes preserved")
-	}
-	if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
-		return fmt.Errorf("stop application-scoped logs provider: %w", err)
 	}
 	if application.RequiresRuntimeBroker(m) {
 		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {

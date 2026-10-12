@@ -322,6 +322,7 @@ func observeApplicationProviderFacts(ctx context.Context, resolved resolvedAppli
 	owners, err := applicationRuntimeOwners(resolved)
 	if err == nil {
 		for _, owner := range owners {
+			observeStandaloneProviderFacts(ctx, owner, facts)
 			observeNativeBackendProviderFacts(ctx, owner, facts)
 			observeApplicationExposureFacts(ctx, owner, facts)
 		}

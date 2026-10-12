@@ -1,8 +1,10 @@
 package traces_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	"testing"
 	"time"
@@ -31,7 +33,11 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	namespace := "trace-acceptance"
 	t.Setenv(application.TracesEnabledEnv, "true")
 
-	m := application.WithOTLPTelemetry(application.New("traces-acceptance", "dev", false, false, false), "traces")
+	environment := "dev"
+	if os.Getenv("BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE") == "1" {
+		environment = "prod"
+	}
+	m := application.WithOTLPTelemetry(application.New("traces-acceptance", environment, false, false, false), "traces")
 	issuer := serviceissuer.New(t)
 
 	traceResource := capability.Resource{Application: m.Name, Kind: capability.Traces, Name: "default", Provider: capability.ProviderTempo}
@@ -82,6 +88,49 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 
 	if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
 		t.Fatalf("query verification trace from Tempo: %v", err)
+	}
+	if os.Getenv("BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE") == "1" {
+		native, ok := compose.(bhruntime.RuntimeServiceRetirementProvider)
+		if !ok {
+			t.Fatal("selected native retirement adapter unavailable")
+		}
+		traceFiles, _, err := traces.ExistingProviderFilesAt(providerState, namespace, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		collectorFiles, err := telemetry.ExistingProviderFilesAt(providerState, namespace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		traceEnv, _ := os.ReadFile(traceFiles.Env)
+		collectorEnv, _ := os.ReadFile(collectorFiles.Env)
+		if _, err := telemetry.RetireRuntimeAt(ctx, native, providerState, namespace, placement.Network); err != nil {
+			t.Fatal(err)
+		}
+		if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
+			t.Fatalf("collector retirement affected retained Tempo sibling: %v", err)
+		}
+		selected := capability.ProviderPlacement{Scope: placement.Scope, Ownership: capability.OwnershipBaseHarbor}
+		if _, err := traces.RetireRuntimeAt(ctx, native, providerState, namespace, m, selected); err != nil {
+			t.Fatal(err)
+		}
+		if err := compose.UpProject(ctx, placement.Project, traceFiles.Compose, traceFiles.Env); err != nil {
+			t.Fatal(err)
+		}
+		// Read the ORIGINAL trace before any Collector restart/export. No
+		// post-retirement Probe/Verify may seed the record being checked.
+		if err := traces.VerifyTraceAt(ctx, m, telemetry.ProbeTraceIDHex, providerState, namespace); err != nil {
+			t.Fatalf("original authenticated trace lost: %v", err)
+		}
+		if err := compose.UpProject(ctx, placement.Project, collectorFiles.Compose, collectorFiles.Env); err != nil {
+			t.Fatal(err)
+		}
+		currentTraceEnv, _ := os.ReadFile(traceFiles.Env)
+		currentCollectorEnv, _ := os.ReadFile(collectorFiles.Env)
+		if !bytes.Equal(traceEnv, currentTraceEnv) || !bytes.Equal(collectorEnv, currentCollectorEnv) {
+			t.Fatal("retirement/resume changed retained credentials/configuration")
+		}
+		t.Log("original trace read after selected Collector and Tempo retirement/resume without reseeding; sibling and retained environment preserved")
 	}
 	fmt.Println("verified OTLP Collector -> Tempo trace ingestion")
 }

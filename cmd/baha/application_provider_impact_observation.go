@@ -34,6 +34,9 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 		if applicationNativeBackendInstance(instance, resolved.Manifest) && !isRemoteApplication(resolved) {
 			observeNativeBackendImpact(ctx, resolved, instance, &fact)
 		}
+		if standaloneProviderKind(instance.Provider.Kind) && !isRemoteApplication(resolved) {
+			observeStandaloneProviderImpact(ctx, resolved, instance, &fact)
+		}
 		if !fact.InventoryComplete {
 			observation.InventoryComplete = false
 		}
