@@ -33,8 +33,8 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		Name:        "baseharbor-demo",
 		Environment: "dev",
 		Services: application.Services{
-			SQL:       true,
-			Cache:     true,
+			SQL:           true,
+			Cache:         true,
 			ObjectStorage: true,
 			Secrets:       true,
 		},
