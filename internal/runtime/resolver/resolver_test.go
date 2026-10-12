@@ -26,10 +26,17 @@ func TestReferenceProviderDescriptors(t *testing.T) {
 	}
 }
 
-func TestKubernetesUsesWorkloadProviderBoundary(t *testing.T) {
-	if _, err := WorkloadProvider(context.Background(), runtimecontract.ProviderKubernetes); err != nil {
-		t.Fatalf("Kubernetes workload provider did not resolve: %v", err)
+func TestKubernetesDescriptorIsRegisteredWithoutLegacyRuntimeClaim(t *testing.T) {
+	descriptor, err := Descriptor(runtimecontract.ProviderKubernetes)
+	if err != nil {
+		t.Fatalf("Kubernetes descriptor did not resolve: %v", err)
 	}
+	if descriptor.Realization != "kubernetes-api" {
+		t.Fatalf("Kubernetes realization = %q, want kubernetes-api", descriptor.Realization)
+	}
+
+	// RuntimeProvider is the legacy Docker/Podman execution surface. Kubernetes
+	// intentionally uses the smaller InternalWorkloadProvider boundary instead.
 	if _, err := RuntimeProvider(context.Background(), runtimecontract.ProviderKubernetes); err == nil {
 		t.Fatal("Kubernetes unexpectedly implemented the legacy Docker/Podman runtime interface")
 	}
