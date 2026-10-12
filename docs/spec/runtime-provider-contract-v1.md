@@ -115,3 +115,15 @@ A Runtime Provider that cannot satisfy an effective HA request returns a typed a
 One logical workload component may be observed as 0..N runtime instances. Observation retains all instances and aggregates readiness against the requested guarantee without changing component identity.
 
 The bundled Docker Compose and Podman Quadlet providers are explicitly UNSUPPORTED for verified HA workload orchestration in v0.4.21. Future Kubernetes/OpenShift providers can implement the same semantics without changing portable Application Intent.
+
+## Kubernetes proof binding projection
+
+PR #616 consumes this existing normalized plan. Source/build metadata and
+overridden repository defaults are resolved before the runtime boundary. The
+proof represents native Secret references as opaque
+`kubernetes://<namespace>/<secret-name>/<key>` bindings and realizes them with
+Kubernetes `secretKeyRef`; reference-only rendering never embeds secret values.
+Only references in the selected workload namespace are supported. Other secret
+delivery mechanisms remain explicit unsupported adapters, not plaintext fallbacks.
+This implementation notation is provider-owned and adds no portable Application
+field or public Runtime Provider contract. It is not Kubernetes release acceptance.

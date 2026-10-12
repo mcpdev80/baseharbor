@@ -11,6 +11,7 @@ func TestReferenceProviderDescriptors(t *testing.T) {
 	for _, kind := range []runtimecontract.ProviderKind{
 		runtimecontract.ProviderDocker,
 		runtimecontract.ProviderPodman,
+		runtimecontract.ProviderKubernetes,
 	} {
 		descriptor, err := Descriptor(kind)
 		if err != nil {
@@ -25,11 +26,18 @@ func TestReferenceProviderDescriptors(t *testing.T) {
 	}
 }
 
-func TestUnavailableProviderFailsClosed(t *testing.T) {
-	if _, err := Descriptor(runtimecontract.ProviderKubernetes); err == nil {
-		t.Fatal("unregistered Kubernetes descriptor unexpectedly resolved")
+func TestKubernetesDescriptorIsRegisteredWithoutLegacyRuntimeClaim(t *testing.T) {
+	descriptor, err := Descriptor(runtimecontract.ProviderKubernetes)
+	if err != nil {
+		t.Fatalf("Kubernetes descriptor did not resolve: %v", err)
 	}
+	if descriptor.Realization != "kubernetes-api" {
+		t.Fatalf("Kubernetes realization = %q, want kubernetes-api", descriptor.Realization)
+	}
+
+	// RuntimeProvider is the legacy Docker/Podman execution surface. Kubernetes
+	// intentionally uses the smaller InternalWorkloadProvider boundary instead.
 	if _, err := RuntimeProvider(context.Background(), runtimecontract.ProviderKubernetes); err == nil {
-		t.Fatal("unregistered Kubernetes provider unexpectedly resolved")
+		t.Fatal("Kubernetes unexpectedly implemented the legacy Docker/Podman runtime interface")
 	}
 }

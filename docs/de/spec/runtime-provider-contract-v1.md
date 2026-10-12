@@ -115,3 +115,16 @@ Ein Runtime Provider, der eine effektive HA-Anfrage nicht erfüllen kann, gibt v
 Eine logische Workload-Komponente kann als 0..N Runtime-Instanzen beobachtet werden. Beobachtung behält alle Instanzen und Aggregate Bereitschaft gegen die angeforderte Garantie, ohne die Komponentenidentität zu ändern.
 
 Die gebündelten Docker Compose- und Podman Quadlet-Anbieter sind explizit UNSUPPORTED für verifizierte HA-Workload-Orchestrierung in v0.4.21. Future Kubernetes/OpenShift-Anbieter können die gleiche Semantik implementieren, ohne den portablen Application Intent zu ändern.
+
+## Binding-Projektion im Kubernetes-Proof
+
+PR #616 verwendet diesen bestehenden normalisierten Plan. Source-/Build-Metadaten
+und überschriebene Repository-Defaults werden vor der Runtime-Grenze aufgelöst.
+Der Proof bildet native Secret-Referenzen als opake Bindings
+`kubernetes://<namespace>/<secret-name>/<key>` auf Kubernetes `secretKeyRef` ab;
+referenzbasiertes Rendering enthält keine Secret-Werte. Unterstützt sind nur
+Referenzen im ausgewählten Workload-Namespace. Andere Zustellungsmechanismen
+bleiben ausdrücklich nicht unterstützte Adapter statt Klartext-Fallbacks. Diese
+Implementierungsnotation gehört dem Provider und ergänzt weder portable
+Application-Felder noch den öffentlichen Runtime-Provider-Vertrag. Sie ist keine
+Kubernetes-Release-Abnahme.
