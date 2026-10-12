@@ -82,3 +82,37 @@ func TestImpactContentRevisionCannotFollowChangedRecoveryOwner(t *testing.T) {
 		t.Fatal("changed linked owner retained acknowledgement authority")
 	}
 }
+
+func TestApplicationImpactRejectsAcknowledgementAfterHiddenCredentialChange(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	r.Manifest.Services.DocumentDatabaseInstances = map[string]application.ServiceInstance{"second": r.Manifest.Services.DocumentDatabaseInstances["second"]}
+	files := application.RuntimeFilesFor(r.Store, r.Manifest)
+	info, err := os.Stat(files.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := buildResolvedApplicationPlan(t.Context(), r)
+	if err != nil || first.ProviderPlan.Impact == nil {
+		t.Fatalf("current provider update impact missing: %v", err)
+	}
+	consent := application.ProviderChangeConsent{PlanID: first.ProviderPlan.Impact.PlanID, First: true, Second: true}
+	if err := application.ValidateProviderChangeConsent(*first.ProviderPlan.Impact, consent); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(files.Env, []byte("preserved=alternate\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(files.Env, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := buildResolvedApplicationPlan(t.Context(), r)
+	if err != nil || current.ProviderPlan.Impact == nil {
+		t.Fatalf("revalidated impact missing: %v", err)
+	}
+	if current.ProviderPlan.Impact.PlanID == consent.PlanID {
+		t.Fatal("application mutation retains stale plan after changed protected credential content")
+	}
+	if err := application.ValidateProviderChangeConsent(*current.ProviderPlan.Impact, consent); err == nil {
+		t.Fatal("previous acknowledgement authorizes changed credential plan")
+	}
+}

@@ -20,6 +20,12 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	if err != nil {
 		return
 	}
+	// Protected file ownership is independently observable even when the
+	// runtime is unavailable. Keep its revision bound to consent without
+	// claiming live provider authority or content recovery.
+	materials, complete, fileErr := observeOwnedProviderFiles(fact.Realization.Owner, resolved.Target.Name, instance.ID, files.Dir)
+	fact.Materials = append(fact.Materials, materials...)
+	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
 	if err != nil {
 		return
@@ -42,9 +48,7 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 		fact.Realization.Locations = append(fact.Realization.Locations, location)
 		fact.Materials = append(fact.Materials, application.ProviderMaterial{ID: instance.ID + "/volume/" + resource.Name, Kind: "persistent-provider-data", Ownership: capability.OwnershipBaseHarbor, Location: &location, Recovery: []application.ResourceLocation{}, Verified: true, Evidence: "observed exact owned persistent volume; contents, backups and application access not verified"})
 	}
-	materials, complete, err := observeOwnedProviderFiles(fact.Realization.Owner, resolved.Target.Name, instance.ID, files.Dir)
-	fact.Materials = append(fact.Materials, materials...)
-	if !complete || err != nil {
+	if !complete || fileErr != nil {
 		fact.Realization.Evidence += "; protected file inventory incomplete"
 	}
 	fact.InventoryComplete = false // Transient work and actual consumer behavior remain unknown.

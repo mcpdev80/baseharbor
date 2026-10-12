@@ -35,6 +35,7 @@ func applicationImpactFileRevision(observation application.ProviderImpactObserva
 				continue
 			}
 			digest := sha256.Sum256(data)
+			zeroBytes(data)
 			revisions[path] = hex.EncodeToString(digest[:])
 		}
 	}
