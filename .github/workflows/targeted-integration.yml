@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[core-stop-docker-only]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORE_STOP_ACCEPTANCE: "1"

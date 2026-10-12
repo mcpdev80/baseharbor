@@ -116,6 +116,9 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	}
 	var siblingBefore bhruntime.RuntimeContainer
 	for _, container := range before {
+		if container.Project == files.Project {
+			t.Logf("before stop: service=%s container=%s state=%s running=%t", container.Service, container.Name, container.State, container.Running)
+		}
 		if container.Project == files.Project && container.Service == "preserved-sibling" {
 			siblingBefore = container
 		}
@@ -137,6 +140,15 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	session := workspaceMutationClient(t)
 	response, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.control-plane.stop", Arguments: machineControlPlaneStopInput{ProviderChangeConsent: consent}})
 	if err != nil || response.IsError {
+		observed, observeErr := provider.ListRuntimeContainers(ctx)
+		if observeErr != nil {
+			t.Log("post-failure process inspection failed")
+		}
+		for _, container := range observed {
+			if container.Project == files.Project {
+				t.Logf("after failed stop: service=%s container=%s state=%s running=%t", container.Service, container.Name, container.State, container.Running)
+			}
+		}
 		t.Fatalf("native MCP selected stop: %+v %v", response, err)
 	}
 	raw, _ := json.Marshal(response.StructuredContent)

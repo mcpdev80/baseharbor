@@ -15,9 +15,10 @@ type RuntimeServiceStopProvider interface {
 }
 
 type RuntimeServiceStopResult struct {
-	Stopped  []ProjectResource `json:"stopped"`
-	Retained []ProjectResource `json:"retained"`
-	Verified bool              `json:"verified"`
+	Stopped              []ProjectResource `json:"stopped"`
+	Retained             []ProjectResource `json:"retained"`
+	Verified             bool              `json:"verified"`
+	VerificationFailures []string          `json:"verification_failures,omitempty"`
 }
 
 // Stop only the caller's canonical module services. Consolidated projects may
@@ -85,20 +86,31 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	if len(actualServices) > 0 {
 		mutationErr = provider.StopProjectFilesSelected(ctx, project, workdir, environment, actualServices, compose)
 	}
+	if mutationErr != nil {
+		r.VerificationFailures = append(r.VerificationFailures, "native-selected-stop-failed")
+	}
 	after, inspectErr := provider.InspectProjectResources(ctx, project, expected)
+	if inspectErr != nil {
+		r.VerificationFailures = append(r.VerificationFailures, "native-resource-inspection-failed")
+	}
 	remaining := map[ProjectResource]bool{}
 	for _, resource := range after {
 		if !planned[resource] {
+			r.VerificationFailures = append(r.VerificationFailures, "unexpected-native-resource")
 			inspectErr = errors.Join(inspectErr, errors.New("stop verification observed unplanned resources"))
 		}
 		remaining[resource] = true
 	}
 	for _, resource := range before {
 		if !remaining[resource] {
+			r.VerificationFailures = append(r.VerificationFailures, "retained-resource-missing:"+resource.Kind+"/"+resource.Name)
 			inspectErr = errors.Join(inspectErr, fmt.Errorf("selected stop lost retained %s %s", resource.Kind, resource.Name))
 		}
 	}
 	actual, listErr := provider.ListRuntimeContainers(ctx)
+	if listErr != nil {
+		r.VerificationFailures = append(r.VerificationFailures, "native-process-inspection-failed")
+	}
 	observed := map[string]RuntimeContainer{}
 	for _, container := range actual {
 		if container.Project == project {
@@ -108,16 +120,19 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	for name, prior := range baseline {
 		current, exists := observed[name]
 		if !exists || current.ID != prior.ID || current.Project != prior.Project || current.Service != prior.Service {
+			r.VerificationFailures = append(r.VerificationFailures, "retained-process-owner-changed:"+name)
 			listErr = errors.Join(listErr, errors.New("selected stop changed retained native process ownership"))
 			continue
 		}
 		if selected[prior.Service] {
 			if current.Running || (current.State != "exited" && current.State != "stopped" && current.State != "created") {
+				r.VerificationFailures = append(r.VerificationFailures, "selected-process-not-stopped:"+name)
 				listErr = errors.Join(listErr, errors.New("selected service is not verified stopped"))
 			} else {
 				r.Stopped = append(r.Stopped, ProjectResource{Kind: "container", Name: project + "-" + prior.Service + "-1"})
 			}
 		} else if current.Running != prior.Running || current.State != prior.State {
+			r.VerificationFailures = append(r.VerificationFailures, "sibling-process-changed:"+name)
 			listErr = errors.Join(listErr, errors.New("selected stop changed a sibling service"))
 		}
 	}

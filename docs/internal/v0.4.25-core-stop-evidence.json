@@ -1,0 +1,115 @@
+{
+  "version": "baseharbor.v0425.core-stop-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualifications": [
+    {
+      "source": {
+        "commit": "dfb724a4d55bd554c283351ed57c39e0a1b6056b",
+        "tree": "7dcc4f7b5f546df55494698e20ea78114a1f3cf1",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 65.302,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.12,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.303,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.116,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.108,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.409,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.906,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 18.104,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.827,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.309,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  ],
+  "native_attempts": [
+    {
+      "commit": "dfb724a4d55bd554c283351ed57c39e0a1b6056b",
+      "tree": "7dcc4f7b5f546df55494698e20ea78114a1f3cf1",
+      "run_id": 38266937671,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114871358888,
+          "outcome": "failure",
+          "seconds": 40.09,
+          "artifact_id": 11755690433,
+          "artifact_sha256": "2e4cd4427ffe2847e5f07d07c8a4341c69372d0a30104d30dc8cc57d9d05f632"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114871358343,
+          "outcome": "failure",
+          "seconds": 55.14,
+          "artifact_id": 11754997851,
+          "artifact_sha256": "885d9d75bc504bdaea094885d9c1cd0af606536b04ea62c411f33e71b1777a24"
+        }
+      ],
+      "observed": "Native CLI without acknowledgement was refused. MCP selected stop returned control_plane_stop_partial with verified retained protected owners, but no verified stopped process result. Original-data resume acceptance was not reached. Both jobs failed and cleanup completed; process/resource discrepancy requires diagnosis."
+    }
+  ],
+  "boundary": "Selected Core stop only. No complete native stop/resume or all-consumer dependency/validity/continuity proof yet; Core destroy, Target detach, universal provider transfers and final ecosystem acceptance remain mandatory."
+}
