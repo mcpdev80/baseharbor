@@ -123,7 +123,7 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 	if err != nil {
 		return err
 	}
-	cfg, err := deployment.LoadConfig()
+	cfg, expected, err := deployment.LoadConfigForMutation()
 	if err != nil {
 		return err
 	}
@@ -156,5 +156,5 @@ func persistTargetRecoveryFileReference(ctx context.Context, recoveryFile string
 	}
 	def.OpenBao.RecoveryFile = abs
 	cfg.Targets[target.Name] = def
-	return cfg.Save()
+	return cfg.SaveExpected(expected)
 }

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -84,8 +83,7 @@ func readCanonicalOwnerFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	owner, ok := before.Sys().(*syscall.Stat_t)
-	if !before.Mode().IsRegular() || before.Mode().Perm()&0077 != 0 || before.Size() > 8<<20 || !ok || owner.Uid != uint32(os.Getuid()) || owner.Nlink != 1 {
+	if !before.Mode().IsRegular() || before.Size() > 8<<20 || !ProtectedStateOwner(path, before) {
 		return nil, failure
 	}
 	file, err := os.Open(path)
@@ -99,11 +97,7 @@ func readCanonicalOwnerFile(path string) ([]byte, error) {
 	}
 	data, err := io.ReadAll(io.LimitReader(file, (8<<20)+1))
 	after, afterErr := os.Lstat(path)
-	if err != nil || afterErr != nil || len(data) > 8<<20 || !after.Mode().IsRegular() || after.Mode().Perm()&0077 != 0 || !os.SameFile(before, after) {
-		return nil, failure
-	}
-	currentOwner, ok := after.Sys().(*syscall.Stat_t)
-	if !ok || currentOwner.Uid != uint32(os.Getuid()) || currentOwner.Nlink != 1 {
+	if err != nil || afterErr != nil || len(data) > 8<<20 || !after.Mode().IsRegular() || !os.SameFile(before, after) || !ProtectedStateOwner(path, after) {
 		return nil, failure
 	}
 	return data, nil

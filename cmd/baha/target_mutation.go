@@ -49,7 +49,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 			return targetMutationResult{}, machine.Wrap(machine.ErrorValidationFailed, fmt.Errorf("non-local target requires an access provider"), "Select a configured target access provider.", false)
 		}
 	}
-	cfg, err := deployment.LoadConfig()
+	cfg, expected, err := deployment.LoadConfigForMutation()
 	if err != nil {
 		return targetMutationResult{}, err
 	}
@@ -72,19 +72,19 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	if makeDefault {
 		cfg.DefaultTarget = name
 	}
-	if err := cfg.Save(); err != nil {
+	if err := cfg.SaveExpected(expected); err != nil {
 		return targetMutationResult{}, err
 	}
 	return targetMutationResult{ContractVersion: machine.ContractVersion, Name: name, Created: true}, nil
 }
 func deleteTargetDefinition(ctx context.Context, name string) (targetMutationResult, error) {
-	if err := authorizeCurrentMCPContext(ctx, "target.delete", "", "", ""); err != nil {
+	if err := authorizeCurrentMCPContext(ctx, "target.delete", name, "", ""); err != nil {
 		return targetMutationResult{}, err
 	}
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return targetMutationResult{}, err
 	}
-	cfg, err := deployment.LoadConfig()
+	cfg, expected, err := deployment.LoadConfigForMutation()
 	if err != nil {
 		return targetMutationResult{}, err
 	}
@@ -111,7 +111,7 @@ func deleteTargetDefinition(ctx context.Context, name string) (targetMutationRes
 	if cfg.DefaultTarget == name {
 		cfg.DefaultTarget = ""
 	}
-	if err := cfg.Save(); err != nil {
+	if err := cfg.SaveExpected(expected); err != nil {
 		return targetMutationResult{}, err
 	}
 	// A deleted Target must not remain activated for future CLI processes.

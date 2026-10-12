@@ -148,6 +148,10 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read BaseHarbor config: %w", err)
 	}
+	return decodeConfig(data)
+}
+
+func decodeConfig(data []byte) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse BaseHarbor config: %w", err)
@@ -168,26 +172,46 @@ func LoadConfig() (Config, error) {
 }
 
 func (c Config) Save() error {
+	return c.saveWithExpected(nil, false)
+}
+
+func (c Config) saveAt(path string, revalidate func() error) error {
 	if c.Version == 0 {
 		c.Version = ConfigVersion
 	}
 	if err := c.Validate(); err != nil {
 		return err
 	}
-	path, err := ConfigPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create BaseHarbor config directory: %w", err)
-	}
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("encode BaseHarbor config: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if len(data) > 8<<20 {
+		return errors.New("Target configuration exceeds the supported owner size")
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
 		return fmt.Errorf("write BaseHarbor config: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := revalidate(); err != nil {
+		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace BaseHarbor config: %w", err)
