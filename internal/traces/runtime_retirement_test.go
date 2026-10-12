@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -47,10 +48,57 @@ func TestRetainedTempoInventoryPreservesDataOwnerAndExternalDependencies(t *test
 					}
 				}
 			}
+			current, err := os.ReadFile(files.Compose)
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacy := strings.ReplaceAll(string(current), "image: "+ProviderImage+"\n", "image: docker.io/grafana/tempo:3.0.2\n")
+			if err := os.WriteFile(files.Compose, []byte(legacy), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := ExistingRuntimeInventoryAt(root, "isolated", m, placement); err != nil {
+				t.Fatalf("previous exact canonical owner lost retirement authority: %v", err)
+			}
+			unchanged, _ := os.ReadFile(files.Compose)
+			if string(unchanged) != legacy {
+				t.Fatal("inventory implicitly upgraded retained runtime")
+			}
+			for _, changed := range []string{
+				strings.ReplaceAll(legacy, "tempo:3.0.2", "tempo:arbitrary"),
+				strings.ReplaceAll(legacy, "read_only: true", "read_only: false"),
+				legacy + "# changed owner\n",
+			} {
+				if err := os.WriteFile(files.Compose, []byte(changed), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if _, _, _, err := ExistingRuntimeInventoryAt(root, "isolated", m, placement); err == nil {
+					t.Fatal("noncanonical previous owner granted authority")
+				}
+			}
+			if err := os.WriteFile(files.Compose, []byte(legacy), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(files.Compose, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := ExistingRuntimeInventoryAt(root, "isolated", m, placement); err == nil {
+				t.Fatal("unprotected previous owner granted authority")
+			}
+			if err := os.Chmod(files.Compose, 0o600); err != nil {
+				t.Fatal(err)
+			}
 			placement.Ownership = capability.OwnershipExternal
 			if _, _, _, err := ExistingRuntimeInventoryAt(root, "isolated", m, placement); err == nil {
 				t.Fatal("BYO ownership granted retirement authority")
 			}
 		})
+	}
+}
+
+func TestTempoShutdownFixKeepsExistingBlockWriteFormat(t *testing.T) {
+	for _, config := range []string{configYAML(), tempoHAConfig()} {
+		if !strings.Contains(config, "    block:\n      version: vParquet4\n") {
+			t.Fatal("Tempo upgrade silently changes retained block write format")
+		}
 	}
 }

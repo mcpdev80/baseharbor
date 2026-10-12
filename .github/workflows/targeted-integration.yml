@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[standalone-trace-only]') && '["docker"]' || '["docker","podman"]') }}
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[standalone-docker-only]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"

@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	ProviderImage   = "docker.io/grafana/tempo:3.0.2"
+	ProviderImage   = "docker.io/grafana/tempo:3.1.0"
 	ProviderService = "tempo"
 )
 
@@ -633,6 +633,8 @@ distributor:
 storage:
   trace:
     backend: local
+    block:
+      version: vParquet4
     wal:
       path: /var/tempo/wal
     local:

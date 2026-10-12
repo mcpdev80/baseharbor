@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -37,6 +38,12 @@ func ExistingRuntimeInventoryAt(dataDir, namespace string, m application.Manifes
 		canonical = tempoHACompose(p, access, objectstorage.PlatformBucket{Network: storage.Network})
 	}
 	resources, err := bhruntime.ExistingCanonicalProjectInventory(p.Project, files.Compose, canonical, files.Env)
+	if err != nil {
+		// Recognize only the exact previously shipped renderer. This is read-only
+		// retirement authority, never an implicit upgrade or arbitrary image adoption.
+		legacy := strings.ReplaceAll(canonical, "image: "+ProviderImage+"\n", "image: docker.io/grafana/tempo:3.0.2\n")
+		resources, err = bhruntime.ExistingCanonicalProjectInventory(p.Project, files.Compose, legacy, files.Env)
+	}
 	return files, p, resources, err
 }
 
