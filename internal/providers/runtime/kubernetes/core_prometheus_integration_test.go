@@ -262,7 +262,7 @@ func TestKubernetesCorePrometheusLifecycle(t *testing.T) {
 		Version:     application.CurrentVersion,
 		Name:        appName,
 		Environment: environment,
-	}, sourceName, serviceName, sourcePort, "/metrics")
+	}, sourceName, serviceName, sourcePort, "/metrics.txt")
 
 	base := dnsLabel(appName)
 	sourceManifest := fmt.Sprintf(`apiVersion: v1
@@ -275,7 +275,7 @@ metadata:
     baseharbor.io/application: %s
     baseharbor.io/environment: %s
 data:
-  metrics: |
+  metrics.txt: |
     # TYPE baseharbor_proof gauge
     baseharbor_proof 1
 ---
@@ -318,8 +318,8 @@ spec:
             periodSeconds: 2
           volumeMounts:
             - name: metrics
-              mountPath: /metrics/metrics
-              subPath: metrics
+              mountPath: /metrics/metrics.txt
+              subPath: metrics.txt
       volumes:
         - name: metrics
           configMap:
@@ -381,7 +381,7 @@ spec:
 			Service:   serviceName,
 			Scheme:    "http",
 			Port:      sourcePort,
-			Path:      "/metrics",
+			Path:      "/metrics.txt",
 		},
 	}
 
