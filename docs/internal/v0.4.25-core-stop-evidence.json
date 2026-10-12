@@ -81,6 +81,86 @@
       ],
       "native_runtime_qualified": false,
       "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "cc1551fda4b1ca40f2c0b5c2cb8f7a8a99d9fa02",
+        "tree": "0e35d33af8a4db70c6c1d8642055cf64c73324ff",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 66.388,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.496,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.408,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.41,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 49.538,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 66.098,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.012,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.812,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.417,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
     }
   ],
   "native_attempts": [
@@ -127,8 +207,36 @@
         }
       ],
       "observed": "Safe process diagnostics show canonical Core services present before stop and removed after the existing selected-stop adapter; running consolidated-project sibling remains. Verifier rejected selected container absence. Data/credential owner and sibling preservation are partial observations; original-data resume was not reached. Podman intentionally not repeated for this diagnostic."
+    },
+    {
+      "commit": "cc1551fda4b1ca40f2c0b5c2cb8f7a8a99d9fa02",
+      "tree": "0e35d33af8a4db70c6c1d8642055cf64c73324ff",
+      "run_id": 38270044907,
+      "attempt": 1,
+      "outcome": "success",
+      "scope": "Single explicit Core, native CLI refusal plus in-memory MCP confirmed selected stop, stale native-state acknowledgement refused, fresh stopped/removed retry, persistent data/networks and running consolidated-project sibling retained. Original SQL row read over verify-full TLS after normal resume and unchanged original OpenBao manager credentials authenticated. Real OpenBao bootstrap and shipped Core TLS reconciliation; no Core HTTP/OIDC browser, HA or universal consumer-function continuity acceptance.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114881769750,
+          "outcome": "success",
+          "seconds": 66.14,
+          "artifact_id": 11757290173,
+          "artifact_sha256": "6acfdd75ee830518aba1b1c63725afee92c34c0cfe36812839750222c76dc012"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114881770202,
+          "outcome": "success",
+          "seconds": 88.24,
+          "artifact_id": 11756382720,
+          "artifact_sha256": "f546cf03ed55cd664adf733842447c5a96fdad6ac34ebe3cc6c09a00707df034"
+        }
+      ],
+      "other_gates": "All unselected targeted gates skipped; not final ecosystem acceptance."
     }
   ],
-  "boundary": "Selected Core stop only. No complete native stop/resume or all-consumer dependency/validity/continuity proof yet; Core destroy, Target detach, universal provider transfers and final ecosystem acceptance remain mandatory.",
-  "correction_pending_native_proof": "The existing StopProjectFilesSelected adapters stop and retire selected processes. Verifier now accepts exact selected process absence, inventories removed versus retained resources, rejects lost data/networks/siblings and any unknown or running selected replica, and supports stopped/removed retry. Native fixture additionally requires verify-full SQL TLS and unchanged original OpenBao manager credentials. Both-runtime original-data resume qualification is still pending."
+  "boundary": "The recorded exact-source single Core stop/resume is qualified on both engines. Actual all-consumer dependencies/validity/continuity, Core destroy, Target detach, universal provider handoffs and final ecosystem acceptance remain mandatory. No final pre-release readiness.",
+  "correction_pending_native_proof": null,
+  "resolved_native_correction": "The existing selected-stop adapters retire stopped processes. Actual selected absence, data/network retention and unchanged sibling are now verified on both native engines; removed/stopped retry uses fresh native-state consent. The domain consequence receipt remains partial because all consumer behavior/validity/continuity is not proven."
 }
