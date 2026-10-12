@@ -56,6 +56,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORELESS_ACCEPTANCE: "1"
+      BASEHARBOR_APP_STOP_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[app-stop-runtime]') && '1' || '0' }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-acceptance
       GOTOOLCHAIN: local
     steps:
@@ -88,7 +89,7 @@ jobs:
           go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
       - name: Verify fresh workload with zero Core containers
-        if: ${{ !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        if: ${{ contains(github.event.head_commit.message, '[app-stop-runtime]') || !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         shell: bash
         run: |
           set -euo pipefail

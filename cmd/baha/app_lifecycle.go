@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -32,7 +34,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			}
 			for _, arg := range filtered {
 				if strings.HasPrefix(arg, "-") {
-					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and does not require --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
+					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and requires acknowledgement of its current consequence plan. --yes does not provide either acknowledgement.", NoSuggestions: arg == "--yes" || arg == "-y"}
 				}
 			}
 			args = filtered
@@ -44,33 +46,27 @@ func appDownCommand(store application.Store) *cli.Command {
 			if format == outputJSON {
 				humanOut, humanErr = io.Discard, io.Discard
 			}
-			if err := stopApplicationRuntime(ctx, resolved, humanOut, humanErr); err != nil {
+			result, err := stopApplicationRuntimeWithResult(ctx, resolved, humanOut, humanErr)
+			if err != nil {
 				return err
 			}
 			if format == outputJSON {
-				return writeJSON(out, applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "stopped", DataPreserved: true})
+				return writeJSON(out, result)
 			}
-			return nil
+			return writeJSON(out, result)
 		},
 	}
 }
 
 type applicationStopResult struct {
-	Application   string `json:"application"`
-	Environment   string `json:"environment"`
-	State         string `json:"state"`
-	DataPreserved bool   `json:"data_preserved"`
+	Application          string                                 `json:"application"`
+	Environment          string                                 `json:"environment"`
+	State                string                                 `json:"state"`
+	DataPreserved        bool                                   `json:"data_preserved"`
+	ProviderChangeResult *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
 }
 
-func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
-	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
-		return err
-	}
-	unlock, err := lockApplicationTargetLifecycle(resolved)
-	if err != nil {
-		return err
-	}
-	defer unlock()
+func executeApplicationStop(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
 	m := resolved.Manifest
 	runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
 	resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
@@ -127,14 +123,30 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 		}
 		term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
 	}
-	if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
+	if err := metricsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
 		return fmt.Errorf("stop application-scoped metrics provider: %w", err)
 	}
 	if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
 		return err
 	} else if found && tracePlacement.Scope == capability.ScopeApplication {
-		if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
+		if err := tracesprovider.StopProviderAt(ctx, compose, m, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
 			return fmt.Errorf("stop application-scoped traces provider: %w", err)
+		}
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return err
+	}
+	for _, instance := range registry.Instances {
+		if instance.Provider.Kind != capability.ProviderKeycloak || instance.Scope != capability.ScopeApplication || instance.Ownership != capability.OwnershipBaseHarbor || instance.OwnerApplicationID != m.ApplicationID || instance.OwnerEnvironment != m.Environment {
+			continue
+		}
+		result, err := identityprovider.RetireKeycloakRuntime(ctx, compose, m, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
+		for _, item := range result.Retained {
+			fmt.Fprintf(out, "Retained %s %s: %s\n", item.Resource.Kind, item.Resource.Name, item.Reason)
+		}
+		if err != nil {
+			return fmt.Errorf("stop application-scoped Identity runtime: %w", err)
 		}
 	}
 	if removed, err := destroyRepositoryWorkloadRuntime(ctx, compose, resolved, files); err != nil {

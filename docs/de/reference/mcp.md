@@ -61,7 +61,7 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.trust.status` | `read_only` | false | false |
 | `baseharbor.trust.export` | `mutating` | false | false |
 | `baseharbor.trust.install` | `mutating` | false | true |
-| `baseharbor.app.stop` | `mutating` | false | false |
+| `baseharbor.app.stop` | `mutating` | false | true |
 | `baseharbor.app.preflight` | `read_only` | false | false |
 | `baseharbor.secret.list` | `read_only` | false | false |
 | `baseharbor.secret.set` | `mutating` | false | false |

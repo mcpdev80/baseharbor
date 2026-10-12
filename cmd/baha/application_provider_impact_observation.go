@@ -31,6 +31,9 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 		if instance.Provider.Kind == capability.ProviderKeycloak && instance.Ownership == capability.OwnershipBaseHarbor && !isRemoteApplication(resolved) {
 			observeIdentityImpact(ctx, resolved, instance, &fact)
 		}
+		if applicationNativeBackendInstance(instance, resolved.Manifest) && !isRemoteApplication(resolved) {
+			observeNativeBackendImpact(ctx, resolved, instance, &fact)
+		}
 		if !fact.InventoryComplete {
 			observation.InventoryComplete = false
 		}

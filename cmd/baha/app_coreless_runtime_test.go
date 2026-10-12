@@ -15,6 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -109,7 +110,26 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 	})
 	for _, command := range [][]string{{"app", "plan", "--json"}, {"app", "apply", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"app", "up", "--skip-memory-preflight"}} {
 		out.Reset()
-		if err := runWithIO(ctx, command, &out, &out); err != nil {
+		var operationErr error
+		if command[1] == "down" {
+			denied := runWithIO(ctx, command, &out, &out)
+			var failure *machine.Error
+			if !errors.As(denied, &failure) || failure.Code != machine.ErrorApprovalRequired {
+				t.Fatalf("native application stop lacks truthful missing-acknowledgement semantics: %v", denied)
+			}
+			current, err := resolveApplication(ctx, application.Store{}, nil, "status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, _, err := collectResolvedApplicationStatus(ctx, current)
+			if err != nil || !actual.Ready {
+				t.Fatal("denied application stop changed actual workload readiness")
+			}
+			operationErr = stopSelectiveApplicationWithConsent(ctx, &out)
+		} else {
+			operationErr = runWithIO(ctx, command, &out, &out)
+		}
+		if err := operationErr; err != nil {
 			for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 				t.Logf("secret-free workload failure: %v", cause)
 			}

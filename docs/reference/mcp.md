@@ -62,7 +62,7 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.trust.export` | `mutating` | false | false |
 | `baseharbor.trust.install` | `mutating` | false | true |
 | `baseharbor.trust.uninstall` | `mutating` | false | true |
-| `baseharbor.app.stop` | `mutating` | false | false |
+| `baseharbor.app.stop` | `mutating` | false | true |
 | `baseharbor.app.preflight` | `read_only` | false | false |
 | `baseharbor.secret.list` | `read_only` | false | false |
 | `baseharbor.secret.set` | `mutating` | false | false |

@@ -1,5 +1,17 @@
 # Unterstützte Operationen automatisieren
 
+`baha app down` und `baseharbor.app.stop` verwenden denselben aktuellen
+Folgenplan. Prüfe betroffene Funktionen, Verbraucher und die Orte erhaltener
+Owner-Dateien vor der Bestätigung. Unbekannte Folgen oder ein Ergebnis ohne
+Alternative benötigen **Achtung** und zwei ausdrückliche Bestätigungen. MCP
+übergibt `provider_change_consent` mit der angezeigten `plan_id`, `first` und
+`second`; nichtinteraktive CLI-Aufrufe verwenden dasselbe begrenzte JSON-Objekt
+über `BASEHARBOR_PROVIDER_CHANGE_CONSENT`. `--yes` ersetzt keine der beiden
+Bestätigungen und erlaubt keine Datenlöschung. Stop erhält Intent, Bindings und
+gemeinsame Provider für ein späteres `app up`. Das strukturierte
+`provider_change_result` unterscheidet nachgewiesenen Runtime-/Recovery-Zustand
+von weiterhin ungeprüften und teilweise ausgewiesenen Verbraucherfolgen.
+
 `baha agent describe -o json` und MCP `tools/list` zeigen tatsächliche IDs, Inputs, Sicherheit und Genehmigung. Dateireferenzen gelten auf dem Host, auf dem `baha mcp serve` läuft. Bei unterstützten lokalen Workloads können CLI/stdio verifizierten lokalen Runtime-Zugriff ohne gesonderten OIDC-Login verwenden, auch in `test`/`prod`, wenn keine Operator-Policy oder Management-Nutzung OIDC verlangt. Remote-Zugriff, geschütztes HTTP, Tenant-Scope und ausdrücklich verwaltete Operationen behalten ihre Operator-Authentifizierung.
 
 ## Intent erzeugen und lesen

@@ -364,7 +364,7 @@
             "id": "app.stop",
             "description": "Stop owned application runtime while preserving persistent data.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.app.stop"

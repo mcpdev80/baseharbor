@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 
@@ -13,6 +14,19 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+func stopSelectiveApplicationWithConsent(ctx context.Context, out io.Writer) error {
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "down")
+	if err != nil {
+		return err
+	}
+	plan, err := buildApplicationStopPlan(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
+	return runWithIO(withProviderChangeConsent(ctx, &consent), []string{"app", "down"}, out, out)
+}
 
 // Native fixtures explicitly acknowledge the current domain plan. Ordinary
 // --yes must not silently provide either provider-change acknowledgement.

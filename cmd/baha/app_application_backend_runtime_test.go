@@ -182,6 +182,28 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 		}
 		if enabled {
 			qualifyApplicationBackendRetainedData(t, ctx, files, service, phase, &originalIdentity)
+			if phase == 0 && os.Getenv("BASEHARBOR_APP_STOP_ACCEPTANCE") == "1" {
+				if err := stopSelectiveApplicationWithConsent(ctx, &bytes.Buffer{}); err != nil {
+					t.Fatalf("acknowledged application backend stop: %v", err)
+				}
+				stopped, err := provider.InspectProjectResources(ctx, files.Project, selected)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, resource := range stopped {
+					if resource.Kind == "container" || resource.Kind == "network" {
+						t.Fatal("application stop leaves selected runtime")
+					}
+				}
+				for _, resource := range actual {
+					if resource.Kind == "volume" && !application.ResourceNamedExists(stopped, resource) {
+						t.Fatal("application stop lost observed owned persistent volume")
+					}
+				}
+				applySelectiveIdentityIntent(t, ctx)
+				qualifyApplicationBackendRetainedData(t, ctx, files, service, 2, &originalIdentity)
+				t.Logf("application backend=%s acknowledged stop/resume: selected runtime withdrawn, observed data volumes preserved, original authenticated data and credentials work after resume", service)
+			}
 		}
 		t.Logf("application backend=%s phase=%d needed=%t selected containers=%d retained volumes=%d", service, phase, enabled, containers, volumes)
 	}
