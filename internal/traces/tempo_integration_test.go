@@ -22,7 +22,14 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 	if os.Getenv("BASEHARBOR_TRACES_INTEGRATION") != "1" {
 		t.Skip("set BASEHARBOR_TRACES_INTEGRATION=1 for real Docker/Podman Tempo acceptance")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	budget := 3 * time.Minute
+	if os.Getenv("BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE") == "1" {
+		// Tempo 3.0.2 has a five-minute live-store flush operation budget.
+		// Preserve the exact original-record assertion while allowing a
+		// controlled shutdown; never replace it with forced container removal.
+		budget = 8 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
 	compose, err := testruntime.Resolve(ctx)
@@ -112,6 +119,9 @@ func TestManagedTempoReceivesVerificationTraceThroughCollector(t *testing.T) {
 		}
 		selected := capability.ProviderPlacement{Scope: placement.Scope, Ownership: capability.OwnershipBaseHarbor}
 		if _, err := traces.RetireRuntimeAt(ctx, native, providerState, namespace, m, selected); err != nil {
+			diagnostics, done := context.WithTimeout(context.Background(), 10*time.Second)
+			t.Log(compose.DiagnosticsProject(diagnostics, placement.Project, traceFiles.Compose, traceFiles.Env))
+			done()
 			t.Fatal(err)
 		}
 		if err := compose.UpProject(ctx, placement.Project, traceFiles.Compose, traceFiles.Env); err != nil {

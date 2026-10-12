@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[standalone-trace-only]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"
@@ -80,7 +80,9 @@ jobs:
           go version > "$RUNNER_TEMP/standalone-retirement-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-evidence/runtime-version.txt"
           status=0
-          go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/objectstorage.log" || status=1
+          if [[ "${{ contains(github.event.head_commit.message, '[standalone-trace-only]') }}" != true ]]; then
+            go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/objectstorage.log" || status=1
+          fi
           if [[ "$BASEHARBOR_TEST_RUNTIME" == docker || "${{ contains(github.event.head_commit.message, '[standalone-failed-only]') }}" != true ]]; then
             go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/traces.log" || status=1
           fi

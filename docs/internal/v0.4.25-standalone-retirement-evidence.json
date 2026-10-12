@@ -113,12 +113,41 @@
           "artifact_sha256": "4a8124bccba7b31dc391df90448d5bc3bd43093c2284ca19291ae938e79d6746"
         }
       ]
+    },
+    {
+      "commit": "7f4cd23d6bf132fa23d4714d4e624120606a6461",
+      "tree": "41eee9c505ec801e4930b6c659099a068519dea3",
+      "run_id": 38240879022,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114782890296,
+          "outcome": "failure",
+          "s3": "original-authenticated-object-and-credentials-retained-without-reseeding",
+          "s3_outcome": "success",
+          "s3_seconds": 107.24,
+          "trace": "graceful-stop-caller-context-expired-before-retirement; no successful teardown or continuity claimed",
+          "artifact_id": 11742659469,
+          "artifact_sha256": "be3e727a35296cbba32561849fb0af43a24b8c372569ece824ea7bb4c2528f27"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114782889851,
+          "outcome": "success",
+          "s3": "original-authenticated-object-and-credentials-retained-without-reseeding",
+          "s3_outcome": "success",
+          "s3_seconds": 97.41,
+          "trace": "unchanged prior successful subset intentionally not repeated",
+          "artifact_id": 11742194378,
+          "artifact_sha256": "4b4fda934cd81c14f5dbc255bad0b7d48c9f892a3ca469a82dcb4ab451796f48"
+        }
+      ]
     }
   ],
   "corrections_pending_native_proof": [
-    "Docker selected data-preserving retirement gracefully stops without daemon kill timeout before non-forced removal; caller cancellation preserves container/owner for retry.",
-    "SeaweedFS resumed service uses the normal provider readiness budget instead of the three-second existing-provider probe.",
-    "Released Collector trace bindings can recover only a unique exact retained canonical consumer-network owner; ambiguous/modified owners are rejected."
+    "Docker trace-only retry permits bounded shutdown beyond the initial three-minute fixture budget and captures startup/shutdown diagnostics; original trace must be queried after restart without reseeding."
   ],
   "boundary": "Source qualification and individual native results apply only to recorded exact source/scope. Universal lifecycle/consumer changes and final exact-source ecosystem readiness remain incomplete."
 }
