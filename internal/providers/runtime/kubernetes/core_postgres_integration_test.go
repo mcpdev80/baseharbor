@@ -37,6 +37,16 @@ func (e kubernetesBackendProbeExecutor) ProbeBackend(ctx context.Context, probe 
 			"sh", "-ec",
 			fmt.Sprintf(`PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U baseharbor -d %q -tAc 'SELECT 1'`, database),
 		)
+	case application.BackendProbeCachePing:
+		return e.provider.Exec(
+			ctx,
+			e.application,
+			e.environment,
+			e.namespace,
+			"valkey",
+			"sh", "-ec",
+			`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli -h 127.0.0.1 -p 6379 ping`,
+		)
 	default:
 		return "", fmt.Errorf("unsupported Kubernetes backend probe %q", probe.Kind)
 	}
