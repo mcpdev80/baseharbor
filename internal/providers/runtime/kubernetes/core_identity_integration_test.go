@@ -39,6 +39,9 @@ func (r *kubernetesKeycloakRealization) Apply(ctx context.Context) (identityprov
 	if r.instance.PublicHTTPClient != nil {
 		return r.instance, nil
 	}
+	if err := r.provider.Destroy(ctx, r.application, r.environment, r.namespace); err != nil {
+		return identityprovider.KeycloakInstance{}, fmt.Errorf("clean stale Keycloak proof resources: %w", err)
+	}
 
 	const host = "identity.baseharbor.local"
 	const adminUser = "developer"
@@ -401,14 +404,14 @@ func TestKubernetesCoreKeycloakIdentityLifecycle(t *testing.T) {
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
 		t.Fatalf("Keycloak Core preflight: %v", err)
 	}
-	if err := driver.Provision(ctx, resource, binding); err != nil {
-		t.Fatalf("Keycloak Core provision: %v", err)
-	}
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cleanupCancel()
 		_ = realization.Destroy(cleanupCtx)
 	})
+	if err := driver.Provision(ctx, resource, binding); err != nil {
+		t.Fatalf("Keycloak Core provision: %v", err)
+	}
 
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatalf("Keycloak Core bind: %v", err)
