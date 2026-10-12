@@ -9,7 +9,6 @@ import (
 	"time"
 
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
-	"github.com/mcpdev80/baseharbor/internal/workload"
 )
 
 func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
@@ -41,15 +40,8 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 		Application: app,
 		Environment: "dev",
 		Target:      runtimemodel.Target{Scope: namespace},
-		Workload: workload.Model{Services: []workload.Service{{
-			Name:        "app",
-			Image:       "registry.k8s.io/pause:3.10",
-			Environment: map[string]string{"PORT": "8080"},
-			Ports:       []workload.Port{{Container: 8080, Protocol: "tcp"}},
-		}}},
-		Bindings: map[string]Binding{
-			"APP_SECRET": {Value: "ci-only", Sensitive: true},
-		},
+		Services:    []runtimemodel.Service{{Name: "app", Image: "registry.k8s.io/pause:3.10", Environment: []runtimemodel.EnvironmentVariable{{Name: "PORT", Value: "8080"}}, Ports: []runtimemodel.ContainerPort{{Container: 8080, Protocol: "tcp"}}}},
+		Bindings:    []Binding{{Name: "APP_SECRET", SecretRef: "kubernetes://" + namespace + "/" + app + "-test-bindings/APP_SECRET"}},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -60,6 +52,7 @@ func TestKubernetesRenderedWorkloadLifecycleOnCI(t *testing.T) {
 		_ = provider.Destroy(context.Background(), app, "dev", namespace)
 	})
 
+	createFixtureSecret(t, provider, app, "dev", namespace, map[string]string{"APP_SECRET": "ci-only"})
 	if err := provider.Apply(ctx, plan); err != nil {
 		t.Fatal(err)
 	}

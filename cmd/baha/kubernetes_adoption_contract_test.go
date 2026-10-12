@@ -120,11 +120,8 @@ func TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Workload.Compose != "compose.yaml" {
-		t.Fatalf("manifest workload compose = %q", m.Workload.Compose)
-	}
-	if !reflect.DeepEqual(m.Workload.Services, []string{"demo-app"}) {
-		t.Fatalf("manifest workload services = %#v", m.Workload.Services)
+	if !reflect.DeepEqual(m.Workload.Components, []string{"demo-app"}) {
+		t.Fatalf("manifest workload services = %#v", m.Workload.Components)
 	}
 	if !m.Services.SQL || !m.Services.Cache || !m.Services.ObjectStorage {
 		t.Fatalf("portable service intent missing: %#v", m.Services)
@@ -148,11 +145,10 @@ func TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged
 	}
 }
 
-
 type kubernetesReferenceAcceptance struct {
 	Version              int    `json:"version"`
 	ReferenceApplication string `json:"reference_application"`
-	Source struct {
+	Source               struct {
 		Compose             string   `json:"compose"`
 		WorkloadServices    []string `json:"workload_services"`
 		RepositoryOwned     bool     `json:"repository_owned"`
@@ -162,7 +158,7 @@ type kubernetesReferenceAcceptance struct {
 		NamespaceIsExternalInput bool     `json:"namespace_is_external_input"`
 		RequiredNamespacedKinds  []string `json:"required_namespaced_kinds"`
 		ForbiddenClusterKinds    []string `json:"forbidden_cluster_scoped_kinds"`
-		Workload struct {
+		Workload                 struct {
 			Service       string `json:"service"`
 			ContainerPort int    `json:"container_port"`
 			BuildContext  string `json:"build_context"`

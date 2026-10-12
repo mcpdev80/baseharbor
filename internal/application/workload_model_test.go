@@ -34,8 +34,7 @@ func TestResolveRepositoryWorkloadModelKeepsManifestSelectionPortable(t *testing
 			Cache: true,
 		},
 		Workload: WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"demo-app"},
+			Components: []string{"demo-app"},
 		},
 	}
 

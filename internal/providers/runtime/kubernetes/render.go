@@ -8,14 +8,17 @@ import (
 	"strings"
 
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
-	"github.com/mcpdev80/baseharbor/internal/workload"
 	"go.yaml.in/yaml/v3"
+	"net/url"
 )
 
 type Binding = runtimemodel.Binding
 type Plan = runtimemodel.WorkloadPlan
 
 func Render(plan Plan) ([]byte, error) {
+	if err := plan.Validate(); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(plan.Application) == "" {
 		return nil, errors.New("Kubernetes application name is required")
 	}
@@ -25,12 +28,12 @@ func Render(plan Plan) ([]byte, error) {
 	if strings.TrimSpace(plan.Target.Scope) == "" {
 		return nil, errors.New("Kubernetes runtime target scope (namespace) is required")
 	}
-	if len(plan.Workload.Services) == 0 {
+	if len(plan.Services) == 0 {
 		return nil, errors.New("Kubernetes workload contains no services")
 	}
 
 	var documents []string
-	for _, service := range plan.Workload.Services {
+	for _, service := range plan.Services {
 		rendered, err := renderService(plan, service)
 		if err != nil {
 			return nil, err
@@ -46,24 +49,12 @@ func Render(plan Plan) ([]byte, error) {
 	return []byte(strings.Join(documents, "---\n")), nil
 }
 
-func renderService(plan Plan, service workload.Service) ([]map[string]any, error) {
+func renderService(plan Plan, service runtimemodel.Service) ([]map[string]any, error) {
 	if strings.TrimSpace(service.Name) == "" {
 		return nil, errors.New("Kubernetes workload service name is required")
 	}
 
-	image := strings.TrimSpace(plan.Images[service.Name])
-	if image == "" {
-		image = strings.TrimSpace(service.Image)
-	}
-	if image == "" {
-		if service.Build != nil {
-			return nil, fmt.Errorf(
-				"workload service %q is source/build-backed; resolve it to an OCI image artifact before Kubernetes realization",
-				service.Name,
-			)
-		}
-		return nil, fmt.Errorf("workload service %q does not define an OCI image artifact", service.Name)
-	}
+	image := strings.TrimSpace(service.Image)
 
 	name := dnsLabel(plan.Application + "-" + service.Name)
 	labels := ownershipLabels(plan.Application, plan.Environment)
@@ -73,13 +64,12 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 		"baseharbor.io/workload-service-name": service.Name,
 	}
 
-	configData, secretData, err := resolvedEnvironment(service.Environment, plan.Bindings)
+	configData, secretData, err := resolvedEnvironment(service.Environment, plan.Bindings, plan.Target.Scope)
 	if err != nil {
 		return nil, fmt.Errorf("service %s environment: %w", service.Name, err)
 	}
 
 	configName := name + "-config"
-	secretName := name + "-bindings"
 
 	var objects []map[string]any
 	if len(configData) > 0 {
@@ -93,20 +83,6 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 				"annotations": cloneMap(annotations),
 			},
 			"data": sortedMap(configData),
-		})
-	}
-	if len(secretData) > 0 {
-		objects = append(objects, map[string]any{
-			"apiVersion": "v1",
-			"kind":       "Secret",
-			"type":       "Opaque",
-			"metadata": map[string]any{
-				"name":        secretName,
-				"namespace":   plan.Target.Scope,
-				"labels":      cloneMap(labels),
-				"annotations": cloneMap(annotations),
-			},
-			"stringData": sortedMap(secretData),
 		})
 	}
 
@@ -138,8 +114,18 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 		envFrom = append(envFrom, map[string]any{"configMapRef": map[string]any{"name": configName}})
 	}
 	if len(secretData) > 0 {
-		envFrom = append(envFrom, map[string]any{"secretRef": map[string]any{"name": secretName}})
+		keys := make([]string, 0, len(secretData))
+		for key := range secretData {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		var env []any
+		for _, key := range keys {
+			env = append(env, map[string]any{"name": key, "valueFrom": map[string]any{"secretKeyRef": secretData[key]}})
+		}
+		container["env"] = env
 	}
+
 	if len(envFrom) > 0 {
 		container["envFrom"] = envFrom
 	}
@@ -203,56 +189,48 @@ func renderService(plan Plan, service workload.Service) ([]map[string]any, error
 	return objects, nil
 }
 
-func resolvedEnvironment(source map[string]string, bindings map[string]Binding) (map[string]string, map[string]string, error) {
+func resolvedEnvironment(source []runtimemodel.EnvironmentVariable, bindings []Binding, namespace string) (map[string]string, map[string]map[string]string, error) {
 	config := map[string]string{}
-	secret := map[string]string{}
-
-	keys := make([]string, 0, len(source)+len(bindings))
-	seen := map[string]struct{}{}
-	for key := range source {
-		seen[key] = struct{}{}
-		keys = append(keys, key)
-	}
-	for key := range bindings {
-		if _, ok := seen[key]; !ok {
-			keys = append(keys, key)
+	secret := map[string]map[string]string{}
+	for _, env := range source {
+		if strings.Contains(env.Value, "${") {
+			return nil, nil, fmt.Errorf("environment %s is unresolved", env.Name)
 		}
+		config[env.Name] = env.Value
 	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		if binding, ok := bindings[key]; ok {
-			if binding.Sensitive {
-				secret[key] = binding.Value
-			} else {
-				config[key] = binding.Value
-			}
+	for _, binding := range bindings {
+		if binding.SecretRef == "" {
+			config[binding.Name] = binding.PublicValue
 			continue
 		}
-		value, err := expandComposeDefault(source[key])
+		ref, err := nativeSecretReference(binding.SecretRef, namespace)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", key, err)
+			return nil, nil, err
 		}
-		config[key] = value
+		delete(config, binding.Name)
+		secret[binding.Name] = ref
 	}
 	return config, secret, nil
 }
 
-func expandComposeDefault(value string) (string, error) {
-	if !strings.Contains(value, "${") {
-		return value, nil
+// The runtime binding is opaque outside the provider. Native references use
+// Kubernetes' existing namespaced Secret/key mechanism; values are never read
+// into the portable plan or printed as rendered Secret objects.
+func nativeSecretReference(reference, namespace string) (map[string]string, error) {
+	u, err := url.Parse(reference)
+	if err != nil || u.Scheme != "kubernetes" || u.Host != namespace || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("Kubernetes binding requires a supported same-namespace Secret reference")
 	}
-	if !strings.HasPrefix(value, "${") || !strings.HasSuffix(value, "}") {
-		return "", fmt.Errorf("unsupported Compose interpolation %q", value)
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || dnsLabel(parts[0]) != parts[0] {
+		return nil, fmt.Errorf("invalid Kubernetes Secret reference")
 	}
-	inner := strings.TrimSuffix(strings.TrimPrefix(value, "${"), "}")
-	if _, fallback, ok := strings.Cut(inner, ":-"); ok {
-		return fallback, nil
+	for _, r := range parts[1] {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-') {
+			return nil, fmt.Errorf("invalid Kubernetes Secret key reference")
+		}
 	}
-	if _, fallback, ok := strings.Cut(inner, "-"); ok {
-		return fallback, nil
-	}
-	return "", fmt.Errorf("unresolved Compose interpolation %q requires a runtime binding", value)
+	return map[string]string{"name": parts[0], "key": parts[1]}, nil
 }
 
 func ownershipLabels(application, environment string) map[string]string {

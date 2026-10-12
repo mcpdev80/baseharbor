@@ -39,8 +39,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 			Secrets:       true,
 		},
 		Workload: application.WorkloadConfig{
-			Compose:  "compose.yaml",
-			Services: []string{"demo-app"},
+			Components: []string{"demo-app"},
 		},
 	}
 
@@ -72,34 +71,14 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		t.Fatal("Kubernetes target namespace is empty")
 	}
 
-	plan := runtimemodel.WorkloadPlan{
-		Application: manifest.Name,
-		Environment: manifest.Environment,
-		Target:      runtimemodel.Target{Scope: namespace},
-		Workload:    model,
-		Images: map[string]string{
-			"demo-app": image,
-		},
-		Bindings: map[string]runtimemodel.Binding{
-			"APP_SECRET": {
-				Value:     "kubernetes-demo-ci",
-				Sensitive: true,
-			},
-			"DATABASE_URL": {
-				Value:     "postgresql://demo:demo@unavailable.invalid:5432/demo",
-				Sensitive: true,
-			},
-			"REDIS_URL": {
-				Value:     "redis://unavailable.invalid:6379/0",
-				Sensitive: true,
-			},
-			"S3_ENDPOINT": {
-				Value: "http://unavailable.invalid:9000",
-			},
-			"S3_BUCKET": {
-				Value: "uploads",
-			},
-		},
+	values := map[string]string{"APP_SECRET": "kubernetes-demo-ci", "DATABASE_URL": "postgresql://demo:demo@unavailable.invalid:5432/demo", "REDIS_URL": "redis://unavailable.invalid:6379/0", "S3_ACCESS_KEY": "ci-key", "S3_SECRET_KEY": "ci-only"}
+	bindings := []runtimemodel.Binding{{Name: "S3_ENDPOINT", PublicValue: "http://unavailable.invalid:9000"}, {Name: "S3_BUCKET", PublicValue: "uploads"}, {Name: "OTEL_EXPORTER_OTLP_ENDPOINT", PublicValue: ""}, {Name: "COMPANION_URL", PublicValue: ""}}
+	for name := range values {
+		bindings = append(bindings, runtimemodel.Binding{Name: name, SecretRef: "kubernetes://" + namespace + "/" + manifest.Name + "-test-bindings/" + name})
+	}
+	plan, err := artifact.RuntimePlan(manifest.Name, manifest.Environment, namespace, model, map[string]string{"demo-app": image}, bindings)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -110,6 +89,7 @@ func TestKubernetesReferenceDemoArtifactLifecycleOnCI(t *testing.T) {
 		_ = provider.Destroy(context.Background(), manifest.Name, manifest.Environment, namespace)
 	})
 
+	kubernetes.CreateReferenceDemoFixtureSecret(t, provider, manifest.Name, manifest.Environment, namespace, values)
 	if err := provider.Apply(ctx, plan); err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,11 @@
 package kubernetes
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/artifact"
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 	"github.com/mcpdev80/baseharbor/internal/workload"
 )
@@ -23,22 +25,17 @@ func TestRenderReferenceDemoUsesArtifactOverrideAndNamespacedResources(t *testin
 		Ports: []workload.Port{{Container: 8080, Protocol: "tcp"}},
 	}}}
 
-	out, err := Render(Plan{
-		Application: "baseharbor-demo",
-		Environment: "dev",
-		Target:      runtimemodel.Target{Scope: "baseharbor-ci"},
-		Workload:    model,
-		Images: map[string]string{
-			"demo-app": "registry.example/baseharbor-demo@sha256:deadbeef",
-		},
-		Bindings: map[string]Binding{
-			"DATABASE_URL": {Value: "postgresql://managed", Sensitive: true},
-			"REDIS_URL":    {Value: "redis://managed", Sensitive: true},
-			"S3_ENDPOINT":  {Value: "http://s3.internal:9000"},
-			"S3_BUCKET":    {Value: "uploads"},
-			"APP_SECRET":   {Value: "managed-secret", Sensitive: true},
-		},
+	plan, err := artifact.RuntimePlan("baseharbor-demo", "dev", "baseharbor-ci", model, map[string]string{"demo-app": "registry.example/baseharbor-demo@sha256:deadbeef"}, []Binding{
+		{Name: "DATABASE_URL", SecretRef: "kubernetes://baseharbor-ci/demo-bindings/DATABASE_URL"},
+		{Name: "REDIS_URL", SecretRef: "kubernetes://baseharbor-ci/demo-bindings/REDIS_URL"},
+		{Name: "APP_SECRET", SecretRef: "kubernetes://baseharbor-ci/demo-bindings/APP_SECRET"},
+		{Name: "S3_ENDPOINT", PublicValue: "http://s3.internal:9000"},
+		{Name: "S3_BUCKET", PublicValue: "uploads"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := Render(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +44,7 @@ func TestRenderReferenceDemoUsesArtifactOverrideAndNamespacedResources(t *testin
 		"kind: Deployment",
 		"kind: Service",
 		"kind: ConfigMap",
-		"kind: Secret",
+		"secretKeyRef:",
 		"namespace: baseharbor-ci",
 		"app.kubernetes.io/managed-by: baseharbor",
 		"baseharbor.io/application: baseharbor-demo",
@@ -80,16 +77,25 @@ func TestRenderReferenceDemoUsesArtifactOverrideAndNamespacedResources(t *testin
 }
 
 func TestRenderBuildBackedServiceRequiresResolvedArtifact(t *testing.T) {
-	_, err := Render(Plan{
-		Application: "demo",
-		Environment: "dev",
-		Target:      runtimemodel.Target{Scope: "baseharbor-ci"},
-		Workload: workload.Model{Services: []workload.Service{{
-			Name:  "app",
-			Build: &workload.Build{Context: "."},
-		}}},
-	})
+	_, err := artifact.RuntimePlan("demo", "dev", "baseharbor-ci", workload.Model{Services: []workload.Service{{Name: "app", Build: &workload.Build{Context: "."}}}}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "resolve it to an OCI image artifact") {
 		t.Fatalf("expected artifact resolution failure, got %v", err)
+	}
+}
+
+func TestRenderRejectsForeignOrCredentialBearingSecretReference(t *testing.T) {
+	for _, reference := range []string{"kubernetes://foreign/secret/key", "kubernetes://user:credential@baseharbor-ci/secret/key", "kubernetes://baseharbor-ci/secret/key?token=private", "unsupported://baseharbor-ci/secret/key"} {
+		plan := Plan{Application: "app", Environment: "dev", Target: runtimemodel.Target{Scope: "baseharbor-ci"}, Services: []runtimemodel.Service{{Name: "app", Image: "example/app:1"}}, Bindings: []Binding{{Name: "APP_SECRET", SecretRef: reference}}}
+		if _, err := Render(plan); err == nil || strings.Contains(err.Error(), "credential") || strings.Contains(err.Error(), "private") {
+			t.Fatal("unsafe secret reference accepted or leaked")
+		}
+	}
+}
+
+func TestApplyRejectsForeignSelectedScopeBeforeExecution(t *testing.T) {
+	provider := Provider{namespace: "selected", kubectl: "must-not-run"}
+	plan := Plan{Application: "app", Environment: "dev", Target: runtimemodel.Target{Scope: "other"}, Services: []runtimemodel.Service{{Name: "app", Image: "example/app:1"}}}
+	if err := provider.Apply(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "scope differs") {
+		t.Fatal("Apply bypassed current semantic preflight")
 	}
 }

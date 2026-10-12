@@ -12,7 +12,19 @@ import (
 	runtimemodel "github.com/mcpdev80/baseharbor/internal/runtime/model"
 )
 
+// Preflight uses the current semantic plan and performs no cluster mutation.
+func (p Provider) Preflight(_ context.Context, plan Plan) error {
+	if p.namespace != "" && plan.Target.Scope != p.namespace {
+		return fmt.Errorf("Kubernetes workload scope differs from the selected provider namespace")
+	}
+	_, err := Render(plan)
+	return err
+}
+
 func (p Provider) Apply(ctx context.Context, plan Plan) error {
+	if err := p.Preflight(ctx, plan); err != nil {
+		return err
+	}
 	rendered, err := Render(plan)
 	if err != nil {
 		return err
@@ -29,7 +41,7 @@ func (p Provider) WaitReady(ctx context.Context, plan Plan, timeout time.Duratio
 	if timeout <= 0 {
 		timeout = 2 * time.Minute
 	}
-	for _, service := range plan.Workload.Services {
+	for _, service := range plan.Services {
 		name := dnsLabel(plan.Application + "-" + service.Name)
 		cmd := exec.CommandContext(
 			ctx,
