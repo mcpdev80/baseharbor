@@ -149,14 +149,16 @@ jobs:
           set -euo pipefail
           go test ./internal/providers/runtime/kubernetes             -run '^TestKubernetesCoreKeycloakIdentityLifecycle$'             -count=1 -v
 
-      - name: Assert proof cleanup
+      - name: Cleanup and assert proof cleanup
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
           namespace="${namespace:-default}"
-          remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l 'app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-identity-proof'             --no-headers 2>/dev/null || true)"
+          selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-identity-proof'
+          kubectl delete deployment,service,configmap,secret -n "$namespace"             -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+          remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace"             -l "$selector" --no-headers 2>/dev/null || true)"
           test -z "$remaining" || {
             echo "Identity proof left BaseHarbor-owned resources:" >&2
             echo "$remaining" >&2
