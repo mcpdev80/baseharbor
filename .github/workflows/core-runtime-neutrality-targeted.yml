@@ -43,4 +43,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test             ./internal/application             ./internal/openbao             ./internal/identityprovider             ./internal/capability             -count=1
+          go test             ./internal/application             ./internal/openbao             ./internal/identityprovider             ./internal/capability             ./internal/runtime             -count=1
