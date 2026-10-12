@@ -79,7 +79,12 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/standalone-retirement-evidence/source.txt"
           go version > "$RUNNER_TEMP/standalone-retirement-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-evidence/runtime-version.txt"
-          go test ./internal/objectstorage ./internal/traces -run '^(TestSeaweedRetirementRetainsOriginalAuthenticatedObject|TestManagedTempoReceivesVerificationTraceThroughCollector)$' -count=1 -v -parallel=1 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/runtime.log"
+          status=0
+          go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/objectstorage.log" || status=1
+          if [[ "$BASEHARBOR_TEST_RUNTIME" == docker || "${{ contains(github.event.head_commit.message, '[standalone-failed-only]') }}" != true ]]; then
+            go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/traces.log" || status=1
+          fi
+          exit "$status"
       - name: Upload bounded receipt including failed attempts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

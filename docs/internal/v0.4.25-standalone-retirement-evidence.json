@@ -1,0 +1,124 @@
+{
+  "version": "baseharbor.v0425.standalone-retirement-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualification": {
+    "source": {
+      "commit": "69b034478f01e9858ec90960193facd9ce799504",
+      "tree": "c382c1eec83848f4f02c39a948d96036936fcd5e",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 64.171,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/metrics",
+      "./internal/logs",
+      "./internal/traces",
+      "./internal/telemetry",
+      "./internal/objectstorage"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.162,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.304,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.506,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.404,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 46.23,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 63.759,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.176,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.011,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.916,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "native_attempts": [
+    {
+      "commit": "69b034478f01e9858ec90960193facd9ce799504",
+      "tree": "c382c1eec83848f4f02c39a948d96036936fcd5e",
+      "run_id": 38239941184,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114779762542,
+          "outcome": "failure",
+          "s3": "restart-readiness-failed",
+          "trace": "original-trace-not-readable-after-restart",
+          "artifact_id": 11743001546,
+          "artifact_sha256": "7df37974a62cdec5f99fd7f30f54f1be563b3624603436a27e06d6bec1df06cb"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114779762280,
+          "outcome": "failure",
+          "s3": "restart-readiness-failed",
+          "trace": "original-trace-read-after-collector-and-tempo-retirement-resume-without-reseeding",
+          "trace_outcome": "success",
+          "artifact_id": 11741987265,
+          "artifact_sha256": "4a8124bccba7b31dc391df90448d5bc3bd43093c2284ca19291ae938e79d6746"
+        }
+      ]
+    }
+  ],
+  "corrections_pending_native_proof": [
+    "Docker selected data-preserving retirement gracefully stops without daemon kill timeout before non-forced removal; caller cancellation preserves container/owner for retry.",
+    "SeaweedFS resumed service uses the normal provider readiness budget instead of the three-second existing-provider probe.",
+    "Released Collector trace bindings can recover only a unique exact retained canonical consumer-network owner; ambiguous/modified owners are rejected."
+  ],
+  "boundary": "Source qualification and individual native results apply only to recorded exact source/scope. Universal lifecycle/consumer changes and final exact-source ecosystem readiness remain incomplete."
+}

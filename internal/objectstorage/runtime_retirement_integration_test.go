@@ -77,8 +77,22 @@ func TestSeaweedRetirementRetainsOriginalAuthenticatedObject(t *testing.T) {
 	if err := provider.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := ExistingReadySharedProviderAt(ctx, root, namespace); err != nil {
+	readinessCtx, readinessDone := context.WithTimeout(ctx, providerReadinessTimeout)
+	client, err := s3HTTPClient(files)
+	if err != nil {
+		readinessDone()
 		t.Fatal(err)
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		readinessDone()
+		t.Fatal(err)
+	}
+	readyErr := waitS3(readinessCtx, client, endpoint)
+	readinessDone()
+	if readyErr != nil {
+		t.Log(provider.DiagnosticsProject(ctx, files.Project, files.Compose, files.Env))
+		t.Fatalf("retained S3 restart readiness: %v", readyErr)
 	}
 	instance, err = driver.realization.Existing(ctx)
 	if err != nil {

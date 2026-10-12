@@ -136,7 +136,38 @@ func retainedCollectorTraceBinding(resolved resolvedApplication, collector capab
 	if len(selected) != 0 {
 		return "", "", errors.New("Collector trace binding has no retained owner")
 	}
-	// An unbound retained Collector may still have an old trace export. The
-	// canonical leaf check below rejects that configuration instead of erasing it.
-	return "", "", nil
+	// Released bindings do not erase protected runtime configuration. For a
+	// retained applied/retired intent, recover only a UNIQUE exact canonical
+	// Collector -> Tempo network match, without selecting or persisting an offer.
+	enabled, err := application.TracesCollectionEnabled(resolved.Manifest)
+	if err != nil {
+		return "", "", err
+	}
+	if !enabled {
+		return "", "", nil
+	}
+	network, dependency := "", ""
+	for _, instance := range registry.Instances {
+		if instance.Provider.Kind != capability.ProviderTempo || instance.Ownership != capability.OwnershipBaseHarbor {
+			continue
+		}
+		if instance.Scope == capability.ScopeApplication && (instance.OwnerApplicationID != resolved.Manifest.ApplicationID || instance.OwnerEnvironment != resolved.Manifest.Environment) {
+			continue
+		}
+		_, placement, _, err := tracesprovider.ExistingRuntimeInventoryAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest, providerInstancePlacement(instance))
+		if err != nil {
+			continue
+		}
+		if _, _, err := telemetry.ExistingRuntimeInventoryAt(resolved.TargetStateRoot, resolved.Target.Name, placement.Network); err != nil {
+			continue
+		}
+		if dependency != "" {
+			return "", "", errors.New("retained Collector trace network owner is ambiguous")
+		}
+		network, dependency = placement.Network, instance.ID
+	}
+	if dependency == "" {
+		return "", "", errors.New("retained Collector trace export has no verifiable canonical owner")
+	}
+	return network, dependency, nil
 }

@@ -401,6 +401,15 @@ func (c Compose) removeOwnedProjectResources(ctx context.Context, project string
 			switch resource.Kind {
 			case "container":
 				args = []string{"container", "rm", "-f"}
+				if !deleteAnonymousVolumes {
+					// Retirement must let the service flush its persistent state.
+					// The caller context bounds waiting; cancellation preserves the
+					// container/owner for retry instead of issuing a forced kill.
+					if _, err := c.directOutput(ctx, "container", "stop", "--timeout", "-1", resource.Name); err != nil {
+						return fmt.Errorf("gracefully stop owned container %s; preserve for retry: %w", resource.Name, err)
+					}
+					args = []string{"container", "rm"}
+				}
 				if deleteAnonymousVolumes {
 					args = append(args, "-v")
 				}
