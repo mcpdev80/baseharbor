@@ -84,6 +84,33 @@ func TestSelectedStopReturnsActualPartialResultAndAllowsStoppedRetry(t *testing.
 		t.Fatalf("stopped retry: %+v %v", result, err)
 	}
 }
+
+func TestSelectedStopAcceptsNativeProcessRetirementButNeverLosesSiblingOrData(t *testing.T) {
+	r := selectedStopFixture()
+	r.after = r.after[1:]
+	r.stopped = r.stopped[1:]
+	result, err := stopFixture(t.Context(), r)
+	if err != nil || !result.Verified || len(result.Removed) != 1 || len(result.Stopped) != 1 || len(result.Retained) != 2 {
+		t.Fatalf("native process retirement: %+v %v", result, err)
+	}
+	// An interrupted/repeated stop must also preserve the old canonical owner
+	// when the selected process was already removed by its first native stop.
+	r = selectedStopFixture()
+	canonical := append([]ProjectResource{}, r.before...)
+	r.before, r.after = r.before[1:], r.after[1:]
+	r.containers, r.stopped = r.containers[1:], r.stopped[1:]
+	result, err = StopOwnedProjectServices(t.Context(), r, "owned", "/protected", nil, canonical, []string{"postgres"}, "/protected/compose.yaml")
+	if err != nil || !result.Verified || r.mutations != 0 || len(result.Retained) != 2 {
+		t.Fatalf("removed-process retry: %+v %v", result, err)
+	}
+	r = selectedStopFixture()
+	r.after, r.stopped = r.after[1:], r.stopped[1:]
+	r.stopped = append(r.stopped, RuntimeContainer{ID: "unknown-replica", Project: "owned", Service: "postgres", Name: "owned-postgres-2", Running: true, State: "running"})
+	result, err = stopFixture(t.Context(), r)
+	if err == nil || result.Verified {
+		t.Fatal("unknown new replica was hidden by original process removal")
+	}
+}
 func TestSelectedStopDetectsLostDataChangedSiblingAndUnstoppedService(t *testing.T) {
 	for _, kind := range []string{"volume", "sibling", "running", "identity"} {
 		t.Run(kind, func(t *testing.T) {

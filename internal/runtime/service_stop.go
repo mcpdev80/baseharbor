@@ -17,6 +17,7 @@ type RuntimeServiceStopProvider interface {
 type RuntimeServiceStopResult struct {
 	Stopped              []ProjectResource `json:"stopped"`
 	Retained             []ProjectResource `json:"retained"`
+	Removed              []ProjectResource `json:"removed"`
 	Verified             bool              `json:"verified"`
 	VerificationFailures []string          `json:"verification_failures,omitempty"`
 }
@@ -26,7 +27,7 @@ type RuntimeServiceStopResult struct {
 // authority over those siblings. Persistent resources and process identities
 // are inspected again even when the native command reports failure.
 func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopProvider, project, workdir string, environment map[string]string, expected []ProjectResource, services []string, compose string) (RuntimeServiceStopResult, error) {
-	r := RuntimeServiceStopResult{Stopped: []ProjectResource{}, Retained: []ProjectResource{}}
+	r := RuntimeServiceStopResult{Stopped: []ProjectResource{}, Retained: []ProjectResource{}, Removed: []ProjectResource{}}
 	if provider == nil || project == "" || workdir == "" || compose == "" || len(expected) == 0 || len(services) == 0 {
 		return r, errors.New("selected stop requires canonical module ownership")
 	}
@@ -103,6 +104,14 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	}
 	for _, resource := range before {
 		if !remaining[resource] {
+			selectedContainer := false
+			for service := range selected {
+				selectedContainer = selectedContainer || resource == (ProjectResource{Kind: "container", Name: project + "-" + service + "-1"})
+			}
+			if selectedContainer {
+				r.Removed = append(r.Removed, resource)
+				continue
+			}
 			r.VerificationFailures = append(r.VerificationFailures, "retained-resource-missing:"+resource.Kind+"/"+resource.Name)
 			inspectErr = errors.Join(inspectErr, fmt.Errorf("selected stop lost retained %s %s", resource.Kind, resource.Name))
 		}
@@ -115,10 +124,21 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	for _, container := range actual {
 		if container.Project == project {
 			observed[container.Name] = container
+			if selected[container.Service] && (!ContainerMatchesProjectResource(provider.Kind(), container, project, ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}) || container.Running) {
+				listErr = errors.Join(listErr, errors.New("selected stop observed an unexpected or running service process"))
+				r.VerificationFailures = append(r.VerificationFailures, "unexpected-or-running-selected-process:"+container.Service)
+			}
 		}
 	}
 	for name, prior := range baseline {
 		current, exists := observed[name]
+		if !exists && selected[prior.Service] {
+			// The existing native selected-stop adapter may remove its stopped
+			// containers. This is process retirement, never data deletion. Exact
+			// resource absence and replica inspection above must both succeed.
+			r.Stopped = append(r.Stopped, ProjectResource{Kind: "container", Name: project + "-" + prior.Service + "-1"})
+			continue
+		}
 		if !exists || current.ID != prior.ID || current.Project != prior.Project || current.Service != prior.Service {
 			r.VerificationFailures = append(r.VerificationFailures, "retained-process-owner-changed:"+name)
 			listErr = errors.Join(listErr, errors.New("selected stop changed retained native process ownership"))

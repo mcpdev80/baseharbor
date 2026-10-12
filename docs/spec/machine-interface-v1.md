@@ -121,7 +121,12 @@ The local Core-mode `baha down --json` and MCP operation share the selected
 PostgreSQL/OpenBao stop authority and typed result: `target`, `state`, `runtime`
 and `provider_change_result`. Other providers, workloads and connectivity stay
 requested and running. The native verifier checks selected process state,
-resource retention and consolidated-project sibling preservation. A stopped
+persistent resource retention and consolidated-project sibling preservation.
+The existing native adapter may remove selected stopped containers; the result
+inventories actual removed and retained resources without claiming data deletion.
+The current plan binds observed native process identities/state and internal
+image identity revisions as well as protected file bytes; restart/image changes
+invalidate earlier acknowledgement. A stopped
 runtime does not establish complete consumer/secret/PKI/session continuity;
 that consequence result remains partial where unverified. There is no HTTP
 Core-stop adapter or authenticated browser acceptance implied by this seam.

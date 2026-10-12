@@ -123,7 +123,12 @@ Das lokale `baha down --json` im Core-Modus und die MCP-Operation nutzen dieselb
 PostgreSQL-/OpenBao-Stop-Autorität und das typisierte Ergebnis: `target`, `state`,
 `runtime` und `provider_change_result`. Andere Provider, Workloads und Verbindungen
 bleiben angefordert und laufend. Die native Prüfung kontrolliert ausgewählte
-Prozesszustände, Ressourcenerhalt und Nachbardienste im gemeinsamen Projekt.
+Prozesszustände, Erhalt dauerhafter Ressourcen und Nachbardienste im gemeinsamen
+Projekt. Der bestehende native Adapter kann ausgewählte gestoppte Container
+entfernen; das Ergebnis inventarisiert den tatsächlichen Abbau und Erhalt, ohne
+eine Datenlöschung zu behaupten. Der aktuelle Plan bindet beobachtete native
+Prozessidentitäten/-zustände und interne Image-Identitätsrevisionen sowie
+geschützte Dateiinhalte; Neustart oder Image-Änderung macht frühere Zustimmung ungültig.
 Ein gestoppter Runtime-Dienst belegt keine vollständige Verbraucher-/Secrets-/
 PKI-/Session-Kontinuität; der Folgennachweis bleibt bei ungeklärten Folgen teilweise.
 Dieser Pfad behauptet keinen HTTP-Core-Stop-Adapter oder authentifizierten Browser-Test.

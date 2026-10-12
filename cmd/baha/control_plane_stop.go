@@ -35,6 +35,9 @@ func runtimeDownWithResult(parent context.Context, out io.Writer) (controlPlaneS
 	if err != nil {
 		return result, err
 	}
+	if err := authorizeCurrentMCPContext(ctx, "control-plane.stop", target.Name, "", ""); err != nil {
+		return result, err
+	}
 	root, err := targetDataRoot(target)
 	if err != nil {
 		return result, err
@@ -47,6 +50,9 @@ func runtimeDownWithResult(parent context.Context, out io.Writer) (controlPlaneS
 	plan, err := authorizeControlPlaneStop(ctx, out)
 	if err != nil {
 		return result, err
+	}
+	if plan.targetBinding != target {
+		return result, controlPlaneStopPlanError(plan, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 	provider, err := detectRuntimeForTarget(ctx, target)
 	if err != nil {

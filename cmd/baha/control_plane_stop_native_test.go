@@ -94,7 +94,11 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := execControlPlanePostgresSQL(ctx, provider, files, credentials.PostgresUser, credentials.PostgresPassword, config.PostgresDB, "CREATE TABLE core_stop_original (value text); INSERT INTO core_stop_original VALUES ('original-before-stop');"); err != nil {
+	originalManager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "CREATE TABLE core_stop_original (value text); INSERT INTO core_stop_original VALUES ('original-before-stop');"); err != nil {
 		t.Fatal("single original SQL seed", err)
 	}
 	env, err := os.ReadFile(files.Env)
@@ -156,6 +160,9 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	if json.Unmarshal(raw, &result) != nil || result.State != "stopped" || !result.Runtime.Verified || !result.ProviderChangeResult.Owner.Verified || result.ProviderChangeResult.Status != "partial" {
 		t.Fatal("false complete native result", string(raw))
 	}
+	if err := nativeCoreStopRetry(ctx, session, plan.Scope.PlanID); err != nil {
+		t.Fatal("current stopped/removed retry", err)
+	}
 	after, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -177,15 +184,64 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	if err := runtimeUpExisting(ctx, &out, recovery); err != nil {
 		t.Fatalf("Core resume: %v\n%s", err, out.String())
 	}
-	if err := execControlPlanePostgresSQL(ctx, provider, files, credentials.PostgresUser, credentials.PostgresPassword, config.PostgresDB, "DO $$ BEGIN IF (SELECT count(*) FROM core_stop_original WHERE value='original-before-stop') <> 1 THEN RAISE EXCEPTION 'original row missing'; END IF; END $$;"); err != nil {
+	if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "DO $$ BEGIN IF (SELECT count(*) FROM core_stop_original WHERE value='original-before-stop') <> 1 THEN RAISE EXCEPTION 'original row missing'; END IF; END $$;"); err != nil {
 		t.Fatal("original SQL row after resume", err)
 	}
 	if err := platformopenbao.CheckManager(ctx, provider, files); err != nil {
 		t.Fatal("original OpenBao manager after resume", err)
 	}
+	manager, err := platformopenbao.LoadAdminCredentials(files)
+	if err != nil || manager.RoleID != originalManager.RoleID || manager.SecretID != originalManager.SecretID {
+		t.Fatal("resume changed original OpenBao manager credentials")
+	}
 	currentEnv, err = os.ReadFile(files.Env)
 	if err != nil || !bytes.Equal(env, currentEnv) {
 		t.Fatal("resume changed original credentials")
 	}
-	t.Log("original SQL row and credentials read after normal Core resume; original OpenBao manager usable; no reseeding or rotation")
+	t.Log("original SQL row and credentials read over verify-full TLS after normal Core resume; unchanged original OpenBao manager usable; no reseeding or rotation")
+}
+
+func nativeCoreStopRetry(ctx context.Context, session *mcp.ClientSession, oldID string) error {
+	current, err := buildControlPlaneStopPlan(ctx)
+	if err != nil {
+		return err
+	}
+	if !current.RuntimeObserved || current.Scope.PlanID == oldID {
+		return errors.New("changed native process state retained the old acknowledgement")
+	}
+	old := &application.ProviderChangeConsent{PlanID: oldID, First: true, Second: true}
+	response, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.control-plane.stop", Arguments: machineControlPlaneStopInput{ProviderChangeConsent: old}})
+	if err != nil {
+		return err
+	}
+	if !response.IsError {
+		return errors.New("old native-state acknowledgement bypassed current plan")
+	}
+	rawFailure, _ := json.Marshal(response.StructuredContent)
+	var failure machineToolError
+	if json.Unmarshal(rawFailure, &failure) != nil || failure.Error == nil || failure.Error.CauseCode != "stale-impact-consent" {
+		return errors.New("old native-state acknowledgement failed without the required stale-plan cause")
+	}
+	ack := &application.ProviderChangeConsent{PlanID: current.Scope.PlanID, First: true, Second: true}
+	response, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.control-plane.stop", Arguments: machineControlPlaneStopInput{ProviderChangeConsent: ack}})
+	if err != nil {
+		return err
+	}
+	if response.IsError {
+		return errors.New("explicit current-plan retry of stopped/removed Core failed")
+	}
+	raw, _ := json.Marshal(response.StructuredContent)
+	var result controlPlaneStopResult
+	if json.Unmarshal(raw, &result) != nil || result.State != "stopped" || !result.Runtime.Verified || len(result.Runtime.Removed) != 0 {
+		return errors.New("stop retry rematerialized or reported unverified resources")
+	}
+	return nil
+}
+
+func nativeCoreSQLFullTLS(ctx context.Context, provider bhruntime.RuntimeProvider, files bhruntime.Files, credentials bhruntime.ControlPlaneCredentials, database, sql string) error {
+	const script = "IFS= read -r PGPASSWORD\nexport PGPASSWORD\nexport PGSSLMODE=verify-full PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem\nexec psql -h postgres -p 5432 -U \"$1\" -d \"$2\" -v ON_ERROR_STOP=1"
+	input := []byte(credentials.PostgresPassword + "\n" + sql + "\n")
+	defer zeroBytes(input)
+	_, err := provider.ExecProjectInput(ctx, files.Project, files.Compose, files.Env, input, "postgres-admin", "sh", "-ec", script, "--", credentials.PostgresUser, database)
+	return err
 }

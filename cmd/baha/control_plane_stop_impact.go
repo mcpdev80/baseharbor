@@ -17,16 +17,21 @@ import (
 )
 
 type controlPlaneStopPlan struct {
-	Scope     application.ProviderImpactScope      `json:"scope"`
-	Target    string                               `json:"target"`
-	Project   string                               `json:"project"`
-	Services  []string                             `json:"services"`
-	Resources []bhruntime.ProjectResource          `json:"resources"`
-	Functions []application.FunctionConsequence    `json:"functions"`
-	Materials []application.MaterialConsequence    `json:"materials"`
-	Effects   []application.OperationalConsequence `json:"effects"`
-	inventory bhruntime.ControlPlaneRuntimeInventory
-	protected map[string]string
+	Scope             application.ProviderImpactScope      `json:"scope"`
+	Target            string                               `json:"target"`
+	Project           string                               `json:"project"`
+	Services          []string                             `json:"services"`
+	Resources         []bhruntime.ProjectResource          `json:"resources"`
+	Functions         []application.FunctionConsequence    `json:"functions"`
+	Materials         []application.MaterialConsequence    `json:"materials"`
+	Effects           []application.OperationalConsequence `json:"effects"`
+	RuntimeObserved   bool                                 `json:"runtime_observed"`
+	ObservedProcesses []coreStopProcessObservation         `json:"observed_processes"`
+	ObservedResources []bhruntime.ProjectResource          `json:"observed_resources"`
+	inventory         bhruntime.ControlPlaneRuntimeInventory
+	protected         map[string]string
+	nativeRevision    string
+	targetBinding     deployment.ResolvedTarget
 }
 
 // Observe the exact Core module owner, not every service that happens to share
@@ -47,8 +52,12 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		return p, runtimeMutationOwnerError()
 	}
 	p.Target, p.Project = target.Name, p.inventory.Files.Project
+	p.targetBinding = target
 	p.Services = append(append([]string{}, p.inventory.SQLServices...), p.inventory.SecretsServices...)
 	p.Resources = p.inventory.Resources
+	if err := observeControlPlaneStopRuntime(ctx, target, &p); err != nil {
+		return p, err
+	}
 	dataRoot, err := targetDataRoot(target)
 	if err != nil {
 		return p, err
@@ -111,11 +120,12 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 			p.Materials = append(p.Materials, runtimeRetainedOwnerMaterial(target.Name, filepath.Base(path), path))
 		}
 	}
-	p.Effects = []application.OperationalConsequence{{Aspect: "selected-core-stop", Before: "Canonical owned Core module services at the displayed resources.", After: "Stop these exact service processes; preserve containers, networks, volumes, bindings, connectivity policy, other providers and workloads. No explicit data deletion. In-flight transactions, leases, sessions, transient data and subsequent recovery remain unverified.", Evidence: "canonical Core renderer and selected native service operation"}}
+	p.Effects = []application.OperationalConsequence{{Aspect: "selected-core-stop", Before: "Canonical owned Core module services at the displayed resources.", After: "Stop these exact service processes. The existing native selected-stop adapter may remove the stopped containers; their configuration/recovery owners remain for explicit resume. Preserve networks, volumes, bindings, connectivity policy, other providers and workloads. No explicit data deletion. In-flight transactions, leases, sessions, transient data and subsequent recovery remain unverified.", Evidence: "canonical Core renderer and selected native service operation"}}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "control-plane-runtime", Reference: p.inventory.Files.Compose, Subject: p.Project, Revision: runtimeMutationRevision(struct {
 		Plan   controlPlaneStopPlan
 		Owners map[string]string
-	}{p, p.protected})}, nil, false)
+		Native string
+	}{p, p.protected, p.nativeRevision})}, nil, false)
 	return p, err
 }
 

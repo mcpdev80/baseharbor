@@ -109,7 +109,26 @@
         }
       ],
       "observed": "Native CLI without acknowledgement was refused. MCP selected stop returned control_plane_stop_partial with verified retained protected owners, but no verified stopped process result. Original-data resume acceptance was not reached. Both jobs failed and cleanup completed; process/resource discrepancy requires diagnosis."
+    },
+    {
+      "commit": "278fb159189b5dbf0fe14429f881cb28d4ec94c8",
+      "tree": "fd1142b72feaabfff67ce169be23d693be7571ce",
+      "run_id": 38268123269,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114875396156,
+          "outcome": "failure",
+          "seconds": 38.22,
+          "artifact_id": 11756101099,
+          "artifact_sha256": "dc8d79fe96fa16b6b1bd21bc1ab8f512e5cf9800d1fd2306a2e59f206aca9c8e"
+        }
+      ],
+      "observed": "Safe process diagnostics show canonical Core services present before stop and removed after the existing selected-stop adapter; running consolidated-project sibling remains. Verifier rejected selected container absence. Data/credential owner and sibling preservation are partial observations; original-data resume was not reached. Podman intentionally not repeated for this diagnostic."
     }
   ],
-  "boundary": "Selected Core stop only. No complete native stop/resume or all-consumer dependency/validity/continuity proof yet; Core destroy, Target detach, universal provider transfers and final ecosystem acceptance remain mandatory."
+  "boundary": "Selected Core stop only. No complete native stop/resume or all-consumer dependency/validity/continuity proof yet; Core destroy, Target detach, universal provider transfers and final ecosystem acceptance remain mandatory.",
+  "correction_pending_native_proof": "The existing StopProjectFilesSelected adapters stop and retire selected processes. Verifier now accepts exact selected process absence, inventories removed versus retained resources, rejects lost data/networks/siblings and any unknown or running selected replica, and supports stopped/removed retry. Native fixture additionally requires verify-full SQL TLS and unchanged original OpenBao manager credentials. Both-runtime original-data resume qualification is still pending."
 }
