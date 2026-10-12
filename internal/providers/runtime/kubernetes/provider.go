@@ -24,6 +24,22 @@ func (Provider) Kind() runtimecontract.ProviderKind {
 	return runtimecontract.ProviderKubernetes
 }
 
+func (Provider) Descriptor() runtimecontract.ProviderDescriptor {
+	return runtimecontract.ProviderDescriptor{
+		Kind:            runtimecontract.ProviderKubernetes,
+		ContractVersion: runtimecontract.RuntimeProviderContractVersion,
+		ProviderVersion: "0.4.18-proof",
+		Standards: []string{
+			"OCI Image Specification",
+			"OCI Distribution Specification",
+			"Kubernetes API",
+		},
+		WorkloadSources: []string{"compose-spec"},
+		Realization:     "kubernetes-api",
+		Capabilities:    (Provider{}).Capabilities(),
+	}
+}
+
 func (Provider) Capabilities() runtimecontract.ProviderCapabilities {
 	return runtimecontract.ProviderCapabilities{
 		WorkloadLifecycle: true,
