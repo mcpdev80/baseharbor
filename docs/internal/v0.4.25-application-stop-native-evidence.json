@@ -29,6 +29,36 @@
           "artifact_digest": "sha256:de41e4875a06883754f75bd801cada5d0702ed6c5df552c6675788c4f0b9bade"
         }
       ]
+    },
+    {
+      "candidate_sha": "7ee6b383ebdc97fb3d37f700cf7dd0d71395e331",
+      "candidate_tree": "1898a3f8a51c62910c1c940e53f9405d4196fab1",
+      "workflow_run_id": 38214415723,
+      "result": "PASS",
+      "observed": "Both rootless runtimes verify actual TLS-authenticated durable message/document and unchanged credentials across acknowledged application stop/resume and capability true/false/true. Intermediate messaging probe verifies/requeues the original message; final re-add reads and acknowledges that same marker. Selected provider containers converge 2/0/2 for messaging and 1/0/1 for MongoDB, one observed persistent volume remains per provider; isolated cleanup succeeds. Fresh workload stop consent and Explorer were already qualified at unchanged production source3c664e5, so only failed foundation subset was repeated. Universal provider/Core/Target mutation and exact ecosystem readiness remain unqualified.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114695691437,
+          "test_seconds": 189.08,
+          "messaging_seconds": 102.53,
+          "document_database_seconds": 86.56,
+          "artifact_id": 11732365352,
+          "artifact_digest": "sha256:5aa464b6b8cc1b817c3077e3d3b90648ac1cce56311de1f26a377d5ef7b81ba2"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114695691822,
+          "test_seconds": 252.65,
+          "messaging_seconds": 136.84,
+          "document_database_seconds": 115.8,
+          "artifact_id": 11732480456,
+          "artifact_digest": "sha256:63f92eff8b7b53fb79af3a191bf201f3c79865466a930ec596b67b30883b4cf2"
+        }
+      ]
     }
-  ]
+  ],
+  "bounded_native_acceptance": true
 }

@@ -146,6 +146,12 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	if err != nil {
 		return Placement{}, err
 	}
+	return retainedPlacementIdentityAt(dataDir, namespace, m, p)
+}
+
+// Native owner lookup can use the existing registered placement without
+// letting a new invocation preference redirect retirement to another owner.
+func retainedPlacementIdentityAt(dataDir, namespace string, m application.Manifest, p capability.ProviderPlacement) (Placement, error) {
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
 	prefix := ""
 	if namespace != "" {
