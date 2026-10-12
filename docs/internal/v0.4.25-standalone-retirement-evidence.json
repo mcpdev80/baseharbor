@@ -144,10 +144,36 @@
           "artifact_sha256": "4b4fda934cd81c14f5dbc255bad0b7d48c9f892a3ca469a82dcb4ab451796f48"
         }
       ]
+    },
+    {
+      "commit": "6a6c854174ab2ce0d092bb5d640446bbf1830fb5",
+      "tree": "2130c01993b3accbc3ba8285d36e25bcd5944793",
+      "run_id": 38242319160,
+      "attempt": 1,
+      "outcome": "failure",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114787696845,
+          "outcome": "failure",
+          "trace": "Tempo still running after bounded eight-minute graceful shutdown; retained original trace after restart NOT proven",
+          "seconds": 480.84,
+          "artifact_id": 11743542615,
+          "artifact_sha256": "d6d069057191f620ed1f14fb2a963eb4b1c1e5de858d52e0edad351fff1b8a96"
+        }
+      ]
     }
   ],
-  "corrections_pending_native_proof": [
-    "Docker trace-only retry permits bounded shutdown beyond the initial three-minute fixture budget and captures startup/shutdown diagnostics; original trace must be queried after restart without reseeding."
-  ],
-  "boundary": "Source qualification and individual native results apply only to recorded exact source/scope. Universal lifecycle/consumer changes and final exact-source ecosystem readiness remain incomplete."
+  "corrections_pending_native_proof": [],
+  "boundary": "Source qualification and individual native results apply only to recorded exact source/scope. Universal lifecycle/consumer changes and final exact-source ecosystem readiness remain incomplete.",
+  "actual_blockers": [
+    {
+      "provider": "Tempo 3.0.2",
+      "observed": "Query frontend never terminates despite stopped data/worker modules. Increasing the fixture budget to eight minutes did not resolve it.",
+      "upstream_fix": "https://github.com/grafana/tempo/pull/7986",
+      "upstream_fix_release": "v3.1.0",
+      "release_verified_via": "https://api.github.com/repos/grafana/tempo/releases/latest",
+      "required": "Apply the upstream fix through the existing provider upgrade/impact authority, review vParquet5 default versus retained vParquet4 material and qualify original-record continuity on Docker/Podman. No image upgrade or storage-format change is claimed in this increment."
+    }
+  ]
 }
