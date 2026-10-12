@@ -1,0 +1,82 @@
+name: "Kubernetes Tempo Proof"
+
+run-name: "${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/targeted-kubernetes-tempo'
+    paths:
+      - '.ci/kubernetes-tempo-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Tempo · Static Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w internal/providers/runtime/kubernetes/core_tempo_integration_test.go internal/traces/tempo.go internal/traces/realization.go
+          if ! git diff --exit-code -- internal/providers/runtime/kubernetes/core_tempo_integration_test.go internal/traces/tempo.go internal/traces/realization.go; then
+            echo "Tempo Kubernetes proof requires gofmt; diff shown above." >&2
+            exit 1
+          fi
+      - name: Compile focused packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes ./internal/traces ./internal/telemetry ./internal/application ./internal/capability -run '^$' -count=1
+      - name: Run focused Tempo tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/traces -count=1
+
+  tempo:
+    needs: static
+    name: Kubernetes · Tempo Core Seam
+    runs-on: [self-hosted, Linux, X64, baseharbor, k3s]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run Tempo Core seam proof on k3s
+        shell: bash
+        env:
+          BASEHARBOR_KUBERNETES_TEMPO_TEST: "1"
+        run: |
+          set -euo pipefail
+          go test ./internal/providers/runtime/kubernetes -run '^TestKubernetesCoreTempoLifecycle$' -count=1 -v
+      - name: Cleanup and assert proof cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          namespace="$(kubectl config view --minify -o 'jsonpath={..namespace}')"
+          namespace="${namespace:-default}"
+          selector='app.kubernetes.io/managed-by=baseharbor,baseharbor.io/application=bh-core-tempo-proof'
+          kubectl delete deployment,service,configmap,secret -n "$namespace" -l "$selector" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+          remaining="$(kubectl get deployment,service,configmap,secret -n "$namespace" -l "$selector" --no-headers 2>/dev/null || true)"
+          test -z "$remaining" || {
+            echo "Tempo proof left BaseHarbor-owned resources:" >&2
+            echo "$remaining" >&2
+            exit 1
+          }
