@@ -196,6 +196,37 @@
           "s3": "unchanged previously qualified family intentionally not repeated"
         }
       ]
+    },
+    {
+      "commit": "ba00863ec1f2221097df06d34ecf74820b9b0323",
+      "tree": "025763a93fc1c7d07a1fadf7830d2d2e807eac26",
+      "run_id": 38262712696,
+      "attempt": 1,
+      "outcome": "success",
+      "starting_tempo_image": "docker.io/grafana/tempo:3.0.2",
+      "tempo_image": "docker.io/grafana/tempo:3.1.0",
+      "block_write_format": "vParquet4",
+      "go_version": "1.25.0",
+      "scope": "Single retained canonical native leaf; original trace emitted once on actual 3.0.2, then queried after normal 3.1.0 materialization and after selected Collector/Tempo retirement/resume. Unchanged credential environments and sibling preserved. Synthetic service CA; no production issuer, HA or transport-driven version-change qualification.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114857040367,
+          "outcome": "success",
+          "seconds": 65.62,
+          "artifact_id": 11753097935,
+          "artifact_sha256": "e0533f1f12c41d726b4461a6f0d73d9b0e053918da8a8d3554308aadf6df9433"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114857039902,
+          "outcome": "success",
+          "seconds": 60.98,
+          "artifact_id": 11752823674,
+          "artifact_sha256": "e819a53ea570fec4cdab1bc2ac103477c1aceaef659de4ecd1af461a2bc235d2"
+        }
+      ],
+      "other_gates": "S3 intentionally not repeated; all unselected targeted gates skipped. Not final ecosystem acceptance."
     }
   ],
   "corrections_pending_native_proof": [],
@@ -207,9 +238,9 @@
       "upstream_fix": "https://github.com/grafana/tempo/pull/7986",
       "upstream_fix_release": "v3.1.0",
       "release_verified_via": "https://api.github.com/repos/grafana/tempo/releases/latest",
-      "required": "Existing live 3.0.2-to-3.1.0 upgrades and HA require distinct existing upgrade/impact authority and acceptance. Current 3.1.0 canonical renderer explicitly writes vParquet4; original trace retirement/resume is qualified on both native engines. Universal lifecycle and final ecosystem readiness remain incomplete.",
-      "status": "current-renderer-retirement-resolved; existing-live-version-transition-not-qualified",
-      "resolved_by": "a02ccc10400a2a30a229992b5f44bf93e2c07b48 / run38247738911"
+      "required": "HA, actual CLI/JSON/MCP/HTTP version-change consent/execution and unbound runtime owners require separate qualification. Single native 3.0.2-to-3.1.0 original-data transition is now proven on both engines; this does not prove uninterrupted delivery or rollback. Universal lifecycle and final ecosystem readiness remain incomplete.",
+      "status": "current-renderer-retirement-resolved; single-native-legacy-version-transition-qualified; HA-and-universal-lifecycle-open",
+      "resolved_by": "a02ccc10400a2a30a229992b5f44bf93e2c07b48 / run38247738911; ba00863ec1f2221097df06d34ecf74820b9b0323 / run38262712696"
     }
   ],
   "source_qualifications": [

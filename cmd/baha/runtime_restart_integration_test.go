@@ -142,7 +142,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}()
 
 	out.Reset()
-	if err := runtimeDown(ctx, &out); err != nil {
+	if err := approvedNativeCoreStop(t, ctx, &out); err != nil {
 		t.Fatalf("control-plane down: %v\n%s", err, out.String())
 	}
 

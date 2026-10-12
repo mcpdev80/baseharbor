@@ -111,3 +111,17 @@ continued consumer functionality; incomplete consequences remain partial.
 
 Transport source checks do not replace source-matched authenticated browser or
 native runtime qualification; final v0.4.25 ecosystem acceptance remains open.
+
+### Selected Core stop
+
+`control-plane.stop` accepts `target` and optional `provider_change_consent`
+with the same current scope plan ID and independent acknowledgement stages as
+other provider changes. Generic approval and `--yes` do not supply these stages.
+The local Core-mode `baha down --json` and MCP operation share the selected
+PostgreSQL/OpenBao stop authority and typed result: `target`, `state`, `runtime`
+and `provider_change_result`. Other providers, workloads and connectivity stay
+requested and running. The native verifier checks selected process state,
+resource retention and consolidated-project sibling preservation. A stopped
+runtime does not establish complete consumer/secret/PKI/session continuity;
+that consequence result remains partial where unverified. There is no HTTP
+Core-stop adapter or authenticated browser acceptance implied by this seam.

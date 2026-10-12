@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -21,6 +22,10 @@ type machineControlPlaneUpInput struct {
 type machineControlPlaneDestroyInput struct {
 	Target   string `json:"target,omitempty"`
 	Approval bool   `json:"approval"`
+}
+type machineControlPlaneStopInput struct {
+	Target                string                             `json:"target,omitempty"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 }
 
 func registerMCPControlPlaneTools(server *mcp.Server) {
@@ -56,16 +61,20 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		}
 		return nil, result, nil
 	})
-	for _, action := range []string{"stop", "repair"} {
+	mcp.AddTool(server, machineMCPTool("control-plane.stop", "Stop selected owned Core services after current impact acknowledgement; retain other providers, workloads and recovery resources.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneStopInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(machineNoninteractiveContext(withTargetOverride(ctx, input.Target)), input.ProviderChangeConsent)
+		result, err := runtimeDownWithResult(ctx, io.Discard)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	for _, action := range []string{"repair"} {
 		mcp.AddTool(server, machineMCPTool("control-plane."+action, "Operate the selected owned control plane through existing lifecycle; preserve persistent data.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 			ctx, cancel := context.WithTimeout(withTargetOverride(ctx, input.Target), 3*time.Minute)
 			defer cancel()
 			var err error
-			if action == "stop" {
-				err = runtimeDown(ctx, io.Discard)
-			} else {
-				err = repairExistingControlPlaneRuntime(ctx, io.Discard)
-			}
+			err = repairExistingControlPlaneRuntime(ctx, io.Discard)
 			if err != nil {
 				return machineMCPFailure(err)
 			}

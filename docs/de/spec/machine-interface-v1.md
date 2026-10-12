@@ -113,3 +113,17 @@ keine weiterlaufenden Verbraucherfunktionen; ungeklärte Folgen bleiben teilweis
 Transport-Quellprüfungen ersetzen weder authentifizierte Browser- noch native
 Runtime-Prüfungen am passenden Quellstand; die finale v0.4.25-Ökosystem-Abnahme
 ist weiter offen.
+
+### Ausgewählter Core-Stop
+
+`control-plane.stop` akzeptiert `target` und optional `provider_change_consent`
+mit derselben aktuellen Bereichsplan-ID und unabhängigen Bestätigungsstufen wie
+andere Provider-Änderungen. Allgemeine Freigabe und `--yes` ersetzen diese nicht.
+Das lokale `baha down --json` im Core-Modus und die MCP-Operation nutzen dieselbe
+PostgreSQL-/OpenBao-Stop-Autorität und das typisierte Ergebnis: `target`, `state`,
+`runtime` und `provider_change_result`. Andere Provider, Workloads und Verbindungen
+bleiben angefordert und laufend. Die native Prüfung kontrolliert ausgewählte
+Prozesszustände, Ressourcenerhalt und Nachbardienste im gemeinsamen Projekt.
+Ein gestoppter Runtime-Dienst belegt keine vollständige Verbraucher-/Secrets-/
+PKI-/Session-Kontinuität; der Folgennachweis bleibt bei ungeklärten Folgen teilweise.
+Dieser Pfad behauptet keinen HTTP-Core-Stop-Adapter oder authentifizierten Browser-Test.
