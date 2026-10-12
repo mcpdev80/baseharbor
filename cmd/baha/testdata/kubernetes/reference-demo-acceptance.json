@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "reference_application": "baseharbor-demo",
+  "source": {
+    "compose": "compose.yaml",
+    "workload_services": ["demo-app"],
+    "repository_owned": true,
+    "must_remain_unchanged": true
+  },
+  "portable_intent": {
+    "sql": true,
+    "cache": true,
+    "object_storage": true,
+    "required_application_secrets": ["APP_SECRET"]
+  },
+  "kubernetes_realization": {
+    "namespace_is_external_input": true,
+    "required_namespaced_kinds": [
+      "Deployment",
+      "Service",
+      "ConfigMap",
+      "Secret"
+    ],
+    "forbidden_cluster_scoped_kinds": [
+      "Namespace",
+      "ClusterRole",
+      "ClusterRoleBinding",
+      "CustomResourceDefinition",
+      "StorageClass",
+      "GatewayClass"
+    ],
+    "workload": {
+      "service": "demo-app",
+      "container_port": 8080,
+      "build_context": "./demo-app"
+    },
+    "bindings": [
+      "DATABASE_URL",
+      "REDIS_URL",
+      "S3_ENDPOINT",
+      "S3_BUCKET",
+      "APP_SECRET"
+    ],
+    "ownership_labels": [
+      "app.kubernetes.io/managed-by",
+      "baseharbor.io/application",
+      "baseharbor.io/environment"
+    ]
+  }
+}
