@@ -1,0 +1,34 @@
+{
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "gate": "application-stop-consequence-authority-and-retained-backend-data",
+  "attempts": [
+    {
+      "candidate_sha": "3c664e5d13746d69014c704ce61bf26dc252c30b",
+      "candidate_tree": "e7a609232161fa156c15b8213b1fa93654e84d85",
+      "workflow_run_id": 38213546471,
+      "result": "FAIL",
+      "observed": "Fresh actual workload stop denied without both current acknowledgements, acknowledged stop/up and Explorer operations PASS on both rootless runtimes. Messaging authenticated durable data and unchanged credentials PASS across the new acknowledged stop/resume. The final messaging capability remove/re-add read fails because the added intermediate probe acknowledged/consumed the original message. This is a test sequencing error; MongoDB is not reached and no complete backend acceptance is claimed. The intermediate probe must verify and requeue the original message, not publish a replacement.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114692934912,
+          "fresh_workload_seconds": 59.44,
+          "foundation_seconds": 96.66,
+          "artifact_id": 11731475007,
+          "artifact_digest": "sha256:598829510c103d968ba55041820f795e524cee5ac8c73a730595f2ac712fbcec"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114692934497,
+          "fresh_workload_seconds": 65.05,
+          "foundation_seconds": 135.78,
+          "artifact_id": 11729989456,
+          "artifact_digest": "sha256:de41e4875a06883754f75bd801cada5d0702ed6c5df552c6675788c4f0b9bade"
+        }
+      ]
+    }
+  ]
+}

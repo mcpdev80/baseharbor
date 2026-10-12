@@ -201,7 +201,7 @@ func qualifyApplicationBackendLifecycle(t *testing.T, service string) {
 					}
 				}
 				applySelectiveIdentityIntent(t, ctx)
-				qualifyApplicationBackendRetainedData(t, ctx, files, service, 2, &originalIdentity)
+				qualifyApplicationBackendRetainedData(t, ctx, files, service, retainedDataIntermediatePhase, &originalIdentity)
 				t.Logf("application backend=%s acknowledged stop/resume: selected runtime withdrawn, observed data volumes preserved, original authenticated data and credentials work after resume", service)
 			}
 		}

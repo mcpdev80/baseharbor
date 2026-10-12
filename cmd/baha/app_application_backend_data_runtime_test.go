@@ -19,6 +19,10 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+// Intermediate lifecycle checks observe and requeue the original durable
+// message. Only the final check consumes it; no replacement marker is published.
+const retainedDataIntermediatePhase = -1
+
 func qualifyApplicationBackendRetainedData(t *testing.T, ctx context.Context, files application.RuntimeFiles, service string, phase int, original *[32]byte) {
 	t.Helper()
 	values, err := bhruntime.RuntimeEnvironment(bhruntime.Files{Env: files.Env})
@@ -116,7 +120,13 @@ func qualifyApplicationBackendRetainedData(t *testing.T, ctx context.Context, fi
 			if err != nil || !ok || string(message.Body) != marker || message.DeliveryMode != amqp.Persistent {
 				t.Fatal("consumer-authenticated retained durable message read failed")
 			}
-			if err := message.Ack(false); err != nil {
+			var dispositionErr error
+			if phase == retainedDataIntermediatePhase {
+				dispositionErr = message.Nack(false, true)
+			} else {
+				dispositionErr = message.Ack(false)
+			}
+			if dispositionErr != nil {
 				t.Fatal("retained durable message acknowledgement failed")
 			}
 		}
