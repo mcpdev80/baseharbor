@@ -104,6 +104,35 @@
       ],
       "scope": "Actual CLI refusal, acknowledged in-memory MCP Target definition detach and CLI protected original-definition restoration, unchanged live native process IDs, volumes/networks and sibling, original credential environment/OpenBao manager, explicit selection blocking and reactivation. All-consumer receipt remains partial.",
       "sql_probe_review": "The existing post-Core-resume assertion checks count=1 and proves the original row. Review found the new Target-phase scalar comparison could miss an absent/null row. This historical PASS is retained, but the new Target-phase SQL assertion is being strengthened and requalified; do not treat it as complete Target data qualification."
+    },
+    {
+      "commit": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+      "tree": "d2454a403814f83f55b7b151870112a997213f3e",
+      "run_id": 38318239310,
+      "attempt": 1,
+      "outcome": "success",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 115039913086,
+          "seconds": 63.76,
+          "artifact_id": 11777798176,
+          "artifact_sha256": "b5046ab1f741e39e5f30c10a5145c52f21df0616e1d1aa956dc674560fe683d0",
+          "outcome": "success",
+          "logs_inspected": true
+        },
+        {
+          "runtime": "podman",
+          "job_id": 115039912672,
+          "seconds": 99.15,
+          "artifact_id": 11777203291,
+          "artifact_sha256": "aedf1f5d38c069de236a6c456e36aad44f4ca8a294ecdfcc40d4b7e44433441d",
+          "outcome": "success",
+          "logs_inspected": true
+        }
+      ],
+      "scope": "Actual isolated Core stop/resume plus CLI refusal, acknowledged in-memory MCP Target detach and CLI original-definition restore. Original row count=1 verified after Core resume and after each Target change over verify-full TLS. Unchanged native process IDs/volumes/networks/running sibling, original OpenBao manager and credential environment; selection stays blocked until explicit reactivation. Per-consumer consequence receipt remains partial.",
+      "sql_probe_review": "Corrected original-row count assertions pass on both native engines; absent, null or duplicated original values no longer pass the Target-phase verification."
     }
   ],
   "hf_attempt": {
@@ -131,6 +160,26 @@
     "Native fixture is one Core plus a running sibling; no Core HTTP/OIDC/browser or full provider/consumer continuity proof.",
     "Per-consumer dependencies, validity, handoffs and actual function results remain mandatory and incomplete.",
     "Current readiness audit, final immutable ecosystem pins and all remaining #872 requirements stay open.",
-    "The changed SQL verifier requires fresh native receipts; historical attempts are not discarded."
-  ]
+    "Product code is unchanged from bd158316; corrected native verifier and targeted source workflow are qualified on 413d47e7. This is not a final immutable ecosystem matrix or final readiness."
+  ],
+  "source_qualifications": [
+    {
+      "commit": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+      "tree": "d2454a403814f83f55b7b151870112a997213f3e",
+      "run_id": 38318239310,
+      "job_id": 115039912945,
+      "go_version": "go1.25.0 linux/amd64",
+      "checks": [
+        "go test ./...",
+        "go vet ./..."
+      ],
+      "outcome": "success",
+      "logs_inspected": true,
+      "artifact": "Durable GitHub job logs; this existing source job does not upload a separate artifact.",
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  ],
+  "qualified_native_source": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+  "resolved_sql_verifier": "Fresh robust original-row count native proof recorded; historical scalar-comparison PASS remains limited as originally reviewed."
 }
