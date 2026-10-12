@@ -33,6 +33,35 @@ runtime != capability != delivery
 
 Use `baha target show` to inspect the effective Target and provenance before mutation.
 
+## Detach and restore a Target definition
+
+`baha target delete NAME` removes the selected configuration entry after **Achtung**
+and two explicit acknowledgements of its current impact plan. Existing deployments,
+provider bindings, native processes, volumes, data and access definitions remain.
+The command preserves a protected copy of the original Target and access references
+and returns its `recovery_file`. Retention does not establish working service access,
+certificate renewal or authentication continuity; unknown consumer results remain partial.
+
+If the removed entry supplied automatic Target selection, that selection remains
+blocked. BaseHarbor does not silently choose another runtime or access policy.
+Restore the original definition with its displayed recovery file, then explicitly
+select the restored Target when appropriate:
+
+```bash
+baha target delete docker-dev -o json
+baha target create docker-dev --from-recovery /path/from/recovery_file -o json
+baha target activate docker-dev
+```
+
+JSON invocation returns the current structured plan when acknowledgement is missing.
+Use `BASEHARBOR_PROVIDER_CHANGE_CONSENT` in a trusted CLI invocation, or the MCP
+`provider_change_consent` object, with that plan's ID and both independent stages.
+Restoration also requires its own current plan. `--yes` does not grant these stages.
+Restoration cannot override the original runtime/access/authentication references,
+overwrite an existing Target or access owner, or silently move the retained data
+to another data root. It does not activate the restored route automatically.
+Partial preparation retains protected recovery for inspection and a fresh retry.
+
 ## Runtime and Target Access are separate axes
 
 A Target selects both:

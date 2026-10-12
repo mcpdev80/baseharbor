@@ -114,9 +114,9 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha status` | Show application status in a repository, otherwise control-plane status | `baha status [-o json\|--output json]` | [↗](core.md) |
 | `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target activate` | Persist the active deployment target for this user | `baha target activate NAME` | [↗](targets.md) |
-| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]` | [↗](targets.md) |
+| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
 | `baha target deactivate` | Clear persisted active deployment target | `baha target deactivate` | [↗](targets.md) |
-| `baha target delete` | Delete an unused target | `baha target delete NAME` | [↗](targets.md) |
+| `baha target delete` | Detach target configuration with protected recovery; preserve runtime and data | `baha target delete NAME` | [↗](targets.md) |
 | `baha target list` | List configured targets | `baha target list [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target show` | Show one target | `baha target show [NAME] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha trust` | Inspect, export or explicitly install the managed local BaseHarbor CA | `baha trust <status\|export\|install\|uninstall> [options]` | [↗](security-trust.md) |

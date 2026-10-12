@@ -24,6 +24,39 @@ Im Application-Repository mit funktionierender Runtime:
 runtime != capability != delivery
 ```
 
+## Target-Definition entfernen und wiederherstellen
+
+`baha target delete NAME` entfernt den ausgewählten Konfigurationseintrag nach
+**Achtung** und zwei ausdrücklichen Bestätigungen seines aktuellen Folgenplans.
+Bestehende Deployments, Provider-Bindungen, native Prozesse, Volumes, Daten und
+Zugriffsdefinitionen bleiben erhalten. Der Befehl sichert eine geschützte Kopie der
+ursprünglichen Target-/Zugriffsreferenzen und liefert deren `recovery_file`.
+Erhaltung belegt keinen funktionierenden Zugriff, Zertifikatserneuerung oder
+Authentifizierungskontinuität; unbekannte Verbraucherfolgen bleiben teilweise.
+
+Versorgte der entfernte Eintrag die automatische Target-Auswahl, bleibt sie gesperrt.
+BaseHarbor wählt weder eine andere Runtime noch eine andere Zugriffspolitik still aus.
+Die ursprüngliche Definition lässt sich mit der ausgegebenen Recovery-Datei
+wiederherstellen. Danach das wiederhergestellte Target bewusst auswählen:
+
+```bash
+baha target delete docker-dev -o json
+baha target create docker-dev --from-recovery /path/from/recovery_file -o json
+baha target activate docker-dev
+```
+
+Ohne Zustimmung liefert der JSON-Aufruf den aktuellen strukturierten Plan.
+`BASEHARBOR_PROVIDER_CHANGE_CONSENT` in einem vertrauenswürdigen CLI-Aufruf oder
+das MCP-Objekt `provider_change_consent` enthalten dessen Plan-ID und beide
+unabhängigen Bestätigungen. Auch die Wiederherstellung braucht ihren eigenen
+aktuellen Plan. `--yes` erteilt diese Bestätigungen nicht.
+Wiederherstellung überschreibt weder vorhandene Targets/Zugriffs-Owner noch die
+ursprünglichen Runtime-/Zugriffs-/Auth-Referenzen und verschiebt keine erhaltenen
+Daten still in einen anderen Daten-Root. Sie aktiviert die Route nicht automatisch.
+Teilweise Vorbereitung erhält geschützte Recovery für Prüfung und frische Wiederholung.
+
+## Runtime und Target-Zugriff
+
 Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities.
 
 ```text

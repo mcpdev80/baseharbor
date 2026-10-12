@@ -68,7 +68,7 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.secret.delete` | `destructive` | false | true |
 | `baseharbor.secret.tls-set` | `mutating` | false | false |
 | `baseharbor.target.create` | `mutating` | false | false |
-| `baseharbor.target.delete` | `mutating` | false | false |
+| `baseharbor.target.delete` | `mutating` | false | true |
 | `baseharbor.stack.list` | `read_only` | false | false |
 | `baseharbor.stack.show` | `read_only` | false | false |
 | `baseharbor.stack.create` | `mutating` | false | false |

@@ -199,6 +199,22 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 		t.Fatal("resume changed original credentials")
 	}
 	t.Log("original SQL row and credentials read over verify-full TLS after normal Core resume; unchanged original OpenBao manager usable; no reseeding or rotation")
+	nativeTargetDefinitionRecovery(t, ctx, session, provider, files.Project, target.Name, func() {
+		if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "DO $$ BEGIN IF (SELECT value FROM core_stop_original) <> 'original-before-stop' THEN RAISE EXCEPTION 'original data changed'; END IF; END $$;"); err != nil {
+			t.Fatal("original SQL/TLS data after Target configuration change", err)
+		}
+		if err := platformopenbao.CheckManager(ctx, provider, files); err != nil {
+			t.Fatal("original OpenBao manager after Target configuration change", err)
+		}
+		manager, err := platformopenbao.LoadAdminCredentials(files)
+		if err != nil || manager.RoleID != originalManager.RoleID || manager.SecretID != originalManager.SecretID {
+			t.Fatal("Target configuration change rotated original OpenBao credentials")
+		}
+		actual, err := os.ReadFile(files.Env)
+		if err != nil || !bytes.Equal(actual, env) {
+			t.Fatal("Target configuration change altered original runtime credentials")
+		}
+	})
 }
 
 func nativeCoreStopRetry(ctx context.Context, session *mcp.ClientSession, oldID string) error {

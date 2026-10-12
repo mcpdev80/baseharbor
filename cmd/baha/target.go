@@ -224,12 +224,12 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
 				Run:     createTarget,
 			},
 			{
 				Name:    "delete",
-				Summary: "Delete an unused target",
+				Summary: "Detach target configuration with protected recovery; preserve runtime and data",
 				Usage:   "baha target delete NAME",
 				Run:     deleteTarget,
 			},
@@ -438,6 +438,24 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return err
 	}
+	if len(args) > 1 && args[1] == "--from-recovery" {
+		if len(args) != 3 {
+			return usageError("Target recovery requires exactly NAME --from-recovery PATH", "Recovery reuses the original binding; additional configuration overrides are not accepted.")
+		}
+		var presentation io.Writer = out
+		if format == outputJSON {
+			presentation = nil
+		}
+		result, err := changeTargetDefinition(withApplicationInput(ctx, runtimeInput), name, args[2], presentation)
+		if err != nil {
+			return err
+		}
+		if format == outputJSON {
+			return writeJSON(out, result)
+		}
+		fmt.Fprintf(out, "Target %s definition restored; live access and authentication remain to be verified. Activate it explicitly when selection is blocked.\n", name)
+		return nil
+	}
 	var runtimeProvider, accessProvider, accessName, reference, scope, dockerEndpoint, dockerContext, dockerMode string
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
@@ -512,14 +530,18 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
 	}
 	name := args[0]
-	result, err := deleteTargetDefinition(ctx, name)
+	var presentation io.Writer = out
+	if format == outputJSON {
+		presentation = nil
+	}
+	result, err := changeTargetDefinition(withApplicationInput(ctx, runtimeInput), name, "", presentation)
 	if err != nil {
 		return err
 	}
 	if format == outputJSON {
 		return writeJSON(out, result)
 	}
-	fmt.Fprintf(out, "Target %s deleted\n", name)
+	fmt.Fprintf(out, "Target %s definition detached; runtime/data owners retained. Recovery: %s\n", name, result.RecoveryFile)
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 
@@ -113,7 +114,7 @@ func TestExplicitImplicitLocalSelectionPersists(t *testing.T) {
 	}
 }
 
-func TestDeleteTargetClearsPersistedSelection(t *testing.T) {
+func TestDeleteTargetBlocksAutomaticSelectionUntilExplicitChoice(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	cfg := deployment.Config{Version: deployment.ConfigVersion, Targets: map[string]deployment.TargetDefinition{"docker-test": {Runtime: deployment.RuntimeDefinition{Provider: "docker"}, Access: deployment.TargetAccess{Reference: "local"}}}, Access: map[string]deployment.AccessDefinition{"local": {Provider: "local", Reference: "local"}}}
@@ -123,12 +124,23 @@ func TestDeleteTargetClearsPersistedSelection(t *testing.T) {
 	if err := writePersistedTarget("docker-test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := deleteTargetDefinition(context.Background(), "docker-test"); err != nil {
+	plan, err := buildTargetDefinitionChangePlan(context.Background(), "docker-test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consent := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
+	if _, err := deleteTargetDefinition(withProviderChangeConsent(context.Background(), &consent), "docker-test"); err != nil {
 		t.Fatal(err)
 	}
 	selected, err := readPersistedTarget()
-	if err != nil || selected != "" {
-		t.Fatalf("deleted selection remains %q: %v", selected, err)
+	if err == nil || machine.Classify(err).CauseCode != "target_selection_detached" {
+		t.Fatalf("detached selection silently resolves %q: %v", selected, err)
+	}
+	if err := clearPersistedTarget(); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := readPersistedTarget(); err != nil || selected != "" {
+		t.Fatal("explicit deactivation failed", err)
 	}
 }
 

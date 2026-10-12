@@ -46,6 +46,10 @@ func (c Config) SaveExpected(expected []byte) error {
 }
 
 func (c Config) saveWithExpected(expected []byte, compare bool) error {
+	return c.saveWithPreparation(expected, compare, nil)
+}
+
+func (c Config) saveWithPreparation(expected []byte, compare bool, prepare func() error) error {
 	if c.Version == 0 {
 		c.Version = ConfigVersion
 	}
@@ -81,6 +85,11 @@ func (c Config) saveWithExpected(expected []byte, compare bool) error {
 	}
 	if compare && ((actual == nil) != (expected == nil) || !bytes.Equal(actual, expected)) {
 		return ErrConfigurationChanged
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return err
+		}
 	}
 	return c.saveAt(path, func() error {
 		current, err := readConfigurationOwner(path)

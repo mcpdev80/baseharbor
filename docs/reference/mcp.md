@@ -74,7 +74,7 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.node.status` | `read_only` | false | false |
 | `baseharbor.node.disconnect` | `destructive` | false | true |
 | `baseharbor.target.create` | `mutating` | false | false |
-| `baseharbor.target.delete` | `mutating` | false | false |
+| `baseharbor.target.delete` | `mutating` | false | true |
 | `baseharbor.stack.list` | `read_only` | false | false |
 | `baseharbor.stack.show` | `read_only` | false | false |
 | `baseharbor.stack.create` | `mutating` | false | false |
