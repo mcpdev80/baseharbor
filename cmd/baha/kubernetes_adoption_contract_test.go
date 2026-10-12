@@ -92,7 +92,7 @@ func TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged
 	) {
 		t.Fatalf("infrastructure services = %#v", detected.InfrastructureServices)
 	}
-	if !detected.Postgres || !detected.Redis || !detected.ObjectStorage {
+	if !detected.SQL || !detected.Cache || !detected.ObjectStorage {
 		t.Fatalf("reference capabilities were not detected: %+v", detected)
 	}
 
@@ -126,7 +126,7 @@ func TestKubernetesAdoptionContractReferenceDemoKeepsRepositoryWorkloadUnchanged
 	if !reflect.DeepEqual(m.Workload.Services, []string{"demo-app"}) {
 		t.Fatalf("manifest workload services = %#v", m.Workload.Services)
 	}
-	if !m.Services.Postgres || !m.Services.Redis || !m.Services.ObjectStorage {
+	if !m.Services.SQL || !m.Services.Cache || !m.Services.ObjectStorage {
 		t.Fatalf("portable service intent missing: %#v", m.Services)
 	}
 
