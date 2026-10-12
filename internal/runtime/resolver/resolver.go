@@ -2,8 +2,10 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 
 	dockerprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/docker"
+	kubernetesprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/kubernetes"
 	podmanprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/podman"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
@@ -19,6 +21,16 @@ var registry = mustRegistry(
 		Descriptor: podmanprovider.Descriptor(),
 		Factory: func(ctx context.Context) (runtimecontract.Provider, error) {
 			return podmanprovider.New(ctx)
+		},
+	},
+	runtimecontract.ProviderRegistration{
+		Descriptor: (kubernetesprovider.Provider{}).Descriptor(),
+		Factory: func(ctx context.Context) (runtimecontract.Provider, error) {
+			provider, err := kubernetesprovider.Detect(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return provider, nil
 		},
 	},
 )
@@ -41,6 +53,18 @@ func Provider(ctx context.Context, kind runtimecontract.ProviderKind) (runtimeco
 
 func RuntimeProvider(ctx context.Context, kind runtimecontract.ProviderKind) (runtimecontract.RuntimeProvider, error) {
 	return registry.ResolveRuntimeProvider(ctx, kind)
+}
+
+func WorkloadProvider(ctx context.Context, kind runtimecontract.ProviderKind) (runtimecontract.InternalWorkloadProvider, error) {
+	provider, err := registry.Resolve(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	workloadProvider, ok := provider.(runtimecontract.InternalWorkloadProvider)
+	if !ok {
+		return nil, fmt.Errorf("runtime provider %q does not implement the workload lifecycle contract", provider.Kind())
+	}
+	return workloadProvider, nil
 }
 
 func DefaultRuntimeProvider(ctx context.Context) (runtimecontract.RuntimeProvider, error) {
