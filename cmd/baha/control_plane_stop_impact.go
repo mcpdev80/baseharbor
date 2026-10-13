@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -77,6 +79,9 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		return p, invalidProviderConsumerInventory(err)
 	}
 	for _, record := range records {
+		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, record.Identity.Environment, record.Identity.ApplicationID, ""); err != nil {
+			return p, err
+		}
 		location, err := deployment.DeploymentRoot(record.Identity)
 		if err != nil {
 			return p, err
@@ -85,7 +90,34 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		p.Functions = append(p.Functions, application.FunctionConsequence{Consumer: "deployment/" + record.Identity.DeploymentID, Function: "core-dependent-availability", Via: p.Services, Outcome: "unknown", Behavior: "Only the selected PostgreSQL/OpenBao Core services stop. Workloads and other provider containers remain. Shared SQL access, secret retrieval, credential leases, PKI issuance/renewal and dependent authentication/access may fail; exact consumer reconnection, cached validity and in-flight effects require actual verification. Authentication is never bypassed.", Evidence: "existing Target deployment registration; unverified dependencies remain unknown"})
 	}
 	for _, binding := range registry.Bindings {
+		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, binding.Environment, binding.ApplicationID, ""); err != nil {
+			return p, err
+		}
 		p.Functions = append(p.Functions, application.FunctionConsequence{Consumer: "application/" + binding.ApplicationID + "/" + binding.Environment, Function: string(binding.Resource.Kind), Via: []string{binding.ProviderInstanceID}, Required: true, Outcome: "unknown", Behavior: "This existing binding is retained. Direct or transitive dependency on the selected Core services, current token/certificate/lease validity and future renewal are unverified; continued access is not claimed.", Evidence: "authoritative existing provider binding"})
+	}
+	// Released bindings do not release the retained resource owner's authority.
+	// Account for these owners even when no active deployment references them.
+	for _, instance := range registry.Instances {
+		if instance.Scope == capability.ScopeApplication {
+			if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, instance.OwnerEnvironment, instance.OwnerApplicationID, ""); err != nil {
+				return p, err
+			}
+		}
+	}
+	installation, installationErr := coreinstallation.Load(root)
+	if installationErr == nil {
+		if installation.Spec.Target != target.Name || installation.Spec.Runtime != target.RuntimeProvider {
+			return p, invalidProviderConsumerInventory(errors.New("installation binding differs from selected Target"))
+		}
+		environment := "dev"
+		if installation.Defaults.ProtectedManagement {
+			environment = "prod"
+		}
+		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, environment, installation.ID, ""); err != nil {
+			return p, err
+		}
+	} else if !errors.Is(installationErr, os.ErrNotExist) {
+		return p, invalidProviderConsumerInventory(installationErr)
 	}
 	p.Functions = append(p.Functions, application.FunctionConsequence{Consumer: "management/" + target.Name, Function: "management-console-and-remote-access", Via: p.Services, Outcome: "unknown", Behavior: "SQL/OpenBao-dependent management, Console and remote access may become unavailable. Existing TLS/OIDC/mTLS policy and recovery remain configured; no unauthenticated fallback or password change is made.", Evidence: "selected Core owner; independent consumer behavior is unverified"})
 	materials, _, err := observeOwnedProviderFiles("target/"+target.Name, target.Name, "core-runtime", root)

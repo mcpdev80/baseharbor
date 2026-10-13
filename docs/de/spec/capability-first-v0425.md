@@ -233,7 +233,10 @@ vor Zustimmung jedes betroffene Element.
 
 `ValidateProviderChangeConsent` prüft beide Stufen, aktuellen Plan-Hash und getrennte
 Löschfreigabe. Bestehende interaktive/nichtinteraktive Autoritätsadapter erheben die
-Bestätigungen; keine zusätzlichen CLI-Flags oder unabhängige Frontend-Policy.
+Bestätigungen; der interaktive Adapter fragt nach den erforderlichen
+Planbestätigungen gesondert nach der Datenlöschung. Ablehnung oder EOF erteilen
+keine Löschfreigabe. Maschinenzustimmung setzt `delete_data` unabhängig.
+Keine zusätzlichen CLI-Flags oder unabhängige Frontend-Policy.
 Unmittelbar vor Änderungen aus aktuellen autoritativen Beobachtungen neu planen.
 Veraltete Pläne erneut anzeigen und bestätigen. Technisch nicht unterstützte
 Übergabe ehrlich melden, niemals als erfolgreiche Verlagerung darstellen.

@@ -79,7 +79,17 @@ func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, pla
 			consent.Second = true
 		}
 	}
-	consent.DeleteData = plan.Destructive && consent.First && (plan.ConfirmationsRequired == 1 || consent.Second)
+	// The two consequence acknowledgements do not grant data deletion. Collect
+	// that separate decision only after every required plan stage was accepted.
+	if plan.Destructive {
+		fmt.Fprintf(out, "Achtung: separately authorize permanent deletion of the displayed owned data (plan %s)? [y/N]: ", plan.PlanID)
+		answer, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return consent, err
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		consent.DeleteData = answer == "y" || answer == "yes"
+	}
 	return consent, nil
 }
 

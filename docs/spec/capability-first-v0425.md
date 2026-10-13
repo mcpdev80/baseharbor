@@ -220,7 +220,10 @@ explicit fully destructive requests inventory every affected item before consent
 
 `ValidateProviderChangeConsent` checks both stages, current plan digest and separate
 deletion consent. Existing interactive and noninteractive authority adapters collect
-acknowledgements; no extra CLI flags or independent frontend policy engine. Always
+acknowledgements; the interactive adapter asks separately for data deletion after
+the required plan acknowledgements. Declining that question or reaching EOF does
+not authorize deletion. Machine consent supplies `delete_data` independently.
+No extra CLI flags or independent frontend policy engine. Always
 replan from current authoritative observations immediately before mutation. A stale
 plan must be displayed and acknowledged again. Technical inability to execute an
 unsupported handoff is reported honestly, not disguised as successful relocation.

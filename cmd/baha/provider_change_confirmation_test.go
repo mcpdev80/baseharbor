@@ -15,7 +15,7 @@ import (
 
 func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "concrete-effects", Complete: false, Attention: "no destination; deletion", ConfirmationsRequired: 2, Destructive: true}
-	for _, answers := range []string{"yes\n", "yes\nno\n", "no\nyes\n", "\nyes\n"} {
+	for _, answers := range []string{"yes\n", "yes\nno\n", "no\nyes\n", "\nyes\n", "yes\nyes\n", "yes\nyes\nno\n", "yes\nyes\n\n"} {
 		consent, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader(answers)), new(bytes.Buffer), plan)
 		if err != nil {
 			t.Fatal(err)
@@ -25,8 +25,8 @@ func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\nyes\n")), &out, plan)
-	if err != nil || !consent.DeleteData || !strings.Contains(out.String(), "Achtung") || !strings.Contains(out.String(), "2/2") {
+	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(strings.NewReader("yes\nyes\nyes\n")), &out, plan)
+	if err != nil || !consent.DeleteData || !strings.Contains(out.String(), "Achtung") || !strings.Contains(out.String(), "2/2") || !strings.Contains(out.String(), "separately authorize") {
 		t.Fatalf("explicit acknowledgements: %#v %s %v", consent, out.String(), err)
 	}
 	if err := acknowledgeProviderImpact(context.Background(), nil, nil, plan, &consent); err != nil {
