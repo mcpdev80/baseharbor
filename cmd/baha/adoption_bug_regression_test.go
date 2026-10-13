@@ -130,7 +130,7 @@ func TestStandalonePreflightCLIAndMCPRejectMissingWorkloadExposure(t *testing.T)
 	}
 	// The developer path rejects this contract before trying to start a runtime.
 	out.Reset()
-	if err := runtimeUpCommandWithInputResolver(context.Background(), []string{"--yes"}, &out, &errOut); err == nil || !strings.Contains(err.Error(), "before control-plane start") {
+	if err := runtimeUpCommandWithInputResolver(context.Background(), []string{"--yes"}, &out, &errOut); err == nil || !strings.Contains(err.Error(), "before provider mutation") {
 		t.Fatalf("up did not reject before mutation: %v %s", err, out.String())
 	}
 }

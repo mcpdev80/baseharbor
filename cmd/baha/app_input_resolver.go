@@ -498,6 +498,19 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
+		if err != nil {
+			return err
+		}
+		if format == outputJSON {
+			status, err := collectApplicationStatusResult(ctx, application.DefaultStore(), nil)
+			if err != nil {
+				return err
+			}
+			return writeJSON(destination, status)
+		}
+		return nil
+	}
 	// Validate repository contracts before starting any control-plane resources.
 	if !opts.ControlPlaneOnly {
 		cwd, err := os.Getwd()

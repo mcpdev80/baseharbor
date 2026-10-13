@@ -43,6 +43,19 @@ func routeRepositoryRuntimeUp(ctx context.Context, in io.Reader, out, errOut io.
 			return true, err
 		}
 	}
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+	if err != nil {
+		return true, err
+	}
+	if err := preflightRepositoryWorkload(resolved); err != nil {
+		return true, fmt.Errorf("application workload preflight failed before provider mutation: %w", err)
+	}
+	if err := application.CheckSharedPostgresTopologyAt(resolved.TargetStateRoot, resolved.Target.Name, resolved.Manifest); err != nil {
+		return true, fmt.Errorf("shared backend topology preflight failed before provider mutation: %w", err)
+	}
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, in, out, opts); err != nil {
+		return true, err
+	}
 	fmt.Fprintln(out, "Converging selected application capabilities and their genuine dependencies...")
 	return true, appApplyCommand(application.DefaultStore()).Run(ctx, nil, out, errOut)
 }
