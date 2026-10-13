@@ -79,7 +79,17 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 		result, err = provider.ExecProjectInput(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, input, services[0], append([]string{"sh", "-ec", script, "--"}, args...)...)
 	}
 	if err != nil {
-		t.Fatal("actual consumer-authenticated backend data operation failed")
+		// Report only fixed diagnostic categories; runtime output can contain
+		// credentials or connection strings and must never enter test evidence.
+		category := "unclassified runtime execution failure"
+		failure := strings.ToLower(result + " " + err.Error())
+		for _, known := range []string{"could not translate host name", "name or service not known", "certificate verify failed", "password authentication failed", "connection refused", "does not exist", "noauth", "wrongpass"} {
+			if strings.Contains(failure, known) {
+				category = known
+				break
+			}
+		}
+		t.Fatalf("actual consumer-authenticated backend data operation failed: backend=%s phase=%d category=%s", service, phase, category)
 	}
 	expected := marker
 	if phase == -1 {

@@ -493,6 +493,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return err
 	}
+	if err := ensureNativeBackendEndpointValues(values, m); err != nil {
+		return err
+	}
 	if err := validateRuntimeValues(values, m); err != nil {
 		return err
 	}
@@ -502,6 +505,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 func newRuntimeEnv(m Manifest) (string, error) {
 	values := map[string]string{}
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
+		return "", err
+	}
+	if err := ensureNativeBackendEndpointValues(values, m); err != nil {
 		return "", err
 	}
 	return runtimeEnvContent(m, values), nil
