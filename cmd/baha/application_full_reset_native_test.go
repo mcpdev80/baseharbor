@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +101,21 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	if err != nil || fresh.Scope.PlanID != p.Scope.PlanID {
 		if err == nil {
 			t.Logf("unchanged reset scope: owner revision changed=%t provider impact changed=%t", fresh.Scope.Owner.Revision != p.Scope.Owner.Revision, fresh.Providers.Impact.PlanID != p.Providers.Impact.PlanID)
+			t.Logf("changed redacted provider plan field paths: %v", changedResetMetadataPaths(p.Providers.Impact, fresh.Providers.Impact))
+			for i, before := range p.Providers.Impact.Impacts {
+				if i >= len(fresh.Providers.Impact.Impacts) {
+					break
+				}
+				for j, material := range before.Materials {
+					if j >= len(fresh.Providers.Impact.Impacts[i].Materials) {
+						break
+					}
+					after := fresh.Providers.Impact.Impacts[i].Materials[j]
+					if material.Before.Evidence != after.Before.Evidence {
+						t.Logf("changed protected material metadata: id=%s before=%s after=%s", material.Before.ID, material.Before.Evidence, after.Before.Evidence)
+					}
+				}
+			}
 		}
 		t.Fatal("refused consent mutated reset scope", err)
 	}
@@ -127,4 +145,55 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	}
 	complete = true
 	t.Log("actual native application full reset: missing/one/two acknowledgements without separate data consent preserved original TLS-authenticated SQL; current outer scope plus separate consent removed selected native data and deployment owner while preserving authored source")
+}
+
+// Both inputs are already redacted public impact metadata. Report only field
+// paths, never values or raw runtime diagnostics. Derived IDs are not causes.
+func changedResetMetadataPaths(before, after any) []string {
+	decode := func(value any) any {
+		raw, _ := json.Marshal(value)
+		var tree any
+		_ = json.Unmarshal(raw, &tree)
+		return tree
+	}
+	changed := []string{}
+	var visit func(any, any, string)
+	visit = func(a, b any, prefix string) {
+		if len(changed) >= 32 || reflect.DeepEqual(a, b) {
+			return
+		}
+		if left, ok := a.(map[string]any); ok {
+			if right, ok := b.(map[string]any); ok {
+				keys := map[string]bool{}
+				for key := range left {
+					keys[key] = true
+				}
+				for key := range right {
+					keys[key] = true
+				}
+				ordered := []string{}
+				for key := range keys {
+					ordered = append(ordered, key)
+				}
+				sort.Strings(ordered)
+				for _, key := range ordered {
+					if key != "plan_id" && key != "revision" {
+						visit(left[key], right[key], prefix+"."+key)
+					}
+				}
+				return
+			}
+		}
+		if left, ok := a.([]any); ok {
+			if right, ok := b.([]any); ok && len(left) == len(right) {
+				for i := range left {
+					visit(left[i], right[i], prefix+"[]")
+				}
+				return
+			}
+		}
+		changed = append(changed, prefix)
+	}
+	visit(decode(before), decode(after), "impact")
+	return changed
 }
