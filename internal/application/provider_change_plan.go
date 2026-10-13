@@ -129,7 +129,7 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 			return imp, false, false, false, &ProviderChangeError{Code: "replacement-provider-missing"}
 		}
 		after, verified := observedRealization(replacement, s, o)
-		replacementReady = verified && after.Supported && after.Verified && after.State == ProviderRunning
+		replacementReady = verified && consumerDependencyAvailable(s, changes, o, replacement.ID, map[string]bool{})
 		for _, fp := range union.Consumers {
 			for _, req := range fp.Requirements {
 				if req.InstanceID == instance.ID && !replacement.Provider.Supports(req.Requirement.Kind) {
@@ -147,17 +147,10 @@ func describeProviderChange(s ResolutionSnapshot, union ProviderPlan, o Provider
 				replacementReady = false
 			}
 		}
-		if change, changing := changes[r.ReplacementID]; changing && interruptsProvider(change.Operation) {
-			replacementReady = false
-		}
-		for id, change := range changes {
-			if interruptsProvider(change.Operation) && dependencyPath(s, replacement.ID, id, map[string]bool{}) != nil {
-				replacementReady = false
-			}
-		}
 		imp.After = &after
 		imp.Scenario = "provider-replaced"
 		if !replacementReady {
+			known = false
 			imp.Notices = append(imp.Notices, "replacement continuation is not verified; requested change may lose functionality")
 		}
 	}

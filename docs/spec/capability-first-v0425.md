@@ -356,6 +356,13 @@ graph on the actual Target. A stopped, removed, foreign, unobserved or cyclic
 prerequisite, or an unknown dependency closure, makes continuation unknown even
 when the action's directly named provider is running. Aggregate changes cannot
 claim continuity through a dependency they interrupt.
+Replacement providers use the same check for their entire dependency closure.
+Each node must be registered or canonically ancillary on the selected Target,
+observed running, supported and verified with realization evidence; a running
+fact without that observation is insufficient. A planned add/resume does not
+prove executed availability. Reobserve after actual recovery and acknowledge
+the fresh plan before claiming continuation. Unverified replacement remains
+partial and can still be deliberately accepted with the required confirmations.
 Credential references stay identical unless their change is explicitly selected.
 Adapters additionally verify that retained **values** and established synchronization
 remain consistent; this pure result neither reads nor regenerates passwords.

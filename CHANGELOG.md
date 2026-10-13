@@ -26,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Node disconnect shares a concrete impact plan, independent acknowledgements, current authority revalidation and truthful final/partial results across CLI, MCP and Core HTTP.
 - Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
 
+### Fixed
+
+- Provider replacements and selected consumer actions verify every node of their actual Target dependency graph before claiming continuation. A running endpoint, missing realization evidence or merely planned restart cannot conceal stopped, unknown, foreign or cyclic prerequisites; deliberate acknowledged loss remains possible.
+
 ### Compatibility
 
 - Explicit management Core installation and TLS/OIDC/HA/recovery invariants remain unchanged.

@@ -372,6 +372,14 @@ auf dem tatsächlichen Target geprüft. Gestoppte, entfernte, fremde, unbeobacht
 oder zyklische Voraussetzungen sowie unbekannte Abhängigkeitsketten machen die
 Fortsetzung unbekannt, auch wenn der direkt benannte Provider läuft. Aggregierte
 Änderungen dürfen keine Fortsetzung über eine unterbrochene Abhängigkeit behaupten.
+Ersatzprovider nutzen dieselbe Prüfung für ihre gesamte Abhängigkeitskette.
+Jeder Knoten muss auf dem gewählten Target registriert oder kanonisch ergänzend,
+als laufend beobachtet, unterstützt und mit Realisierungsevidenz geprüft sein.
+Ein laufender Fakt ohne diese Beobachtung reicht nicht. Geplantes Hinzufügen
+oder Reaktivieren beweist keine ausgeführte Verfügbarkeit. Nach tatsächlicher
+Wiederherstellung werden die Beobachtung und die Planbestätigung erneuert.
+Ungeprüfter Ersatz bleibt teilweise und darf mit den erforderlichen Bestätigungen
+weiterhin bewusst akzeptiert werden.
 Credential-Referenzen bleiben gleich, sofern ihre Änderung nicht ausdrücklich
 gewählt wurde. Adapter prüfen zusätzlich, dass erhaltene **Werte** und tatsächlich
 bestehende Synchronisierung konsistent bleiben; dieses reine Ergebnis liest oder

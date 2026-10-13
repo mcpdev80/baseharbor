@@ -149,7 +149,7 @@ func describeConsumerTransition(f *FunctionConsequence, use ProviderFunctionUse,
 			}
 		}
 		for _, dep := range a.Dependencies {
-			if !consumerDependencyAvailable(snapshot, changes, dep, map[string]bool{}) {
+			if !consumerDependencyAvailable(snapshot, changes, o, dep, map[string]bool{}) {
 				f.Outcome = "unknown"
 				known, attention = false, true
 			}
@@ -160,9 +160,25 @@ func describeConsumerTransition(f *FunctionConsequence, use ProviderFunctionUse,
 
 // Verify continuation against the SAME observed dependency graph, including
 // aggregate changes. This selects no provider and modifies no union or owner.
-func consumerDependencyAvailable(snapshot ResolutionSnapshot, changes map[string]ProviderChangeRequest, id string, visiting map[string]bool) bool {
+func consumerDependencyAvailable(snapshot ResolutionSnapshot, changes map[string]ProviderChangeRequest, observation ProviderImpactObservation, id string, visiting map[string]bool) bool {
+	instances, err := indexResolutionInstances(snapshot)
+	if err != nil {
+		return false
+	}
+	return verifiedContinuationDependency(snapshot, instances, changes, observation, id, visiting)
+}
+
+func verifiedContinuationDependency(snapshot ResolutionSnapshot, instances map[string]capability.ProviderInstance, changes map[string]ProviderChangeRequest, observation ProviderImpactObservation, id string, visiting map[string]bool) bool {
+	if _, exists := instances[id]; !exists {
+		return false
+	}
 	fact, exists := snapshot.Facts[id]
 	if !exists || visiting[id] || fact.Target != snapshot.Target || fact.State != ProviderRunning || fact.Dependencies == nil {
+		return false
+	}
+	observed, exists := observation.Providers[id]
+	actual := observed.Realization
+	if !exists || actual.InstanceID != id || actual.Target != snapshot.Target || actual.State != ProviderRunning || !actual.Supported || !actual.Verified || actual.Evidence == "" {
 		return false
 	}
 	if change, exists := changes[id]; exists && interruptsProvider(change.Operation) {
@@ -171,7 +187,7 @@ func consumerDependencyAvailable(snapshot ResolutionSnapshot, changes map[string
 	visiting[id] = true
 	defer delete(visiting, id)
 	for _, dependency := range fact.Dependencies {
-		if !consumerDependencyAvailable(snapshot, changes, dependency, visiting) {
+		if !verifiedContinuationDependency(snapshot, instances, changes, observation, dependency, visiting) {
 			return false
 		}
 	}
