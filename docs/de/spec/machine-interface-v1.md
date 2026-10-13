@@ -101,7 +101,8 @@ Die typisierte Registry unter `internal/machine` ist die maßgebliche Definition
 
 `control-plane.destroy` und `installation.destroy` akzeptieren
 `provider_change_consent` zusätzlich zum üblichen `approval`. Die Ausführung
-erfordert beide Stufen für den aktuellen gemeinsamen Scope und unabhängig davon
+erfordert beide Stufen für den aktuellen gemeinsamen Scope. Installationszerstörung
+und ausgewählte Core-Volume-Löschung erfordern zusätzlich unabhängige Zustimmung
 `delete_data=true`. `--yes` oder `approval=true` allein autorisieren keine
 Zerstörung. CLI-Vorschau und typisierte Ablehnung zeigen den aktuellen konkreten
 Scope; JSON-Berichte enthalten `provider_change_plan`. Geänderte Konfigurationsbytes,
@@ -110,11 +111,15 @@ native Ressourceninventare machen frühere Zustimmung vor Beginn des Abbaus
 ungültig. Ungebundene App-Provider und geschützte Management-Verbraucher benötigen
 eine eigene Autorisierung.
 
-Diese Vorbereitung implementiert noch keine bewusst gewählte Core-Zerstörung bei
-aktiven Verbrauchern oder vollständige Providerübergaben. Die aktive-Verbraucher-
-Verweigerung, universelle Ausführung der Folgen, Wiederaufnahme und native destruktive
-Abnahme bleiben notwendige v0.4.25-Integrationsarbeit. Unbekannte Folgen bleiben
-teilweise verifiziert.
+Die ausgewählte Core-Zerstörung akzeptiert optional `delete_data` als Auswahl.
+Ohne diese Auswahl werden nur kanonische Core-Container/Startdefinitionen entfernt;
+Volumes, Netzwerke, geschützte Owner, Verbraucherregistrierungen, andere Provider
+und Workloads bleiben erhalten. Aktive Bindings sind Folgen mit zwei aktuellen
+Planbestätigungen, kein dauerhaftes Entfernungsverbot. Datenlöschung verändert den
+Plan und erfordert zusätzlich unabhängiges
+`provider_change_consent.delete_data=true`. Teilweiser nativer Abbau behält Owner
+für neuen Plan/Retry; der Folgenbeleg bleibt teilweise, bis sämtliche tatsächlichen
+Verbraucherfunktionen separat verifiziert wurden.
 
 ## Application-Stop über HTTP
 

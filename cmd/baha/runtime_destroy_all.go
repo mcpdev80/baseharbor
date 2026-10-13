@@ -42,23 +42,26 @@ func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io
 	}
 	args = filtered
 	if format == outputJSON {
-		confirmed, all := false, false
+		confirmed, all, deleteData := false, false, false
 		for _, arg := range args {
 			switch arg {
 			case "--yes":
 				confirmed = true
 			case "--all":
 				all = true
+			case "--delete-data":
+				deleteData = true
 			default:
 				return usageError("unknown destruction argument", "Use --yes or --all.")
 			}
 		}
 		parent, report := withDestroyReport(parent, all)
+		parent = withSelectedCoreDataDeletion(parent, deleteData)
 		var err error
 		if all {
 			err = destroyInstallation(machineNoninteractiveContext(parent), confirmed, io.Discard, io.Discard)
 		} else {
-			err = destroyControlPlane(parent, confirmed, io.Discard)
+			err = destroyControlPlane(machineNoninteractiveContext(parent), confirmed, io.Discard)
 		}
 		if err != nil {
 			// Preserve structured partial failure details, especially
@@ -90,7 +93,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	confirmed := false
 	for _, arg := range args {
 		switch arg {
-		case "--all":
+		case "--all", "--delete-data":
 		case "--yes":
 			confirmed = true
 		default:

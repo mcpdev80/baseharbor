@@ -20,6 +20,7 @@ type machineControlPlaneUpInput struct {
 	RecoveryFile string                       `json:"recovery_file,omitempty"`
 }
 type machineControlPlaneDestroyInput struct {
+	DeleteData            bool                               `json:"delete_data,omitempty"`
 	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 	Target                string                             `json:"target,omitempty"`
 	Approval              bool                               `json:"approval"`
@@ -111,9 +112,10 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		return nil, report, nil
 	})
 
-	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Destroy selected owned control plane after approval and existing application-ownership preflight.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Remove canonical owned Core containers after approval and two current-plan acknowledgements, including explicitly chosen active-consumer outages. Preserve persistent data and consumer owners unless delete_data selects owned Core volumes with separate deletion consent.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+		ctx = withSelectedCoreDataDeletion(ctx, input.DeleteData)
 		if err := authorizeCurrentMCPContext(ctx, "control-plane.destroy", "", "", ""); err != nil {
 			return machineMCPFailure(err)
 		}

@@ -58,7 +58,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cleanupCancel()
-		if err := runtimeDestroy(machineNoninteractiveContext(cleanupCtx), []string{"--yes"}, &bytes.Buffer{}); err != nil {
+		if err := approvedNativeFixtureCleanup(t, machineNoninteractiveContext(cleanupCtx), &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated Core cleanup: %v", err)
 		}
 	})

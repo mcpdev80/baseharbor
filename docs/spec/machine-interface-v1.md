@@ -101,7 +101,8 @@ The typed machine operation registry in `internal/machine` is the authoritative 
 
 `control-plane.destroy` and `installation.destroy` accept
 `provider_change_consent` in addition to ordinary `approval`. Execution requires
-both stages for the current aggregate scope and independent `delete_data=true`.
+both stages for the current aggregate scope. Installation destruction and selected
+Core volume deletion additionally require independent consent `delete_data=true`.
 `--yes` or `approval=true` alone cannot authorize destruction. The CLI preview
 and typed denial expose the current concrete scope; JSON reports include
 `provider_change_plan`. Changed configuration bytes, consumer registrations,
@@ -109,10 +110,14 @@ protected Core owner bytes, Target membership or native resource inventory
 invalidate prior consent before cleanup starts. Retained unbound application
 providers and protected management consumers require their own authorization.
 
-This preparation does not yet implement deliberate selected-Core destruction
-with active consumers or complete provider handoffs. Active-consumer refusal,
-universal consequence execution, retry and native destructive acceptance remain
-required v0.4.25 integration work. Unknown consequences remain partial.
+Selected-Core destruction accepts `delete_data` as an optional selection. Its
+absence removes only canonical Core containers/startup units and retains volumes,
+networks, protected owners, consumer registrations and other providers/workloads.
+Active bindings are consequences requiring two current-plan acknowledgements,
+not a permanent removal veto. Selecting data deletion changes the plan and also
+requires independent `provider_change_consent.delete_data=true`. Partial native
+cleanup retains owners for fresh replan/retry; its consequence receipt remains
+partial until all actual consumer functions are separately verified.
 
 ## Application stop through HTTP
 

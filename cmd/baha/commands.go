@@ -91,9 +91,9 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
-			Usage:   "baha destroy [--yes] | baha destroy --all [--yes]",
-			Long:    "Without --all, shows the ownership-safe destruction plan for the effective Target and refuses to run while application bindings remain. --all is the explicit installation cleanup path: it removes BaseHarbor-managed deployments across all Targets, shared runtime/provider resources, control-plane data and BaseHarbor XDG state/config while preserving application source repositories and external application-owned data.",
+			Summary: "Remove owned runtime resources with explicit consequence consent",
+			Usage:   "baha destroy [--yes] [--delete-data] | baha destroy --all [--yes]",
+			Long:    "Outside a repository, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if inApplicationRepository() && !containsExactArgument(args, "--all") {
 					return appDestroyCommand(store).Run(ctx, args, out, errOut)

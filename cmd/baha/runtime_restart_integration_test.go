@@ -137,7 +137,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}
 
 	defer func() {
-		_ = runtimeDestroy(context.Background(), []string{"--yes"}, &bytes.Buffer{})
+		_ = approvedNativeFixtureCleanup(t, context.Background(), &bytes.Buffer{})
 		_ = os.Remove(recovery)
 	}()
 
@@ -209,7 +209,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 
 	if !ha {
 		var destroyOut bytes.Buffer
-		if err := runtimeDestroy(ctx, []string{"--yes"}, &destroyOut); err != nil {
+		if err := approvedNativeFixtureCleanup(t, ctx, &destroyOut); err != nil {
 			t.Fatalf("single control-plane cleanup: %v\n%s", err, destroyOut.String())
 		}
 		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)

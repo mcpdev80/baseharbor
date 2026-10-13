@@ -1,5 +1,22 @@
 # Core-Workflow
 
+## Core gezielt abbauen
+
+Außerhalb eines App-Repositories entfernt ein bestätigtes `baha destroy` nur
+die kanonischen PostgreSQL-/OpenBao-Container und ihre Startdefinitionen. Aktive
+Verbraucher verhindern die bewusst gewählte Entscheidung nicht; die konkreten
+Ausfallfolgen benötigen zwei Bestätigungen des aktuellen Plans. Volumes,
+Netzwerke, geschützte Zugangsdaten/Konfiguration, Bindings, Workloads, andere
+Provider und Sicherheitsrichtlinien bleiben für Wiederaufnahme oder Retry.
+Erhalt beweist keine laufende Secret-Zustellung, Anmeldung oder Erneuerung.
+
+`--delete-data` wählt zusätzlich die eigenen Core-Volumes zur Löschung aus und
+erzeugt einen anderen Plan. Nach beiden Planbestätigungen ist separate
+Löschzustimmung erforderlich. Erhaltene Zugangsdaten stellen gelöschte Volume-
+Inhalte nicht wieder her. `--yes` ersetzt keine dieser Zustimmungen. MCP verwendet
+`delete_data` für die Auswahl und `provider_change_consent` für die Zustimmung
+zum konkreten Plan.
+
 | Befehl | Aufgabe | Eingriff |
 | --- | --- | --- |
 | `baha init` | Aktuelles Repository übernehmen und benötigten Core einrichten | Verändernd |

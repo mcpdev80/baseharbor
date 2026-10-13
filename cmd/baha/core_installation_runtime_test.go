@@ -98,7 +98,7 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cleanupCancel()
-		if err := runtimeDestroy(cleanupCtx, []string{"--yes"}, &bytes.Buffer{}); err != nil {
+		if err := approvedNativeFixtureCleanup(t, cleanupCtx, &bytes.Buffer{}); err != nil {
 			t.Errorf("Core cleanup failed: %v", err)
 		}
 	}()

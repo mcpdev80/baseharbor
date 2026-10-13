@@ -60,6 +60,20 @@ Inside an application repository it uses the same application doctor semantics a
 
 Inside a repository, `baha destroy` removes the owned application after confirmation. Outside a repository, it shows the ownership-safe destruction scope for the effective Target.
 
+Outside a repository, confirmed Core destruction removes only the canonical
+PostgreSQL/OpenBao containers and startup units. It is permitted with active
+consumers after two acknowledgements of the current outage plan. Volumes,
+networks, protected credentials/configuration, bindings, workloads, other
+providers and security policy remain for explicit resume or retry. Retention
+does not prove continued secret delivery, authentication or renewal.
+
+`--delete-data` additionally selects the owned Core volumes. This creates a
+different plan and requires independent data-deletion consent after both plan
+stages. Deleted volume contents cannot be restored from retained credentials.
+`--yes` replaces neither acknowledgement nor deletion consent. MCP uses
+`delete_data` for the selection and `provider_change_consent` for approval of
+the concrete plan.
+
 `baha destroy --all` is the explicit installation-cleanup path and removes BaseHarbor-owned installation state while preserving application source repositories and external infrastructure.
 
 ## Example: start, inspect and stop an order API

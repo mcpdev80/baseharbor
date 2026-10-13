@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 type ownedDestroyResource struct {
@@ -12,14 +13,15 @@ type ownedDestroyResource struct {
 }
 
 type destroyReport struct {
-	Impact                            *runtimeDestroyImpact  `json:"provider_change_plan,omitempty"`
-	Destroyed                         bool                   `json:"destroyed"`
-	Preview                           bool                   `json:"preview"`
-	All                               bool                   `json:"all"`
-	ApplicationSourceAndDataPreserved bool                   `json:"application_source_and_data_preserved"`
-	Resources                         []ownedDestroyResource `json:"resources"`
-	Preserved                         []fullDestroyResult    `json:"preserved"`
-	Results                           []fullDestroyResult    `json:"results"`
+	ProviderChangeResult              *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
+	Impact                            *runtimeDestroyImpact                  `json:"provider_change_plan,omitempty"`
+	Destroyed                         bool                                   `json:"destroyed"`
+	Preview                           bool                                   `json:"preview"`
+	All                               bool                                   `json:"all"`
+	ApplicationSourceAndDataPreserved bool                                   `json:"application_source_and_data_preserved"`
+	Resources                         []ownedDestroyResource                 `json:"resources"`
+	Preserved                         []fullDestroyResult                    `json:"preserved"`
+	Results                           []fullDestroyResult                    `json:"results"`
 }
 
 type destroyReportContextKey struct{}

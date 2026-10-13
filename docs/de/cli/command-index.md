@@ -65,7 +65,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
-| `baha destroy` | Permanently remove BaseHarbor-managed runtime resources and state | `baha destroy [--yes] \| baha destroy --all [--yes]` | [↗](core.md) |
+| `baha destroy` | Remove owned runtime resources with explicit consequence consent | `baha destroy [--yes] [--delete-data] \| baha destroy --all [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain>` | [↗](development.md) |
 | `baha dev credentials` | Show or rotate the target-scoped development management login | `baha dev credentials [--reset] [--username USER] [--password-file FILE]` | [↗](development.md) |
 | `baha dev domain` | Show or configure the target-scoped development domain | `baha dev domain [DOMAIN]` | [↗](development.md) |

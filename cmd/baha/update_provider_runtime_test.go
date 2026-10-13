@@ -147,7 +147,7 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 			logProviderBaselineDiagnostics(t, rt, target.Name, engine)
 		}
 		_ = runWithIO(cleanup, []string{"app", "destroy", "--yes"}, io.Discard, io.Discard)
-		if err := runtimeDestroy(cleanup, []string{"--yes"}, io.Discard); err != nil {
+		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
 			t.Errorf("owned fixture cleanup: %v", err)
 		}
 	}()

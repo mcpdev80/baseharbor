@@ -75,7 +75,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 		if err := provider.DestroyOwnedProjectResources(cleanup, files.Project, sibling); err != nil {
 			t.Errorf("sibling cleanup: %v", err)
 		}
-		if err := runtimeDestroy(cleanup, []string{"--yes"}, io.Discard); err != nil {
+		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
 			t.Errorf("Core cleanup: %v", err)
 		}
 	}()
@@ -199,6 +199,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 		t.Fatal("resume changed original credentials")
 	}
 	t.Log("original SQL row and credentials read over verify-full TLS after normal Core resume; unchanged original OpenBao manager usable; no reseeding or rotation")
+	nativeCoreDestroyRetention(t, ctx, provider, files, recovery, config, credentials, siblingBefore.ID, env)
 	nativeTargetDefinitionRecovery(t, ctx, session, provider, files.Project, target.Name, func() {
 		if err := nativeCoreSQLFullTLS(ctx, provider, files, credentials, config.PostgresDB, "DO $$ BEGIN IF (SELECT count(*) FROM core_stop_original WHERE value='original-before-stop') <> 1 THEN RAISE EXCEPTION 'original data changed'; END IF; END $$;"); err != nil {
 			t.Fatal("original SQL/TLS data after Target configuration change", err)
@@ -215,6 +216,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 			t.Fatal("Target configuration change altered original runtime credentials")
 		}
 	})
+	nativeCoreDeleteData(t, ctx, provider, files, siblingBefore.ID, env)
 }
 
 func nativeCoreStopRetry(ctx context.Context, session *mcp.ClientSession, oldID string) error {

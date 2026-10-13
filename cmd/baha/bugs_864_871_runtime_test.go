@@ -153,7 +153,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 	}
 	t.Chdir(t.TempDir())
 	var output runtimeAcceptanceOutput
-	if err := runtimeDestroy(ctx, []string{"--yes"}, &output); err != nil {
+	if err := approvedNativeFixtureCleanup(t, ctx, &output); err != nil {
 		t.Fatalf("Core destroy: %v", err)
 	}
 	opts.RecoveryFile = ""
