@@ -193,15 +193,11 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 }
 
 func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, restoreData applicationRestoreData) error {
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	ctx, unlock, err := prepareAuthorizedApplicationRestore(ctx, resolved, restoreData, out)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if err := authorizeApplicationRestore(ctx, resolved, restoreData, out); err != nil {
-		return err
-	}
-	ctx = context.WithValue(ctx, verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: resolved.DeploymentIdentity, Intent: resolved.Manifest.YAML()})
 	m := restoreData.manifest
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
@@ -209,20 +205,16 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	logsHistory := restoreData.logsHistory
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
-	if requiresManagedServiceIssuer(m) || m.Services.Secrets || application.RequiresRuntimeBroker(m) {
+	if m.Services.Secrets || application.RequiresRuntimeBroker(m) {
 		platformFiles, err = existingTargetRuntimeFiles(ctx)
 		if err != nil {
 			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
 		}
 	}
 	if requiresManagedServiceIssuer(m) {
-		issuer = openbao.NewServiceIssuer(compose, platformFiles)
-		status, err := issuer.Status(ctx)
-		if err != nil || !status.Ready {
-			if err != nil {
-				return fmt.Errorf("restore preflight managed service PKI: %w", err)
-			}
-			return errors.New("restore preflight managed service PKI is not ready")
+		issuer, err = resolveApplicationServiceIssuer(ctx, resolved, compose)
+		if err != nil {
+			return fmt.Errorf("restore preflight managed service PKI: %w", err)
 		}
 	}
 	if m.Services.Secrets {
@@ -233,6 +225,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	}
 	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
 		return fmt.Errorf("restore preflight workload security: %w", err)
+	}
+	if err := materializeApplicationServiceIssuer(issuer); err != nil {
+		return fmt.Errorf("restore managed service PKI: %w", err)
 	}
 	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
 		return fmt.Errorf("restore deployment initialization: %w", err)
@@ -384,6 +379,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		return fmt.Errorf("record restored deployment: %w", err)
 	}
 	if err := verifyRestoredApplicationHealth(ctx, store, m); err != nil {
+		return err
+	}
+	if err := recordVerifiedApplicationRestore(ctx, resolved, restoreData); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)

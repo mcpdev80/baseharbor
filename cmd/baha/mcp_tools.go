@@ -658,12 +658,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 			}
 			return nil, result, nil
 		}
-		result := applicationlifecycle.NewResult("restore", strings.TrimSpace(input.Name), strings.TrimSpace(input.Environment), "restored", true)
-		if target, targetErr := effectiveTarget(ctx); targetErr == nil {
-			result = result.WithTarget(target.Name)
-		}
-		result.Detail = "Recovery unit restored and verified by the restore lifecycle; application identity can be discovered with baseharbor.status in repository context."
-		return nil, result, nil
+		return machineMCPFailure(err)
 	})
 
 	mcp.AddTool(server, machineMCPTool("destroy", "Permanently remove BaseHarbor-owned application runtime resources and state. Explicit approval is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineDestroyInput) (*mcp.CallToolResult, any, error) {

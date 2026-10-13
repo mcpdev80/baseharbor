@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -19,6 +20,8 @@ import (
 
 type applicationRestoreData struct {
 	archiveRevision  string
+	archivePath      string
+	backupCreatedAt  time.Time
 	manifest         application.Manifest
 	recoveryManifest applicationbackup.RecoveryManifest
 	postgresBackups  []application.PostgresBackup
@@ -212,7 +215,11 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 		}
 	}
 	digest := sha256.Sum256(archive)
-	return applicationRestoreData{archiveRevision: hex.EncodeToString(digest[:]), manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
+	absolutePath, err := filepath.Abs(backupPath)
+	if err != nil {
+		return applicationRestoreData{}, err
+	}
+	return applicationRestoreData{archiveRevision: hex.EncodeToString(digest[:]), archivePath: absolutePath, backupCreatedAt: payload.Manifest.CreatedAt, manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
 }
 
 func recoveryManifestHasSelected(manifest applicationbackup.RecoveryManifest, class applicationbackup.RecoveryStateClass) bool {

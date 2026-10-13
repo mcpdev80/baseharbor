@@ -15,7 +15,7 @@ import (
 func appGuidedRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command {
 	command := appRestoreCommandWithRecoveryMetadata(store)
 	baseRun := command.Run
-	command.Usage = "baha app restore [BACKUP] [NAME] [--password-file FILE]"
+	command.Usage = "baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]"
 	command.Long = "Validates and decrypts the complete archive before mutation. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry, shows the backup identity, included durable resources and mutation impact, and requires confirmation before restore. Automation keeps the deterministic --password-file path. A successful restore reports READY only after verification and records the verified recovery metadata."
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if hasOption(args, "--password-file") {

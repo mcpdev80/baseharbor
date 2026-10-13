@@ -21,6 +21,19 @@ type verifiedRestoreScope struct {
 	Intent   string
 }
 
+func prepareAuthorizedApplicationRestore(ctx context.Context, resolved resolvedApplication, data applicationRestoreData, out io.Writer) (context.Context, func(), error) {
+	unlock, err := lockApplicationTargetLifecycle(resolved)
+	if err != nil {
+		return ctx, nil, err
+	}
+	if err := authorizeApplicationRestore(ctx, resolved, data, out); err != nil {
+		unlock()
+		return ctx, nil, err
+	}
+	ctx = context.WithValue(ctx, verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: resolved.DeploymentIdentity, Intent: resolved.Manifest.YAML()})
+	return ctx, unlock, nil
+}
+
 func requireVerifiedRestoreScope(ctx context.Context, resolved resolvedApplication) error {
 	proof, ok := ctx.Value(verifiedRestoreScopeKey{}).(verifiedRestoreScope)
 	if !ok || proof.Identity != resolved.DeploymentIdentity || proof.Intent != resolved.Manifest.YAML() {

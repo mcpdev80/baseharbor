@@ -76,3 +76,11 @@ func TestRestoreRefusesBeforeRuntimeMutationAndBindsArchiveOwnerAndDataDecision(
 		t.Fatal("restore planning or denial mutated canonical registry")
 	}
 }
+
+func TestRestoreJSONAndEnvironmentSelectorsReachCanonicalValidation(t *testing.T) {
+	command := appRestoreCommandWithRecoveryMetadata(application.Store{})
+	err := command.Run(t.Context(), []string{"missing.bhbackup", "--password-file", filepath.Join(t.TempDir(), "missing-password"), "--environment", "dev", "--json"}, io.Discard, io.Discard)
+	if err == nil || strings.Contains(err.Error(), "unknown option") || !strings.Contains(err.Error(), "inspect backup password file") {
+		t.Fatal("JSON/environment presentation bypassed canonical restore validation", err)
+	}
+}

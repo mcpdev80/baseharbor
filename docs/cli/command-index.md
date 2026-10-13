@@ -30,7 +30,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
-| `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE]` | [↗](applications.md) |
+| `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]` | [↗](applications.md) |
 | `baha app runtime-identity` | Manage the app-scoped credential used for dynamic secret references | `baha app runtime-identity <rotate\|revoke> [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity revoke` | Immediately revoke the application runtime credential | `baha app runtime-identity revoke [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity rotate` | Rotate the application runtime credential | `baha app runtime-identity rotate [NAME] [--yes]` | [↗](applications.md) |
