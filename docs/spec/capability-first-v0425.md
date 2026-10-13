@@ -133,6 +133,17 @@ plan consequence, not a credential reset.
 
 ## Target consumer union and add/remove/re-add
 
+Application `--full-reset` and remote application destruction acknowledge an
+aggregate `baseharbor.provider-impact-scope/v1` owned by the selected deployment.
+The embedded provider plan alone cannot authorize deletion of the deployment's
+protected state. Both current acknowledgements are required; full reset also
+requires separate data-deletion consent. Changed publication/recovery ownership
+invalidates that consent. Unverified remote material/access is explicitly partial.
+Default remote destruction retains the existing publication, credentials and
+deployment owner, releases references only after verified container removal,
+and uses the protected retired intent for explicit reactivation. No unauthenticated
+access or successful material handoff is inferred from retained files.
+
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegates every
 active consumer to `ResolveFootprint` and unions its full dependency closure.
 `ConsumerIntent` is an ephemeral projection of an existing app or independent

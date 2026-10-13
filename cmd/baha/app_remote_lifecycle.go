@@ -56,8 +56,16 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 		return nil, application.Manifest{}, application.ErrRuntimeNotApplied
 	}
 	var intent application.Manifest
-	if json.Unmarshal(record.Applied.Intent, &intent) != nil || intent.ApplicationID != resolved.Manifest.ApplicationID || intent.Name != resolved.Manifest.Name || intent.Environment != resolved.Manifest.Environment {
+	canonical := record.Applied.Intent
+	if record.Observed.State == "runtime-retired" {
+		canonical = json.RawMessage(record.Applied.GeneratedState["retired_intent"])
+	}
+	if json.Unmarshal(canonical, &intent) != nil || intent.ApplicationID != resolved.Manifest.ApplicationID || intent.Name != resolved.Manifest.Name || intent.Environment != resolved.Manifest.Environment {
 		return nil, application.Manifest{}, errors.New("protected remote Application intent differs from selected deployment")
+	}
+	intent, err = retainedBackendPlacementProjection(resolved, intent, record.Applied.GeneratedState["backend_placements"])
+	if err != nil {
+		return nil, application.Manifest{}, err
 	}
 	if err := checkRemoteApplicationLifecycle(intent); err != nil {
 		return nil, application.Manifest{}, err
@@ -95,7 +103,7 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		if err := runtime.ApplyApplication(ctx, intent, true); err != nil {
 			return err
 		}
-		return recordObservedDeployment(resolved, "ready", true)
+		return recordAppliedDeployment(ctx, resolved, application.RuntimeFilesFor(resolved.Store, intent))
 	}
 	if err := applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return err

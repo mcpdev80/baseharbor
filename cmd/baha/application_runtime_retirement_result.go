@@ -12,7 +12,7 @@ import (
 
 func applicationDestroyResult(resolved resolvedApplication, fullReset bool) (applicationlifecycle.Result, error) {
 	result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
-	if fullReset || isRemoteApplication(resolved) {
+	if fullReset {
 		if fullReset {
 			deleted := true
 			result.DataDeleted = &deleted

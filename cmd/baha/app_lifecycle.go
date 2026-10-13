@@ -254,12 +254,30 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			fmt.Fprintln(out, "No changes were made. Re-run with --yes to delete the owned remote Application runtime.")
 			return nil
 		}
+		plan, err := authorizeApplicationDestruction(ctx, execution.resolved, execution.fullReset, out)
+		if err != nil {
+			return err
+		}
+		if !execution.fullReset {
+			if plan.Providers.Impact == nil {
+				return runtimeMutationOwnerError()
+			}
+			if _, err := recordPendingApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact); err != nil {
+				return err
+			}
+		}
 		if err := runtime.DestroyApplication(ctx, intent, execution.fullReset); err != nil {
 			return err
 		}
 		// Keep the snapshot available through state cleanup; removing the
 		// deployment record removes it together with the verified binding.
 		execution.manifest = intent
+		if !execution.fullReset {
+			if err := application.ReleaseApplicationProviderReferencesAt(execution.resolved.TargetStateRoot, intent); err != nil {
+				return err
+			}
+			return recordVerifiedApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact, nil, plan.Materials)
+		}
 		if err := execution.removeApplicationState(); err != nil {
 			return err
 		}
@@ -282,6 +300,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if !execution.confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 		return nil
+	}
+	if _, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out); err != nil {
+		return err
 	}
 	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
