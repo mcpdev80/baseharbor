@@ -42,6 +42,8 @@ baha app restore ./mailflow-production.bhbackup
 
 Das Archiv wird vor der destruktiven Mutation entschlüsselt und validiert. BaseHarbor zeigt dann die Anwendungsidentität/Umgebung, die Erstellungszeit des Archivs, die verwalteten Ressourcen und die Auswirkungen wiederherzustellen.
 
+Achtung: Wiederherstellen kann neuere eigene Daten überschreiben. Der aktuelle Plan benennt das ausgewählte Archiv, die Anwendung, Provider und erhaltenes Material. Bestätige genau diesen Plan zweimal und erteile anschließend die separate Zustimmung zur Datenlöschung. Ein anderes Archiv oder veränderte Eigentümerdaten machen die Bestätigungen ungültig. CLI/JSON, MCP und HTTP verwenden dieselbe Prüfung; eine allgemeine Freigabe ersetzt sie nicht. Erfolg erfordert weiterhin die tatsächliche Restore-, Status- und Doctor-Verifikation.
+
 Automatisierung bleibt verfügbar mit:
 
 ```bash

@@ -137,11 +137,12 @@ type machineBackupInput struct {
 }
 
 type machineRestoreInput struct {
-	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
-	BackupPath   string `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
-	Name         string `json:"name,omitempty" jsonschema:"optional expected application identity"`
-	Environment  string `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
-	PasswordFile string `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"two current archive/owner consequence acknowledgements and separate consent to overwrite owned data"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	BackupPath            string                             `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional expected application identity"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
+	PasswordFile          string                             `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
 }
 
 type machineDestroyInput struct {

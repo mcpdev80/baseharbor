@@ -42,6 +42,8 @@ baha app restore ./mailflow-production.bhbackup
 
 The archive is decrypted and validated before destructive mutation. BaseHarbor then shows the application identity/environment, archive creation time, included managed resources and restore impact. Interactive restore defaults to **No** and proceeds only after explicit confirmation.
 
+Achtung: restoring can overwrite newer owned data. The current plan identifies the selected archive, application, providers and retained material. Confirm that exact plan twice, then separately authorize data deletion. A different archive or changed owner invalidates those confirmations. CLI/JSON, MCP and HTTP share this requirement; ordinary approval does not replace it. Success still requires actual restore/status/doctor verification.
+
 Automation remains available with:
 
 ```bash

@@ -244,6 +244,7 @@ func (e *bahaMachineExecutor) executeHTTPRestore(
 	if err := decodeHTTPInput(raw, &input); err != nil {
 		return nil, err
 	}
+	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	if err := bindHTTPApplicationSelectors(operationContext, &input.Target, &input.Environment, &input.Name); err != nil {
 		return nil, err
 	}

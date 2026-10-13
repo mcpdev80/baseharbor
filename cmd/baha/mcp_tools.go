@@ -626,6 +626,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		backupPath := strings.TrimSpace(input.BackupPath)
 		passwordFile := strings.TrimSpace(input.PasswordFile)

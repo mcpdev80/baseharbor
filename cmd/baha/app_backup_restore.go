@@ -193,12 +193,20 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 }
 
 func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, restoreData applicationRestoreData) error {
+	unlock, err := lockApplicationTargetLifecycle(resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := authorizeApplicationRestore(ctx, resolved, restoreData, out); err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: resolved.DeploymentIdentity, Intent: resolved.Manifest.YAML()})
 	m := restoreData.manifest
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
 	logsHistory := restoreData.logsHistory
-	var err error
 	var platformFiles bhruntime.Files
 	var issuer serviceaccess.Issuer
 	if requiresManagedServiceIssuer(m) || m.Services.Secrets || application.RequiresRuntimeBroker(m) {
@@ -599,6 +607,9 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 }
 
 func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication) error {
+	if err := requireVerifiedRestoreScope(ctx, resolved); err != nil {
+		return err
+	}
 	m := resolved.Manifest
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
