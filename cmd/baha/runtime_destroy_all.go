@@ -104,6 +104,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	return destroyInstallation(parent, confirmed, out, errOut)
 }
 func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.Writer) error {
+	parent = context.WithValue(parent, runtimeDestroyAcknowledgementKey{}, &application.ProviderChangeConsent{})
 	if err := authorizeCurrentMCPContext(parent, "installation.destroy", "", "", ""); err != nil {
 		return err
 	}
@@ -112,6 +113,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	deployments, deploymentResults := discoverFullDestroyDeployments()
 	// Authorize every discovered stable deployment before any target/network or
 	// best-effort cleanup. One unauthorized boundary blocks the whole operation.
+	blockedTargets := map[string]bool{}
 	for _, record := range deployments {
 		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {
 			return err
@@ -183,6 +185,10 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	if currentImpact.Scope.PlanID != impact.Scope.PlanID || runtimeMutationRevision(currentDeployments) != runtimeMutationRevision(deployments) {
 		return runtimeDestroyImpactError(currentImpact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
+	parent, err = withInstallationApplicationScopes(parent, currentImpact)
+	if err != nil {
+		return err
+	}
 
 	results := append([]fullDestroyResult{}, preserved...)
 	results = append(results, discoveryResults...)
@@ -200,7 +206,9 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 				Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
 				Detail:   err.Error(),
 			})
-			bestEffortApplicationCleanup(targetCtx, record, &results)
+			// A failed child may have stale authority or partially removed resources.
+			// Keep its retry owner; a lower adapter must not bypass its current plan.
+			blockedTargets[record.Identity.Target] = true
 			continue
 		}
 		results = append(results, fullDestroyResult{
@@ -211,6 +219,10 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	}
 
 	for i, target := range targets {
+		if blockedTargets[target.Name] {
+			results = append(results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-runtime", Detail: "application reset incomplete; protected Target resources and retry owners preserved"})
+			continue
+		}
 		destroyTargetBestEffort(parent, target, &results, plans[i])
 	}
 

@@ -410,13 +410,11 @@
     "approval_rejection": false
   },
   "continuation": [
-    "Read AGENTS.md, docs/DEVELOPMENT_GUIDELINES.md, docs/internal/pre-release-documentation-audit.md and current #872 contract before edits. Keep sole Draft PR #881 targeting release/v0.4.25; no merge/tag/full pre-release or productive Pages.",
-    "Fetch current heads into isolated checkouts; retain others' concurrent commits and use expected-head nonforce publication. Original checkouts remain untouched.",
-    "Qualify latest canonical external-network reference natively after application-created shared SQL, explicit management Core bootstrap and repeat/recovery; inspect actual ownership, TLS credentials/data, cleanup and pending-write boundaries. No current native PASS for that fix.",
-    "After native Core compatibility is established, update explicit candidate pins to qualified Core/Demo sources and rerun affected Demo installation and actual backup/recovery on Docker and Podman; published identity-preservation fixture fix is currently syntax-qualified only.",
-    "Complete joint authenticated browser/remote lifecycle: default remote retirement, original TLS data/credentials, frozen-publication reactivation, explicit owned disconnect with actual certificate revocation; do not reinterpret earlier failed matrix rows as successes.",
-    "Finish binding remaining #872 universal consequences/secure handoffs, recovery mutations, management/HA consumer projection and trace shutdown qualification.",
-    "Reconcile final immutable Core/Demo/Console/Connector matrix, actual origins and artifact receipts, EN/DE docs, Pages candidate build/navigation, release notes and all audit sections 1\u20138/atomic prerequisite gates. Readiness remains blocked until each required source-qualified check passes."
+    "Read session2_current first; earlier checkpoint objects are historical and must not override its current boundaries.",
+    "Preserve Core commits 2da2e3e2, bff021d6 and checkpoint commits; explicit push authorization received. Recheck remote HEAD and integrate concurrent commits before each nonforce push.",
+    "After explicit push authorization, reread remote HEAD and integrate concurrent changes nonforce. Commit marker [installation-destroy-runtime] starts only targeted native Docker/Podman installation-destroy qualification.",
+    "Use source-qualified current Core pins for the smallest failed Demo and authenticated joint gates; do not call earlier failed runs PASS.",
+    "Complete Session 1 handoff, immutable ecosystem matrix, affected upgrade/HA, docs/Pages candidate and full readiness audit. No full pre-release, merge, tag or publication."
   ],
   "handoff_reason": "User requested all important pending work published before opening a new session; feature development and additional native runs paused.",
   "pre_release_ready": false,
@@ -432,5 +430,125 @@
     "demo": "work/v0.4.25-ecosystem-release",
     "console": "work/v0.4.25-integrations-docs",
     "connector": "work/v0.4.25-integrations-docs"
+  },
+  "session2_current": {
+    "product_source": "bff021d6270d22f066111fffdc076aa19ee7055b",
+    "published_core_source": "ebd8b9e6a7912799602307752de26eb8ba7f4ade",
+    "publication": "Explicit push authorization received on 2026-10-14; publication and targeted native installation-destroy qualification pending. Prior automatic rejection remains historical.",
+    "network_receipt": "docs/internal/v0.4.25-retained-network-runtime-evidence.json",
+    "network_run": 38471113164,
+    "network_result": "Docker and rootless Podman PASS only for the bounded source and assertions in the receipt",
+    "source_qualification": {
+      "source": {
+        "commit": "ebd8b9e6a7912799602307752de26eb8ba7f4ade",
+        "tree": "b1f2b2c2a1e0b995045243062c315028eea50a43",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 66.403,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.105,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.303,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.907,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.006,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 50.428,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 65.855,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.892,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.616,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.52,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "post_snapshot_checks": [
+      "full cmd/baha tests and race passed after failed-child fallback removal",
+      "cmd/baha vet and build passed after failed-child fallback removal",
+      "targeted installation/full-destroy races and cmd/baha vet passed after semantic child-scope revision change",
+      "Full cmd/baha tests also passed after the final semantic child-scope revision change."
+    ],
+    "native_installation_destroy": "not started: local source not published",
+    "joint": {
+      "run": 38471159094,
+      "result": "failure",
+      "boundary": "Reached browser management READY and remote retirement/reactivation journey; aggregate fixture cleanup failed. No complete authenticated ecosystem receipt."
+    },
+    "demo": {
+      "published_source": "7c6ae8a",
+      "pinned_core": "748070eff6add7c432775670f1582e925953b336",
+      "run": 38472654402,
+      "result": "failure",
+      "boundary": "Failed initial application retirement with provider_retirement_unverifiable before recovery reconfiguration. No native backup/restore PASS. Local pending equivalent recovery changes preserved in stash and published source integrated."
+    },
+    "outstanding": [
+      "Native current-plan aggregate child reset, partial owned-volume failure, preserved foreign holder and freshly acknowledged retry",
+      "Inspect new plan/fact diagnostics for incomplete provider retirement before real Demo recovery",
+      "Rerun affected authenticated Console/Connector matrix after qualified Core fixes",
+      "Session 1 complete provider/material handoffs; final immutable ecosystem matrix, upgrade/HA and canonical audit 1-8/atomic prerequisites"
+    ],
+    "prohibited_actions": [
+      "complete pre-release",
+      "merge",
+      "tag",
+      "release publication",
+      "production Pages deployment"
+    ]
   }
 }

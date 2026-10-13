@@ -15,7 +15,8 @@ import (
 )
 
 func prepareApplicationProviderRetirement(ctx context.Context, resolved resolvedApplication) (application.ProviderPlan, error) {
-	plan, err := resolveApplicationProviderPlan(resolved, observeApplicationProviderFacts(ctx, resolved))
+	observed := observeApplicationProviderFacts(ctx, resolved)
+	plan, err := resolveApplicationProviderPlan(resolved, observed)
 	if err != nil {
 		return application.ProviderPlan{}, err
 	}
@@ -33,7 +34,10 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 			continue
 		}
 		if !plan.Complete || change.Action == "preserve" {
-			return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_retirement_unverifiable", Resource: change.InstanceID, Message: "The last consumer cannot be released without verified runtime and complete consumer inventory.", Next: "Recover the existing provider/deployment inventory and retry; ownership and runtime remain available."}
+			return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_retirement_unverifiable", Resource: change.InstanceID, Message: "The last consumer cannot be released without verified runtime and complete consumer inventory.", Next: "Recover the existing provider/deployment inventory and retry; ownership and runtime remain available.", Details: struct {
+				Plan     application.ProviderPlan            `json:"plan"`
+				Observed map[string]application.ProviderFact `json:"observed"`
+			}{plan, observed}}
 		}
 		for _, instance := range registry.Instances {
 			sharedBackend := instance.Scope == capability.ScopeShared && (instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey)

@@ -18,13 +18,14 @@ import (
 // deliberately incomplete until actual provider/consumer transitions are wired;
 // it cannot report delivery, authentication or renewal continuity.
 type runtimeDestroyImpact struct {
-	Scope      application.ProviderImpactScope      `json:"scope"`
-	All        bool                                 `json:"all"`
-	Resources  []ownedDestroyResource               `json:"resources"`
-	Preserved  []fullDestroyResult                  `json:"preserved"`
-	Core       []runtimeDestroyCoreImpact           `json:"core"`
-	Effects    []application.OperationalConsequence `json:"effects"`
-	LocalState []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
+	Scope        application.ProviderImpactScope      `json:"scope"`
+	All          bool                                 `json:"all"`
+	Resources    []ownedDestroyResource               `json:"resources"`
+	Preserved    []fullDestroyResult                  `json:"preserved"`
+	Core         []runtimeDestroyCoreImpact           `json:"core"`
+	Effects      []application.OperationalConsequence `json:"effects"`
+	LocalState   []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
+	Applications []applicationDestructionPlan         `json:"application_resets"`
 }
 
 type runtimeDestroyCoreImpact struct {
@@ -84,6 +85,25 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 				return p, err
 			}
 			owners["deployment/"+record.Identity.DeploymentID] = runtimeMutationRevision(record)
+			if all {
+				root, err := targetDataRoot(plan.Target)
+				if err != nil {
+					return p, err
+				}
+				resolved, err := resolveRegisteredApplication(withTargetOverride(ctx, plan.Target.Name), plan.Target, root, record.Identity.Application, record.Identity.Environment, "destroy")
+				if err != nil {
+					return p, err
+				}
+				resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+				if err != nil {
+					return p, err
+				}
+				child, err := buildApplicationDestructionPlanForOperation(withTargetOverride(ctx, plan.Target.Name), resolved, true, "installation.destroy")
+				if err != nil {
+					return p, err
+				}
+				p.Applications = append(p.Applications, child)
+			}
 		}
 		root, err := targetRuntimeStateRoot(plan.Target)
 		if err != nil {
@@ -117,11 +137,19 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 		}
 	}
 	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments and installation configuration. Source repositories and displayed external recovery material are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
+	// Child scope IDs bind material contents, owners and semantic consequences.
+	// Displayed footprint samples (for example current memory use) must not turn
+	// an unchanged authorized child into a different installation operation.
+	revisionPlan := p
+	revisionPlan.Applications = make([]applicationDestructionPlan, len(p.Applications))
+	for i, child := range p.Applications {
+		revisionPlan.Applications[i] = applicationDestructionPlan{Scope: child.Scope}
+	}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: operation, Reference: config, Subject: operation, Destructive: true, Revision: runtimeMutationRevision(struct {
 		Plan    runtimeDestroyImpact
 		Owners  map[string]string
 		Targets []deployment.ResolvedTarget
-	}{p, owners, destroyImpactTargets(plans)})}, nil, false)
+	}{revisionPlan, owners, destroyImpactTargets(plans)})}, nil, false)
 	return p, err
 }
 
@@ -167,6 +195,9 @@ func authorizeRuntimeDestroyImpact(ctx context.Context, p runtimeDestroyImpact, 
 	}
 	if err := application.ValidateProviderImpactScopeConsent(p.Scope, ack); err != nil {
 		return false, runtimeDestroyImpactError(p, err)
+	}
+	if recorded, ok := ctx.Value(runtimeDestroyAcknowledgementKey{}).(*application.ProviderChangeConsent); ok {
+		*recorded = ack
 	}
 	return true, nil
 }

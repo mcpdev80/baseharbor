@@ -23,8 +23,19 @@ type applicationDestructionPlan struct {
 // Full reset and remote teardown use the same consequence authority as local
 // retirement. Unknown remote material stays unknown; consent grants no ownership.
 func buildApplicationDestructionPlan(ctx context.Context, resolved resolvedApplication, reset bool) (applicationDestructionPlan, error) {
+	operation := "destroy"
+	if proof, ok := ctx.Value(installationApplicationScopeKey{}).(installationApplicationScope); ok && proof.Children[resolved.DeploymentIdentity.DeploymentID] != "" {
+		if err := application.ValidateProviderImpactScopeConsent(proof.Scope, proof.Consent); err != nil {
+			return applicationDestructionPlan{}, classifyProviderChangeConsent(err)
+		}
+		operation = "installation.destroy"
+	}
+	return buildApplicationDestructionPlanForOperation(ctx, resolved, reset, operation)
+}
+
+func buildApplicationDestructionPlanForOperation(ctx context.Context, resolved resolvedApplication, reset bool, operation string) (applicationDestructionPlan, error) {
 	p := applicationDestructionPlan{}
-	if err := authorizeApplicationOperation(ctx, "destroy", resolved); err != nil {
+	if err := authorizeApplicationOperation(ctx, operation, resolved); err != nil {
 		return p, err
 	}
 	if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
@@ -103,6 +114,12 @@ func authorizeApplicationDestruction(ctx context.Context, resolved resolvedAppli
 	consent, err := invocationProviderChangeConsent(ctx)
 	if err != nil {
 		return p, err
+	}
+	if delegated, present, err := delegatedInstallationApplicationConsent(ctx, p, reset); present {
+		if err != nil {
+			return p, applicationDestructionPlanError(p, err)
+		}
+		consent = delegated
 	}
 	in := applicationInput(ctx, nil)
 	if consent == nil && !noInput(ctx) && in != nil && readerIsTerminal(in) {
