@@ -33,7 +33,7 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CORE_STOP_ACCEPTANCE") != "1" {
 		t.Skip("native Core stop acceptance is opt-in")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
 	defer cancel()
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv("BASEHARBOR_TARGET", "")
@@ -53,7 +53,9 @@ func TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: pg, OpenBao: bao}, false); err != nil {
+	ha := os.Getenv("BASEHARBOR_CORE_STOP_HA_ACCEPTANCE") == "1"
+	t.Logf("selected Core lifecycle topology: HA=%t", ha)
+	if err := runtimeUpWithPorts(ctx, &out, bhruntime.Ports{Postgres: pg, OpenBao: bao}, ha); err != nil {
 		t.Fatalf("Core start: %v\n%s", err, out.String())
 	}
 	files, err := existingTargetRuntimeFiles(ctx)

@@ -45,10 +45,10 @@ concurrency:
 
 jobs:
   core_stop:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[core-stop-runtime]') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[core-stop-runtime]') || contains(github.event.head_commit.message, '[core-destroy-ha]')) }}
     name: Selected Core stop · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
-    timeout-minutes: 18
+    timeout-minutes: 22
     strategy:
       fail-fast: false
       matrix:
@@ -56,6 +56,7 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORE_STOP_ACCEPTANCE: "1"
+      BASEHARBOR_CORE_STOP_HA_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[core-destroy-ha]') && '1' || '0' }}
       GOTOOLCHAIN: local
     steps:
       - name: Checkout exact source
@@ -78,7 +79,7 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/core-stop-evidence/source.txt"
           go version > "$RUNNER_TEMP/core-stop-evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/core-stop-evidence/runtime-version.txt"
-          go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 12m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-evidence/core-stop.log"
+          go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 18m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-evidence/core-stop.log"
       - name: Upload bounded receipt including failed attempts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
