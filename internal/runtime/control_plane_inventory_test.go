@@ -25,6 +25,9 @@ func TestControlPlaneModuleInventoryIsCanonicalReadOnlyAndSeparatesSQL(t *testin
 			t.Fatalf("canonical module inventory: %+v %v", inventory, err)
 		}
 		continuous := inventory.ContinuousServices(inventory.SQLServices)
+		if !slices.Contains(inventory.OneShotServices, "postgres-init") || slices.Contains(continuous, "postgres-init") || !slices.Contains(inventory.SQLServices, "postgres-init") {
+			t.Fatal("canonical successful init task must be separate from continuous availability and retained for lifecycle")
+		}
 		if slices.Contains(continuous, "postgres-etcd-recovery") {
 			t.Fatal("profile-only recovery helper is required for normal SQL availability")
 		}

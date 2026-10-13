@@ -22,6 +22,7 @@ type ControlPlaneRuntimeInventory struct {
 	SecretsServices  []string
 	Resources        []ProjectResource
 	ProfiledServices []string
+	OneShotServices  []string
 }
 
 // ContinuousServices selects normal availability requirements without changing
@@ -29,7 +30,7 @@ type ControlPlaneRuntimeInventory struct {
 func (inventory ControlPlaneRuntimeInventory) ContinuousServices(services []string) []string {
 	selected := []string{}
 	for _, service := range services {
-		if !slices.Contains(inventory.ProfiledServices, service) {
+		if !slices.Contains(inventory.ProfiledServices, service) && !slices.Contains(inventory.OneShotServices, service) {
 			selected = append(selected, service)
 		}
 	}
@@ -70,7 +71,11 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	}
 	var model struct {
 		Services map[string]struct {
-			Profiles []string `yaml:"profiles"`
+			Profiles  []string `yaml:"profiles"`
+			Restart   string   `yaml:"restart"`
+			DependsOn map[string]struct {
+				Condition string `yaml:"condition"`
+			} `yaml:"depends_on"`
 		} `yaml:"services"`
 		Volumes map[string]struct {
 			Name string `yaml:"name"`
@@ -82,6 +87,13 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	}
 	if err := yaml.Unmarshal(actual, &model); err != nil {
 		return inventory, err
+	}
+	for _, definition := range model.Services {
+		for dependency, requirement := range definition.DependsOn {
+			if requirement.Condition == "service_completed_successfully" && model.Services[dependency].Restart == "no" && !slices.Contains(inventory.OneShotServices, dependency) {
+				inventory.OneShotServices = append(inventory.OneShotServices, dependency)
+			}
+		}
 	}
 	for service, definition := range model.Services {
 		if len(definition.Profiles) > 0 {
@@ -105,6 +117,7 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	sort.Strings(inventory.SQLServices)
 	sort.Strings(inventory.SecretsServices)
 	sort.Strings(inventory.ProfiledServices)
+	sort.Strings(inventory.OneShotServices)
 	sort.Slice(inventory.Resources, func(i, j int) bool {
 		return inventory.Resources[i].Kind+inventory.Resources[i].Name < inventory.Resources[j].Kind+inventory.Resources[j].Name
 	})

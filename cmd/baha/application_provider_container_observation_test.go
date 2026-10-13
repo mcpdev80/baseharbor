@@ -58,3 +58,47 @@ func TestProviderContinuationRequiresEveryCanonicalMember(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderContinuationRequiresSuccessfulOwnedInitCompletion(t *testing.T) {
+	for _, kind := range []bhruntime.ProviderKind{bhruntime.ProviderDocker, bhruntime.ProviderPodman} {
+		name := "owned-postgres-init-1"
+		if kind == bhruntime.ProviderPodman {
+			name = "owned-postgres-init"
+		}
+		original := bhruntime.RuntimeContainer{Name: name, Project: "owned", Service: "postgres-init", State: "exited", ExitCode: 0}
+		resources := canonicalProviderServiceResources("owned", []string{"postgres-init"})
+		if count, complete := observeCanonicalProviderCompletion(kind, "owned", resources, []bhruntime.RuntimeContainer{original}); count != 1 || !complete {
+			t.Fatal("successful canonical init completion rejected")
+		}
+		for _, mutation := range []string{"missing", "running", "failed", "unknown-state", "state-error", "foreign-project", "foreign-service", "foreign-name", "duplicate"} {
+			changed := original
+			containers := []bhruntime.RuntimeContainer{changed}
+			switch mutation {
+			case "missing":
+				containers = nil
+			case "running":
+				changed.Running, changed.State = true, "running"
+			case "failed":
+				changed.ExitCode = 1
+			case "unknown-state":
+				changed.State = ""
+			case "state-error":
+				changed.Error = "native failure"
+			case "foreign-project":
+				changed.Project = "foreign"
+			case "foreign-service":
+				changed.Service = "foreign"
+			case "foreign-name":
+				changed.Name = "foreign"
+			case "duplicate":
+				containers = append(containers, changed)
+			}
+			if len(containers) > 0 {
+				containers[0] = changed
+			}
+			if _, complete := observeCanonicalProviderCompletion(kind, "owned", resources, containers); complete {
+				t.Fatalf("unverified init completion accepted: %s %s", kind, mutation)
+			}
+		}
+	}
+}

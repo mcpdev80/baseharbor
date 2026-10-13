@@ -146,7 +146,7 @@ func logNativeObservationInventory(t *testing.T, ctx context.Context, runtime bh
 		t.Log("canonical observation diagnostic unavailable")
 		return
 	}
-	t.Logf("Required continuous SQL services: %v; profiled helpers: %v", inventory.ContinuousServices(inventory.SQLServices), inventory.ProfiledServices)
+	t.Logf("Required continuous SQL services: %v; successful completion required: %v; profiled helpers: %v", inventory.ContinuousServices(inventory.SQLServices), inventory.OneShotServices, inventory.ProfiledServices)
 	containers, err := runtime.ListRuntimeContainers(ctx)
 	if err != nil {
 		t.Log("native process/health diagnostic unavailable")
@@ -154,7 +154,7 @@ func logNativeObservationInventory(t *testing.T, ctx context.Context, runtime bh
 	}
 	for _, container := range containers {
 		if container.Project == files.Project {
-			t.Logf("Owned module container=%s service=%s running=%t health=%s", container.Name, container.Service, container.Running, container.Health)
+			t.Logf("Owned module container=%s service=%s running=%t health=%s state=%s exit=%d", container.Name, container.Service, container.Running, container.Health, container.State, container.ExitCode)
 		}
 	}
 }

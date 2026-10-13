@@ -57,3 +57,23 @@ func canonicalProviderServiceResources(project string, services []string) []bhru
 	}
 	return resources
 }
+
+// A canonical service_completed_successfully prerequisite is available only
+// with a unique, owned, actually completed container and successful exit status.
+func observeCanonicalProviderCompletion(kind bhruntime.ProviderKind, project string, resources []bhruntime.ProjectResource, containers []bhruntime.RuntimeContainer) (int64, bool) {
+	count := int64(0)
+	complete := true
+	for _, resource := range resources {
+		matches, successful := 0, false
+		for _, container := range containers {
+			if !bhruntime.ContainerMatchesProjectResource(kind, container, project, resource) {
+				continue
+			}
+			matches++
+			count++
+			successful = !container.Running && container.State == "exited" && container.ExitCode == 0 && container.Error == ""
+		}
+		complete = complete && matches == 1 && successful
+	}
+	return count, complete
+}
