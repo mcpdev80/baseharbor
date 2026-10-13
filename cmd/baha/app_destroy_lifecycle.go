@@ -252,8 +252,10 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 		}
 	}
 	if e.resolved.FromRepository {
-		if workload, found, err := materializeRepositoryWorkload(e.resolved, e.files); err == nil && found {
-			fmt.Fprintf(e.out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", workload.Compose)
+		// Planning displays the selected source. Materialization would rewrite
+		// protected runtime metadata before consent and invalidate this plan.
+		if source, err := selectedRepositoryComposeSource(e.resolved.repositoryRoot(), e.manifest); err == nil && source != "" {
+			fmt.Fprintf(e.out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", filepath.Join(e.resolved.repositoryRoot(), source))
 		}
 
 	} else if e.resolved.IncompleteDeployment {

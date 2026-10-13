@@ -246,6 +246,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	if isRemoteApplication(execution.resolved) {
+		unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+		if err != nil {
+			return err
+		}
+		defer unlock()
 		runtime, intent, err := restoreRemoteApplication(ctx, execution.resolved)
 		if err != nil {
 			return err

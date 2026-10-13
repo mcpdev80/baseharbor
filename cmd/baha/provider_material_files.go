@@ -53,7 +53,7 @@ func observeOwnedProviderFiles(owner, target, instance, root string) ([]applicat
 			return nil
 		}
 		material.Kind, material.Ownership, material.Verified = "configuration", capability.OwnershipBaseHarbor, true
-		material.Evidence = fmt.Sprintf("protected retained file; size=%d mtime=%d; contents not exposed", info.Size(), info.ModTime().UnixNano())
+		material.Evidence = fmt.Sprintf("protected retained file; size=%d; contents not exposed; authoritative content revision bound privately", info.Size())
 		if err := inspectProviderCertificateMaterial(path, info, &material); err != nil {
 			complete = false
 			material.Verified = false

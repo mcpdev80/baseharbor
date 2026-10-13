@@ -84,6 +84,14 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	if err := checkRemoteApplicationLifecycle(resolved.Manifest); err != nil {
 		return err
 	}
+	unlock, err := lockApplicationTargetLifecycle(resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := authorizeApplicationProviderChanges(ctx, resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return err
+	}
 	transport, scope, err := remoteApplicationTransport(ctx, resolved, targetsession.PoolFromContext(ctx))
 	if err != nil {
 		return err
@@ -103,7 +111,7 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		if err := runtime.ApplyApplication(ctx, intent, true); err != nil {
 			return err
 		}
-		return recordAppliedDeployment(ctx, resolved, application.RuntimeFilesFor(resolved.Store, intent))
+		return recordVerifiedRemoteReactivation(resolved, intent)
 	}
 	if err := applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
 		return err
@@ -128,6 +136,9 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		return err
 	}
 	resolved.DeploymentRecord = &pending
+	if err := application.RetainPendingProviderOwnersAt(resolved.TargetStateRoot, resolved.Manifest); err != nil {
+		return err
+	}
 	files, err := application.EnsureRuntime(ctx, issuer, resolved.Store, resolved.Manifest)
 	if err != nil {
 		return err
@@ -162,6 +173,9 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	}
 	if err := runtime.ApplyApplication(ctx, resolved.Manifest, false); err != nil {
 		return errors.Join(err, recordObservedDeployment(resolved, "failed", false))
+	}
+	if err := application.ReconcileReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest); err != nil {
+		return err
 	}
 	if err := recordAppliedDeployment(ctx, resolved, files); err != nil {
 		return err
