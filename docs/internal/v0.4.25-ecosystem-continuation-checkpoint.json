@@ -1,0 +1,211 @@
+{
+  "schema": "baseharbor.development-continuation/v1",
+  "release": "0.4.25",
+  "recorded_date": "2026-10-13",
+  "readiness": "blocked",
+  "core": {
+    "product_source": "c3592ede8a9beffd16ff1a243132209e39eaa81f",
+    "product_tree": "5cbe5421eae147c0178cfdf8ad1a9fdf086a3407",
+    "evidence_head": "9e976a06f0ccaf15f0b0d9d65dff19cb8b9bcf12",
+    "full_reset": {
+      "run_id": 38452163506,
+      "docker_job": 115485547476,
+      "podman_job": 115485546881,
+      "result": "success",
+      "receipt": "docs/internal/v0.4.25-application-full-reset-runtime-evidence.json",
+      "boundary": "Selected native SQL reset only; does not establish full ecosystem or universal provider acceptance."
+    }
+  },
+  "consumers": {
+    "console": {
+      "tested_source": "dbb7a6e4edf37fd80f6e808df43a4cd37b112a74",
+      "tested_tree": "c389a1277a6f42d30d8f4c08a1728b55d9f31715",
+      "source_checks": "62 contract tests, architecture, TypeScript/ESLint, production build and workflow validation passed before publication",
+      "current_source": "3bcc2b14fe1151471752b12e0ca36f38a959cb6a",
+      "current_tree": "f50a3fd562e5a5b4fde258da37af3019808c3074",
+      "change": "Browser-only redacted actual error diagnostics; no product behavior or error-to-success conversion."
+    },
+    "connector": {
+      "tested_source": "cf1b7d7b2180e7481633a70e17319d3e5255e680",
+      "tested_tree": "2d9a4541e2a91f4277d42813f6d8c1c4f3bc2707",
+      "source_checks": "Go tests/vet, four receipt-negative tests, workflow validation passed",
+      "current_source": "1b491d89f64a1708b52a41ed8bad1095bd0d8227",
+      "current_tree": "3d4f912540b915fb36485778c190c744a7866c86",
+      "candidate": {
+        "schema": "baseharbor.ecosystem-candidate/v1",
+        "release": "0.4.25",
+        "core": "c3592ede8a9beffd16ff1a243132209e39eaa81f",
+        "demo": "b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63",
+        "console": "3bcc2b14fe1151471752b12e0ca36f38a959cb6a"
+      }
+    },
+    "demo": {
+      "original_tested_source": "d1171ac10c78f115b88692c4eda1ee29a2c9e2e8",
+      "original_tested_tree": "2ce27438f4797848e46e13099edfe9d4d4f1731d",
+      "local_equivalent": "aee92a0c7bed953b4d2085432d29ebb3c3c25717",
+      "source_checks": "Three consent-negative tests, Python/bash syntax and targeted workflow validation passed; published tree exactly matched the local tree",
+      "current_source": "ef3f8bf02c2f7bb102fafa6df79b913ba155e227",
+      "current_tree": "c07153c831f159d808bc539063b20c9327a4afc5",
+      "changes": [
+        "Fresh isolated positive native fixtures acknowledge only an actual current Core plan once; two stages and separate data consent remain explicit.",
+        "Cleanup failure retains owners and fails acceptance instead of deleting protected local owner state.",
+        "Old mandatory management setup/role prompts are optional at init; actual role prompt is answered at up.",
+        "Recovery topology selects SQL, cache, Secrets, S3 and logs; unrequested Identity/management Core fails the recovery fixture.",
+        "Actual native backup/recovery remains unqualified."
+      ]
+    }
+  },
+  "failed_attempts": [
+    {
+      "repository": "mcpdev80/baseharbor-demo",
+      "run_id": 38457620787,
+      "jobs": [
+        {
+          "id": 115504292456,
+          "name": "Demo install and backup recovery · podman",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115504292766,
+          "name": "Demo install and backup recovery · docker",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11844585809,
+          "name": "demo-v024-podman-38457620787",
+          "digest": "sha256:1cce9469e6284c82654c49663cddd54fb2ef4801f233a00dda35a8fd1d66cf55",
+          "source": "d1171ac10c78f115b88692c4eda1ee29a2c9e2e8"
+        },
+        {
+          "id": 11844520775,
+          "name": "demo-v024-docker-38457620787",
+          "digest": "sha256:d106881ae3a037140f38dbc692a6e50eee190cc133aefca27944bab20b00a7a8",
+          "source": "d1171ac10c78f115b88692c4eda1ee29a2c9e2e8"
+        }
+      ]
+    },
+    {
+      "repository": "mcpdev80/baseharbor-demo",
+      "run_id": 38458467719,
+      "jobs": [
+        {
+          "id": 115507167684,
+          "name": "Demo install and backup recovery · podman",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115507168017,
+          "name": "Demo install and backup recovery · docker",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11844901849,
+          "name": "demo-v024-podman-38458467719",
+          "digest": "sha256:9b9a760b9589473859e0f33adfafd55c4605fa3b8ddece8f59ac5ec06527c8d1",
+          "source": "177af9620c64576a8e7c25aade6b1b99e4aa43c2"
+        },
+        {
+          "id": 11844437024,
+          "name": "demo-v024-docker-38458467719",
+          "digest": "sha256:5c59411a61128c6d9a42b9d49d462958c00127645e641c167724b1084fd1b69f",
+          "source": "177af9620c64576a8e7c25aade6b1b99e4aa43c2"
+        }
+      ]
+    },
+    {
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "run_id": 38456415647,
+      "jobs": [
+        {
+          "id": 115500195615,
+          "name": "resolve",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 115500259239,
+          "name": "Integration · integration/docker/remote-target",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115500259396,
+          "name": "Integration · integration/podman/remote-target",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11845380462,
+          "name": "actual-browser-core-read-receipt",
+          "digest": "sha256:cf9b0c531fa170eaefe45f606d7d5e1186deeb44390059c0a53c668d4becf580",
+          "source": "cf1b7d7b2180e7481633a70e17319d3e5255e680"
+        },
+        {
+          "id": 11843772879,
+          "name": "actual-browser-core-read-receipt",
+          "digest": "sha256:f681713d3c5fef108d267ad4f3acfb374531055a24412ef68ee1888b23173846",
+          "source": "cf1b7d7b2180e7481633a70e17319d3e5255e680"
+        }
+      ]
+    }
+  ],
+  "attempt_findings": [
+    {
+      "run_id": 38456415647,
+      "finding": "Both engines reached actual browser selective application apply/READY after explicit current-plan acknowledgement. Independently requested management control-plane.up then failed with internal_error, phase sql_failed. Owned Core cleanup also failed. Remote retained reactivation/disconnect and final source-bound joint receipt were not reached.",
+      "verdict": "failure"
+    },
+    {
+      "run_id": 38457620787,
+      "finding": "Guided init succeeded, but obsolete fixture assertions still demanded historical mandatory Core setup and role prompts at init.",
+      "verdict": "failure"
+    },
+    {
+      "run_id": 38458467719,
+      "finding": "Obsolete init assertions were corrected. Guided up waits for the current installation-role prompt absent from up_rules; both native jobs reached the existing 120-second no-output bound.",
+      "verdict": "failure"
+    }
+  ],
+  "in_progress": [
+    {
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "source": "1b491d89f64a1708b52a41ed8bad1095bd0d8227",
+      "run_id": 38458709558,
+      "purpose": "Exact current Console redacted native management-setup diagnosis and joint authenticated qualification",
+      "result": "not yet qualified"
+    },
+    {
+      "repository": "mcpdev80/baseharbor-demo",
+      "source": "ef3f8bf02c2f7bb102fafa6df79b913ba155e227",
+      "run_id": 38459200880,
+      "purpose": "Current role-stage guided fixture and actual native backup/recovery",
+      "result": "not yet qualified"
+    }
+  ],
+  "tooling": {
+    "state": "local exec server disconnected",
+    "observed_error": "409 Conflict, environment_offline: Environment is not connected",
+    "recovery_attempts": "Repository reads and even pwd from workspace and /tmp did not complete; pending calls eventually reported environment_offline. Authenticated GitHub APIs remain available.",
+    "approval_rejection": false
+  },
+  "continuation": [
+    "Inspect the completed current raw jobs/logs. Preserve failures, artifact IDs and digests; do not turn missing, skipped, partial or stale outcomes into PASS.",
+    "Repair the concrete independent management SQL-phase failure through the existing authority once current diagnostic evidence identifies its cause; rerun only affected native coverage.",
+    "Complete actual default remote retirement, original TLS data/credentials and frozen-publication reactivation, then explicit owned node disconnect with real certificate revocation.",
+    "Complete Demo recovery on both engines; validate current init/MCP/agent and directly affected lifecycle gates before selecting final Demo source.",
+    "Remaining recovery mutations and universal provider consequences, supported secure handoffs, management/HA consumer projection and known trace-shutdown qualification remain binding open #872 work.",
+    "Reconcile one final immutable Core/Demo/Console/Connector matrix, authenticated origin/artifact receipts and all canonical audit sections 1–8 plus atomic prerequisites.",
+    "Fetch current remote heads in each isolated checkout before further edits. Preserve original workspaces, concurrent commits and expected-head nonforce updates. The local Demo checkout remains the first locally tested tree; later fixture changes were published through GitHub while the environment was offline.",
+    "No full pre-release, merge, tag, release or productive Pages publication is authorized by this checkpoint."
+  ]
+}
