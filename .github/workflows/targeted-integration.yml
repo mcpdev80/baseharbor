@@ -196,6 +196,55 @@ jobs:
           name: standalone-retirement-${{ matrix.runtime }}-${{ github.sha }}
           path: ${{ runner.temp }}/standalone-retirement-evidence
           if-no-files-found: error
+  shared_network:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[shared-network-runtime]') }}
+    name: Retained shared network · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CORE_SHARED_NETWORK_ACCEPTANCE: "1"
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:shared-network-acceptance
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Build exact runtime and record source
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shared-network-build"
+          mkdir -p "$out" "$RUNNER_TEMP/shared-network-evidence"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$candidate_sha" = "${{ github.sha }}"
+          echo "$candidate_sha" > "$RUNNER_TEMP/shared-network-evidence/source.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/shared-network-evidence/runtime-version.txt"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$candidate_sha" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify original network authority and actual TLS data through management recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/shared-network-evidence/network.log"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: retained-network-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-network-evidence
+          if-no-files-found: error
+          retention-days: 90
   coreless_runtime:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
     name: Core-less application · ${{ matrix.runtime }}
