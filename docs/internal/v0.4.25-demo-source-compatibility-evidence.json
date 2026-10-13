@@ -63,5 +63,68 @@
     "Native Docker/Podman Demo provider lifecycle",
     "Authenticated Console browser and Connector mTLS/remote lifecycle",
     "Complete pre-release approval"
+  ],
+  "follow_up_source_checks": [
+    {
+      "core": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+      "core_tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+      "binary_sha256": "53f15b2bc05f68d5f0b2188af1f58a8e90ded6d2fbb6d671ce286e27624a87bb",
+      "demo": "b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63",
+      "demo_tree": "0030e33682891707df0a1602ce0fb8149e4ca282",
+      "checks": {
+        "config-matrix": {
+          "exit_code": 0,
+          "positive": 21,
+          "negative": 7
+        },
+        "init": {
+          "exit_code": 0
+        },
+        "mcp": {
+          "exit_code": 0
+        },
+        "agent": {
+          "exit_code": 0
+        },
+        "shell-ux": {
+          "initial_exit_code": 1,
+          "retry_exit_code": 0,
+          "reason": "Initial local harness omitted a PATH-resolvable baha executable. Retry supplied the same binary through a symlink, unchanged source and assertions."
+        }
+      },
+      "historical_main_failure": {
+        "demo": "12da1dabcf251c4bb9a77939722392d18178184e",
+        "gate": "config-matrix",
+        "exit_code": 1,
+        "reason": "Demo main still emits developer-authored app.id; current Core correctly rejects it before mutation."
+      },
+      "console": {
+        "commit": "1fe22026f42e250f6ad5b9ce79593e928e38c357",
+        "tree": "5a2cf6c8d12749d0ebe133732766fab803576d4f",
+        "node": "24.19.0",
+        "contract_tests": 52,
+        "exit_code": 0,
+        "fixture_source": "Current Core machine-read-models and machine-control-fixtures commands; generated outputs copied only into isolated temporary Console copy. Published Console source remains unchanged.",
+        "fixture_digests": {
+          "read-models": "7c7ba26f28757d9b0a048cd6eaa0e6c72204b1eede98d96fc711a415c887efb7",
+          "control-fixtures": "769d4dd1f2dc09e4c0507b57e00b306123c84398da39342fdad7ea76933753f9"
+        }
+      },
+      "connector": {
+        "commit": "c68b41a573514af8dccd2c89cc6c305723aa4b1e",
+        "tree": "81aebd98efcaad56e37bb0fe8e3b5839e574ca77",
+        "go": "1.26.0",
+        "checks": {
+          "go-test": 0,
+          "go-vet": 0,
+          "connector-targetaccess-race": 0,
+          "cli-build": 0
+        },
+        "scope": "Own source tests/security/transport fixtures only; not current Core joint native enrollment or browser acceptance."
+      },
+      "native_acceptance": false,
+      "pre_release_ready": false,
+      "release_pins_frozen": false
+    }
   ]
 }

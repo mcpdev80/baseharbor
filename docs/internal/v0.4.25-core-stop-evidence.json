@@ -161,6 +161,73 @@
       ],
       "native_runtime_qualified": false,
       "pre_release_ready": false
+    },
+    {
+      "source": {
+        "commit": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+        "tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+        "working_tree_changes": false
+      },
+      "go": "go1.26.0 linux/amd64",
+      "checks": [
+        {
+          "name": "full-go-tests",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "full-go-vet",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "cmd-baha-application-coreinstallation-races",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "gofmt-diff",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "documentation-audit",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "strict-mkdocs-en",
+          "status": "pass",
+          "exit_code": 0
+        },
+        {
+          "name": "strict-mkdocs-de",
+          "status": "pass",
+          "exit_code": 0
+        }
+      ],
+      "observed": [
+        "Two plan acknowledgements alone no longer grant data deletion; an independently affirmative third destructive answer is required. Missing, declined and EOF answers do not grant deletion.",
+        "Core stop authorizes each existing deployment, binding, unbound application resource owner and independently protected management installation before impact acknowledgement. Managed-authorization denial retains original credential bytes."
+      ],
+      "hugging_face_jobs": {
+        "outcome": "unavailable",
+        "reason": "McpServerError: MCP tool hf_jobs was not returned by tools/list",
+        "paid_job_submitted": false
+      },
+      "native_runtime_qualified": true,
+      "pre_release_ready": false,
+      "binary_sha256": "53f15b2bc05f68d5f0b2188af1f58a8e90ded6d2fbb6d671ce286e27624a87bb"
     }
   ],
   "native_attempts": [
@@ -234,6 +301,34 @@
         }
       ],
       "other_gates": "All unselected targeted gates skipped; not final ecosystem acceptance."
+    },
+    {
+      "commit": "8fa9a2b84a25faeb88e6e44892ac994ecce5097f",
+      "tree": "5d32ddae3a955e2071b8e174c288dd285e4d52a9",
+      "run_id": 38355708965,
+      "attempt": 1,
+      "outcome": "success",
+      "scope": "Changed Core-stop authority, original SQL/TLS row and credentials after stop/resume, retained OpenBao manager, native CLI refusal and acknowledged in-memory MCP stop, stale-plan rejection, running sibling preservation, Target definition detach and original restoration with original SQL data and protected material. Not universal consequence, Core HTTP, real Connector mTLS or Console browser acceptance.",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 115157981043,
+          "outcome": "success",
+          "seconds": 95.1,
+          "artifact_id": 11792723121,
+          "artifact_sha256": "5a3045b2153114389e45500f48aa478fc70997a8de24b612edfb980e2e8adb28"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 115157980829,
+          "outcome": "success",
+          "seconds": 96.8,
+          "artifact_id": 11792128554,
+          "artifact_sha256": "e078ad8c951935408b607c9ceac51adc6021d3bce77548494139982af7398e50"
+        }
+      ],
+      "complete_job_logs_reviewed": true,
+      "other_gates": "Unselected jobs skipped; no complete pre-release."
     }
   ],
   "boundary": "The recorded exact-source single Core stop/resume is qualified on both engines. Actual all-consumer dependencies/validity/continuity, Core destroy, Target detach, universal provider handoffs and final ecosystem acceptance remain mandatory. No final pre-release readiness.",
