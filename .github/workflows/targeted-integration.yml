@@ -1118,3 +1118,47 @@ jobs:
           name: final-product-bugs-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/final-bugs
           retention-days: 90
+
+  provider_observation:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[provider-observation-runtime]') }}
+    name: Provider observation · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:provider-observation
+      BASEHARBOR_PROVIDER_OBSERVATION_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify actual selected partial module and restoration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/provider-observation"
+          git rev-parse HEAD > "$RUNNER_TEMP/provider-observation/source-sha.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/provider-observation/source-tree.txt"
+          go version > "$RUNNER_TEMP/provider-observation/go-version.txt"
+          go test -race -json ./cmd/baha -run '^TestProviderObservationNativePartialModule$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/provider-observation/tests.jsonl"
+      - name: Retain bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: provider-observation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/provider-observation
+          if-no-files-found: warn
+          retention-days: 90
