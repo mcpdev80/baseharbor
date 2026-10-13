@@ -10,11 +10,11 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -140,10 +140,13 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	if err != nil || sha256.Sum256(data) != sha256.Sum256(source) {
 		t.Fatal("reset changed authored source")
 	}
-	if !strings.Contains(output.String(), `"data_deleted": true`) {
+	// Actual cleanup has been observed; a result-format failure must not try
+	// to destroy an already removed owner during emergency fixture cleanup.
+	complete = true
+	var result applicationlifecycle.Result
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil || result.ContractVersion != machine.ContractVersion || result.Operation != "destroy" || result.State != "destroyed" || !result.Verified || result.DataDeleted == nil || !*result.DataDeleted {
 		t.Fatal("native reset lacks structured data deletion result")
 	}
-	complete = true
 	t.Log("actual native application full reset: missing/one/two acknowledgements without separate data consent preserved original TLS-authenticated SQL; current outer scope plus separate consent removed selected native data and deployment owner while preserving authored source")
 }
 
