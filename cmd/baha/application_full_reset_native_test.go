@@ -96,6 +96,9 @@ func TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData(t 
 	// A failed consent attempt cannot mutate the owner or invalidate its plan.
 	fresh, err := buildApplicationDestructionPlan(ctx, r, true)
 	if err != nil || fresh.Scope.PlanID != p.Scope.PlanID {
+		if err == nil {
+			t.Logf("unchanged reset scope: owner revision changed=%t provider impact changed=%t", fresh.Scope.Owner.Revision != p.Scope.Owner.Revision, fresh.Providers.Impact.PlanID != p.Providers.Impact.PlanID)
+		}
 		t.Fatal("refused consent mutated reset scope", err)
 	}
 	ack := &application.ProviderChangeConsent{PlanID: fresh.Scope.PlanID, First: true, Second: true, DeleteData: true}

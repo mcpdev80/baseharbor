@@ -64,11 +64,27 @@ func buildApplicationDestructionPlan(ctx context.Context, resolved resolvedAppli
 	if p.Providers.Impact != nil {
 		leaves = append(leaves, *p.Providers.Impact)
 	}
+	materialRevision, err := applicationImpactFileRevision(application.ProviderImpactObservation{Providers: map[string]application.ProviderImpactFact{
+		record.Identity.DeploymentID: {Materials: p.Materials},
+	}})
+	if err != nil {
+		return p, err
+	}
+	// Footprint quantities are runtime samples, not changed authority. The
+	// shared impact plan ID already binds semantic provider/consumer effects.
+	// Protected material content is bound separately without exposing digests.
+	impactPlanID := ""
+	if p.Providers.Impact != nil {
+		impactPlanID = p.Providers.Impact.PlanID
+	}
 	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-deployment", Subject: record.Identity.DeploymentID, Reference: filepath.Join(root, "deployment.json"), Destructive: reset, Revision: runtimeMutationRevision(struct {
-		Record         deployment.DeploymentRecord
-		ConfigRevision string
-		Plan           applicationDestructionPlan
-	}{record, runtimeMutationRevision(configuration), p})}, leaves, false)
+		Record           deployment.DeploymentRecord
+		ConfigRevision   string
+		MaterialRevision string
+		ImpactPlanID     string
+		Effects          []application.OperationalConsequence
+		Reset            bool
+	}{record, runtimeMutationRevision(configuration), materialRevision, impactPlanID, p.Effects, reset})}, leaves, false)
 	return p, err
 }
 
