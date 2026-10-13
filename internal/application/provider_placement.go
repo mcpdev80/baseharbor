@@ -82,6 +82,9 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 // deliberately simple; advanced users can override supported placement fields
 // through the generic provider policy namespace.
 func ResolveProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
+	if placement, pinned := m.backendPlacements[provider]; pinned {
+		return placement, nil
+	}
 	placement, err := DefaultProviderPlacement(provider)
 	if err != nil {
 		return capability.ProviderPlacement{}, err

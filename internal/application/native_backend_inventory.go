@@ -141,6 +141,13 @@ func NativeBackendInstanceResources(m Manifest, files RuntimeFiles, instance cap
 		return nil, fmt.Errorf("native backend instance differs from deployment owner")
 	}
 	selected := m
+	if instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey {
+		var err error
+		selected, err = WithBackendPlacementProjection(selected, map[capability.ProviderKind]capability.ProviderPlacement{instance.Provider.Kind: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor}})
+		if err != nil {
+			return nil, err
+		}
+	}
 	selected.Services = Services{}
 	switch instance.Provider.Kind {
 	case capability.ProviderPostgreSQL:

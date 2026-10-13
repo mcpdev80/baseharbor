@@ -80,6 +80,9 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			record.Applied.GeneratedState["previous_intent"] = string(previous)
 		}
 	}
+	if err := recordBackendPlacementOwner(&record, resolved, state == "applying"); err != nil {
+		return deployment.DeploymentRecord{}, err
+	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		return deployment.DeploymentRecord{}, err
 	}
@@ -132,6 +135,9 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 		},
 	}
 	if err := retainDeploymentGeneratedState(&record, ready); err != nil {
+		return err
+	}
+	if err := recordBackendPlacementOwner(&record, resolved, false); err != nil {
 		return err
 	}
 	if ready {

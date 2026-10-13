@@ -47,15 +47,8 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 			}
 		}
 	}
-	for _, old := range registry.Bindings {
-		if old.ApplicationID != resolved.Manifest.ApplicationID || (old.Environment != "" && old.Environment != resolved.Manifest.Environment) {
-			continue
-		}
-		for _, wanted := range planned.Bindings {
-			if wanted.ApplicationID == old.ApplicationID && wanted.Environment == resolved.Manifest.Environment && wanted.Resource.Kind == old.Resource.Kind && wanted.Resource.Name == old.Resource.Name && wanted.ProviderInstanceID != old.ProviderInstanceID {
-				return application.ResolutionSnapshot{}, nil, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "provider_binding_migration_required", Message: "The existing provider binding differs from the current native placement plan.", Next: "Restore the existing placement; provider migration requires an explicit supported operation."}
-			}
-		}
+	if err := validateApplicationBindingReplacements(resolved, registry, planned); err != nil {
+		return application.ResolutionSnapshot{}, nil, err
 	}
 	existing := map[string]bool{}
 	for _, instance := range registry.Instances {
@@ -73,7 +66,7 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 		requested[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
 	}
 	var preferences []application.ProviderPreference
-	actualBindings := planned.Bindings[:0]
+	actualBindings := []capability.ProviderBinding{}
 	for _, binding := range planned.Bindings {
 		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
 			actualBindings = append(actualBindings, binding)
@@ -90,7 +83,7 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 			}
 		}
 	}
-	planned.Bindings = registry.Bindings
+	planned.Bindings = actualBindings
 	snapshot := application.ResolutionSnapshot{DependencyRoots: []string{}, Target: resolved.Target.Name, Registry: planned, Facts: map[string]application.ProviderFact{}}
 	snapshot.DependencyRoots, err = application.RuntimeDependencyRoots(resolved.Manifest, planned)
 	if err != nil {
@@ -261,6 +254,10 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 		return applicationLifecyclePlan{}, err
 	}
 	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
+	if err != nil {
+		return applicationLifecyclePlan{}, err
+	}
+	requests, err = backendBindingChangeRequests(resolved, union, requests)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}

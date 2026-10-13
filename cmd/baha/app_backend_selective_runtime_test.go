@@ -169,6 +169,9 @@ func qualifySelectiveBackendLifecycle(t *testing.T, service string) {
 		}
 		assertSelectedBackendNativeInventory(t, ctx, provider, resolved, inventory, service, phase, enabled, len(volumes))
 		if phase == 2 {
+			if os.Getenv("BASEHARBOR_BACKEND_PLACEMENT_ACCEPTANCE") == "1" {
+				qualifyBackendPlacementRoundTrip(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
+			}
 			qualifySharedBackendConsumers(t, ctx, provider, resolved, inventory, service, originalEnv, originalConsumer, volumes)
 		}
 		if data, err := os.ReadFile("baseharbor.yaml"); err != nil || strings.Contains(string(data), initialized.Manifest.ApplicationID) {

@@ -44,6 +44,10 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 		}
 		observation.Providers[instance.ID] = fact
 	}
+	appliedRegistry, registryErr := observeBackendBindingReplacementImpact(resolved, snapshot, &observation)
+	if registryErr != nil {
+		observation.InventoryComplete = false
+	}
 	// The shared model projects authoritative capability bindings itself.
 	// Specific token expiry/lease behavior stays unknown until actual consumer
 	// adapters supply function evidence; product features are not inferred.
@@ -56,6 +60,7 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 		data, err = applicationImpactRevisionInput(snapshot, observation)
 	}
 	if err == nil {
+		data = append(data, appliedRegistry...)
 		digest := sha256.Sum256(append(data, []byte(fileRevision)...))
 		observation.Revision = hex.EncodeToString(digest[:])
 	} else {

@@ -35,7 +35,14 @@ func retainedApplicationBackendIntent(resolved resolvedApplication) (application
 	if len(intent) == 0 || json.Unmarshal(intent, &m) != nil || m.ApplicationID != resolved.Manifest.ApplicationID || m.Environment != resolved.Manifest.Environment {
 		return application.Manifest{}, invalidProviderConsumerInventory(fmt.Errorf("native backend intent differs from deployment owner"))
 	}
-	return m, m.ValidateIntent()
+	if err := m.ValidateIntent(); err != nil {
+		return application.Manifest{}, err
+	}
+	key := "backend_placements"
+	if record.Applied.GeneratedState["previous_intent"] != "" {
+		key = "previous_backend_placements"
+	}
+	return retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState[key])
 }
 
 func nativeBackendInventory(resolved resolvedApplication) (application.RuntimeFiles, application.Manifest, []bhruntime.ProjectResource, error) {

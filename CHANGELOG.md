@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Owned PostgreSQL/Valkey placement changes between shared and application scope use the existing acknowledged apply/verify authority, preserve both data owners and disclose independent destination data without automatic content migration. Pending deployment placement metadata protects original and destination realizations across retry and sibling convergence.
 - Services are requested explicitly; selected provider realization follows resolved requirements and genuine dependencies rather than a mandatory application Core bundle.
 - Selective SQL, cache and Identity lifecycle releases removed capability bindings and retires unneeded owned runtime while preserving active shared consumers and persistent data/recovery material.
 - Provider-change contracts describe consumer functions, dependencies, actual material locations and verified continuation; unknown or alternative-less effects require two concrete-plan acknowledgements, with independent destructive consent for data deletion.

@@ -104,6 +104,34 @@ Unbekannte Messwerte sind bei strukturell vollständiger Auflösung zulässig.
 Schätzungen kommen aus Provider-Nachweisen, niemals erfundenen RAM-/Container-
 Versprechen oder Summen.
 
+### Wechsel der nativen Backend-Platzierung
+
+Die bestehende Operator-Platzierung kann eigene PostgreSQL-/Valkey-Realisierungen
+über normales `app apply` zwischen Shared- und Application-Scope wechseln.
+Der gewünschte Footprint meldet das Ziel als requested/unbound, bis verifiziertes
+Apply sein Binding veröffentlicht. Der konkrete Folgenplan benennt ursprünglichen
+und gewünschten Owner. Zieldaten sind unabhängig: Vorhandene Inhalte werden
+nicht automatisch kopiert. Ursprüngliche Volumes, geschützte Zugangsdaten und
+Registry-Owner bleiben erhalten; der Rückwechsel verwendet ihren Speicher erneut.
+Ungeprüfter Zugriff oder Materialerhalt bleibt teilweise und verlangt die
+aktuellen Bestätigungen.
+
+Ausgeführte und ausstehende Backend-Platzierungen sind Realisierungsmetadaten im
+bestehenden Deployment-`GeneratedState`, keine Autorenabsicht oder weitere
+Registry. Das lesende kanonische Runtime-Inventar nutzt diese Owner-Projektion.
+Geänderte Operator-Policy schreibt damit beim Retry nicht die vorherige
+Realisierung um. Ein unterbrochenes Deployment schützt ursprünglichen und
+gewünschten Provider in derselben Target-Verbraucherunion, auch wenn eine andere
+App inzwischen eine andere Policy nutzt. Erst tatsächliche Prüfung des Ziels
+und Workloads sowie Konvergenz der alten Runtime erlauben das neue Binding und
+das Entfernen der ausstehenden Projektion. Andere Verbraucher behalten Shared-
+Runtime. Bei Aufteilung einer Shared-Quelle auf benannte Ziele erscheinen alle
+Zielfolgen; kein einzelnes Ziel wird als Ersatz für alle behauptet.
+
+Dieser native Platzierungswechsel implementiert keine Migration von
+Datenbankinhalten, OpenBao-/Identity-Materialübergabe oder nicht unterstützte
+Adapter für externe Provider.
+
 ## Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegiert jeden

@@ -41,6 +41,7 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 	record.Applied.GeneratedState["previous_intent"] = string(previous)
 	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && record.Observed.State != "runtime-retired") {
 		record.Applied.GeneratedState["retired_intent"] = string(record.Applied.Intent)
+		record.Applied.GeneratedState["retired_backend_placements"] = record.Applied.GeneratedState["backend_placements"]
 	}
 	record.Applied.GeneratedState["provider_change_result"] = string(encoded)
 	record.Observed = deployment.ObservedDeployment{State: "retiring"}
@@ -85,6 +86,7 @@ func recordVerifiedApplicationRuntimeRetirement(resolved resolvedApplication, pl
 	record.Applied.GeneratedState["provider_change_result"] = string(encoded)
 	record.Applied.GeneratedState["retired_materials"] = string(material)
 	delete(record.Applied.GeneratedState, "previous_intent")
+	delete(record.Applied.GeneratedState, "previous_backend_placements")
 	record.Observed = deployment.ObservedDeployment{State: "runtime-retired", VerifiedAt: time.Now().UTC()}
 	return deployment.SaveDeploymentRecord(record)
 }

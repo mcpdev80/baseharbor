@@ -39,6 +39,10 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		if len(record.Applied.Intent) == 0 || json.Unmarshal(record.Applied.Intent, &m) != nil || m.ApplicationID != id.ApplicationID || m.Name != id.Application || m.Environment != id.Environment {
 			return application.ProviderPlan{}, invalidProviderConsumerInventory(fmt.Errorf("deployment %s lacks matching canonical intent", id.DeploymentID))
 		}
+		m, err = retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState["backend_placements"])
+		if err != nil {
+			return application.ProviderPlan{}, err
+		}
 		consumers = append(consumers, application.ConsumerIntent{Key: "deployment/" + id.DeploymentID, Active: true, Manifest: m, DependencyRoots: []string{}})
 		// Another application's interrupted apply has not verified release of
 		// its previous provider. Preserve both authoritative intents until that
@@ -47,6 +51,10 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 			var prior application.Manifest
 			if json.Unmarshal([]byte(previous), &prior) != nil || prior.ApplicationID != id.ApplicationID || prior.Environment != id.Environment {
 				return application.ProviderPlan{}, invalidProviderConsumerInventory(fmt.Errorf("deployment %s has invalid previous intent", id.DeploymentID))
+			}
+			prior, err = retainedBackendPlacementProjection(resolved, prior, record.Applied.GeneratedState["previous_backend_placements"])
+			if err != nil {
+				return application.ProviderPlan{}, err
 			}
 			consumers[len(consumers)-1].RetainedIntents = []application.Manifest{prior}
 		}
@@ -79,6 +87,20 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 		intents := append([]application.Manifest{consumers[index].Manifest}, consumers[index].RetainedIntents...)
 		for _, intent := range intents {
+			// A pending sibling may already own both destination and original
+			// realizations while its applied binding still names the original.
+			// Protect both through this same union until its own apply verifies.
+			if consumers[index].Key != "application/"+resolved.Manifest.ApplicationID+"/"+resolved.Manifest.Environment && (intent.Services.SQL || intent.Services.Cache || intent.Services.KeyValue) {
+				projection, projectionErr := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, intent)
+				if projectionErr != nil {
+					return application.ProviderPlan{}, invalidProviderConsumerInventory(projectionErr)
+				}
+				for _, binding := range projection.Bindings {
+					if binding.ApplicationID == intent.ApplicationID && binding.Environment == intent.Environment && (binding.Resource.Provider == "postgresql" || binding.Resource.Provider == "valkey") {
+						consumers[index].DependencyRoots = append(consumers[index].DependencyRoots, binding.ProviderInstanceID)
+					}
+				}
+			}
 			roots, rootErr := application.RuntimeDependencyRoots(intent, snapshot.Registry)
 			if rootErr != nil {
 				return application.ProviderPlan{}, invalidProviderConsumerInventory(rootErr)
@@ -96,6 +118,9 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 	}
 	plan, err := application.ResolveProviderPlan(snapshot, consumers, true)
+	if err == nil {
+		err = appendReleasedAppliedBindings(resolved, &plan)
+	}
 	return plan, classifyApplicationResolutionError(err)
 }
 

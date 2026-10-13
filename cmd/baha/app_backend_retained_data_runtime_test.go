@@ -28,7 +28,7 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 		t.Fatal("actual application backend binding is unavailable")
 	}
 	identity := sha256.Sum256([]byte(binding.Username + "\x00" + binding.Database + "\x00" + binding.Password))
-	if phase == 0 {
+	if phase <= 0 {
 		*original = identity
 	} else if *original != identity {
 		t.Fatal("backend re-add replaced retained application credentials or database identity")
@@ -59,6 +59,9 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 	var result string
 	if service == "sql" {
 		query := "SELECT value FROM public.baha_retained_data_marker"
+		if phase == -1 {
+			query = "SELECT CASE WHEN to_regclass('public.baha_retained_data_marker') IS NULL THEN 'absent' ELSE 'present' END"
+		}
 		if phase == 0 {
 			query = fmt.Sprintf("CREATE TABLE public.baha_retained_data_marker(value text NOT NULL); INSERT INTO public.baha_retained_data_marker VALUES ('%s'); SELECT value FROM public.baha_retained_data_marker", marker)
 		}
@@ -79,6 +82,12 @@ func qualifySelectedBackendData(t *testing.T, ctx context.Context, provider bhru
 		t.Fatal("actual consumer-authenticated backend data operation failed")
 	}
 	expected := marker
+	if phase == -1 {
+		expected = "absent"
+		if service == "cache" {
+			expected = ""
+		}
+	}
 	if service == "cache" && phase == 0 {
 		expected = "OK"
 	}

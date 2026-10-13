@@ -97,6 +97,31 @@ The shared read-only result is `baseharbor.footprint/v1`:
 Unknown measurements may coexist with complete structural resolution. Estimates
 come from provider evidence, never guessed RAM/container promises or totals.
 
+### Native backend placement replacement
+
+The existing operator placement policy can switch owned PostgreSQL/Valkey between
+shared and application-scoped realization through normal `app apply`. The desired
+footprint reports the destination as requested/unbound until verified apply
+publishes its binding. The concrete impact names original and destination owners
+and explicitly states that destination data is independent: old contents are not
+automatically copied. Original volumes, protected credentials and registry owners
+remain; a return to either placement reuses its retained storage. Unknown access
+or material continuity remains partial and requires the current acknowledgements.
+
+Applied and pending backend placements are realization metadata in the existing
+deployment `GeneratedState`, not authored application intent or another registry.
+Read-only canonical native inventory uses that owner projection, so changed
+operator policy cannot rewrite the previous realization during retry. An
+interrupted deployment protects both original and destination providers in the
+same Target consumer union, even when a sibling uses different current policy.
+Only actual destination/workload verification and old-runtime convergence permit
+publishing the new binding and clearing the pending projection. Other consumers
+retain shared runtime. One shared source split into named destinations is shown
+with all destination effects rather than a fabricated single replacement.
+
+This native placement path does not implement database content migration,
+OpenBao/Identity material handoff or unsupported external provider adapters.
+
 ## Target consumer union and add/remove/re-add
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegates every

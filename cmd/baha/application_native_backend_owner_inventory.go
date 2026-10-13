@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"sort"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -19,6 +20,28 @@ func nativeBackendOwnerIntents(resolved resolvedApplication) ([]application.Mani
 	for _, owner := range owners {
 		if owner.Store.Root == resolved.Store.Root && owner.Manifest.ApplicationID == resolved.Manifest.ApplicationID && owner.Manifest.Environment == resolved.Manifest.Environment {
 			intents = append(intents, owner.Manifest)
+		}
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return nil, err
+	}
+	// A placement replacement retains the original application-scoped offer
+	// even after its binding moves to shared storage. Its exact canonical
+	// resource projection remains available for inspection and owned cleanup.
+	for _, instance := range registry.Instances {
+		if !applicationNativeBackendInstance(instance, resolved.Manifest) || (instance.Provider.Kind != capability.ProviderPostgreSQL && instance.Provider.Kind != capability.ProviderValkey) {
+			continue
+		}
+		for _, owner := range owners {
+			if owner.Store.Root != resolved.Store.Root || owner.Manifest.ApplicationID != resolved.Manifest.ApplicationID || owner.Manifest.Environment != resolved.Manifest.Environment {
+				continue
+			}
+			projected, err := application.WithBackendPlacementProjection(owner.Manifest, map[capability.ProviderKind]capability.ProviderPlacement{instance.Provider.Kind: providerInstancePlacement(instance)})
+			if err != nil {
+				return nil, invalidProviderConsumerInventory(err)
+			}
+			intents = append(intents, projected)
 		}
 	}
 	return intents, nil

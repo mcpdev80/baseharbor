@@ -12,12 +12,20 @@ import (
 // Observe existing canonical owners, never a sibling through the current Store.
 func applicationRuntimeOwners(resolved resolvedApplication) ([]resolvedApplication, error) {
 	owners := map[string]resolvedApplication{}
-	add := func(owner resolvedApplication) {
+	add := func(owner resolvedApplication) error {
 		intent, _ := json.Marshal(owner.Manifest)
-		key := owner.Store.Root + "/" + owner.Manifest.Name + "/" + owner.Manifest.Environment + "/" + string(intent)
+		placements, err := desiredBackendPlacements(owner.Manifest)
+		if err != nil {
+			return err
+		}
+		projection, _ := json.Marshal(placements)
+		key := owner.Store.Root + "/" + owner.Manifest.Name + "/" + owner.Manifest.Environment + "/" + string(intent) + "/" + string(projection)
 		owners[key] = owner
+		return nil
 	}
-	add(resolved)
+	if err := add(resolved); err != nil {
+		return nil, err
+	}
 	records, err := deployment.ListDeployments(resolved.Target.Name)
 	if err != nil {
 		return nil, invalidProviderConsumerInventory(err)
@@ -44,12 +52,24 @@ func applicationRuntimeOwners(resolved resolvedApplication) ([]resolvedApplicati
 				return nil, invalidProviderConsumerInventory(err)
 			}
 			owner := resolved
+			placementKey := "backend_placements"
+			if index > 0 && string(intent) == record.Applied.GeneratedState["previous_intent"] {
+				placementKey = "previous_backend_placements"
+			} else if index > 0 {
+				placementKey = "retired_backend_placements"
+			}
+			m, err = retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState[placementKey])
+			if err != nil {
+				return nil, err
+			}
 			owner.Manifest = m
 			owner.Store = application.Store{Root: filepath.Join(root, "state"), Namespace: resolved.Target.Name}
 			owner.DeploymentIdentity = id
 			owner.DeploymentRecord = &record
 			owner.DeploymentStateRoot = root
-			add(owner)
+			if err := add(owner); err != nil {
+				return nil, err
+			}
 		}
 	}
 	keys := []string{}

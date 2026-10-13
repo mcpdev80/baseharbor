@@ -27,6 +27,7 @@ func retainDeploymentGeneratedState(record *deployment.DeploymentRecord, verifie
 	}
 	if verified {
 		delete(generated, "previous_intent")
+		delete(generated, "previous_backend_placements")
 	}
 	record.Applied.GeneratedState = generated
 	return nil
