@@ -136,7 +136,7 @@
     ]
   },
   "bounds": [
-    "Single-server Docker/rootless Podman only; this receipt is not HA qualification",
+    "Single-server and three-member HA Docker/rootless Podman selected Core lifecycle only. No rolling-upgrade, whole-ecosystem or complete consumer-function acceptance.",
     "The active consumer is an authoritative binding fixture, not a running application/login/secret consumer continuity journey",
     "Actual all-consumer dependency/function/continuity projections remain partial",
     "No arbitrary provider replacement, secure secret handoff, dynamic lease or renewal continuity is claimed",
@@ -153,5 +153,34 @@
       "result": "failed",
       "reason": "Recovered docs environment had no Python launcher after workspace turnover; reused its intact pinned dependency packages with the same Python 3.12.14 runtime, then reran documentation builds."
     }
-  ]
+  ],
+  "ha_native": {
+    "run": 38398536297,
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38398536297",
+    "source": "4e1d3000b00aa2ede716a60ec8c13df5eb9def1b",
+    "tree": "1ffd37cf77a4eda4a7eea8194483522c2b381cae",
+    "attempt": 1,
+    "outcome": "success",
+    "docker": {
+      "job": 115299864029,
+      "test_seconds": 189.221,
+      "artifact": 11812798254,
+      "artifact_sha256": "d2cdbe3b00fdae63ecc7ed7f2a2cdefe27e9362656b5a050a0ca13dca20dc6fa"
+    },
+    "rootless_podman": {
+      "job": 115299863505,
+      "test_seconds": 365.94,
+      "artifact": 11814672319,
+      "artifact_sha256": "54a4d73dd84a16b7b61ad3a86149b75dd6fdff267616f481337342289757cc73"
+    },
+    "full_job_logs_reviewed": true,
+    "main_native_test_skipped": false,
+    "identity_verification": "Runtime/job identity reconciled against raw Actions jobs API, complete job name and BASEHARBOR_TEST_RUNTIME in full logs, artifact name/ID/digest; normalized job-list labels were not treated as authority.",
+    "observed_running_members": {
+      "postgresql": 3,
+      "openbao": 3,
+      "etcd": 3
+    },
+    "assertions": "The same deliberate default removal/replan/retry/resume, original TLS SQL and manager credentials, Target restoration, missing deletion-consent denial and explicit canonical volume deletion pass with actual running three-member PostgreSQL/OpenBao/etcd topology. Sibling, networks and protected owners remain; consequence scope remains partial."
+  }
 }

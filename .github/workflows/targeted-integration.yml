@@ -436,7 +436,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   core_bootstrap:
-    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') }}
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
     name: Core bootstrap · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
@@ -449,7 +449,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
       BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
-      BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: '1'
+      BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[management-union-runtime]') && '0' || '1' }}
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -467,7 +467,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/core-bootstrap"
-          go test -race -json ./cmd/baha -run '^TestCoreOnlyBootstrapRuntimeAcceptance$' -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
+          pattern='^TestCoreOnlyBootstrapRuntimeAcceptance$'
+          if [[ '${{ contains(github.event.head_commit.message, '[management-union-runtime]') }}' == 'true' ]]; then
+            pattern='^TestCoreOnlyBootstrapRuntimeAcceptance$/development$'
+          fi
+          go test -race -json ./cmd/baha -run "$pattern" -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
       - name: Retain runtime qualification logs
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

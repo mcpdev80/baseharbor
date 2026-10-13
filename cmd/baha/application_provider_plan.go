@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -63,15 +62,9 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 		}
 		// The installation remains a consumer even while partially installed.
 		// Protect its actual selected modules, including Console dependencies.
-		roots := []string{}
-		for _, instance := range snapshot.Registry.Instances {
-			if instance.Ownership != capability.OwnershipBaseHarbor || instance.Scope != capability.ScopeShared {
-				continue
-			}
-			switch instance.Provider.Kind {
-			case capability.ProviderOpenBao, capability.ProviderKeycloak:
-				roots = append(roots, instance.ID)
-			}
+		roots, err := managementProviderDependencyRoots(resolved, snapshot)
+		if err != nil {
+			return application.ProviderPlan{}, err
 		}
 		m := application.Manifest{Version: application.CurrentVersion, ApplicationID: state.ID, Name: "management", Environment: "prod"}
 		consumers = append(consumers, application.ConsumerIntent{Key: "installation/" + state.ID, Active: true, Manifest: m, DependencyRoots: roots})

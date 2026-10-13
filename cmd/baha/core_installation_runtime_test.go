@@ -131,6 +131,7 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	if err != nil || !report.Ready || report.Installation == nil || report.Installation.ID != first.ID {
 		t.Fatalf("independent inspection failed: %+v %v", report, err)
 	}
+	verifyIndependentManagementProviderUnion(t, ctx, target, first)
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		t.Fatal(err)

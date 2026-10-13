@@ -23,8 +23,11 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 		return facts
 	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
-	if err != nil || len(registry.Instances) == 0 {
+	if err != nil {
 		return facts
+	}
+	if instance, ok := existingManagementIdentity(resolved); ok {
+		registry.Instances = append(registry.Instances, instance)
 	}
 	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
 	if err != nil {

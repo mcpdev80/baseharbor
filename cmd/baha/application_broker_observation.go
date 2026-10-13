@@ -59,8 +59,11 @@ func observeBrokerProviderFacts(ctx context.Context, resolved resolvedApplicatio
 			continue
 		}
 		fact.Dependencies = []string{application.RuntimeStorageDependencyID(resolved.Target.Name)}
+		management := fact
+		management.Ancillary, management.OwnerReference = true, root
+		facts[managementSecretsDependency(resolved.Target.Name).ID] = management
 		for _, instance := range registry.Instances {
-			if instance.Provider.Kind == capability.ProviderOpenBao && instance.Scope == capability.ScopeShared && instance.Ownership == capability.OwnershipBaseHarbor {
+			if instance.Provider.Kind == capability.ProviderOpenBao && instance.Scope == capability.ScopeShared && instance.Ownership == capability.OwnershipBaseHarbor && instance.SharingBoundary == "" && instance.Reference == "" {
 				facts[instance.ID] = fact
 			}
 		}

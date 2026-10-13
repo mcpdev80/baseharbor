@@ -133,6 +133,9 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 	if err := appendApplicationBrokerDependencies(resolved, observations, &snapshot); err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
+	if _, err := appendManagementProviderDependencies(resolved, observations, &snapshot); err != nil {
+		return application.ResolutionSnapshot{}, nil, err
+	}
 	// Observe backing modules in the same resolver without creating competing
 	// selectable offers or another persistent ownership record. Identity may
 	// reference this exact module even when the desired app has no broker.
