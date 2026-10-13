@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -16,10 +17,23 @@ import (
 // its bootstrap or secured renderer shape. It does not initialize credentials,
 // issue certificates, change a profile or mutate runtime state.
 type ControlPlaneRuntimeInventory struct {
-	Files           Files
-	SQLServices     []string
-	SecretsServices []string
-	Resources       []ProjectResource
+	Files            Files
+	SQLServices      []string
+	SecretsServices  []string
+	Resources        []ProjectResource
+	ProfiledServices []string
+}
+
+// ContinuousServices selects normal availability requirements without changing
+// the complete module inventory used by stop, retirement and recovery owners.
+func (inventory ControlPlaneRuntimeInventory) ContinuousServices(services []string) []string {
+	selected := []string{}
+	for _, service := range services {
+		if !slices.Contains(inventory.ProfiledServices, service) {
+			selected = append(selected, service)
+		}
+	}
+	return selected
 }
 
 func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlaneRuntimeInventory, error) {
@@ -70,11 +84,8 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 		return inventory, err
 	}
 	for service, definition := range model.Services {
-		// Profile-only recovery helpers remain in the owned resource inventory,
-		// but are not continuously required processes of the normal module.
-		// The exact canonical renderer check above excludes unknown sidecars.
 		if len(definition.Profiles) > 0 {
-			continue
+			inventory.ProfiledServices = append(inventory.ProfiledServices, service)
 		}
 		if strings.HasPrefix(service, "postgres") {
 			inventory.SQLServices = append(inventory.SQLServices, service)
@@ -93,6 +104,7 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	}
 	sort.Strings(inventory.SQLServices)
 	sort.Strings(inventory.SecretsServices)
+	sort.Strings(inventory.ProfiledServices)
 	sort.Slice(inventory.Resources, func(i, j int) bool {
 		return inventory.Resources[i].Kind+inventory.Resources[i].Name < inventory.Resources[j].Kind+inventory.Resources[j].Name
 	})

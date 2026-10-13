@@ -24,17 +24,21 @@ func TestControlPlaneModuleInventoryIsCanonicalReadOnlyAndSeparatesSQL(t *testin
 		if err != nil || len(inventory.SQLServices) == 0 || len(inventory.SecretsServices) == 0 {
 			t.Fatalf("canonical module inventory: %+v %v", inventory, err)
 		}
-		if slices.Contains(inventory.SQLServices, "postgres-etcd-recovery") {
+		continuous := inventory.ContinuousServices(inventory.SQLServices)
+		if slices.Contains(continuous, "postgres-etcd-recovery") {
 			t.Fatal("profile-only recovery helper is required for normal SQL availability")
 		}
 		for _, member := range files.PostgresMembers() {
-			if !slices.Contains(inventory.SQLServices, member) {
+			if !slices.Contains(continuous, member) {
 				t.Fatalf("required SQL member omitted: %s", member)
 			}
 		}
 		if ha {
+			if !slices.Contains(inventory.SQLServices, "postgres-etcd-recovery") {
+				t.Fatal("recovery helper lost from full lifecycle service inventory")
+			}
 			for _, service := range []string{"postgres", "postgres-etcd-1", "postgres-etcd-2", "postgres-etcd-3"} {
-				if !slices.Contains(inventory.SQLServices, service) {
+				if !slices.Contains(continuous, service) {
 					t.Fatalf("required SQL router/coordinator omitted: %s", service)
 				}
 			}
