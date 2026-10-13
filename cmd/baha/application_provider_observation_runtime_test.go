@@ -86,8 +86,18 @@ func TestProviderObservationNativePartialModule(t *testing.T) {
 	resolved := resolvedApplication{Target: target, TargetStateRoot: root, Manifest: application.New("observer-probe", "dev", false, false, false)}
 	storageID := application.RuntimeStorageDependencyID(target.Name)
 	facts := observeApplicationProviderFacts(ctx, resolved)
-	if facts[storageID].State != application.ProviderRunning {
-		t.Fatalf("initial SQL module not observed running: %+v", facts[storageID])
+	initialDeadline := time.Now().Add(90 * time.Second)
+	for facts[storageID].State != application.ProviderRunning {
+		logNativeObservationInventory(t, ctx, runtime, files)
+		if time.Now().After(initialDeadline) {
+			t.Fatalf("initial SQL module not observed running: %+v", facts[storageID])
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(5 * time.Second):
+		}
+		facts = observeApplicationProviderFacts(ctx, resolved)
 	}
 	members := files.PostgresMembers()
 	if len(members) < 3 {
@@ -125,4 +135,26 @@ func TestProviderObservationNativePartialModule(t *testing.T) {
 		}
 	}
 	t.Log("Actual selected member restored; complete process/health inventory regained; existing authority retained.")
+}
+
+// Log only canonical names and process/health facts, never native environment,
+// command arguments, state errors, certificates or credential material.
+func logNativeObservationInventory(t *testing.T, ctx context.Context, runtime bhruntime.RuntimeProvider, files bhruntime.Files) {
+	t.Helper()
+	inventory, err := bhruntime.ExistingControlPlaneRuntimeInventory(filepath.Dir(files.Compose), files.Project)
+	if err != nil {
+		t.Log("canonical observation diagnostic unavailable")
+		return
+	}
+	t.Logf("Required continuous SQL services: %v; profiled helpers: %v", inventory.ContinuousServices(inventory.SQLServices), inventory.ProfiledServices)
+	containers, err := runtime.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Log("native process/health diagnostic unavailable")
+		return
+	}
+	for _, container := range containers {
+		if container.Project == files.Project {
+			t.Logf("Owned module container=%s service=%s running=%t health=%s", container.Name, container.Service, container.Running, container.Health)
+		}
+	}
 }
