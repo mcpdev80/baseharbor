@@ -48,7 +48,11 @@ func TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL(t *testing.T) {
 	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	app := applySelectiveIdentityIntent(t, ctx)
+	applySelectiveIdentityIntent(t, ctx)
+	app, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
 	provider, err := detectRuntimeForTarget(ctx, app.Target)
 	if err != nil {
 		t.Fatal(err)
@@ -56,6 +60,24 @@ func TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup, cancel := context.WithTimeout(machineNoninteractiveContext(context.Background()), 3*time.Minute)
 		defer cancel()
+		// Acknowledge this isolated application's exact full-reset plan before
+		// the separate installation cleanup. Outer installation consent must
+		// never be forged into an unrelated application plan acknowledgement.
+		current, err := resolveApplication(cleanup, application.Store{}, nil, "destroy")
+		if err != nil {
+			t.Errorf("fixture application cleanup owner: %v", err)
+			return
+		}
+		plan, err := buildApplicationDestructionPlan(cleanup, current, true)
+		if err != nil {
+			t.Errorf("fixture application reset plan: %v", err)
+			return
+		}
+		ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+		if err := executeApplicationDestroyLifecycle(withProviderChangeConsent(cleanup, ack), application.Store{}, []string{"--yes", "--full-reset"}, io.Discard, io.Discard); err != nil {
+			t.Errorf("fixture application reset failed; owner retained: %v", err)
+			return
+		}
 		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
 			t.Errorf("owned fixture cleanup failed; preserve retry owners: %v", err)
 		}
