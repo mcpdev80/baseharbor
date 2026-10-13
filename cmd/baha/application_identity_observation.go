@@ -52,33 +52,19 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 		if _, err := provider.InspectProjectResources(ctx, files.Project, expected); err != nil {
 			continue
 		}
-		wanted := []bhruntime.ProjectResource{}
+		identityResources, sqlResources := []bhruntime.ProjectResource{}, []bhruntime.ProjectResource{}
 		for _, resource := range expected {
-			if resource.Kind == "container" {
-				wanted = append(wanted, resource)
+			if resource.Kind != "container" {
+				continue
+			}
+			if strings.HasPrefix(resource.Name, files.Project+"-keycloak-db-") {
+				sqlResources = append(sqlResources, resource)
+			} else {
+				identityResources = append(identityResources, resource)
 			}
 		}
-		state, count := application.ProviderStoppedOwned, int64(0)
-		sqlState, sqlCount := application.ProviderStoppedOwned, int64(0)
-		for _, container := range containers {
-			matched := false
-			for _, resource := range wanted {
-				matched = matched || bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource)
-			}
-			if matched {
-				if container.Service == "keycloak-db" || strings.HasPrefix(container.Service, "keycloak-db-") || strings.HasPrefix(container.Name, files.Project+"-keycloak-db-") {
-					sqlCount++
-					if container.Running {
-						sqlState = application.ProviderRunning
-					}
-					continue
-				}
-				count++
-				if container.Running {
-					state = application.ProviderRunning
-				}
-			}
-		}
+		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, identityResources, containers)
+		sqlCount, sqlState := observeCanonicalProviderContainers(provider.Kind(), files.Project, sqlResources, containers)
 		sqlModule, sqlOwner, err := identityprovider.KeycloakSQLDependency(m, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name, files.SharedSQL != nil)
 		if err != nil {
 			continue

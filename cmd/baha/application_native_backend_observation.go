@@ -94,19 +94,7 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 		if err != nil {
 			continue
 		}
-		count := int64(0)
-		state := application.ProviderStoppedOwned
-		for _, container := range containers {
-			for _, resource := range resources {
-				if bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, files.Project, resource) {
-					count++
-					if container.Running {
-						state = application.ProviderRunning
-					}
-					break
-				}
-			}
-		}
+		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, resources, containers)
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: []string{}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "protected canonical applied backend intent and native ownership inventory"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
 }

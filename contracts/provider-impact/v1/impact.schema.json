@@ -687,6 +687,12 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "continuation_dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency-evidence"
+          }
         }
       }
     },
@@ -803,6 +809,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/effect"
+          }
+        },
+        "continuation_dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency-evidence"
           }
         }
       }
@@ -990,6 +1002,30 @@
         },
         "evidence": {
           "type": "string"
+        }
+      }
+    },
+    "dependency-evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "realization",
+        "dependencies"
+      ],
+      "properties": {
+        "realization": {
+          "$ref": "#/$defs/realization"
+        },
+        "dependencies": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     }

@@ -60,6 +60,7 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 		if err != nil {
 			return p, err
 		}
+		impact.ContinuationDependencies = describeContinuationDependencies(snapshot, observation, r)
 		p.Impacts = append(p.Impacts, impact)
 		p.Complete = p.Complete && known
 		p.Destructive = p.Destructive || destructive

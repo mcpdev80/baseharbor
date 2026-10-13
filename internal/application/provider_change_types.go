@@ -148,20 +148,21 @@ type MaterialConsequence struct {
 }
 
 type ProviderImpact struct {
-	Prerequisites      []ProviderPrerequisite   `json:"prerequisites"`
-	RequestedConsumers []string                 `json:"requested_consumers"`
-	InstanceID         string                   `json:"instance_id"`
-	Operation          string                   `json:"operation"`
-	Scenario           string                   `json:"scenario"`
-	Selection          string                   `json:"selection"`
-	Before             ProviderRealization      `json:"before"`
-	After              *ProviderRealization     `json:"after,omitempty"`
-	Dependencies       []string                 `json:"dependencies"`
-	Dependents         []string                 `json:"dependents"`
-	Functions          []FunctionConsequence    `json:"functions"`
-	Materials          []MaterialConsequence    `json:"materials"`
-	Effects            []OperationalConsequence `json:"effects"`
-	Notices            []string                 `json:"notices"`
+	ContinuationDependencies []ProviderDependencyEvidence `json:"continuation_dependencies,omitempty"`
+	Prerequisites            []ProviderPrerequisite       `json:"prerequisites"`
+	RequestedConsumers       []string                     `json:"requested_consumers"`
+	InstanceID               string                       `json:"instance_id"`
+	Operation                string                       `json:"operation"`
+	Scenario                 string                       `json:"scenario"`
+	Selection                string                       `json:"selection"`
+	Before                   ProviderRealization          `json:"before"`
+	After                    *ProviderRealization         `json:"after,omitempty"`
+	Dependencies             []string                     `json:"dependencies"`
+	Dependents               []string                     `json:"dependents"`
+	Functions                []FunctionConsequence        `json:"functions"`
+	Materials                []MaterialConsequence        `json:"materials"`
+	Effects                  []OperationalConsequence     `json:"effects"`
+	Notices                  []string                     `json:"notices"`
 }
 
 type ProviderImpactPlan struct {
@@ -208,16 +209,17 @@ type ProviderFunctionOutcome struct {
 }
 
 type ProviderExecutionOutcome struct {
-	Effects    []OperationalConsequence  `json:"effects,omitempty"`
-	Functions  []ProviderFunctionOutcome `json:"functions,omitempty"`
-	Verified   bool                      `json:"verified"`
-	Evidence   string                    `json:"evidence,omitempty"`
-	InstanceID string                    `json:"instance_id"`
-	Operation  string                    `json:"operation"`
-	Status     string                    `json:"status"` // applied, failed, pending
-	After      *ProviderRealization      `json:"after,omitempty"`
-	Materials  []MaterialOutcome         `json:"materials"`
-	ErrorCode  string                    `json:"error_code,omitempty"`
+	ContinuationDependencies []ProviderDependencyEvidence `json:"continuation_dependencies,omitempty"`
+	Effects                  []OperationalConsequence     `json:"effects,omitempty"`
+	Functions                []ProviderFunctionOutcome    `json:"functions,omitempty"`
+	Verified                 bool                         `json:"verified"`
+	Evidence                 string                       `json:"evidence,omitempty"`
+	InstanceID               string                       `json:"instance_id"`
+	Operation                string                       `json:"operation"`
+	Status                   string                       `json:"status"` // applied, failed, pending
+	After                    *ProviderRealization         `json:"after,omitempty"`
+	Materials                []MaterialOutcome            `json:"materials"`
+	ErrorCode                string                       `json:"error_code,omitempty"`
 }
 
 type ProviderChangeResult struct {

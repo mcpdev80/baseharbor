@@ -37,7 +37,10 @@ func RecordProviderChangeResult(plan ProviderImpactPlan, outcomes []ProviderExec
 			}
 			// Partial/unexpected effects must stay visible instead of being called a
 			// successful execution of the proposed plan.
-			if !outcomeMatchesImpact(out, imp, plan.Impacts) {
+			if continuationRequiresDependencyEvidence(imp) && len(imp.ContinuationDependencies) == 0 || !continuationDependencyOutcomesMatch(out.ContinuationDependencies, imp.ContinuationDependencies, plan.Impacts) {
+				out.Status = "failed"
+				out.ErrorCode = "continuation-dependency-unverified"
+			} else if !outcomeMatchesImpact(out, imp, plan.Impacts) {
 				out.Status = "failed"
 				out.ErrorCode = "actual-disposition-differs"
 			}
@@ -83,6 +86,12 @@ func validateExecutionOutcome(out ProviderExecutionOutcome) error {
 	}
 	if err := validateImpactStrings(tree); err != nil {
 		return err
+	}
+	for _, dependency := range out.ContinuationDependencies {
+		realization := dependency.Realization
+		if err := validateImpactObservation(ProviderImpactObservation{Providers: map[string]ProviderImpactFact{realization.InstanceID: {Realization: realization}}}); err != nil {
+			return err
+		}
 	}
 	if out.After != nil {
 		r := out.After

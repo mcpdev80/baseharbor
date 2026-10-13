@@ -7,7 +7,6 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func observeStandaloneProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) {
@@ -37,18 +36,7 @@ func observeStandaloneProviderFacts(ctx context.Context, resolved resolvedApplic
 		if _, err := provider.InspectProjectResources(ctx, inventory.project, inventory.resources); err != nil {
 			continue
 		}
-		count, state := int64(0), application.ProviderStoppedOwned
-		for _, container := range containers {
-			for _, resource := range inventory.resources {
-				if resource.Kind == "container" && bhruntime.ContainerMatchesProjectResource(provider.Kind(), container, inventory.project, resource) {
-					count++
-					if container.Running {
-						state = application.ProviderRunning
-					}
-					break
-				}
-			}
-		}
+		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.project, inventory.resources, containers)
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: inventory.dependencies, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "retained canonical provider renderer and ownership-checked selected module"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
 }

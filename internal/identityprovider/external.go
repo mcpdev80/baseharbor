@@ -27,6 +27,7 @@ type ExternalDriver struct {
 	issuer   string
 	clientID string
 	secret   string
+	caPath   string
 	client   *http.Client
 }
 
@@ -35,31 +36,34 @@ func NewExternalDriver(app application.Manifest, files application.RuntimeFiles,
 	if clientID == "" {
 		return nil, fmt.Errorf("%s is required for external OIDC", ExternalClientIDEnv)
 	}
-	secret := ""
+	secret, retainedCA, err := retainedExternalMaterial(files, issuer, clientID)
+	if err != nil {
+		return nil, err
+	}
 	if path := strings.TrimSpace(os.Getenv(ExternalClientSecretFileEnv)); path != "" {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return nil, fmt.Errorf("inspect external OIDC client secret: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 {
-			return nil, fmt.Errorf("external OIDC client secret must be a protected regular non-symlink file")
-		}
-		data, err := os.ReadFile(path)
+		data, err := readExternalProtectedMaterial(path)
 		if err != nil {
 			return nil, fmt.Errorf("read external OIDC client secret: %w", err)
 		}
 		secret = strings.TrimSpace(string(data))
+		for i := range data {
+			data[i] = 0
+		}
 		if secret == "" || strings.ContainsAny(secret, "\r\n") {
 			return nil, fmt.Errorf("external OIDC client secret is empty or invalid")
 		}
 	}
-	client, err := externalHTTPClient()
+	caPath := strings.TrimSpace(os.Getenv(ExternalCAFileEnv))
+	if caPath == "" {
+		caPath = retainedCA
+	}
+	client, err := externalHTTPClientForCA(caPath)
 	if err != nil {
 		return nil, err
 	}
 	return &ExternalDriver{
 		app: app, files: files, issuer: strings.TrimRight(strings.TrimSpace(issuer), "/"),
-		clientID: clientID, secret: secret, client: client,
+		clientID: clientID, secret: secret, caPath: caPath, client: client,
 	}, nil
 }
 
@@ -85,7 +89,7 @@ func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err != nil {
 		return err
 	}
-	return application.MaterializeIdentityBinding(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, strings.TrimSpace(os.Getenv(ExternalCAFileEnv)))
+	return application.MaterializeIdentityBinding(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.caPath)
 }
 
 func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
@@ -96,8 +100,12 @@ func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ ca
 }
 
 func externalHTTPClient() (*http.Client, error) {
+	return externalHTTPClientForCA(strings.TrimSpace(os.Getenv(ExternalCAFileEnv)))
+}
+
+func externalHTTPClientForCA(caPath string) (*http.Client, error) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
-	if path := strings.TrimSpace(os.Getenv(ExternalCAFileEnv)); path != "" {
+	if path := caPath; path != "" {
 		info, err := os.Lstat(path)
 		if err != nil {
 			return nil, fmt.Errorf("inspect external OIDC CA: %w", err)

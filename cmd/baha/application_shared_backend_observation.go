@@ -32,20 +32,9 @@ func observeSharedBackendProviderFacts(ctx context.Context, resolved resolvedApp
 		return
 	}
 	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
-		wanted := map[string]bool{}
-		for _, service := range inventory.Services[kind] {
-			wanted[service] = true
-		}
-		count, zero := int64(0), int64(0)
-		state := application.ProviderStoppedOwned
-		for _, container := range containers {
-			if container.Project == inventory.Files.Project && wanted[container.Service] {
-				count++
-				if container.Running {
-					state = application.ProviderRunning
-				}
-			}
-		}
+		resources := canonicalProviderServiceResources(inventory.Files.Project, inventory.Services[kind])
+		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.Files.Project, resources, containers)
+		zero := int64(0)
 		module := application.SharedBackendRuntimeDependency(resolved.Target.Name, kind)
 		dependencies := []string{}
 		core := application.CoreNotRequired

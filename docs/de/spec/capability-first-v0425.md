@@ -601,3 +601,40 @@ Owners selbst, einschließlich Installationskonfiguration und State ohne vorhand
 Provider-Teilplan. Das Feld fließt in die Scope-Revision ein und erfordert separate
 `delete_data`-Zustimmung zusätzlich zu beiden aktuellen Planbestätigungen. Ohne
 dieses optionale Feld bleibt die bestehende nicht destruktive Owner-Semantik erhalten.
+
+
+### Frische Ausführungsabhängigkeiten und Credential-Zustellung
+
+`ProviderImpact.ContinuationDependencies` bindet den ausgewählten Ersatz und
+Verbraucheraktionen an den bestehenden Target-Graphen einschließlich transitiver
+Ancillary-Owner. `ProviderExecutionOutcome.ContinuationDependencies` liefert nach
+der Ausführung frische Beobachtungen derselben Identitäten und Kanten. Fehlende,
+gestoppte, nicht unterstützte, ungeprüfte, fremde oder geänderte Owner/Kanten dürfen
+nicht als abgeschlossene Fortsetzung gemeldet werden.
+`ObserveProviderContinuationDependencies` liest bestehende Registry-/Ancillary-
+Fakten und Beobachtungen; es plant keine Wiederherstellung und erzeugt keinen
+zusätzlichen Zustandsowner. Ein geänderter Graph verlangt neue Planung/Bestätigung.
+Fehlgeschlagene Ergebnisnachweise bleiben sichtbar und für den Retry offen.
+
+Native Providerbeobachtungen verlangen, dass alle ausgewählten kanonischen
+Container vorhanden und laufend sind; bei vorhandenem Healthcheck muss dessen
+Status gesund sein. Ein laufender HA-Member qualifiziert nicht das gesamte
+angegebene Modul. Diese Beobachtung belegt nur Prozess-/Health-Inventar, kein
+Quorum, keinen authentifizierten Zugriff, keine Datenkontinuität und keine
+Vollständigkeit unbekannter Sidecars.
+
+External-OIDC-Reapply ohne erneut gesetzte Secret-/CA-Eingaben übernimmt geschütztes
+Material ausschließlich für denselben Provider, Issuer und Client. Es generiert
+keine Credentials neu, reicht sie nicht an eine andere Autorität weiter und macht
+aus einem vertraulichen Client nicht stillschweigend einen öffentlichen Client.
+Eine andere Autorität benötigt ausdrückliches Ersatzmaterial, wenn vertrauliche
+Credentials/Trust erhalten sind. Nicht unterstützte Credential-/Trust-Entfernung
+bleibt eine konkrete technische Grenze; ein Public-Client- oder System-Trust-
+Fallback wird nicht als implementiert behauptet.
+
+Die Identity-Binding-Verifikation vergleicht Client-/Credential-/Trust-Projektionen
+auf Host und Workload mit den Runtime- und Application-Umgebungsreferenzen.
+Abweichungen oder veraltete Referenzen schlagen ohne Secret-Werte in Fehlern fehl.
+Dies belegt konsistente Zustellung, kein Benutzerlogin, keine Token-/Refresh-
+Gültigkeit, Revocation oder zukünftige Erneuerung. Tatsächliche Zugriffsprüfungen
+bleiben getrennte Anforderungen.

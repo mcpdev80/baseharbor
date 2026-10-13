@@ -561,3 +561,36 @@ current-plan acknowledgements remain separate.
 
 The implementation has domain/adapter negative tests. Actual local production
 CLI and stdio runtime acceptance remains required on the qualified candidate.
+
+
+### Fresh execution dependencies and credential delivery
+
+`ProviderImpact.ContinuationDependencies` binds the selected replacement and
+consumer actions to the existing Target graph, including transitive ancillary
+owners. `ProviderExecutionOutcome.ContinuationDependencies` supplies fresh
+observations of the same identities and edges after execution. Missing,
+stopped, unsupported, unverified, foreign or changed owners/edges cannot be
+reported as a completed continuation. `ObserveProviderContinuationDependencies`
+is read-only; it consumes existing registry/ancillary facts and observations,
+never schedules recovery or creates another state owner. A changed graph needs
+fresh replan/consent. Failed result evidence remains visible and pending retry.
+
+Native provider observations require every selected canonical container to be
+present and running, with healthy status when a health check exists. A single
+running HA member does not qualify the whole declared module. This observation
+proves process/health inventory only, not quorum, authenticated access, data
+continuity or unlisted sidecar completeness.
+
+External OIDC reapply without repeated secret/CA inputs reuses protected material
+only for the same provider, issuer and client. It does not regenerate credentials,
+forward them to another authority or silently change a confidential client to a
+public client. A different authority requires explicit replacement material where
+retained confidential credentials/trust exist. Unsupported credential/trust
+removal remains an explicit technical limitation; it does not assert that a
+public-client or system-trust fallback was implemented.
+
+Identity binding verification compares the host and workload client/credential/
+trust projections with runtime and application environment references. Divergence
+or stale references are failures without secret values in errors. This proves
+consistent delivery, not user login, token/refresh validity, revocation or future
+renewal. Their actual access checks remain separate requirements.

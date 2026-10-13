@@ -37,20 +37,8 @@ func observeBrokerProviderFacts(ctx context.Context, resolved resolvedApplicatio
 		return
 	}
 	for index, services := range [][]string{inventory.SQLServices, inventory.SecretsServices} {
-		wanted := map[string]bool{}
-		for _, service := range services {
-			wanted[service] = true
-		}
-		count := int64(0)
-		state := application.ProviderStoppedOwned
-		for _, container := range containers {
-			if container.Project == inventory.Files.Project && wanted[container.Service] {
-				count++
-				if container.Running {
-					state = application.ProviderRunning
-				}
-			}
-		}
+		resources := canonicalProviderServiceResources(inventory.Files.Project, services)
+		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.Files.Project, resources, containers)
 		fact := application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreRequired, Dependencies: []string{}, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "canonical protected native module with inspected ownership"}}
 		if index == 0 {
 			fact.Ancillary = true
