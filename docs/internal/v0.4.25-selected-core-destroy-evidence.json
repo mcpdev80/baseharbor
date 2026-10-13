@@ -1,0 +1,157 @@
+{
+  "version": "baseharbor.v0425.selected-core-destroy-evidence/v1",
+  "pre_release_ready": false,
+  "product_source": "452e98975b384ebf551815fbabd10f14a2b34188",
+  "product_tree": "36bce85ecb45909bfd2469223748265cf65a43be",
+  "local_equivalent_commit": "8eb072db54e9cfafaafce90049e056398bc73daa",
+  "source_qualification": {
+    "source": {
+      "commit": "c72b5f821667c7206bc3cc67f75f35e72cee66e3",
+      "tree": "5210826ebcf883da2ca9094e95a2a5d9e908697a",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 67.664,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/runtime"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 18.94,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.401,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.818,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.708,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 50.63,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 66.985,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 18.337,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.219,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.715,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "followup_checks": [
+    {
+      "name": "affected_package_tests",
+      "result": "pass",
+      "log_sha256": "9dbe81d5decbfdfb4721b4bef45913b35f9071f10f6ed107e89459997a650aa3",
+      "summary": "ok  \tgithub.com/mcpdev80/baseharbor/cmd/baha\t3.753s\nok  \tgithub.com/mcpdev80/baseharbor/internal/runtime\t0.439s"
+    },
+    {
+      "name": "affected_races",
+      "result": "pass",
+      "log_sha256": "59b1a6405f7ecc857b7659713f978f824800fb77d4fb0c930ff5362fbed1a345",
+      "summary": "ok  \tgithub.com/mcpdev80/baseharbor/cmd/baha\t13.718s\nok  \tgithub.com/mcpdev80/baseharbor/internal/runtime\t2.276s"
+    },
+    {
+      "name": "affected_vet_build_readability_diff",
+      "result": "pass"
+    }
+  ],
+  "native": {
+    "run": 38396661358,
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38396661358",
+    "source": "452e98975b384ebf551815fbabd10f14a2b34188",
+    "attempt": 1,
+    "outcome": "success",
+    "docker": {
+      "job": 115293487265,
+      "test_seconds": 91.924,
+      "artifact": 11811743322,
+      "artifact_sha256": "6ded5e83650568851dcc03216c9b46a0c9427afa3d6d49969841212891074330"
+    },
+    "rootless_podman": {
+      "job": 115293487283,
+      "test_seconds": 172.968,
+      "artifact": 11813275208,
+      "artifact_sha256": "316ed564ada75835f2c6087dd8c0dc951147f37ab6023fda026cd916690b9063"
+    },
+    "full_job_logs_reviewed": true,
+    "main_native_test_skipped": false,
+    "assertions": [
+      "CLI --yes alone denied before native mutation",
+      "MCP with two current scope acknowledgements retires canonical Core containers despite an active provider binding",
+      "Data-preserving default keeps volumes/networks/protected files/consumer registrations and a running consolidated-project sibling",
+      "Fresh replan and repeat destruction are idempotent",
+      "Explicit resume reads the original once-seeded SQL row using verify-full TLS; no reseeding",
+      "Target definition detach/restore retains original SQL data and manager credentials",
+      "Selecting Core volume deletion changes the scope; two stages without separate deletion consent are denied",
+      "MCP selected delete_data with two current stages and independent deletion consent removes canonical Core containers/volumes",
+      "Data-deleting outcome retains network/sibling/original credential and retry owner bytes; deleted volume data is not claimed recoverable",
+      "Authenticated isolated full fixture cleanup uses its own exact aggregate plan rather than --yes as deletion consent"
+    ]
+  },
+  "bounds": [
+    "Single-server Docker/rootless Podman only; this receipt is not HA qualification",
+    "The active consumer is an authoritative binding fixture, not a running application/login/secret consumer continuity journey",
+    "Actual all-consumer dependency/function/continuity projections remain partial",
+    "No arbitrary provider replacement, secure secret handoff, dynamic lease or renewal continuity is claimed",
+    "Independent management projection and real Core HTTP/Connector/Console/browser ecosystem acceptance remain required",
+    "No complete pre-release/merge/tag/publication was executed"
+  ],
+  "history": [
+    {
+      "qualification": "/tmp/baseharbor-local-qualification-109gp2cc/result.json",
+      "result": "failed",
+      "reason": "Generated EN/DE command index was stale after adding Core deletion selection to command metadata; regenerated from existing command tree and reran qualification."
+    },
+    {
+      "result": "failed",
+      "reason": "Recovered docs environment had no Python launcher after workspace turnover; reused its intact pinned dependency packages with the same Python 3.12.14 runtime, then reran documentation builds."
+    }
+  ]
+}
