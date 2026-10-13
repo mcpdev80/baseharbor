@@ -9,6 +9,10 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+type providerCompletionObserver interface {
+	ObserveProjectServiceCompletion(context.Context, string, string, string, string) (bool, error)
+}
+
 func observeBrokerProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) {
 	if isRemoteApplication(resolved) {
 		return
@@ -48,6 +52,17 @@ func observeBrokerProviderFacts(ctx context.Context, resolved resolvedApplicatio
 			}
 		}
 		completedCount, completed := observeCanonicalProviderCompletion(provider.Kind(), inventory.Files.Project, canonicalProviderServiceResources(inventory.Files.Project, oneShots), containers)
+		// Quadlet removes successful one-shot containers but retains their actual
+		// systemd exit authority. Never override an observed failed/foreign task.
+		if !completed && completedCount == 0 && provider.Kind() == bhruntime.ProviderPodman {
+			if observer, ok := provider.(providerCompletionObserver); ok {
+				completed = true
+				for _, service := range oneShots {
+					verified, err := observer.ObserveProjectServiceCompletion(ctx, inventory.Files.Project, inventory.Files.Compose, inventory.Files.Env, service)
+					completed = completed && err == nil && verified
+				}
+			}
+		}
 		count += completedCount
 		if state == application.ProviderRunning && !completed {
 			state = application.ProviderUnverifiable

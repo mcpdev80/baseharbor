@@ -581,6 +581,15 @@ running HA member does not qualify the whole declared module. This observation
 proves process/health inventory only, not quorum, authenticated access, data
 continuity or unlisted sidecar completeness.
 
+Canonical profile-only recovery helpers are retained in the complete owned
+inventory but are not continuously required processes. One-shot prerequisites
+declared with `service_completed_successfully` and `restart: no` require actual
+successful completion instead of running state. Docker verifies the owned exited
+container; Quadlet may retain that evidence in its current canonical systemd unit
+after removing the container. Missing, failed, foreign, stale or overridden
+completion evidence leaves availability unverified. Observing completion never
+starts or repairs a task, and full lifecycle resource selection remains unchanged.
+
 External OIDC reapply without repeated secret/CA inputs reuses protected material
 only for the same provider, issuer and client. It does not regenerate credentials,
 forward them to another authority or silently change a confidential client to a

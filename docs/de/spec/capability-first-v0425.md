@@ -623,6 +623,17 @@ angegebene Modul. Diese Beobachtung belegt nur Prozess-/Health-Inventar, kein
 Quorum, keinen authentifizierten Zugriff, keine Datenkontinuität und keine
 Vollständigkeit unbekannter Sidecars.
 
+Kanonische Recovery-Helfer mit eigenem Profil bleiben im vollständigen
+Eigentumsinventar, sind aber keine dauerhaft benötigten Prozesse. Einmalige
+Voraussetzungen mit `service_completed_successfully` und `restart: no` benötigen
+einen tatsächlichen erfolgreichen Abschluss statt eines laufenden Zustands.
+Docker prüft den eigenen beendeten Container; Quadlet kann diesen Nachweis nach
+dem Entfernen des Containers in seiner aktuellen kanonischen systemd-Unit
+bewahren. Fehlende, fehlgeschlagene, fremde, veraltete oder überschriebene
+Abschlussnachweise lassen die Verfügbarkeit ungeprüft. Die Beobachtung startet
+oder repariert keine Aufgabe; die vollständige Lifecycle-Ressourcenauswahl bleibt
+erhalten.
+
 External-OIDC-Reapply ohne erneut gesetzte Secret-/CA-Eingaben übernimmt geschütztes
 Material ausschließlich für denselben Provider, Issuer und Client. Es generiert
 keine Credentials neu, reicht sie nicht an eine andere Autorität weiter und macht
