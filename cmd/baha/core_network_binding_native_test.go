@@ -128,6 +128,9 @@ func TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL(t *testing.T) {
 		}
 		if repeat == 0 {
 			installationID = state.ID
+			// Later ordinary convergence uses the existing protected ports;
+			// initial port overrides are not a request to change them.
+			opts.PostgresPort, opts.OpenBaoPort = 0, 0
 		} else if state.ID != installationID {
 			t.Fatal("bootstrap repeat changed installation identity")
 		}
