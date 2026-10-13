@@ -12,6 +12,7 @@ type ownedDestroyResource struct {
 }
 
 type destroyReport struct {
+	Impact                            *runtimeDestroyImpact  `json:"provider_change_plan,omitempty"`
 	Destroyed                         bool                   `json:"destroyed"`
 	Preview                           bool                   `json:"preview"`
 	All                               bool                   `json:"all"`

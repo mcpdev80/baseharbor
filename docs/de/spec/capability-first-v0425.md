@@ -536,3 +536,10 @@ zwei Bestätigungen des aktuellen Plans bleiben getrennt.
 
 Domain-/Adapter-Negativtests prüfen die Implementierung. Tatsächliche lokale
 Produktions-CLI- und stdio-Runtime-Abnahme auf dem Kandidaten bleibt erforderlich.
+
+
+`ProviderScopeOwner.destructive` markiert die endgültige Löschung des gemeinsamen
+Owners selbst, einschließlich Installationskonfiguration und State ohne vorhandenen
+Provider-Teilplan. Das Feld fließt in die Scope-Revision ein und erfordert separate
+`delete_data`-Zustimmung zusätzlich zu beiden aktuellen Planbestätigungen. Ohne
+dieses optionale Feld bleibt die bestehende nicht destruktive Owner-Semantik erhalten.

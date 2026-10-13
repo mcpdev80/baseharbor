@@ -40,6 +40,10 @@ type controlPlaneStopPlan struct {
 // its native project. Existing provider and deployment owners describe all
 // potentially dependent consumers; uncertainty requires deliberate consent.
 func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error) {
+	return buildControlPlaneStopPlanForOperation(ctx, "control-plane.stop")
+}
+
+func buildControlPlaneStopPlanForOperation(ctx context.Context, operation string) (controlPlaneStopPlan, error) {
 	p := controlPlaneStopPlan{Functions: []application.FunctionConsequence{}, Materials: []application.MaterialConsequence{}}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
@@ -79,7 +83,7 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		return p, invalidProviderConsumerInventory(err)
 	}
 	for _, record := range records {
-		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, record.Identity.Environment, record.Identity.ApplicationID, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, operation, target.Name, record.Identity.Environment, record.Identity.ApplicationID, ""); err != nil {
 			return p, err
 		}
 		location, err := deployment.DeploymentRoot(record.Identity)
@@ -90,7 +94,7 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		p.Functions = append(p.Functions, application.FunctionConsequence{Consumer: "deployment/" + record.Identity.DeploymentID, Function: "core-dependent-availability", Via: p.Services, Outcome: "unknown", Behavior: "Only the selected PostgreSQL/OpenBao Core services stop. Workloads and other provider containers remain. Shared SQL access, secret retrieval, credential leases, PKI issuance/renewal and dependent authentication/access may fail; exact consumer reconnection, cached validity and in-flight effects require actual verification. Authentication is never bypassed.", Evidence: "existing Target deployment registration; unverified dependencies remain unknown"})
 	}
 	for _, binding := range registry.Bindings {
-		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, binding.Environment, binding.ApplicationID, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, operation, target.Name, binding.Environment, binding.ApplicationID, ""); err != nil {
 			return p, err
 		}
 		p.Functions = append(p.Functions, application.FunctionConsequence{Consumer: "application/" + binding.ApplicationID + "/" + binding.Environment, Function: string(binding.Resource.Kind), Via: []string{binding.ProviderInstanceID}, Required: true, Outcome: "unknown", Behavior: "This existing binding is retained. Direct or transitive dependency on the selected Core services, current token/certificate/lease validity and future renewal are unverified; continued access is not claimed.", Evidence: "authoritative existing provider binding"})
@@ -99,7 +103,7 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 	// Account for these owners even when no active deployment references them.
 	for _, instance := range registry.Instances {
 		if instance.Scope == capability.ScopeApplication {
-			if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, instance.OwnerEnvironment, instance.OwnerApplicationID, ""); err != nil {
+			if err := authorizeMCPOperation(ctx, operation, target.Name, instance.OwnerEnvironment, instance.OwnerApplicationID, ""); err != nil {
 				return p, err
 			}
 		}
@@ -113,7 +117,7 @@ func buildControlPlaneStopPlan(ctx context.Context) (controlPlaneStopPlan, error
 		if installation.Defaults.ProtectedManagement {
 			environment = "prod"
 		}
-		if err := authorizeMCPOperation(ctx, "control-plane.stop", target.Name, environment, installation.ID, ""); err != nil {
+		if err := authorizeMCPOperation(ctx, operation, target.Name, environment, installation.ID, ""); err != nil {
 			return p, err
 		}
 	} else if !errors.Is(installationErr, os.ErrNotExist) {

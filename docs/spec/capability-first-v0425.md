@@ -255,6 +255,12 @@ consent. Countdown samples alone do not invalidate unchanged absolute validity.
 Unknown/incomplete or destructive scope shows **Achtung** and uses the same two
 acknowledgements and separate destructive consent as single-Target changes.
 
+`ProviderScopeOwner.destructive` marks permanent deletion of the aggregate owner
+itself, including installation configuration/state when no provider leaf exists.
+It contributes to the scope revision and requires separate `delete_data` consent
+in addition to both current-plan acknowledgements. Omitting this optional field
+retains the existing non-destructive owner semantics.
+
 `RecordProviderImpactScopeResult` validates each Target's execution through the
 existing receipt authority. Registration-entry deletion alone never proves
 consumer reconfiguration or all-Target success. Missing/unknown owner or Target

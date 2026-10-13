@@ -20,8 +20,9 @@ type machineControlPlaneUpInput struct {
 	RecoveryFile string                       `json:"recovery_file,omitempty"`
 }
 type machineControlPlaneDestroyInput struct {
-	Target   string `json:"target,omitempty"`
-	Approval bool   `json:"approval"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+	Target                string                             `json:"target,omitempty"`
+	Approval              bool                               `json:"approval"`
 }
 type machineControlPlaneStopInput struct {
 	Target                string                             `json:"target,omitempty"`
@@ -91,7 +92,8 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		})
 	}
 	mcp.AddTool(server, machineMCPTool("installation.destroy", "Remove all owned BaseHarbor installation resources after explicit approval and authorization of every registered deployment; preserve external application source/data.", true), func(ctx context.Context, req *mcp.CallToolRequest, input struct {
-		Approval bool `json:"approval"`
+		Approval              bool                               `json:"approval"`
+		ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
 		if err := authorizeCurrentMCPContext(ctx, "installation.destroy", "", "", ""); err != nil {
 			return machineMCPFailure(err)
@@ -99,6 +101,7 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 		if err := applicationlifecycle.RequireApproval("installation.destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
 		}
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx, cancel := machineLifecycleContext(ctx)
 		defer cancel()
 		ctx, report := withDestroyReport(ctx, true)
@@ -110,6 +113,7 @@ func registerMCPControlPlaneTools(server *mcp.Server) {
 
 	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Destroy selected owned control plane after approval and existing application-ownership preflight.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		if err := authorizeCurrentMCPContext(ctx, "control-plane.destroy", "", "", ""); err != nil {
 			return machineMCPFailure(err)
 		}

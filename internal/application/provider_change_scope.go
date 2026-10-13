@@ -17,6 +17,9 @@ type ProviderScopeOwner struct {
 	Reference string `json:"reference"`
 	Subject   string `json:"subject"`
 	Revision  string `json:"revision"`
+	// Destruction of the scope owner itself (for example installation state)
+	// needs separate data consent even when no provider leaf exists.
+	Destructive bool `json:"destructive,omitempty"`
 }
 
 // ProviderImpactScope composes the SAME per-Target impact plans. It performs no
@@ -35,7 +38,7 @@ type ProviderImpactScope struct {
 }
 
 func ComposeProviderImpactScope(owner ProviderScopeOwner, plans []ProviderImpactPlan, inventoryComplete bool) (ProviderImpactScope, error) {
-	s := ProviderImpactScope{Version: ProviderImpactScopeVersion, Owner: owner, Complete: inventoryComplete, ConfirmationsRequired: 1, Targets: append([]ProviderImpactPlan{}, plans...)}
+	s := ProviderImpactScope{Version: ProviderImpactScopeVersion, Owner: owner, Complete: inventoryComplete, Destructive: owner.Destructive, ConfirmationsRequired: 1, Targets: append([]ProviderImpactPlan{}, plans...)}
 	if owner.Owner == "" || owner.Reference == "" || owner.Subject == "" || owner.Revision == "" {
 		return s, &ProviderChangeError{Code: "invalid-impact-scope-owner"}
 	}

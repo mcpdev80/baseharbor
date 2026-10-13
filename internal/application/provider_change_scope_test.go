@@ -153,3 +153,31 @@ func TestImpactScopeConsentTracksConsequencesButNotCountdownSamples(t *testing.T
 		t.Fatal("two acknowledgements silently granted material deletion")
 	}
 }
+
+func TestScopeOwnerDestructionRequiresSeparateConsentWithoutLeaves(t *testing.T) {
+	owner, _ := scopeFixture(t)
+	ordinary, err := ComposeProviderImpactScope(owner, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.Destructive = true
+	destructive, err := ComposeProviderImpactScope(owner, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ordinary.PlanID == destructive.PlanID || !destructive.Destructive || destructive.ConfirmationsRequired != 2 {
+		t.Fatal("owner deletion was omitted from scope authority")
+	}
+	consent := ProviderChangeConsent{PlanID: destructive.PlanID, First: true, Second: true}
+	if err := ValidateProviderImpactScopeConsent(destructive, consent); err == nil {
+		t.Fatal("two stages authorized owner data deletion")
+	}
+	consent.DeleteData = true
+	if err := ValidateProviderImpactScopeConsent(destructive, consent); err != nil {
+		t.Fatal(err)
+	}
+	destructive.Owner.Destructive = false
+	if err := ValidateProviderImpactScopeConsent(destructive, consent); err == nil {
+		t.Fatal("changed owner destruction accepted old consent")
+	}
+}

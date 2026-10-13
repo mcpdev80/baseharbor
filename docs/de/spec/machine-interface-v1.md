@@ -97,6 +97,25 @@ URLs mit eingebetteten Zugangsdaten DÜRFEN NICHT als normale Maschinen-Ausgabe 
 
 Die typisierte Registry unter `internal/machine` ist die maßgebliche Definition von Maschinenoperationen und ihren Sicherheitsklassen.
 
+## Zustimmung zur Core- und Installationszerstörung
+
+`control-plane.destroy` und `installation.destroy` akzeptieren
+`provider_change_consent` zusätzlich zum üblichen `approval`. Die Ausführung
+erfordert beide Stufen für den aktuellen gemeinsamen Scope und unabhängig davon
+`delete_data=true`. `--yes` oder `approval=true` allein autorisieren keine
+Zerstörung. CLI-Vorschau und typisierte Ablehnung zeigen den aktuellen konkreten
+Scope; JSON-Berichte enthalten `provider_change_plan`. Geänderte Konfigurationsbytes,
+Verbraucherregistrierungen, geschützte Core-Owner-Bytes, Target-Zugehörigkeit oder
+native Ressourceninventare machen frühere Zustimmung vor Beginn des Abbaus
+ungültig. Ungebundene App-Provider und geschützte Management-Verbraucher benötigen
+eine eigene Autorisierung.
+
+Diese Vorbereitung implementiert noch keine bewusst gewählte Core-Zerstörung bei
+aktiven Verbrauchern oder vollständige Providerübergaben. Die aktive-Verbraucher-
+Verweigerung, universelle Ausführung der Folgen, Wiederaufnahme und native destruktive
+Abnahme bleiben notwendige v0.4.25-Integrationsarbeit. Unbekannte Folgen bleiben
+teilweise verifiziert.
+
 ## Application-Stop über HTTP
 
 Die Core-Discovery enthält jetzt die vorhandene Operation `app.stop`. Der

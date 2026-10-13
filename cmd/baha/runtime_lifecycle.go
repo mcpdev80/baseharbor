@@ -109,9 +109,32 @@ func destroyControlPlane(parent context.Context, confirmed bool, out io.Writer) 
 	if preserved.Status != "" {
 		fmt.Fprintf(out, "  PRESERVED %s %s\n", preserved.Resource, preserved.Detail)
 	}
-	if !confirmed {
-		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently remove the selected BaseHarbor target control plane.")
-		return nil
+	impact, err := buildRuntimeDestroyImpact(parent, []targetDestroyInventory{plan}, recoveryPreserved, false)
+	if err != nil {
+		return err
+	}
+	proceed, err := authorizeRuntimeDestroyImpact(parent, impact, confirmed, out)
+	if err != nil || !proceed {
+		return err
+	}
+	currentInventory, err := collectTargetDestroyInventory(parent, target, true)
+	if err != nil {
+		return err
+	}
+	currentRecovery, err := preservedTargetRecovery(parent, target)
+	if err != nil {
+		return err
+	}
+	currentPreserved := []fullDestroyResult{}
+	if currentRecovery.Status != "" {
+		currentPreserved = append(currentPreserved, currentRecovery)
+	}
+	currentImpact, err := buildRuntimeDestroyImpact(parent, []targetDestroyInventory{currentInventory}, currentPreserved, false)
+	if err != nil {
+		return err
+	}
+	if currentImpact.Scope.PlanID != impact.Scope.PlanID {
+		return runtimeDestroyImpactError(currentImpact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 
 	ctx, cancel := context.WithTimeout(parent, time.Minute)

@@ -97,6 +97,23 @@ Credential-bearing URLs MUST NOT be returned as normal machine output.
 
 The typed machine operation registry in `internal/machine` is the authoritative operation/safety definition.
 
+## Core and installation destruction consent
+
+`control-plane.destroy` and `installation.destroy` accept
+`provider_change_consent` in addition to ordinary `approval`. Execution requires
+both stages for the current aggregate scope and independent `delete_data=true`.
+`--yes` or `approval=true` alone cannot authorize destruction. The CLI preview
+and typed denial expose the current concrete scope; JSON reports include
+`provider_change_plan`. Changed configuration bytes, consumer registrations,
+protected Core owner bytes, Target membership or native resource inventory
+invalidate prior consent before cleanup starts. Retained unbound application
+providers and protected management consumers require their own authorization.
+
+This preparation does not yet implement deliberate selected-Core destruction
+with active consumers or complete provider handoffs. Active-consumer refusal,
+universal consequence execution, retry and native destructive acceptance remain
+required v0.4.25 integration work. Unknown consequences remain partial.
+
 ## Application stop through HTTP
 
 Core discovery now includes the existing `app.stop` operation. Its HTTP adapter

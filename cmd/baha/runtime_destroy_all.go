@@ -146,19 +146,39 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	for _, item := range preserved {
 		fmt.Fprintf(out, "  PRESERVED %s %s\n", item.Resource, item.Detail)
 	}
-	if !confirmed {
-		if noInput(parent) || !readerIsTerminal(runtimeInput) {
-			fmt.Fprintln(out, "No changes were made. Re-run with --yes to perform the full cleanup.")
-			return nil
-		}
-		ok, err := promptGuidedConfirmation(runtimeInput, out, "Continue?", false)
+	impact, err := buildRuntimeDestroyImpact(parent, plans, preserved, true)
+	if err != nil {
+		return err
+	}
+	proceed, err := authorizeRuntimeDestroyImpact(parent, impact, confirmed, out)
+	if err != nil || !proceed {
+		return err
+	}
+	currentTargets, currentDiscovery := discoverFullDestroyTargets()
+	currentDeployments, currentDeploymentResults := discoverFullDestroyDeployments()
+	if countFullDestroyBlockers(currentDiscovery)+countFullDestroyBlockers(currentDeploymentResults) > 0 {
+		return invalidProviderConsumerInventory(errors.New("installation discovery changed or is incomplete"))
+	}
+	currentPlans, err := collectFullDestroyInventory(parent, currentTargets)
+	if err != nil {
+		return err
+	}
+	currentPreserved := []fullDestroyResult{}
+	for _, target := range currentTargets {
+		item, err := preservedTargetRecovery(parent, target)
 		if err != nil {
 			return err
 		}
-		if !ok {
-			fmt.Fprintln(out, "Full destroy cancelled; no state was changed.")
-			return nil
+		if item.Status != "" {
+			currentPreserved = append(currentPreserved, item)
 		}
+	}
+	currentImpact, err := buildRuntimeDestroyImpact(parent, currentPlans, currentPreserved, true)
+	if err != nil {
+		return err
+	}
+	if currentImpact.Scope.PlanID != impact.Scope.PlanID || runtimeMutationRevision(currentDeployments) != runtimeMutationRevision(deployments) {
+		return runtimeDestroyImpactError(currentImpact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
 
 	results := append([]fullDestroyResult{}, preserved...)
