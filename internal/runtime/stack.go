@@ -32,11 +32,12 @@ var composeYAML []byte
 var composeSingleYAML []byte
 
 type Files struct {
-	HA              bool
-	Compose         string
-	Env             string
-	Project         string
-	ResourceProject string
+	DefaultNetworkExternal bool `json:"default_network_external,omitempty"`
+	HA                     bool
+	Compose                string
+	Env                    string
+	Project                string
+	ResourceProject        string
 }
 
 type Ports struct {
@@ -191,7 +192,7 @@ func EnsureServiceAccess(ctx context.Context, issuer serviceaccess.Issuer, files
 	if resourceProject == "" {
 		resourceProject = sharedResourceProjectNameForOperatorProject(files.Project)
 	}
-	rendered := renderComposeForProfile(resourceProject, files.HA)
+	rendered := renderControlPlaneForFiles(Files{ResourceProject: resourceProject, HA: files.HA, DefaultNetworkExternal: files.DefaultNetworkExternal})
 	rendered, err = renderSecureControlPlanePostgres(rendered)
 	if err != nil {
 		return err
@@ -412,6 +413,10 @@ func ExistingFilesForProject(stateDir, project string) (Files, error) {
 		}
 	}
 	files.HA, err = readControlPlaneProfile(stateDir)
+	if err != nil {
+		return Files{}, err
+	}
+	files.DefaultNetworkExternal, err = readCoreDefaultNetworkBinding(files.Env)
 	if err != nil {
 		return Files{}, err
 	}

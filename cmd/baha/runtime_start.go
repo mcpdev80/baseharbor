@@ -104,6 +104,14 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err != nil {
 		return fmt.Errorf("runtime is not initialized: %w", err)
 	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	files, err = prepareCoreDefaultNetworkBinding(ctx, target, files)
+	if err != nil {
+		return err
+	}
 	if strings.TrimSpace(recoveryFile) == "" {
 		checks := health.RuntimeChecksForFiles(files)
 		if len(checks) > 0 {

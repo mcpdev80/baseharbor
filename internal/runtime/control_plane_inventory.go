@@ -42,7 +42,7 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	if err != nil {
 		return inventory, err
 	}
-	bootstrap := renderComposeForProfile(files.ResourceProject, files.HA)
+	bootstrap := renderControlPlaneForFiles(files)
 	secured, err := renderSecureControlPlanePostgres(bootstrap)
 	if err != nil {
 		return inventory, err

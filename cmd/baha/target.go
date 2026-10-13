@@ -594,7 +594,17 @@ func ensureTargetRuntimeFiles(ctx context.Context, ports bhruntime.Ports, ha boo
 	if err := ensureTargetDockerBinding(ctx, target); err != nil {
 		return target, bhruntime.Files{}, err
 	}
+	// Verify any pre-existing native network before creating this Core owner.
+	// Generating a matching Compose file cannot manufacture prior authority.
+	planned := bhruntime.Files{Project: targetRuntimeProjectName(target), ResourceProject: bhruntime.SharedResourceProjectName(target.Name), HA: ha}
+	if _, err := inspectCoreDefaultNetworkBinding(ctx, target, planned); err != nil {
+		return target, bhruntime.Files{}, err
+	}
 	files, err := bhruntime.EnsureFilesForProjectAndResources(root, targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name), ports, ha)
+	if err != nil {
+		return target, bhruntime.Files{}, err
+	}
+	files, err = prepareCoreDefaultNetworkBinding(ctx, target, files)
 	if err != nil {
 		return target, bhruntime.Files{}, err
 	}
