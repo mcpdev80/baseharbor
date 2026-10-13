@@ -621,6 +621,7 @@ func ManagedWorkloadEnvironment(m Manifest, files RuntimeFiles) (map[string]stri
 }
 
 func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[string]string, error) {
+	values = nativeRuntimeBindingValues(m, values)
 	env := map[string]string{}
 	postgres := SQLInstanceNames(m)
 	preferredPostgres := preferredServiceInstance(postgres)

@@ -60,6 +60,12 @@ func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return err
 	}
+	current := resolved
+	current.Manifest = selection.Manifest
+	selection.Manifest, err = resolveAppliedBackendSelection(current)
+	if err != nil {
+		return err
+	}
 	if selection.ManifestPath != resolved.ManifestPath || !reflect.DeepEqual(selection.Manifest, resolved.Manifest) {
 		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
 	}

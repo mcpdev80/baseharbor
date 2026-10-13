@@ -92,8 +92,19 @@ func qualifyBackendPlacementRoundTrip(t *testing.T, ctx context.Context, provide
 				qualifySelectedBackendData(t, ctx, provider, current, native, service, 2, &destinationCredentials)
 			}
 		}
-		// Repeat the already verified placement, without reseeding either store.
+		// The applied selection survives removal of a one-shot policy override.
+		t.Setenv(application.ProviderScopeEnv(kind), "")
+		persisted, err := resolveApplication(ctx, application.Store{}, nil, "status")
+		if err != nil {
+			t.Fatal(err)
+		}
+		placement, err := application.ResolveProviderPlacement(persisted.Manifest, kind)
+		if err != nil || string(placement.Scope) != scope {
+			t.Fatal("unsetting a one-shot override replaced the applied selection")
+		}
+		// Repeat the verified placement without its original override or reseed.
 		applySelectiveIdentityIntent(t, ctx)
-		t.Logf("Backend placement=%s phase=%d: actual authenticated destination verified; original and destination volumes/credentials retained; no automatic data migration; repeated apply passed.", scope, phase)
+		t.Logf("Backend placement=%s phase=%d: actual authenticated destination verified; original and destination volumes/credentials retained; no automatic data migration; applied selection survives unset override and repeated apply passed.", scope, phase)
+		t.Setenv(application.ProviderScopeEnv(kind), scope)
 	}
 }

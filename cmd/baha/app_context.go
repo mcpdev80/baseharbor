@@ -70,7 +70,12 @@ func resolveApplication(ctx context.Context, store application.Store, args []str
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
-func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolvedApplication, error) {
+func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
+	defer func() {
+		if err == nil {
+			resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+		}
+	}()
 	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
 	if err != nil {
@@ -128,7 +133,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		)
 	}
 
-	resolved, err := resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command)
+	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command)
 	if err != nil {
 		return resolvedApplication{}, err
 	}

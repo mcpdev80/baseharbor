@@ -47,6 +47,7 @@ func TestBackendBindingReplacementPlanRetainsOriginalOwnerAndDescribesDataLoss(t
 			}
 			old := actual.Bindings[0].ProviderInstanceID
 			t.Setenv(application.ProviderScopeEnv(kind), "application")
+			r = captureBackendSelectionForTest(t, r)
 			module := application.SharedBackendRuntimeDependency(r.Target.Name, kind)
 			facts := map[string]application.ProviderFact{
 				old:       {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{module.ID}},
@@ -105,6 +106,7 @@ func TestBackendBindingReplacementPlanRetainsOriginalOwnerAndDescribesDataLoss(t
 func TestBackendPlacementOwnerPinsOriginalAcrossPolicyChangeAndRetry(t *testing.T) {
 	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	r = captureBackendSelectionForTest(t, r)
 	for attempt := 0; attempt < 2; attempt++ {
 		if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying"); err != nil {
 			t.Fatal(err)
@@ -159,6 +161,7 @@ func TestInterruptedBackendReplacementProtectsBothRealizationsFromSiblingApply(t
 	}
 	old := actual.Bindings[0].ProviderInstanceID
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	r = captureBackendSelectionForTest(t, r)
 	if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying"); err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +216,7 @@ func TestNamedBackendSplitDoesNotInventSingleReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
+	r = captureBackendSelectionForTest(t, r)
 	snapshot, preferences, err := applicationLifecycleSnapshot(r, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -230,4 +234,64 @@ func TestNamedBackendSplitDoesNotInventSingleReplacement(t *testing.T) {
 			t.Fatal("one named destination falsely replaced every source namespace")
 		}
 	}
+}
+
+func TestAppliedBackendSelectionSurvivesUnsetPolicyAndCapabilityDisable(t *testing.T) {
+	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := backendBindingFixture(t, kind)
+			t.Setenv(application.ProviderScopeEnv(kind), "application")
+			r = captureBackendSelectionForTest(t, r)
+			if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordAppliedDeployment(context.Background(), r, application.RuntimeFiles{}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(application.ProviderScopeEnv(kind), "")
+			selected, err := resolveAppliedBackendSelection(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			placement, err := application.ResolveProviderPlacement(selected, kind)
+			if err != nil || placement.Scope != capability.ScopeApplication {
+				t.Fatal("default silently replaced previously applied provider", err)
+			}
+			inactive := r
+			inactive.Manifest.Services.SQL, inactive.Manifest.Services.Cache = false, false
+			if err := recordAppliedDeployment(context.Background(), inactive, application.RuntimeFiles{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, inactive.Manifest); err != nil {
+				t.Fatal(err)
+			}
+			selected, err = resolveAppliedBackendSelection(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			placement, err = application.ResolveProviderPlacement(selected, kind)
+			if err != nil || placement.Scope != capability.ScopeApplication {
+				t.Fatal("re-enabling capability lost its retained provider selection", err)
+			}
+			t.Setenv(application.ProviderScopeEnv(kind), "shared")
+			selected, err = resolveAppliedBackendSelection(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			placement, err = application.ResolveProviderPlacement(selected, kind)
+			if err != nil || placement.Scope != capability.ScopeShared {
+				t.Fatal("persisted selection permanently vetoed an explicit replacement", err)
+			}
+		})
+	}
+}
+
+func captureBackendSelectionForTest(t *testing.T, r resolvedApplication) resolvedApplication {
+	t.Helper()
+	var err error
+	r.Manifest, err = resolveAppliedBackendSelection(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

@@ -132,6 +132,16 @@ Dieser native Platzierungswechsel implementiert keine Migration von
 Datenbankinhalten, OpenBao-/Identity-Materialübergabe oder nicht unterstützte
 Adapter für externe Provider.
 
+Die automatische Auswahl behält die gewählte Deployment-Platzierung nach dem
+Entfernen eines einmaligen Operator-Overrides, auch beim Deaktivieren und erneuten
+Aktivieren einer Capability. Explizite Operator-Policy fordert einen neuen Wechsel
+an; die Ausführung hält diese Auswahl fest und prüft sie gegen den bestätigten
+Plan. Die native PostgreSQL-Prüfung verwendet die erhaltene Container-Rolle und
+Datenbank. Natives Valkey projiziert seinen Default-Benutzer mit dem erhaltenen
+Passwort; die geschützte Shared-ACL-Identität bleibt für den Rückwechsel erhalten.
+Dieser Benutzerwechsel ist eine explizite Planfolge, kein Zurücksetzen der
+Zugangsdaten.
+
 ## Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegiert jeden

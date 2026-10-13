@@ -42,6 +42,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	if err != nil {
 		return RuntimeContract{}, err
 	}
+	values = nativeRuntimeBindingValues(m, values)
 
 	bindingsDir := filepath.Join(files.Dir, "bindings")
 	bindingsAbs, err := filepath.Abs(bindingsDir)

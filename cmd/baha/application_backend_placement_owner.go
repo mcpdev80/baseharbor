@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -33,6 +35,20 @@ func recordBackendPlacementOwner(record *deployment.DeploymentRecord, resolved r
 	if err != nil {
 		return err
 	}
+	if retained := record.Applied.GeneratedState["backend_placements"]; retained != "" {
+		var prior map[capability.ProviderKind]capability.ProviderPlacement
+		if json.Unmarshal([]byte(retained), &prior) != nil || prior == nil {
+			return invalidProviderConsumerInventory(fmt.Errorf("invalid retained backend selection"))
+		}
+		if _, err := application.WithBackendPlacementProjection(resolved.Manifest, prior); err != nil {
+			return invalidProviderConsumerInventory(err)
+		}
+		for kind, placement := range prior {
+			if _, selected := desired[kind]; !selected {
+				desired[kind] = placement // Disabled capability retains its selection.
+			}
+		}
+	}
 	encoded, err := json.Marshal(desired)
 	if err != nil {
 		return err
@@ -58,6 +74,49 @@ func recordBackendPlacementOwner(record *deployment.DeploymentRecord, resolved r
 	}
 	record.Applied.GeneratedState["backend_placements"] = string(encoded)
 	return nil
+}
+
+// Automatic/default selection reuses the deployment's chosen realization,
+// including interruption or a disabled capability. Explicit operator policy is
+// the existing replacement mechanism; no additional portable intent field.
+func resolveAppliedBackendSelection(resolved resolvedApplication) (application.Manifest, error) {
+	m := resolved.Manifest
+	if resolved.TargetStateRoot == "" || (!m.Services.SQL && !m.Services.Cache && !m.Services.KeyValue) {
+		return m, nil
+	}
+	encoded := ""
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if err == nil {
+		encoded = record.Applied.GeneratedState["backend_placements"]
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return application.Manifest{}, err
+	}
+	applied, err := retainedBackendPlacementProjection(resolved, m, encoded)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	placements := map[capability.ProviderKind]capability.ProviderPlacement{}
+	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		if (kind == capability.ProviderPostgreSQL && !m.Services.SQL) || (kind == capability.ProviderValkey && !m.Services.Cache && !m.Services.KeyValue) {
+			continue
+		}
+		explicit, err := application.HasExplicitProviderPlacement(m, kind)
+		if err != nil {
+			return application.Manifest{}, err
+		}
+		placement, err := application.ResolveProviderPlacement(applied, kind)
+		if explicit {
+			placement, err = application.ResolveConfiguredProviderPlacement(m, kind)
+		}
+		if err != nil {
+			return application.Manifest{}, err
+		}
+		placements[kind] = placement
+	}
+	if len(placements) == 0 {
+		return m, nil
+	}
+	return application.WithBackendPlacementProjection(m, placements)
 }
 
 func retainedBackendPlacementProjection(resolved resolvedApplication, m application.Manifest, encoded string) (application.Manifest, error) {

@@ -29,6 +29,18 @@ func ProviderExternalReferenceEnv(provider capability.ProviderKind) string {
 	return "BASEHARBOR_PROVIDER_" + providerPlacementEnvToken(provider) + "_EXTERNAL_REFERENCE"
 }
 
+// Explicit operator policy can request replacement. Defaults alone never
+// override a previously applied deployment selection.
+func HasExplicitProviderPlacement(m Manifest, provider capability.ProviderKind) (bool, error) {
+	for _, name := range []string{ProviderScopeEnv(provider), ProviderSharingBoundaryEnv(provider), ProviderExternalReferenceEnv(provider)} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true, nil
+		}
+	}
+	_, selected, err := resolveOrganizationProviderPlacement(m, provider)
+	return selected, err
+}
+
 func DefaultProviderPlacement(provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	switch provider {
 	case capability.ProviderPostgreSQL, capability.ProviderValkey:
@@ -85,6 +97,12 @@ func ResolveProviderPlacement(m Manifest, provider capability.ProviderKind) (cap
 	if placement, pinned := m.backendPlacements[provider]; pinned {
 		return placement, nil
 	}
+	return ResolveConfiguredProviderPlacement(m, provider)
+}
+
+// Read current operator policy for a new selection/revalidation. Runtime
+// execution uses ResolveProviderPlacement's captured owner/intent projection.
+func ResolveConfiguredProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	placement, err := DefaultProviderPlacement(provider)
 	if err != nil {
 		return capability.ProviderPlacement{}, err

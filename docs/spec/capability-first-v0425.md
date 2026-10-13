@@ -122,6 +122,15 @@ with all destination effects rather than a fabricated single replacement.
 This native placement path does not implement database content migration,
 OpenBao/Identity material handoff or unsupported external provider adapters.
 
+Automatic selection retains the deployment's selected placement after a one-shot
+operator override is removed, including capability disable/re-add. Explicit
+operator policy requests a new replacement; execution captures that selection
+and revalidates it against the acknowledged plan. Native PostgreSQL verification
+uses the retained container role and database. Native Valkey projects its default
+principal with the retained password; the protected shared ACL identity remains
+available for a return to shared placement. This principal change is an explicit
+plan consequence, not a credential reset.
+
 ## Target consumer union and add/remove/re-add
 
 `ResolveProviderPlan(snapshot, consumers, inventoryComplete)` delegates every
