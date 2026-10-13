@@ -55,8 +55,10 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 		return inventory, errors.New("native control-plane definition differs from its canonical owner shape")
 	}
 	var model struct {
-		Services map[string]any `yaml:"services"`
-		Volumes  map[string]struct {
+		Services map[string]struct {
+			Profiles []string `yaml:"profiles"`
+		} `yaml:"services"`
+		Volumes map[string]struct {
 			Name string `yaml:"name"`
 		} `yaml:"volumes"`
 		Networks map[string]struct {
@@ -67,7 +69,13 @@ func ExistingControlPlaneRuntimeInventory(stateDir, project string) (ControlPlan
 	if err := yaml.Unmarshal(actual, &model); err != nil {
 		return inventory, err
 	}
-	for service := range model.Services {
+	for service, definition := range model.Services {
+		// Profile-only recovery helpers remain in the owned resource inventory,
+		// but are not continuously required processes of the normal module.
+		// The exact canonical renderer check above excludes unknown sidecars.
+		if len(definition.Profiles) > 0 {
+			continue
+		}
 		if strings.HasPrefix(service, "postgres") {
 			inventory.SQLServices = append(inventory.SQLServices, service)
 		} else if strings.HasPrefix(service, "openbao") {

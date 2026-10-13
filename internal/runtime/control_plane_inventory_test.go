@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 )
@@ -22,6 +23,26 @@ func TestControlPlaneModuleInventoryIsCanonicalReadOnlyAndSeparatesSQL(t *testin
 		inventory, err := ExistingControlPlaneRuntimeInventory(root, files.Project)
 		if err != nil || len(inventory.SQLServices) == 0 || len(inventory.SecretsServices) == 0 {
 			t.Fatalf("canonical module inventory: %+v %v", inventory, err)
+		}
+		if slices.Contains(inventory.SQLServices, "postgres-etcd-recovery") {
+			t.Fatal("profile-only recovery helper is required for normal SQL availability")
+		}
+		for _, member := range files.PostgresMembers() {
+			if !slices.Contains(inventory.SQLServices, member) {
+				t.Fatalf("required SQL member omitted: %s", member)
+			}
+		}
+		if ha {
+			for _, service := range []string{"postgres", "postgres-etcd-1", "postgres-etcd-2", "postgres-etcd-3"} {
+				if !slices.Contains(inventory.SQLServices, service) {
+					t.Fatalf("required SQL router/coordinator omitted: %s", service)
+				}
+			}
+			if !slices.ContainsFunc(inventory.Resources, func(resource ProjectResource) bool {
+				return resource.Kind == "container" && resource.Name == files.Project+"-postgres-etcd-recovery-1"
+			}) {
+				t.Fatal("recovery helper lost from complete owned resources")
+			}
 		}
 		after, err := os.ReadFile(files.Env)
 		if err != nil || string(after) != string(before) {
