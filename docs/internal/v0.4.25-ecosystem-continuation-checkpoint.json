@@ -4,8 +4,8 @@
   "recorded_date": "2026-10-13",
   "readiness": "blocked",
   "core": {
-    "product_source": "c3592ede8a9beffd16ff1a243132209e39eaa81f",
-    "product_tree": "5cbe5421eae147c0178cfdf8ad1a9fdf086a3407",
+    "product_source": "cd85758aedc4994c62886bdd533c4ef57e7e9848",
+    "product_tree": "f6952d948c3e821c6cebc3148c707c5dbca363fb",
     "evidence_head": "9e976a06f0ccaf15f0b0d9d65dff19cb8b9bcf12",
     "full_reset": {
       "run_id": 38452163506,
@@ -14,7 +14,131 @@
       "result": "success",
       "receipt": "docs/internal/v0.4.25-application-full-reset-runtime-evidence.json",
       "boundary": "Selected native SQL reset only; does not establish full ecosystem or universal provider acceptance."
-    }
+    },
+    "repository_up": {
+      "run_id": 38463699095,
+      "source": "f3f1bf52dfc4096c349118b3474eb0c473c6a9ce",
+      "tree": "49ff946273712cc2747b7f2e8a13286ef74df233",
+      "jobs": [
+        {
+          "id": 115525095540,
+          "name": "Repository up source qualification",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 115525095619,
+          "name": "Core-less application \u00b7 docker",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 115525095836,
+          "name": "Core-less application \u00b7 podman",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11848625455,
+          "name": "coreless-podman-38463699095-1",
+          "digest": "sha256:6af8dcffe2f64151abc487cfe76e5435d868943bf5c2a03e48b82d6a376b981c",
+          "expired": false
+        },
+        {
+          "id": 11847392384,
+          "name": "coreless-docker-38463699095-1",
+          "digest": "sha256:2dff23cf4faf2e32edb87f36747315fa341a8c484158e2b87861f5e9a3a22715",
+          "expired": false
+        }
+      ],
+      "boundary": "Only repository up without management Core and repeat/resume on native Docker/Podman; skipped gates are not qualified. Latest network fix has no native qualification."
+    },
+    "latest_local_qualification": {
+      "source": {
+        "commit": "f3f1bf52dfc4096c349118b3474eb0c473c6a9ce",
+        "tree": "f6952d948c3e821c6cebc3148c707c5dbca363fb",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 62.339,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/runtime"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.071,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.805,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.01,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 47.124,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 62.09,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.569,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.708,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.909,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false,
+      "published_equivalent": "cd85758aedc4994c62886bdd533c4ef57e7e9848"
+    },
+    "latest_change": "Verified retained shared backend network reference for separately requested management Core; exact owner metadata and native authority required, no relabel/data adoption. Canonical pending-write recovery and target lifecycle locking; EN/DE providers updated.",
+    "native_runtime_qualified_for_latest_product": false,
+    "retained_network_missing_boundary": "Missing native network with retained shared owner currently refuses; owner application must converge. Universal alternative/consequence handling is still open."
   },
   "consumers": {
     "console": {
@@ -44,15 +168,17 @@
       "original_tested_tree": "2ce27438f4797848e46e13099edfe9d4d4f1731d",
       "local_equivalent": "aee92a0c7bed953b4d2085432d29ebb3c3c25717",
       "source_checks": "Three consent-negative tests, Python/bash syntax and targeted workflow validation passed; published tree exactly matched the local tree",
-      "current_source": "ef3f8bf02c2f7bb102fafa6df79b913ba155e227",
-      "current_tree": "c07153c831f159d808bc539063b20c9327a4afc5",
+      "current_source": "f4fb550483361a4940fe7b218a6f1d55ad341ea6",
+      "current_tree": "86efd209d65c63febfb03945da1ddf12b7464530",
       "changes": [
         "Fresh isolated positive native fixtures acknowledge only an actual current Core plan once; two stages and separate data consent remain explicit.",
         "Cleanup failure retains owners and fails acceptance instead of deleting protected local owner state.",
         "Old mandatory management setup/role prompts are optional at init; actual role prompt is answered at up.",
         "Recovery topology selects SQL, cache, Secrets, S3 and logs; unrequested Identity/management Core fails the recovery fixture.",
         "Actual native backup/recovery remains unqualified."
-      ]
+      ],
+      "latest_change": "Recovery reconfiguration preserves .baseharbor source identity and retained owner; only authored YAML files replaced. bash -n and git diff --check passed; native recovery not yet rerun.",
+      "core_ref": "c3592ede8a9beffd16ff1a243132209e39eaa81f"
     }
   },
   "failed_attempts": [
@@ -62,13 +188,13 @@
       "jobs": [
         {
           "id": 115504292456,
-          "name": "Demo install and backup recovery · podman",
+          "name": "Demo install and backup recovery \u00b7 podman",
           "status": "completed",
           "conclusion": "failure"
         },
         {
           "id": 115504292766,
-          "name": "Demo install and backup recovery · docker",
+          "name": "Demo install and backup recovery \u00b7 docker",
           "status": "completed",
           "conclusion": "failure"
         }
@@ -94,13 +220,13 @@
       "jobs": [
         {
           "id": 115507167684,
-          "name": "Demo install and backup recovery · podman",
+          "name": "Demo install and backup recovery \u00b7 podman",
           "status": "completed",
           "conclusion": "failure"
         },
         {
           "id": 115507168017,
-          "name": "Demo install and backup recovery · docker",
+          "name": "Demo install and backup recovery \u00b7 docker",
           "status": "completed",
           "conclusion": "failure"
         }
@@ -132,13 +258,13 @@
         },
         {
           "id": 115500259239,
-          "name": "Integration · integration/docker/remote-target",
+          "name": "Integration \u00b7 integration/docker/remote-target",
           "status": "completed",
           "conclusion": "failure"
         },
         {
           "id": 115500259396,
-          "name": "Integration · integration/podman/remote-target",
+          "name": "Integration \u00b7 integration/podman/remote-target",
           "status": "completed",
           "conclusion": "failure"
         }
@@ -157,6 +283,106 @@
           "source": "cf1b7d7b2180e7481633a70e17319d3e5255e680"
         }
       ]
+    },
+    {
+      "repository": "mcpdev80/baseharbor",
+      "run_id": 38460240453,
+      "source": "d4b96f355cc9a871792b3a7519576f333f56bb3b",
+      "jobs": [
+        {
+          "id": 115513220093,
+          "name": "Core-less application \u00b7 podman",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115513220586,
+          "name": "Repository up source qualification",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 115513220625,
+          "name": "Core-less application \u00b7 docker",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "finding": "Initial repository-up dispatch fix did not reach actual input resolver; native jobs still created an unwanted Core. Corrected by f3f1bf52; failures remain failures."
+    },
+    {
+      "repository": "mcpdev80/baseharbor-demo",
+      "run_id": 38459200880,
+      "source": "ef3f8bf02c2f7bb102fafa6df79b913ba155e227",
+      "jobs": [
+        {
+          "id": 115509674147,
+          "name": "Demo install and backup recovery \u00b7 docker",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115509674238,
+          "name": "Demo install and backup recovery \u00b7 podman",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11845317786,
+          "name": "demo-v024-docker-38459200880",
+          "digest": "sha256:6c8624917f78a75116890d30e509b558fd302bc7b5deefe64ce1d2e7e142e06a",
+          "expired": false
+        },
+        {
+          "id": 11844663268,
+          "name": "demo-v024-podman-38459200880",
+          "digest": "sha256:a62d8f46e4620bdc8cc02809853a9a3738790ca9e6e1e23ace474cc1be3af56a",
+          "expired": false
+        }
+      ],
+      "finding": "Guided up succeeded but old Core created management state; recovery fixture then failed with conflicting application IDs after deleting protected identity. Published identity-preservation fix is syntax-checked, native recovery remains unqualified."
+    },
+    {
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "run_id": 38458709558,
+      "source": "1b491d89f64a1708b52a41ed8bad1095bd0d8227",
+      "jobs": [
+        {
+          "id": 115507973257,
+          "name": "resolve",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 115508030733,
+          "name": "Integration \u00b7 integration/podman/remote-target",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115508030918,
+          "name": "Integration \u00b7 integration/docker/remote-target",
+          "status": "completed",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11844599268,
+          "name": "actual-browser-core-read-receipt",
+          "digest": "sha256:a7b088e7e690b2f813cc77d495571efc5fcd5c56f73b1e411209df1c874094e3",
+          "expired": false
+        },
+        {
+          "id": 11844583544,
+          "name": "actual-browser-core-read-receipt",
+          "digest": "sha256:fcf8df0e1da9049338f3f762a8e8d7aebca89a34d55810dc41f243d0db1fee0a",
+          "expired": false
+        }
+      ],
+      "finding": "Both rows fail at independent management Core SQL: actual retained network compose label is shared-backend but Core expects default. Management fixture uses Docker in both rows; remote Podman phase not reached. Latest Core fix joins verified canonical retained network as external without taking ownership, but has no native proof yet."
     }
   ],
   "attempt_findings": [
@@ -176,36 +402,35 @@
       "verdict": "failure"
     }
   ],
-  "in_progress": [
-    {
-      "repository": "mcpdev80/baseharbor-node-connector",
-      "source": "1b491d89f64a1708b52a41ed8bad1095bd0d8227",
-      "run_id": 38458709558,
-      "purpose": "Exact current Console redacted native management-setup diagnosis and joint authenticated qualification",
-      "result": "not yet qualified"
-    },
-    {
-      "repository": "mcpdev80/baseharbor-demo",
-      "source": "ef3f8bf02c2f7bb102fafa6df79b913ba155e227",
-      "run_id": 38459200880,
-      "purpose": "Current role-stage guided fixture and actual native backup/recovery",
-      "result": "not yet qualified"
-    }
-  ],
+  "in_progress": [],
   "tooling": {
-    "state": "local exec server disconnected",
-    "observed_error": "409 Conflict, environment_offline: Environment is not connected",
-    "recovery_attempts": "Repository reads and even pwd from workspace and /tmp did not complete; pending calls eventually reported environment_offline. Authenticated GitHub APIs remain available.",
+    "state": "recovered; repository publication succeeded",
+    "previous_disconnect": "Historical environment_offline was recovered after user follow-up.",
+    "runtime": "Go 1.26.0; no local Docker/Podman available",
     "approval_rejection": false
   },
   "continuation": [
-    "Inspect the completed current raw jobs/logs. Preserve failures, artifact IDs and digests; do not turn missing, skipped, partial or stale outcomes into PASS.",
-    "Repair the concrete independent management SQL-phase failure through the existing authority once current diagnostic evidence identifies its cause; rerun only affected native coverage.",
-    "Complete actual default remote retirement, original TLS data/credentials and frozen-publication reactivation, then explicit owned node disconnect with real certificate revocation.",
-    "Complete Demo recovery on both engines; validate current init/MCP/agent and directly affected lifecycle gates before selecting final Demo source.",
-    "Remaining recovery mutations and universal provider consequences, supported secure handoffs, management/HA consumer projection and known trace-shutdown qualification remain binding open #872 work.",
-    "Reconcile one final immutable Core/Demo/Console/Connector matrix, authenticated origin/artifact receipts and all canonical audit sections 1–8 plus atomic prerequisites.",
-    "Fetch current remote heads in each isolated checkout before further edits. Preserve original workspaces, concurrent commits and expected-head nonforce updates. The local Demo checkout remains the first locally tested tree; later fixture changes were published through GitHub while the environment was offline.",
-    "No full pre-release, merge, tag, release or productive Pages publication is authorized by this checkpoint."
-  ]
+    "Read AGENTS.md, docs/DEVELOPMENT_GUIDELINES.md, docs/internal/pre-release-documentation-audit.md and current #872 contract before edits. Keep sole Draft PR #881 targeting release/v0.4.25; no merge/tag/full pre-release or productive Pages.",
+    "Fetch current heads into isolated checkouts; retain others' concurrent commits and use expected-head nonforce publication. Original checkouts remain untouched.",
+    "Qualify latest canonical external-network reference natively after application-created shared SQL, explicit management Core bootstrap and repeat/recovery; inspect actual ownership, TLS credentials/data, cleanup and pending-write boundaries. No current native PASS for that fix.",
+    "After native Core compatibility is established, update explicit candidate pins to qualified Core/Demo sources and rerun affected Demo installation and actual backup/recovery on Docker and Podman; published identity-preservation fixture fix is currently syntax-qualified only.",
+    "Complete joint authenticated browser/remote lifecycle: default remote retirement, original TLS data/credentials, frozen-publication reactivation, explicit owned disconnect with actual certificate revocation; do not reinterpret earlier failed matrix rows as successes.",
+    "Finish binding remaining #872 universal consequences/secure handoffs, recovery mutations, management/HA consumer projection and trace shutdown qualification.",
+    "Reconcile final immutable Core/Demo/Console/Connector matrix, actual origins and artifact receipts, EN/DE docs, Pages candidate build/navigation, release notes and all audit sections 1\u20138/atomic prerequisite gates. Readiness remains blocked until each required source-qualified check passes."
+  ],
+  "handoff_reason": "User requested all important pending work published before opening a new session; feature development and additional native runs paused.",
+  "pre_release_ready": false,
+  "consumer_pin_boundary": "Consumer preparation pins remain old (Core c3592ede, joint Demo b2b2a91c). Latest Core and Demo fixes are NOT represented by a final qualified immutable ecosystem matrix. Do not treat old consumer green source checks as current joint acceptance.",
+  "workspaces": {
+    "core": "/workspace/scratch/fa5b3f309dfc/baseharbor-session2-destroy",
+    "demo": "/workspace/scratch/fa5b3f309dfc/baseharbor-demo-session2",
+    "console": "/workspace/scratch/fa5b3f309dfc/baseharbor-console-session2",
+    "connector": "/workspace/scratch/fa5b3f309dfc/baseharbor-connector-session2"
+  },
+  "branches": {
+    "core": "work/v0.4.25-contract-minimal-core",
+    "demo": "work/v0.4.25-ecosystem-release",
+    "console": "work/v0.4.25-integrations-docs",
+    "connector": "work/v0.4.25-integrations-docs"
+  }
 }
