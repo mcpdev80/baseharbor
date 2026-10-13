@@ -29,6 +29,7 @@ func observeApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 		}
 		fact := application.ProviderImpactFact{Realization: application.ProviderRealization{InstanceID: instance.ID, Kind: instance.Provider.Kind, Target: resolved.Target.Name, Scope: instance.Scope, Ownership: instance.Ownership, Owner: owner, State: snapshot.Facts[instance.ID].State, Locations: []application.ResourceLocation{}}, Materials: []application.ProviderMaterial{}, Effects: []application.OperationalConsequence{}}
 		fact.Realization.Ancillary = snapshot.Facts[instance.ID].Ancillary
+		observeExistingCoreProviderMaterial(resolved, instance, &fact)
 		if instance.Provider.Kind == capability.ProviderKeycloak && instance.Ownership == capability.OwnershipBaseHarbor && !isRemoteApplication(resolved) {
 			observeIdentityImpact(ctx, resolved, instance, &fact)
 		}
