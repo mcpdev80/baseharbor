@@ -44,6 +44,28 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:
+  up_dispatch_source:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[up-dispatch-source]') }}
+    name: Repository up source qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting, all source tests, vet and actual CLI build
+        run: |
+          test -z "$(gofmt -l cmd/baha/runtime.go cmd/baha/runtime_repository_up.go cmd/baha/runtime_repository_up_test.go cmd/baha/app_coreless_runtime_test.go)"
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/baha-source-qualified" ./cmd/baha
+      - name: Verify affected application CLI races
+        run: go test -race ./cmd/baha
   application_full_reset:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[app-full-reset-runtime]') }}
     name: Application full reset · ${{ matrix.runtime }}

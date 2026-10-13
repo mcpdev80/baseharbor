@@ -72,7 +72,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var missingOut bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &missingOut, &missingOut); err == nil {
+	if err := runWithIO(ctx, []string{"up", "--yes", "--skip-memory-preflight"}, &missingOut, &missingOut); err == nil {
 		t.Fatal("empty repository reported successful deployment")
 	}
 	if _, err := os.Stat(filepath.Join(root, ".baseharbor", "apps")); !errors.Is(err, os.ErrNotExist) {
@@ -108,7 +108,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 			t.Errorf("isolated app cleanup: %v", err)
 		}
 	})
-	for _, command := range [][]string{{"app", "plan", "--json"}, {"app", "apply", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"app", "up", "--skip-memory-preflight"}} {
+	for _, command := range [][]string{{"app", "plan", "--json"}, {"up", "--yes", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}, {"app", "down"}, {"up", "--yes", "--skip-memory-preflight"}} {
 		out.Reset()
 		var operationErr error
 		if command[1] == "down" {
@@ -171,6 +171,7 @@ func TestCorelessFreshWorkloadRuntimeLifecycle(t *testing.T) {
 			t.Logf("stopped preserved; changed managed Compose refused: %v", rejected)
 		}
 	}
+	t.Log("Actual top-level baha up and stopped-workload reapply preserve a fresh zero-Core host and the canonical application identity.")
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil || resolved.Manifest.ApplicationID != m.ApplicationID {
 		t.Fatalf("application identity drifted: %v", err)
