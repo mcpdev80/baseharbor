@@ -638,3 +638,7 @@ Abweichungen oder veraltete Referenzen schlagen ohne Secret-Werte in Fehlern feh
 Dies belegt konsistente Zustellung, kein Benutzerlogin, keine Token-/Refresh-
 Gültigkeit, Revocation oder zukünftige Erneuerung. Tatsächliche Zugriffsprüfungen
 bleiben getrennte Anforderungen.
+
+## Teilautorität beim Installationsabbau
+
+Der Installations-Folgenplan enthält jeden ausgewählten App-Reset-Teilplan. Die gemeinsamen Bestätigungen und die separate Datenentscheidung delegieren nur an genau diese destruktiven App-Deployment-Teilpläne nach erneuter Prüfung. Sie autorisieren keine andere Operation, keinen geänderten Owner, keinen nicht angezeigten oder unbekannten Teilplan. Die gemeinsame Revision verwendet fachliche Teilplan-IDs statt laufender Verbrauchsmessungen. Ein fehlgeschlagener Teilplan erhält das betroffene Target und den geschützten Retry-Owner; untere Fallback- oder Target-Cleanup-Pfade dürfen diese Teilautorität nicht umgehen. Native Ausführungsfehler bleiben Teilfehler und benötigen vor einem Retry einen frisch beobachteten Plan und neue Bestätigungen.

@@ -197,14 +197,14 @@ jobs:
           path: ${{ runner.temp }}/standalone-retirement-evidence
           if-no-files-found: error
   installation_destroy:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[installation-destroy-runtime]') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[installation-destroy-runtime]') || contains(github.event.head_commit.message, '[installation-destroy-podman]')) }}
     name: Installation partial destruction · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[installation-destroy-podman]') && '["podman"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_INSTALLATION_DESTROY_ACCEPTANCE: "1"

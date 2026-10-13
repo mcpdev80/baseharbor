@@ -594,3 +594,7 @@ trust projections with runtime and application environment references. Divergenc
 or stale references are failures without secret values in errors. This proves
 consistent delivery, not user login, token/refresh validity, revocation or future
 renewal. Their actual access checks remain separate requirements.
+
+## Installation destruction child authority
+
+The installation consequence scope contains each selected application reset scope. The aggregate acknowledgements and separate data decision delegate only to those exact destructive application-deployment scopes after revalidation. They cannot authorize another operation, a changed owner, an undisplayed child or an unknown child scope. Aggregate revision uses semantic child scope IDs rather than live footprint samples. A failed child retains its affected Target and protected retry owner; lower fallback or Target cleanup cannot bypass that child authority. Native operation failures remain partial failures requiring a fresh observed plan and acknowledgements before retry.

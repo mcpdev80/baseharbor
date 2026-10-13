@@ -1,0 +1,52 @@
+{
+  "schema": "baseharbor.installation-destruction-runtime-evidence/v1",
+  "release": "0.4.25",
+  "tested_source": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+  "tested_tree": "be3fe6e161ae41987e76cc8f1c606948ee8b824c",
+  "run_id": 38476337295,
+  "run_attempt": 1,
+  "result": "failure",
+  "jobs": [
+    {
+      "id": 115567837034,
+      "runtime": "docker",
+      "result": "success",
+      "test_seconds": 45.4
+    },
+    {
+      "id": 115567836782,
+      "runtime": "podman",
+      "result": "failure",
+      "test_seconds": 62.26,
+      "finding": "Foreign holder kept the selected owned SQL volume in use; Podman cleanup incorrectly succeeded. Native Quadlet volume rm --force can remove foreign consumers. No aggregate Podman PASS."
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11854905372,
+      "name": "installation-destroy-docker-38476337295-1",
+      "digest": "sha256:5616487b55aef0c1c5ebb94075f755626fa3491458d755dbaa4db39eff43f4d3",
+      "expired": false
+    },
+    {
+      "id": 11854541263,
+      "name": "installation-destroy-podman-38476337295-1",
+      "digest": "sha256:0f89dd6b3507e0e159b0fdef247dbaa43237de601ec2f41d689fbe58491a06c4",
+      "expired": false
+    }
+  ],
+  "docker_assertions": [
+    "original seeded SQL data and consumer credentials verified through TLS after each missing-consent denial",
+    "exact aggregate plan contains real child application reset scope",
+    "in-use owned volume returns actual partial failure; foreign holder and protected Target/shared owner remain",
+    "removing only the isolated foreign fixture then freshly acknowledging the current plan permits retry",
+    "selected owned volume, installation configuration and Target owner absent only after verified completion"
+  ],
+  "current_correction": "Native Quadlet named-volume removal no longer uses --force. Updated source/race tests pass; native Podman rerun pending.",
+  "boundaries": [
+    "Single isolated development Target with selected SQL; no multi-application, HA, universal provider handoff or production continuity claim",
+    "Earlier bounded Docker PASS is preserved; final immutable ecosystem qualification remains open",
+    "Demo and authenticated Console/Connector candidate acceptance remain open"
+  ],
+  "pre_release_ready": false
+}

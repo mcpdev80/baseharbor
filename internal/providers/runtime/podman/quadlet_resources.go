@@ -66,7 +66,9 @@ func quadletRemoveRuntimeResources(ctx context.Context, kind string, names []str
 
 func quadletRemoveRuntimeResourceArgs(kind, name string) []string {
 	args := []string{kind, "rm"}
-	if kind == "container" || kind == "volume" {
+	// Podman volume --force also removes containers using that volume, including
+	// consumers outside the selected owner. Preserve them and return in-use errors.
+	if kind == "container" {
 		args = append(args, "-f")
 	}
 	return append(args, name)

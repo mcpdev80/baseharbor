@@ -29,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Native Podman Quadlet volume deletion no longer forces removal of containers using the volume; foreign/shared consumers remain protected and in-use failures retain retry owners.
+- Full installation destruction binds application resets to their displayed current child scopes; failed or stale child cleanup preserves affected Target resources and retry owners instead of bypassing consent through fallback adapters.
 - Application restore binds the validated archive and current protected owner to the existing consequence scope before resetting state. Two current acknowledgements and separate data consent are required in CLI/JSON, MCP and HTTP; lower reset adapters cannot bypass the verified authority.
 - Provider replacements and selected consumer actions verify every node of their actual Target dependency graph before claiming continuation. A running endpoint, missing realization evidence or merely planned restart cannot conceal stopped, unknown, foreign or cyclic prerequisites; deliberate acknowledged loss remains possible.
 
