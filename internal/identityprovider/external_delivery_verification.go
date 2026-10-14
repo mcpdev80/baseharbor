@@ -11,7 +11,7 @@ import (
 )
 
 // Self-consistent projections do not prove they are the prepared delivery.
-func (d *ExternalDriver) verifyPreparedDelivery() error {
+func (d *ExternalDriver) verifyPreparedDelivery(discovery application.IdentityDiscovery) error {
 	dir := filepath.Join(d.files.Bindings, application.IdentityBindingName)
 	expected := map[string][]byte{"provider": []byte(capability.ProviderExternalOIDC), "oidc.issuer": []byte(d.issuer), "oidc.client-id": []byte(d.clientID), "client-secret": []byte(d.secret), "ca.crt": d.material.trust}
 	for name, want := range expected {
@@ -28,5 +28,14 @@ func (d *ExternalDriver) verifyPreparedDelivery() error {
 			return errors.New("external identity delivery differs from prepared client, issuer or trust material")
 		}
 	}
+	return application.VerifyIdentityDiscoveryBinding(d.files, string(capability.ProviderExternalOIDC), d.clientID, discovery, discovery)
+}
+
+func (d *ExternalDriver) retainDiscovery(discovery application.IdentityDiscovery) error {
+	if d.discovery != nil && *d.discovery != discovery {
+		return errors.New("external identity discovery changed after preparation; replan before delivery")
+	}
+	copy := discovery
+	d.discovery = &copy
 	return nil
 }

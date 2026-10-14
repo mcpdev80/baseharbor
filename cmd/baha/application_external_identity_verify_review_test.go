@@ -55,4 +55,3 @@ func TestRegisteredOIDCVerificationRejectsSelectedMaterialChangeAfterDelivery(t 
 		})
 	}
 }
-

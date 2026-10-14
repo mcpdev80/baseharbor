@@ -58,7 +58,7 @@ services:
 - **Connected services** — databases, cache, messaging, storage, secrets, identity and observability.
 - **Protected access** — TLS, scoped credentials and explicit trust boundaries.
 - **Verified lifecycle** — plan, apply, inspect, stop, recover and remove with ownership checks and concrete consequences.
-- **Your infrastructure** — Docker and rootless Podman; optional Console and Node Connector.
+- **Your infrastructure** — Docker and rootless Podman (Quadlet); optional Console and Node Connector.
 - **Standard application interfaces** — database drivers, S3, OIDC and OTLP; no BaseHarbor SDK.
 
 ## A CLI first — agent-ready if you want it

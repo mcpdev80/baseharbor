@@ -30,6 +30,7 @@ type ExternalDriver struct {
 	client       *http.Client
 	material     *externalMaterialSnapshot
 	registration *registeredExternalSource
+	discovery    *application.IdentityDiscovery
 }
 
 func NewExternalDriver(app application.Manifest, files application.RuntimeFiles, issuer string) (*ExternalDriver, error) {
@@ -97,8 +98,11 @@ func (d *ExternalDriver) Preflight(ctx context.Context, resource capability.Reso
 	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
-	_, err := FetchDiscovery(ctx, d.client, d.issuer)
-	return err
+	discovery, err := FetchDiscovery(ctx, d.client, d.issuer)
+	if err != nil {
+		return err
+	}
+	return d.retainDiscovery(discovery)
 }
 
 func (d *ExternalDriver) Provision(context.Context, capability.Resource, capability.Binding) error {
@@ -116,6 +120,9 @@ func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
+	if err := d.retainDiscovery(discovery); err != nil {
+		return err
+	}
 	if err := application.MaterializeIdentityBindingMaterial(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.material.trust); err != nil {
 		return err
 	}
@@ -126,13 +133,17 @@ func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ ca
 	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
-	if _, err := FetchDiscovery(ctx, d.client, d.issuer); err != nil {
+	discovery, err := FetchDiscovery(ctx, d.client, d.issuer)
+	if err != nil {
 		return err
 	}
 	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
-	if err := d.verifyPreparedDelivery(); err != nil {
+	if d.discovery != nil && *d.discovery != discovery {
+		return fmt.Errorf("external identity discovery changed after preparation; replan before verification")
+	}
+	if err := d.verifyPreparedDelivery(discovery); err != nil {
 		return err
 	}
 	return application.VerifyIdentityBinding(d.app, d.files)
