@@ -1,6 +1,6 @@
 [
-  "atomic/docker/identity",
-  "atomic/podman/identity",
-  "atomic/docker/security",
-  "atomic/podman/security"
+  "atomic/docker/backup-restore",
+  "atomic/podman/backup-restore",
+  "integration/docker/coreless-lifecycle",
+  "integration/podman/coreless-lifecycle"
 ]

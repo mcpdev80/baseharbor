@@ -96,6 +96,7 @@ class ContractCheckTests(unittest.TestCase):
                     '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$',
                     '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$',
                     '^TestSelectiveSecretsRuntimeAddRemoveReAdd$',
+                    '^TestManagedRegisteredOTLPNativeConsumerHandoff$',
                     '^TestRenovateVolumeRecoveryRuntimeAcceptance$',
                     '^TestApplicationCapabilityLifecycleExistingCore$'}
         for runtime in ['docker', 'podman']:

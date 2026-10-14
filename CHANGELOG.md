@@ -26,9 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed production OIDC callbacks reconcile only after the actual public HTTPS exposure is realized; reapply/start preserve the verified client and user session.
 - Node disconnect shares a concrete impact plan, independent acknowledgements, current authority revalidation and truthful final/partial results across CLI, MCP and Core HTTP.
 - Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
+- Release builds select the patched Go 1.26.9 toolchain while retaining the Go 1.25 language floor.
 
 ### Fixed
 
+- Backend binding reconciliation preserves independently managed Identity trust, credentials and discovery files, together with the directory mounted by running workloads.
 - Remote provider changes present concrete current consequences and require applicable acknowledgements before technical execution admission; unsupported execution still fails before staging.
 - Restore consent tracks current registered OTLP credentials, trust and client identity even without retained delivery, so changed material invalidates earlier confirmations without exposing secrets in public plans.
 - Native Podman Quadlet volume deletion no longer forces removal of containers using the volume; foreign/shared consumers remain protected and in-use failures retain retry owners.

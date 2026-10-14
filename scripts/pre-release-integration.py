@@ -27,6 +27,7 @@ CHECKS = {
         ['./cmd/baha', '-run', '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestSelectiveSecretsRuntimeAddRemoveReAdd$', '-timeout', '20m'],
+        ['./cmd/baha', '-run', '^TestManagedRegisteredOTLPNativeConsumerHandoff$', '-timeout', '15m'],
         ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/podman/coreless-lifecycle': [
@@ -37,6 +38,7 @@ CHECKS = {
         ['./cmd/baha', '-run', '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$', '-timeout', '20m'],
         ['./cmd/baha', '-run', '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestSelectiveSecretsRuntimeAddRemoveReAdd$', '-timeout', '20m'],
+        ['./cmd/baha', '-run', '^TestManagedRegisteredOTLPNativeConsumerHandoff$', '-timeout', '15m'],
         ['./internal/runtime', '-run', '^TestRenovateVolumeRecoveryRuntimeAcceptance$', '-timeout', '15m'],
         ['./cmd/baha', '-run', '^TestApplicationCapabilityLifecycleExistingCore$', '-timeout', '25m']],
     'integration/static/public-contracts': [
@@ -85,6 +87,7 @@ def configure_runtime_environment(gate):
         os.environ['BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE'] = '1'
         os.environ['BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE'] = '1'
         os.environ['BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE'] = '1'
+        os.environ['BASEHARBOR_OTLP_HANDOFF_ACCEPTANCE'] = '1'
         os.environ['BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE'] = '1'
         return True
     os.environ['BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE'] = '1'

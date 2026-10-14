@@ -2,6 +2,8 @@ module github.com/mcpdev80/baseharbor
 
 go 1.25.0
 
+toolchain go1.26.9
+
 require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
