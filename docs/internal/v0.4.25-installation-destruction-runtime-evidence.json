@@ -42,11 +42,46 @@
     "removing only the isolated foreign fixture then freshly acknowledging the current plan permits retry",
     "selected owned volume, installation configuration and Target owner absent only after verified completion"
   ],
-  "current_correction": "Native Quadlet named-volume removal no longer uses --force. Updated source/race tests pass; native Podman rerun pending.",
+  "current_correction": "Published native Quadlet named-volume removal avoids --force; bounded Podman retry PASS. Original failed matrix result is retained. No final candidate ecosystem qualification.",
   "boundaries": [
     "Single isolated development Target with selected SQL; no multi-application, HA, universal provider handoff or production continuity claim",
     "Earlier bounded Docker PASS is preserved; final immutable ecosystem qualification remains open",
     "Demo and authenticated Console/Connector candidate acceptance remain open"
   ],
-  "pre_release_ready": false
+  "pre_release_ready": false,
+  "podman_retry": {
+    "source": "796cb15b68040788d6b4db14762be7bc04f8d6fa",
+    "tree": "beaf512faea2e0b4cb88c0996de1ff2b3bd67fc9",
+    "run_id": 38477307782,
+    "run_attempt": 1,
+    "job_id": 115571061628,
+    "runtime": "podman",
+    "result": "success",
+    "test_seconds": 62.47,
+    "artifacts": [
+      {
+        "id": 11855330648,
+        "name": "installation-destroy-podman-38477307782-1",
+        "digest": "sha256:6a08cbe9ea14ea35743b7e598a421d3406672f869618c7ec54eeaf4049b81e46",
+        "expired": false
+      }
+    ],
+    "assertions": [
+      "in-use selected owned volume returned actual failure",
+      "foreign holder and exact protected Target/shared owner retained",
+      "only isolated foreign holder removed explicitly before retry",
+      "fresh current aggregate plan acknowledgements permitted actual completion",
+      "selected owned native volume, configuration and Target owner absent after verification"
+    ]
+  },
+  "docker_reuse_boundary": {
+    "from": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+    "to": "796cb15b68040788d6b4db14762be7bc04f8d6fa",
+    "verified_go_changes": [
+      "cmd/baha/application_provider_observation_runtime_test.go",
+      "internal/providers/runtime/podman/quadlet_resources.go",
+      "internal/providers/runtime/podman/quadlet_runtime_test.go"
+    ],
+    "meaning": "Docker production Go sources and installation destruction native fixture unchanged; bounded prior Docker PASS retained. This does not constitute final immutable ecosystem approval."
+  }
 }
