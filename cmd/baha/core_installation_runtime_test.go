@@ -272,12 +272,16 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("provider-only cleanup: %v", err)
+		// Exercise default provider-only retirement with no runtime directory,
+		// then dispose of the isolated recovery owner before reusing its source.
+		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
+			t.Errorf("provider-only retirement: %v", err)
+			return
 		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		t.Fatalf("provider-only apply: %v\n%s", err, output.String())
 	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "readiness regression")
@@ -348,12 +352,10 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("fixture cleanup: %v", err)
-		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
 		if runtimeErr == nil {
 			containers, _ := runtime.ListRuntimeContainers(ctx)
@@ -453,9 +455,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("generated fixture cleanup: %v", err)
-		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
 	err = runWithIO(ctx, []string{"up", "--yes"}, &output, &output)
@@ -471,7 +471,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
 		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
 	}
-	if err := runWithIO(ctx, []string{"up", "--yes"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("resume generated application: %v\n%s", err, output.String())
 	}
 	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
@@ -527,4 +527,41 @@ func (b *runtimeAcceptanceOutput) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buffer.Reset()
+}
+
+// Native fixtures review and acknowledge their actual current provider plan;
+// ordinary --yes is never promoted to either independent acknowledgement.
+func coreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if impact := plan.ProviderPlan.Impact; impact != nil {
+		return withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+	}
+	return ctx
+}
+
+func resetCoreBootstrapFixtureApplication(t *testing.T, ctx context.Context) {
+	t.Helper()
+	current, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
+	if err != nil {
+		t.Errorf("fixture reset owner: %v", err)
+		return
+	}
+	plan, err := buildApplicationDestructionPlan(ctx, current, true)
+	if err != nil {
+		t.Errorf("fixture reset plan: %v", err)
+		return
+	}
+	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	var out runtimeAcceptanceOutput
+	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
+		t.Errorf("fixture reset failed; owner/source retained: %v\n%s", err, out.String())
+	}
 }
