@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
 
 // This is the existing application execution boundary, not a new selector or
@@ -35,5 +37,16 @@ func validateApplicationProviderExecution(resolved resolvedApplication, impact *
 	if errors.As(err, &failure) {
 		failure.Details = impact
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if application.HasOTLPTelemetry(resolved.Manifest) && application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && !isRemoteApplication(resolved) {
+		driver := telemetry.NewDriver(nil, resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), nil)
+		resource := capability.Resource{Kind: capability.TelemetryOTLP, Provider: capability.ProviderExternalOTLP}
+		binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: resolved.Manifest.Telemetry.OTLP.Signals}}
+		if err := driver.Preflight(context.Background(), resource, binding); err != nil {
+			return &machine.Error{Code: machine.ErrorInvalidWorkload, CauseCode: "external_provider_material_preflight_failed", Message: "Selected external OTLP material or endpoint cannot be safely delivered.", Next: "Recover the protected deployment owner or explicitly select the destination's authorization and valid HTTPS receiver; current delivery remains unchanged.", Details: impact}
+		}
+	}
+	return nil
 }
