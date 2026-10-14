@@ -81,15 +81,17 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
-	if err := checkRemoteApplicationLifecycle(resolved.Manifest); err != nil {
-		return err
-	}
 	unlock, err := lockApplicationTargetLifecycle(resolved)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	if err := authorizeApplicationProviderChanges(ctx, resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return err
+	}
+	// Technical limits do not suppress the current consequence/consent flow.
+	// Unsupported intent still stops before transport, material or pending writes.
+	if err := checkRemoteApplicationLifecycle(resolved.Manifest); err != nil {
 		return err
 	}
 	transport, scope, err := remoteApplicationTransport(ctx, resolved, targetsession.PoolFromContext(ctx))
