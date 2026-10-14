@@ -320,8 +320,8 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 // intent. The common resolver remains the sole dependency/removal authority.
 func observeApplicationProviderFacts(ctx context.Context, resolved resolvedApplication) map[string]application.ProviderFact {
 	facts := observeIdentityProviderFacts(ctx, resolved)
-	observeSharedBackendProviderFacts(ctx, resolved, facts)
 	observeBrokerProviderFacts(ctx, resolved, facts)
+	observeSharedBackendProviderFacts(ctx, resolved, facts)
 	observeApplicationBrokerFacts(ctx, resolved, facts)
 	owners, err := applicationRuntimeOwners(resolved)
 	if err == nil {

@@ -34,6 +34,11 @@ func observeSharedBackendProviderFacts(ctx context.Context, resolved resolvedApp
 	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
 		resources := canonicalProviderServiceResources(inventory.Files.Project, inventory.Services[kind])
 		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.Files.Project, resources, containers)
+		if kind == capability.ProviderPostgreSQL && inventory.CoreSQL != nil && len(resources) == 0 {
+			// This logical module reuses the already observed physical SQL owner.
+			// It contributes no additional containers to the Target footprint.
+			state = observeReusedCoreSQLState(resolved, inventory.CoreSQL, facts)
+		}
 		zero := int64(0)
 		module := application.SharedBackendRuntimeDependency(resolved.Target.Name, kind)
 		dependencies := []string{}
