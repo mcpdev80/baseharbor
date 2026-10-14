@@ -431,5 +431,122 @@
       "error_type": "Error"
     },
     "boundary": "Browser receipt cleanup success is process cleanup, not proof of failed Core owned cleanup or complete journey."
+  },
+  "docker_current_remainder_success": {
+    "source": {
+      "core": "af5fc9bcc48f4efa962149fac61cfcf77aa4e48d",
+      "demo": "6977221a074c84436a55ea3078e2b2e002e3bda9",
+      "console": "cef4df809eb3f6de0acc5acf3cf658e299f69de0",
+      "connector": "c9f0b441383353647f84ee56b477e11dee2525bf"
+    },
+    "run_id": 38549430253,
+    "run_attempt": 1,
+    "job_id": 115803535185,
+    "runtime": "docker",
+    "result": "success",
+    "manifest_artifact": {
+      "id": 11887081782,
+      "digest": "sha256:463dee7542267a7be593642748dcb8486c9f9e66cdc914587cd88b6f5a6de5c2",
+      "zip_sha256_verified": true,
+      "source_binding_verified": true
+    },
+    "browser_artifact": {
+      "id": 11886264478,
+      "digest": "sha256:8e5eb47374f9b2942106c9a08b2057d1cd4b569842f33814cfb7dfc6d9b8d008",
+      "zip_sha256_verified": true,
+      "source_binding_verified": true
+    },
+    "manifest": {
+      "schema": "baseharbor.private-integration-evidence/v1",
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "consumer_commit": "c9f0b441383353647f84ee56b477e11dee2525bf",
+      "core_commit": "af5fc9bcc48f4efa962149fac61cfcf77aa4e48d",
+      "demo_commit": "6977221a074c84436a55ea3078e2b2e002e3bda9",
+      "console_commit": "cef4df809eb3f6de0acc5acf3cf658e299f69de0",
+      "role": "connector",
+      "gate": "integration/docker/remote-target",
+      "workflow_run_id": "38549430253",
+      "workflow_run_attempt": 1,
+      "job_id": 115803535185,
+      "build_sha256": "4200bb447c74e8ae4bfa9fddb458e0893777d5daf0d79b04b66c0c21bfbfffd5",
+      "result": "success",
+      "cleanup_result": "success",
+      "release_eligible": true,
+      "production_authority": true,
+      "qualifications": {
+        "production-enrollment": true,
+        "ca-overlap-renewal-revocation": true,
+        "outbound-mtls": true,
+        "application-plan-apply-status-doctor-repair-destroy": true,
+        "secret-tls": true,
+        "foreign-preservation": true,
+        "oidc-origin-role": true,
+        "plan-apply-result-events": true,
+        "logs-follow-cancel": true,
+        "terminal-resize-close": true,
+        "core-setup": true,
+        "application-lifecycle": true,
+        "production-rotation": true,
+        "owned-cleanup": true,
+        "retained-remote-reactivation": true,
+        "owned-disconnect": true
+      }
+    },
+    "browser_receipt": {
+      "schema": "baseharbor.private-browser-receipt/v1",
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "commit": "cef4df809eb3f6de0acc5acf3cf658e299f69de0",
+      "core_commit": "af5fc9bcc48f4efa962149fac61cfcf77aa4e48d",
+      "demo_commit": "6977221a074c84436a55ea3078e2b2e002e3bda9",
+      "run_id": "38549430253",
+      "run_attempt": "1",
+      "qualification_scope": "actual-browser-oidc-Core-bootstrap-application-lifecycle-runtime-details-terminal-logs-and-logout",
+      "result": "success",
+      "steps": [
+        "real-keycloak-code-S256-login",
+        "actual-Core-POST-SSE-GET-and-empty-read-model",
+        "actual-Core-rejects-issuer-cookies-without-bearer",
+        "actual-Core-binds-browser-origin-to-one-installation",
+        "actual-Core-viewer-read-allowed-mutation-and-destruction-denied",
+        "actual-Core-native-runtime-list-inspect-metrics-and-selection-reset",
+        "actual-Core-setup-wizard-role-selection-explicit-submission-and-viewer-denial",
+        "no-bearer-in-browser-storage",
+        "logout-with-explicit-preview-choice",
+        "fresh-context-has-no-Core-session",
+        "real-token-expiry-ends-Console-session-and-Core-admission",
+        "actual-Core-rejects-real-issuer-token-with-wrong-audience",
+        "actual-operator-HTTP-production-enrollment-outbound-Connector-application-plan-apply-status-doctor-immutable-repair-destroy-and-owned-cleanup",
+        "actual-operator-HTTP-default-remote-retirement-preserves-publication-owner-original-TLS-data-credentials-and-immutable-reactivation",
+        "actual-operator-HTTP-node-disconnect-two-current-acknowledgements-revokes-certificate-and-preserves-owner",
+        "actual-generated-Next.js-baha-up-ready-HTTP-200-doctor-and-owned-destroy",
+        "actual-browser-plan-bound-provider-confirmations-and-selective-application-READY-without-management-Core",
+        "actual-browser-explicit-management-Core-SQL-Secrets-Identity-READY-and-application-preservation",
+        "actual-browser-Core-application-plan-status-doctor-repair-explicit-destroy-and-foreign-issuer-preservation",
+        "actual-browser-approved-production-credential-CA-rotation-changed-native-CA-and-post-rotation-application-status-doctor",
+        "actual-browser-authoritative-status-ready-doctor-healthy-before-and-after-rotation",
+        "actual-browser-Core-owned-container-logs-read-follow-new-output-cancel-without-replay",
+        "actual-browser-Core-owned-container-PTY-input-output-resize-exit-and-foreign-actor-denial"
+      ],
+      "browser_version": "151.0.7922.34",
+      "keycloak_image": "quay.io/keycloak/keycloak@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc",
+      "core_bootstrap_evidence": true,
+      "application_lifecycle_evidence": true,
+      "terminal_runtime_evidence": true,
+      "logs_runtime_evidence": true,
+      "production_rotation_evidence": true,
+      "release_eligible": false,
+      "cleanup": "success"
+    },
+    "assertions": [
+      "All 16 authenticated production qualifications and 23 sequential real browser steps pass.",
+      "Original remote SQL data/credentials and immutable source survive intentional retirement/reactivation; actual node disconnect revokes certificate and preserves owner.",
+      "Actual generated Next.js init/up/down/status/up/destroy and foreign issuer preservation pass.",
+      "Real multi-child installation destruction requests explicit current remaining-plan consent after successful child progress.",
+      "Independent native Docker inspection finds no selected local Target containers, volumes or networks; local installation data absent before cleanup proof."
+    ],
+    "boundaries": [
+      "This exact af5/Core consumer matrix is distinct from later OIDC/Restore source802 and the earlier Podman93 matrix.",
+      "Producer eligibility is not final complete product/pre-release approval; final source-matched both-engine matrix remains required."
+    ]
   }
 }
