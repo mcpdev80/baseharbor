@@ -3,6 +3,12 @@
 <h2 align="center">One application contract. Replaceable infrastructure.</h2>
 
 <p align="center">
+  <a href="https://github.com/mcpdev80/baseharbor/releases">
+    <img src="https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=date" alt="GitHub Release">
+  </a>
+  <a href="https://mcpdev80.github.io/baseharbor/">
+    <img src="https://img.shields.io/badge/docs-GitHub%20Pages-0068E9" alt="GitHub Pages">
+  </a>
   <a href="https://github.com/mcpdev80/baseharbor-demo">
     <img src="https://img.shields.io/badge/demo-baseharbor--demo-6f42c1" alt="BaseHarbor Demo App">
   </a>
@@ -11,12 +17,6 @@
   </a>
   <a href="https://github.com/mcpdev80/baseharbor-node-connector">
     <img src="https://img.shields.io/badge/node--connector-Remote%20hosts-455a64" alt="BaseHarbor Node Connector">
-  </a>
-  <a href="https://github.com/mcpdev80/baseharbor/releases">
-    <img src="https://img.shields.io/github/v/release/mcpdev80/baseharbor?display_name=tag&sort=date" alt="GitHub Release">
-  </a>
-  <a href="https://mcpdev80.github.io/baseharbor/">
-    <img src="https://img.shields.io/badge/docs-GitHub%20Pages-0068E9" alt="GitHub Pages">
   </a>
   <a href="CONTRIBUTING.md">
     <img src="https://img.shields.io/badge/contributing-welcome-2ea44f" alt="Contributing">
