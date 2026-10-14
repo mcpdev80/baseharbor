@@ -86,7 +86,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 				t.Fatal(err)
 			}
 			parent.Cleanup(func() {
-				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
+				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cleanupCancel()
 				previous, _ := os.Getwd()
 				if err := os.Chdir(appRoot); err != nil {
@@ -94,9 +94,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					return
 				}
 				defer os.Chdir(previous)
-				if err := destroySelectiveApplicationWithConsent(machineNoninteractiveContext(cleanupCtx)); err != nil {
-					parent.Errorf("isolated %s cleanup: %v", kind, err)
-				}
+				resetCoreBootstrapFixtureApplication(parent, machineNoninteractiveContext(cleanupCtx))
 			})
 			if kind == "https" {
 				out.Reset()
@@ -106,7 +104,11 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 			}
 			for _, command := range [][]string{{"app", "apply", "--skip-memory-preflight"}, {"app", "status", "--json"}, {"app", "doctor", "--json"}} {
 				out.Reset()
-				if err := runWithIO(ctx, command, &out, &out); err != nil {
+				commandCtx := ctx
+				if len(command) > 1 && command[1] == "apply" {
+					commandCtx = coreBootstrapFixtureConsent(t, ctx)
+				}
+				if err := runWithIO(commandCtx, command, &out, &out); err != nil {
 					t.Fatalf("%v: %v\n%s", command, err, out.String())
 				}
 			}
@@ -158,7 +160,7 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("capability removal: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
@@ -185,14 +187,14 @@ func TestApplicationCapabilityLifecycleExistingCore(t *testing.T) {
 				// Reattach the retained scope through the existing lifecycle so
 				// explicit app destroy can reclaim this isolated test's resources.
 				// Capability removal itself deliberately does not perform GC.
-				if err := os.WriteFile(sqlFirst.ManifestPath, []byte(sqlFirst.Manifest.YAML()), 0600); err != nil {
+				if err := writeInitializedAuthoredManifest(t, sqlFirst.ManifestPath, sqlFirst.Manifest, 0600); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Chdir(sqlFirst.RepositoryRoot); err != nil {
 					t.Fatal(err)
 				}
 				out.Reset()
-				if err := runWithIO(ctx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
+				if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply", "--skip-memory-preflight"}, &out, &out); err != nil {
 					t.Fatalf("reattach retained test scope: %v\n%s", err, out.String())
 				}
 				if err := os.Chdir(appRoot); err != nil {
