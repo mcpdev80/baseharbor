@@ -77,7 +77,13 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 			t.Fatalf("%s runtime security: %v", service, err)
 		}
 	}
-	defer func() { _ = logs.DestroyProvider(context.Background(), compose, m) }()
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := logs.DestroyProvider(cleanup, compose, m); err != nil {
+			t.Errorf("owned Loki provider cleanup: %v", err)
+		}
+	}()
 	if err := driver.Bind(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
@@ -121,9 +127,16 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := compose.UpProject(ctx, project, composeFile, envFile); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = compose.DestroyProject(context.Background(), project, composeFile, envFile) }()
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := compose.DestroyProject(cleanup, project, composeFile, envFile); err != nil {
+			t.Errorf("owned Loki workload cleanup: %v", err)
+		}
+	}()
 
 	if err := driver.Verify(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
+	assertActualLokiConsumerLine(t, ctx, m, "baseharbor-loki-acceptance")
 }

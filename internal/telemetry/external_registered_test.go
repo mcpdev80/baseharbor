@@ -24,6 +24,7 @@ import (
 func registeredOTLPFixture(t *testing.T, endpoint string, ca, cert, key []byte) (application.Manifest, application.RuntimeFiles, string, string) {
 	t.Helper()
 	m, f := externalAuthFixture(t)
+	f.Bindings = filepath.Join(f.Dir, "bindings#owned?100%")
 	m.ApplicationID = "80ce2925-2ec1-4c43-893c-bb881ee6cbb9"
 	root := t.TempDir()
 	t.Setenv(application.OTLPEndpointEnv, "")

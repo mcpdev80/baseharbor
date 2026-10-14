@@ -62,9 +62,56 @@
         "zip_sha256": "5e473dd638fe6d0a6c9fae340fb5bdc11aff26a80f1253bc5e51fe82519267f1"
       },
       "owned_producer_cleanup": "success in both failed test logs"
+    },
+    {
+      "run": 38553470305,
+      "commit": "500c58f2f35befe2c1672c196c1e99ad64ad7842",
+      "result": "managed capability jobs failed on both engines",
+      "cause": "initial retained owner required current impact consent before mutation; fixture omitted it",
+      "bounded_positive_subtests": "RabbitMQ messaging and MongoDB document database actual authenticated add/remove/re-add pass in the same failed jobs; whole jobs are not green",
+      "evidence_reference": "PR881 comments and retained GitHub jobs/artifacts; current isolated rerun pending"
+    },
+    {
+      "run": 38554306181,
+      "commit": "9865590e21d4f95d16323ad4a224bdde9d18c2e5",
+      "result": "both managed placement jobs failed",
+      "cause": "successful Keycloak initializer exits were incorrectly treated as continuously running embedded SQL containers; source correction5ec"
+    },
+    {
+      "run": 38556997835,
+      "commit": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+      "result": "both managed placement jobs failed",
+      "cause": "return shared fixture recreated retained user and got409; final cleanup aggregate also hashed displayed certificate countdowns",
+      "evidence_reference": "v0.4.25-installation-destruction-runtime-evidence.json retains exact failed ZIP hashes; successful40bfa retry does not erase these attempts"
     }
   ],
-  "managed_identity_handoff": "source implementation and targeted native OAuth/PKCE placement fixture prepared; native acceptance remains pending",
+  "managed_identity_handoff": {
+    "commit": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+    "tree": "0c70bfa9771926f09608f605708b1fe3a4c48eb4",
+    "run": 38559693713,
+    "go": "1.25.0",
+    "test": "TestManagedIdentityNativePlacementHandoff",
+    "result": "both engines success",
+    "verification": [
+      "Actual ZIP archives downloaded and SHA256 checked against artifact metadata",
+      "Archive candidate SHA, Go version, all three phase results and overall PASS inspected",
+      "Actual authorization-code S256 PKCE login, bad verifier rejection, signed JWT and userinfo",
+      "Actual refresh in shared and application placements; former issuer unavailable after retirement",
+      "Return to original shared realm reuses original user, subject and retained OAuth session without reseeding",
+      "Original protected environment and data volume ownership retained",
+      "Approved full fixture cleanup succeeds with no remaining owned containers; no stale-impact-consent"
+    ],
+    "docker": {
+      "job": 115837420698,
+      "artifact": 11890954128,
+      "zip_sha256": "3e99b6305a8d216274ea0b43585585f7c1e628f209adb2888ccb2292d735f16a"
+    },
+    "podman": {
+      "job": 115837420109,
+      "artifact": 11891313583,
+      "zip_sha256": "4ed9212d8f3f4638f4f09ef191478a2f2a123e2b71ba8ce18e86e3a16d296922"
+    }
+  },
   "material_reader": "Common credential/trust reader rejects redirected, unowned, writable or oversized sources; actual HTTPS mTLS and discovery-negative source tests pass. Not native all-provider delivery proof.",
   "coordination": {
     "restore_hook": "appendExternalIdentityChangeEffects with original resolved.Manifest; Session 2 owns restore production integration",
@@ -77,5 +124,51 @@
     "No automatic user/account/data or signing-key transfer",
     "All-provider verified consumer package remains open",
     "No full pre-release, merge, tag or release launched"
+  ],
+  "additional_source_qualifications": [
+    {
+      "commit": "546278e3d02814f656ee244ea73faeb2c22095c2",
+      "tree": "b897b3930d57b84902525ae3bb6e0eac32015bb4",
+      "go": "1.26.0",
+      "all_nine_snapshot_tree": "cff93c2d0ff906bc65ef42b57350802752b9d394",
+      "checks": "all-nine-pass; only foreign recovery docs/receipts integrated afterward, strict EN/DE and canonical audit passed again",
+      "go_tests_seconds": 64.367,
+      "six_package_race_seconds": 52.289,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/identityprovider",
+        "./internal/telemetry",
+        "./internal/externalprovider",
+        "./internal/providertopology"
+      ]
+    }
+  ],
+  "registered_otlp_consumer": {
+    "commit": "546278e3d02814f656ee244ea73faeb2c22095c2",
+    "result": "actual local HTTPS/mTLS source tests pass; native workflow consumer source qualification pending",
+    "verification": [
+      "Canonical receiver alias, protected JSON token/basic credential reference and explicit trust/client identity",
+      "Receiver asserts token and client certificate identity and actual Protobuf trace span",
+      "Fresh application verifier uses actual canonical authorization/TLS delivery",
+      "Foreign registration and credential/key source bytes unchanged",
+      "Source drift before bind, before verify and during actual export rejected",
+      "Host/runtime divergence, unrelated or unprotected projection owner rejected",
+      "New registration cannot inherit another registration credential at the same endpoint",
+      "Private keys cannot enter public CA delivery",
+      "Same-ID credential material changes invalidate prior two-stage consent"
+    ],
+    "limits": [
+      "No remote-host material or all-signals/buffering/retention claim",
+      "Directory material needs explicit supported file references"
+    ]
+  },
+  "remaining_provider_consumers": [
+    "Current selected OpenBao secret lifecycle",
+    "Current selected Caddy HTTPS lifecycle",
+    "Current isolated RabbitMQ and MongoDB complete jobs",
+    "Current actual Prometheus gauge and Loki emitted line",
+    "Current collector/Tempo trace after OTLP host material projection change",
+    "Remote material handoff remains a separately qualified boundary owned with Session2"
   ]
 }

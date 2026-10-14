@@ -37,11 +37,10 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	defer func() {
 		for _, name := range containers {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			_ = exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name).Run()
+			if err := exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name).Run(); err != nil {
+				t.Errorf("owned metrics workload cleanup: %v", err)
+			}
 			cleanupCancel()
-		}
-		if t.Failed() {
-			return
 		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cleanupCancel()
@@ -138,6 +137,15 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 		if err := driver.Verify(ctx, resource, binding); err != nil {
 			t.Fatalf("%s verify real scrape/ingestion: %v", m.Name, err)
 		}
+		instance, err := driver.realization.Existing(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		query := fmt.Sprintf(`baseharbor_acceptance_metric{baseharbor_application=%q,baseharbor_environment=%q}`, m.Name, m.Environment)
+		if ok, err := queryUp(ctx, driver.client, instance.Endpoint, query); err != nil || !ok {
+			t.Fatalf("actual isolated consumer metric missing: %v", err)
+		}
+		t.Log("actual isolated application gauge sample equals 1 through verified provider TLS")
 	}
 
 	files, err := ExistingProviderFiles(application.Manifest{Name: "metrics-alpha", Environment: "dev"})

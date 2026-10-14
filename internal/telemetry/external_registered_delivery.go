@@ -7,6 +7,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -35,7 +36,7 @@ func (d *Driver) verifyRegisteredExternalDelivery() error {
 		}
 		// The file is readable only through its private owner directory or explicit
 		// workload mount. It must still be a stable non-writable regular projection.
-		current, err := externalprovider.ReadMaterialReference(material.path, false)
+		current, err := externalprovider.ReadMaterialReference((&url.URL{Scheme: "file", Path: material.path}).String(), false)
 		if err != nil {
 			return errors.New("registered OTLP delivered TLS material is unverifiable")
 		}

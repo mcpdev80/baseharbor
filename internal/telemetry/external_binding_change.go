@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"os"
 	"strings"
 
@@ -43,7 +44,7 @@ func InspectRegisteredOTLPBindingChange(app application.Manifest, files applicat
 		if material.path == "" {
 			continue
 		}
-		data, readErr := externalprovider.ReadMaterialReference(material.path, material.private)
+		data, readErr := externalprovider.ReadMaterialReference((&url.URL{Scheme: "file", Path: material.path}).String(), material.private)
 		raw = append(raw, 0)
 		if readErr == nil {
 			raw = append(raw, data...)
