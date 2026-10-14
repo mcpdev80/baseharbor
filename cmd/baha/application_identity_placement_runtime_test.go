@@ -88,11 +88,13 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 			t.Fatal(err)
 		}
 		applyContext := ctx
-		if phase > 0 {
-			impact := plan.ProviderPlan.Impact
-			if impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
-				t.Fatal("native replacement lacks current unknown-consequence acknowledgements")
-			}
+		impact := plan.ProviderPlan.Impact
+		if phase > 0 && (impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2) {
+			t.Fatal("native replacement lacks current unknown-consequence acknowledgements")
+		}
+		// Initialization may retain pending owners before first realization.
+		// Its current consequence plan needs consent just like a replacement.
+		if impact != nil {
 			applyContext = withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 		}
 		output.Reset()
