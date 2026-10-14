@@ -107,6 +107,11 @@ Eine explizite `only_gates`-Auswahl oder ein Branch unter
 `validation/pre-release/selected/*` führt nur die ausgewählten Qualifikationen
 aus und überspringt den abschließenden Freigabejob. Einzelartefakte sind Nachweise;
 sie können keine Release-Freigabe erzeugen.
+Für einen unveränderten Kandidaten kann ein temporärer Ref namens
+`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` direkt
+auf dessen unveränderlichen Commit zeigen. Der bestehende Selektor prüft jede
+angeforderte ID; eine andere kleine Gruppe erfordert keine Quell- oder Consumer-
+Pin-Änderung.
 
 `scripts/ecosystem_release_pins.py` prüft alle Bindungen und erstellt das öffentliche Manifest der Consumer-Nachweise. Der Pre-Release-Workflow akzeptiert eine optionale exakte `consumer_ref` oder löst den geprüften Connector-Integrationsbranch einmalig auf und hält dessen 40-stelligen SHA fest. Die Freigabe bewahrt diese unveränderliche Consumer-Quelle; die Release-Nachprüfung löst dieselben Commits auf. Der vollständige native Connector-Job prüft auch das exakte Console-Browser-Receipt. Sein authentifiziertes Artefakt kann deshalb die Console-Integration ohne Wiederholung derselben Journey belegen. Alle bisherigen atomaren Gates bleiben erforderlich.
 

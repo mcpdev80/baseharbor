@@ -309,7 +309,10 @@ jobs:
           ONLY_GATES: ${{ inputs.only_gates }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
+          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/gates/* ]]; then
+            ONLY_GATES="${GITHUB_REF_NAME#validation/pre-release/selected/gates/}"
+            test -n "$ONLY_GATES"
+          elif [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
             ONLY_GATES="$(python -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
             test -n "$ONLY_GATES"
           fi

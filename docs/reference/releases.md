@@ -106,6 +106,10 @@ For v0.4.24 and v0.4.25, the final Connector commit's `integration-candidate.jso
 An explicit `only_gates` selection or `validation/pre-release/selected/*` branch
 runs only the selected qualification set and skips the final approval job.
 Its individual artifacts are evidence; they cannot create release approval.
+For an unchanged candidate, a temporary ref named
+`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` can point
+directly at its immutable commit. The existing selector validates every requested
+ID; no source commit or consumer pin changes to choose a different small group.
 
 `scripts/ecosystem_release_pins.py` validates all bindings and resolves the public consumer evidence manifest. The pre-release workflow accepts an optional exact `consumer_ref`, or resolves the reviewed Connector integration branch once and freezes its 40-character SHA. Approval retains that immutable consumer origin; release revalidation resolves the same commits. The complete native Connector job also verifies the exact Console browser receipt, so its authenticated artifact can prove Console integration without repeating the same journey. All existing atomic gates remain required.
 
