@@ -125,6 +125,48 @@
       "native_acceptance": false,
       "pre_release_ready": false,
       "release_pins_frozen": false
+    },
+    {
+      "core": "b547956296d51f5d571986baa170cd876b6a21f3",
+      "core_tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+      "demo": "6977221a074c84436a55ea3078e2b2e002e3bda9",
+      "demo_tree": "cb08a9dd5cac24d1d6af84c9812742af997b611a",
+      "binary_sha256": "1d72d0f1e38e7619a9678dc0f1bb5a1939589163c0363029727dd565afdb3350",
+      "checks": [
+        {
+          "gate": "config-matrix",
+          "exit_code": 0,
+          "seconds": 1.223,
+          "log_sha256": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+        },
+        {
+          "gate": "init",
+          "exit_code": 0,
+          "seconds": 0.317,
+          "log_sha256": "8cfd495bf464662dbcf62b8db0812fb333f91a529c9d3c2d9955f7c21dfdb909"
+        },
+        {
+          "gate": "mcp",
+          "exit_code": 0,
+          "seconds": 0.117,
+          "log_sha256": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a"
+        },
+        {
+          "gate": "agent",
+          "exit_code": 0,
+          "seconds": 0.032,
+          "log_sha256": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4"
+        },
+        {
+          "gate": "shell-ux",
+          "exit_code": 0,
+          "seconds": 0.215,
+          "log_sha256": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8"
+        }
+      ],
+      "native_acceptance": false,
+      "pre_release_ready": false,
+      "scope": "Actual CLI/stdio static source compatibility only; exact published Core tree binary, immutable archived Demo source, isolated configuration/data roots and PATH-resolvable same binary."
     }
   ]
 }
