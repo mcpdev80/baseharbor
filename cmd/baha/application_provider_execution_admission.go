@@ -53,7 +53,7 @@ func validateApplicationProviderExecution(resolved resolvedApplication, impact *
 		}
 	}
 	if application.HasOTLPTelemetry(resolved.Manifest) && application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && !isRemoteApplication(resolved) {
-		driver := telemetry.NewDriver(nil, resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), nil)
+		driver := telemetry.NewDriverAt(nil, resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), nil, resolved.TargetStateRoot, resolved.Target.Name)
 		resource := capability.Resource{Kind: capability.TelemetryOTLP, Provider: capability.ProviderExternalOTLP}
 		binding := capability.Binding{TelemetryOTLP: &capability.OTLPTelemetryBinding{Direction: "export", Protocol: "http/protobuf", Signals: resolved.Manifest.Telemetry.OTLP.Signals}}
 		if err := driver.Preflight(context.Background(), resource, binding); err != nil {

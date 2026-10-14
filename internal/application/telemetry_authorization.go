@@ -81,3 +81,22 @@ func readProtectedOTLPRuntimeEnv(path string) (map[string]string, error) {
 	}
 	return readRuntimeEnvBytes(data)
 }
+
+// VerifyOTLPHostDelivery compares the protected host projection with the actual
+// runtime owner, without exposing confidential values through errors.
+func VerifyOTLPHostDelivery(m Manifest, files RuntimeFiles) error {
+	values, err := readProtectedOTLPRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	appEnv, err := readProtectedOTLPRuntimeEnv(files.ApplicationEnv)
+	if err != nil {
+		return err
+	}
+	for runtimeKey, hostKey := range map[string]string{"OTLP_HOST_ENDPOINT": "OTEL_EXPORTER_OTLP_ENDPOINT", "OTLP_HEADERS": "OTEL_EXPORTER_OTLP_HEADERS", OTLPTLSHostCAEnv: "OTEL_EXPORTER_OTLP_CERTIFICATE", OTLPTLSHostClientCertEnv: "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", OTLPTLSHostClientKeyEnv: "OTEL_EXPORTER_OTLP_CLIENT_KEY"} {
+		if appEnv[hostKey] != values[runtimeKey] {
+			return errors.New("OTLP host projection differs from protected runtime delivery")
+		}
+	}
+	return nil
+}

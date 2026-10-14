@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 )
 
 const (
@@ -15,7 +16,7 @@ const (
 )
 
 func TelemetryProviderForDeployment() capability.Provider {
-	if strings.TrimSpace(os.Getenv(OTLPEndpointEnv)) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv(OTLPProviderEnv)), "external") {
+	if strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP))) != "" || strings.TrimSpace(os.Getenv(OTLPEndpointEnv)) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv(OTLPProviderEnv)), "external") {
 		return capability.ExternalOTLP
 	}
 	return capability.OTelCollector
@@ -77,6 +78,7 @@ func materializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.
 	if provider == capability.ProviderExternalOTLP && headers != "" {
 		appEnv["OTEL_EXPORTER_OTLP_HEADERS"] = headers
 	}
+	projectOTLPHostTLS(appEnv, values)
 	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
 }
 
@@ -110,8 +112,18 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 	if !HasOTLPTelemetry(m) {
 		return nil
 	}
-	if len(caData) == 0 {
-		return fmt.Errorf("OTLP TLS trust bundle is required")
+	if len(caData) == 0 && len(clientCertData) == 0 {
+		return fmt.Errorf("OTLP TLS trust or client identity is required")
+	}
+	if len(caData) > 0 {
+		if err := externalprovider.ValidatePublicTrustMaterial(caData); err != nil {
+			return err
+		}
+	}
+	if len(clientCertData) > 0 {
+		if err := externalprovider.ValidatePublicTrustMaterial(clientCertData); err != nil {
+			return err
+		}
 	}
 	if (len(clientCertData) == 0) != (len(clientKeyData) == 0) {
 		return fmt.Errorf("OTLP TLS client certificate and key must be provided together")
@@ -158,7 +170,11 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 	if err != nil {
 		return err
 	}
-	values[OTLPTLSHostCAEnv] = ca
+	if ca != "" {
+		values[OTLPTLSHostCAEnv] = ca
+	} else {
+		delete(values, OTLPTLSHostCAEnv)
+	}
 	if cert != "" {
 		values[OTLPTLSHostClientCertEnv] = cert
 		values[OTLPTLSHostClientKeyEnv] = key
@@ -166,7 +182,24 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 		delete(values, OTLPTLSHostClientCertEnv)
 		delete(values, OTLPTLSHostClientKeyEnv)
 	}
-	return writeRuntimeEnv(files.Env, m, values)
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		return err
+	}
+	appEnv, err := loadApplicationEnvValues(files.ApplicationEnv)
+	if err != nil {
+		return err
+	}
+	projectOTLPHostTLS(appEnv, values)
+	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
+}
+
+func projectOTLPHostTLS(appEnv, values map[string]string) {
+	for host, otel := range map[string]string{OTLPTLSHostCAEnv: "OTEL_EXPORTER_OTLP_CERTIFICATE", OTLPTLSHostClientCertEnv: "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", OTLPTLSHostClientKeyEnv: "OTEL_EXPORTER_OTLP_CLIENT_KEY"} {
+		delete(appEnv, otel)
+		if values[host] != "" {
+			appEnv[otel] = values[host]
+		}
+	}
 }
 
 func readOTLPTLSMaterialFile(path, name string) ([]byte, error) {

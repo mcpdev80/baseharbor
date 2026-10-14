@@ -22,6 +22,11 @@ func ResolveCredentialReference(reference string) (Credentials, error) {
 		return Credentials{}, err
 	}
 	defer zeroMaterial(data)
+	return DecodeCredentialMaterial(data)
+}
+
+// Decode captured protected input without a second read of mutable source files.
+func DecodeCredentialMaterial(data []byte) (Credentials, error) {
 	var creds Credentials
 	if err := json.Unmarshal(data, &creds); err != nil {
 		return Credentials{}, errors.New("external credential reference contains invalid supported credential JSON")

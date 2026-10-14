@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 func TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization(t *testing.T) {
@@ -18,7 +20,12 @@ func TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthoriza
 		}
 	}
 	m := telemetryManifest()
-	if err := MaterializeOTLPTLSBindingMaterial(m, f, []byte("fixture-ca"), []byte("fixture-certificate"), []byte("fixture-private-key")); err != nil {
+	issuer := serviceissuer.New(t)
+	identity, err := issuer.Issue(t.Context(), serviceaccess.CertificateRequest{CommonName: "retained-client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := MaterializeOTLPTLSBindingMaterial(m, f, identity.IssuingCA, identity.Certificate, identity.PrivateKey); err != nil {
 		t.Fatal(err)
 	}
 	keyPath := filepath.Join(f.Bindings, "telemetry", "client-key.pem")

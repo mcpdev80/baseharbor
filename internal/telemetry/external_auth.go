@@ -16,6 +16,9 @@ func (d *Driver) prepareExternalAuthorization() {
 }
 
 func (d *Driver) revalidateExternalAuthorization() error {
+	if d.registeredExternal != nil {
+		return d.revalidateRegisteredExternalSource()
+	}
 	if d.externalAuthErr != nil {
 		return d.externalAuthErr
 	}

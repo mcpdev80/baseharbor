@@ -399,7 +399,7 @@ func writeWorkloadOverrideServices(b *strings.Builder, m Manifest, services []st
 		serviceObjectStorage := topology.objectStorage || runtimeObjectStorage
 		hasEnvironment := len(topology.env) > 0 || HasOTLPTelemetry(m) || HasIdentity(m)
 		hasNetworks := topology.backendNetwork || serviceObjectStorage || topology.telemetryManaged || topology.identityManaged || metricsSource || exposed || topology.canonicalDevWorkload
-		hasTelemetryTLS := HasOTLPTelemetry(m) && strings.TrimSpace(values[OTLPTLSHostCAEnv]) != ""
+		hasTelemetryTLS := HasOTLPTelemetry(m) && (strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" || strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "")
 		hasObjectStorageTLS := serviceObjectStorage && strings.TrimSpace(values[S3TLSHostCAEnv]) != ""
 		hasBackendTLS := topology.managedRuntime
 
@@ -476,7 +476,9 @@ func writeWorkloadServiceVolumes(b *strings.Builder, m Manifest, values map[stri
 		fmt.Fprintf(b, "      - %s\n", strconv.Quote(projection+":"+workloadServiceBindingRoot+":ro"))
 	}
 	if telemetryTLS {
-		fmt.Fprintf(b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
+		if strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" {
+			fmt.Fprintf(b, "      - %s\n", strconv.Quote(values[OTLPTLSHostCAEnv]+":"+OTLPTLSContainerCA+":ro"))
+		}
 		if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
 			fmt.Fprintf(b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientCertEnv]+":"+OTLPTLSContainerClientCert+":ro"))
 			fmt.Fprintf(b, "      - %s\n", strconv.Quote(values[OTLPTLSHostClientKeyEnv]+":"+OTLPTLSContainerClientKey+":ro"))
@@ -692,10 +694,10 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 		env["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", values["OTLP_PROVIDER"])
 		if strings.TrimSpace(values[OTLPTLSHostCAEnv]) != "" {
 			env["OTEL_EXPORTER_OTLP_CERTIFICATE"] = OTLPTLSContainerCA
-			if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
-				env["OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"] = OTLPTLSContainerClientCert
-				env["OTEL_EXPORTER_OTLP_CLIENT_KEY"] = OTLPTLSContainerClientKey
-			}
+		}
+		if strings.TrimSpace(values[OTLPTLSHostClientCertEnv]) != "" {
+			env["OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"] = OTLPTLSContainerClientCert
+			env["OTEL_EXPORTER_OTLP_CLIENT_KEY"] = OTLPTLSContainerClientKey
 		}
 		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
 			if headers := strings.TrimSpace(values["OTLP_HEADERS"]); headers != "" {

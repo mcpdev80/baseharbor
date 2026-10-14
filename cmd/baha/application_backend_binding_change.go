@@ -12,6 +12,12 @@ import (
 )
 
 func supportedBackendBindingReplacement(old, wanted capability.ProviderInstance) bool {
+	if old.Provider.Kind == capability.ProviderExternalOTLP && wanted.Provider.Kind == capability.ProviderExternalOTLP && old.Ownership == capability.OwnershipExternal && wanted.Ownership == capability.OwnershipExternal && old.Scope == capability.ScopeExternal && wanted.Scope == capability.ScopeExternal {
+		// Canonical registered receiver delivery resolves its own credentials and
+		// trust, verifies actual consumer export, and never retires foreign services.
+		return true
+	}
+
 	if old.Provider.Kind == capability.ProviderKeycloak && wanted.Provider.Kind == capability.ProviderKeycloak && old.Ownership == capability.OwnershipBaseHarbor && wanted.Ownership == capability.OwnershipBaseHarbor {
 		native := func(scope capability.ProviderScope) bool {
 			return scope == capability.ScopeShared || scope == capability.ScopeApplication

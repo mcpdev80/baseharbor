@@ -40,21 +40,22 @@ type Runtime interface {
 }
 
 type Driver struct {
-	runtime          Runtime
-	realization      OTLPRealization
-	app              application.Manifest
-	files            application.RuntimeFiles
-	issuer           serviceaccess.Issuer
-	externalEndpoint string
-	externalHeaders  string
-	externalInput    string
-	externalExplicit bool
-	externalAuthErr  error
-	traceEndpoint    string
-	traceNetwork     string
-	client           *http.Client
-	dataDir          string
-	namespace        string
+	runtime            Runtime
+	realization        OTLPRealization
+	app                application.Manifest
+	files              application.RuntimeFiles
+	issuer             serviceaccess.Issuer
+	registeredExternal *registeredOTLPSource
+	externalEndpoint   string
+	externalHeaders    string
+	externalInput      string
+	externalExplicit   bool
+	externalAuthErr    error
+	traceEndpoint      string
+	traceNetwork       string
+	client             *http.Client
+	dataDir            string
+	namespace          string
 }
 
 type ProviderFiles struct {
@@ -92,7 +93,11 @@ func NewDriverAt(runtime Runtime, app application.Manifest, files application.Ru
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
 	}
-	d.prepareExternalAuthorization()
+	if application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
+	} else {
+		d.prepareExternalAuthorization()
+	}
 	return d
 }
 
@@ -151,6 +156,9 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 		if d.externalAuthErr != nil {
 			return d.externalAuthErr
 		}
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
 		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
 			return err
 		}
@@ -200,7 +208,13 @@ func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capab
 		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
 			return err
 		}
-		return application.MaterializeExternalOTLPBinding(d.app, d.files, d.externalEndpoint, d.externalHeaders)
+		if err := application.MaterializeExternalOTLPBinding(d.app, d.files, d.externalEndpoint, d.externalHeaders); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			return application.MaterializeOTLPTLSBindingMaterial(d.app, d.files, source.trust, source.certificate, source.key)
+		}
+		return nil
 	}
 	if d.realization == nil {
 		return errors.New("managed OTLP realization is required")
@@ -247,6 +261,9 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
 	}
+	if provider == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
+	}
 	if provider == capability.ProviderOTelCollector {
 		d.realization = newRuntimeOTLPRealization(nil, m, nil, dataDir, namespace)
 	}
@@ -262,6 +279,14 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	if resource.Provider == capability.ProviderExternalOTLP && d.externalAuthErr != nil {
 		return d.externalAuthErr
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		if err := d.verifyRegisteredExternalDelivery(); err != nil {
+			return err
+		}
 	}
 	endpoint := d.externalEndpoint
 	if resource.Provider != capability.ProviderExternalOTLP {
@@ -310,6 +335,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("export OTLP verification trace: endpoint returned HTTP %d", resp.StatusCode)
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		return d.verifyRegisteredExternalDelivery()
 	}
 	return nil
 }
