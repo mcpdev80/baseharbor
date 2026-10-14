@@ -185,23 +185,32 @@ class GitInputs:
                 else (path, meta) for path, meta in objects]
 
     def fingerprint(self, candidate, demo, tag, key):
+        requirements = self.requirements(candidate, tag)
+        requirement = next((gate for gate in requirements if gate['id'] == key), None)
+        if requirement is None:
+            raise ValueError('gate is outside candidate release requirements')
         native_runtime = tag in {'v0.4.24', 'v0.4.25'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
         # Source-plan tools do not execute inside native runtime jobs. The current
         # verifier still authenticates every immutable origin and ZIP. Static
         # evidence keeps these tooling bytes as part of its execution inputs.
         collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
         # Core-owned bootstrap/coreless producers consume the explicit Demo SHA
-        # as an evidence identity, never the Demo checkout's Core pin file.
+        # as an evidence identity, never files from the Demo checkout. Their
+        # canonical requirements declare only Core execution dependencies.
         # They DO import this collector: keep its bytes in their product inputs.
-        pin_independent = native_runtime or (tag == 'v0.4.25' and key in {
+        core_owned = tag == 'v0.4.25' and requirement['dependencies'] == ['core'] and key in {
             'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap',
-            'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'})
+            'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'}
+        pin_independent = native_runtime or core_owned
         objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
                    and not (native_runtime and path in collectors)]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
-                        if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
+                        if not core_owned
+                        and not (tag == 'v0.4.25' and path == 'tests/config-matrix/run.sh'
+                                 and key != 'atomic/static/config-matrix' and not key.startswith('journey/'))
+                        and not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
                                 and not key.startswith('journey/'))
                         # Atomic bootstrap does not source this isolated gate.
                         and not (tag in {'v0.4.24', 'v0.4.25'} and key.startswith('atomic/')
@@ -212,10 +221,6 @@ class GitInputs:
                         # pin() separately requires this exact Core binding on
                         # both candidate and original v0.4.24 Demo revisions.
                         and not (pin_independent and path == 'baseharbor-core.ref')]
-        requirements = self.requirements(candidate, tag)
-        requirement = next((gate for gate in requirements if gate['id'] == key), None)
-        if requirement is None:
-            raise ValueError('gate is outside candidate release requirements')
         jobs = self.workflow(candidate)
         # Only scheduling edges and fan-out may change without new evidence.
         # Static/reusable call arguments, all build steps and evidence generation

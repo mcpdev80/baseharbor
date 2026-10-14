@@ -588,6 +588,29 @@ class GitFingerprintTests(unittest.TestCase):
             self.assertNotEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
                                 self.inputs.fingerprint(product, after, 'v0.4.25', key))
 
+    def test_v025_core_owned_producers_and_isolated_config_matrix(self):
+        product = self.v024_inventory()
+        path = self.demo / 'tests/config-matrix/run.sh'
+        path.parent.mkdir(parents=True)
+        path.write_text('old static fixture\n')
+        before = self.commit(self.demo)
+        path.write_text('new static fixture\n')
+        after = self.commit(self.demo)
+        for key, same in [('atomic/static/config-matrix', False), ('journey/docker', False),
+                          ('atomic/docker/control-plane-recovery', True), ('ha/docker/data', True),
+                          ('integration/docker/core-bootstrap', True), ('integration/podman/coreless-lifecycle', True)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key), same)
+        # An arbitrary shared Demo change remains a dependency for actual Demo
+        # execution; the four Core-only producers do not check out/use Demo.
+        (self.demo / 'compose.yaml').write_text('services: {changed: {}}\n')
+        changed = self.commit(self.demo)
+        for key, same in [('atomic/docker/lifecycle', False), ('journey/docker', False),
+                          ('integration/docker/core-bootstrap', True), ('integration/podman/coreless-lifecycle', True)]:
+            self.assertEqual(self.inputs.fingerprint(product, after, 'v0.4.25', key) ==
+                             self.inputs.fingerprint(product, changed, 'v0.4.25', key), same)
+
     def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
         product = self.v024_inventory()
         path = self.demo / 'tests/backup-restore/run.sh'
@@ -597,7 +620,7 @@ class GitFingerprintTests(unittest.TestCase):
         path.write_text('new backup fixture\n')
         after = self.commit(self.demo)
         for key, same in [('atomic/docker/identity', True), ('atomic/podman/backup-restore', False),
-                          ('journey/docker', False), ('integration/podman/core-bootstrap', False)]:
+                          ('journey/docker', False), ('integration/podman/core-bootstrap', True)]:
             with self.subTest(key=key):
                 self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key) ==
                                  self.inputs.fingerprint(product, after, 'v0.4.25', key), same)
