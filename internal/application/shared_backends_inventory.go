@@ -17,10 +17,11 @@ import (
 // SharedBackendInventory is an ephemeral projection of the existing owner.
 // Retained databases/credentials do not prove an active consumer.
 type SharedBackendInventory struct {
-	Files     SharedBackendFiles
-	Services  map[capability.ProviderKind][]string
-	Resources []bhruntime.ProjectResource
-	CoreSQL   *bhruntime.Files
+	Files           SharedBackendFiles
+	Services        map[capability.ProviderKind][]string
+	Resources       []bhruntime.ProjectResource
+	CoreSQL         *bhruntime.Files
+	NetworkExternal bool
 }
 
 func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (SharedBackendInventory, error) {
@@ -47,6 +48,7 @@ func ExistingSharedBackendInventoryAt(dataDir, namespace, environment string) (S
 		return inventory, errors.New("shared backend environment differs from its existing owner directory")
 	}
 	inventory.CoreSQL = state.CoreSQL
+	inventory.NetworkExternal = state.NetworkExternal
 	canonical := sharedBackendCompose(files, state)
 	actual, err := os.ReadFile(files.Compose)
 	if err != nil || !bytes.Equal(actual, []byte(canonical)) {

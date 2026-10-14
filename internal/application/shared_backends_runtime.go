@@ -370,7 +370,7 @@ func sharedBackendCompose(files SharedBackendFiles, state sharedBackendState) st
 	}
 	b.WriteString("networks:\n  shared-backend:\n")
 	fmt.Fprintf(&b, "    name: %s\n", files.Network)
-	if state.CoreSQL != nil {
+	if state.CoreSQL != nil || state.NetworkExternal {
 		b.WriteString("    external: true\n")
 	}
 	writeSharedValkeyHANetworks(&b, state, appKeys)

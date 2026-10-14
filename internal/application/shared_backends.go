@@ -17,6 +17,7 @@ import (
 const sharedBackendStateVersion = 3
 
 type sharedBackendState struct {
+	NetworkExternal               bool                             `json:"network_external,omitempty"`
 	CoreSQL                       *bhruntime.Files                 `json:"core_sql,omitempty"`
 	ValkeyAdminCredential         string                           `json:"valkey_admin_credential,omitempty"`
 	ValkeyMembers                 int                              `json:"valkey_members,omitempty"`
@@ -189,6 +190,9 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	}
 	core, err := selectSharedBackendDependency(&state, m, issuer, namespace)
 	if err != nil {
+		return false, err
+	}
+	if err := bindSharedBackendNetwork(ctx, compose, dataDir, shared, &state); err != nil {
 		return false, err
 	}
 	if err := os.MkdirAll(shared.Dir, 0o700); err != nil {

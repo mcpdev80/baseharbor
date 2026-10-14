@@ -62,6 +62,9 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 	if err := core.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
 		return fmt.Errorf("reconcile shared control-plane runtime before broker start: %w", err)
 	}
+	if err := waitForOpenBaoManagerReady(ctx, core, platformFiles, 30*time.Second); err != nil {
+		return fmt.Errorf("verify authenticated OpenBao readiness before broker PKI: %w", err)
+	}
 	if err := ensureAndStartRuntimeProviderExecutorWithCore(ctx, progress, compose, core, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
 	}

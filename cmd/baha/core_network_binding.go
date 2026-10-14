@@ -33,7 +33,7 @@ func inspectCoreDefaultNetworkBinding(ctx context.Context, target deployment.Res
 	if err != nil {
 		return false, fmt.Errorf("verify native Core network authority: %w", err)
 	}
-	if sharedErr == nil && shared.CoreSQL == nil {
+	if sharedErr == nil && shared.CoreSQL == nil && !shared.NetworkExternal {
 		declared := false
 		for _, resource := range shared.Resources {
 			declared = declared || resource == network

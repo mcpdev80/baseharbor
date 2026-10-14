@@ -1,8 +1,4 @@
 [
-  "integration/docker/core-bootstrap",
-  "integration/podman/core-bootstrap",
-  "integration/docker/coreless-lifecycle",
-  "integration/podman/coreless-lifecycle",
   "journey/docker",
   "journey/podman"
 ]
