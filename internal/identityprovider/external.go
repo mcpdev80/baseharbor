@@ -21,25 +21,39 @@ const (
 )
 
 type ExternalDriver struct {
-	app      application.Manifest
-	files    application.RuntimeFiles
-	issuer   string
-	clientID string
-	secret   string
-	client   *http.Client
-	material *externalMaterialSnapshot
+	app          application.Manifest
+	files        application.RuntimeFiles
+	issuer       string
+	clientID     string
+	secret       string
+	client       *http.Client
+	material     *externalMaterialSnapshot
+	registration *registeredExternalSource
 }
 
 func NewExternalDriver(app application.Manifest, files application.RuntimeFiles, issuer string) (*ExternalDriver, error) {
-	clientID := strings.TrimSpace(os.Getenv(ExternalClientIDEnv))
+	return newExternalDriver(app, files, issuer, externalDriverInputs{
+		clientID:   strings.TrimSpace(os.Getenv(ExternalClientIDEnv)),
+		secretFile: strings.TrimSpace(os.Getenv(ExternalClientSecretFileEnv)),
+		caFile:     strings.TrimSpace(os.Getenv(ExternalCAFileEnv)),
+	})
+}
+
+type externalDriverInputs struct {
+	clientID, secretFile, caFile          string
+	skipRetainedSecret, skipRetainedTrust bool
+}
+
+func newExternalDriver(app application.Manifest, files application.RuntimeFiles, issuer string, inputs externalDriverInputs) (*ExternalDriver, error) {
+	clientID := inputs.clientID
 	if clientID == "" {
 		return nil, fmt.Errorf("%s is required for external OIDC", ExternalClientIDEnv)
 	}
-	secret, retainedCA, err := retainedExternalMaterial(files, issuer, clientID)
+	secret, retainedCA, err := retainedExternalMaterial(files, issuer, clientID, inputs)
 	if err != nil {
 		return nil, err
 	}
-	if path := strings.TrimSpace(os.Getenv(ExternalClientSecretFileEnv)); path != "" {
+	if path := inputs.secretFile; path != "" {
 		data, err := readExternalProtectedMaterial(path)
 		if err != nil {
 			return nil, fmt.Errorf("read external OIDC client secret: %w", err)
@@ -52,11 +66,11 @@ func NewExternalDriver(app application.Manifest, files application.RuntimeFiles,
 			return nil, fmt.Errorf("external OIDC client secret is empty or invalid")
 		}
 	}
-	caPath := strings.TrimSpace(os.Getenv(ExternalCAFileEnv))
+	caPath := inputs.caFile
 	if caPath == "" {
 		caPath = retainedCA
 	}
-	material, err := captureExternalMaterial(files, caPath, secret)
+	material, err := captureExternalMaterial(files, inputs.secretFile, caPath, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +93,7 @@ func (d *ExternalDriver) Preflight(ctx context.Context, resource capability.Reso
 	if binding.Identity == nil {
 		return fmt.Errorf("identity binding is required")
 	}
-	if err := d.material.revalidate(); err != nil {
+	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
 	_, err := FetchDiscovery(ctx, d.client, d.issuer)
@@ -91,20 +105,23 @@ func (d *ExternalDriver) Provision(context.Context, capability.Resource, capabil
 }
 
 func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	if err := d.material.revalidate(); err != nil {
+	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
 	discovery, err := FetchDiscovery(ctx, d.client, d.issuer)
 	if err != nil {
 		return err
 	}
-	if err := d.material.revalidate(); err != nil {
+	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
 	return application.MaterializeIdentityBindingMaterial(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.material.trust)
 }
 
 func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
+	if err := d.registration.revalidate(); err != nil {
+		return err
+	}
 	if _, err := FetchDiscovery(ctx, d.client, d.issuer); err != nil {
 		return err
 	}

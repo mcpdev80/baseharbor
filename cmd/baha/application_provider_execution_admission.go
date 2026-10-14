@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 )
@@ -39,6 +40,17 @@ func validateApplicationProviderExecution(resolved resolvedApplication, impact *
 	}
 	if err != nil {
 		return err
+	}
+	if application.HasIdentity(resolved.Manifest) && !isRemoteApplication(resolved) {
+		selected, err := application.IdentityProviderForDeployment()
+		if err != nil {
+			return err
+		}
+		if selected.Kind == capability.ProviderExternalOIDC {
+			if _, err := identityprovider.NewRegisteredExternalDriver(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), resolved.TargetStateRoot); err != nil {
+				return &machine.Error{Code: machine.ErrorInvalidWorkload, CauseCode: "external_provider_material_preflight_failed", Message: "Selected external OIDC registration or material cannot be safely delivered.", Next: "Inspect the canonical registration's issuer, client and protected credential/trust references before execution; current delivery remains unchanged.", Details: impact}
+			}
+		}
 	}
 	if application.HasOTLPTelemetry(resolved.Manifest) && application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && !isRemoteApplication(resolved) {
 		driver := telemetry.NewDriver(nil, resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), nil)

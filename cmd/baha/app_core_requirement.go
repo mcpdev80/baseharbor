@@ -254,6 +254,10 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
+	requests, err = externalIdentityChangeRequests(resolved, requests)
+	if err != nil {
+		return applicationLifecyclePlan{}, err
+	}
 	if len(requests) > 0 {
 		impact, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
 		if err != nil {

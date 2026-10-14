@@ -1201,3 +1201,49 @@ jobs:
           path: ${{ runner.temp }}/provider-observation
           if-no-files-found: warn
           retention-days: 90
+
+
+  external_provider_handoff:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[external-provider-handoff-runtime]') || contains(github.event.head_commit.message, '[external-provider-handoff-podman]')) }}
+    name: External provider consumer handoff · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[external-provider-handoff-podman]') && '["podman"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_EXTERNAL_PROVIDER_HANDOFF_ACCEPTANCE: '1'
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify native registered OIDC consumer handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/external-provider-handoff"
+          git rev-parse HEAD > "$RUNNER_TEMP/external-provider-handoff/source-sha.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/external-provider-handoff/source-tree.txt"
+          go version > "$RUNNER_TEMP/external-provider-handoff/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/external-provider-handoff/runtime-version.txt"
+          go test -race -json ./internal/identityprovider -run '^TestRegisteredExternalOIDCNativeConsumerHandoff$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/external-provider-handoff/tests.jsonl"
+      - name: Retain bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: external-provider-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/external-provider-handoff
+          if-no-files-found: warn
+          retention-days: 90

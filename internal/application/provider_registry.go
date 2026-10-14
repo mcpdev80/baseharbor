@@ -59,7 +59,7 @@ func PreviewReferenceProviderRegistryAt(dataDir string, m Manifest) (capability.
 		return capability.Registry{}, err
 	}
 	releaseManagedBindingsPreservingInstances(&registry, m)
-	if err := registerReferenceProviders(&registry, m); err != nil {
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
 		return capability.Registry{}, err
 	}
 	return registry, registry.Validate()
@@ -67,7 +67,10 @@ func PreviewReferenceProviderRegistryAt(dataDir string, m Manifest) (capability.
 
 func releaseManagedBindingsPreservingInstances(registry *capability.Registry, m Manifest) {
 	instances := append([]capability.ProviderInstance(nil), registry.Instances...)
-	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
+	// Applications own their references to external offers, not the foreign
+	// infrastructure. Project the complete desired deployment binding set;
+	// normal reconciliation publishes it only after acknowledged verification.
+	registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
 	registry.Instances = instances
 }
 
@@ -86,7 +89,7 @@ func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional
 	}
 	return store.Update(func(registry *capability.Registry) error {
 		releaseManagedBindingsPreservingInstances(registry, m)
-		if err := registerReferenceProviders(registry, m); err != nil {
+		if err := registerReferenceProvidersAt(dataDir, registry, m); err != nil {
 			return err
 		}
 		return registerAdditionalProviderResources(registry, m, additional)
@@ -111,7 +114,7 @@ func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional [
 		return err
 	}
 	releaseManagedBindingsPreservingInstances(&registry, m)
-	if err := registerReferenceProviders(&registry, m); err != nil {
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
 		return err
 	}
 	if err := registerAdditionalProviderResources(&registry, m, additional); err != nil {
@@ -287,6 +290,10 @@ func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 }
 
 func registerReferenceProviders(registry *capability.Registry, m Manifest) error {
+	return registerReferenceProvidersAt("", registry, m)
+}
+
+func registerReferenceProvidersAt(dataDir string, registry *capability.Registry, m Manifest) error {
 	contract, err := PortableContractFromManifest(m)
 	if err != nil {
 		return err
@@ -337,6 +344,15 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			}
 		}
 
+		placement, err := ResolveProviderPlacement(m, resource.Provider)
+		if err != nil {
+			return err
+		}
+		if dataDir != "" && placement.Scope == capability.ScopeExternal {
+			if err := projectExternalProviderOfferAt(dataDir, registry, resource.Provider, placement, m.ApplicationID); err != nil {
+				return err
+			}
+		}
 		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}

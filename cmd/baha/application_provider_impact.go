@@ -70,6 +70,9 @@ func resolveApplicationProviderImpact(ctx context.Context, resolved resolvedAppl
 	if err := appendExternalReceiverChangeEffects(resolved, &observation); err != nil {
 		return application.ProviderImpactPlan{}, err
 	}
+	if err := appendExternalIdentityChangeEffects(resolved, &observation); err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
 	// Impact is derived presentation metadata, not another authoritative input.
 	// Exclude an earlier attachment from the plan-bound revalidation hash.
 	union.Impact = nil

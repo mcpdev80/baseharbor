@@ -12,6 +12,12 @@ import (
 )
 
 func supportedBackendBindingReplacement(old, wanted capability.ProviderInstance) bool {
+	if old.Ownership == capability.OwnershipExternal && wanted.Ownership == capability.OwnershipExternal && old.Scope == capability.ScopeExternal && wanted.Scope == capability.ScopeExternal && old.Provider.Kind == capability.ProviderExternalOIDC && wanted.Provider.Kind == capability.ProviderExternalOIDC {
+		// The registered OIDC driver resolves explicit destination credential/
+		// trust references and revalidates them before verified delivery. Only
+		// bindings change; neither foreign realization is retired or destroyed.
+		return true
+	}
 	if old.Ownership != capability.OwnershipBaseHarbor || wanted.Ownership != capability.OwnershipBaseHarbor || old.Provider.Kind != wanted.Provider.Kind || old.Scope == wanted.Scope {
 		return false
 	}
@@ -166,6 +172,30 @@ func backendBindingChangeRequests(resolved resolvedApplication, union applicatio
 			if !found {
 				requests = append(requests, request)
 			}
+		}
+	}
+	// Foreign realizations have no native stop action in the union. Releasing
+	// their selected application reference still has actual consumer effects.
+	for _, old := range union.ReleasedBindings {
+		if old.ApplicationID != resolved.Manifest.ApplicationID || old.Environment != "" && old.Environment != resolved.Manifest.Environment {
+			continue
+		}
+		external := false
+		for _, instance := range planned.Instances {
+			external = external || instance.ID == old.ProviderInstanceID && instance.Ownership == capability.OwnershipExternal
+		}
+		if !external {
+			continue
+		}
+		requested, already := false, false
+		for _, wanted := range planned.Bindings {
+			requested = requested || wanted.ApplicationID == old.ApplicationID && wanted.Environment == resolved.Manifest.Environment && wanted.Resource.Kind == old.Resource.Kind && wanted.Resource.Name == old.Resource.Name
+		}
+		for _, request := range requests {
+			already = already || request.InstanceID == old.ProviderInstanceID
+		}
+		if !requested && !already {
+			requests = append(requests, application.ProviderChangeRequest{InstanceID: old.ProviderInstanceID, Operation: "unbind", Selection: "explicit", Consumers: []string{consumer}, Materials: []application.MaterialDisposition{}})
 		}
 	}
 	sort.Slice(requests, func(i, j int) bool { return requests[i].InstanceID < requests[j].InstanceID })

@@ -75,14 +75,17 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			ExternalReference: "default",
 		}, nil
 	case capability.ProviderExternalOIDC:
-		issuer := strings.TrimSpace(os.Getenv("BASEHARBOR_EXTERNAL_OIDC_ISSUER"))
-		if issuer == "" {
-			return capability.ProviderPlacement{}, fmt.Errorf("BASEHARBOR_EXTERNAL_OIDC_ISSUER is required when external OIDC is selected")
+		reference := strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(provider)))
+		if reference == "" {
+			reference = strings.TrimSpace(os.Getenv("BASEHARBOR_EXTERNAL_OIDC_ISSUER"))
+		}
+		if reference == "" {
+			return capability.ProviderPlacement{}, fmt.Errorf("select a registered external OIDC reference with %s or BASEHARBOR_EXTERNAL_OIDC_ISSUER", ProviderExternalReferenceEnv(provider))
 		}
 		return capability.ProviderPlacement{
 			Scope:             capability.ScopeExternal,
 			Ownership:         capability.OwnershipExternal,
-			ExternalReference: issuer,
+			ExternalReference: reference,
 		}, nil
 	default:
 		return capability.ProviderPlacement{}, fmt.Errorf("no default provider placement for %q", provider)

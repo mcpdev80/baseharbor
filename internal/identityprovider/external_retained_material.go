@@ -15,7 +15,7 @@ import (
 // Read only the existing protected binding. An omitted credential/CA input on
 // reapply must not split the host, workload and environment projections. A new
 // authority cannot inherit another issuer's confidential client credential.
-func retainedExternalMaterial(files application.RuntimeFiles, issuer, clientID string) (string, string, error) {
+func retainedExternalMaterial(files application.RuntimeFiles, issuer, clientID string, inputs externalDriverInputs) (string, string, error) {
 	dir := filepath.Join(files.Bindings, application.IdentityBindingName)
 	info, err := os.Lstat(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -42,10 +42,10 @@ func retainedExternalMaterial(files application.RuntimeFiles, issuer, clientID s
 	if !sameAuthority {
 		// Explicit replacement material is resolved by the caller. Never
 		// forward a credential or trust projection to another authority.
-		if values["client-secret"] != "" && strings.TrimSpace(os.Getenv(ExternalClientSecretFileEnv)) == "" {
+		if values["client-secret"] != "" && inputs.secretFile == "" && !inputs.skipRetainedSecret {
 			return "", "", errors.New("external identity authority changed; supply its explicit client credential before rebinding; retained credentials were not changed")
 		}
-		if values["ca.crt"] != "" && strings.TrimSpace(os.Getenv(ExternalCAFileEnv)) == "" {
+		if values["ca.crt"] != "" && inputs.caFile == "" && !inputs.skipRetainedTrust {
 			return "", "", errors.New("external identity authority changed; supply its explicit trust material before rebinding; retained trust was not changed")
 		}
 		return "", "", nil
@@ -53,8 +53,11 @@ func retainedExternalMaterial(files application.RuntimeFiles, issuer, clientID s
 	if strings.ContainsAny(values["client-secret"], "\r\n") {
 		return "", "", errors.New("retained external identity credential is invalid")
 	}
+	if inputs.skipRetainedSecret {
+		values["client-secret"] = ""
+	}
 	ca := ""
-	if values["ca.crt"] != "" {
+	if values["ca.crt"] != "" && !inputs.skipRetainedTrust {
 		ca = filepath.Join(dir, "ca.crt")
 	}
 	return values["client-secret"], ca, nil

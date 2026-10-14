@@ -16,7 +16,7 @@ func RetainPendingProviderOwnersAt(dataDir string, m Manifest, additional ...cap
 		// be checked without overwriting its currently applied binding.
 		projection := capability.NewRegistry()
 		projection.Instances = append(projection.Instances, registry.Instances...)
-		if err := registerReferenceProviders(&projection, m); err != nil {
+		if err := registerReferenceProvidersAt(dataDir, &projection, m); err != nil {
 			return err
 		}
 		if err := registerAdditionalProviderResources(&projection, m, additional); err != nil {

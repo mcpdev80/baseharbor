@@ -24,9 +24,8 @@ type externalMaterialSource struct {
 	digest       [32]byte
 }
 
-func captureExternalMaterial(files application.RuntimeFiles, caPath, secret string) (*externalMaterialSnapshot, error) {
+func captureExternalMaterial(files application.RuntimeFiles, secretPath, caPath, secret string) (*externalMaterialSnapshot, error) {
 	snapshot := &externalMaterialSnapshot{}
-	secretPath := strings.TrimSpace(os.Getenv(ExternalClientSecretFileEnv))
 	if secretPath == "" && secret != "" {
 		secretPath = filepath.Join(files.Bindings, application.IdentityBindingName, "client-secret")
 	}

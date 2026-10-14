@@ -65,11 +65,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 		driver = keycloak
 		prepared.keycloak = keycloak
 	case capability.ProviderExternalOIDC:
-		placement, err := application.ResolveProviderPlacement(m, capability.ProviderExternalOIDC)
-		if err != nil {
-			return nil, err
-		}
-		external, err := identityprovider.NewExternalDriver(m, files, placement.ExternalReference)
+		external, err := identityprovider.NewRegisteredExternalDriver(m, files, resolved.TargetStateRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -240,11 +236,7 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Runtim
 		driver := identityprovider.NewKeycloakDriver(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 		return driver.VerifyExisting(ctx, identityBinding, origins)
 	case capability.ProviderExternalOIDC:
-		placement, err := application.ResolveProviderPlacement(m, capability.ProviderExternalOIDC)
-		if err != nil {
-			return err
-		}
-		driver, err := identityprovider.NewExternalDriver(m, files, placement.ExternalReference)
+		driver, err := identityprovider.NewRegisteredExternalDriver(m, files, resolved.TargetStateRoot)
 		if err != nil {
 			return err
 		}
