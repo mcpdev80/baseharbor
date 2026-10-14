@@ -119,6 +119,7 @@ func TestRegisteredExternalOIDCNativeConsumerHandoff(t *testing.T) {
 	}
 	// Dropping the consumer reference never destroys either foreign realm.
 	consumer.Services.Identity = false
+	consumer.Identity = application.IdentityRequirements{}
 	if err := application.ReconcileReferenceProviderRegistryAt(target, consumer); err != nil {
 		t.Fatal(err)
 	}
