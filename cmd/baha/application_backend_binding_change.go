@@ -12,6 +12,19 @@ import (
 )
 
 func supportedBackendBindingReplacement(old, wanted capability.ProviderInstance) bool {
+	managedCollector := func(i capability.ProviderInstance) bool {
+		return i.Provider.Kind == capability.ProviderOTelCollector && i.Ownership == capability.OwnershipBaseHarbor && i.Scope == capability.ScopeShared
+	}
+	registeredReceiver := func(i capability.ProviderInstance) bool {
+		return i.Provider.Kind == capability.ProviderExternalOTLP && i.Ownership == capability.OwnershipExternal && i.Scope == capability.ScopeExternal
+	}
+	if managedCollector(old) && registeredReceiver(wanted) || registeredReceiver(old) && managedCollector(wanted) {
+		// Both delivery adapters already verify the actual receiver. The existing
+		// owned-container retirement keeps managed PKI/configuration; foreign
+		// receivers are never stopped and their credentials are never inherited.
+		return true
+	}
+
 	if old.Provider.Kind == capability.ProviderExternalOTLP && wanted.Provider.Kind == capability.ProviderExternalOTLP && old.Ownership == capability.OwnershipExternal && wanted.Ownership == capability.OwnershipExternal && old.Scope == capability.ScopeExternal && wanted.Scope == capability.ScopeExternal {
 		// Canonical registered receiver delivery resolves its own credentials and
 		// trust, verifies actual consumer export, and never retires foreign services.

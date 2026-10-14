@@ -159,6 +159,11 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 		if err := d.revalidateRegisteredExternalSource(); err != nil {
 			return err
 		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
+		}
 		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
 			return err
 		}
@@ -207,6 +212,11 @@ func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capab
 		}
 		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
 			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
 		}
 		if err := application.MaterializeExternalOTLPBinding(d.app, d.files, d.externalEndpoint, d.externalHeaders); err != nil {
 			return err

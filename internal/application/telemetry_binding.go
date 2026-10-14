@@ -128,11 +128,14 @@ func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, c
 	if (len(clientCertData) == 0) != (len(clientKeyData) == 0) {
 		return fmt.Errorf("OTLP TLS client certificate and key must be provided together")
 	}
+	if err := ValidateOTLPTLSProjection(files); err != nil {
+		return err
+	}
 	dir := filepath.Join(files.Bindings, "telemetry")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create OTLP TLS binding directory: %w", err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := ValidateOTLPTLSProjection(files); err != nil {
 		return err
 	}
 	project := func(data []byte, name string) (string, error) {

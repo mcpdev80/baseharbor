@@ -275,3 +275,83 @@ func TestRegisteredOTLPPrivateOrInvalidPublicTrustNeverProjects(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisteredOTLPRedirectedProjectionPreservesDeliveryAndForeignOwner(t *testing.T) {
+	for _, redirect := range []string{"directory", "leaf"} {
+		t.Run(redirect, func(t *testing.T) {
+			issuer := serviceissuer.New(t)
+			bundle, err := issuer.TrustBundle(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, f, root, _ := registeredOTLPFixture(t, "https://receiver.example.test", bundle.PEM, nil, nil)
+			foreign := t.TempDir()
+			if err := os.Chmod(foreign, 0755); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(foreign, "original.pem")
+			if err := os.WriteFile(marker, bundle.PEM, 0644); err != nil {
+				t.Fatal(err)
+			}
+			projection := filepath.Join(f.Bindings, "telemetry")
+			if err := os.MkdirAll(f.Bindings, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if redirect == "directory" {
+				err = os.Symlink(foreign, projection)
+			} else {
+				err = os.MkdirAll(projection, 0700)
+				if err == nil {
+					err = os.Symlink(marker, filepath.Join(projection, "ca.pem"))
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(f.Env)
+			hostBefore, _ := os.ReadFile(f.ApplicationEnv)
+			d := NewDriverAt(nil, m, f, nil, root, "")
+			if err := d.Bind(t.Context(), capability.Resource{Provider: capability.ProviderExternalOTLP}, capability.Binding{}); err == nil {
+				t.Fatal("redirected TLS projection admitted")
+			}
+			after, _ := os.ReadFile(f.Env)
+			hostAfter, _ := os.ReadFile(f.ApplicationEnv)
+			info, _ := os.Stat(foreign)
+			original, _ := os.ReadFile(marker)
+			if !bytes.Equal(before, after) || !bytes.Equal(hostBefore, hostAfter) || info.Mode().Perm() != 0755 || !bytes.Equal(original, bundle.PEM) {
+				t.Fatal("rejected projection changed protected delivery or foreign owner")
+			}
+		})
+	}
+}
+
+func TestRegisteredOTLPBasicCredentialActuallyAuthenticatesReceiver(t *testing.T) {
+	received := false
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		body, _ := io.ReadAll(r.Body)
+		if !ok || username != "registered-client" || password != "registered-password" || !bytes.Contains(body, []byte("baseharbor.otlp.verify")) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		received = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	m, f, root, credential := registeredOTLPFixture(t, server.URL, ca, nil, nil)
+	if err := os.WriteFile(credential, []byte(`{"username":"registered-client","password":"registered-password"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDriverAt(nil, m, f, nil, root, "")
+	resource := capability.Resource{Provider: capability.ProviderExternalOTLP}
+	if err := d.Bind(t.Context(), resource, capability.Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Verify(t.Context(), resource, capability.Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	if !received {
+		t.Fatal("registered basic identity was not accepted by actual receiver")
+	}
+}

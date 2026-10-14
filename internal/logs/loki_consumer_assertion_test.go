@@ -2,11 +2,14 @@ package logs_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -67,10 +70,28 @@ func assertActualLokiConsumerLine(t *testing.T, ctx context.Context, m applicati
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
+	ca, err := os.ReadFile(material.CA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(ca) {
+		t.Fatal("actual receiver CA is invalid")
+	}
+	anonymous := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: policy.ServerName, MinVersion: tls.VersionTLS12}}, Timeout: 3 * time.Second}
+	probe, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/loki/api/v1/query_range?"+values.Encode(), nil)
+	probe.Host = policy.ServerName
+	denied, probeErr := anonymous.Do(probe)
+	if probeErr == nil {
+		denied.Body.Close()
+		if denied.StatusCode < 400 {
+			t.Fatal("managed log receiver accepted anonymous access")
+		}
+	}
 	for _, stream := range payload.Data.Result {
 		for _, value := range stream.Values {
 			if payload.Status == "success" && len(value) == 2 && strings.Contains(value[1], expected) {
-				t.Log("actual isolated workload line received through verified Loki TLS")
+				t.Log("actual isolated workload line received through verified Loki mTLS; receiver rejects missing client identity")
 				return
 			}
 		}

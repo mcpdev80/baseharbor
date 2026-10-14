@@ -206,3 +206,57 @@ func TestRegisteredReceiverReplacementAndMaterialDriftRequireFreshConsent(t *tes
 		t.Fatal("stale material consent admitted")
 	}
 }
+
+func TestManagedCollectorAndRegisteredReceiverReplacementRequireCurrentConsent(t *testing.T) {
+	for _, direction := range []string{"managed-to-registered", "registered-to-managed"} {
+		t.Run(direction, func(t *testing.T) {
+			r := externalReceiverPlanFixture(t)
+			f := application.RuntimeFilesFor(r.Store, r.Manifest)
+			if direction == "managed-to-registered" {
+				t.Setenv(application.OTLPEndpointEnv, "")
+				t.Setenv(application.ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "")
+				if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
+					t.Fatal(err)
+				}
+				if err := application.MaterializeOTLPBinding(r.Manifest, f, capability.ProviderOTelCollector, "https://managed.example.test", "https://managed.example.test"); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv(application.OTLPEndpointEnv, "https://receiver-before.example.test")
+				t.Setenv(telemetry.ExternalHeadersEnv, "Authorization=Bearer explicitly-selected")
+			} else {
+				t.Setenv(application.OTLPEndpointEnv, "")
+				t.Setenv(application.ProviderExternalReferenceEnv(capability.ProviderExternalOTLP), "")
+				t.Setenv(telemetry.ExternalHeadersEnv, "")
+			}
+			paths := []string{f.Env, f.ApplicationEnv, filepath.Join(r.TargetStateRoot, "provider-registry.json"), filepath.Join(r.TargetStateRoot, "external-providers.json")}
+			before := map[string][]byte{}
+			for _, p := range paths {
+				before[p], _ = os.ReadFile(p)
+			}
+			plan, err := buildResolvedApplicationPlan(t.Context(), r)
+			if err != nil || plan.ProviderPlan.Impact == nil {
+				t.Fatalf("actual receiver replacement omitted consequences: %v", err)
+			}
+			impact := plan.ProviderPlan.Impact
+			if impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+				t.Fatal("receiver replacement lacked current two-stage consequences")
+			}
+			for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}, {PlanID: impact.PlanID, First: true, Second: true}} {
+				err := authorizeApplicationProviderChanges(withProviderChangeConsent(machineNoninteractiveContext(t.Context()), consent), r, nil, io.Discard)
+				if consent != nil && consent.PlanID == impact.PlanID && consent.Second {
+					if err != nil {
+						t.Fatalf("implemented receiver adapter permanently denied: %v", err)
+					}
+				} else if err == nil {
+					t.Fatal("receiver replacement bypassed current consent")
+				}
+				for _, p := range paths {
+					after, _ := os.ReadFile(p)
+					if !bytes.Equal(before[p], after) {
+						t.Fatal("planning/admission changed current or foreign delivery")
+					}
+				}
+			}
+		})
+	}
+}

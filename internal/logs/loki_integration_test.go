@@ -12,6 +12,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -32,7 +33,7 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", state)
 	t.Setenv(application.LogsEnabledEnv, "true")
 
-	m := application.WithLogsCollection(application.New("logs-acceptance", "dev", false, false, false), "application")
+	m := application.WithLogsCollection(application.New("logs-acceptance", "test", false, false, false), "application")
 	driver := logs.NewDriver(compose, m, serviceissuer.New(t))
 	resource := capability.Resource{Application: m.Name, Kind: capability.Logs, Name: "api", Provider: capability.ProviderLoki}
 	binding := capability.Binding{
@@ -44,6 +45,16 @@ func TestManagedLokiIngestsRealComposeWorkloadLogs(t *testing.T) {
 	if err := driver.Preflight(ctx, resource, binding); err != nil {
 		t.Fatal(err)
 	}
+	// The required test-profile Loki storage is created only within this
+	// isolated fixture's state. Clean it after Loki, never as a Loki ownership
+	// shortcut in production.
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := objectstorage.DestroySharedProvider(cleanup, compose); err != nil {
+			t.Errorf("owned fixture object-storage cleanup: %v", err)
+		}
+	}()
 	provisionCtx, cancelProvision := context.WithTimeout(ctx, 90*time.Second)
 	err = driver.Provision(provisionCtx, resource, binding)
 	cancelProvision()
