@@ -59,9 +59,9 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
-	if err := core.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
-		return fmt.Errorf("reconcile shared control-plane runtime before broker start: %w", err)
-	}
+	// Repository prerequisites already start and recover the selected trust
+	// plane. Reapplying its renderer here can restart and seal OpenBao after
+	// that verification; broker PKI consumes the existing installation only.
 	if err := waitForOpenBaoManagerReady(ctx, core, platformFiles, 30*time.Second); err != nil {
 		return fmt.Errorf("verify authenticated OpenBao readiness before broker PKI: %w", err)
 	}

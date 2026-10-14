@@ -22,14 +22,18 @@ type brokerPKIReadinessRuntime struct {
 	pkiCalls   int
 	recover    bool
 	stopPKI    context.CancelFunc
+	upCalls    int
+	projects   []string
 }
 
 func (r *brokerPKIReadinessRuntime) UpProject(context.Context, string, string, string) error {
 	r.started = true
+	r.upCalls++
 	return nil
 }
 
-func (r *brokerPKIReadinessRuntime) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, args ...string) (string, error) {
+func (r *brokerPKIReadinessRuntime) ExecProjectInput(_ context.Context, project, _, _ string, _ []byte, _ string, args ...string) (string, error) {
+	r.projects = append(r.projects, project)
 	if !r.started {
 		return "", errors.New("PKI request preceded Core start")
 	}
@@ -59,12 +63,12 @@ func brokerReadinessFiles(t *testing.T) bhruntime.Files {
 
 func TestBrokerWaitsForAuthenticatedCoreReadinessBeforePKI(t *testing.T) {
 	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "")
-	core := &brokerPKIReadinessRuntime{recover: true}
+	core := &brokerPKIReadinessRuntime{started: true, recover: true}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	core.stopPKI = cancel
 	err := ensureAndStartRuntimeBrokerWithCore(ctx, io.Discard, workloadBrokerReadinessFixture(), core, brokerReadinessFiles(t), application.New("broker", "dev", false, false, true), application.RuntimeFiles{})
-	if !errors.Is(err, context.Canceled) || core.loginCalls != 3 || core.pkiCalls != 1 {
+	if !errors.Is(err, context.Canceled) || core.loginCalls != 3 || core.pkiCalls != 1 || core.upCalls != 0 {
 		t.Fatalf("transient gateway failure reached PKI before authenticated readiness: logins=%d PKI=%d err=%v", core.loginCalls, core.pkiCalls, err)
 	}
 }
@@ -75,11 +79,11 @@ func workloadBrokerReadinessFixture() bhruntime.RuntimeProvider {
 
 func TestBrokerUnavailableManagerBlocksPKIAtCallerDeadline(t *testing.T) {
 	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "")
-	core := &brokerPKIReadinessRuntime{}
+	core := &brokerPKIReadinessRuntime{started: true}
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	err := ensureAndStartRuntimeBrokerWithCore(ctx, io.Discard, workloadBrokerReadinessFixture(), core, brokerReadinessFiles(t), application.New("broker", "dev", false, false, true), application.RuntimeFiles{})
-	if !errors.Is(err, context.DeadlineExceeded) || core.pkiCalls != 0 {
+	if !errors.Is(err, context.DeadlineExceeded) || core.pkiCalls != 0 || core.upCalls != 0 {
 		t.Fatalf("unavailable manager reached PKI or lost caller deadline: PKI=%d err=%v", core.pkiCalls, err)
 	}
 }
