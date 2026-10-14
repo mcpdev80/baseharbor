@@ -1440,5 +1440,83 @@
     ],
     "native_runtime_qualified": false,
     "pre_release_ready": false
+  },
+  "retained_completed_initializer_followup": {
+    "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+    "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+    "run": 38557521398,
+    "attempt": 1,
+    "recovery_mode": "retained",
+    "verification": "Both actual ZIP SHA256 values, exact Core/Demo/runtime/run/attempt and all15 assertion booleans independently checked. results.tsv has PASS only; three native topology snapshots inspected, including actual broker/executor prerequisites and successful exited PostgreSQL initializer.",
+    "native_result": "success",
+    "pre_release_ready": false,
+    "docker": {
+      "job": 115830238728,
+      "artifact": 11891157458,
+      "zip_sha256": "f3401652c7734d7d6e3046da841b5f67ebbf538c8fbc58d7b12de111fcd7708d",
+      "receipt": {
+        "schema": "baseharbor.demo-recovery-result/v1",
+        "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+        "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+        "runtime": "docker",
+        "result": "success",
+        "run_id": "38557521398",
+        "recovery_mode": "retained",
+        "run_attempt": "1",
+        "verified": {
+          "encrypted_backup": true,
+          "restore_doctor_ready": true,
+          "sql_original_rows_at_least_two": true,
+          "sql_row_count_matches_archive": true,
+          "s3_original_content": true,
+          "workload_original_file": true,
+          "newer_sql_and_file_writes_replaced_from_archive": true,
+          "original_application_identity": true,
+          "deployment_identity_matches_recovery_mode": true,
+          "unchanged_authored_source": true,
+          "original_managed_secret_delivery": true,
+          "log_history": true,
+          "recovery_contributors": true,
+          "shared_sql_isolation": true,
+          "native_topology": true
+        },
+        "cleanup": "success",
+        "pre_release_ready": false
+      }
+    },
+    "podman": {
+      "job": 115830239069,
+      "artifact": 11891217078,
+      "zip_sha256": "5ab11520062e8be4d3dd68665619ecb66e72b3a64afb398502add7dd3e594988",
+      "receipt": {
+        "schema": "baseharbor.demo-recovery-result/v1",
+        "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+        "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+        "runtime": "podman",
+        "result": "success",
+        "run_id": "38557521398",
+        "recovery_mode": "retained",
+        "run_attempt": "1",
+        "verified": {
+          "encrypted_backup": true,
+          "restore_doctor_ready": true,
+          "sql_original_rows_at_least_two": true,
+          "sql_row_count_matches_archive": true,
+          "s3_original_content": true,
+          "workload_original_file": true,
+          "newer_sql_and_file_writes_replaced_from_archive": true,
+          "original_application_identity": true,
+          "deployment_identity_matches_recovery_mode": true,
+          "unchanged_authored_source": true,
+          "original_managed_secret_delivery": true,
+          "log_history": true,
+          "recovery_contributors": true,
+          "shared_sql_isolation": true,
+          "native_topology": true
+        },
+        "cleanup": "success",
+        "pre_release_ready": false
+      }
+    }
   }
 }

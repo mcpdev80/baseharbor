@@ -165,5 +165,164 @@
       "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
     ],
     "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
+  },
+  "certificate_countdown_scope_followup": {
+    "core": "a09185ca48f37a4c0bb5a1bb0dea5474e74aa50a",
+    "tree": "0230112566dff5f3b2bc1395ea79ba1b2fa7d869",
+    "local_qualification": {
+      "source": {
+        "commit": "26b67ab92ac798ce09ee700659f2fe7e78d7e282",
+        "tree": "0230112566dff5f3b2bc1395ea79ba1b2fa7d869",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 67.218,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.4,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.301,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.912,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.107,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 55.265,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 66.736,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.489,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.518,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "red_before": "Two canonical child scope IDs remain unchanged after certificate/function countdown resampling, but the previous outer installation digest rejects the same current acknowledgements as stale-impact-consent.",
+    "green_after": "Outer revision binds the canonical child scope metadata/PlanID, omitting its already-bound Targets only from the private digest; complete child display remains unchanged. Actual child owner/material, installation owner and selected resource changes reject earlier consent.",
+    "diagnostics": "Test-only failure logs contain public plan IDs and changed field categories only; no scalar material values or per-file private hashes.",
+    "native_before": {
+      "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+      "run": 38556997835,
+      "attempt": 1,
+      "docker": {
+        "artifact": 11890049087,
+        "name": "coreless-docker-38556997835-1",
+        "sha256": "3e03b6a639717875aaf3a9e7fd8c3e58253ced7b4607da6d9624a0c65c6335b2",
+        "files": [
+          "candidate-sha.txt",
+          "identity-lifecycle.log",
+          "go-version.txt",
+          "runtime-version.txt"
+        ],
+        "source": [
+          {
+            "file": "candidate-sha.txt",
+            "value": "5ec1b38df90b290dc40fb6f26f18534cf19f0337"
+          }
+        ],
+        "markers": [
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: OAuth endpoint status=409 expected=201",
+          "    application_identity_placement_runtime_test.go:66: owned placement fixture cleanup failed: provider change: stale-impact-consent",
+          "    application_identity_placement_runtime_test.go:70: owned placement fixture containers remain or cannot be verified",
+          "--- FAIL: TestManagedIdentityNativePlacementHandoff (153.28s)"
+        ]
+      },
+      "podman": {
+        "artifact": 11891070287,
+        "name": "coreless-podman-38556997835-1",
+        "sha256": "5ef36bf2b496333685b8540b25c2cb8e83bdaf1219dc5596d6719962cffbdd9a",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "source": [
+          {
+            "file": "candidate-sha.txt",
+            "value": "5ec1b38df90b290dc40fb6f26f18534cf19f0337"
+          }
+        ],
+        "markers": [
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:165: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:167: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:164: OAuth endpoint status=409 expected=201",
+          "    application_identity_placement_runtime_test.go:66: owned placement fixture cleanup failed: provider change: stale-impact-consent",
+          "    application_identity_placement_runtime_test.go:70: owned placement fixture containers remain or cannot be verified",
+          "--- FAIL: TestManagedIdentityNativePlacementHandoff (249.95s)"
+        ]
+      },
+      "result": "failure on both engines: retained-user recreation409 followed by stale cleanup and remaining fixture containers. Shared and application OAuth/PKCE/JWT/refresh phases pass only as bounded subsets."
+    },
+    "native_after": "Pending Session 1 phase2 retained-session fixture correction and integrated native retry. No fixed-native success claimed.",
+    "unchanged_boundaries": [
+      "Achtung and two current acknowledgements",
+      "Separate selected-data deletion consent",
+      "Current owner/material/resource revalidation",
+      "Nonforce volume deletion; foreign containers remain protected"
+    ],
+    "pre_release_ready": false
   }
 }
