@@ -27,14 +27,15 @@ func InspectRegisteredOTLPBindingChange(app application.Manifest, files applicat
 	if err != nil {
 		return change, err
 	}
-	if !ok {
-		return change, nil
-	}
 	change.InputsVerified = d.externalAuthErr == nil && d.registeredExternal != nil
-	change.Changed = !change.InputsVerified
+	// No prior delivery means no replacement claim. Recovery still needs the
+	// selected private input revision below to invalidate stale consent.
+	change.Changed = ok && !change.InputsVerified
 	if change.InputsVerified {
 		change.Endpoint = d.registeredExternal.registration.Endpoint
-		change.Changed = d.verifyRegisteredExternalDelivery() != nil
+		if ok {
+			change.Changed = d.verifyRegisteredExternalDelivery() != nil
+		}
 	}
 	raw, _ := json.Marshal(bound)
 	for _, material := range []struct {

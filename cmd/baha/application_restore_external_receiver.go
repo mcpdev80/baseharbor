@@ -21,7 +21,13 @@ func restoreExternalReceiverScope(resolved resolvedApplication) ([]application.O
 	if err := appendExternalReceiverChangeEffects(resolved, &observation); err != nil {
 		return nil, "", err
 	}
-	effects := []application.OperationalConsequence{{Aspect: "external-telemetry-recovery", Before: "Retained or archived telemetry delivery and authorization belong to their original receiver.", After: "Recovery selects " + disclosedExternalReceiver(application.ExternalOTLPEndpoint()) + ". Delivery uses explicitly selected authorization or same-receiver protected material; no implicit credential transfer, buffered-signal recovery or working destination is verified by this plan.", Evidence: "selected external OTLP configuration and current protected delivery owner; actual destination delivery must be verified after recovery"}}
+	// Recovery must bind selected registration/material even when no delivered
+	// binding or registry consumer survives to produce a replacement effect.
+	selected, err := telemetry.InspectRegisteredOTLPBindingChange(resolved.Manifest, application.RuntimeFilesFor(resolved.Store, resolved.Manifest), resolved.TargetStateRoot)
+	if err != nil {
+		return nil, "", err
+	}
+	effects := []application.OperationalConsequence{{Aspect: "external-telemetry-recovery", Before: "Retained or archived telemetry delivery and authorization belong to their original receiver.", After: "Recovery selects " + disclosedExternalReceiver(selected.Endpoint) + ". Delivery uses explicitly selected authorization or same-receiver protected material; no implicit credential transfer, buffered-signal recovery or working destination is verified by this plan.", Evidence: "selected external OTLP configuration and current protected delivery owner; actual destination delivery must be verified after recovery"}}
 	ids := make([]string, 0, len(observation.Providers))
 	for id := range observation.Providers {
 		ids = append(ids, id)
@@ -34,8 +40,8 @@ func restoreExternalReceiverScope(resolved resolvedApplication) ([]application.O
 	// Only the final opaque scope revision leaves this function. Neither header
 	// bytes nor standalone material digests are included in public consequences.
 	revision := runtimeMutationRevision(struct {
-		Endpoint, Authorization, Existing string
-		Explicit                          bool
-	}{application.ExternalOTLPEndpoint(), strings.TrimSpace(input), observation.Revision, explicit})
+		Endpoint, Authorization, Existing, Selected string
+		Explicit                                    bool
+	}{application.ExternalOTLPEndpoint(), strings.TrimSpace(input), observation.Revision, selected.Revision, explicit})
 	return effects, revision, nil
 }
