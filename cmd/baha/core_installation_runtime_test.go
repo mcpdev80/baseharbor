@@ -458,7 +458,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(ctx, []string{"up", "--yes"}, &output, &output)
+	err = runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
 		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())

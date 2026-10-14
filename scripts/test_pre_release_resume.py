@@ -611,7 +611,7 @@ class GitFingerprintTests(unittest.TestCase):
             self.assertEqual(self.inputs.fingerprint(product, after, 'v0.4.25', key) ==
                              self.inputs.fingerprint(product, changed, 'v0.4.25', key), same)
 
-    def test_v025_cli_backup_does_not_compile_bootstrap_test_fixture(self):
+    def test_v025_cli_gates_do_not_compile_bootstrap_test_fixture(self):
         product = self.v024_inventory()
         path = self.product / 'cmd/baha/core_installation_runtime_test.go'
         path.parent.mkdir(parents=True)
@@ -620,6 +620,9 @@ class GitFingerprintTests(unittest.TestCase):
         path.write_text('package main\nfunc fixture() { changed() }\n')
         after = self.commit(self.product)
         for key, same in [('atomic/docker/backup-restore', True), ('atomic/podman/backup-restore', True),
+                          ('atomic/docker/identity', True), ('atomic/podman/identity', True),
+                          ('atomic/docker/security', True), ('atomic/podman/security', True),
+                          ('integration/docker/coreless-lifecycle', False),
                           ('atomic/docker/control-plane-recovery', False), ('ha/docker/data', False),
                           ('integration/docker/core-bootstrap', False), ('atomic/static/mcp', False)]:
             self.assertEqual(self.inputs.fingerprint(before, self.d, 'v0.4.25', key) ==
@@ -629,8 +632,29 @@ class GitFingerprintTests(unittest.TestCase):
         embedded = self.commit(self.product)
         path.write_text('package main\nfunc fixture() { anotherChange() }\n')
         changed = self.commit(self.product)
-        self.assertNotEqual(self.inputs.fingerprint(embedded, self.d, 'v0.4.25', 'atomic/docker/backup-restore'),
-                            self.inputs.fingerprint(changed, self.d, 'v0.4.25', 'atomic/docker/backup-restore'))
+        for runtime in ['docker', 'podman']:
+            for gate in ['backup-restore', 'identity', 'security']:
+                key = 'atomic/' + runtime + '/' + gate
+                with self.subTest(embedded=key):
+                    self.assertNotEqual(self.inputs.fingerprint(embedded, self.d, 'v0.4.25', key),
+                                        self.inputs.fingerprint(changed, self.d, 'v0.4.25', key))
+
+    def test_v025_cli_fixture_exception_keeps_security_build_and_other_test_inputs(self):
+        original = self.v024_inventory()
+        for name in ['internal/cli/terminal.go', 'internal/auth/auth.go',
+                     'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod',
+                     'cmd/baha/other_runtime_test.go']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('changed real input\\n')
+            changed = self.commit(self.product)
+            for runtime in ['docker', 'podman']:
+                for gate in ['backup-restore', 'identity', 'security']:
+                    key = 'atomic/' + runtime + '/' + gate
+                    with self.subTest(path=name, gate=key):
+                        self.assertNotEqual(self.inputs.fingerprint(original, self.d, 'v0.4.25', key),
+                                            self.inputs.fingerprint(changed, self.d, 'v0.4.25', key))
 
     def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
         product = self.v024_inventory()
