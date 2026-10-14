@@ -73,6 +73,7 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 	var original identityprovider.KeycloakFiles
 	var originalEnv, originalSecret []byte
 	var originalResources []bhruntime.ProjectResource
+	var originalSession *identityOAuthRuntimeSession
 	var prior *identityOAuthRuntimeSession
 	var priorFiles identityprovider.KeycloakFiles
 	var priorResources []bhruntime.ProjectResource
@@ -161,7 +162,15 @@ func TestManagedIdentityNativePlacementHandoff(t *testing.T) {
 				}
 			}
 		}
-		oauth := startIdentityOAuthRuntimeSession(t, ctx, resolved, files)
+		oauth := originalSession
+		if phase < 2 {
+			oauth = startIdentityOAuthRuntimeSession(t, ctx, resolved, files)
+			if phase == 0 {
+				originalSession = oauth
+			}
+		}
+		// Returning to the original authority must use its original retained
+		// user/session, not create a duplicate user or invent account migration.
 		oauth.refresh(t, ctx)
 		prior, priorFiles, priorResources = oauth, files, resources
 		t.Logf("[native-managed-identity] phase=%d placement=%s OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS", phase, scope)
