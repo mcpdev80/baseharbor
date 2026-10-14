@@ -29,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Remote provider changes present concrete current consequences and require applicable acknowledgements before technical execution admission; unsupported execution still fails before staging.
+- Restore consent tracks current registered OTLP credentials, trust and client identity even without retained delivery, so changed material invalidates earlier confirmations without exposing secrets in public plans.
 - Native Podman Quadlet volume deletion no longer forces removal of containers using the volume; foreign/shared consumers remain protected and in-use failures retain retry owners.
 - Full installation destruction binds application resets to their displayed current child scopes; failed or stale child cleanup preserves affected Target resources and retry owners instead of bypassing consent through fallback adapters.
 - Application restore binds the validated archive and current protected owner to the existing consequence scope before resetting state. Two current acknowledgements and separate data consent are required in CLI/JSON, MCP and HTTP; lower reset adapters cannot bypass the verified authority.
