@@ -655,6 +655,7 @@ class GitFingerprintTests(unittest.TestCase):
                     with self.subTest(path=name, gate=key):
                         self.assertNotEqual(self.inputs.fingerprint(original, self.d, 'v0.4.25', key),
                                             self.inputs.fingerprint(changed, self.d, 'v0.4.25', key))
+            original = changed  # Each rejection must prove this input's own change.
 
     def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
         product = self.v024_inventory()
