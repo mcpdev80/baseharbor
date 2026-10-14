@@ -611,6 +611,27 @@ class GitFingerprintTests(unittest.TestCase):
             self.assertEqual(self.inputs.fingerprint(product, after, 'v0.4.25', key) ==
                              self.inputs.fingerprint(product, changed, 'v0.4.25', key), same)
 
+    def test_v025_cli_backup_does_not_compile_bootstrap_test_fixture(self):
+        product = self.v024_inventory()
+        path = self.product / 'cmd/baha/core_installation_runtime_test.go'
+        path.parent.mkdir(parents=True)
+        path.write_text('package main\nfunc fixture() {}\n')
+        before = self.commit(self.product)
+        path.write_text('package main\nfunc fixture() { changed() }\n')
+        after = self.commit(self.product)
+        for key, same in [('atomic/docker/backup-restore', True), ('atomic/podman/backup-restore', True),
+                          ('atomic/docker/control-plane-recovery', False), ('ha/docker/data', False),
+                          ('integration/docker/core-bootstrap', False), ('atomic/static/mcp', False)]:
+            self.assertEqual(self.inputs.fingerprint(before, self.d, 'v0.4.25', key) ==
+                             self.inputs.fingerprint(after, self.d, 'v0.4.25', key), same)
+        # If CLI production embeds source data, retain the fixture conservatively.
+        (path.parent / 'main.go').write_text('package main\n//go:embed source\nvar source string\n')
+        embedded = self.commit(self.product)
+        path.write_text('package main\nfunc fixture() { anotherChange() }\n')
+        changed = self.commit(self.product)
+        self.assertNotEqual(self.inputs.fingerprint(embedded, self.d, 'v0.4.25', 'atomic/docker/backup-restore'),
+                            self.inputs.fingerprint(changed, self.d, 'v0.4.25', 'atomic/docker/backup-restore'))
+
     def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
         product = self.v024_inventory()
         path = self.demo / 'tests/backup-restore/run.sh'

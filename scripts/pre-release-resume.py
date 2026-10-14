@@ -184,6 +184,14 @@ class GitInputs:
                  hashlib.sha256(canonical[path]).hexdigest()) if path in canonical
                 else (path, meta) for path, meta in objects]
 
+    @functools.lru_cache(maxsize=None)
+    def cli_ignores_bootstrap_test_source(self, candidate):
+        # This fixture is ignored by the CLI's go build. Keep it if the CLI
+        # package embeds any source as data; unknown embed use stays conservative.
+        result = subprocess.run(['git', 'grep', '-q', '//go:embed', candidate,
+                                 '--', 'cmd/baha/*.go'], cwd=self.product)
+        return result.returncode == 1
+
     def fingerprint(self, candidate, demo, tag, key):
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
@@ -203,9 +211,13 @@ class GitInputs:
             'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'}
         pin_independent = native_runtime or core_owned
         objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
+        cli_only_backup = (tag == 'v0.4.25' and key in {
+            'atomic/docker/backup-restore', 'atomic/podman/backup-restore'} and
+            self.cli_ignores_bootstrap_test_source(candidate))
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
-                   and not (native_runtime and path in collectors)]
+                   and not (native_runtime and path in collectors)
+                   and not (cli_only_backup and path == 'cmd/baha/core_installation_runtime_test.go')]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
                         if not core_owned
                         and not (tag == 'v0.4.25' and path == 'tests/config-matrix/run.sh'
