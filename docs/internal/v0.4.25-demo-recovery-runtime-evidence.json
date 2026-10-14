@@ -181,8 +181,39 @@
       "run_id": 38529755851,
       "core": "ac7ecfa734c425eefdd786e08c234fead692bf57",
       "demo": "f77e8aefca9f4c94a66ef4ab253902648186dda2",
+      "result": "failure",
+      "finding": "Both engines pass actual encrypted backup and provider retirement, then reject portable source against canonical archive YAML before restore because the authored source has no system ID. Both cleanup scripts explicitly report incomplete before their generic final complete line; neither cleanup nor restore is accepted.",
+      "jobs": [
+        {
+          "id": 115738535003,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115738535286,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11878495379,
+          "name": "demo-v024-docker-38529755851",
+          "digest": "sha256:95a826ab75464e05c8f8f1c8c2bd3b7b9965409c37334840ad54967c5301a3fd"
+        },
+        {
+          "id": 11878216133,
+          "name": "demo-v024-podman-38529755851",
+          "digest": "sha256:80935eb2ebefae0a4ac4ac0d6127007b7858672e2882a1ae9445aac6750d1d5c"
+        }
+      ]
+    },
+    {
+      "run_id": 38532739294,
+      "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+      "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
       "result": "in_progress",
-      "finding": "Targeted Docker/rootless Podman recovery retry after the reproduced logical SQL alias observation correction."
+      "finding": "Targeted Docker/rootless Podman retry with canonical archive/source identity reconciliation; no new PASS claim."
     }
   ],
   "limits": [
@@ -369,8 +400,128 @@
     "console": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
     "connector": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921",
     "run_id": 38528836411,
-    "result": "in_progress",
+    "result": "failure",
     "canonical_pin_resolver": "pass after supplying scripts module path; initial local harness import path was missing",
-    "final_all_provider_matrix": false
+    "final_all_provider_matrix": false,
+    "bounded_results": {
+      "podman": "success",
+      "docker": "failure at aggregate cleanup"
+    },
+    "receipt": "docs/internal/v0.4.25-authenticated-joint-runtime-evidence.json"
+  },
+  "restore_source_correction": {
+    "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+    "tree": "78b989167a71e94ff346976d2d0047b37eb1dff8",
+    "scope": "Reconcile the validated archive original application identity with every existing source/deployment owner before exact desired-state comparison. Reuse existing common source workload resolution; read-only preflight never persists another identity.",
+    "assertions": [
+      "Selected and registered portable source, and source whose canonical identity owner was lost, match the validated original archive identity.",
+      "Actual foreign canonical identity and changed desired requirements are rejected before source/runtime mutation.",
+      "Source and canonical-owner bytes remain unchanged in preflight."
+    ],
+    "initial_regression": "Selected, registered and fresh-source fixtures failed before correction for the same intended-state comparison as both native engines.",
+    "source_snapshot": {
+      "source": {
+        "commit": "af19d0a94d579bd5efbd31d03793f65050947630",
+        "tree": "c21cb01f41950419b2dc1352a0c17d2c2a331241",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 67.653,
+      "race_packages": [
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.609,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.306,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.915,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.207,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 52.763,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 67.195,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.799,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "fail",
+          "exit_code": 1,
+          "seconds": 3.42,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "final_layout_correction": "Snapshot full Go, CLI races, vet/build, EN/DE builds, docs audit and script tests passed; readability failed at app_backup_restore.go 804 lines. Source/Target preflight was moved without semantic change into application_restore_source.go. Removed its now-unused import.",
+    "final_checks": {
+      "focused_restore_identity_and_consent_races": "pass",
+      "full_cli_races_after_layout_move": "pass",
+      "cli_vet_after_layout_move": "pass",
+      "cli_build_after_layout_move": "pass",
+      "readability_after_layout_move": "pass",
+      "diff_check": "pass"
+    }
+  },
+  "docker_joint_retry": {
+    "run_id": 38532924343,
+    "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+    "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
+    "console": "efd067ad9cd696ae01addc7e4c83fe381e885faa",
+    "connector": "edd37d8ebdeeddcff8e45c8c130fa722ca5fbcfd",
+    "result": "in_progress",
+    "scope": "Only failed Docker row selected. Fixed-label/code/result-count diagnostics retain no arbitrary stdout/stderr, secret values, paths or command arguments. No mutation replay.",
+    "source_checks": {
+      "console_contracts": 63,
+      "architecture_typecheck_lint": "pass",
+      "connector_receipt_negatives": 4,
+      "single_both_runtime_YAML_selection": "pass",
+      "actionlint": "v1.7.12 pass"
+    }
   }
 }

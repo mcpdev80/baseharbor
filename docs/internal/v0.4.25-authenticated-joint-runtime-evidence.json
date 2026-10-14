@@ -1,0 +1,144 @@
+{
+  "schema": "baseharbor.authenticated-joint-runtime-evidence/v1",
+  "release": "0.4.25",
+  "date": "2026-10-14",
+  "pre_release_ready": false,
+  "final_ecosystem_matrix": false,
+  "source": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+    "console": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+    "connector": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921"
+  },
+  "origin": {
+    "id": 38528836411,
+    "head_sha": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921",
+    "path": ".github/workflows/release-integration.yml",
+    "run_attempt": 1,
+    "event": "push",
+    "head_branch": "work/v0.4.25-integrations-docs"
+  },
+  "result": "failure",
+  "jobs": [
+    {
+      "id": 115735588125,
+      "runtime": "podman",
+      "conclusion": "success",
+      "manifest_archive": {
+        "id": 11877591564,
+        "name": "private-integration-integration-podman-remote-target-38528836411-1",
+        "digest": "sha256:f2b609ebce937dde32f36eb10253051ed4658fdac5b9c7c6c110387ddb8d4f39",
+        "downloaded_and_sha256_verified": true
+      },
+      "browser_archive": {
+        "id": 11877756216,
+        "name": "actual-browser-core-read-receipt",
+        "digest": "sha256:0d20ddc849db5b02f845df79a1bda7aa09ab189c7c504b83e38d38bdcddb086e",
+        "downloaded_and_sha256_verified": true
+      },
+      "manifest": {
+        "schema": "baseharbor.private-integration-evidence/v1",
+        "repository": "mcpdev80/baseharbor-node-connector",
+        "consumer_commit": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921",
+        "core_commit": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+        "demo_commit": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+        "console_commit": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+        "role": "connector",
+        "gate": "integration/podman/remote-target",
+        "workflow_run_id": "38528836411",
+        "workflow_run_attempt": 1,
+        "job_id": 115735588125,
+        "build_sha256": "3374c7be4b6efeeb6167f288018e67da35614bda8dcf27c6c0c6341007567425",
+        "result": "success",
+        "cleanup_result": "success",
+        "release_eligible": true,
+        "production_authority": true,
+        "qualifications": {
+          "production-enrollment": true,
+          "ca-overlap-renewal-revocation": true,
+          "outbound-mtls": true,
+          "application-plan-apply-status-doctor-repair-destroy": true,
+          "secret-tls": true,
+          "foreign-preservation": true,
+          "oidc-origin-role": true,
+          "plan-apply-result-events": true,
+          "logs-follow-cancel": true,
+          "terminal-resize-close": true,
+          "core-setup": true,
+          "application-lifecycle": true,
+          "production-rotation": true,
+          "owned-cleanup": true,
+          "retained-remote-reactivation": true,
+          "owned-disconnect": true
+        }
+      },
+      "browser": {
+        "schema": "baseharbor.private-browser-receipt/v1",
+        "repository": "mcpdev80/baseharbor-node-connector",
+        "commit": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+        "core_commit": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+        "demo_commit": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+        "run_id": "38528836411",
+        "run_attempt": "1",
+        "qualification_scope": "actual-browser-oidc-Core-bootstrap-application-lifecycle-runtime-details-terminal-logs-and-logout",
+        "result": "success",
+        "steps": [
+          "real-keycloak-code-S256-login",
+          "actual-Core-POST-SSE-GET-and-empty-read-model",
+          "actual-Core-rejects-issuer-cookies-without-bearer",
+          "actual-Core-binds-browser-origin-to-one-installation",
+          "actual-Core-viewer-read-allowed-mutation-and-destruction-denied",
+          "actual-Core-native-runtime-list-inspect-metrics-and-selection-reset",
+          "actual-Core-setup-wizard-role-selection-explicit-submission-and-viewer-denial",
+          "no-bearer-in-browser-storage",
+          "logout-with-explicit-preview-choice",
+          "fresh-context-has-no-Core-session",
+          "real-token-expiry-ends-Console-session-and-Core-admission",
+          "actual-Core-rejects-real-issuer-token-with-wrong-audience",
+          "actual-operator-HTTP-production-enrollment-outbound-Connector-application-plan-apply-status-doctor-immutable-repair-destroy-and-owned-cleanup",
+          "actual-operator-HTTP-default-remote-retirement-preserves-publication-owner-original-TLS-data-credentials-and-immutable-reactivation",
+          "actual-operator-HTTP-node-disconnect-two-current-acknowledgements-revokes-certificate-and-preserves-owner",
+          "actual-browser-plan-bound-provider-confirmations-and-selective-application-READY-without-management-Core",
+          "actual-browser-explicit-management-Core-SQL-Secrets-Identity-READY-and-application-preservation",
+          "actual-browser-Core-application-plan-status-doctor-repair-explicit-destroy-and-foreign-issuer-preservation",
+          "actual-browser-approved-production-credential-CA-rotation-changed-native-CA-and-post-rotation-application-status-doctor",
+          "actual-browser-authoritative-status-ready-doctor-healthy-before-and-after-rotation",
+          "actual-browser-Core-owned-container-logs-read-follow-new-output-cancel-without-replay",
+          "actual-browser-Core-owned-container-PTY-input-output-resize-exit-and-foreign-actor-denial"
+        ],
+        "browser_version": "151.0.7922.34",
+        "keycloak_image": "quay.io/keycloak/keycloak@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc",
+        "core_bootstrap_evidence": true,
+        "application_lifecycle_evidence": true,
+        "terminal_runtime_evidence": true,
+        "logs_runtime_evidence": true,
+        "production_rotation_evidence": true,
+        "release_eligible": false,
+        "cleanup": "success"
+      },
+      "verification": "Full job logs, authenticated exact run/workflow/head/attempt and successful job metadata, exact artifact IDs and ZIP digests, source bindings and complete positive receipt qualifications inspected."
+    },
+    {
+      "id": 115735588140,
+      "runtime": "docker",
+      "conclusion": "failure",
+      "browser_archive": {
+        "id": 11877941470,
+        "name": "actual-browser-core-read-receipt",
+        "digest": "sha256:8fcbe85d33836ec5cfb190eef17b39ce1238847cfb544fb43aee7a9579c91992"
+      },
+      "verified_partial_steps": [
+        "Production native managed enrollment, renewal, CA overlap/retirement and persisted revocation test passed.",
+        "Normal operator HTTP remote application plan/apply/status/doctor/immutable repair, default retirement/original-data reactivation, explicit full reset and node disconnect completed.",
+        "Generated Next.js actual HTTP/doctor, down/status/up and owned application destruction passed."
+      ],
+      "failure": "Aggregate installation cleanup failed after one current-plan acknowledgement. Existing fixture concealed structured native failure classifications; underlying cause is not yet established. No complete Docker integration manifest was produced."
+    }
+  ],
+  "prior_failed_attempts_preserved_in": "docs/internal/v0.4.25-ecosystem-continuation-checkpoint.json",
+  "limits": [
+    "Successful Podman qualification belongs to this exact four-source matrix; it is not final all-provider or current recovery acceptance.",
+    "Docker remains failed despite successful partial authenticated journeys.",
+    "Subsequent Core alias/restore corrections and pending Session 1 provider/material handoff must be reflected in final immutable input selection and affected evidence."
+  ]
+}
