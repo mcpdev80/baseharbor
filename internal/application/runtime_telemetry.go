@@ -21,7 +21,7 @@ func ExistingRuntimeOTLPBinding(m Manifest, files RuntimeFiles) (RuntimeOTLPBind
 	if !HasOTLPTelemetry(m) {
 		return RuntimeOTLPBinding{}, false, nil
 	}
-	values, err := readRuntimeEnv(files.Env)
+	values, err := readProtectedOTLPRuntimeEnv(files.Env)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return RuntimeOTLPBinding{}, false, nil
@@ -40,7 +40,7 @@ func ExistingRuntimeOTLPBinding(m Manifest, files RuntimeFiles) (RuntimeOTLPBind
 		ClientKeyFile:     strings.TrimSpace(values[OTLPTLSHostClientKeyEnv]),
 	}
 	if binding.Provider == capability.ProviderExternalOTLP {
-		binding.Headers = strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS"))
+		binding.Headers = strings.TrimSpace(values["OTLP_HEADERS"])
 	}
 	return binding, true, nil
 }

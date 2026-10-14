@@ -132,7 +132,7 @@ func materializeWorkloadFromComposePath(repositoryRoot, composePath string, m Ma
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
-	values, err := readRuntimeEnv(runtime.Env)
+	values, err := readWorkloadRuntimeEnv(m, runtime.Env)
 	if err != nil {
 		return WorkloadFiles{}, false, err
 	}
@@ -613,7 +613,7 @@ func applicationExposureNetworkForRuntime(m Manifest, runtimeProject string) str
 }
 
 func ManagedWorkloadEnvironment(m Manifest, files RuntimeFiles) (map[string]string, error) {
-	values, err := readRuntimeEnv(files.Env)
+	values, err := readWorkloadRuntimeEnv(m, files.Env)
 	if err != nil {
 		return nil, err
 	}
@@ -698,7 +698,7 @@ func containerRuntimeEnvironment(m Manifest, values map[string]string) (map[stri
 			}
 		}
 		if values["OTLP_PROVIDER"] == string(capability.ProviderExternalOTLP) {
-			if headers := strings.TrimSpace(os.Getenv("BASEHARBOR_OTLP_HEADERS")); headers != "" {
+			if headers := strings.TrimSpace(values["OTLP_HEADERS"]); headers != "" {
 				env["OTEL_EXPORTER_OTLP_HEADERS"] = headers
 			}
 		}

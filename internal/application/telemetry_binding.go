@@ -26,6 +26,16 @@ func ExternalOTLPEndpoint() string {
 }
 
 func MaterializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.ProviderKind, hostEndpoint, containerEndpoint string) error {
+	return materializeOTLPBinding(m, files, provider, hostEndpoint, containerEndpoint, "")
+}
+
+// Authorization belongs to the existing protected deployment projections, never
+// the portable manifest or public provider registration.
+func MaterializeExternalOTLPBinding(m Manifest, files RuntimeFiles, endpoint, headers string) error {
+	return materializeOTLPBinding(m, files, capability.ProviderExternalOTLP, endpoint, endpoint, headers)
+}
+
+func materializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.ProviderKind, hostEndpoint, containerEndpoint, headers string) error {
 	if !HasOTLPTelemetry(m) {
 		return nil
 	}
@@ -41,6 +51,17 @@ func MaterializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.
 	values["OTLP_PROVIDER"] = string(provider)
 	values["OTLP_HOST_ENDPOINT"] = hostEndpoint
 	values["OTLP_CONTAINER_ENDPOINT"] = containerEndpoint
+	delete(values, "OTLP_HEADERS")
+	if provider == capability.ProviderExternalOTLP && headers != "" {
+		values["OTLP_HEADERS"] = headers
+	}
+	if provider == capability.ProviderExternalOTLP {
+		// Retain owned files for recovery, but never deliver the managed
+		// collector's private identity to a different external authority.
+		delete(values, OTLPTLSHostCAEnv)
+		delete(values, OTLPTLSHostClientCertEnv)
+		delete(values, OTLPTLSHostClientKeyEnv)
+	}
 	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
 		return err
 	}
@@ -52,6 +73,10 @@ func MaterializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.
 	appEnv["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 	appEnv["OTEL_SERVICE_NAME"] = m.Name
 	appEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", string(provider))
+	delete(appEnv, "OTEL_EXPORTER_OTLP_HEADERS")
+	if provider == capability.ProviderExternalOTLP && headers != "" {
+		appEnv["OTEL_EXPORTER_OTLP_HEADERS"] = headers
+	}
 	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
 }
 
