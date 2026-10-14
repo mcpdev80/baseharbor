@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/machine"
 	"io"
 )
 
@@ -77,14 +76,8 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 		return err
 	}
 	observed := observeApplicationProviderFacts(ctx, withdrawn)
-	for _, change := range plan.Changes {
-		if change.Action != "stop" && change.Action != "remove-runtime" {
-			continue
-		}
-		fact, found := observed[change.InstanceID]
-		if !found || fact.State != application.ProviderStoppedOwned || fact.Containers.Value == nil || *fact.Containers.Value != 0 {
-			return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "runtime_retirement_unverified", Resource: change.InstanceID, Message: "Selected runtime retirement could not be verified.", Next: "Inspect the retained deployment owner and retry; data and previous intent remain available."}
-		}
+	if err := verifyApplicationRuntimeRetirement(e.resolved, plan, observed); err != nil {
+		return err
 	}
 	if err := recordVerifiedApplicationRuntimeRetirement(e.resolved, *plan.Impact, nil, retained); err != nil {
 		return err
