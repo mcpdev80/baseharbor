@@ -101,6 +101,14 @@ The plan names owned containers, networks and volumes, including older resources
 
 JSON and the MCP destroy operations return `resources`, `preserved` and `results` from the same lifecycle. A successful container cleanup removes its unshared anonymous volumes; declared external repository volumes remain preserved.
 
+When installation cleanup removes one deployment, the remaining consumer plan
+can change. Before the next deployment, BaseHarbor displays that current remainder
+and requires two new confirmations plus separate data-deletion consent. In JSON,
+`approval_required` / `impact-confirmation-required` includes the remaining plan
+and `continuation` with the previous plan ID and completed deployment IDs.
+`destroyed: false` and `results` preserve actual progress. Confirm the new plan to
+continue; do not replay a failed mutation or reuse the earlier acknowledgement.
+
 ## Provider update and point recovery
 
 `baha update --check` inspects a published release without changing providers. A supported update requires `--yes`, immutable image identities and verified recovery points.

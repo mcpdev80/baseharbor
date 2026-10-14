@@ -78,6 +78,15 @@ Exakte Referenz: [Core-Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/c
 
 Technische Bezeichner: `ha: true`, `baha app doctor`, `baha new application orders-api --stack go --http --sql`, `preserved`, `results`.
 
+Entfernt der Installationsabbau ein Deployment, kann sich der verbleibende
+Verbraucherplan ändern. Vor dem nächsten Deployment zeigt BaseHarbor diesen
+aktuellen Restplan und verlangt zwei neue Bestätigungen sowie separate Zustimmung
+zur Datenlöschung. JSON liefert dafür `approval_required` /
+`impact-confirmation-required` mit Restplan und `continuation`: vorherige Plan-ID
+und tatsächlich abgeschlossene Deployment-IDs. `destroyed: false` und `results`
+erhalten den bisherigen Fortschritt. Bestätige den neuen Plan zur Fortsetzung;
+wiederhole keine fehlgeschlagene Mutation mit der alten Zustimmung.
+
 ## Provider-Update und Point-Recovery
 
 `baha update --check` prüft ein veröffentlichtes Release, ohne Provider zu verändern. Ein unterstütztes Update benötigt `--yes`, unveränderliche Image-Identitäten und verifizierte Recovery-Punkte.

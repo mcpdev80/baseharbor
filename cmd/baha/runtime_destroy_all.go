@@ -196,7 +196,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	for _, target := range targets {
 		releaseFullDestroyConnectivity(parent, target, &results)
 	}
-	for _, record := range deployments {
+	for index, record := range deployments {
 		targetCtx := withTargetOverride(parent, record.Identity.Target)
 		args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
 		if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
@@ -216,6 +216,13 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 			Target:   record.Identity.Target,
 			Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
 		})
+		if index+1 < len(deployments) {
+			parent, currentImpact, err = advanceInstallationDestruction(parent, currentImpact, record.Identity.DeploymentID, out)
+			if err != nil {
+				recordDestroyResults(parent, results, false)
+				return err
+			}
+		}
 	}
 
 	for i, target := range targets {

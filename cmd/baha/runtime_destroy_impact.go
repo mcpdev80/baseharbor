@@ -26,6 +26,7 @@ type runtimeDestroyImpact struct {
 	Effects      []application.OperationalConsequence `json:"effects"`
 	LocalState   []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
 	Applications []applicationDestructionPlan         `json:"application_resets"`
+	Continuation *installationDestroyContinuation     `json:"continuation,omitempty"`
 }
 
 type runtimeDestroyCoreImpact struct {
