@@ -122,7 +122,7 @@ func buildApplicationRestorePlan(ctx context.Context, resolved resolvedApplicati
 		Placements any
 	}{sourceRevision, placements})
 	p.Effects = []application.OperationalConsequence{{Aspect: "application-recovery", Before: "Selected application runtime, data, credentials and retained recovery owners at the displayed locations.", After: "Stop the selected workload, reset its owned backend and secret scope, and overwrite the selected durable state from the validated recovery archive. Newer selected data can be permanently lost. Recreate ephemeral identities and verify actual restored services before claiming success. Unselected, shared and foreign state remains outside archive restoration; no universal credential, lease or login continuity is claimed.", Evidence: "validated encrypted archive and current protected owners; full consumer consequences and interrupted recovery remain unverified"}}
-	externalEffects, externalRevision, err := restoreExternalReceiverScope(resolved)
+	externalEffects, externalRevision, err := restoreExternalRecoveryScope(resolved)
 	if err != nil {
 		return p, err
 	}
