@@ -124,7 +124,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	}
 	brokerStopped := false
 	if application.RequiresRuntimeBroker(m) {
-		if err := stopRestoreRuntimeBroker(ctx, compose, m, files); err != nil {
+		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
 			if workloadStopped {
 				_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
 			}
@@ -516,7 +516,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, 
 		return err
 	}
 	if application.RequiresRuntimeBroker(m) {
-		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+		if err := stopRestoreRuntimeBroker(ctx, compose, m, files); err != nil {
 			return err
 		}
 	}

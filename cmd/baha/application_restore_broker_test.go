@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/runtimebroker"
 )
@@ -19,6 +20,42 @@ type restoreBrokerStopFixture struct {
 	containers          []bhruntime.RuntimeContainer
 	selected            []string
 	inspectErr, stopErr error
+	legacyStops         int
+	destroyErr          error
+}
+
+func (f *restoreBrokerStopFixture) StopProject(context.Context, string, string, string) error {
+	f.legacyStops++
+	return errors.New("retired broker unit is not loaded")
+}
+func (f *restoreBrokerStopFixture) DestroyProject(context.Context, string, string, string) error {
+	return f.destroyErr
+}
+
+func TestRestoreResetUsesObservedBrokerAbsenceBeforeDestructivePhase(t *testing.T) {
+	m := application.New("restore-reset-broker", "dev", false, false, true)
+	store := application.Store{Root: t.TempDir(), Namespace: "isolated"}
+	files := application.RuntimeFilesFor(store, m)
+	if err := os.MkdirAll(files.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for path, data := range map[string]string{files.Compose: "services: {}\n", files.Env: "FIXTURE=retained\n", filepath.Join(files.Dir, "broker.compose.yaml"): "services: {}\n", filepath.Join(files.Dir, "broker-image"): "isolated-image\n"} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, err := deployment.NewDeploymentIdentity("isolated", m.ApplicationID, m.Name, m.Environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := resolvedApplication{Manifest: m, Store: store, DeploymentIdentity: id}
+	ctx := context.WithValue(t.Context(), verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: id, Intent: m.YAML(), PlanID: "current-fixture-owner-plan"})
+	marker := errors.New("reached destructive reset only after broker absence verification")
+	native := &restoreBrokerStopFixture{destroyErr: marker}
+	err = resetRestoreTarget(ctx, native, bhruntime.Files{}, resolved)
+	if !errors.Is(err, marker) || native.legacyStops != 0 || len(native.selected) != 0 {
+		t.Fatal("actual restore reset did not use verified retired-broker absence", err)
+	}
 }
 
 func (f *restoreBrokerStopFixture) Kind() bhruntime.ProviderKind { return bhruntime.ProviderDocker }

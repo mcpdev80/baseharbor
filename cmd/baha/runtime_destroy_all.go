@@ -29,10 +29,11 @@ import (
 var removeHostTrustForFullDestroy = hosttrust.RemoveOwnedDetailed
 
 type fullDestroyResult struct {
-	Status   string `json:"status"`
-	Target   string `json:"target,omitempty"`
-	Resource string `json:"resource"`
-	Detail   string `json:"detail,omitempty"`
+	Status     string `json:"status"`
+	Target     string `json:"target,omitempty"`
+	Resource   string `json:"resource"`
+	Detail     string `json:"detail,omitempty"`
+	Diagnostic string `json:"diagnostic,omitempty"`
 }
 
 func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io.Writer) error {
@@ -427,10 +428,11 @@ func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDest
 			resource = "deployment unknown"
 		}
 		results = append(results, fullDestroyResult{
-			Status:   "SKIPPED",
-			Target:   stateErr.Identity.Target,
-			Resource: resource,
-			Detail:   "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
+			Status:     "SKIPPED",
+			Target:     stateErr.Identity.Target,
+			Resource:   resource,
+			Detail:     "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
+			Diagnostic: "unregistered-deployment-state",
 		})
 	}
 	return records, results

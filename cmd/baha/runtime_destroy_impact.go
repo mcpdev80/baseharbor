@@ -27,6 +27,7 @@ type runtimeDestroyImpact struct {
 	LocalState   []application.ResourceLocation       `json:"local_state_selected_for_deletion"`
 	Applications []applicationDestructionPlan         `json:"application_resets"`
 	Continuation *installationDestroyContinuation     `json:"continuation,omitempty"`
+	Discovery    []fullDestroyResult                  `json:"discovery,omitempty"`
 }
 
 type runtimeDestroyCoreImpact struct {
@@ -55,6 +56,9 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 	owners := map[string]string{config: runtimeMutationRevision(data)}
 	zeroBytes(data)
 	if all {
+		_, targetDiscovery := discoverFullDestroyTargets()
+		_, deploymentDiscovery := discoverFullDestroyDeployments()
+		p.Discovery = append(targetDiscovery, deploymentDiscovery...)
 		root, err := deployment.DataRoot()
 		if err != nil {
 			return p, err

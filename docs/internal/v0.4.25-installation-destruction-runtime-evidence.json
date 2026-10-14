@@ -83,5 +83,46 @@
       "internal/providers/runtime/podman/quadlet_runtime_test.go"
     ],
     "meaning": "Docker production Go sources and installation destruction native fixture unchanged; bounded prior Docker PASS retained. This does not constitute final immutable ecosystem approval."
+  },
+  "current_source_requalification": {
+    "source": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+    "tree": "d1dc8bb1a51bf012e6a2607e50d1410bc34bb25d",
+    "run_id": 38540528249,
+    "run_attempt": 1,
+    "result": "success",
+    "jobs": [
+      {
+        "id": 115773855474,
+        "runtime": "docker",
+        "result": "success"
+      },
+      {
+        "id": 115773855803,
+        "runtime": "podman",
+        "result": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 11882566213,
+        "name": "installation-destroy-podman-38540528249-1",
+        "digest": "sha256:7c6e0075893f8d7929dcd1a4710386bd0e91f896101d5ec71f94b4c1de7ab5d2",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      },
+      {
+        "id": 11881952509,
+        "name": "installation-destroy-docker-38540528249-1",
+        "digest": "sha256:44bb53d1e52d87e65abcf800f8bd49ec4ea8609a3620e3f637573c95f86bf973",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      }
+    ],
+    "assertions": [
+      "Actual SQL consumer TLS/credentials and original row assertions passed before refused destructive consent.",
+      "Native in-use volume failure preserves exact Target/shared retry owner and foreign holder. No force-volume deletion.",
+      "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
+    ],
+    "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
   }
 }
