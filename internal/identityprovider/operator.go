@@ -55,7 +55,7 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	if err := setApplicationKeycloakCanonicalURL(files, canonicalBase); err != nil {
+	if err := prepareApplicationKeycloakCanonicalURL(runtime, namespace, files, canonicalBase); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	files.CanonicalPublicURL = canonicalBase
