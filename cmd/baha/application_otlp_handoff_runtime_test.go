@@ -24,6 +24,38 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
+const nativeOTLPHandoffIntent = "version: 1\napp:\n  name: otlp-handoff\n  environment: dev\nworkload:\n  components:\n    - api\ntelemetry:\n  otlp:\n    signals:\n      - traces\n"
+
+func TestNativeOTLPHandoffFixtureAuthoredIntent(t *testing.T) {
+	manifest, err := application.ParseYAML(nativeOTLPHandoffIntent)
+	if err != nil {
+		t.Fatal("native fixture must use the actual authored Manifest contract", err)
+	}
+	if manifest.ApplicationID != "" || len(manifest.Workload.Components) != 1 || manifest.Workload.Components[0] != "api" || !application.HasOTLPTelemetry(manifest) || len(manifest.Telemetry.OTLP.Signals) != 1 || manifest.Telemetry.OTLP.Signals[0] != "traces" {
+		t.Fatal("native fixture must request the actual selected workload trace consumer without an authored identity")
+	}
+	configureTestTarget(t)
+	t.Chdir(t.TempDir())
+	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": nativeOTLPHandoffIntent} {
+		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var output bytes.Buffer
+	ctx := machineNoninteractiveContext(t.Context())
+	if err := runWithIO(ctx, []string{"app", "init", "--input", "tls_mode=local", "--yes", "--json"}, &output, &output); err != nil {
+		t.Fatalf("actual native fixture initialization failed: %v\n%s", err, output.String())
+	}
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "plan")
+	if err != nil || resolved.Manifest.ApplicationID == "" || !application.HasOTLPTelemetry(resolved.Manifest) {
+		t.Fatal("native fixture did not initialize the real trace consumer", err)
+	}
+	authored, err := os.ReadFile("baseharbor.yaml")
+	if err != nil || string(authored) != nativeOTLPHandoffIntent {
+		t.Fatal("fixture initialization changed its authored source")
+	}
+}
+
 // Exercise the common current-plan authority and actual mounted consumer,
 // rather than equating a projected environment or host-side probe with handoff.
 func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
@@ -69,7 +101,7 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 	workload += fmt.Sprintf("\nnetworks:\n  receiver:\n    external: true\n    name: %q\n", receiver.network)
 	for name, data := range map[string]string{
 		"compose.yaml":    workload,
-		"baseharbor.yaml": "version: 1\napp:\n  name: otlp-handoff\n  environment: dev\nworkload:\n  components: [api]\ntelemetry:\n  otlp:\n    export: [traces]\n",
+		"baseharbor.yaml": nativeOTLPHandoffIntent,
 	} {
 		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
 			t.Fatal(err)
