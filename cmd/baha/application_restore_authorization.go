@@ -19,6 +19,7 @@ type verifiedRestoreScopeKey struct{}
 type verifiedRestoreScope struct {
 	Identity deployment.DeploymentIdentity
 	Intent   string
+	PlanID   string
 }
 
 func prepareAuthorizedApplicationRestore(ctx context.Context, resolved resolvedApplication, data applicationRestoreData, out io.Writer) (context.Context, func(), error) {
@@ -26,11 +27,20 @@ func prepareAuthorizedApplicationRestore(ctx context.Context, resolved resolvedA
 	if err != nil {
 		return ctx, nil, err
 	}
+	planned, err := buildApplicationRestorePlan(ctx, resolved, data)
+	if err != nil {
+		unlock()
+		return ctx, nil, err
+	}
 	if err := authorizeApplicationRestore(ctx, resolved, data, out); err != nil {
 		unlock()
 		return ctx, nil, err
 	}
-	ctx = context.WithValue(ctx, verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: resolved.DeploymentIdentity, Intent: resolved.Manifest.YAML()})
+	if err := validateApplicationProviderExecution(resolved, planned.Providers.Impact); err != nil {
+		unlock()
+		return ctx, nil, err
+	}
+	ctx = context.WithValue(ctx, verifiedRestoreScopeKey{}, verifiedRestoreScope{Identity: resolved.DeploymentIdentity, Intent: resolved.Manifest.YAML(), PlanID: planned.Scope.PlanID})
 	return ctx, unlock, nil
 }
 
@@ -52,7 +62,7 @@ func buildApplicationRestorePlan(ctx context.Context, resolved resolvedApplicati
 	if len(data.archiveRevision) != 64 || data.manifest.YAML() != resolved.Manifest.YAML() {
 		return p, classifyProviderChangeConsent(&application.ProviderChangeError{Code: "invalid-impact-plan"})
 	}
-	if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
+	if err := revalidateRestoreProviderIntent(ctx, resolved); err != nil {
 		return p, err
 	}
 	var err error
@@ -99,15 +109,32 @@ func buildApplicationRestorePlan(ctx context.Context, resolved resolvedApplicati
 	if err != nil {
 		return p, err
 	}
+	sourceRevision, err := repositoryDesiredStateFingerprint(ctx, resolved)
+	if err != nil {
+		return p, err
+	}
+	placements, err := desiredBackendPlacements(resolved.Manifest)
+	if err != nil {
+		return p, err
+	}
+	sourceRevision = runtimeMutationRevision(struct {
+		Source     string
+		Placements any
+	}{sourceRevision, placements})
 	p.Effects = []application.OperationalConsequence{{Aspect: "application-recovery", Before: "Selected application runtime, data, credentials and retained recovery owners at the displayed locations.", After: "Stop the selected workload, reset its owned backend and secret scope, and overwrite the selected durable state from the validated recovery archive. Newer selected data can be permanently lost. Recreate ephemeral identities and verify actual restored services before claiming success. Unselected, shared and foreign state remains outside archive restoration; no universal credential, lease or login continuity is claimed.", Evidence: "validated encrypted archive and current protected owners; full consumer consequences and interrupted recovery remain unverified"}}
 	leaves := []application.ProviderImpactPlan{}
 	if p.Providers.Impact != nil {
 		leaves = append(leaves, *p.Providers.Impact)
 	}
-	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-restore", Subject: resolved.DeploymentIdentity.DeploymentID, Reference: ownerPath, Destructive: true, Revision: runtimeMutationRevision(struct {
-		Archive, Owner, Config, Materials string
-		Effects                           []application.OperationalConsequence
-	}{data.archiveRevision, runtimeMutationRevision(owner), runtimeMutationRevision(config), materialRevision, p.Effects})}, leaves, false)
+	subject, reference := resolved.DeploymentIdentity.DeploymentID, ownerPath
+	if len(owner) == 0 {
+		subject = "application/" + resolved.Manifest.ApplicationID + "/" + resolved.Manifest.Environment
+		reference = resolved.ManifestPath
+	}
+	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: "application-restore", Subject: subject, Reference: reference, Destructive: true, Revision: runtimeMutationRevision(struct {
+		Archive, Owner, Config, Materials, Source string
+		Effects                                   []application.OperationalConsequence
+	}{data.archiveRevision, runtimeMutationRevision(owner), runtimeMutationRevision(config), materialRevision, sourceRevision, p.Effects})}, leaves, false)
 	return p, err
 }
 

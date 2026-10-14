@@ -202,28 +202,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
 	logsHistory := restoreData.logsHistory
-	var platformFiles bhruntime.Files
-	var issuer serviceaccess.Issuer
-	if m.Services.Secrets || application.RequiresRuntimeBroker(m) {
-		platformFiles, err = existingTargetRuntimeFiles(ctx)
-		if err != nil {
-			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
-		}
-	}
-	if requiresManagedServiceIssuer(m) {
-		issuer, err = resolveApplicationServiceIssuer(ctx, resolved, compose)
-		if err != nil {
-			return fmt.Errorf("restore preflight managed service PKI: %w", err)
-		}
-	}
-	if m.Services.Secrets {
-		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-		if err := openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity); err != nil {
-			return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
-		}
-	}
-	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
-		return fmt.Errorf("restore preflight workload security: %w", err)
+	platformFiles, issuer, err := prepareRestoreRuntimeDependencies(ctx, resolved, compose, restoreData, out)
+	if err != nil {
+		return err
 	}
 	if err := materializeApplicationServiceIssuer(issuer); err != nil {
 		return fmt.Errorf("restore managed service PKI: %w", err)
