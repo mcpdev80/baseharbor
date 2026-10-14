@@ -458,7 +458,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
+	err = runWithIO(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
 		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())
@@ -545,6 +545,54 @@ func coreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Cont
 		return withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
 	}
 	return ctx
+}
+
+func TestGeneratedBootstrapConsentRetainsCurrentIntent(t *testing.T) {
+	configureTestTarget(t)
+	root := filepath.Join(t.TempDir(), "generated")
+	registry, err := development.NewRegistry(pythonadapter.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-secret-regression", Adapter: pythonadapter.AdapterID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets, capability.ExposureHTTP}, Secrets: []string{"API_TOKEN"}}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	ctx := machineNoninteractiveContext(t.Context())
+	beforeInitialization := coreBootstrapFixtureConsent(t, ctx)
+	consent := generatedCoreBootstrapFixtureConsent(t, ctx)
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conflict *machine.Error
+	if err := authorizeApplicationProviderChanges(beforeInitialization, resolved, nil, &bytes.Buffer{}); !errors.As(err, &conflict) || conflict.Code != machine.ErrorConflict {
+		t.Fatalf("deployment input initialization did not invalidate earlier consent: %v", err)
+	}
+	for attempt := 0; attempt < 4; attempt++ {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
+			t.Fatalf("unchanged generated intent: %v", err)
+		}
+		if err := authorizeApplicationProviderChanges(consent, resolved, nil, &bytes.Buffer{}); err != nil {
+			t.Fatalf("unchanged generated consent: %v", err)
+		}
+	}
+}
+
+// Ordinary up resolves deployment inputs before entering application apply.
+// A fixture must acknowledge the resulting owner/input state, not the proposal
+// that existed before this normal preparation. It never retries stale consent.
+func generatedCoreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	return coreBootstrapFixtureConsent(t, ctx)
 }
 
 func resetCoreBootstrapFixtureApplication(t *testing.T, ctx context.Context) {

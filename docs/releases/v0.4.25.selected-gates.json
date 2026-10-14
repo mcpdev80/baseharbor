@@ -1,14 +1,8 @@
 [
-  "atomic/docker/guided",
-  "atomic/podman/guided",
-  "atomic/docker/lifecycle",
-  "atomic/podman/lifecycle",
-  "atomic/docker/full-destroy",
-  "atomic/podman/full-destroy",
-  "atomic/docker/connectivity",
-  "atomic/podman/connectivity",
   "integration/docker/core-bootstrap",
   "integration/podman/core-bootstrap",
   "integration/docker/coreless-lifecycle",
-  "integration/podman/coreless-lifecycle"
+  "integration/podman/coreless-lifecycle",
+  "journey/docker",
+  "journey/podman"
 ]

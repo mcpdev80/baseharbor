@@ -214,7 +214,11 @@ class GitInputs:
         cli_only_fixture = (tag == 'v0.4.25' and key in {
             'atomic/docker/backup-restore', 'atomic/podman/backup-restore',
             'atomic/docker/identity', 'atomic/podman/identity',
-            'atomic/docker/security', 'atomic/podman/security'} and
+            'atomic/docker/security', 'atomic/podman/security',
+            'atomic/docker/guided', 'atomic/podman/guided',
+            'atomic/docker/lifecycle', 'atomic/podman/lifecycle',
+            'atomic/docker/connectivity', 'atomic/podman/connectivity',
+            'atomic/docker/full-destroy', 'atomic/podman/full-destroy'} and
             self.cli_ignores_bootstrap_test_source(candidate))
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'

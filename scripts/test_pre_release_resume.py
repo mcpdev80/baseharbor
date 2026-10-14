@@ -622,6 +622,10 @@ class GitFingerprintTests(unittest.TestCase):
         for key, same in [('atomic/docker/backup-restore', True), ('atomic/podman/backup-restore', True),
                           ('atomic/docker/identity', True), ('atomic/podman/identity', True),
                           ('atomic/docker/security', True), ('atomic/podman/security', True),
+                          ('atomic/docker/guided', True), ('atomic/podman/guided', True),
+                          ('atomic/docker/lifecycle', True), ('atomic/podman/lifecycle', True),
+                          ('atomic/docker/connectivity', True), ('atomic/podman/connectivity', True),
+                          ('atomic/docker/full-destroy', True), ('atomic/podman/full-destroy', True),
                           ('integration/docker/coreless-lifecycle', False),
                           ('atomic/docker/control-plane-recovery', False), ('ha/docker/data', False),
                           ('integration/docker/core-bootstrap', False), ('atomic/static/mcp', False)]:
@@ -633,7 +637,7 @@ class GitFingerprintTests(unittest.TestCase):
         path.write_text('package main\nfunc fixture() { anotherChange() }\n')
         changed = self.commit(self.product)
         for runtime in ['docker', 'podman']:
-            for gate in ['backup-restore', 'identity', 'security']:
+            for gate in ['backup-restore', 'identity', 'security', 'guided', 'lifecycle', 'connectivity', 'full-destroy']:
                 key = 'atomic/' + runtime + '/' + gate
                 with self.subTest(embedded=key):
                     self.assertNotEqual(self.inputs.fingerprint(embedded, self.d, 'v0.4.25', key),
@@ -650,7 +654,7 @@ class GitFingerprintTests(unittest.TestCase):
             path.write_text('changed real input\\n')
             changed = self.commit(self.product)
             for runtime in ['docker', 'podman']:
-                for gate in ['backup-restore', 'identity', 'security']:
+                for gate in ['backup-restore', 'identity', 'security', 'guided', 'lifecycle', 'connectivity', 'full-destroy']:
                     key = 'atomic/' + runtime + '/' + gate
                     with self.subTest(path=name, gate=key):
                         self.assertNotEqual(self.inputs.fingerprint(original, self.d, 'v0.4.25', key),
