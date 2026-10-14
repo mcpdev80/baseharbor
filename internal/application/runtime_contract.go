@@ -287,11 +287,8 @@ func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
 
 func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, values map[string]string) (string, error) {
 	root := workloadServiceBindingProjectionDir(files)
-	if err := os.RemoveAll(root); err != nil {
+	if err := resetWorkloadBindingProjection(m, root); err != nil {
 		return "", fmt.Errorf("reset workload service binding projection: %w", err)
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", fmt.Errorf("create workload service binding projection: %w", err)
 	}
 
 	postgres := SQLInstanceNames(m)

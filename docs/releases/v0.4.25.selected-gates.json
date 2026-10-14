@@ -1,6 +1,6 @@
 [
-  "integration/docker/core-bootstrap",
-  "integration/podman/core-bootstrap",
-  "journey/docker",
-  "journey/podman"
+  "atomic/docker/identity",
+  "atomic/podman/identity",
+  "atomic/docker/security",
+  "atomic/podman/security"
 ]
