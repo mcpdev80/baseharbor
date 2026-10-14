@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -52,12 +54,20 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 		if _, err := provider.InspectProjectResources(ctx, files.Project, expected); err != nil {
 			continue
 		}
+		oneShots, err := providertopology.CompletedPrerequisiteServices(files.Compose)
+		if err != nil {
+			continue
+		}
 		identityResources, sqlResources := []bhruntime.ProjectResource{}, []bhruntime.ProjectResource{}
 		for _, resource := range expected {
 			if resource.Kind != "container" {
 				continue
 			}
-			if strings.HasPrefix(resource.Name, files.Project+"-keycloak-db-") {
+			service := strings.TrimSuffix(strings.TrimPrefix(resource.Name, files.Project+"-"), "-1")
+			if slices.Contains(oneShots, service) {
+				continue
+			}
+			if service == "keycloak-db" || strings.HasPrefix(service, "keycloak-db-") {
 				sqlResources = append(sqlResources, resource)
 			} else {
 				identityResources = append(identityResources, resource)
@@ -65,6 +75,11 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 		}
 		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, identityResources, containers)
 		sqlCount, sqlState := observeCanonicalProviderContainers(provider.Kind(), files.Project, sqlResources, containers)
+		completedCount, completed := observeCanonicalProviderInitializers(ctx, provider, files.Project, files.Compose, files.Env, oneShots, containers)
+		sqlCount += completedCount
+		if sqlState == application.ProviderRunning && !completed {
+			sqlState = application.ProviderUnverifiable
+		}
 		sqlModule, sqlOwner, err := identityprovider.KeycloakSQLDependency(m, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name, files.SharedSQL != nil)
 		if err != nil {
 			continue
