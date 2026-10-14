@@ -157,6 +157,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
+				m.ApplicationID = "" // Detection's preview ID is not canonical authority.
 				result, err := persistRepositoryApplication(ctx, cwd, m, nil)
 				if err != nil {
 					return err

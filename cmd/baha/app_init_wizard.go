@@ -297,6 +297,8 @@ func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPo
 }
 
 func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io.Writer) error {
+	// Detection uses a transient ID for footprint previews, not an owner claim.
+	m.ApplicationID = ""
 	result, err := persistRepositoryApplication(ctx, ".", m, nil)
 	if err != nil {
 		return err

@@ -74,4 +74,21 @@ func TestBrokerUnionUsesEachExistingDeploymentOwnerForSiblingAndPendingIntent(t 
 			t.Fatal("broker dependency projects a sibling's credentials/configuration path")
 		}
 	}
+	// Raw native broker observations contain process ownership only. Their
+	// null dependency diagnostic must be enriched from each retained owner,
+	// including a sibling's interrupted capability removal.
+	observations := map[string]application.ProviderFact{}
+	for id, fact := range snapshot.Facts {
+		fact.State, fact.Dependencies = application.ProviderRunning, nil
+		observations[id] = fact
+	}
+	if err := appendApplicationBrokerDependencies(current, observations, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for id := range expected {
+		fact := snapshot.Facts[id]
+		if len(fact.Dependencies) != 1 || fact.Dependencies[0] != "openbao/control-plane" || fact.State != application.ProviderRunning || fact.OwnerReference != observations[id].OwnerReference {
+			t.Fatal("raw broker observation lost its retained owner dependency or authority")
+		}
+	}
 }

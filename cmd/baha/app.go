@@ -213,6 +213,9 @@ func appInitCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			// Repository authoring proposes intent, not another identity claim.
+			// Reuse retained source/deployment owners before assigning a new ID.
+			m.ApplicationID = ""
 			var selected *repositoryinspect.WorkloadSourceCandidate
 			if sourceExplicit && persistSourceSelection {
 				selected = &sourceSelection
