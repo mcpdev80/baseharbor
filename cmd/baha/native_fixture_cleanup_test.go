@@ -49,6 +49,7 @@ func approvedNativeFixtureCleanup(t *testing.T, ctx context.Context, out io.Writ
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: true}
 	if err := destroyInstallation(withProviderChangeConsent(machineNoninteractiveContext(ctx), ack), true, out, out); err != nil {
+		logNativeFixtureCleanupMismatch(t, p, err)
 		return err
 	}
 	if config == nil {

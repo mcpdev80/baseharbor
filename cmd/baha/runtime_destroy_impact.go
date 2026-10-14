@@ -142,19 +142,7 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 		}
 	}
 	p.Effects = []application.OperationalConsequence{{Aspect: "permanent-destruction", Before: "Existing owned resources, registered consumers and retained protected state.", After: "Permanently delete the displayed owned resources and selected local runtime state; --all also selects application deployments and installation configuration. Source repositories and displayed external recovery material are preserved. No working secret delivery, login, leases, certificates, renewal or consumer reconfiguration is guaranteed.", Evidence: "existing native ownership inventory; complete consumer transitions remain unverified"}}
-	// Child scope IDs bind material contents, owners and semantic consequences.
-	// Displayed footprint samples (for example current memory use) must not turn
-	// an unchanged authorized child into a different installation operation.
-	revisionPlan := p
-	revisionPlan.Applications = make([]applicationDestructionPlan, len(p.Applications))
-	for i, child := range p.Applications {
-		revisionPlan.Applications[i] = applicationDestructionPlan{Scope: child.Scope}
-	}
-	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: operation, Reference: config, Subject: operation, Destructive: true, Revision: runtimeMutationRevision(struct {
-		Plan    runtimeDestroyImpact
-		Owners  map[string]string
-		Targets []deployment.ResolvedTarget
-	}{revisionPlan, owners, destroyImpactTargets(plans)})}, nil, false)
+	p.Scope, err = application.ComposeProviderImpactScope(application.ProviderScopeOwner{Owner: operation, Reference: config, Subject: operation, Destructive: true, Revision: runtimeDestroyImpactRevision(p, owners, destroyImpactTargets(plans))}, nil, false)
 	return p, err
 }
 
