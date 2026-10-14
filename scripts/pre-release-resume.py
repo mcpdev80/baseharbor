@@ -495,7 +495,7 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
-        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs'), expected)
+        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=30', 'jobs'), expected)
         archives = {}
         origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
                                      artifacts, jobs, expected, archives)
