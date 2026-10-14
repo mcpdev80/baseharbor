@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -16,6 +17,7 @@ func TestRestoreReconcilesPortableSourceWithValidatedArchiveIdentity(t *testing.
 	for _, mode := range []string{"selected", "registered", "fresh", "foreign-owner", "changed-intent"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+			t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "")
 			target := configureTestTarget(t)
 			root := t.TempDir()
 			m := application.New("restore-source", "dev", true, false, false)
@@ -46,7 +48,8 @@ func TestRestoreReconcilesPortableSourceWithValidatedArchiveIdentity(t *testing.
 					t.Fatal(err)
 				}
 				intent, _ := json.Marshal(m)
-				if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{Identity: id, Source: deployment.DeploymentSource{Kind: "repository", Repository: root, Manifest: path}, Applied: deployment.AppliedDeployment{Intent: intent, RuntimeProvider: target.RuntimeProvider}}); err != nil {
+				placements, _ := json.Marshal(map[capability.ProviderKind]capability.ProviderPlacement{capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor}})
+				if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{Identity: id, Source: deployment.DeploymentSource{Kind: "repository", Repository: root, Manifest: path}, Applied: deployment.AppliedDeployment{Intent: intent, RuntimeProvider: target.RuntimeProvider, GeneratedState: map[string]string{"backend_placements": string(placements)}}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -63,6 +66,27 @@ func TestRestoreReconcilesPortableSourceWithValidatedArchiveIdentity(t *testing.
 				}
 			} else if err != nil || resolved.Manifest.ApplicationID != m.ApplicationID || resolved.RepositoryRoot != root || !resolved.FromRepository {
 				t.Fatalf("matching portable source rejected or replaced archive identity: %v", err)
+			}
+			if err == nil && mode != "fresh" {
+				if err := revalidateApplicationProviderIntent(context.Background(), resolved); err != nil {
+					t.Fatalf("unchanged retained restore owner falsely stale: %v", err)
+				}
+				placement, placementErr := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderPostgreSQL)
+				if placementErr != nil || placement.Scope != capability.ScopeApplication {
+					t.Fatalf("restore lost retained application placement: %v", placementErr)
+				}
+				record, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+				if loadErr != nil {
+					t.Fatal(loadErr)
+				}
+				changed, _ := json.Marshal(map[capability.ProviderKind]capability.ProviderPlacement{capability.ProviderPostgreSQL: {Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}})
+				record.Applied.GeneratedState["backend_placements"] = string(changed)
+				if saveErr := deployment.SaveDeploymentRecord(record); saveErr != nil {
+					t.Fatal(saveErr)
+				}
+				if driftErr := revalidateApplicationProviderIntent(context.Background(), resolved); driftErr == nil {
+					t.Fatal("restore accepted changed retained provider placement")
+				}
 			}
 			afterSource, _ := os.ReadFile(path)
 			if !bytes.Equal(beforeSource, afterSource) {

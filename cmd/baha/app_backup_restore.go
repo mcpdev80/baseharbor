@@ -197,7 +197,7 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 		return err
 	}
 	defer unlock()
-	m := restoreData.manifest
+	m := resolved.Manifest
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage

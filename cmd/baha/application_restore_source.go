@@ -99,7 +99,8 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 			resolved.RepositoryRoot = selection.RepositoryRoot
 			resolved.SourceAvailable = true
 			resolved.FromRepository = true
-			return resolved, nil
+			resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+			return resolved, err
 		}
 		if recordErr != nil && !errors.Is(recordErr, os.ErrNotExist) {
 			return resolved, fmt.Errorf("restore preflight deployment record: %w", recordErr)
@@ -121,5 +122,6 @@ func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManife
 	resolved.RepositoryRoot = selection.RepositoryRoot
 	resolved.SourceAvailable = true
 	resolved.FromRepository = true
-	return resolved, nil
+	resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+	return resolved, err
 }
