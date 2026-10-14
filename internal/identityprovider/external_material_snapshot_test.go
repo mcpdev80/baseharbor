@@ -49,7 +49,7 @@ func TestExternalDiscoveryCannotChangeTrustBeforeDelivery(t *testing.T) {
 }
 
 func TestExternalPreparedMaterialChangesPreserveAllExistingDelivery(t *testing.T) {
-	for _, change := range []string{"secret-content", "trust-content", "secret-owner", "trust-link", "missing-secret"} {
+	for _, change := range []string{"secret-content", "trust-content", "secret-owner", "trust-link", "trust-writable", "missing-secret"} {
 		t.Run(change, func(t *testing.T) {
 			m, files, server, secret := externalCredentialFixture(t)
 			first, err := NewExternalDriver(m, files, server.URL)
@@ -104,6 +104,8 @@ func TestExternalPreparedMaterialChangesPreserveAllExistingDelivery(t *testing.T
 				}
 			case "missing-secret":
 				err = os.Remove(secret)
+			case "trust-writable":
+				err = os.Chmod(ca, 0666)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -119,6 +121,23 @@ func TestExternalPreparedMaterialChangesPreserveAllExistingDelivery(t *testing.T
 				if err != nil || !bytes.Equal(data, before[path]) {
 					t.Fatal("failed material revalidation changed an existing delivery projection")
 				}
+			}
+		})
+	}
+}
+
+func TestExternalPublicTrustRejectsOtherWriters(t *testing.T) {
+	for _, mode := range []os.FileMode{0620, 0602, 0666} {
+		t.Run(mode.String(), func(t *testing.T) {
+			m, files, server, _ := externalCredentialFixture(t)
+			if err := os.Chmod(os.Getenv(ExternalCAFileEnv), mode); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewExternalDriver(m, files, server.URL); err == nil {
+				t.Fatal("public trust writable by other principals was admitted")
+			}
+			if _, err := os.Stat(filepath.Join(files.Bindings, application.IdentityBindingName)); !os.IsNotExist(err) {
+				t.Fatal("invalid public trust reached material delivery")
 			}
 		})
 	}

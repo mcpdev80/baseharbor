@@ -14,6 +14,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -146,6 +147,20 @@ func TestCoreDecisionCorruptProviderRegistryBeforeMutation(t *testing.T) {
 func TestCoreDecisionUnsupportedBYOBeforeMutation(t *testing.T) {
 	resolved := corelessResolvedFixture(t)
 	resolved.Manifest.Services.SQL = true
+	resolved.FromRepository = false
+	if err := application.RegisterExternalProviderAt(resolved.TargetStateRoot, externalprovider.Registration{
+		ID: "existing-byo", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app",
+		CredentialRef: "file:///run/secrets/company-db.json",
+		Provider:      capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}},
+		Trust:         externalprovider.Trust{Mode: externalprovider.TrustSystem},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(resolved.TargetStateRoot, "provider-registry.json")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "external")
 	t.Setenv(application.ProviderExternalReferenceEnv(capability.ProviderPostgreSQL), "existing-byo")
 	previous := applicationCorePrerequisite
@@ -154,11 +169,23 @@ func TestCoreDecisionUnsupportedBYOBeforeMutation(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { applicationCorePrerequisite = previous })
-	if err := requireResolvedApplicationCore(context.Background(), resolved, strings.NewReader(""), io.Discard); err == nil {
-		t.Fatal("unsupported native BYO accepted")
+	if err := requireResolvedApplicationCore(context.Background(), resolved, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatalf("unsupported native BYO suppressed read-only planning: %v", err)
 	}
-	if _, err := os.Stat(resolved.TargetStateRoot); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("unsupported BYO materialized state: %v", err)
+	plan, err := buildResolvedApplicationPlan(context.Background(), resolved)
+	if err != nil {
+		t.Fatalf("registered BYO could not be planned: %v", err)
+	}
+	if plan.ProviderPlan.Impact != nil {
+		t.Fatal("first selection invented an existing consumer to replace")
+	}
+	err = authorizeApplicationProviderChanges(context.Background(), resolved, nil, io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "external_provider_adapter_unavailable" {
+		t.Fatalf("unsupported BYO execution crossed authority or lost its concrete plan: %v", err)
+	}
+	if after, err := os.ReadFile(path); err != nil || !bytes.Equal(original, after) {
+		t.Fatalf("unsupported BYO changed its registered owner: %v", err)
 	}
 }
 

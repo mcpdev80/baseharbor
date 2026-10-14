@@ -16,8 +16,11 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 		return err
 	}
 	plan, err := buildResolvedApplicationPlan(ctx, resolved)
-	if err != nil || plan.ProviderPlan.Impact == nil {
+	if err != nil {
 		return err
+	}
+	if plan.ProviderPlan.Impact == nil {
+		return validateApplicationProviderExecution(resolved, nil)
 	}
 	consent, err := invocationProviderChangeConsent(ctx)
 	if err != nil {
@@ -36,7 +39,7 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	if current.ProviderPlan.Impact == nil || current.ProviderPlan.Impact.PlanID != plan.ProviderPlan.Impact.PlanID {
 		return providerImpactConsentError(*plan.ProviderPlan.Impact, &application.ProviderChangeError{Code: "stale-impact-consent"})
 	}
-	return nil
+	return validateApplicationProviderExecution(resolved, current.ProviderPlan.Impact)
 }
 
 func revalidateApplicationProviderIntent(ctx context.Context, resolved resolvedApplication) error {

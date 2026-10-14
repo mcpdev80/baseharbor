@@ -37,19 +37,8 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 	if err != nil {
 		return application.ResolutionSnapshot{}, nil, err
 	}
-	for _, binding := range planned.Bindings {
-		if binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment {
-			continue
-		}
-		for _, instance := range planned.Instances {
-			if instance.ID == binding.ProviderInstanceID && instance.Ownership == capability.OwnershipExternal && instance.Provider.Kind != capability.ProviderExternalOIDC && instance.Provider.Kind != capability.ProviderExternalOTLP {
-				return application.ResolutionSnapshot{}, nil, &machine.Error{Code: machine.ErrorUnsupported, CauseCode: "external_provider_adapter_unavailable", Resource: instance.ID, Message: "The selected BYO provider has no compatible application lifecycle adapter.", Next: "Use an existing supported binding; BaseHarbor will neither install Core nor replace this external provider."}
-			}
-		}
-	}
-	if err := validateApplicationBindingReplacements(resolved, registry, planned); err != nil {
-		return application.ResolutionSnapshot{}, nil, err
-	}
+	// Adapter availability is execution admission, not a veto on read-only
+	// consequence planning. Preserve the actual selected offers and bindings.
 	existing := map[string]bool{}
 	for _, instance := range registry.Instances {
 		existing[instance.ID] = true

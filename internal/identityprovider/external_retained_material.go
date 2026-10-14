@@ -78,7 +78,7 @@ func readExternalMaterial(path string, confidential bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !before.Mode().IsRegular() || (confidential && !bhruntime.ProtectedStateOwner(path, before)) || before.Size() > 1<<20 {
+	if !before.Mode().IsRegular() || before.Mode().Perm()&0022 != 0 || (confidential && !bhruntime.ProtectedStateOwner(path, before)) || before.Size() > 1<<20 {
 		return nil, errors.New("external identity input must be bounded regular material with its required protection")
 	}
 	f, err := os.Open(path)
@@ -92,7 +92,7 @@ func readExternalMaterial(path string, confidential bool) ([]byte, error) {
 	}
 	data, readErr := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	after, statErr := os.Lstat(path)
-	if readErr != nil || statErr != nil || !os.SameFile(opened, after) || !after.Mode().IsRegular() || (confidential && !bhruntime.ProtectedStateOwner(path, after)) || !after.ModTime().Equal(opened.ModTime()) || after.Size() != opened.Size() || len(data) > 1<<20 {
+	if readErr != nil || statErr != nil || !os.SameFile(opened, after) || !after.Mode().IsRegular() || after.Mode().Perm()&0022 != 0 || (confidential && !bhruntime.ProtectedStateOwner(path, after)) || !after.ModTime().Equal(opened.ModTime()) || after.Size() != opened.Size() || len(data) > 1<<20 {
 		for i := range data {
 			data[i] = 0
 		}
