@@ -101,7 +101,7 @@ Never move a published version tag. Fix a bad release with a new patch release.
 
 ### Immutable v0.4.24 ecosystem inputs
 
-For v0.4.24, the final Connector commit's `integration-candidate.json` binds the exact Core, Console and Demo commits. The Console manifest must bind the same Core and Demo, and the Demo's `baseharbor-core.ref` must equal that Core commit. This replaces the Core-owned `.demo-ref` for v0.4.24: mutually pinning future Git commits would create a circular dependency.
+For v0.4.24 and v0.4.25, the final Connector commit's `integration-candidate.json` binds the exact Core, Console and Demo commits. The Console manifest must bind the same Core and Demo, and the Demo's `baseharbor-core.ref` must equal that Core commit. This replaces the Core-owned `.demo-ref` for these releases: mutually pinning future Git commits would create a circular dependency. Targeted v0.4.25 atomic pushes use the same canonical matrix resolver as the pre-release source step; a mixed or mutable source is rejected before execution.
 
 `scripts/ecosystem_release_pins.py` validates all bindings and resolves the public consumer evidence manifest. The pre-release workflow accepts an optional exact `consumer_ref`, or resolves the reviewed Connector integration branch once and freezes its 40-character SHA. Approval retains that immutable consumer origin; release revalidation resolves the same commits. The complete native Connector job also verifies the exact Console browser receipt, so its authenticated artifact can prove Console integration without repeating the same journey. All existing atomic gates remain required.
 

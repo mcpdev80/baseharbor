@@ -141,7 +141,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 - [ ] Guided pristine-repository flow remains covered: `baha app init -> baha up -> READY`.
 - [ ] Lifecycle/capability/security/reconciliation/recovery gates remain coherent with the release.
 - [ ] Demo `main` contains the exact test implementation intended for release validation before the BaseHarbor pre-release run begins.
-- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent); the file contains exactly one immutable 40-character SHA.
+- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent), or the canonical immutable Connector/Console/Demo matrix for v0.4.24 and v0.4.25. Matrix resolution requires matching actual Core/Console/Demo bindings and the Demo's exact Core pin; it avoids circular Git pins.
 - [ ] Targeted demo validation uses that same exact demo SHA rather than moving `main`.
 
 ## 7. GitHub Pages and published documentation
@@ -158,7 +158,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 - [ ] Finish all release-preparation implementation, README, canonical docs, CHANGELOG, human-readable release notes and demo changes before selecting the candidate.
 - [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
-- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` points at the exact final demo commit.
+- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref`, or the canonical matrix for v0.4.24/v0.4.25, resolves the exact final demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
@@ -167,7 +167,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 9. Mandatory pre-release gate
 
-Do not start the final complete pre-release orchestrator until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and the versioned exact demo-ref file are complete for the candidate.
+Do not start the final complete pre-release orchestrator until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and its exact versioned pin or canonical immutable matrix are complete for the candidate.
 
 BaseHarbor uses **atomic-first release validation**:
 

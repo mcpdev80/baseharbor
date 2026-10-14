@@ -93,6 +93,10 @@ jobs:
               [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
               demo_core="$(gh api "repos/mcpdev80/baseharbor-demo/contents/baseharbor-core.ref?ref=$demo_ref" --jq '.content' | base64 --decode | tr -d '[:space:]')"
               test "$demo_core" = "$ref"
+            elif [ "$version" = 0.4.25 ]; then
+              python3 scripts/ecosystem_release_pins.py --tag "v$version" --core "$ref" \
+                --output "$RUNNER_TEMP/targeted-consumer-pins.json" > "$RUNNER_TEMP/targeted-consumers.json"
+              demo_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/targeted-consumers.json")"
             else
               demo_ref_file="docs/releases/v${version}.demo-ref"
               test -s "$demo_ref_file"
