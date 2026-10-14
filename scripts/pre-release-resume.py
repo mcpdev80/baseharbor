@@ -190,6 +190,12 @@ class GitInputs:
         # verifier still authenticates every immutable origin and ZIP. Static
         # evidence keeps these tooling bytes as part of its execution inputs.
         collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+        # Core-owned bootstrap/coreless producers consume the explicit Demo SHA
+        # as an evidence identity, never the Demo checkout's Core pin file.
+        # They DO import this collector: keep its bytes in their product inputs.
+        pin_independent = native_runtime or (tag == 'v0.4.25' and key in {
+            'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap',
+            'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'})
         objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
@@ -205,7 +211,7 @@ class GitInputs:
                                  and not key.endswith('/backup-restore'))
                         # pin() separately requires this exact Core binding on
                         # both candidate and original v0.4.24 Demo revisions.
-                        and not (native_runtime and path == 'baseharbor-core.ref')]
+                        and not (pin_independent and path == 'baseharbor-core.ref')]
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
         if requirement is None:

@@ -562,6 +562,32 @@ class GitFingerprintTests(unittest.TestCase):
             self.assertNotEqual(self.inputs.fingerprint(changed, changed_demo, 'v0.4.25', 'atomic/docker/identity'),
                                 self.inputs.fingerprint(current, changed_demo, 'v0.4.25', 'atomic/docker/identity'))
 
+    def test_v025_core_owned_integration_pin_is_separate_from_executed_collector(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        before = self.commit(self.demo)
+        (self.demo / 'baseharbor-core.ref').write_text('f' * 40 + '\n')
+        after = self.commit(self.demo)
+        keys = ['integration/' + runtime + '/' + gate
+                for runtime in ['docker', 'podman']
+                for gate in ['core-bootstrap', 'coreless-lifecycle']]
+        for key in keys:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key))
+                with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+                    resume.GitInputs(self.product, self.demo, after).pin(product, 'v0.4.25')
+        script = self.product / 'scripts/pre-release-resume.py'
+        script.write_text('changed imported producer dependency\n')
+        changed = self.commit(self.product)
+        for key in keys:
+            self.assertNotEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                self.inputs.fingerprint(changed, before, 'v0.4.25', key))
+        # Private consumers retain their exact source/matrix contract.
+        for key in ['integration/docker/remote-target', 'integration/static/live-console']:
+            self.assertNotEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                self.inputs.fingerprint(product, after, 'v0.4.25', key))
+
     def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
         product = self.v024_inventory()
         path = self.demo / 'tests/backup-restore/run.sh'
