@@ -634,6 +634,18 @@ Abschlussnachweise lassen die Verfügbarkeit ungeprüft. Die Beobachtung startet
 oder repariert keine Aufgabe; die vollständige Lifecycle-Ressourcenauswahl bleibt
 erhalten.
 
+Normales Reapply darf fehlende Zugangsdaten einer vorhandenen geschützten
+nativen Credential-Gruppe nicht neu erzeugen. SQL, Valkey, RabbitMQ, MongoDB und
+S3, ihre unabhängigen logischen Instanzen sowie unterstützte Management-Zugänge
+werden vor der Erzeugung initialer Werte geprüft. Vorhandene Runtime-Deklarationen,
+Binding-Materialien oder erhaltene Gruppenschlüssel unterscheiden die Fortsetzung
+von einer neuen unabhängigen Gruppe. Unvollständiges erhaltenes Material benötigt
+Wiederherstellung über seinen ursprünglichen Owner; das fehlgeschlagene Reapply
+lässt den Owner unverändert und gibt keine Secret-Werte in Diagnosen aus. Neue
+unabhängige Instanzen und bewusstes Entfernen von Fähigkeiten bleiben möglich.
+Dieser Schutz belegt keine Live-Authentifizierung, migriert keine Daten und
+stellt keinen Ersatz-Authentifizierungsmodus bereit.
+
 External-OIDC-Reapply ohne erneut gesetzte Secret-/CA-Eingaben übernimmt geschütztes
 Material ausschließlich für denselben Provider, Issuer und Client. Es generiert
 keine Credentials neu, reicht sie nicht an eine andere Autorität weiter und macht

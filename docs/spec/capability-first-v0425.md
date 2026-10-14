@@ -590,6 +590,17 @@ after removing the container. Missing, failed, foreign, stale or overridden
 completion evidence leaves availability unverified. Observing completion never
 starts or repairs a task, and full lifecycle resource selection remains unchanged.
 
+Normal reapply must not regenerate a missing credential in an existing protected
+native credential group. SQL, Valkey, RabbitMQ, MongoDB and S3 groups, their
+independent logical instances and supported management credentials are checked
+before initial-value generation. Existing runtime declarations, binding material
+or retained group keys distinguish continuation from a new independent group.
+Incomplete retained material requires recovery through its original owner; the
+failed reapply leaves the owner unchanged and never includes secret values in
+diagnostics. New independent instances and intentional capability retirement
+remain possible. This guard does not prove live authentication, migrate data or
+provide a replacement authentication mode.
+
 External OIDC reapply without repeated secret/CA inputs reuses protected material
 only for the same provider, issuer and client. It does not regenerate credentials,
 forward them to another authority or silently change a confidential client to a

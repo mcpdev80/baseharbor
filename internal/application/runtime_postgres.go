@@ -490,6 +490,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 	if err := validateProtectedRuntimeValues(values); err != nil {
 		return err
 	}
+	if err := validateRetainedRuntimeCredentials(path, values, m); err != nil {
+		return err
+	}
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return err
 	}
