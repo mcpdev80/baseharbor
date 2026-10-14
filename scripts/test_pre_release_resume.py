@@ -532,6 +532,50 @@ class GitFingerprintTests(unittest.TestCase):
                 self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.24', key) ==
                                  self.inputs.fingerprint(changed, changed_demo, 'v0.4.24', key), same)
 
+    def test_v025_preserves_only_proven_nonexecuted_inputs(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        original_demo = self.commit(self.demo)
+        for name in ['pre-release-resume.py', 'test_pre_release_resume.py']:
+            path = self.product / 'scripts' / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('source-plan collector change\n')
+        changed = self.commit(self.product)
+        (self.demo / 'baseharbor-core.ref').write_text(changed + '\n')
+        changed_demo = self.commit(self.demo)
+        for key, same in [('atomic/docker/identity', True), ('ha/podman/data', True),
+                          ('journey/podman', True), ('atomic/static/mcp', False),
+                          ('integration/podman/coreless-lifecycle', False)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(changed, changed_demo, 'v0.4.25', key), same)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, changed_demo).pin(changed, 'v0.4.25'), changed_demo)
+        with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+            resume.GitInputs(self.product, self.demo, original_demo).pin(changed, 'v0.4.25')
+        for name in ['internal/cli/terminal.go', 'internal/auth/auth.go',
+                     'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('actual execution change\n')
+            current = self.commit(self.product)
+            self.assertNotEqual(self.inputs.fingerprint(changed, changed_demo, 'v0.4.25', 'atomic/docker/identity'),
+                                self.inputs.fingerprint(current, changed_demo, 'v0.4.25', 'atomic/docker/identity'))
+
+    def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
+        product = self.v024_inventory()
+        path = self.demo / 'tests/backup-restore/run.sh'
+        path.parent.mkdir(parents=True)
+        path.write_text('old backup fixture\n')
+        before = self.commit(self.demo)
+        path.write_text('new backup fixture\n')
+        after = self.commit(self.demo)
+        for key, same in [('atomic/docker/identity', True), ('atomic/podman/backup-restore', False),
+                          ('journey/docker', False), ('integration/podman/core-bootstrap', False)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key), same)
+
     def test_unchanged_pure_ownership_helper_relocation_preserves_native_proofs(self):
         product = self.v024_inventory()
         source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()

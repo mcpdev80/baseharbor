@@ -52,7 +52,7 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if _, err := prepareApplicationProviderRetirement(ctx, withdrawn); err != nil {
 		return err
 	}
-	retained, _, err := observeOwnedProviderFiles(e.manifest.ApplicationID, e.resolved.Target.Name, "deployment/"+e.resolved.DeploymentIdentity.DeploymentID, e.files.Dir)
+	retained, err := e.observeRetirementRuntimeMaterials()
 	if err != nil {
 		return err
 	}

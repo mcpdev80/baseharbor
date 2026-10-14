@@ -185,7 +185,7 @@ class GitInputs:
                 else (path, meta) for path, meta in objects]
 
     def fingerprint(self, candidate, demo, tag, key):
-        native_runtime = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        native_runtime = tag in {'v0.4.24', 'v0.4.25'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
         # Source-plan tools do not execute inside native runtime jobs. The current
         # verifier still authenticates every immutable origin and ZIP. Static
         # evidence keeps these tooling bytes as part of its execution inputs.
@@ -198,7 +198,7 @@ class GitInputs:
                         if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
                                 and not key.startswith('journey/'))
                         # Atomic bootstrap does not source this isolated gate.
-                        and not (tag == 'v0.4.24' and key.startswith('atomic/')
+                        and not (tag in {'v0.4.24', 'v0.4.25'} and key.startswith('atomic/')
                                  and path in {'tests/backup-restore/run.sh',
                                               'tests/native-default-topology.py',
                                               'tests/native_default_topology_test.py'}

@@ -47,6 +47,19 @@ type Terminal struct {
 	mu     sync.Mutex
 }
 
+// Both streams share one lock because callers may supply the same writer.
+// Activity callbacks can render results while the progress loop is writing.
+type terminalWriter struct {
+	writer io.Writer
+	mu     *sync.Mutex
+}
+
+func (w terminalWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
+}
+
 type activityBuffer struct {
 	bytes.Buffer
 	details chan string
@@ -109,7 +122,10 @@ func NewTerminal(ctx context.Context, out, errOut io.Writer) *Terminal {
 		opts.ReducedMotion = true
 	}
 	color := tty && !opts.NoColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
-	return &Terminal{out: out, errOut: errOut, opts: opts, tty: tty, color: color}
+	t := &Terminal{opts: opts, tty: tty, color: color}
+	t.out = terminalWriter{writer: out, mu: &t.mu}
+	t.errOut = terminalWriter{writer: errOut, mu: &t.mu}
+	return t
 }
 
 func IsTerminal(w io.Writer) bool {
@@ -339,8 +355,6 @@ func (t *Terminal) Activity(ctx context.Context, label string, fn func(io.Writer
 }
 
 func (t *Terminal) activityLine(state, label string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	fmt.Fprintf(t.errOut, "[%s] %s\n", state, label)
 }
 
