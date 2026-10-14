@@ -50,3 +50,5 @@ baha provider remove company-db --yes
 
 
 Technische Kennungen: `baha provider --help`, `baha plan`.
+
+Für externes OIDC bindet die Vorbereitung vertrauliche Eingaben und Trust-Material an ihre aktuellen Dateien. Werden Eingaben vor dem Binding geändert, ersetzt oder umgeleitet, ist ein neuer Plan erforderlich; bestehende Lieferprojektionen bleiben bei diesem Fehler unverändert. HTTPS-Discovery und Workload-Projektion verwenden dieselben erfassten Trust-Bytes. Öffentliche CA-Zertifikate dürfen lesbar bleiben; vertrauliche Zugangsdaten bleiben nur für den Owner lesbar. Das prüft Materialkonsistenz, nicht Benutzer-Login, Session-Migration oder eine vollständige Providerübergabe.

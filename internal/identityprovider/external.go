@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,8 +26,8 @@ type ExternalDriver struct {
 	issuer   string
 	clientID string
 	secret   string
-	caPath   string
 	client   *http.Client
+	material *externalMaterialSnapshot
 }
 
 func NewExternalDriver(app application.Manifest, files application.RuntimeFiles, issuer string) (*ExternalDriver, error) {
@@ -57,13 +56,17 @@ func NewExternalDriver(app application.Manifest, files application.RuntimeFiles,
 	if caPath == "" {
 		caPath = retainedCA
 	}
-	client, err := externalHTTPClientForCA(caPath)
+	material, err := captureExternalMaterial(files, caPath, secret)
+	if err != nil {
+		return nil, err
+	}
+	client, err := externalHTTPClientWithTrust(material.trust)
 	if err != nil {
 		return nil, err
 	}
 	return &ExternalDriver{
 		app: app, files: files, issuer: strings.TrimRight(strings.TrimSpace(issuer), "/"),
-		clientID: clientID, secret: secret, caPath: caPath, client: client,
+		clientID: clientID, secret: secret, client: client, material: material,
 	}, nil
 }
 
@@ -76,6 +79,9 @@ func (d *ExternalDriver) Preflight(ctx context.Context, resource capability.Reso
 	if binding.Identity == nil {
 		return fmt.Errorf("identity binding is required")
 	}
+	if err := d.material.revalidate(); err != nil {
+		return err
+	}
 	_, err := FetchDiscovery(ctx, d.client, d.issuer)
 	return err
 }
@@ -85,11 +91,17 @@ func (d *ExternalDriver) Provision(context.Context, capability.Resource, capabil
 }
 
 func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
+	if err := d.material.revalidate(); err != nil {
+		return err
+	}
 	discovery, err := FetchDiscovery(ctx, d.client, d.issuer)
 	if err != nil {
 		return err
 	}
-	return application.MaterializeIdentityBinding(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.caPath)
+	if err := d.material.revalidate(); err != nil {
+		return err
+	}
+	return application.MaterializeIdentityBindingMaterial(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.material.trust)
 }
 
 func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
@@ -104,24 +116,25 @@ func externalHTTPClient() (*http.Client, error) {
 }
 
 func externalHTTPClientForCA(caPath string) (*http.Client, error) {
+	var trust []byte
+	if caPath != "" {
+		var err error
+		trust, err = readExternalMaterial(caPath, false)
+		if err != nil {
+			return nil, fmt.Errorf("read external OIDC trust: %w", err)
+		}
+	}
+	return externalHTTPClientWithTrust(trust)
+}
+
+func externalHTTPClientWithTrust(trust []byte) (*http.Client, error) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
-	if path := caPath; path != "" {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return nil, fmt.Errorf("inspect external OIDC CA: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("external OIDC CA must be a regular non-symlink file")
-		}
-		pem, err := os.ReadFile(filepath.Clean(path))
-		if err != nil {
-			return nil, fmt.Errorf("read external OIDC CA: %w", err)
-		}
+	if len(trust) > 0 {
 		pool, err := x509.SystemCertPool()
 		if err != nil || pool == nil {
 			pool = x509.NewCertPool()
 		}
-		if !pool.AppendCertsFromPEM(pem) {
+		if !pool.AppendCertsFromPEM(trust) {
 			return nil, fmt.Errorf("external OIDC CA contains no certificates")
 		}
 		transport.TLSClientConfig.RootCAs = pool

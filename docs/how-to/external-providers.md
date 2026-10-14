@@ -56,3 +56,5 @@ baha provider remove company-db --yes
 ```
 
 The externally operated database remains owned by its operator.
+
+For external OIDC, preparation binds confidential input and trust material to their current files. Changing, replacing or redirecting an input before binding requires a fresh plan; existing delivery projections remain unchanged on that failure. HTTPS discovery and workload projection use the same captured trust bytes. Public CA certificates may remain readable; confidential credentials remain owner-only. This verifies material consistency, not end-user login, session migration or a complete provider handoff.
