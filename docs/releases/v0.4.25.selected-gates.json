@@ -1,4 +1,6 @@
 [
+  "integration/docker/core-bootstrap",
+  "integration/podman/core-bootstrap",
   "journey/docker",
   "journey/podman"
 ]
