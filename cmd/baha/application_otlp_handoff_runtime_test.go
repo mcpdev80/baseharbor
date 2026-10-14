@@ -17,7 +17,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
@@ -273,14 +272,16 @@ func startNativeOTLPReceiver(t *testing.T, ctx context.Context, runtime bhruntim
 	ca := write("ca.pem", server.IssuingCA, 0644)
 	serverCert := write("server.pem", server.Certificate, 0644)
 	serverKey := write("server-key.pem", server.PrivateKey, 0600)
-	clientCert := write("client.pem", client.Certificate, 0644)
-	clientKey := write("client-key.pem", client.PrivateKey, 0600)
+	write("client.pem", client.Certificate, 0644)
+	write("client-key.pem", client.PrivateKey, 0600)
 	credential := write("credential.json", []byte(`{"token":"native-fixture-receiver-token"}`), 0600)
 	code := write("receiver.py", []byte(nativeOTLPReceiverPython), 0644)
 	project := "otlp-fixture-" + strings.ReplaceAll(application.MustNewApplicationID(), "-", "")[:12]
 	receiver := nativeOTLPReceiver{host: host, project: project, network: project + "_receiver", compose: filepath.Join(root, "compose.yaml"), env: filepath.Join(root, "runtime.env")}
-	receiver.registration = externalprovider.Registration{ID: "native-receiver", ProviderID: "fixture/independent-otlp", Provider: capability.ExternalOTLP, Endpoint: "https://" + net.JoinHostPort(host, strconv.Itoa(port)), CredentialRef: credential,
-		Trust: externalprovider.Trust{Mode: externalprovider.TrustMTLS, CAReference: ca, ClientCertificate: clientCert, ClientKey: clientKey}}
+	receiver.registration = nativeOTLPReceiverRegistration(root, host, port)
+	if err := receiver.registration.Validate(); err != nil {
+		t.Fatal("invalid independent receiver fixture registration:", err)
+	}
 	compose := fmt.Sprintf("services:\n  receiver:\n    image: docker.io/library/python:3.13-alpine\n    read_only: true\n    cap_drop: [ALL]\n    security_opt: [no-new-privileges:true]\n    tmpfs: [/tmp]\n    command: [python, -u, /receiver.py, %q]\n    ports: [%q]\n    volumes:\n      - %q\n      - %q\n      - %q\n      - %q\n      - %q\n    networks:\n      receiver:\n        aliases: [%q]\nnetworks:\n  receiver:\n    name: %q\n", strconv.Itoa(port), fmt.Sprintf("127.0.0.1:%d:%d", port, port), code+":/receiver.py:ro", ca+":/ca.pem:ro", serverCert+":/server.pem:ro", serverKey+":/server-key.pem:ro", credential+":/credential.json:ro", host, receiver.network)
 	if err := os.WriteFile(receiver.compose, []byte(compose), 0600); err != nil {
 		t.Fatal(err)

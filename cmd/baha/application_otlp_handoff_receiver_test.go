@@ -7,12 +7,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
 )
 
 type nativeOTLPReceiver struct {
@@ -27,15 +34,73 @@ func (r nativeOTLPReceiver) waitReady(t *testing.T, parent context.Context) {
 	defer cancel()
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	var last error
 	for {
 		if _, err := externalprovider.Verify(ctx, r.registration); err == nil {
 			return
+		} else {
+			last = err
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("independent native receiver did not establish verified mTLS readiness")
+			t.Fatal("independent native receiver did not establish verified mTLS readiness:", last)
 		case <-ticker.C:
 		}
+	}
+}
+
+func TestNativeOTLPReceiverPythonEstablishesVerifiedMTLSReadiness(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("Python fixture runtime is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	root := t.TempDir()
+	issuer := serviceissuer.New(t)
+	const host = "receiver.fixture.test"
+	server, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{CommonName: host, DNSNames: []string{host}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{CommonName: "native-workload-client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"server.pem": server.Certificate, "server-key.pem": server.PrivateKey, "ca.pem": server.IssuingCA, "client.pem": client.Certificate, "client-key.pem": client.PrivateKey, "credential.json": []byte(`{"token":"native-fixture-receiver-token"}`)} {
+		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code := nativeOTLPReceiverPython
+	for _, name := range []string{"server.pem", "server-key.pem", "ca.pem", "credential.json"} {
+		code = strings.ReplaceAll(code, "'/"+name+"'", strconv.Quote(filepath.Join(root, name)))
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	command := exec.CommandContext(ctx, python, "-c", code, strconv.Itoa(port))
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = command.Process.Kill(); _ = command.Wait() })
+	installNativeOTLPFixtureDNS(t, host)
+	receiver := nativeOTLPReceiver{registration: nativeOTLPReceiverRegistration(root, host, port)}
+	receiver.waitReady(t, ctx)
+}
+
+func nativeOTLPReceiverRegistration(root, host string, port int) externalprovider.Registration {
+	return externalprovider.Registration{
+		ID: "native-receiver", ProviderID: "fixture/independent-otlp", Provider: capability.ExternalOTLP,
+		Endpoint:      "https://" + net.JoinHostPort(host, strconv.Itoa(port)),
+		CredentialRef: "file://" + filepath.Join(root, "credential.json"),
+		Trust: externalprovider.Trust{
+			Mode: externalprovider.TrustMTLS, CAReference: filepath.Join(root, "ca.pem"),
+			ClientCertificate: filepath.Join(root, "client.pem"), ClientKey: filepath.Join(root, "client-key.pem"),
+		},
 	}
 }
 
