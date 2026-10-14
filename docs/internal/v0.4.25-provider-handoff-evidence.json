@@ -142,6 +142,24 @@
         "./internal/externalprovider",
         "./internal/providertopology"
       ]
+    },
+    {
+      "commit": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "tree": "5fa44bc0e082d1c4e819b4f60d6fe7d399e012d5",
+      "go": "1.26.0",
+      "all_nine_snapshot_tree": "4e31395fa7556dd1dd5cb30fc4a6f8055133f938",
+      "checks": "all-nine-pass; foreign6fce CI guard/docs integrated afterward, both-workflow actionlint1.7.12, strict EN/DE and canonical audit passed again",
+      "go_tests_seconds": 64.626,
+      "six_package_race_seconds": 52.887,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/telemetry",
+        "./internal/externalprovider",
+        "./internal/metrics",
+        "./internal/logs"
+      ],
+      "path_regression": "actual HTTPS token/mTLS export with bindings#owned?100% reproduced failure before encoded generated-file URIs and passed afterward"
     }
   ],
   "registered_otlp_consumer": {
@@ -161,7 +179,8 @@
     "limits": [
       "No remote-host material or all-signals/buffering/retention claim",
       "Directory material needs explicit supported file references"
-    ]
+    ],
+    "generated_path_follow_up": "927bb5fccb2150aa9e1db44df252c338f00acd9b"
   },
   "remaining_provider_consumers": [
     "Current selected OpenBao secret lifecycle",
@@ -170,5 +189,16 @@
     "Current actual Prometheus gauge and Loki emitted line",
     "Current collector/Tempo trace after OTLP host material projection change",
     "Remote material handoff remains a separately qualified boundary owned with Session2"
+  ],
+  "pending_targeted_runs": [
+    {
+      "commit": "927bb5fccb2150aa9e1db44df252c338f00acd9b",
+      "scope": [
+        "shared OpenBao actual secret sibling and last-consumer lifecycle",
+        "collector/Tempo original retained trace after OTLP material projection change",
+        "actual Prometheus gauge and Loki emitted workload line",
+        "registered-OTLP local HTTPS/mTLS source fixture under Go1.25"
+      ]
+    }
   ]
 }
