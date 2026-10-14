@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "qualification": "bounded-provider-handoff",
+  "complete_provider_package": false,
+  "source_qualification": {
+    "commit": "e53349729c58a8c9d3cf33cc67b9f3b503c5a3c4",
+    "tree": "40c77ed7153068778a849aa5547cea57fef6698f",
+    "go": "1.26.0",
+    "checks": "all-nine-pass",
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/application",
+      "./internal/identityprovider",
+      "./internal/telemetry"
+    ],
+    "actionlint": "1.7.12 pass"
+  },
+  "native_oidc": {
+    "commit": "553d1dfafadfd0c8dbd2aeec81673f19842cbfe4",
+    "tree": "f0511bcbde47c728d3f018b5b02653c764e35629",
+    "run": 38550489196,
+    "go": "1.25.0",
+    "test": "TestRegisteredExternalOIDCNativeConsumerHandoff",
+    "result": "success",
+    "verification": [
+      "Actual ZIP files downloaded; SHA256 matches artifact metadata",
+      "Actual archive source SHA/tree and Go version inspected",
+      "Test PASS and fixed consumer/cleanup assertions inspected",
+      "Source and destination TLS with delivered workload CA",
+      "Client authentication with delivered client ID and credential",
+      "Actual JWT issuer/client/expiry and JWKS signature",
+      "Old issuer token rejected by destination JWKS",
+      "Original credential and global registration owner bytes unchanged",
+      "Foreign issuer token issuance succeeds after consumer-reference withdrawal",
+      "Owned producer cleanup returns verified success"
+    ],
+    "docker": {
+      "job": 115806972482,
+      "artifact": 11887020435,
+      "zip_sha256": "54414e9681ad54c9567041d762aa04621bab6b2a080a0259b03ccaf4d0a05161"
+    },
+    "podman": {
+      "job": 115806972597,
+      "artifact": 11886701006,
+      "zip_sha256": "9492885b88c89a81794ef6f120314431fe604ad48f7ff50c455a668075d04e53"
+    }
+  },
+  "failed_history": [
+    {
+      "run": 38549744124,
+      "commit": "e53349729c58a8c9d3cf33cc67b9f3b503c5a3c4",
+      "result": "both engines failed",
+      "cause": "Withdrawal fixture disabled services.identity but retained identity requirements; final foreign-after-withdrawal assertion was not reached",
+      "docker": {
+        "job": 115804515884,
+        "artifact": 11886570257,
+        "zip_sha256": "08f0ed76aae1108fa7c6d72e009145d846e1df73f96f131857c9ff2ed0b42475"
+      },
+      "podman": {
+        "job": 115804516219,
+        "artifact": 11886710084,
+        "zip_sha256": "5e473dd638fe6d0a6c9fae340fb5bdc11aff26a80f1253bc5e51fe82519267f1"
+      },
+      "owned_producer_cleanup": "success in both failed test logs"
+    }
+  ],
+  "managed_identity_handoff": "source implementation and targeted native OAuth/PKCE placement fixture prepared; native acceptance remains pending",
+  "material_reader": "Common credential/trust reader rejects redirected, unowned, writable or oversized sources; actual HTTPS mTLS and discovery-negative source tests pass. Not native all-provider delivery proof.",
+  "coordination": {
+    "restore_hook": "appendExternalIdentityChangeEffects with original resolved.Manifest; Session 2 owns restore production integration",
+    "restore_test_patch_approval": "PR881 comment6166505757",
+    "preserved": "foreign commits, failed runs, artifacts and prior receipts"
+  },
+  "limits": [
+    "Service-account fixture uses an explicit owned loopback mapping while retaining TLS hostname/CA validation",
+    "No browser OAuth/session migration or remote secret-material handoff claim from this OIDC fixture",
+    "No automatic user/account/data or signing-key transfer",
+    "All-provider verified consumer package remains open",
+    "No full pre-release, merge, tag or release launched"
+  ]
+}

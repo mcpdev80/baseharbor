@@ -13,7 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-func TestUnsupportedIdentityReplacementShowsConsequencesBeforeExecutionAdmission(t *testing.T) {
+func TestManagedIdentityReplacementRequiresCurrentConsentBeforeExecutionAdmission(t *testing.T) {
 	r := corelessResolvedFixture(t)
 	r.FromRepository = false
 	r.Manifest.Services.Identity = true
@@ -52,15 +52,12 @@ func TestUnsupportedIdentityReplacementShowsConsequencesBeforeExecutionAdmission
 	for _, consent := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}, {PlanID: impact.PlanID, First: true, Second: true}} {
 		err := authorizeApplicationProviderChanges(withProviderChangeConsent(machineNoninteractiveContext(t.Context()), consent), r, nil, io.Discard)
 		var failure *machine.Error
-		if !errors.As(err, &failure) {
-			t.Fatal("unimplemented replacement was executable")
-		}
 		if consent != nil && consent.PlanID == impact.PlanID && consent.Second {
-			if failure.Code != machine.ErrorUnsupported || failure.CauseCode != "provider_binding_migration_required" || failure.Details == nil {
-				t.Fatalf("missing adapter was not an explicit execution failure with the plan: %v", err)
+			if err != nil {
+				t.Fatalf("implemented Keycloak adapter remained permanently vetoed after current consent: %v", err)
 			}
-		} else if failure.Code != machine.ErrorApprovalRequired && failure.Code != machine.ErrorConflict {
-			t.Fatalf("technical admission hid the current acknowledgement requirement: %v", err)
+		} else if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired && failure.Code != machine.ErrorConflict {
+			t.Fatalf("execution bypassed the current acknowledgement requirement: %v", err)
 		}
 		after, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(after, original) {

@@ -100,7 +100,7 @@ func TestFreshRestoreStableConsentAndCanonicalIdentityRecovery(t *testing.T) {
 	}
 }
 
-func TestRestoreShowsConsequencesBeforeRefusingUnavailableReplacement(t *testing.T) {
+func TestRestoreRequiresCurrentConsentBeforeAdmittingSupportedIdentityPlacement(t *testing.T) {
 	r := corelessResolvedFixture(t)
 	r.FromRepository = false
 	id, err := deployment.NewDeploymentIdentity(r.Target.Name, r.Manifest.ApplicationID, r.Manifest.Name, r.Manifest.Environment)
@@ -129,28 +129,36 @@ func TestRestoreShowsConsequencesBeforeRefusingUnavailableReplacement(t *testing
 	if err != nil {
 		t.Fatal("technical admission hid recovery consequences", err)
 	}
-	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}} {
-		_, unlock, err := prepareAuthorizedApplicationRestore(withProviderChangeConsent(ctx, ack), r, data, io.Discard)
+	for _, ack := range []*application.ProviderChangeConsent{
+		nil,
+		{PlanID: plan.Scope.PlanID, First: true, DeleteData: true},
+		{PlanID: "stale", First: true, Second: true, DeleteData: true},
+		{PlanID: plan.Scope.PlanID, First: true, Second: true},
+		{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true},
+	} {
+		prepared, unlock, err := prepareAuthorizedApplicationRestore(withProviderChangeConsent(ctx, ack), r, data, io.Discard)
 		if unlock != nil {
 			unlock()
 		}
+		admitted := ack != nil && ack.PlanID == plan.Scope.PlanID && ack.First && ack.Second && ack.DeleteData
+		if admitted {
+			if err != nil || requireVerifiedRestoreScope(prepared, r) != nil {
+				t.Fatal("supported placement refused current acknowledged restore admission", err)
+			}
+			continue
+		}
 		var failure *machine.Error
-		if !errors.As(err, &failure) || failure.Details == nil {
-			t.Fatal("restore bypassed plan or admission", err)
-		}
-		if ack == nil && failure.Code != machine.ErrorApprovalRequired {
-			t.Fatal("adapter refusal hid acknowledgements", err)
-		}
-		if ack != nil && failure.Code != machine.ErrorUnsupported {
-			t.Fatal("unavailable replacement executed after consent", err)
+		if !errors.As(err, &failure) || failure.Details == nil || failure.Code != machine.ErrorApprovalRequired && failure.Code != machine.ErrorConflict {
+			t.Fatal("restore bypassed current consequence or separate data consent", err)
 		}
 	}
+
 	after, err := os.ReadFile(registry)
 	if err != nil || !bytes.Equal(original, after) {
-		t.Fatal("denied restore changed original bindings")
+		t.Fatal("restore admission or denial changed original bindings")
 	}
 	if _, err := os.Stat(r.DeploymentStateRoot); !os.IsNotExist(err) {
-		t.Fatal("denied restore allocated deployment owner")
+		t.Fatal("restore admission or denial allocated deployment owner")
 	}
 }
 

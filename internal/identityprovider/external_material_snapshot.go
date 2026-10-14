@@ -1,6 +1,7 @@
 package identityprovider
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"os"
@@ -86,4 +87,33 @@ func zeroExternalMaterial(data []byte) {
 	for i := range data {
 		data[i] = 0
 	}
+}
+
+// Binding delivery can replace the inode of an omitted, retained input. Refresh
+// only that owned projection after checking it still contains prepared bytes.
+// Explicit external source owners are never refreshed or silently replaced.
+func (s *externalMaterialSnapshot) refreshRetainedDeliveryOwners(files application.RuntimeFiles, secret string) error {
+	dir := filepath.Join(files.Bindings, application.IdentityBindingName)
+	for i := range s.sources {
+		source := &s.sources[i]
+		expected := s.trust
+		if filepath.Clean(source.path) == filepath.Join(dir, "client-secret") {
+			expected = []byte(secret)
+		} else if filepath.Clean(source.path) != filepath.Join(dir, "ca.crt") {
+			continue
+		}
+		data, err := readExternalMaterial(source.path, source.confidential)
+		if err != nil {
+			return errors.New("retained identity delivery cannot be verified")
+		}
+		matched := bytes.Equal(bytes.TrimSpace(data), bytes.TrimSpace(expected))
+		owner, statErr := os.Lstat(source.path)
+		digest := sha256.Sum256(data)
+		zeroExternalMaterial(data)
+		if !matched || statErr != nil {
+			return errors.New("retained identity delivery differs from prepared material")
+		}
+		source.owner, source.digest = owner, digest
+	}
+	return s.revalidate()
 }

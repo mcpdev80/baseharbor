@@ -111,17 +111,12 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 			if instance.Provider.Kind != capability.ProviderKeycloak {
 				return fmt.Errorf("unsupported provider retirement %s", instance.ID)
 			}
-			owner := "app/" + resolved.Manifest.Name + "/" + resolved.Manifest.Environment
-			owners := []string{owner}
-			if instance.Scope == capability.ScopeShared {
-				owners = append(owners, "shared/keycloak")
-			}
-			if err := removeApplicationGatewayOwners(ctx, provider, resolved, owners...); err != nil {
-				return fmt.Errorf("retire Identity gateway routes: %w", err)
-			}
 			files, _, err := identityprovider.ExistingKeycloakRuntimeInventoryAt(resolved.Manifest, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
 			if err != nil {
 				return err
+			}
+			if err := retireIdentityGatewayRoutes(ctx, provider, resolved, files); err != nil {
+				return fmt.Errorf("retire Identity gateway routes: %w", err)
 			}
 			result, err := identityprovider.RetireKeycloakRuntime(ctx, provider, resolved.Manifest, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
 			// A failed native operation can still have removed some containers.

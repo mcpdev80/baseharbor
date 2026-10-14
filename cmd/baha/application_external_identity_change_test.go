@@ -191,3 +191,70 @@ func TestRegisteredOIDCReplacementRequiresCurrentConsentAndDeliversDestinationMa
 		}
 	}
 }
+
+func TestManagedToRegisteredIdentityReplacementRequiresConsentAndVerifiesDeliveredConsumer(t *testing.T) {
+	r := corelessResolvedFixture(t)
+	r.Store = application.Store{Root: t.TempDir(), Namespace: "identity-handoff"}
+	r.FromRepository = false
+	r.Manifest.Services.Identity = true
+	t.Setenv("BASEHARBOR_IDENTITY_PROVIDER", "keycloak")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderKeycloak), "application")
+	if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(r.TargetStateRoot, "provider-registry.json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := deployment.DataRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, requests := registeredIdentityConsumerFixture(t, root, "replacement-login", "replacement-private-value")
+	t.Setenv("BASEHARBOR_IDENTITY_PROVIDER", "external-oidc")
+	t.Setenv(application.ProviderExternalReferenceEnv(capability.ProviderExternalOIDC), "replacement-login")
+	for _, name := range []string{identityprovider.ExternalClientIDEnv, identityprovider.ExternalClientSecretFileEnv, identityprovider.ExternalCAFileEnv} {
+		t.Setenv(name, "")
+	}
+	plan, err := buildResolvedApplicationPlan(t.Context(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	impact := plan.ProviderPlan.Impact
+	if impact == nil || impact.Attention != "Achtung" || impact.ConfirmationsRequired != 2 {
+		t.Fatal("authority replacement bypassed current consequence plan")
+	}
+	for _, ack := range []*application.ProviderChangeConsent{nil, {PlanID: impact.PlanID, First: true}, {PlanID: "stale", First: true, Second: true}, {PlanID: impact.PlanID, First: true, Second: true}} {
+		err := authorizeApplicationProviderChanges(withProviderChangeConsent(machineNoninteractiveContext(t.Context()), ack), r, nil, io.Discard)
+		valid := ack != nil && ack.PlanID == impact.PlanID && ack.Second
+		if valid && err != nil || !valid && err == nil {
+			t.Fatal("authority handoff did not enforce current two-stage consent", err)
+		}
+		after, _ := os.ReadFile(path)
+		if !bytes.Equal(before, after) {
+			t.Fatal("admission changed original managed authority owner")
+		}
+	}
+	files := application.RuntimeFilesFor(r.Store, r.Manifest)
+	if err := os.MkdirAll(files.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{files.Env, files.ApplicationEnv} {
+		if err := os.WriteFile(path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepared, err := prepareManagedIdentity(t.Context(), nil, r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := provisionAndVerifyManagedIdentity(t.Context(), io.Discard, prepared, nil); err != nil {
+		t.Fatal(err)
+	}
+	verifyDeliveredIdentityConsumer(t, files)
+	if requests.Load() != 1 {
+		t.Fatal("destination was not authenticated with actual delivered material")
+	}
+	// This proves delivery/admission, not native managed retirement or user migration.
+}

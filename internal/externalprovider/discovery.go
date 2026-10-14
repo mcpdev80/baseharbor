@@ -1,6 +1,7 @@
 package externalprovider
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -49,11 +50,11 @@ func DiscoverCertificateDirectory(dir, hostname string) (CertificateDiscovery, e
 	if dir == "" {
 		return CertificateDiscovery{}, errors.New("certificate directory is required")
 	}
-	info, err := os.Stat(dir)
+	info, err := os.Lstat(dir)
 	if err != nil {
 		return CertificateDiscovery{}, fmt.Errorf("inspect certificate directory: %w", err)
 	}
-	if !info.IsDir() {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 {
 		return CertificateDiscovery{}, fmt.Errorf("certificate directory %q is not a directory", dir)
 	}
 	entries, err := os.ReadDir(dir)
@@ -79,11 +80,25 @@ func DiscoverCertificateDirectory(dir, hostname string) (CertificateDiscovery, e
 		if fi.Size() > 16<<20 {
 			return CertificateDiscovery{}, fmt.Errorf("certificate directory file %q is unexpectedly large", path)
 		}
-		data, err := os.ReadFile(path)
+		data, err := ReadMaterialReference(path, false)
 		if err != nil {
 			return CertificateDiscovery{}, err
 		}
 		fileCerts, fileKeys := parseCertificateMaterial(path, data)
+		if len(fileKeys) > 0 {
+			protected, err := ReadMaterialReference(path, true)
+			if err != nil {
+				zeroMaterial(data)
+				return CertificateDiscovery{}, err
+			}
+			same := bytes.Equal(data, protected)
+			zeroMaterial(protected)
+			if !same {
+				zeroMaterial(data)
+				return CertificateDiscovery{}, errors.New("external certificate material changed during inspection")
+			}
+		}
+		zeroMaterial(data)
 		certs = append(certs, fileCerts...)
 		keys = append(keys, fileKeys...)
 	}

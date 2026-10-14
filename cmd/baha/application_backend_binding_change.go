@@ -12,6 +12,18 @@ import (
 )
 
 func supportedBackendBindingReplacement(old, wanted capability.ProviderInstance) bool {
+	if old.Provider.Kind == capability.ProviderKeycloak && wanted.Provider.Kind == capability.ProviderKeycloak && old.Ownership == capability.OwnershipBaseHarbor && wanted.Ownership == capability.OwnershipBaseHarbor {
+		native := func(scope capability.ProviderScope) bool {
+			return scope == capability.ScopeShared || scope == capability.ScopeApplication
+		}
+		return native(old.Scope) && native(wanted.Scope)
+	}
+	if old.Provider.Kind == capability.ProviderKeycloak && old.Ownership == capability.OwnershipBaseHarbor && wanted.Provider.Kind == capability.ProviderExternalOIDC && wanted.Ownership == capability.OwnershipExternal && wanted.Scope == capability.ScopeExternal {
+		return old.Scope == capability.ScopeShared || old.Scope == capability.ScopeApplication
+	}
+	if old.Provider.Kind == capability.ProviderExternalOIDC && old.Ownership == capability.OwnershipExternal && old.Scope == capability.ScopeExternal && wanted.Provider.Kind == capability.ProviderKeycloak && wanted.Ownership == capability.OwnershipBaseHarbor {
+		return wanted.Scope == capability.ScopeShared || wanted.Scope == capability.ScopeApplication
+	}
 	if old.Ownership == capability.OwnershipExternal && wanted.Ownership == capability.OwnershipExternal && old.Scope == capability.ScopeExternal && wanted.Scope == capability.ScopeExternal && old.Provider.Kind == capability.ProviderExternalOIDC && wanted.Provider.Kind == capability.ProviderExternalOIDC {
 		// The registered OIDC driver resolves explicit destination credential/
 		// trust references and revalidates them before verified delivery. Only
@@ -51,6 +63,9 @@ func observeBackendBindingReplacementImpact(resolved resolvedApplication, snapsh
 				fact.Effects = append(fact.Effects, application.OperationalConsequence{Aspect: "data-continuity", Before: "Application uses the original provider's data namespace.", After: "Destination uses its own retained or newly initialized data. Original data and protected credentials remain owned; no automatic content migration or continued access to original data is claimed. Destination access requires actual apply verification.", Evidence: "existing native destination provisioning and data-preserving retirement adapters"})
 			} else {
 				fact.Effects = append(fact.Effects, application.OperationalConsequence{Aspect: "consumer-rebinding", Before: "The application uses the displayed original provider binding.", After: "The selected destination may change endpoint, authentication, trust, service delivery and recovery access. No credential transfer, data migration, session or consumer continuity is verified by this plan. Actual execution requires an implemented adapter and verified delivery; unavailable execution preserves the current binding and owner.", Evidence: "canonical source/destination binding observation; operational handoff and consumer results remain unverified"})
+			}
+			if old.Resource.Kind == capability.Identity {
+				fact.Effects = append(fact.Effects, application.OperationalConsequence{Aspect: "identity-authority", Before: "Login, users, client credentials, issuer trust and active sessions belong to the original identity authority.", After: "The destination resolves or provisions its own client and issuer trust. Original managed realms, users, databases and recovery material remain owned; external infrastructure is not retired. User/account, signing-key, login, refresh-token and session continuity are not automatically migrated and require separate actual consumer evidence.", Evidence: "existing identity delivery and data-preserving managed retirement adapters; no authority or material transfer is inferred"})
 			}
 			if old.Resource.Provider == capability.ProviderValkey {
 				fact.Effects = append(fact.Effects, application.OperationalConsequence{Aspect: "authentication-principal", Before: "Shared storage uses its scoped ACL user; application-scoped storage uses the native default principal.", After: "Destination uses its existing native principal. Password values and the original protected shared ACL reference are retained; switching back reprojects the shared identity. Native default access is limited to the separately owned application realization, not the shared provider.", Evidence: "existing native requirepass adapter and protected service-binding projection; actual destination authentication requires apply verification"})

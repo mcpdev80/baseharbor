@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 )
 
 const (
@@ -115,14 +116,23 @@ func (d *ExternalDriver) Bind(ctx context.Context, _ capability.Resource, _ capa
 	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
-	return application.MaterializeIdentityBindingMaterial(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.material.trust)
+	if err := application.MaterializeIdentityBindingMaterial(d.app, d.files, string(capability.ProviderExternalOIDC), discovery, d.clientID, d.secret, d.material.trust); err != nil {
+		return err
+	}
+	return d.material.refreshRetainedDeliveryOwners(d.files, d.secret)
 }
 
 func (d *ExternalDriver) Verify(ctx context.Context, _ capability.Resource, _ capability.Binding) error {
-	if err := d.registration.revalidate(); err != nil {
+	if err := d.revalidateExternalSources(); err != nil {
 		return err
 	}
 	if _, err := FetchDiscovery(ctx, d.client, d.issuer); err != nil {
+		return err
+	}
+	if err := d.revalidateExternalSources(); err != nil {
+		return err
+	}
+	if err := d.verifyPreparedDelivery(); err != nil {
 		return err
 	}
 	return application.VerifyIdentityBinding(d.app, d.files)
@@ -147,6 +157,9 @@ func externalHTTPClientForCA(caPath string) (*http.Client, error) {
 func externalHTTPClientWithTrust(trust []byte) (*http.Client, error) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	if len(trust) > 0 {
+		if err := externalprovider.ValidatePublicTrustMaterial(trust); err != nil {
+			return nil, err
+		}
 		pool, err := x509.SystemCertPool()
 		if err != nil || pool == nil {
 			pool = x509.NewCertPool()

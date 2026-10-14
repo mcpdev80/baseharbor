@@ -182,3 +182,68 @@ func TestExternalPreparedPublicTrustUsesTheSameBytesForTLSAndDelivery(t *testing
 		t.Fatal("delivered credential did not authenticate at the selected HTTPS fixture")
 	}
 }
+
+func TestExternalVerificationRejectsSourceChangeDuringDiscovery(t *testing.T) {
+	m, files, server, secret := externalCredentialFixture(t)
+	d, err := NewExternalDriver(m, files, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Bind(t.Context(), capability.Resource{}, capability.Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.client.Transport = externalMaterialMutationTransport{base: d.client.Transport, mutate: func() error { return os.WriteFile(secret, []byte("private-after-network"), 0600) }}
+	if err := d.Verify(t.Context(), capability.Resource{}, capability.Binding{}); err == nil || strings.Contains(err.Error(), "private-after-network") {
+		t.Fatal("changed source during verification was accepted or disclosed")
+	}
+	after, _ := os.ReadFile(files.ApplicationEnv)
+	if !bytes.Equal(before, after) {
+		t.Fatal("verification rewrote delivery after source drift")
+	}
+}
+
+func TestExternalVerificationRejectsSelfConsistentDifferentDelivery(t *testing.T) {
+	m, files, server, _ := externalCredentialFixture(t)
+	d, err := NewExternalDriver(m, files, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Bind(t.Context(), capability.Resource{}, capability.Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	discovery, err := FetchDiscovery(t.Context(), d.client, d.issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.MaterializeIdentityBindingMaterial(m, files, string(capability.ProviderExternalOIDC), discovery, d.clientID, "private-substituted-delivery", d.material.trust); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.VerifyIdentityBinding(m, files); err != nil {
+		t.Fatal("fixture did not establish self-consistent projections", err)
+	}
+	if err := d.Verify(t.Context(), capability.Resource{}, capability.Binding{}); err == nil || strings.Contains(err.Error(), "private-substituted-delivery") {
+		t.Fatal("self-consistent replacement was falsely reported as prepared delivery")
+	}
+}
+
+func TestExternalOIDCTrustCannotDeliverAccompanyingPrivateMaterial(t *testing.T) {
+	m, files, server, _ := externalCredentialFixture(t)
+	path := os.Getenv(ExternalCAFileEnv)
+	cert, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(cert, []byte("password=private-trust-sentinel\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewExternalDriver(m, files, server.URL); err == nil || strings.Contains(err.Error(), "private-trust-sentinel") {
+		t.Fatal("non-certificate trust material was accepted or disclosed")
+	}
+	if _, err := os.Stat(filepath.Join(files.Bindings, application.IdentityBindingName)); !os.IsNotExist(err) {
+		t.Fatal("private trust material reached consumer delivery")
+	}
+}
