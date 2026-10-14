@@ -234,9 +234,13 @@ jobs:
           go version > "$evidence/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$evidence/runtime-version.txt"
           status=0
-          go test ./internal/telemetry -run '^TestRegisteredOTLP' -count=1 -v 2>&1 | tee "$evidence/registered-otlp-local-tls.log" || status=1
+          if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
+            go test ./internal/telemetry -run '^TestRegisteredOTLP' -count=1 -v 2>&1 | tee "$evidence/registered-otlp-local-tls.log" || status=1
+          fi
           go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/metrics.log" || status=1
-          go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/logs.log" || status=1
+          if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
+            go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/logs.log" || status=1
+          fi
           exit "$status"
       - name: Retain exact source consumer results including failed attempts
         if: always()

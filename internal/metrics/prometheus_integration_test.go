@@ -70,6 +70,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 				Direction: "provide",
 				Format:    "openmetrics",
 				Service:   "api",
+				Scheme:    "http",
 				Port:      8080,
 				Path:      "/metrics",
 			},
