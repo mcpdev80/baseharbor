@@ -1,0 +1,107 @@
+{
+  "schema": "baseharbor.external-oidc-material-source-evidence/v1",
+  "release": "0.4.25",
+  "published_source": "59ae70d2d98fbd35b218985445445d357a46cc01",
+  "published_tree": "f5f0df89d76d1f615ecad89eaf219210a4fc3e41",
+  "source_checks": {
+    "source": {
+      "commit": "ac5f183d7b179332b14fa231fdf0290025021bb3",
+      "tree": "aa12afe52260055eccb5efec35650d4e8128b231",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 66.781,
+    "race_packages": [
+      "./internal/identityprovider",
+      "./internal/application"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 18.902,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.401,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.904,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.905,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 25.825,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 66.301,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 18.605,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 5.719,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 5.013,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "final_change": "One final private source-file identity recheck after the safe read; affected identityprovider race and vet passed afterward. Published wrapper tree equals the locally reviewed tree.",
+  "assertions": [
+    "changed secret/trust contents, replaced secret file, redirected trust and missing credential invalidate prepared binding before delivery mutation",
+    "all existing host/workload/runtime/application projections unchanged after rejection",
+    "a trust substitution during an actual local HTTPS discovery response is rejected before first binding write",
+    "custom public CA readability is retained; confidential credentials remain protected",
+    "workload credential projection authenticates at the actual selected local HTTPS fixture",
+    "same captured trust bytes build discovery TLS and host/workload trust delivery; fingerprints and confidential values are not emitted"
+  ],
+  "prior_failed_source_case": {
+    "test": "TestExternalPreparedPublicTrustUsesTheSameBytesForTLSAndDelivery",
+    "result": "failure",
+    "finding": "Initial helper reused a confidential-owner check for public CA input; corrected without dropping secret ownership/regular-file/bounded-read checks."
+  },
+  "native_runtime_qualified": false,
+  "pre_release_ready": false,
+  "boundaries": [
+    "HTTPS adapter fixtures are not native external IDP/OAuth/PKCE or session-migration qualification",
+    "No new registration/engine/credential owner and no shared Observer/Broker/Resolver changes",
+    "Existing provider_binding_migration_required admission and missing generic handoff adapters remain open"
+  ]
+}
