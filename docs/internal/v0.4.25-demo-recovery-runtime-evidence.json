@@ -1,0 +1,376 @@
+{
+  "schema": "baseharbor.demo-recovery-runtime-evidence/v1",
+  "release": "0.4.25",
+  "date": "2026-10-14",
+  "pre_release_ready": false,
+  "source": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "tree": "a5831b12582439e859045b5801ba594c69a6aec4",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a"
+  },
+  "source_qualification": {
+    "source": {
+      "commit": "afed3a5a3160506464b859e2e138ac540dc779c3",
+      "tree": "a5831b12582439e859045b5801ba594c69a6aec4",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 65.045,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/identityprovider"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.512,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.302,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.011,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.111,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 50.301,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 64.651,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.338,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.515,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.209,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "source_assertions": [
+    "Deterministic, guided and human/JSON quick reinitialization reuse the original canonical application ID with matching retained deployment authority.",
+    "Real conflicting canonical repository/deployment IDs fail before source writes; rejected conflict preserves original owner bytes.",
+    "Existing deployment identity and applied intent remain unchanged during source reinitialization.",
+    "Broker raw-null dependency observations are enriched from each existing/pending deployment intent without changing shared production observer/resolver code.",
+    "Client-supplied machine authoring identity remains rejected by existing MCP authority tests."
+  ],
+  "prior_source_attempts": [
+    {
+      "result": "failed",
+      "source_tree": "f3a50c5d9d3b094758ebc53baed9cae2926740e1",
+      "reason": "Removing preview IDs too early broke footprint-only provider previews; retained the preview IDs and discard only at CLI persistence. New quick fixture also incorrectly expected unchanged intent bytes after capability edits."
+    },
+    {
+      "result": "failed",
+      "source_tree": "052c413739d7e38835a79421de0518faac880811",
+      "reason": "New quick command fixture declared an applied SQL consumer without its provider registry, causing missing-dependency. Corrected fixture to use actual workload-only retained intent. Source production correction unchanged."
+    }
+  ],
+  "native_attempts": [
+    {
+      "run_id": 38476485276,
+      "core": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+      "demo": "8cceb6850c80b62e739fd043c0d8b6d88298aa4f",
+      "result": "failure",
+      "finding": "Historical Caddy runtime was running; SQL module unverifiable made aggregate retirement incomplete. Raw broker dependency field was null, not a proven lifecycle-snapshot defect."
+    },
+    {
+      "run_id": 38526701723,
+      "core": "ac5f183d7b179332b14fa231fdf0290025021bb3",
+      "demo": "79aa5757ea71d84aab3043bb14c9eeb38d56260e",
+      "result": "failure",
+      "jobs": [
+        {
+          "id": 115728641469,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115728641162,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11876346669,
+          "digest": "sha256:1ba533194c823fc0ec0c385d1cc4bcc74c3f6766cb6488eda0f7b5dc44b0c3e6",
+          "name": "demo-v024-docker-38526701723"
+        },
+        {
+          "id": 11875828726,
+          "digest": "sha256:ffe4c984226b8e0ae46b1b8c32d362fec48c98f4373dc27c8c0696e48f41d0f4",
+          "name": "demo-v024-podman-38526701723"
+        }
+      ],
+      "finding": "Full job logs show guided application READY and successful actual retirement before conflicting-application-ID rejection during reinitialization on BOTH engines. Neither actual backup/restore nor cleanup is accepted as PASS."
+    },
+    {
+      "run_id": 38528084560,
+      "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+      "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+      "result": "failure",
+      "finding": "Both complete logs show successful guided READY, retained-identity reinitialization, exact mixed topology, repeated up and encrypted backup creation. Retirement then fails because the logical shared SQL module has no own containers when reusing canonical Core SQL. Actual Core SQL, Caddy and broker are running. Neither engine reached restore; both fixture cleanups completed.",
+      "jobs": [
+        {
+          "id": 115733111979,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115733111739,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11876893568,
+          "name": "demo-v024-docker-38528084560",
+          "digest": "sha256:ed346ef897109c5e641382b5bfd002d49be27cf5b515497f0bba973d8945a743"
+        },
+        {
+          "id": 11876823665,
+          "name": "demo-v024-podman-38528084560",
+          "digest": "sha256:f26d56781f15752fee0ad6844cb7f112bb31126219894e79696e7cb8a7868e7c"
+        }
+      ]
+    },
+    {
+      "run_id": 38529755851,
+      "core": "ac7ecfa734c425eefdd786e08c234fead692bf57",
+      "demo": "f77e8aefca9f4c94a66ef4ab253902648186dda2",
+      "result": "in_progress",
+      "finding": "Targeted Docker/rootless Podman recovery retry after the reproduced logical SQL alias observation correction."
+    }
+  ],
+  "limits": [
+    "Source checks are not actual consumer recovery or all-provider handoff acceptance.",
+    "Historical scoped results are not one final immutable ecosystem approval.",
+    "Current Console/Connector journeys and Session 1 handoff remain prerequisites to final matrix/audit."
+  ],
+  "demo_static_compatibility": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+    "binary_sha256": "ca8d1910a3064f5498f9cacbcb82c593509fe9d232e062deeebc7d1964c6f32b",
+    "checks": [
+      {
+        "gate": "config-matrix",
+        "exit_code": 0,
+        "seconds": 1.198,
+        "log_sha256": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+      },
+      {
+        "gate": "init",
+        "exit_code": 0,
+        "seconds": 0.236,
+        "log_sha256": "789efdea62920bf35ab492c80c7b961ad9454c30598f5730c965515d5d74c814"
+      },
+      {
+        "gate": "mcp",
+        "exit_code": 0,
+        "seconds": 0.073,
+        "log_sha256": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a"
+      },
+      {
+        "gate": "agent",
+        "exit_code": 0,
+        "seconds": 0.022,
+        "log_sha256": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4"
+      },
+      {
+        "gate": "shell-ux",
+        "exit_code": 0,
+        "seconds": 0.168,
+        "log_sha256": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8"
+      }
+    ],
+    "native_acceptance": false
+  },
+  "console_source_checks": {
+    "source": "6af13ca33db45840146ab56beedb10dd0bff36af",
+    "aligned_candidate": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+    "candidate_only_change": true,
+    "contracts": {
+      "pass": 62,
+      "fail": 0,
+      "skip": 0
+    },
+    "architecture": "pass",
+    "typecheck": "pass",
+    "lint": "pass",
+    "production_build": "pass",
+    "canonical_contract_artifacts": {
+      "count": 6,
+      "byte_equal_to_core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+      "digests_verified": true
+    },
+    "candidate_and_receipt_negative_tests": {
+      "pass": 5,
+      "fail": 0
+    },
+    "tooling_recovery": "Initial Turbopack build rejected external node_modules symlink; copied unchanged dependencies with identical package-lock digest into isolated checkout and build passed."
+  },
+  "connector_source_checks": {
+    "source": "b270583d58ea513e79817bd518123cf5f8fa4f3e",
+    "go_suite": "pass",
+    "go_vet": "pass",
+    "receipt_negative_tests": {
+      "pass": 4,
+      "fail": 0
+    },
+    "native_acceptance": false
+  },
+  "shared_sql_alias_correction": {
+    "core": "ac7ecfa734c425eefdd786e08c234fead692bf57",
+    "tree": "1b65b4dc4ad7624204914f385e2106b27913cfe5",
+    "coordination_comments": [
+      6163307943,
+      6163343924,
+      6163392720
+    ],
+    "implementation": "Observe actual canonical Core SQL before projecting the shared logical backend. Only the exact retained CoreSQL Files reference with protected canonical inventory and measured matching physical owner fact can supply availability to a containerless alias. Its extra container count stays zero.",
+    "assertions": [
+      "Foreign Target, project/resource project, Compose/env paths, HA/network reference and damaged canonical definitions cannot supply alias state.",
+      "Missing/unknown/unmeasured native facts and running-with-zero/negative process counts remain unverifiable.",
+      "Actual stopped-owned SQL remains stopped-owned; no new native runtime or persistent owner is created."
+    ],
+    "focused_checks": {
+      "negative_race_regressions": "pass",
+      "full_cmd_application_runtime_races": "pass",
+      "affected_go_vet": "pass",
+      "readability": "pass",
+      "diff_check": "pass"
+    },
+    "full_source_qualification": {
+      "source": {
+        "commit": "3dd029a3566fde233fe87021945a72effce2ffe5",
+        "tree": "7c7e593fc5b93442d1d8611135dd4d2ce347b5b3",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 62.344,
+      "race_packages": [
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.906,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.306,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.903,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.913,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 47.743,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 61.851,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.088,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.112,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.212,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  },
+  "provisional_joint_matrix": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+    "console": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+    "connector": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921",
+    "run_id": 38528836411,
+    "result": "in_progress",
+    "canonical_pin_resolver": "pass after supplying scripts module path; initial local harness import path was missing",
+    "final_all_provider_matrix": false
+  }
+}
