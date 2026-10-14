@@ -140,5 +140,31 @@
     "Successful Podman qualification belongs to this exact four-source matrix; it is not final all-provider or current recovery acceptance.",
     "Docker remains failed despite successful partial authenticated journeys.",
     "Subsequent Core alias/restore corrections and pending Session 1 provider/material handoff must be reflected in final immutable input selection and affected evidence."
+  ],
+  "subsequent_docker_attempts": [
+    {
+      "run_id": 38532924343,
+      "source": {
+        "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+        "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
+        "console": "efd067ad9cd696ae01addc7e4c83fe381e885faa",
+        "connector": "edd37d8ebdeeddcff8e45c8c130fa722ca5fbcfd"
+      },
+      "job_id": 115748866406,
+      "result": "failure",
+      "finding": "Browser issuer form submitted; Sign out timeout before any completed journey step. Prior cleanup defect not reached or diagnosed.",
+      "artifact_id": 11879491999,
+      "artifact_digest": "sha256:8b2d0bd6efb186a0734211c0c1b0c1d0b8122347778e0628aa6f7fb71fe46588"
+    },
+    {
+      "run_id": 38537532469,
+      "source": {
+        "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+        "demo": "2b8e4d8901209915c78932510bf1a915e1d08c7c",
+        "console": "59098d859e9917bd9168df0c55e3b71d8eea4f60",
+        "connector": "00fe0b21759ce5bb7ad7993e0d6a121cf4f8082c"
+      },
+      "result": "in_progress"
+    }
   ]
 }

@@ -212,8 +212,70 @@
       "run_id": 38532739294,
       "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
       "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
+      "result": "failure",
+      "finding": "Both full job logs fail before restore acknowledgement with stale-impact-consent: archive Manifest lacked the private retained backend-placement projection. Encrypted backup and runtime retirement passed; cleanup incomplete.",
+      "jobs": [
+        {
+          "id": 115748216104,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115748215783,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11879116243,
+          "name": "demo-v024-podman-38532739294",
+          "digest": "sha256:41b2017b81ad041cbba4463844eeca75300bda8296434fd65424bfd44dcc91fe"
+        },
+        {
+          "id": 11878887287,
+          "name": "demo-v024-docker-38532739294",
+          "digest": "sha256:27b235c9c0b98fdf3118332c9f84026de60cd4fa0f152fba5a082a5f6b2e7b4e"
+        }
+      ]
+    },
+    {
+      "run_id": 38535581949,
+      "core": "83b484bb4352a4400ac73b6458b74fb4a326c571",
+      "demo": "2337c90723366a39de9b84a285e7f3dd98b48613",
+      "result": "failure",
+      "finding": "Both engines pass restore consequence admission, then manager service-PKI authentication fails because prior retirement removed openbao-admin. Docker reports service not running; Podman reports no such container. No confirmed Caddy defect. Both fixture cleanups explicitly incomplete; generic final complete line is not acceptance.",
+      "jobs": [
+        {
+          "id": 115757538648,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115757538981,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11880451530,
+          "name": "demo-v024-docker-38535581949",
+          "digest": "sha256:50c8dce40700db22917b4ff2a8d8c989c5b0c516e5cbe33d89f0546b3e68e13c"
+        },
+        {
+          "id": 11880416504,
+          "name": "demo-v024-podman-38535581949",
+          "digest": "sha256:08f112c61101093fcc922fce3cc3813cd098f1d5a420ba83449b86ae8cb7ef4f"
+        }
+      ]
+    },
+    {
+      "run_id": 38537360901,
+      "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+      "demo": "2b8e4d8901209915c78932510bf1a915e1d08c7c",
       "result": "in_progress",
-      "finding": "Targeted Docker/rootless Podman retry with canonical archive/source identity reconciliation; no new PASS claim."
+      "finding": "Actual both-engine retry with original-owner recovery, retained placement and selective broker activation before PKI manager login. No PASS claim."
     }
   ],
   "limits": [
@@ -514,7 +576,7 @@
     "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
     "console": "efd067ad9cd696ae01addc7e4c83fe381e885faa",
     "connector": "edd37d8ebdeeddcff8e45c8c130fa722ca5fbcfd",
-    "result": "in_progress",
+    "result": "failure",
     "scope": "Only failed Docker row selected. Fixed-label/code/result-count diagnostics retain no arbitrary stdout/stderr, secret values, paths or command arguments. No mutation replay.",
     "source_checks": {
       "console_contracts": 63,
@@ -522,6 +584,286 @@
       "connector_receipt_negatives": 4,
       "single_both_runtime_YAML_selection": "pass",
       "actionlint": "v1.7.12 pass"
+    },
+    "job_id": 115748866406,
+    "finding": "Timed out waiting for Sign out after real issuer form submission, before any completed browser step; recorded network empty because old observer watched only main page. Does not diagnose previous cleanup failure.",
+    "artifact": {
+      "id": 11879491999,
+      "digest": "sha256:8b2d0bd6efb186a0734211c0c1b0c1d0b8122347778e0628aa6f7fb71fe46588"
     }
+  },
+  "current_recovery_correction": {
+    "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+    "tree": "aba372deb3775029bbbbe39c2a4e7de05c148d6c",
+    "source_qualification": {
+      "source": {
+        "commit": "ad559dd1e6d40b34e5666ec2e10b04ba8fc217ee",
+        "tree": "aba372deb3775029bbbbe39c2a4e7de05c148d6c",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 63.603,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/identityprovider",
+        "./internal/telemetry",
+        "./internal/application"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.822,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.402,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.206,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.923,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.6,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 63.003,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.924,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.52,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.408,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "scope": [
+      "Original archive identity reconciled with every surviving owner without preflight writes.",
+      "Unallocated deployment proposal does not change fresh recovery plan ID.",
+      "Two current confirmations and separate data deletion consent required; source/placement/archive/material/owner drift revalidated immediately before identity mutation.",
+      "Existing canonical Store initializes original ID; pending deployment survives interruption/retry.",
+      "Unsupported provider execution rejected after concrete consequences/acknowledgements before mutation.",
+      "Normal selective broker/Secrets activation precedes retained manager PKI login."
+    ],
+    "native_result": "pending",
+    "fresh_lost_owner_native_recovery": "not yet qualified",
+    "preserved_failed_source_attempts": [
+      {
+        "source": {
+          "commit": "51f22de019d0ecd4a659cd6b1475b2f73fcd9580",
+          "tree": "85affe3a80d2b00ee6d6a61066bd32fc538fbe2e",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 65.7,
+        "race_packages": [
+          "./cmd/baha",
+          "./internal/identityprovider"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 17.285,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.307,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.012,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.911,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 49.304,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 65.264,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 16.68,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.115,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.416,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      },
+      {
+        "source": {
+          "commit": "7f79c8e3f8b0d4e8da0fffa2035f6e6eaaca3062",
+          "tree": "864509319f15f0f904a512fc5b85e5460831ca61",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 68.724,
+        "race_packages": [
+          "./cmd/baha",
+          "./internal/identityprovider",
+          "./internal/telemetry",
+          "./internal/application"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 22.051,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.406,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.005,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.647,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 54.197,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 68.237,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 20.868,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 3.915,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.532,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      }
+    ]
+  },
+  "current_joint_retry": {
+    "run_id": 38537532469,
+    "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+    "demo": "2b8e4d8901209915c78932510bf1a915e1d08c7c",
+    "console": "59098d859e9917bd9168df0c55e3b71d8eea4f60",
+    "connector": "00fe0b21759ce5bb7ad7993e0d6a121cf4f8082c",
+    "result": "in_progress",
+    "scope": "Docker-only required joint journey; bounded popup form/callback/closed flags and main+popup static path/status observations omit queries, headers, callback codes and token bytes."
+  },
+  "installation_sibling_source_review": {
+    "result": "reproduced failure; correction pending",
+    "test": "installation_sibling_scope_test.go (local, uncommitted)",
+    "finding": "Two canonical children are initially admitted by displayed parent scope. Releasing only first completed child provider references and deleting its owner changes global union and falsely stales unchanged second child. No impact binding removed and no automatic new grant issued. Native Docker mapping remains unverified."
   }
 }
