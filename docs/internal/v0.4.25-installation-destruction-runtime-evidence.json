@@ -316,7 +316,67 @@
       },
       "result": "failure on both engines: retained-user recreation409 followed by stale cleanup and remaining fixture containers. Shared and application OAuth/PKCE/JWT/refresh phases pass only as bounded subsets."
     },
-    "native_after": "Pending Session 1 phase2 retained-session fixture correction and integrated native retry. No fixed-native success claimed.",
+    "native_after": {
+      "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+      "run": 38559693713,
+      "attempt": 1,
+      "result": "success on both engines",
+      "verification": "Both actual ZIP SHA256 values and source files verified. All three actual Shared/Application/Shared phases, TLS-authenticated user OAuth/PKCE/JWT/userinfo/refresh, unavailable retired issuer, original retained session/user reuse, protected original data/config/credential and test cleanup zero-container assertions pass. No FAIL/SKIP.",
+      "docker": {
+        "artifact": 11890954128,
+        "sha256": "3e99b6305a8d216274ea0b43585585f7c1e628f209adb2888ccb2292d735f16a",
+        "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "result": "success",
+        "assertions": [
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=2 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "--- PASS: TestManagedIdentityNativePlacementHandoff (216.23s)",
+          "PASS"
+        ],
+        "job": 115837420698
+      },
+      "podman": {
+        "artifact": 11891313583,
+        "sha256": "4ed9212d8f3f4638f4f09ef191478a2f2a123e2b71ba8ce18e86e3a16d296922",
+        "core": "40bfa96268a57ca74853f22ba6f949ffd7ff057d",
+        "files": [
+          "candidate-sha.txt",
+          "go-version.txt",
+          "identity-lifecycle.log",
+          "runtime-version.txt"
+        ],
+        "result": "success",
+        "assertions": [
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=0 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:167: actual end-user authorization-code/S256 PKCE login and signed ID-token verification PASS",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=1 placement=application OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "    application_identity_placement_runtime_test.go:157: disabled actual Identity no longer accepts session refresh; retained token alone cannot renew access",
+          "    application_identity_placement_runtime_test.go:174: actual retained OAuth session refresh and userinfo PASS",
+          "    application_identity_placement_runtime_test.go:176: [native-managed-identity] phase=2 placement=shared OAuth/PKCE, JWT/userinfo, refresh, verified destination and retained original data PASS",
+          "--- PASS: TestManagedIdentityNativePlacementHandoff (253.18s)",
+          "PASS"
+        ],
+        "job": 115837420109
+      }
+    },
     "unchanged_boundaries": [
       "Achtung and two current acknowledgements",
       "Separate selected-data deletion consent",
@@ -324,5 +384,57 @@
       "Nonforce volume deletion; foreign containers remain protected"
     ],
     "pre_release_ready": false
+  },
+  "current_countdown_authority_foreign_volume_requalification": {
+    "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+    "run": 38560008601,
+    "attempt": 1,
+    "result": "success on both engines",
+    "scope_limit": "Existing one-child installation fixture; final common multi-child authenticated matrix remains separate and pending final pins.",
+    "verification": "Both actual ZIP SHA256 values/source.txt checked; native in-use-volume error preserves foreign holder/protected retry owners. Only explicit fixture holder release plus fresh current-plan2 acknowledgements and separate data consent permits completion; selected native data/config/owner absence verified. Test PASS/no FAIL/SKIP.",
+    "docker": {
+      "artifact": 11891573309,
+      "sha256": "7f21704ded98ba9e957884fe5fc021a7baa59eb76cfc23f6e0469c5173af7994",
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "files": [
+        "destroy.log",
+        "runtime-version.txt",
+        "source.txt"
+      ],
+      "result": "success",
+      "assertions": [
+        "    installation_destroy_native_test.go:56: backend=sql phase=0 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:128: explicit full-installation reset reached native in-use volume failure; exact protected Target/shared owner and foreign holder retained; no data continuity claimed after separately consented destructive steps",
+        "    installation_destroy_native_test.go:150: actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent",
+        "--- PASS: TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry (45.60s)",
+        "PASS"
+      ],
+      "job": 115838452337
+    },
+    "podman": {
+      "artifact": 11890874333,
+      "sha256": "ef923933d916905d64ed238513cc231bb7a2c8fb6185c7051086541d2021ebd3",
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "files": [
+        "destroy.log",
+        "runtime-version.txt",
+        "source.txt"
+      ],
+      "result": "success",
+      "assertions": [
+        "    installation_destroy_native_test.go:56: backend=sql phase=0 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:81: backend=sql phase=2 actual consumer credential and TLS authenticated data assertion passed",
+        "    installation_destroy_native_test.go:128: explicit full-installation reset reached native in-use volume failure; exact protected Target/shared owner and foreign holder retained; no data continuity claimed after separately consented destructive steps",
+        "    installation_destroy_native_test.go:150: actual full-installation child reset, partial native deletion, preserved foreign authority and fresh current-plan retry completed; selected native data/configuration/owners absent",
+        "--- PASS: TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry (58.22s)",
+        "PASS"
+      ],
+      "job": 115838452839
+    }
   }
 }

@@ -167,6 +167,20 @@
       "native_acceptance": false,
       "pre_release_ready": false,
       "scope": "Actual CLI/stdio static source compatibility only; exact published Core tree binary, immutable archived Demo source, isolated configuration/data roots and PATH-resolvable same binary."
+    },
+    {
+      "core": "4e0c66344af29f67990c77d6d623dddef1582497",
+      "console": "cef4df809eb3f6de0acc5acf3cf658e299f69de0",
+      "scope": "Actual current Core synthetic fixture generators, canonical artifact equality and Console contract tests only; no current authenticated native matrix qualification.",
+      "console_contract_tests": 64,
+      "console_contract_failures": 0,
+      "console_contract_skips": 0,
+      "architecture": "pass",
+      "canonical_artifacts": 6,
+      "canonical_artifacts_result": "Core and Console bytes equal, all locked SHA256 values match; current Core read-model/control generators exactly reproduce canonical examples.",
+      "contract_log_sha256": "39a9027f04de99af89756de62b5da63c724ec4a958236b17a54430e2cdc755d0",
+      "native_acceptance": false,
+      "pre_release_ready": false
     }
   ]
 }

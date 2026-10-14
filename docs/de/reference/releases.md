@@ -103,6 +103,11 @@ Verschieben Sie niemals ein veröffentlichtes Versions-Tag. Beheben Sie eine sch
 
 Für v0.4.24 und v0.4.25 bindet die `integration-candidate.json` des finalen Connector-Commits die exakten Core-, Console- und Demo-Commits. Das Console-Manifest muss denselben Core und dieselbe Demo binden; die `baseharbor-core.ref` der Demo muss diesem Core-Commit entsprechen. Dies ersetzt für diese Releases die Core-eigene `.demo-ref`: Das gegenseitige Pinnen zukünftiger Git-Commits würde eine zyklische Abhängigkeit erzeugen. Gezielte atomare Pushes für v0.4.25 verwenden denselben kanonischen Matrix-Resolver wie der Pre-Release-Quellschritt; gemischte oder bewegliche Quellen werden vor der Ausführung abgelehnt.
 
+Eine explizite `only_gates`-Auswahl oder ein Branch unter
+`validation/pre-release/selected/*` führt nur die ausgewählten Qualifikationen
+aus und überspringt den abschließenden Freigabejob. Einzelartefakte sind Nachweise;
+sie können keine Release-Freigabe erzeugen.
+
 `scripts/ecosystem_release_pins.py` prüft alle Bindungen und erstellt das öffentliche Manifest der Consumer-Nachweise. Der Pre-Release-Workflow akzeptiert eine optionale exakte `consumer_ref` oder löst den geprüften Connector-Integrationsbranch einmalig auf und hält dessen 40-stelligen SHA fest. Die Freigabe bewahrt diese unveränderliche Consumer-Quelle; die Release-Nachprüfung löst dieselben Commits auf. Der vollständige native Connector-Job prüft auch das exakte Console-Browser-Receipt. Sein authentifiziertes Artefakt kann deshalb die Console-Integration ohne Wiederholung derselben Journey belegen. Alle bisherigen atomaren Gates bleiben erforderlich.
 
 Das Vorbereiten dieser Eingaben startet oder genehmigt keinen Pre-Release. Die geprüfte SHA-Matrix und die abgeschlossene Pre-Release-Abnahme stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).

@@ -24,7 +24,7 @@ on:
         default: ''
         type: string
       only_gates:
-        description: Optional comma-separated exact gate IDs to execute; complete approval still requires all proofs
+        description: Optional comma-separated exact gate IDs for targeted execution without release approval
         required: false
         default: ''
         type: string
@@ -1500,7 +1500,8 @@ jobs:
 
   evidence:
     name: Evidence · Candidate Manifest
-    if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
+    # Targeted qualification never grants the final release-boundary approval.
+    if: ${{ always() && inputs.only_gates == '' && !startsWith(github.ref_name, 'validation/pre-release/selected/') && !startsWith(github.ref_name, 'validation/evidence/') }}
     needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
     runs-on: ubuntu-latest
     steps:
