@@ -1319,5 +1319,126 @@
   "installation_discovery_followup": {
     "scope": "Display and bind actual unregistered local deployment-state diagnostics in installation impact before consent, without inventing native owner or suppressing unknown inventory.",
     "fixture_boundary": "Only exact unchanged previously displayed unregistered-deployment-state diagnostics can accompany verified remainder progress. FAILED/DEFERRED and other SKIPPED mutations remain refusal. Exact original Docker skipped classification is still not assumed."
+  },
+  "retained_reset_wiring_native_followup": {
+    "source": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "tree": "ed600514b795b6990f70813977e81aece520adec",
+    "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+    "run_id": 38545162417,
+    "run_attempt": 1,
+    "jobs": [
+      {
+        "runtime": "podman",
+        "id": 115789291681,
+        "result": "success",
+        "artifact": {
+          "id": 11884891505,
+          "digest": "sha256:920bcc0b390806604799f8be36fbfe8b12a99d1e6b502a9b7091991dbfec77fa",
+          "zip_sha256_verified": true,
+          "source_binding_verified": true
+        },
+        "public_receipt": {
+          "schema": "baseharbor.demo-recovery-result/v1",
+          "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+          "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+          "runtime": "podman",
+          "result": "success",
+          "run_id": "38545162417",
+          "recovery_mode": "retained",
+          "run_attempt": "1",
+          "verified": {
+            "encrypted_backup": true,
+            "restore_doctor_ready": true,
+            "sql_original_rows_at_least_two": true,
+            "sql_row_count_matches_archive": true,
+            "s3_original_content": true,
+            "workload_original_file": true,
+            "newer_sql_and_file_writes_replaced_from_archive": true,
+            "original_application_identity": true,
+            "deployment_identity_matches_recovery_mode": true,
+            "unchanged_authored_source": true,
+            "original_managed_secret_delivery": true,
+            "log_history": true,
+            "recovery_contributors": true,
+            "shared_sql_isolation": true,
+            "native_topology": true
+          },
+          "cleanup": "success",
+          "pre_release_ready": false
+        }
+      },
+      {
+        "runtime": "docker",
+        "id": 115789291286,
+        "result": "success",
+        "artifact": {
+          "id": 11885200482,
+          "digest": "sha256:9e27c4d43455819a0942bab14bb660de66c9be298bb171d601a15eb87072d072",
+          "zip_sha256_verified": true,
+          "source_binding_verified": true
+        },
+        "public_receipt": {
+          "schema": "baseharbor.demo-recovery-result/v1",
+          "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+          "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+          "runtime": "docker",
+          "result": "success",
+          "run_id": "38545162417",
+          "recovery_mode": "retained",
+          "run_attempt": "1",
+          "verified": {
+            "encrypted_backup": true,
+            "restore_doctor_ready": true,
+            "sql_original_rows_at_least_two": true,
+            "sql_row_count_matches_archive": true,
+            "s3_original_content": true,
+            "workload_original_file": true,
+            "newer_sql_and_file_writes_replaced_from_archive": true,
+            "original_application_identity": true,
+            "deployment_identity_matches_recovery_mode": true,
+            "unchanged_authored_source": true,
+            "original_managed_secret_delivery": true,
+            "log_history": true,
+            "recovery_contributors": true,
+            "shared_sql_isolation": true,
+            "native_topology": true
+          },
+          "cleanup": "success",
+          "pre_release_ready": false
+        }
+      }
+    ],
+    "scope": "Actual retained reset path; every consumer flag is asserted against native workload/API data and cleanup. Earlier failed reset wiring remains preserved; final ecosystem qualification remains pending.",
+    "result": "success"
+  },
+  "current_source_static_compatibility": {
+    "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "core_tree": "ed600514b795b6990f70813977e81aece520adec",
+    "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+    "binary_sha256": "67de172cdb9655d6fd671abcb167519f6ea33a244a1b558d6146cc4f6c504e62",
+    "checks": [
+      {
+        "gate": "config-matrix",
+        "status": "pass"
+      },
+      {
+        "gate": "init",
+        "status": "pass"
+      },
+      {
+        "gate": "mcp",
+        "status": "pass"
+      },
+      {
+        "gate": "agent",
+        "status": "pass"
+      },
+      {
+        "gate": "shell-ux",
+        "status": "pass"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
   }
 }

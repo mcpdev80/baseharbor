@@ -341,7 +341,7 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 			}
 			byName[name] = deployment.ResolvedTarget{Name: name, RuntimeProvider: provider}
 			if provider == "" {
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"})
+				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely", Diagnostic: "unregistered-target-runtime"})
 			}
 		}
 	}

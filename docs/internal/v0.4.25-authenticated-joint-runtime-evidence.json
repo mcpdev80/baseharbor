@@ -279,5 +279,157 @@
         "finding": "Real login and remote HTTP journey passed; current installation remainder was safely refused by fixture due1SKIPPED preflight/result row. Exact skipped category remains unverified; next source adds only fixed classifications and permits solely explicitly disclosed unchanged unregistered local-state diagnostics, never failed/skipped mutation."
       }
     ]
+  },
+  "docker_typed_discovery_retry": {
+    "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+    "console": "22ed199a653028f7b2aada96c8bd4e26a6bf0733",
+    "connector": "2727e973fc0f7c1e95316bb4040d8d1f4fbbea32",
+    "run_id": 38545785816,
+    "run_attempt": 1,
+    "job_id": 115791431576,
+    "result": "failure",
+    "finding": "Remote HTTP lifecycle passes, but typed installation continuation is refused because discovery contains SKIPPED/runtime-provider. This is not an unregistered-deployment-state diagnostic; original fixture correctly refuses it. Missing target configuration has no inferred runtime; no native deletion of that unknown Target is claimed.",
+    "diagnostics": {
+      "code": "approval_required",
+      "observed_markers": [
+        "impact-confirmation-required",
+        "ownership"
+      ],
+      "result_counts": {
+        "PRESERVED": 1,
+        "SKIPPED": 1,
+        "REMOVED": 1
+      },
+      "skipped_categories": {
+        "runtime-provider": 1
+      }
+    },
+    "artifact": {
+      "id": 11885081810,
+      "digest": "sha256:0c51c47f2fecc0f9d58db09dea9811bd7122819683d02f9a3003fc066be094f3",
+      "zip_sha256_verified": true
+    },
+    "browser_receipt": {
+      "schema": "baseharbor.private-browser-receipt/v1",
+      "repository": "mcpdev80/baseharbor-node-connector",
+      "commit": "2727e973fc0f7c1e95316bb4040d8d1f4fbbea32",
+      "core_commit": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+      "demo_commit": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+      "run_id": "38545785816",
+      "run_attempt": "1",
+      "qualification_scope": "actual-browser-Core-integration",
+      "result": "failure",
+      "steps": [
+        "real-keycloak-code-S256-login",
+        "actual-Core-POST-SSE-GET-and-empty-read-model",
+        "actual-Core-rejects-issuer-cookies-without-bearer",
+        "actual-Core-binds-browser-origin-to-one-installation",
+        "actual-Core-viewer-read-allowed-mutation-and-destruction-denied",
+        "actual-Core-native-runtime-list-inspect-metrics-and-selection-reset",
+        "actual-Core-setup-wizard-role-selection-explicit-submission-and-viewer-denial",
+        "no-bearer-in-browser-storage",
+        "logout-with-explicit-preview-choice",
+        "fresh-context-has-no-Core-session",
+        "real-token-expiry-ends-Console-session-and-Core-admission",
+        "actual-Core-rejects-real-issuer-token-with-wrong-audience"
+      ],
+      "cleanup": "success",
+      "release_eligible": false,
+      "login_boundary": {
+        "form_submitted": true,
+        "callback_seen": true,
+        "popup_closed": true
+      },
+      "network": [
+        {
+          "path": "/realms/baseharbor-browser/login-actions/authenticate",
+          "method": "POST",
+          "status": 302
+        },
+        {
+          "path": "/auth/callback",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/realms/baseharbor-browser/protocol/openid-connect/token",
+          "method": "POST",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/discovery",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions",
+          "method": "POST",
+          "status": 202
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_60c8564c7f8d55713c30e987fc2da114/events",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_60c8564c7f8d55713c30e987fc2da114",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions",
+          "method": "POST",
+          "status": 202
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_4832e1f6d927be1c0e637c07d88f17d0/events",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_4832e1f6d927be1c0e637c07d88f17d0",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions",
+          "method": "POST",
+          "status": 202
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_1f87d8af1b82c94e35880740ae900da9/events",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_1f87d8af1b82c94e35880740ae900da9",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions",
+          "method": "POST",
+          "status": 202
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_32fdc9b75e9523e3f06bf3c0455a0c70/events",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions/exec_32fdc9b75e9523e3f06bf3c0455a0c70",
+          "method": "GET",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/machine/executions",
+          "method": "POST",
+          "status": 403
+        }
+      ],
+      "error_type": "Error"
+    },
+    "boundary": "Browser receipt cleanup success is process cleanup, not proof of failed Core owned cleanup or complete journey."
   }
 }

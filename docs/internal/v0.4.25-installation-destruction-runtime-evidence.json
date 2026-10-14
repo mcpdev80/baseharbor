@@ -124,5 +124,46 @@
       "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
     ],
     "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
+  },
+  "latest_source_requalification": {
+    "source": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "tree": "ed600514b795b6990f70813977e81aece520adec",
+    "run_id": 38545001466,
+    "run_attempt": 1,
+    "result": "success",
+    "jobs": [
+      {
+        "id": 115788755727,
+        "runtime": "docker",
+        "result": "success"
+      },
+      {
+        "id": 115788756200,
+        "runtime": "podman",
+        "result": "success"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 11883872813,
+        "name": "installation-destroy-docker-38545001466-1",
+        "digest": "sha256:9bf613713dc61cd467906d5ef8033ca289ffe543c09a5e023f1e72bbcf656b2a",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      },
+      {
+        "id": 11884017796,
+        "name": "installation-destroy-podman-38545001466-1",
+        "digest": "sha256:e9f8a81eb5894be6c1f2d9f8c904f2c371aeb48bc0257b21271cfe04dbf4d7f4",
+        "zip_sha256_verified": true,
+        "source_txt_verified": true
+      }
+    ],
+    "assertions": [
+      "Actual SQL consumer TLS/credentials and original row assertions passed before refused destructive consent.",
+      "Native in-use volume failure preserves exact Target/shared retry owner and foreign holder. No force-volume deletion.",
+      "After explicit fixture removal of its foreign holder, fresh current-plan acknowledgement completes owned native data/configuration/owner deletion."
+    ],
+    "scope_limit": "This existing native fixture has one child; multi-child installation remainder is independently exercised by the current joint browser/Connector runtime gates. It is not full release approval."
   }
 }
