@@ -524,6 +524,38 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
+  pr_demo_pin:
+    name: PR · Demo Pin
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.consumer_mode == 'demo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Verify exact Demo dependency against integration source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_CORE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+          [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/pr-demo"
+          git -C "$RUNNER_TEMP/pr-demo" fetch --depth=1 origin "$demo_sha"
+          git -C "$RUNNER_TEMP/pr-demo" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/pr-demo" rev-parse HEAD)" = "$demo_sha"
+          actual="$(tr -d '[:space:]' < "$RUNNER_TEMP/pr-demo/baseharbor-core.ref")"
+          test "$actual" = "$EXPECTED_CORE_SHA" || { echo 'BLOCKED: immutable Demo Core pin differs from selected integration' >&2; exit 1; }
+          echo "$demo_sha" > "$RUNNER_TEMP/verified-demo.sha"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-pr-demo-pin
+          path: ${{ runner.temp }}/verified-demo.sha
+          if-no-files-found: error
+          retention-days: 2
+
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
@@ -628,7 +660,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_runner_interface]
+    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8
