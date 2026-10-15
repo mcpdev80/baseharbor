@@ -127,6 +127,17 @@ class IsolationFixtures(unittest.TestCase):
                 ORIGINAL_VERIFY(
                     REQUEST, "100", 1, "mcpdev80/baseharbor", 932, "token")
 
+    def test_demo_only_request_is_accepted_without_private_consumers(self):
+        minimal=dict(REQUEST, consumer_pins={"demo_sha":"1"*40})
+        runtime,gate=isolation.validate(minimal,"100",1,1)
+        self.assertEqual(("docker","atomic/docker/backup-restore"),(runtime,gate))
+        for pins in ({"demo_sha":"1"*40,"unexpected":"2"*40},
+                     {"console_sha":"2"*40},
+                     {"demo_sha":"main"}):
+            with self.subTest(pins=pins):
+                with self.assertRaises(ValueError):
+                    isolation.validate(dict(REQUEST,consumer_pins=pins),"100",1,1)
+
     def test_malformed_and_cross_runtime_request(self):
         bad = dict(REQUEST, runtime="podman")
         with self.assertRaises(ValueError):
