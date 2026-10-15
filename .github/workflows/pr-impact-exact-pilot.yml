@@ -1,0 +1,22 @@
+name: PR impact planner isolated pilot
+on:
+  push:
+    branches:
+      - pilot/pr-impact-924
+permissions:
+  contents: read
+jobs:
+  planner:
+    name: Exact PR planner tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e29c03b41a0c214bb011c42fb9d707a310ed4d0b
+          persist-credentials: false
+      - name: Verify immutable source
+        run: test "$(git rev-parse HEAD)" = 'e29c03b41a0c214bb011c42fb9d707a310ed4d0b'
+      - name: Python syntax
+        run: python3 -m py_compile scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py
+      - name: Focused regressions
+        run: python3 -m unittest discover -s scripts -p 'test_pr_gate_plan.py' -v
