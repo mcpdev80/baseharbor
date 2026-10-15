@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
-               'pages-candidate-build'}
+               'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
+               'cli-vet', 'cli-build', 'capability-tests', 'public-contracts',
+               'pr-policy-tests'}
 
 
 def matrix(plan):
