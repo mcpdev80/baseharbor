@@ -44,6 +44,58 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:
+  registered_otlp_handoff:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[otlp-handoff-runtime]') }}
+    name: Native OTLP handoff · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_OTLP_HANDOFF_ACCEPTANCE: "1"
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify actual workload handoff and independent receiver preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/otlp-handoff-evidence"
+          mkdir -p "$out"
+          git rev-parse HEAD > "$out/source.txt"
+          git rev-parse 'HEAD^{tree}' > "$out/tree.txt"
+          go version > "$out/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$out/runtime-version.txt"
+          go test -race -count=1 -json ./cmd/baha -run '^TestManagedRegisteredOTLPNativeConsumerHandoff$' -timeout 15m | tee "$out/handoff.jsonl"
+          python3 - "$out/handoff.jsonl" <<'PY'
+          import json,pathlib,sys
+          events=[json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.startswith('{')]
+          assert not any(event.get('Action') in {'fail','skip'} for event in events)
+          assert any(event.get('Test')=='TestManagedRegisteredOTLPNativeConsumerHandoff' and event.get('Action')=='pass' for event in events)
+          PY
+      - name: Retain exact source proof and original failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: otlp-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/otlp-handoff-evidence
+          if-no-files-found: warn
+          retention-days: 30
   up_dispatch_source:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[up-dispatch-source]') }}
     name: Repository up source qualification

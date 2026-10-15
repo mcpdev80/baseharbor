@@ -226,6 +226,9 @@ jobs:
           mkdir -p "$out"
           if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
+          if [ -d "$ARTIFACT_DIR/failure-runtime" ]; then
+            cp -a "$ARTIFACT_DIR/failure-runtime" "$out/"
+          fi
           echo "::group::Demo runtime diagnostics"
           find "$out" -maxdepth 1 -type f -printf '%f\n' | sort || true
           for file in "$out"/*.log; do

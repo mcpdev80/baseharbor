@@ -125,5 +125,5 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 }
 
 func invalidProviderConsumerInventory(err error) error {
-	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved.", Cause: err}
+	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved.", Details: map[string]string{"inventory_stage": providerConsumerInventoryStage(err)}, Cause: err}
 }

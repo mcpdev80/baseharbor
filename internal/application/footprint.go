@@ -188,7 +188,11 @@ func ResolveFootprint(m Manifest, snapshot ResolutionSnapshot, preferences []Pro
 		if !observed {
 			fact = ProviderFact{State: ProviderUnverifiable, Core: CoreUnknown}
 		}
-		if fact.State == ProviderUnverifiable || fact.Dependencies == nil {
+		// An authoritative external reference is not a native runtime owner.
+		// Its physical state and quantities remain unknown, while an explicit
+		// local dependency boundary can still make the consumer union complete.
+		externalReference := observed && instance.Scope == capability.ScopeExternal && instance.Ownership == capability.OwnershipExternal && fact.Dependencies != nil
+		if (fact.State == ProviderUnverifiable && !externalReference) || fact.Dependencies == nil {
 			result.Complete = false
 		}
 		if fact.State == ProviderForeign {

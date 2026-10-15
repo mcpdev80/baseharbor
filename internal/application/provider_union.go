@@ -153,7 +153,11 @@ func ResolveProviderPlan(snapshot ResolutionSnapshot, consumers []ConsumerIntent
 			}
 		}
 		verifiedState := fact.State == ProviderRunning || fact.State == ProviderStoppedOwned || fact.State == ProviderNewRequired
-		if !observed || !verifiedState || fact.Target != snapshot.Target || fact.Dependencies == nil || (instance.Scope == capability.ScopeApplication && !owners[instance.OwnerApplicationID+"/"+instance.OwnerEnvironment]) {
+		// External runtime is never a native removal target. A registered
+		// reference with known local dependencies does not fabricate running
+		// state, yet must not veto verified retirement of unrelated own modules.
+		externalReference := instance.Scope == capability.ScopeExternal && instance.Ownership == capability.OwnershipExternal && fact.State == ProviderUnverifiable
+		if !observed || (!verifiedState && !externalReference) || fact.Target != snapshot.Target || fact.Dependencies == nil || (instance.Scope == capability.ScopeApplication && !owners[instance.OwnerApplicationID+"/"+instance.OwnerEnvironment]) {
 			action = "preserve"
 			reason = "runtime ownership/state is unverifiable"
 			p.Complete = false
