@@ -464,8 +464,8 @@ jobs:
           python3 -c 'import json,sys; path=sys.argv[1]; plan=json.load(open(path)); dependencies=json.load(open(sys.argv[2])); plan["required_consumer_dependencies"]=dependencies["dependencies"]; open(path,"w").write(json.dumps(plan))' pr-plan.json "$RUNNER_TEMP/pr-gate-dependencies.json"
           mode="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mode"])' "$RUNNER_TEMP/pr-gate-dependencies.json")"
           echo "consumer_mode=$mode" >> "$GITHUB_OUTPUT"
-          git fetch --no-tags origin b4a6f35ab0fb06208a480a50040947888ba3164d
-          git show b4a6f35ab0fb06208a480a50040947888ba3164d:scripts/pr-selected-runtime-matrix.py > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
+          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
+          git show 45500525aa65957a22e6076ac28fe5cb6c6f9610:scripts/pr-selected-runtime-matrix.py > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
           python3 "$RUNNER_TEMP/pr-selected-runtime-matrix.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-runtime-matrix.json"
           echo "runtime_matrix=$(python3 -c 'import json,sys; print(json.dumps({"include":json.load(open(sys.argv[1]))["include"]},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
           echo "runtime_required=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["required"]).lower())' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
@@ -640,6 +640,7 @@ jobs:
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_authenticated_results.py
           python3 scripts/test_pr_gate_dependencies.py
+          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
           python3 scripts/test_pr_selected_runtime_matrix.py
           python3 scripts/test_pr_verified_atomic_evidence.py
           python3 scripts/test_ecosystem_release_pins.py
@@ -796,8 +797,8 @@ jobs:
           test -s pr-plan.json
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
           git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe c6db56c4ac077dbc496134cb0871c8e996a593fe
-          git show cf853c9c1d4d1221bfbaa13d5009795498967c14:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
-          git show c06839c9061e94f1ebf3b05550bed7952c33a516:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
+          git show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
+          git show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
           if { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
