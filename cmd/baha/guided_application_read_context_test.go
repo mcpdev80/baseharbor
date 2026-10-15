@@ -281,6 +281,16 @@ func TestGuidedReadExistingProviderBindingAndConsequences(t *testing.T) {
 	if changed.PlanRevision == state.PlanRevision {
 		t.Fatal("changed provider plan retained the old revision")
 	}
+	changedAuthority, err := buildResolvedApplicationPlan(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedAuthority.ProviderPlan.Impact == nil || changedAuthority.ProviderPlan.Impact.PlanID == "" {
+		t.Fatal("provider change did not produce an authoritative consent PlanID")
+	}
+	if changed.PlanRevision != changedAuthority.ProviderPlan.Impact.PlanID {
+		t.Fatalf("adapter plan revision %q differs from authoritative PlanID %q", changed.PlanRevision, changedAuthority.ProviderPlan.Impact.PlanID)
+	}
 }
 
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
