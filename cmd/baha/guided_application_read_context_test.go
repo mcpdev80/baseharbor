@@ -93,7 +93,7 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 			source := filepath.Join(r.RepositoryRoot, "compose.yaml")
 			compose, err := os.ReadFile(source)
 			if err != nil { t.Fatal(err) }
-			if err := os.WriteFile(source, append(compose, []byte("    environment:\\n      DATABASE_PASSWORD: "+secret+"\\n")...), 0o600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(source, append(compose, []byte("    environment:\n      DATABASE_PASSWORD: "+secret+"\n      PRIVATE_KEY: SENTINEL_PRIVATE_KEY_DO_NOT_LEAK\n")...), 0o600); err != nil { t.Fatal(err) }
 			before, err = guidedTreeDigest(r.TargetStateRoot)
 			if err != nil { t.Fatal(err) }
 			sourceBefore, err = guidedTreeDigest(r.RepositoryRoot)
