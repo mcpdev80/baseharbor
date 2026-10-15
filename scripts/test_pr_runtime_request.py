@@ -9,7 +9,7 @@ spec.loader.exec_module(module)
 PLAN = {'schema':'baseharbor.pr-gate-plan/v1','target_base_sha':'a'*40,
         'head_sha':'b'*40,'merge_base_sha':'c'*40,'integration_sha':'d'*40,
         'selected_gates':['atomic/docker/backup-restore','atomic/static/init']}
-CATALOG = {'gates':[{'id':name,'required_for':['v0.4.26']} for name in PLAN['selected_gates']]}
+CATALOG = {'gates':[{'id':name,'required_for':['v0.4.26'],'dependencies':['core','demo']} for name in PLAN['selected_gates']]}
 PINS = {'demo_sha':'1'*40,'console_sha':'2'*40,'connector_sha':'3'*40}
 
 
