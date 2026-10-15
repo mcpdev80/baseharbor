@@ -26,6 +26,10 @@ func runtimeUp(parent context.Context, out io.Writer) error {
 }
 
 func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports, ha bool) error {
+	return runtimeUpWithPortsSelection(parent, out, ports, ha, false)
+}
+
+func runtimeUpWithPortsSelection(parent context.Context, out io.Writer, ports bhruntime.Ports, ha, controlPlaneOnly bool) error {
 	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
@@ -43,7 +47,7 @@ func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.P
 			}
 		}
 	}
-	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
@@ -97,6 +101,10 @@ func waitForOpenBaoManagerReady(ctx context.Context, compose bhruntime.RuntimePr
 }
 
 func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
+	return runtimeUpExistingSelection(parent, out, recoveryFile, false)
+}
+
+func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryFile string, controlPlaneOnly bool) error {
 	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
 	defer cancel()
 
@@ -145,7 +153,7 @@ func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile strin
 	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, resolvedRecoveryFile); err != nil {
 		return fmt.Errorf("reconcile control-plane service access: %w", err)
 	}
-	if err := resumeSharedPlatformRuntime(ctx, compose, out); err != nil {
+	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
 		return fmt.Errorf("resume shared platform runtime after verified control plane: %w", err)
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")

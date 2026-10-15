@@ -14,6 +14,14 @@ import (
 	"os"
 )
 
+// A dependency-only start must not reactivate unrelated retained providers.
+func resumeSharedPlatformRuntimeForSelection(ctx context.Context, compose bhruntime.RuntimeProvider, out io.Writer, controlPlaneOnly bool) error {
+	if controlPlaneOnly {
+		return nil
+	}
+	return resumeSharedPlatformRuntime(ctx, compose, out)
+}
+
 func resumeSharedPlatformRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, out io.Writer) error {
 	target, err := effectiveTarget(ctx)
 	if err != nil {

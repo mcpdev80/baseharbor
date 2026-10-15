@@ -158,7 +158,7 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
 		}
-		return runtimeUpExisting(parent, out, opts.RecoveryFile)
+		return runtimeUpExistingSelection(parent, out, opts.RecoveryFile, opts.ControlPlaneOnly)
 	}
 
 	postgresPort, err := selectControlPlanePort(out, "PostgreSQL", "--postgres-port", opts.PostgresPort, bhruntime.DefaultPostgresPort, 15432)
@@ -224,7 +224,7 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 		}
 	}
 
-	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA)
+	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
 }
 
 func repositoryApplicationDetectedForUp() bool {

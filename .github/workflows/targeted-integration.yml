@@ -131,7 +131,6 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_APP_FULL_RESET_ACCEPTANCE: "1"
-      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -168,7 +167,6 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORE_STOP_ACCEPTANCE: "1"
       BASEHARBOR_CORE_STOP_HA_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[core-destroy-ha]') && '1' || '0' }}
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -212,7 +210,6 @@ jobs:
       BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"
       BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[tempo-legacy-upgrade]') && '1' || '0' }}
       BASEHARBOR_TRACES_INTEGRATION: "1"
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -262,7 +259,6 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_METRICS_INTEGRATION: "1"
       BASEHARBOR_LOGS_INTEGRATION: "1"
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -314,7 +310,6 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_INSTALLATION_DESTROY_ACCEPTANCE: "1"
-      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -354,7 +349,6 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_CORE_SHARED_NETWORK_ACCEPTANCE: "1"
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:shared-network-acceptance
-      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -405,7 +399,6 @@ jobs:
       BASEHARBOR_BACKEND_PLACEMENT_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[backend-placement-runtime]') && '1' || '0' }}
       BASEHARBOR_APP_STOP_ACCEPTANCE: ${{ (contains(github.event.head_commit.message, '[app-stop-runtime]') || contains(github.event.head_commit.message, '[app-stop-foundations-only]')) && '1' || '0' }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-acceptance
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout integrated exact SHA
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -556,7 +549,6 @@ jobs:
     timeout-minutes: 20
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:targeted-integration
-      GOTOOLCHAIN: local
 
     steps:
       - name: Checkout requested ref
@@ -1325,7 +1317,6 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_EXTERNAL_PROVIDER_HANDOFF_ACCEPTANCE: '1'
-      GOTOOLCHAIN: local
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

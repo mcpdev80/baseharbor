@@ -51,6 +51,9 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 }
 
 func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedApplication, provider bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, plan application.ProviderPlan, out io.Writer) error {
+	if plan.Version != application.ProviderPlanVersion || plan.Target != resolved.Target.Name {
+		return invalidProviderConsumerInventory(fmt.Errorf("retirement plan differs from its Target"))
+	}
 	if err := retireUnneededApplicationBroker(ctx, resolved, provider, plan, out); err != nil {
 		return err
 	}
@@ -69,8 +72,15 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 	for _, binding := range plan.ReleasedBindings {
 		released[binding.ProviderInstanceID] = true
 	}
+	standalone := map[string]bool{}
+	for _, instance := range registry.Instances {
+		standalone[instance.ID] = standaloneProviderKind(instance.Provider.Kind)
+	}
 	for _, change := range plan.Changes {
-		if !released[change.InstanceID] || (change.Action != "stop" && change.Action != "remove-runtime") {
+		// The complete acknowledged union also owns older unbound modules.
+		// A new reference release is not necessary to converge their selected
+		// runtime retirement; canonical inspection still proves authority.
+		if (!released[change.InstanceID] && !standalone[change.InstanceID]) || (change.Action != "stop" && change.Action != "remove-runtime") {
 			continue
 		}
 		if !plan.Complete || len(change.Consumers) > 0 || change.Ownership != capability.OwnershipBaseHarbor {
@@ -103,6 +113,20 @@ func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedAp
 				continue
 			}
 			if standaloneProviderKind(instance.Provider.Kind) {
+				for _, binding := range registry.BindingsForProviderInstance(instance.ID) {
+					selected := false
+					for _, release := range plan.ReleasedBindings {
+						selected = selected || release == binding
+					}
+					if !selected {
+						return invalidProviderConsumerInventory(fmt.Errorf("standalone runtime still has an unreleased consumer"))
+					}
+				}
+				for _, required := range plan.Required {
+					if required == instance.ID {
+						return invalidProviderConsumerInventory(fmt.Errorf("standalone runtime remains required"))
+					}
+				}
 				if err := retireStandaloneApplicationProvider(ctx, resolved, provider, instance, registry, out); err != nil {
 					return err
 				}
