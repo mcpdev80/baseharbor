@@ -199,5 +199,25 @@ class ArtifactGC(unittest.TestCase):
                             self.assertEqual(deleted, [])
 
 
+    def test_pr_event_is_read_only_and_never_enters_cleanup(self):
+        workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
+                                   '.github/workflows/artifact-gc.yml').read_text())
+        jobs = workflow['jobs']
+        self.assertEqual(workflow['permissions'], {})
+        self.assertIn('pull_request', workflow.get('on', workflow.get(True, {})))
+        tests = jobs['gc-tests']
+        self.assertEqual(tests['permissions'], {'contents': 'read'})
+        self.assertIn("github.event_name == 'pull_request'", tests['if'])
+        steps = tests['steps']
+        self.assertTrue(any('test_artifact_gc.py' in step.get('run', '')
+                            for step in steps))
+        for name in ('artifacts', 'repository-hygiene'):
+            job = jobs[name]
+            self.assertNotIn('pull_request', job['if'])
+            self.assertIn("github.event_name == 'workflow_dispatch'", job['if'])
+            self.assertIn('github.event.schedule', job['if'])
+            self.assertEqual(job['permissions']['actions'], 'write')
+            self.assertNotIn('secrets', str(job))
+
 if __name__ == '__main__':
     unittest.main()
