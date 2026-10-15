@@ -31,7 +31,7 @@ type GuidedReadError struct {
 	Cause error
 }
 
-func (e *GuidedReadError) Error() string { return fmt.Sprintf("guided read %s: %v", e.Kind, e.Cause) }
+func (e *GuidedReadError) Error() string { return fmt.Sprintf("guided read %s", e.Kind) }
 func (e *GuidedReadError) Unwrap() error { return e.Cause }
 
 func guidedRevision(value any) (string, error) {
