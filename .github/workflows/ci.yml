@@ -460,6 +460,45 @@ jobs:
           path: pr-plan.json
           retention-days: 2
 
+  pr_candidate:
+    name: PR · Exact Candidate
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare candidate binary and image independently of Docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/pr-exact-candidate"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          "$out/baha" version | grep -F "$GITHUB_SHA"
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          docker build --pull -t localhost/baseharbor-runtime:pre-release "$out"
+          docker image inspect localhost/baseharbor-runtime:pre-release >/dev/null
+          docker save -o "$out/baseharbor-runtime-pre-release.tar" localhost/baseharbor-runtime:pre-release
+          (cd "$out" && sha256sum baha baseharbor-runtime-pre-release.tar > checksums.sha256)
+          printf '%s\n' "$GITHUB_SHA" > "$out/candidate.sha"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pr-exact-candidate
+          if-no-files-found: error
+          retention-days: 2
+
   pr_focused:
     name: PR · Focused Python
     needs: pr_plan
