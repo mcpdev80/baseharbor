@@ -15,6 +15,14 @@ V024_VERIFIED_COLLECTOR = {
     'scripts/pre-release-resume.py': '3525f680882c3634d34bd0bda7e82649b416103b',
     'scripts/test_pre_release_resume.py': '8b07f749e65d19fae4f512ef39cfcfe27a52b2ef',
 }
+# Exact successful read-only recovery; product and verifier bytes remain frozen.
+V025_CANDIDATE = 'f325b93c589d8b807f44dd0086636aabe83fcd65'
+V025_RECOVERY_RUN = 38761050556
+V025_RECOVERY_WORKFLOW = 'f43dec68246912d8ecba41ad671314c2f8f4cc62'
+V025_VERIFIED_TRANSPORT = {
+    'scripts/evidence_api_transport.py': 'ed0b9ad5fadc896c8de076068d3228b1aedfd7d4',
+    'scripts/test_evidence_api_transport.py': '135cd12a637638ae051b79cb3fd7275fba36488f',
+}
 V024_REVIEWED_DOCUMENTATION = {
     'README.md', 'docs/index.md', 'docs/de/index.md', 'docs/de/roadmap.md',
     'docs/de/releases/index.md', 'docs/releases/v0.4.23.md', 'docs/de/releases/v0.4.23.md',
@@ -33,6 +41,9 @@ def candidate_for_workflow(tag, workflow_sha, run_id):
     if (tag == 'v0.4.24' and run_id == V024_RECOVERY_RUN and
             workflow_sha == V024_RECOVERY_WORKFLOW):
         return V024_CANDIDATE
+    if (tag == 'v0.4.25' and run_id == V025_RECOVERY_RUN and
+            workflow_sha == V025_RECOVERY_WORKFLOW):
+        return V025_CANDIDATE
     return workflow_sha
 
 
@@ -54,6 +65,17 @@ def validate_handoff(repository, candidate, published, tag):
                                                cwd=repository).decode().split()
             if len(entry) != 4 or len(original) != 4 or entry[:2] != original[:2] or entry[2] != blob:
                 raise ValueError('publication collector differs from verified recovery: ' + path)
+            allowed.add(path)
+    if tag == 'v0.4.25' and candidate == V025_CANDIDATE:
+        # Publication control only. Collector, native/static workflows, contracts,
+        # inventories, all product bytes and every evidence fingerprint stay exact.
+        allowed |= {'.github/workflows/release.yml', 'scripts/release-handoff.py',
+                    'scripts/test_release_handoff.py'}
+        for path, blob in V025_VERIFIED_TRANSPORT.items():
+            entry = subprocess.check_output(['git', 'ls-tree', published, '--', path],
+                                            cwd=repository).decode().split()
+            if entry != ['100644', 'blob', blob, path]:
+                raise ValueError('publication transport differs from verified recovery: ' + path)
             allowed.add(path)
     # NUL delimiters preserve filenames; renames/deletions do not bypass the list.
     changed = subprocess.check_output(['git', 'diff', '--name-only', '-z', candidate, published, '--'],

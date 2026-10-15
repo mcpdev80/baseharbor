@@ -41,17 +41,21 @@ func retiredRuntimeHistory(record deployment.DeploymentRecord) ([]retiredRuntime
 }
 
 func archiveReplacedRetiredRuntime(record *deployment.DeploymentRecord) error {
+	old := record.Applied.GeneratedState["retired_intent"]
+	if old == "" {
+		_, err := retiredRuntimeHistory(*record)
+		return err
+	}
+	return archiveRetainedRuntimeOwner(record, retiredRuntimeOwner{Intent: json.RawMessage(old), BackendPlacements: record.Applied.GeneratedState["retired_backend_placements"]})
+}
+
+func archiveRetainedRuntimeOwner(record *deployment.DeploymentRecord, candidate retiredRuntimeOwner) error {
 	history, err := retiredRuntimeHistory(*record)
 	if err != nil {
 		return err
 	}
-	old := record.Applied.GeneratedState["retired_intent"]
-	if old == "" {
-		return nil
-	}
-	candidate := retiredRuntimeOwner{Intent: json.RawMessage(old), BackendPlacements: record.Applied.GeneratedState["retired_backend_placements"]}
 	for _, owner := range history {
-		if string(owner.Intent) == old && owner.BackendPlacements == candidate.BackendPlacements {
+		if string(owner.Intent) == string(candidate.Intent) && owner.BackendPlacements == candidate.BackendPlacements {
 			return nil
 		}
 	}

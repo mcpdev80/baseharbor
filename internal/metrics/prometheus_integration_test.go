@@ -42,7 +42,7 @@ func TestManagedPrometheusScrapesTwoIsolatedApplications(t *testing.T) {
 	defer func() {
 		for _, name := range containers {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			if err := exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name).Run(); err != nil {
+			if err := exec.CommandContext(cleanupCtx, string(compose.Kind()), "rm", "-f", name).Run(); err != nil {
 				t.Errorf("owned metrics workload cleanup: %v", err)
 			}
 			cleanupCancel()
@@ -131,11 +131,11 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 `
 		cmd := exec.CommandContext(
 			ctx,
-			"docker", "run", "-d", "--rm",
+			string(compose.Kind()), "run", "-d", "--rm",
 			"--name", containerName,
 			"--network", application.MetricsProviderNetworkName(m),
 			"--network-alias", application.MetricsTargetAlias(m, "api"),
-			"python:3.13-alpine",
+			"docker.io/library/python:3.13-alpine",
 			"python", "-c", script,
 		)
 		t.Logf("%s: start metrics endpoint", m.Name)
