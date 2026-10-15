@@ -736,9 +736,9 @@ jobs:
           test "$PLAN_JOB" = success
           test -s pr-plan.json
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
-          git fetch --no-tags origin 5285e67040c9cb67d0cf059816a34ab54a411553 327444dc4480e230dcd7ee50c5f3824624d91ee7
-          git show 5285e67040c9cb67d0cf059816a34ab54a411553:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
-          git show 327444dc4480e230dcd7ee50c5f3824624d91ee7:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
+          git fetch --no-tags origin cf853c9c1d4d1221bfbaa13d5009795498967c14 d530b85fe5d1b8c48a50a01da0645ed4a7025cad
+          git show cf853c9c1d4d1221bfbaa13d5009795498967c14:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
+          git show d530b85fe5d1b8c48a50a01da0645ed4a7025cad:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
           if [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
