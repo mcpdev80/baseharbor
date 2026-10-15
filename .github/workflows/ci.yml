@@ -446,3 +446,42 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s scripts -p test_pr_runner_isolation.py -v
           python3 -m py_compile scripts/pr-runner-isolation.py scripts/test_pr_runner_isolation.py
+
+  pr_isolation_pilots:
+    name: PR Isolation Pilot · ${{ matrix.runtime }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Confirm disposable native runtime
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -euo pipefail
+          command -v "$RUNTIME"
+          "$RUNTIME" version
+      - name: Isolated success, failure and cancellation cleanup
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -euo pipefail
+          bash scripts/pr-runner-isolation-pilot.sh "$RUNTIME" success
+          set +e
+          bash scripts/pr-runner-isolation-pilot.sh "$RUNTIME" failure
+          rc=$?
+          set -e
+          test "$rc" -eq 42
+          set +e
+          bash scripts/pr-runner-isolation-pilot.sh "$RUNTIME" cancellation
+          rc=$?
+          set -e
+          test "$rc" -eq 143
