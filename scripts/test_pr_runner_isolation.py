@@ -93,7 +93,7 @@ class IsolationFixtures(unittest.TestCase):
 
     def test_cleanup_never_releases_unverified_runtime(self):
         lease = isolation.prepare(REQUEST, self.root, "100", 1, 1, "mcpdev80/baseharbor", 932, "token")
-        cases = [SimpleNamespace(returncode=0, stderr=b"", stdout=b"bh-owned-container"),
+        cases = [SimpleNamespace(returncode=0, stderr=b"", stdout=("bh-" + lease["lane_id"][:20] + "-container").encode()),
                  SimpleNamespace(returncode=125, stderr=b"permission denied", stdout=b"")]
         for result in cases:
             with self.subTest(result=result):
