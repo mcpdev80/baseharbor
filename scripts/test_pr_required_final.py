@@ -18,6 +18,21 @@ class FinalChecks(unittest.TestCase):
     def test_success(self):
         self.assertEqual([], final.verify(PLAN,REPORT,CATALOG))
 
+    def test_public_contracts_missing_and_failed_results_block(self):
+        plan=copy.deepcopy(PLAN)
+        plan["selected_gates"]=["integration/static/public-contracts"]
+        inventory={"gates":[{"id":"integration/static/public-contracts","required_for":["v0.4.26"]}]}
+        report=copy.deepcopy(REPORT)
+        report["results"]=[r for r in report["results"] if r["kind"]=="validation"]
+        report["required_job_conclusions"].append({"name":"PR · Public Contracts","conclusion":"success"})
+        self.assertTrue(any("missing required gate" in e for e in final.verify(plan,report,inventory)))
+        report["results"].append({"kind":"gate","id":"integration/static/public-contracts","conclusion":"success"})
+        self.assertEqual([],final.verify(plan,report,inventory))
+        report["required_job_conclusions"][-1]["conclusion"]="failure"
+        self.assertTrue(any("PR · Public Contracts" in e for e in final.verify(plan,report,inventory)))
+        report["required_job_conclusions"].pop()
+        self.assertTrue(any("PR · Public Contracts" in e for e in final.verify(plan,report,inventory)))
+
     def test_missing_forged_and_failed_authenticated_prerequisites(self):
         for conclusion in ('failure','cancelled','skipped',None):
             with self.subTest(conclusion=conclusion):

@@ -36,15 +36,22 @@ def authenticate(plan,report,requirements,run_id,attempt,head_sha,integrated_sha
     evidence=[]
     for key in selected:
         parts=key.split("/")
-        if len(parts)!=3 or parts[0]!="atomic" or parts[1] not in ("docker","podman"):
+        if key == "integration/static/public-contracts":
+            runtime,gate="static","public-contracts"
+            job_name="PR · Public Contracts"
+            name=f"pre-release-integration-static-public-contracts-evidence-{run_id}-{attempt}"
+            matches=[j for j in jobs if j.get("name")==job_name and
+                     j.get("run_id")==run_id and j.get("head_sha")==head_sha]
+        elif len(parts)==3 and parts[0]=="atomic" and parts[1] in ("docker","podman"):
+            runtime,gate=parts[1:]
+            job_name=runtime+" · "+gate
+            name=f"pre-release-gate-{runtime}-{gate}-evidence-{run_id}-{attempt}"
+            matches=[j for j in jobs if j.get("name","").endswith(job_name) and
+                     j.get("run_id")==run_id and j.get("head_sha")==head_sha]
+        else:
             continue
-        runtime,gate=parts[1:]
-        matches=[j for j in jobs if j.get("name","").endswith(runtime+" · "+gate)
-                 and j.get("run_id")==run_id and
-                 j.get("head_sha",head_sha)==head_sha]
         if len(matches)!=1 or matches[0].get("status")!="completed" or matches[0].get("conclusion")!="success":
             continue
-        name=f"pre-release-gate-{runtime}-{gate}-evidence-{run_id}-{attempt}"
         origins=[a for a in artifacts if a.get("name")==name and
                  not a.get("expired") and a.get("workflow_run",{}).get("id")==run_id and
                  a.get("workflow_run",{}).get("head_sha")==head_sha]

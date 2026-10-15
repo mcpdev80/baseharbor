@@ -36,6 +36,8 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             required.append("PR · Consumer Pins")
         elif "demo" in dependencies:
             required.append("PR · Demo Pin")
+    if "integration/static/public-contracts" in plan.get("selected_gates", []):
+        required.append("PR · Public Contracts")
     by_name = {}
     for job in jobs:
         if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:

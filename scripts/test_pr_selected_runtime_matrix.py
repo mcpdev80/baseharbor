@@ -19,12 +19,14 @@ class RuntimeMatrix(unittest.TestCase):
                          [r["id"] for r in result["include"]])
         self.assertFalse(result["deferred"])
 
-    def test_deferred_remains_required(self):
+    def test_three_native_gates_all_scheduled_with_bounded_parallelism(self):
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
         result=module.select({"selected_gates":gates},self.catalog)
-        self.assertIn("atomic/docker/lifecycle",result["deferred"])
-        self.assertIn("atomic/docker/lifecycle",gates)
-        self.assertEqual(2,len(result["include"]))
+        self.assertEqual(set(gates),{r["id"] for r in result["include"]})
+        self.assertEqual([],result["unsupported"])
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        selected=workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0]
+        self.assertIn("max-parallel: 2",selected)
 
     def test_unsupported_not_marked_pass(self):
         result=module.select({"selected_gates":["integration/static/public-contracts"]},self.catalog)

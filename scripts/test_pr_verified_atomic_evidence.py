@@ -77,5 +77,40 @@ class RealVerifierFixtures(unittest.TestCase):
         with self.assertRaises(ValueError):
             check(artifacts=[bad],data=data)
 
+    def test_public_contracts_owner_artifact_and_denial(self):
+        key="integration/static/public-contracts"
+        manifest={"schema":"baseharbor.pre-release.integration-evidence/v1",
+                  "id":"static/public-contracts","runtime":"static","gate":"public-contracts",
+                  "candidate_sha":MERGE,"demo_ref":DEMO,
+                  "workflow_run_id":str(RUN),"workflow_run_attempt":ATTEMPT,
+                  "outcome":"success","cleanup_outcome":"skipped"}
+        def archive(value):
+            stream=io.BytesIO()
+            with zipfile.ZipFile(stream,"w",zipfile.ZIP_DEFLATED) as z:
+                z.writestr("manifest.json",json.dumps(value))
+            return stream.getvalue()
+        content=archive(manifest)
+        origin={"id":99,"name":f"pre-release-integration-static-public-contracts-evidence-{RUN}-{ATTEMPT}",
+                "expired":False,"digest":"sha256:"+hashlib.sha256(content).hexdigest(),
+                "workflow_run":{"id":RUN,"head_sha":HEAD}}
+        job={"name":"PR · Public Contracts","run_id":RUN,"head_sha":HEAD,
+             "status":"completed","conclusion":"success"}
+        plan=dict(PLAN,selected_gates=[key])
+        requirements={"gates":[{"id":key,"required_for":["v0.4.26"],"dependencies":["core"]}]}
+        def check(jobs,artifacts,raw=content):
+            return mod.authenticate(plan,{"results":[]},requirements,RUN,ATTEMPT,HEAD,MERGE,DEMO,
+                                    jobs,artifacts,lambda _:raw)["results"]
+        self.assertEqual([{"kind":"gate","id":key,"conclusion":"success"}],check([job],[origin]))
+        self.assertEqual([],check([], [origin]))
+        self.assertEqual([],check([dict(job,conclusion="failure")],[origin]))
+        self.assertEqual([],check([job],[]))
+        with self.assertRaises(ValueError):
+            check([job],[dict(origin,digest="sha256:"+"0"*64)])
+        failed=dict(manifest,outcome="failure")
+        corrupt=archive(failed)
+        invalid=dict(origin,digest="sha256:"+hashlib.sha256(corrupt).hexdigest())
+        with self.assertRaises(ValueError):
+            check([job],[invalid],corrupt)
+
 if __name__=="__main__":
     unittest.main()

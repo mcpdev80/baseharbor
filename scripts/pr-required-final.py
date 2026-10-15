@@ -56,6 +56,8 @@ def verify(plan, report, catalog):
             expected_jobs.append('PR · Consumer Pins')
         elif 'demo' in deps:
             expected_jobs.append('PR · Demo Pin')
+    if 'integration/static/public-contracts' in required:
+        expected_jobs.append('PR · Public Contracts')
     rows = report.get('required_job_conclusions')
     if not isinstance(rows, list):
         errors.append('missing authenticated job prerequisite conclusions')
