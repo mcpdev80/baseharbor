@@ -39,8 +39,7 @@ class MappingTests(unittest.TestCase):
                 self.assertFalse(result['unresolved_coverage'])
 
     def test_code_picks_contract_without_private_consumers(self):
-        for name in ['cmd/baha/guided_application_read_context.go', 'internal/application/manifest.go',
-                     'internal/capability/registry.go', 'contracts/app.go']:
+        for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual(['integration/static/public-contracts'],
@@ -93,10 +92,43 @@ class MappingTests(unittest.TestCase):
         self.assertEqual([], result['selected_gates'])
         self.assertIn('documentation-audit', {c['id'] for c in result['required_validation_checks']})
 
-    def test_runtime_selects_justified_native_gate(self):
-        result = planner.plan(diff(paths('deploy/docker/service.yaml')), REQ, MAP)
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
-        self.assertNotIn('journey/podman', result['selected_gates'])
+    def test_capability_allowlist_runs_package_own_tests(self):
+        for name in ['internal/capability/domain_test.go',
+                     'internal/capability/integration_contract_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                commands = {check['command'] for check in result['required_validation_checks']}
+                self.assertIn('go test ./internal/capability/... -count=1', commands)
+
+    def test_application_and_capability_production_remain_unresolved(self):
+        for name in ['internal/application/manifest.go',
+                     'internal/application/footprint.go',
+                     'internal/application/provider_union.go',
+                     'internal/capability/registry.go',
+                     'internal/capability/lifecycle.go',
+                     'internal/capability/provider_placement.go',
+                     'internal/capability/registry_test.go',
+                     'internal/capability/new_provider.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual(set(GATES), set(result['selected_gates']))
+                if name.startswith('internal/capability/'):
+                    commands = {c['command'] for c in result['required_validation_checks']}
+                    self.assertIn('go test ./internal/capability/... -count=1', commands)
+
+    def test_docker_deployment_scripts_cannot_claim_lifecycle_only_coverage(self):
+        for name in ['deploy/docker/service.yaml',
+                     'deploy/docker/backup.sh',
+                     'deploy/docker/security.yml',
+                     'deploy/docker/production-setup.sh']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual(['atomic/docker/lifecycle'], result['selected_gates'])
 
     def test_ci_evidence_selects_policy_planner_executor_verifier(self):
         for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
