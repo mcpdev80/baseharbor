@@ -71,6 +71,28 @@ For docs, follow [style](docs/STYLE_GUIDE.md) and run
 Native integration tests require isolated, verified runtimes; inspect their
 workflow and explicit prerequisites before enabling them.
 
+## CI execution discipline
+
+- Batch related implementation, test and formatting changes into one coherent
+  verification candidate. Run available focused local or isolated prechecks
+  before pushing; do not use one-file pushes as a CI debugging loop.
+- For the same PR, inspect the current candidate's CI result before pushing
+  another candidate. An urgent correctness fix or an intentionally superseded
+  candidate is an exception: record the reason and preserve the required
+  cleanup and evidence. Independent tasks may continue in parallel.
+- Start another run only for relevant changed inputs, a diagnosed failure, or
+  an explicitly justified qualification step. Resolve queue/concurrency
+  blockers before launching replacement runs.
+- Select checks from actual impact. Run targeted native runtime gates when
+  needed. Unknown impact must block explicitly; never automatically launch
+  the complete release matrix for a PR.
+- Reuse successful evidence only when the existing verifier proves compatible
+  inputs. Label deliberate negative pilots and their expected failure.
+- Repeated pushes that unnecessarily cancel running checks are a process
+  defect. Do not hide the churn by disabling required checks or cancellation
+  globally. Record the tested SHA, run/attempt, scope and outcomes in the
+  authoritative task handoff.
+
 ## Release tasks
 
 For any readiness request, apply the [canonical release audit](docs/internal/pre-release-documentation-audit.md):
