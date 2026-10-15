@@ -13,6 +13,7 @@ import re
 import shutil
 import tempfile
 import fcntl
+import subprocess
 import urllib.request
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -157,9 +158,47 @@ def cleanup(root, lane_id, run_id, attempt):
             "state": "pending-runtime-cleanup"}
 
 
+def finalize_cleanup(root, lane_id, run_id, attempt):
+    """Release only our own verified-empty lease, never another PR's lane."""
+    pending = cleanup(root, lane_id, run_id, attempt)
+    root = Path(root).resolve(strict=True)
+    lane = Path(pending["lane"])
+    with (lane / "lease.json").open() as source:
+        lease = json.load(source)
+    runtime = lease["runtime"]
+    if runtime not in RUNTIMES:
+        raise ValueError("invalid lease runtime")
+    for kind, name in (("network", lease["network"]),
+                       ("volume", lease["volume_prefix"])):
+        try:
+            result = subprocess.run([runtime, kind, "inspect", name],
+                                    capture_output=True, check=False, timeout=20)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError("runtime cleanup cannot be verified") from error
+        if result.returncode == 0:
+            raise RuntimeError("own runtime " + kind + " remains after cleanup")
+        # The supported CLI returns 1 when the named resource is absent.
+        # Unknown exit statuses are not absence and must not release a lease.
+        if result.returncode != 1:
+            raise RuntimeError("runtime cleanup inspector failed")
+    lock_file = root / ".pr-runner-capacity.lock"
+    with lock_file.open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        again = cleanup(root, lane_id, run_id, attempt)
+        if again["lane"] != str(lane):
+            raise PermissionError("lease changed during cleanup")
+        shutil.rmtree(lane)
+        if lane.exists():
+            raise RuntimeError("lease workspace cleanup unverified")
+    return {"schema": "baseharbor.pr-runtime-cleanup/v1",
+            "lane_id": lane_id, "run_id": run_id, "attempt": attempt,
+            "state": "verified-empty-and-released",
+            "gate_evidence": False}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("prepare", "inspect-cleanup"))
+    parser.add_argument("operation", choices=("prepare", "inspect-cleanup", "finalize-cleanup"))
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
@@ -173,9 +212,12 @@ def main():
         result = prepare(request, args.root, args.run_id, args.attempt,
                          args.capacity, args.repository, args.pr_number,
                          os.environ.get('GH_TOKEN', ''))
-    else:
+    elif args.operation == "inspect-cleanup":
         result = cleanup(args.root, identity(request, args.run_id, args.attempt),
                          args.run_id, args.attempt)
+    else:
+        result = finalize_cleanup(args.root, identity(request, args.run_id, args.attempt),
+                                  args.run_id, args.attempt)
     print(json.dumps(result, sort_keys=True, indent=2))
 
 
