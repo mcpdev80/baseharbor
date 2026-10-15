@@ -67,7 +67,7 @@ def prepare(request, root, run_id, attempt, capacity, trusted=False):
     lock_file = root / ".pr-runner-capacity.lock"
     with lock_file.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        active = list(root.glob("pr-*/lease.json"))
+        active = [entry for entry in root.glob("pr-*") if entry.is_dir()]
         if len(active) >= capacity:
             raise RuntimeError("runner capacity exhausted; no peer cleanup permitted")
         lane.mkdir(mode=0o700, exist_ok=False)
