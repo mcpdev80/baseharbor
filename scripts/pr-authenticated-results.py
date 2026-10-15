@@ -24,7 +24,8 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             gate.startswith(("atomic/docker/", "atomic/podman/",
                              "integration/docker/", "integration/podman/")))
            for gate in selected_gates):
-        required.extend(("PR · Exact Candidate", "PR · Consumer Pins"))
+        required.extend(("PR · Exact Candidate", "PR · Consumer Pins",
+                         "PR · Runner Interface"))
     by_name = {}
     for job in jobs:
         if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:
