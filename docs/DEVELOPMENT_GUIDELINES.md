@@ -7,7 +7,7 @@ Release readiness is governed by `docs/internal/pre-release-documentation-audit.
 
 ## Planning transition
 
-The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
 
 
 ## Project engineering principle
@@ -116,20 +116,20 @@ Branches are temporary work surfaces, not long-lived history.
 
 **Multi-session execution.** When several agent or human sessions run in parallel:
 
-- one assigned issue at a time per session;
+- one assigned task at a time per session;
 - one dedicated branch and pull request per task;
 - check and record ownership before editing, after reading the current rules and remote state;
 - respect task file boundaries and integrated dependencies;
 - preserve other sessions' commits and integrate remote changes before pushing;
 - stop after implementation, verification and pull-request handoff;
-- start the next issue only after the Maintainer accepts the result and assigns it;
+- start the next task only after the Maintainer accepts the result and assigns it;
 - report a blocking dependency rather than switching tasks autonomously.
 
 ## Documentation
 
 Follow [Documentation style](STYLE_GUIDE.md).
 
-Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. GitHub Issues plan future work. Releases preserve history.
+Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. baseharbor-plan owns future planning; GitHub Issues retain external intake and discussion. Releases preserve history.
 
 Every release runs the complete [pre-release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
 

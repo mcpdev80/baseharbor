@@ -180,7 +180,7 @@ if [ -n "$duplicates" ]; then
 fi
 
 grep -Fq "Human docs explain. Reference enumerates. Specs define." docs/DEVELOPMENT_GUIDELINES.md
-grep -Fq "Detailed planning lives in GitHub Issues." docs/roadmap.md
+grep -Fq "Detailed planning lives in [baseharbor-plan/ROADMAP.md]" docs/roadmap.md
 
 runtime_docs=(
   README.md
