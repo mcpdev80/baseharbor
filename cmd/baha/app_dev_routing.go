@@ -182,6 +182,11 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		return err
 	}
 	plan.groups = append(plan.groups, retired...)
+	retiredMetrics, err := e.loadRetiredSharedMetricsGatewayRoutes(ctx)
+	if err != nil {
+		return err
+	}
+	plan.groups = append(plan.groups, retiredMetrics...)
 	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, target, plan.groups...); err != nil {
 		return fmt.Errorf("reconcile canonical development routes: %w", err)
 	}
