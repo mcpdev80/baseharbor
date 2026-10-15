@@ -10,6 +10,7 @@ spec = importlib.util.spec_from_file_location(
     "isolation", Path(__file__).with_name("pr-runner-isolation.py"))
 isolation = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(isolation)
+ORIGINAL_VERIFY = isolation.verify_github_admission
 REQUEST = {
     "schema": "baseharbor.pr-runtime-request/v1",
     "gate_id": "atomic/docker/backup-restore",
@@ -85,17 +86,17 @@ class IsolationFixtures(unittest.TestCase):
               'user':{'id':22}}
         catalog = {'id':10,'owner':{'id':22}}
         with patch.object(isolation, 'github_json', side_effect=[run,pr,catalog]):
-            self.assertTrue(isolation.verify_github_admission(
+            self.assertTrue(ORIGINAL_VERIFY(
                 REQUEST, "100", 1, "mcpdev80/baseharbor", 932, "token"))
         pr['user']['id'] = 55
         with patch.object(isolation, 'github_json', side_effect=[run,pr,catalog]):
             with self.assertRaises(PermissionError):
-                isolation.verify_github_admission(
+                ORIGINAL_VERIFY(
                     REQUEST, "100", 1, "mcpdev80/baseharbor", 932, "token")
         run['head_sha'] = 'f'*40
         with patch.object(isolation, 'github_json', side_effect=[run,pr,catalog]):
             with self.assertRaises(PermissionError):
-                isolation.verify_github_admission(
+                ORIGINAL_VERIFY(
                     REQUEST, "100", 1, "mcpdev80/baseharbor", 932, "token")
 
     def test_malformed_and_cross_runtime_request(self):
