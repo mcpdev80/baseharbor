@@ -106,11 +106,18 @@ jobs:
               head = pr.get("head") or {}
               if (head.get("repo") or {}).get("full_name") == repo:
                   open_heads.add(head["ref"])
+          merged_heads = set()
+          for pr in pages("pulls?state=closed", "pulls"):
+              head = pr.get("head") or {}
+              if (pr.get("merged_at") and
+                      (head.get("repo") or {}).get("full_name") == repo):
+                  merged_heads.add(head["ref"])
           active_refs = {"main", "develop"} | open_heads
           for branch in pages("branches", "branches"):
               name = branch["name"]
-              if (branch.get("protected") or name.startswith(
-                      ("release/v", "candidate/", "release-candidate/"))):
+              if (branch.get("protected") or
+                      (name.startswith(("release/v", "candidate/", "release-candidate/"))
+                       and name not in merged_heads)):
                   active_refs.add(name)
 
           deleted = 0
@@ -210,6 +217,8 @@ jobs:
               "fix/",
               "release/",
               "chore/",
+              "candidate/",
+              "release-candidate/",
           )
 
           headers = {
@@ -294,10 +303,20 @@ jobs:
               if (head.get("repo") or {}).get("full_name") == repo and head.get("ref"):
                   active_pr_heads.add(head["ref"])
           discovered_branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          # A merged candidate is no longer automatically active; its
+          # authenticated release evidence stays under preserved_workflows.
+          merged_heads = set()
+          for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=closed"):
+              head = pr.get("head") or {}
+              if (pr.get("merged_at") and
+                      (head.get("repo") or {}).get("full_name") == repo):
+                  merged_heads.add(head["ref"])
           active_candidate_heads = {
               branch["name"] for branch in discovered_branches
-              if branch.get("protected") or branch["name"].startswith(
+              if branch.get("protected") or
+              (branch["name"].startswith(
                   ("candidate/", "release-candidate/", "release/v0.4.26"))
+               and branch["name"] not in merged_heads)
           }
           protected_run_heads = active_pr_heads | active_candidate_heads
 
@@ -350,8 +369,7 @@ jobs:
                   continue
               if branch.get("protected"):
                   continue
-              if name in open_pr_heads or name.startswith(
-                      ("candidate/", "release-candidate/", "release/v0.4.26")):
+              if name in open_pr_heads:
                   continue
 
               ephemeral = name.startswith(ephemeral_prefixes)
