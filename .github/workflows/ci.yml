@@ -275,7 +275,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh podman
 
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/') && github.ref_name != 'runtime-validation/ci/935-inspect-go-exact'
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     services:
@@ -432,7 +432,7 @@ jobs:
 
   pr935_inspect_go_pilot:
     name: PR935 · Exact Inspect Go
-    if: github.event_name == 'pull_request' && github.head_ref == 'runtime-validation/ci/935-inspect-go-exact'
+    if: (github.event_name == 'pull_request' && github.head_ref == 'runtime-validation/ci/935-inspect-go-exact') || (github.event_name == 'push' && github.ref_name == 'runtime-validation/ci/935-inspect-go-exact')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
