@@ -177,10 +177,14 @@ def finalize_cleanup(root, lane_id, run_id, attempt):
             raise RuntimeError("runtime cleanup cannot be verified") from error
         if result.returncode == 0:
             raise RuntimeError("own runtime " + kind + " remains after cleanup")
-        # The supported CLI returns 1 when the named resource is absent.
-        # Unknown exit statuses are not absence and must not release a lease.
-        if result.returncode != 1:
-            raise RuntimeError("runtime cleanup inspector failed")
+        # Docker uses 1 for not-found; rootless Podman can use 125. In
+        # either case require the native diagnostic to identify absence.
+        detail = (result.stderr + result.stdout).decode(errors="replace").lower()
+        missing = any(marker in detail for marker in
+                      ("not found", "does not exist", "no such network",
+                       "no such volume"))
+        if result.returncode not in (1, 125) or not missing:
+            raise RuntimeError("runtime cleanup inspector failed or absence unproven")
     lock_file = root / ".pr-runner-capacity.lock"
     with lock_file.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
