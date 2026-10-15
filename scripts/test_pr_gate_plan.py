@@ -39,7 +39,7 @@ class MappingTests(unittest.TestCase):
                 self.assertFalse(result['unresolved_coverage'])
 
     def test_code_picks_contract_without_private_consumers(self):
-        for name in ['cmd/baha/app.go', 'internal/application/manifest.go',
+        for name in ['cmd/baha/guided_application_read_context.go', 'internal/application/manifest.go',
                      'internal/capability/registry.go', 'contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
@@ -48,14 +48,56 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
 
+    def test_cli_requires_compilation_and_real_targeted_tests(self):
+        result = planner.plan(diff(paths('cmd/baha/guided_application_read_context.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        commands = {c['command'] for c in result['required_validation_checks']}
+        self.assertIn('go vet ./cmd/baha', commands)
+        self.assertIn('go build ./cmd/baha', commands)
+        self.assertIn("go test ./cmd/baha -run '^TestGuided' -count=1", commands)
+
+    def test_mutating_cli_cannot_claim_readonly_coverage(self):
+        for name in ['cmd/baha/app_backup_restore.go',
+                     'cmd/baha/app_apply.go', 'cmd/baha/app.go',
+                     'cmd/baha/new_command.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go build ./cmd/baha', commands)
+                self.assertIn('go vet ./cmd/baha', commands)
+                self.assertNotIn('journey/docker', result['selected_gates'])
+
+    def test_workflow_risk_does_not_silently_resolve(self):
+        for name in ['.github/workflows/ci.yml',
+                     '.github/workflows/artifact-gc.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/docker-runtime-acceptance.yml',
+                     '.github/workflows/release.yml',
+                     'scripts/ci-evidence.sh',
+                     'scripts/verify-journey-evidence.py']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertIn('ci-executor-verifier-tests',
+                              {c['id'] for c in result['required_validation_checks']})
+                self.assertEqual([], result['selected_gates'])
+
+    def test_documentation_workflow_has_validation_without_native_gates(self):
+        result = planner.plan(diff(paths('.github/workflows/pages.yml')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('documentation-audit', {c['id'] for c in result['required_validation_checks']})
+
     def test_runtime_selects_justified_native_gate(self):
         result = planner.plan(diff(paths('deploy/docker/service.yaml')), REQ, MAP)
         self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
         self.assertNotIn('journey/podman', result['selected_gates'])
 
     def test_ci_evidence_selects_policy_planner_executor_verifier(self):
-        for name in ['.github/workflows/ci.yml', 'scripts/pr-gate-plan.py',
-                     'scripts/ci-gate-evidence.py', 'scripts/test_pr_gate_plan.py']:
+        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
