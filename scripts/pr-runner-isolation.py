@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import fcntl
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 SLUG = re.compile(r"^[a-zA-Z0-9_-]{1,60}$")
@@ -51,20 +52,26 @@ def identity(request, run_id, attempt):
 
 def prepare(request, root, run_id, attempt, capacity, trusted=False):
     runtime, gate = validate(request, run_id, attempt, capacity, trusted)
-    root = Path(root).resolve(strict=True)
-    if root.is_symlink() or not root.is_dir():
+    original_root = Path(root)
+    if original_root.is_symlink():
+        raise ValueError("symlink isolation root forbidden")
+    root = original_root.resolve(strict=True)
+    if not root.is_dir():
         raise ValueError("invalid isolation root")
     lane_id = identity(request, run_id, attempt)
     # A lane is unique by all immutable request fields and the run/attempt.
     lane_name = "pr-" + lane_id[:24]
     lane = root / lane_name
-    slot = root / ("slot-" + lane_id[:16])
     # No shared mutable workspace, recovery files, credentials or provider state.
     # Claiming slots is atomic; capacity overflow must block, never evict peers.
-    active = list(root.glob("pr-*/lease.json"))
-    if len(active) >= capacity:
-        raise RuntimeError("runner capacity exhausted; no peer cleanup permitted")
-    lane.mkdir(mode=0o700, exist_ok=False)
+    lock_file = root / ".pr-runner-capacity.lock"
+    with lock_file.open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        active = list(root.glob("pr-*/lease.json"))
+        if len(active) >= capacity:
+            raise RuntimeError("runner capacity exhausted; no peer cleanup permitted")
+        lane.mkdir(mode=0o700, exist_ok=False)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     try:
         for name in ("workspace", "target", "volumes", "provider", "secrets",
                      "recovery", "artifacts", "tmp"):
