@@ -28,6 +28,7 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import urllib.request
           from datetime import datetime, timedelta, timezone
 
@@ -112,7 +113,7 @@ jobs:
               if (pr.get("merged_at") and
                       (head.get("repo") or {}).get("full_name") == repo):
                   sha = head.get("sha")
-                  if isinstance(sha, str) and len(sha) == 40:
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
                       merged_heads.add((head["ref"], sha))
           active_refs = {"main", "develop"} | open_heads
           for branch in pages("branches", "branches"):
@@ -167,6 +168,7 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import urllib.error
           import urllib.parse
           import urllib.request
@@ -313,7 +315,7 @@ jobs:
               if (pr.get("merged_at") and
                       (head.get("repo") or {}).get("full_name") == repo):
                   sha = head.get("sha")
-                  if isinstance(sha, str) and len(sha) == 40:
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
                       merged_heads.add((head["ref"], sha))
           active_candidate_heads = {
               branch["name"] for branch in discovered_branches
@@ -361,7 +363,7 @@ jobs:
               head_repo = (head.get("repo") or {}).get("full_name")
               if head_repo == repo and head.get("ref"):
                   sha = head.get("sha")
-                  if isinstance(sha, str) and len(sha) == 40:
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
                       merged_pr_heads.add((head["ref"], sha))
 
           branches = discovered_branches
