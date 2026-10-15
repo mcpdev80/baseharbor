@@ -264,12 +264,12 @@ class GitInputs:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
     def pin(self, candidate, tag, demo_ref=None):
-        if tag in {'v0.4.24', 'v0.4.25'}:
+        if tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
             # Consumers can pin an existing Core SHA; Core cannot also embed
             # their future commit without a circular Git object dependency.
             resolved = self.demo_ref if demo_ref is None else demo_ref
             if not isinstance(resolved, str) or not re.fullmatch('[0-9a-f]{40}', resolved):
-                raise ValueError('v0.4.24 requires an exact resolved Demo commit')
+                raise ValueError('v0.4.24+ requires an exact resolved Demo commit')
             actual = command(['git', 'show', resolved + ':baseharbor-core.ref'], self.demo).decode().strip()
             if actual != candidate:
                 raise ValueError('Demo immutable Core pin differs from candidate')
@@ -386,7 +386,7 @@ class GitHub:
 
 def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
     """Recover the immutable origin pin from digest-verified gate archives."""
-    if tag not in {'v0.4.24', 'v0.4.25'}:
+    if tag not in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
         return inputs.pin(candidate, tag)
     pins = set()
     for job in jobs:

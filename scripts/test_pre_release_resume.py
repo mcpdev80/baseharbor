@@ -217,6 +217,53 @@ class EvidenceTests(unittest.TestCase):
                 resume.origin_demo_pin(self.api, FakeInputs(), 'a' * 40, 'v0.4.24',
                                        1, [bad], self.api.jobs[1], expected, {})
 
+    def test_v026_origin_authentication_and_newer_negative_attempt(self):
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                'v0.4.26', [1], self.root)
+        self.assertEqual([proof['gate'] for proof in result['proofs']], ['atomic/static/mcp'])
+        self.assertEqual(len(result['pending']), 64)
+        self.assertEqual(result['proofs'][0]['origin']['archive_digest'],
+                         self.api.artifacts[1][0]['digest'])
+        self.api.jobs[2][0]['conclusion'] = 'failure'
+        negative = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                  'v0.4.26', [1, 2], self.root)
+        self.assertEqual(negative['proofs'], [])
+        self.assertIn('failure', negative['pending']['atomic/static/mcp'])
+
+    def test_v026_rejects_missing_forged_and_changed_evidence(self):
+        for mutation in ('missing', 'digest', 'schema', 'cleanup', 'attempt', 'source'):
+            api = FakeAPI()
+            if mutation == 'missing':
+                api.artifacts[1] = []
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                   'v0.4.26', [1], self.root)
+                continue
+            if mutation == 'digest':
+                api.artifacts[1][0]['digest'] = 'sha256:' + '0' * 64
+            else:
+                broken = manifest()
+                if mutation == 'schema':
+                    broken['schema'] = 'forged'
+                elif mutation == 'cleanup':
+                    broken['cleanup_outcome'] = 'failure'
+                elif mutation == 'attempt':
+                    broken['workflow_run_attempt'] = 2
+                elif mutation == 'source':
+                    broken['candidate_sha'] = 'c' * 40
+                api.data[1], api.artifacts[1][0]['digest'] = archive(broken)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                               'v0.4.26', [1], self.root)
+
+    def test_v026_selection_never_authorizes_proof_reuse(self):
+        coverage = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                  'v0.4.26', [1], self.root)
+        selected = resume.selected_schedule(coverage, 'atomic/static/mcp')
+        self.assertEqual(selected['proofs'], coverage['proofs'])
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(selected, 'a' * 40, 'b' * 40, 'v0.4.26')
+
     def test_v024_keeps_the_complete_v023_required_gate_surface(self):
         previous = resume.local_requirements('v0.4.23')
         current = resume.local_requirements('v0.4.24')
@@ -357,6 +404,29 @@ class RequirementTests(unittest.TestCase):
                     'pending': {}, 'proofs': [{'gate': key} for key in baseline]}
         with self.assertRaises(ValueError):
             resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.23')
+
+    def test_v026_full_requirements_and_historical_receipt_semantics(self):
+        previous = resume.local_requirements('v0.4.25')
+        current = resume.local_requirements('v0.4.26')
+        self.assertEqual(len(previous), 65)
+        self.assertEqual(len(current), 65)
+        self.assertEqual([gate['id'] for gate in previous],
+                         [gate['id'] for gate in current])
+        self.assertEqual(len(resume.local_requirements('v0.4.24')), 63)
+        self.assertEqual({g['id'] for g in current if 'console' in g['dependencies']},
+                         {'integration/static/live-console'})
+        self.assertEqual({g['id'] for g in current if 'connector' in g['dependencies']},
+                         {'integration/docker/remote-target',
+                          'integration/podman/remote-target',
+                          'integration/static/live-console'})
+        coverage = {'schema': 'baseharbor.pre-release.coverage/v2',
+                    'candidate_sha': 'a' * 40, 'demo_ref': 'b' * 40,
+                    'tag': 'v0.4.25', 'required': [g['id'] for g in previous],
+                    'proofs': [{'gate': g['id']} for g in previous], 'pending': {},
+                    'requirements_digest': resume.digest(previous)}
+        resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.25')
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.26')
 
     def test_duplicate_missing_and_unknown_requirements_fail_closed(self):
         original = json.loads(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
