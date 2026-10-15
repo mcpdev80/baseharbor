@@ -50,10 +50,11 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
     if resolved.Target.Name == "" || resolved.Manifest.Name == "" {
         return GuidedReadContext{}, &GuidedReadError{Kind:"missing", Cause:errors.New("Target and application intent are required")}
     }
-    if resolved.DeploymentIdentity.Target != resolved.Target.Name {
+    editing := resolved.DeploymentRecord != nil || resolved.DeploymentIdentity.DeploymentID != "" || resolved.DeploymentIdentity.ApplicationID != ""
+    if editing && resolved.DeploymentIdentity.Target != resolved.Target.Name {
         return GuidedReadContext{}, &GuidedReadError{Kind:"wrong_target", Cause:errors.New("deployment Target differs")}
     }
-    if resolved.Manifest.ApplicationID == "" || resolved.DeploymentIdentity.ApplicationID != resolved.Manifest.ApplicationID {
+    if editing && (resolved.Manifest.ApplicationID == "" || resolved.DeploymentIdentity.ApplicationID != resolved.Manifest.ApplicationID) {
         return GuidedReadContext{}, &GuidedReadError{Kind:"unverifiable", Cause:errors.New("system-owned application identity differs")}
     }
     contract, err := application.PortableContractFromManifest(resolved.Manifest)
@@ -71,6 +72,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
     }{resolved.Manifest, snapshot, preferences})
     if err != nil { return GuidedReadContext{}, &GuidedReadError{Kind:"unverifiable", Cause:err} }
     planRev, err := guidedRevision(plan)
+    if plan.Impact != nil && plan.Impact.Scope.PlanID != "" { planRev = plan.Impact.Scope.PlanID }
     if err != nil { return GuidedReadContext{}, &GuidedReadError{Kind:"unverifiable", Cause:err} }
     // Return only capability identifiers, provider placement and consequence
     // actions. Raw manifests, observations, consumer manifests and secret inputs
