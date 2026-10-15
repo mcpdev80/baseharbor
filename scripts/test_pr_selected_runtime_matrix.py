@@ -17,7 +17,7 @@ class RuntimeMatrix(unittest.TestCase):
         result=module.select({"selected_gates":["atomic/podman/backup-restore","atomic/docker/backup-restore"]},self.catalog)
         self.assertEqual(["atomic/docker/backup-restore","atomic/podman/backup-restore"],
                          [r["id"] for r in result["include"]])
-        self.assertFalse(result["deferred"])
+        self.assertEqual([],result["unsupported"])
 
     def test_three_native_gates_all_scheduled_with_bounded_parallelism(self):
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]

@@ -437,6 +437,7 @@ jobs:
       consumer_mode: ${{ steps.plan.outputs.consumer_mode }}
       runtime_matrix: ${{ steps.plan.outputs.runtime_matrix }}
       runtime_required: ${{ steps.plan.outputs.runtime_required }}
+      public_contracts_required: ${{ steps.plan.outputs.public_contracts_required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -468,6 +469,7 @@ jobs:
           python3 "$RUNNER_TEMP/pr-selected-runtime-matrix.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-runtime-matrix.json"
           echo "runtime_matrix=$(python3 -c 'import json,sys; print(json.dumps({"include":json.load(open(sys.argv[1]))["include"]},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
           echo "runtime_required=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["required"]).lower())' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "public_contracts_required=$(python3 -c 'import json; print(str("integration/static/public-contracts" in json.load(open("pr-plan.json"))["selected_gates"]).lower())')" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trusted-pr-plan
@@ -533,7 +535,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -696,6 +698,46 @@ jobs:
             *) exit 2 ;;
           esac
 
+  pr_public_contracts:
+    name: PR · Public Contracts
+    needs: [pr_plan, pr_demo_pin]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute original public-contracts integration owner
+        shell: bash
+        env:
+          CORE_SHA: ${{ github.sha }}
+          DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CORE_SHA"
+          [[ "$DEMO_SHA" =~ ^[a-f0-9]{40}$ ]]
+          python3 scripts/pre-release-integration.py \
+            --gate integration/static/public-contracts \
+            --candidate "$CORE_SHA" --demo "$DEMO_SHA" --tag v0.4.26 \
+            --output "$RUNNER_TEMP/integration-public-contracts"
+      - name: Upload original owner-produced integration evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-static-public-contracts-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-public-contracts
+          if-no-files-found: error
+          retention-days: 30
+
   pr_runtime_selected:
     name: PR · Selected Runtime
     needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
@@ -716,7 +758,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected]
+    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -745,19 +787,21 @@ jobs:
           ACTIONS_RUN_ATTEMPT: ${{ github.run_attempt }}
           SELECTED_RUNTIME_REQUIRED: ${{ needs.pr_plan.outputs.runtime_required }}
           SELECTED_RUNTIME_JOB: ${{ needs.pr_runtime_selected.result }}
+          PUBLIC_CONTRACTS_REQUIRED: ${{ needs.pr_plan.outputs.public_contracts_required }}
+          PUBLIC_CONTRACTS_JOB: ${{ needs.pr_public_contracts.result }}
           VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
           test "$PLAN_JOB" = success
           test -s pr-plan.json
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
-          git fetch --no-tags origin cf853c9c1d4d1221bfbaa13d5009795498967c14 c06839c9061e94f1ebf3b05550bed7952c33a516
+          git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe c6db56c4ac077dbc496134cb0871c8e996a593fe
           git show cf853c9c1d4d1221bfbaa13d5009795498967c14:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
           git show c06839c9061e94f1ebf3b05550bed7952c33a516:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
-          if [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; then
+          if { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
-            git fetch --no-tags origin 0cab2ef846b9510ae3224846a757a1bd0e11977e
+            git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe
             git show 0cab2ef846b9510ae3224846a757a1bd0e11977e:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"
             python3 "$RUNNER_TEMP/pr-verified-atomic-evidence.py" \
               --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" \
