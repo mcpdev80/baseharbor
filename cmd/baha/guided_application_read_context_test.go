@@ -181,6 +181,26 @@ func TestGuidedReadRevisionChangesWithApplicationIntent(t *testing.T) {
 	if first.Target != second.Target { t.Fatal("intent change replaced Target") }
 }
 
+func TestGuidedReadProjectsCapabilityFootprintAndAuthorityPlan(t *testing.T) {
+	r := corelessResolvedFixture(t)
+	r.Manifest = application.WithHTTPExposure(r.Manifest, "public", "api", 8080, "http")
+	state, err := readGuidedApplicationContext(context.Background(), r)
+	if err != nil { t.Fatalf("read actual exposure requirement: %v", err) }
+	if len(state.Capabilities) == 0 || len(state.Footprint.Requirements) == 0 {
+		t.Fatalf("missing projected capability or footprint: %+v", state)
+	}
+	snapshot, preferences, err := applicationLifecycleSnapshot(r, observeApplicationProviderFacts(context.Background(), r))
+	if err != nil { t.Fatal(err) }
+	authority, err := resolveApplicationProviderPlanFromSnapshot(r, snapshot, preferences)
+	if err != nil { t.Fatal(err) }
+	if authority.Impact != nil && authority.Impact.PlanID != "" && state.PlanRevision != authority.Impact.PlanID {
+		t.Fatalf("consent PlanID not propagated: got %s, want %s", state.PlanRevision, authority.Impact.PlanID)
+	}
+	if len(state.Changes) != len(authority.Changes) {
+		t.Fatalf("provider consequence count differs: %d / %d", len(state.Changes), len(authority.Changes))
+	}
+}
+
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
 	a, err := guidedRevision(struct {
 		Target  string
