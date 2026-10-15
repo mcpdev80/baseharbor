@@ -295,3 +295,78 @@ func captureBackendSelectionForTest(t *testing.T, r resolvedApplication) resolve
 	}
 	return r
 }
+
+func TestWithdrawnSharedBackendRetainsOriginalApplicationInventory(t *testing.T) {
+	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := backendBindingFixture(t, kind)
+			t.Setenv(application.ProviderScopeEnv(kind), "application")
+			r = captureBackendSelectionForTest(t, r)
+			if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordAppliedDeployment(t.Context(), r, application.RuntimeFiles{}); err != nil {
+				t.Fatal(err)
+			}
+			files := application.RuntimeFilesFor(r.Store, r.Manifest)
+			if err := os.MkdirAll(files.Dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			canonical, err := application.RuntimeComposeYAMLForProject(r.Manifest, files.ResourceProject)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(files.Compose, []byte(canonical), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(files.Env, []byte("retained=protected\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(application.ProviderScopeEnv(kind), "shared")
+			r = captureBackendSelectionForTest(t, r)
+			if _, err := recordDeploymentBeforeMutation(t.Context(), r, "applying"); err != nil {
+				t.Fatal(err)
+			}
+			if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordAppliedDeployment(t.Context(), r, application.RuntimeFiles{}); err != nil {
+				t.Fatal(err)
+			}
+			r.Manifest.Services.SQL, r.Manifest.Services.Cache, r.Manifest.Services.KeyValue = false, false, false
+			if _, err := recordDeploymentBeforeMutation(t.Context(), r, "applying"); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordAppliedDeployment(t.Context(), r, application.RuntimeFiles{}); err != nil {
+				t.Fatal(err)
+			}
+			record, err := deployment.LoadDeploymentRecord(r.DeploymentIdentity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			history, err := retiredRuntimeHistory(record)
+			if err != nil || len(history) != 1 {
+				t.Fatalf("original owner missing or duplicated: %d %v", len(history), err)
+			}
+			before, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, resources, err := nativeBackendInventory(r); err != nil || len(resources) == 0 {
+				t.Fatalf("withdrawal lost the protected original application inventory: %v", err)
+			}
+			actual, err := os.ReadFile(files.Compose)
+			if err != nil || string(actual) != canonical {
+				t.Fatal("observation rewrote retained runtime definition")
+			}
+			record, err = deployment.LoadDeploymentRecord(r.DeploymentIdentity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := json.Marshal(record)
+			if err != nil || string(before) != string(after) {
+				t.Fatal("observation changed authoritative deployment owner")
+			}
+		})
+	}
+}

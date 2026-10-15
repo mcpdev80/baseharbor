@@ -71,6 +71,18 @@ func recordBackendPlacementOwner(record *deployment.DeploymentRecord, resolved r
 			return err
 		}
 		record.Applied.GeneratedState["previous_backend_placements"] = string(data)
+		// Replacing an application backend preserves its original definition and
+		// data. Later shared-consumer withdrawal must still be able to inspect
+		// that canonical owner after previous_intent has converged away.
+		for kind, placement := range placements {
+			if placement.Scope == capability.ScopeApplication && desired[kind].Scope != capability.ScopeApplication {
+				owner := retiredRuntimeOwner{Intent: json.RawMessage(record.Applied.GeneratedState["previous_intent"]), BackendPlacements: string(data)}
+				if err := archiveRetainedRuntimeOwner(record, owner); err != nil {
+					return err
+				}
+				break
+			}
+		}
 	}
 	record.Applied.GeneratedState["backend_placements"] = string(encoded)
 	return nil
