@@ -254,7 +254,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[observability-podman-only]') && '["podman"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_METRICS_INTEGRATION: "1"
