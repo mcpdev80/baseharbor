@@ -50,6 +50,7 @@ var httpOperationKinds = map[string]httpOperationKind{
 	"provider.remove":      httpPlatformMutation,
 	"organization.set":     httpPlatformMutation,
 	"organization.update":  httpPlatformMutation,
+	"app.stop":             httpLifecycle,
 	"apply":                httpLifecycle,
 	"update":               httpLifecycle,
 	"repair":               httpLifecycle,

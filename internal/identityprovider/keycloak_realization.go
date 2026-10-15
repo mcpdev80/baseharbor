@@ -73,7 +73,7 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 	if err != nil {
 		return KeycloakInstance{}, err
 	}
-	if err := setApplicationKeycloakCanonicalURL(files, publicBase); err != nil {
+	if err := prepareApplicationKeycloakCanonicalURL(r.runtime, r.namespace, files, publicBase); err != nil {
 		return KeycloakInstance{}, err
 	}
 	if cleaner, ok := r.runtime.(legacyServiceCleaner); ok {
@@ -91,6 +91,11 @@ func (r *localKeycloakRealization) Apply(ctx context.Context) (KeycloakInstance,
 			return KeycloakInstance{}, fmt.Errorf("%w\n%s", err, diagnostics)
 		}
 		return KeycloakInstance{}, err
+	}
+	if isDevelopmentIdentityEnvironment(r.app.Environment) {
+		if err := ensureLocalKeycloakDevelopmentRoute(ctx, r.app, r.namespace, r.runtime, r.issuer, files); err != nil {
+			return KeycloakInstance{}, err
+		}
 	}
 	return r.instance(ctx, files, publicBase)
 }
@@ -159,11 +164,11 @@ func (r *localKeycloakRealization) instance(ctx context.Context, files KeycloakF
 	}
 
 	workloadBase := files.PublicURL
-	trustBundle := append([]byte(nil), files.PublicAccess.Material.CA...)
+	trustBundle, err := os.ReadFile(files.PublicAccess.Material.CA)
+	if err != nil {
+		return KeycloakInstance{}, err
+	}
 	if isDevelopmentIdentityEnvironment(r.app.Environment) {
-		if err := ensureLocalKeycloakDevelopmentRoute(ctx, r.app, r.namespace, r.runtime, r.issuer, files); err != nil {
-			return KeycloakInstance{}, err
-		}
 		gatewayFiles, err := devgateway.FilesFor(localKeycloakTargetName(r.namespace))
 		if err != nil {
 			return KeycloakInstance{}, err
@@ -193,6 +198,18 @@ func localKeycloakTargetName(namespace string) string {
 		return value
 	}
 	return "local"
+}
+
+// A first shared consumer must establish the installation server origin before
+// applying its realm-local frontend URL. Retained explicit origins stay owned by
+// installation reconciliation; native loopback origins migrate through that path.
+func prepareApplicationKeycloakCanonicalURL(runtime KeycloakRuntime, namespace string, files KeycloakFiles, publicBase string) error {
+	if files.SharedSQL != nil {
+		if err := setCoreKeycloakCanonicalURL(runtime, namespace, files); err != nil {
+			return err
+		}
+	}
+	return setApplicationKeycloakCanonicalURL(files, publicBase)
 }
 
 // Shared application realms use their own frontendUrl attribute. Their

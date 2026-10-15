@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -203,10 +204,11 @@ func saveRouteStateForReconcile(ctx context.Context, runtime Runtime, files File
 	// the validated reconciliation actually starts. This is the strongest
 	// continuity possible on a single-host runtime where one loopback host port
 	// has a single owner.
-	_ = ctx
-	_ = runtime
-	_ = files
-	_ = previous
+	if len(previous.Routes) > 0 && len(next.Routes) == 0 {
+		if err := retireLastGatewayRoutes(ctx, runtime, files, previous); err != nil {
+			return fmt.Errorf("retire last development gateway routes; preserve route ownership for retry: %w", err)
+		}
+	}
 	return saveState(files.State, next)
 }
 
@@ -312,9 +314,6 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	if runtime == nil {
 		return errors.New("development gateway runtime is required")
 	}
-	if issuer == nil {
-		return errors.New("development gateway issuer is required")
-	}
 	files, err := FilesFor(target)
 	if err != nil {
 		return err
@@ -338,19 +337,10 @@ func Reconcile(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 		}
 	}
 	if len(current.Routes) == 0 {
-		if _, statErr := os.Stat(files.Compose); statErr == nil {
-			if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
-				return fmt.Errorf("stop empty development gateway: %w", err)
-			}
-		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return statErr
-		}
-		for _, path := range []string{files.Compose, files.Env, files.Caddyfile} {
-			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-		}
-		return nil
+		return verifyEmptyGatewayInactive(ctx, runtime, files)
+	}
+	if issuer == nil {
+		return errors.New("development gateway issuer is required")
 	}
 	if err := os.MkdirAll(filepath.Join(files.Dir, "runtime", "trust"), 0o755); err != nil {
 		return err
@@ -658,13 +648,30 @@ func Verify(ctx context.Context, target string) error {
 }
 
 func loadState(path string) (state, error) {
-	data, err := os.ReadFile(path)
+	expected, err := os.Lstat(path)
 	if err != nil {
 		return state{}, err
 	}
+	if !expected.Mode().IsRegular() || expected.Mode().Perm()&0077 != 0 {
+		return state{}, errors.New("development gateway route owner must be a protected regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return state{}, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(expected, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm()&0077 != 0 || opened.Size() > 4<<20 {
+		return state{}, errors.New("development gateway route owner is replaced, unprotected or oversized")
+	}
 	var value state
-	if err := json.Unmarshal(data, &value); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(file, (4<<20)+1))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
 		return state{}, fmt.Errorf("decode development gateway routes: %w", err)
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return state{}, errors.New("development gateway route owner contains trailing data")
 	}
 	if value.Version != stateVersion {
 		return state{}, fmt.Errorf("unsupported development gateway route state version %d", value.Version)
@@ -679,17 +686,31 @@ func saveState(path string, value state) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	directory, err := os.Lstat(filepath.Dir(path))
+	if err != nil || !directory.IsDir() || directory.Mode()&os.ModeSymlink != 0 {
+		return errors.New("development gateway route owner directory is noncanonical")
+	}
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".routes-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	defer os.Remove(temporary.Name())
+	defer temporary.Close()
+	if _, err := temporary.Write(data); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary.Name(), path); err != nil {
 		return err
 	}
 	return nil

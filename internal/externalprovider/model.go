@@ -2,11 +2,10 @@ package externalprovider
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
-	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
@@ -59,10 +58,13 @@ func (r Registration) Validate() error {
 	}
 	u, err := url.Parse(r.Endpoint)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("external provider endpoint must be an absolute URL")
+		return errors.New("external provider endpoint must be an absolute URL")
 	}
-	if u.User != nil {
-		return errors.New("external provider endpoint must not contain credentials")
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return errors.New("external provider endpoint must not contain credentials, query or fragment; use credential and trust references")
+	}
+	if err := validatePublicReference(r.CredentialRef, true); err != nil {
+		return err
 	}
 	if err := r.Trust.Validate(); err != nil {
 		return err
@@ -71,18 +73,37 @@ func (r Registration) Validate() error {
 		if strings.TrimSpace(k) == "" {
 			return errors.New("external provider metadata key is empty")
 		}
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "password") || strings.Contains(lk, "secret") || strings.Contains(lk, "token") || strings.Contains(lk, "private") {
-			return fmt.Errorf("external provider metadata key %q may contain secret material; use credential/trust references", k)
+		if credentialMetadataKey(k) {
+			return errors.New("external provider metadata key may contain secret material; use credential/trust references")
 		}
 		if strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("external provider metadata %q contains a newline", k)
+			return errors.New("external provider metadata contains a newline")
 		}
 	}
 	return nil
 }
 
+func credentialMetadataKey(key string) bool {
+	compact := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, key)
+	for _, sensitive := range []string{"password", "secret", "token", "private", "credential", "apikey", "accesskey", "passphrase", "authorization"} {
+		if strings.Contains(compact, sensitive) {
+			return true
+		}
+	}
+	return compact == "basicauth" || compact == "httpbasicauth" || compact == "bearer"
+}
+
 func (t Trust) Validate() error {
+	for _, reference := range []string{t.CAReference, t.ClientCertificate, t.ClientKey, t.Directory} {
+		if err := validatePublicReference(reference, false); err != nil {
+			return err
+		}
+	}
 	mode := t.Mode
 	if mode == "" {
 		mode = TrustAuto
@@ -111,7 +132,7 @@ func (t Trust) Validate() error {
 			return errors.New("mtls trust requires client certificate/private-key references or a certificate directory")
 		}
 	default:
-		return fmt.Errorf("unsupported external provider trust mode %q", mode)
+		return errors.New("unsupported external provider trust mode; use auto, system, custom-ca or mtls")
 	}
 	return nil
 }
@@ -122,7 +143,7 @@ func (r Registration) Public() Registration {
 	out.Trust.ClientKey = referenceOnly(out.Trust.ClientKey)
 	out.Trust.ClientCertificate = referenceOnly(out.Trust.ClientCertificate)
 	out.Trust.CAReference = referenceOnly(out.Trust.CAReference)
-	out.Trust.Directory = cleanReferencePath(out.Trust.Directory)
+	out.Trust.Directory = referenceOnly(out.Trust.Directory)
 	if len(out.Metadata) > 0 {
 		keys := make([]string, 0, len(out.Metadata))
 		for k := range out.Metadata {
@@ -139,17 +160,7 @@ func (r Registration) Public() Registration {
 }
 
 func referenceOnly(v string) string {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return ""
-	}
-	return filepath.Clean(v)
-}
-
-func cleanReferencePath(v string) string {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return ""
-	}
-	return filepath.Clean(v)
+	// Public output describes the declared reference. Filesystem cleaning would
+	// corrupt resource URIs and can change paths containing symlink/.. segments.
+	return strings.TrimSpace(v)
 }

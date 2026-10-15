@@ -179,9 +179,9 @@ func TestQuadletRemoveRuntimeResourceArgsDoesNotForceNetworks(t *testing.T) {
 	}
 }
 
-func TestQuadletRemoveRuntimeResourceArgsStillForcesVolumes(t *testing.T) {
+func TestQuadletRemoveRuntimeResourceArgsPreservesOtherVolumeConsumers(t *testing.T) {
 	got := quadletRemoveRuntimeResourceArgs("volume", "data")
-	want := []string{"volume", "rm", "-f", "data"}
+	want := []string{"volume", "rm", "data"}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("volume remove args = %#v, want %#v", got, want)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
@@ -35,12 +36,13 @@ type machineRuntimeInspectInput struct {
 }
 
 type machineRuntimeOperateInput struct {
-	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
-	Environment string `json:"environment,omitempty" jsonschema:"environment used for authorization and ownership verification; defaults to dev"`
-	Provider    string `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
-	Kind        string `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
-	ResourceID  string `json:"resource_id" jsonschema:"stable runtime resource id"`
-	Operation   string `json:"operation" jsonschema:"bounded runtime lifecycle operation: start, stop or restart"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"two explicit acknowledgements of the current runtime consequence plan"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"environment used for authorization and ownership verification; defaults to dev"`
+	Provider              string                             `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
+	Kind                  string                             `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
+	ResourceID            string                             `json:"resource_id" jsonschema:"stable runtime resource id"`
+	Operation             string                             `json:"operation" jsonschema:"bounded runtime lifecycle operation: start, stop or restart"`
 }
 
 func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimeexplorer.Service, string, error) {
@@ -62,7 +64,7 @@ func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimee
 		if err != nil {
 			return nil, "", machine.NewError(machine.ErrorCapabilityMissing, "Selected remote Target has no authenticated live runtime binding.", "Reconnect the selected Connector; remote operations never run locally.", true)
 		}
-		explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{})
+		explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{}, runtimeMutationAuthority{})
 		return explorer, target.Name, err
 	}
 	provider, err := detectRuntimeForTarget(ctx, target)
@@ -82,7 +84,7 @@ func runtimeExplorerForTarget(ctx context.Context, targetName string) (*runtimee
 	if err != nil {
 		return nil, "", err
 	}
-	explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{})
+	explorer, err := runtimeexplorer.NewService(backend, target.Name, deploymentRuntimeOwnershipResolver{}, runtimeMutationAuthority{})
 	if err != nil {
 		return nil, "", err
 	}
@@ -267,49 +269,14 @@ func executeHTTPRuntimeExplorerRead(
 }
 
 func executeRuntimeOperation(ctx context.Context, input machineRuntimeOperateInput) (runtimeexplorer.OperationResult, error) {
-	explorer, target, err := runtimeExplorerForTarget(ctx, input.Target)
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	capabilities, err := explorer.Capabilities(ctx, target)
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	provider := strings.TrimSpace(input.Provider)
-	if provider == "" {
-		provider = capabilities.Provider
-	}
 	operation := runtimeexplorer.Operation(strings.ToLower(strings.TrimSpace(input.Operation)))
 	switch operation {
 	case runtimeexplorer.OperationStart, runtimeexplorer.OperationStop, runtimeexplorer.OperationRestart:
 	default:
-		return runtimeexplorer.OperationResult{}, machine.NewError(
-			machine.ErrorValidationFailed,
-			"Runtime operate accepts only start, stop or restart.",
-			"Use the protected exec stream for explicit runtime commands.",
-			false,
-		)
+		return runtimeexplorer.OperationResult{}, machine.NewError(machine.ErrorValidationFailed, "Runtime operate accepts only start, stop or restart.", "Use the protected exec stream for explicit runtime commands.", false)
 	}
-	resource, err := explorer.Inspect(ctx, runtimeexplorer.ResourceRef{
-		Provider:   provider,
-		Target:     target,
-		Kind:       runtimeexplorer.ResourceKind(strings.TrimSpace(input.Kind)),
-		ResourceID: strings.TrimSpace(input.ResourceID),
-	})
-	if err != nil {
-		return runtimeexplorer.OperationResult{}, err
-	}
-	environment := strings.TrimSpace(input.Environment)
-	if environment != "" && resource.Relationship.Environment != "" && resource.Relationship.Environment != environment {
-		return runtimeexplorer.OperationResult{}, machine.NewError(
-			machine.ErrorPolicyDenied,
-			"Runtime resource is outside the authorized environment.",
-			"Retry with the resource environment after obtaining the required operator authorization.",
-			false,
-		)
-	}
-	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{
-		Resource:  resource.Ref,
-		Operation: operation,
-	})
+	return executeRuntimeMutation(ctx, machineRuntimeMutationInput{
+		Target: input.Target, Environment: input.Environment, Provider: input.Provider,
+		Kind: input.Kind, ResourceID: input.ResourceID, ProviderChangeConsent: input.ProviderChangeConsent,
+	}, operation)
 }

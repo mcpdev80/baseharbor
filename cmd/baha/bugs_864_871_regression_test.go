@@ -187,7 +187,7 @@ func TestBug867ObservedResumeAndNoopRefresh(t *testing.T) {
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
 	m := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
-	mustWriteWizardTestFile(t, application.RepositoryManifestName, m.YAML())
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 	r, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatal(err)

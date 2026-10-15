@@ -114,7 +114,12 @@ func composeUpArgsNoBuild(services []string) []string {
 func (c Compose) BuildProjectFilesSelectedProgress(ctx context.Context, project, workdir string, environment map[string]string, services []string, onProgress func(string), composeFiles ...string) error {
 
 	args := composeBuildArgs(services)
-	_, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	output, err := c.outputProjectFilesEnvProgress(ctx, project, workdir, environment, composeFiles, onProgress, args...)
+	if err != nil && strings.TrimSpace(output) != "" {
+		// Compose may write BuildKit's concrete step failure to stdout while
+		// stderr contains only the Dockerfile location and exit status.
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(output))
+	}
 	return err
 }
 

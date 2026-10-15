@@ -2,6 +2,36 @@
 
 Run this audit before every BaseHarbor release.
 
+## Binding readiness vocabulary
+
+**Pre-release-ready** means the complete release preparation is finished and
+all required atomic/targeted acceptance is green on one immutable ecosystem
+matrix: Core, Demo, Console and Node Connector. It also includes CLI/JSON/MCP
+compatibility, general EN/DE documentation, developer journeys, Pages candidate
+build/navigation/workflow, changelog, human release notes, release-specific gate
+catalogue and authenticated evidence/pins. Core-only green is not this status.
+
+**Release-ready** adds successful complete pre-release approval. Promotion,
+tagging, publication and their post-release verification are subsequent actions
+requiring their own authorization. No readiness phrase alone authorizes them.
+
+Sections 1–8 and the atomic-first prerequisites in section 9 must be completed
+before saying pre-release-ready. Sections 10–13 and actual published Pages
+verification occur later. Candidate Pages validation must not publish the
+unreleased site. Unavailable tooling, skipped checks and unsupported required
+journeys remain blockers, not automatic waivers.
+
+### Console and Node Connector (mandatory ecosystem acceptance)
+
+- [ ] Freeze exact Core, Demo, Console and Connector commit SHAs; reconcile their candidate bindings without circular Git pins.
+- [ ] Verify current CLI/JSON/MCP/HTTP contracts with the unchanged or updated consumers, not only their earlier release's tests.
+- [ ] Console: real issuer/login and authorization, plan/apply/status/doctor, logs, terminal, production rotation and owned cleanup pass where supported.
+- [ ] Connector: real enrollment/outbound mTLS, renewal/revocation, Docker/rootless Podman remote lifecycle and foreign/shared preservation pass.
+- [ ] Reuse a complete authenticated joint browser/Connector receipt rather than execute duplicate journeys.
+- [ ] Changed consumers need targeted tests before final approval; unchanged consumer code still needs compatibility evidence with the selected Core.
+- [ ] Pin exact source, job/run/attempt and artifact evidence. Failed or skipped journeys are never PASS.
+- [ ] Record intentional future scope separately; do not require future Console UI or onboarding features merely to qualify current compatibility.
+
 This is the canonical release-readiness checklist. A release is not ready merely because feature work is merged or normal CI is green.
 
 The audit covers the BaseHarbor repository, the external `baseharbor-demo`, GitHub Issues/Roadmap, documentation/GitHub Pages, release evidence, publication and post-release verification.
@@ -111,7 +141,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 - [ ] Guided pristine-repository flow remains covered: `baha app init -> baha up -> READY`.
 - [ ] Lifecycle/capability/security/reconciliation/recovery gates remain coherent with the release.
 - [ ] Demo `main` contains the exact test implementation intended for release validation before the BaseHarbor pre-release run begins.
-- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent); the file contains exactly one immutable 40-character SHA.
+- [ ] The exact merged demo commit SHA is recorded in `docs/releases/vX.Y.Z.demo-ref` (or hotfix equivalent), or the canonical immutable Connector/Console/Demo matrix for v0.4.24 and v0.4.25. Matrix resolution requires matching actual Core/Console/Demo bindings and the Demo's exact Core pin; it avoids circular Git pins.
 - [ ] Targeted demo validation uses that same exact demo SHA rather than moving `main`.
 
 ## 7. GitHub Pages and published documentation
@@ -128,7 +158,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 - [ ] Finish all release-preparation implementation, README, canonical docs, CHANGELOG, human-readable release notes and demo changes before selecting the candidate.
 - [ ] Confirm `docs/releases/vX.Y.Z.md` is suitable as the actual human-facing GitHub Release message.
-- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref` points at the exact final demo commit.
+- [ ] Confirm the versioned `docs/releases/vX.Y.Z.demo-ref`, or the canonical matrix for v0.4.24/v0.4.25, resolves the exact final demo commit.
 - [ ] Identify one exact final `develop` candidate SHA.
 - [ ] Do not add feature changes after the candidate is selected.
 - [ ] Verify the candidate is contained in `develop`.
@@ -137,7 +167,7 @@ The external demo is part of release evidence and must be reviewed before pinnin
 
 ## 9. Mandatory pre-release gate
 
-Do not start the final complete pre-release orchestrator until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and the versioned exact demo-ref file are complete for the candidate.
+Do not start the final complete pre-release orchestrator until implementation, release-scoped issues, canonical docs, README, CHANGELOG, the human-readable release message, the external `baseharbor-demo` and its exact versioned pin or canonical immutable matrix are complete for the candidate.
 
 BaseHarbor uses **atomic-first release validation**:
 

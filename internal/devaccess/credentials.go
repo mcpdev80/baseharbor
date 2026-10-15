@@ -94,17 +94,7 @@ func Load(target, environment string) (Credentials, error) {
 	if err != nil {
 		return Credentials{}, err
 	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return Credentials{}, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return Credentials{}, errors.New("developer access credentials must be a regular non-symlink file")
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return Credentials{}, fmt.Errorf("developer access credentials are accessible by group or others (%o)", info.Mode().Perm())
-	}
-	data, err := os.ReadFile(path)
+	data, err := readDeveloperStateFile(path)
 	if err != nil {
 		return Credentials{}, err
 	}
@@ -118,7 +108,14 @@ func Load(target, environment string) (Credentials, error) {
 		if !ok {
 			return Credentials{}, errors.New("developer access credentials are invalid")
 		}
-		values[strings.TrimSpace(key)] = value
+		key = strings.TrimSpace(key)
+		if key != "USERNAME" && key != "PASSWORD" {
+			return Credentials{}, errors.New("developer access credentials contain an unknown field")
+		}
+		if _, duplicate := values[key]; duplicate {
+			return Credentials{}, errors.New("developer access credentials contain a duplicate field")
+		}
+		values[key] = value
 	}
 	credentials := Credentials{
 		Username: strings.TrimSpace(values["USERNAME"]),
@@ -156,23 +153,8 @@ func write(path string, credentials Credentials) error {
 	if strings.ContainsAny(credentials.Username, "\r\n=") || strings.ContainsAny(credentials.Password, "\r\n") {
 		return errors.New("developer access credentials contain invalid control characters")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create developer access state: %w", err)
-	}
 	data := []byte("USERNAME=" + credentials.Username + "\nPASSWORD=" + credentials.Password + "\n")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write developer access credentials: %w", err)
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("install developer access credentials: %w", err)
-	}
-	return nil
+	return writeDeveloperStateFile(path, data)
 }
 
 func randomPassword(size int) (string, error) {

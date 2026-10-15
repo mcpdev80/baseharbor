@@ -60,6 +60,20 @@ Inside an application repository it uses the same application doctor semantics a
 
 Inside a repository, `baha destroy` removes the owned application after confirmation. Outside a repository, it shows the ownership-safe destruction scope for the effective Target.
 
+Outside a repository, confirmed Core destruction removes only the canonical
+PostgreSQL/OpenBao containers and startup units. It is permitted with active
+consumers after two acknowledgements of the current outage plan. Volumes,
+networks, protected credentials/configuration, bindings, workloads, other
+providers and security policy remain for explicit resume or retry. Retention
+does not prove continued secret delivery, authentication or renewal.
+
+`--delete-data` additionally selects the owned Core volumes. This creates a
+different plan and requires independent data-deletion consent after both plan
+stages. Deleted volume contents cannot be restored from retained credentials.
+`--yes` replaces neither acknowledgement nor deletion consent. MCP uses
+`delete_data` for the selection and `provider_change_consent` for approval of
+the concrete plan.
+
 `baha destroy --all` is the explicit installation-cleanup path and removes BaseHarbor-owned installation state while preserving application source repositories and external infrastructure.
 
 ## Example: start, inspect and stop an order API
@@ -86,6 +100,14 @@ baha destroy --all --yes -o json
 The plan names owned containers, networks and volumes, including older resources from the same target. Creation time alone never grants ownership. Runtime cleanup verifies remaining resources before deleting installation state. External recovery files are listed as `PRESERVED` and are never read for the report or deleted automatically. Decide separately whether the recovery copy is still needed before removing it.
 
 JSON and the MCP destroy operations return `resources`, `preserved` and `results` from the same lifecycle. A successful container cleanup removes its unshared anonymous volumes; declared external repository volumes remain preserved.
+
+When installation cleanup removes one deployment, the remaining consumer plan
+can change. Before the next deployment, BaseHarbor displays that current remainder
+and requires two new confirmations plus separate data-deletion consent. In JSON,
+`approval_required` / `impact-confirmation-required` includes the remaining plan
+and `continuation` with the previous plan ID and completed deployment IDs.
+`destroyed: false` and `results` preserve actual progress. Confirm the new plan to
+continue; do not replay a failed mutation or reuse the earlier acknowledgement.
 
 ## Provider update and point recovery
 

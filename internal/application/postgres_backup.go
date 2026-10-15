@@ -53,7 +53,7 @@ func DumpPostgresInstancesAt(ctx context.Context, runtime PostgresBackupRuntime,
 			" --exclude-extension=pg_stat_statements --exclude-extension=pg_stat_kcache"+
 			" --exclude-extension=set_user --exclude-extension=pg_mon"+
 			" -h postgres-access -U %s -d %s", shellQuote(resource.Username), shellQuote(resource.Database))
-		execution, service := shared, sharedPostgresService(m.Environment)
+		execution, service := shared, sharedPostgresService(state.Environment)
 		if state.CoreSQL != nil {
 			execution.Project, execution.Compose, execution.Env = state.CoreSQL.Project, state.CoreSQL.Compose, state.CoreSQL.Env
 			service = "postgres-admin"
@@ -147,7 +147,7 @@ func RestorePostgresInstancesAt(ctx context.Context, runtime PostgresBackupRunti
 		}
 		restoreInput := append([]byte(password+"\n"), byInstance[instance]...)
 		command := "IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h postgres-access -v ON_ERROR_STOP=1 -U " + shellQuote(resource.Username) + " -d " + shellQuote(resource.Database)
-		execution, service := shared, sharedPostgresService(m.Environment)
+		execution, service := shared, sharedPostgresService(state.Environment)
 		if state.CoreSQL != nil {
 			execution.Project, execution.Compose, execution.Env = state.CoreSQL.Project, state.CoreSQL.Compose, state.CoreSQL.Env
 			service = "postgres-admin"

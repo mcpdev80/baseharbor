@@ -7,16 +7,18 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexplorer"
 )
 
 type machineRuntimeMutationInput struct {
-	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
-	Environment string `json:"environment,omitempty" jsonschema:"explicit environment used for authorization; defaults to dev"`
-	Provider    string `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
-	Kind        string `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
-	ResourceID  string `json:"resource_id" jsonschema:"stable runtime resource id"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"two explicit acknowledgements of the current runtime consequence plan"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses the effective target"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"explicit environment used for authorization; defaults to dev"`
+	Provider              string                             `json:"provider,omitempty" jsonschema:"optional runtime provider identity; defaults to the target runtime provider"`
+	Kind                  string                             `json:"kind" jsonschema:"provider-neutral runtime resource kind"`
+	ResourceID            string                             `json:"resource_id" jsonschema:"stable runtime resource id"`
 }
 
 func registerMCPRuntimeExplorerMutationTools(server *mcp.Server) {
@@ -39,6 +41,7 @@ func registerMCPRuntimeMutation(server *mcp.Server, operationID string, operatio
 }
 
 func executeRuntimeMutation(ctx context.Context, input machineRuntimeMutationInput, operation runtimeexplorer.Operation) (runtimeexplorer.OperationResult, error) {
+	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	explorer, target, err := runtimeExplorerForTarget(ctx, input.Target)
 	if err != nil {
 		return runtimeexplorer.OperationResult{}, err
@@ -70,7 +73,7 @@ func executeRuntimeMutation(ctx context.Context, input machineRuntimeMutationInp
 			false,
 		)
 	}
-	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{Resource: ref, Operation: operation})
+	return explorer.Operate(ctx, runtimeexplorer.OperationRequest{Resource: resource.Ref, Operation: operation})
 }
 
 func (e *bahaMachineExecutor) executeHTTPRuntimeMutation(

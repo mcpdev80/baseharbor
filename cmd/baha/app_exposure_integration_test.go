@@ -182,7 +182,7 @@ func managedExposureFixture(t *testing.T, name string, targetPort, actualPort in
 		}},
 	}
 	manifestPath := filepath.Join(root, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	composeYAML := fmt.Sprintf(`services:

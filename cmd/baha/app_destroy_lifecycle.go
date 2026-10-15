@@ -119,6 +119,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 	composeRequired := devaccess.Enabled(m.Environment) || e.runtimeErr == nil || e.resolved.FromRepository || m.Services.Secrets || application.HasManagedRuntimeServices(m) || application.HasIdentity(m)
 	checks := []preflight.Check{
 		{Name: "manifest", Run: func(context.Context) error { return m.Validate() }},
+		{Name: "retained provider ownership", Run: func(ctx context.Context) error {
+			return checkRetainedApplicationProviderOwnership(ctx, e.resolved)
+		}},
 		{Name: "connectivity policy", Run: func(context.Context) error {
 			return application.CheckApplicationConnectivityReleasedAt(e.resolved.TargetStateRoot, m)
 		}},
@@ -153,6 +156,9 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 		checks = append(checks,
 			preflight.Check{Name: "runtime permissions", Run: func(context.Context) error { return application.CheckRuntimePermissions(e.files) }},
 			preflight.Check{Name: "runtime configuration", Run: func(ctx context.Context) error {
+				if !application.HasApplicationScopedRuntimeServices(m) {
+					return nil
+				}
 				return e.compose.ConfigProject(ctx, e.runtimeProject, e.files.Compose, e.files.Env)
 			}},
 		)
@@ -164,7 +170,7 @@ func (e *applicationDestroyExecution) runPreflight(ctx context.Context) error {
 			return err
 		}})
 	}
-	if m.Services.Secrets {
+	if e.fullReset && m.Services.Secrets {
 		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
 		checks = append(checks,
 			preflight.Check{Name: "OpenBao cleanup state", Run: func(ctx context.Context) error {
@@ -246,8 +252,10 @@ func (e *applicationDestroyExecution) renderDeletePlan() error {
 		}
 	}
 	if e.resolved.FromRepository {
-		if workload, found, err := materializeRepositoryWorkload(e.resolved, e.files); err == nil && found {
-			fmt.Fprintf(e.out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", workload.Compose)
+		// Planning displays the selected source. Materialization would rewrite
+		// protected runtime metadata before consent and invalidate this plan.
+		if source, err := selectedRepositoryComposeSource(e.resolved.repositoryRoot(), e.manifest); err == nil && source != "" {
+			fmt.Fprintf(e.out, "  workload:   %s (containers stopped; application-owned volumes preserved)\n", filepath.Join(e.resolved.repositoryRoot(), source))
 		}
 
 	} else if e.resolved.IncompleteDeployment {
@@ -352,7 +360,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 			return fmt.Errorf("release application resources from shared data providers: %w", err)
 		}
 	}
-	if e.runtimeErr == nil {
+	if e.runtimeErr == nil && application.HasApplicationScopedRuntimeServices(m) {
 		if err := e.compose.DestroyProject(ctx, e.runtimeProject, e.files.Compose, e.files.Env); err != nil {
 			return err
 		}
@@ -447,14 +455,11 @@ func (e *applicationDestroyExecution) cleanupIdentity(ctx context.Context) error
 func (e *applicationDestroyExecution) cleanupKeycloakIdentity(ctx context.Context) error {
 	var issuer serviceaccess.Issuer
 	if devaccess.Enabled(e.manifest.Environment) {
-		if e.platformFiles.Compose == "" {
-			var err error
-			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
-			if err != nil {
-				return fmt.Errorf("load managed trust plane for identity cleanup: %w", err)
-			}
+		var err error
+		issuer, err = resolveApplicationServiceIssuer(ctx, e.resolved, e.compose)
+		if err != nil {
+			return fmt.Errorf("load selected trust authority for identity cleanup: %w", err)
 		}
-		issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
 	}
 	driver := identityprovider.NewKeycloakDriver(
 		e.compose, e.manifest, e.files, issuer,
@@ -556,18 +561,7 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 		e.term.Info("development gateway", "NOT DEPLOYED for this application; no routes to remove")
 		return nil
 	}
-	files, err := existingTargetRuntimeFiles(ctx)
-	if err != nil {
-		return fmt.Errorf("load target runtime for development gateway cleanup: %w", err)
-	}
-	issuer := openbao.NewServiceIssuer(e.compose, files)
-	if err := devgateway.RemoveOwners(
-		ctx,
-		e.compose,
-		issuer,
-		e.resolved.Target.Name,
-		appOwner,
-	); err != nil {
+	if err := removeApplicationGatewayOwners(ctx, e.compose, e.resolved, appOwner); err != nil {
 		return fmt.Errorf("remove canonical development routes: %w", err)
 	}
 	return nil

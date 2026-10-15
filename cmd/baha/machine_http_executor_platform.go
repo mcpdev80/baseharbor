@@ -246,20 +246,13 @@ func executeHTTPProviderMutation(
 		return nil, err
 	}
 	id := strings.TrimSpace(input.ID)
-	item, err := application.InspectExternalProvider(id)
+	reportHTTPProgress(report, "provider", "Reviewing the aggregate provider registration and Target bindings.", 50)
+	result, err := removeExternalProviderWithImpact(withProviderChangeConsent(ctx, input.ProviderChangeConsent), id, nil, nil)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	reportHTTPProgress(report, "provider", "Removing BaseHarbor provider registration.", 50)
-	if err := application.RemoveExternalProvider(id); err != nil {
-		return nil, err
-	}
-	reportHTTPProgress(report, "provider", "Provider registration removed.", 100)
-	return struct {
-		ID             string `json:"id"`
-		Removed        bool   `json:"removed"`
-		ForeignMutated bool   `json:"foreign_mutated"`
-	}{ID: item.ID, Removed: true, ForeignMutated: false}, nil
+	reportHTTPProgress(report, "provider", "Provider registration removed; live consumer results retain their observed scope.", 100)
+	return result, nil
 }
 
 func executeHTTPOrganizationMutation(

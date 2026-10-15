@@ -31,6 +31,14 @@ Every resource MUST expose a stable reference containing:
 
 Runtime-native display names are metadata, not BaseHarbor logical identity.
 
+Clients MUST treat resource IDs as opaque. Local Podman containers managed by
+Quadlet use the existing protected unit definition as their stable reference,
+because a supervised stop can remove the native container. Start, stop and
+restart operate through that unit's systemd supervisor; logs, exec and terminal
+resolve its current verified native container. An absent container is reported
+as stopped only when the existing unit is observed inactive or failed. Native
+running state and application readiness remain distinct observations.
+
 ## Resource kinds
 
 v1 defines additive resource kinds for:
@@ -128,6 +136,22 @@ Managed resources expose reconciliation metadata such as:
 Unmanaged and external resources MUST NOT be treated as BaseHarbor-owned for mutation.
 
 All machine-facing mutations remain subject to the shared Machine Operator Authorization, policy, safety and audit boundaries.
+
+Before a direct `start`, `stop` or `restart`, the configured Runtime Explorer
+service requires the existing Target/deployment consequence authority. Both
+`runtime.operate` and the individual machine operations accept
+`provider_change_consent` with the current displayed scope `plan_id`, `first`
+and `second` acknowledgements. Unknown cross-consumer, transient-data, access,
+renewal and recovery effects require **Achtung** and both acknowledgements;
+ordinary operation approval does not replace either stage. Changed native
+state, Target binding or recovery-owner bytes invalidate the prior plan.
+
+The result includes the shared `provider_change_result`. It reports observed
+native state and retained owner evidence; unknown function/material effects
+remain partial. A failed backend command still triggers observation and partial
+result projection. Direct service callers cannot omit the authority hook. This
+contract does not claim that native stop restores authentication, data recovery
+or availability, or that restart preserves in-flight work.
 
 ## Logs and metrics
 

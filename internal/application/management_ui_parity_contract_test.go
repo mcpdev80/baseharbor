@@ -35,7 +35,7 @@ func TestNewProviderManagementUIIntentRoundTrip(t *testing.T) {
 		}
 	}
 
-	got, err := ParseYAML(yaml)
+	got, err := ParseCanonicalYAML(yaml)
 	if err != nil {
 		t.Fatal(err)
 	}

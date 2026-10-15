@@ -53,10 +53,19 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	if isRemoteApplication(execution.resolved) {
 		return executeRemoteApplicationApply(ctx, execution.resolved, out)
 	}
-	if err := applicationCorePrerequisite(withTargetOverride(ctx, execution.resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
-	if err := execution.runPreflight(ctx); err != nil {
+	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return err
+	}
+	execution.providerPlan, err = prepareApplicationProviderRetirement(ctx, execution.resolved)
+	if err != nil {
 		return execution.recordFailedDeployment(err)
 	}
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")
@@ -64,6 +73,18 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return fmt.Errorf("record deployment before mutation: %w", err)
 	}
 	execution.resolved.DeploymentRecord = &pending
+	if err := application.RetainPendingProviderOwnersAt(execution.resolved.TargetStateRoot, execution.manifest); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
+	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
+	if err := execution.runPreflight(ctx); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
+	if err := execution.retainPendingProviderOwners(); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
 	if err := execution.prepareManagedRuntime(ctx); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
@@ -74,6 +95,14 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
+	if err := retireReleasedApplicationProviders(ctx, execution.resolved, execution.compose, execution.issuer, execution.providerPlan, out); err != nil {
+		return execution.recordFailedDeployment(err)
+	}
+	// Release old bindings only after owned runtime convergence is verified.
+	// Interrupted cleanup retains its existing registry owner for retry.
+	if err := execution.recordRealizedProviders(); err != nil {
 		return execution.recordFailedDeployment(err)
 	}
 	if err := execution.recordVerifiedDeployment(ctx); err != nil {

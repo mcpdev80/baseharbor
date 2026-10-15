@@ -45,11 +45,12 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
 	t.Setenv("BASEHARBOR_TARGET", "")
-	if runtimeCommand == "podman" {
-		var targetOut bytes.Buffer
-		if err := runWithIO(ctx, []string{"target", "create", "podman-restart-ci", "--provider", "podman", "--access", "podman-restart-ci", "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
-			t.Fatalf("create Podman restart target: %v\n%s", err, targetOut.String())
-		}
+	// Both engines need an explicit protected Target record. An implicit local
+	// Docker default is sufficient for initial start, not for mutation admission.
+	var targetOut bytes.Buffer
+	targetName := runtimeCommand + "-restart-ci"
+	if err := runWithIO(ctx, []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}, &targetOut, &targetOut); err != nil {
+		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
 	if output, err := exec.CommandContext(
 		ctx,
@@ -137,12 +138,12 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}
 
 	defer func() {
-		_ = runtimeDestroy(context.Background(), []string{"--yes"}, &bytes.Buffer{})
+		_ = approvedNativeFixtureCleanup(t, context.Background(), &bytes.Buffer{})
 		_ = os.Remove(recovery)
 	}()
 
 	out.Reset()
-	if err := runtimeDown(ctx, &out); err != nil {
+	if err := approvedNativeCoreStop(t, ctx, &out); err != nil {
 		t.Fatalf("control-plane down: %v\n%s", err, out.String())
 	}
 
@@ -209,7 +210,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 
 	if !ha {
 		var destroyOut bytes.Buffer
-		if err := runtimeDestroy(ctx, []string{"--yes"}, &destroyOut); err != nil {
+		if err := approvedNativeFixtureCleanup(t, ctx, &destroyOut); err != nil {
 			t.Fatalf("single control-plane cleanup: %v\n%s", err, destroyOut.String())
 		}
 		resources, err := compose.ListOwnedProjectResources(ctx, files.ResourceProject)

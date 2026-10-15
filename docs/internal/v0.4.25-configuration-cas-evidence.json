@@ -1,0 +1,136 @@
+{
+  "version": "baseharbor.v0425.configuration-cas-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualification": {
+    "source": {
+      "commit": "178023cdf227f30282cfba2cbd747a2581c0e56e",
+      "tree": "b2856c7cfe2ca0cd3f4a6df7f1eaa22992adf86d",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 63.879,
+    "race_packages": [
+      "./internal/deployment",
+      "./internal/runtime",
+      "./internal/coreinstallation",
+      "./cmd/baha"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.88,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.404,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.411,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.615,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 49.62,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 63.394,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.178,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.013,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.416,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "cross_compile": {
+    "source": "178023cdf227f30282cfba2cbd747a2581c0e56e",
+    "go_version": "go1.26.0",
+    "target": "windows/amd64",
+    "package": "./internal/deployment",
+    "operation": "go test -c",
+    "outcome": "success",
+    "runtime_qualified": false
+  },
+  "native_requalification": {
+    "commit": "178023cdf227f30282cfba2cbd747a2581c0e56e",
+    "tree": "b2856c7cfe2ca0cd3f4a6df7f1eaa22992adf86d",
+    "run_id": 38311763385,
+    "attempt": 1,
+    "outcome": "success",
+    "gate": "TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling",
+    "jobs": [
+      {
+        "runtime": "docker",
+        "job_id": 115018921150,
+        "outcome": "success",
+        "seconds": 65.48,
+        "artifact_id": 11775221876,
+        "artifact_sha256": "ebbfd81a0ed365e0a500f4e02d3251930b7fbe438c8ea525e49d3d1f6c8502b8",
+        "logs_inspected": true
+      },
+      {
+        "runtime": "podman",
+        "job_id": 115018921489,
+        "outcome": "success",
+        "seconds": 100.66,
+        "artifact_id": 11774982577,
+        "artifact_sha256": "8b42039d0d5748f17860950619343e497771f8d030f75f9abfc721962303c1e4",
+        "logs_inspected": true
+      }
+    ],
+    "boundary": "Single actual Core CLI refusal/MCP acknowledged stop, stale acknowledgement rejection/fresh retry, retained SQL row after normal resume over verify-full TLS, original OpenBao manager and credentials, persistent data/network and running sibling preservation. In-memory MCP through shipped handler; no Core HTTP/OIDC/browser or final ecosystem qualification. All unrelated gates skipped."
+  },
+  "implemented": [
+    "Reuse existing parser and state-file lock; no additional registry, revision store or resolution.",
+    "Target creation, existing empty-Target deletion and recovery-reference mutation capture protected original bytes and use SaveExpected.",
+    "Same-size/restored-time changes, concurrent unrelated Target additions, hardlinks/symlinks, legacy .tmp substitution, held-lock retry, empty versus absent owner and last pre-rename validation are tested.",
+    "Canonical native ownership and configuration ownership use one platform metadata authority; Unix UID/mode/link requirements preserved."
+  ],
+  "limitations": [
+    "Populated Target detach/recovery remains unimplemented and mandatory.",
+    "Normal legacy Config.Save serializes but has no caller snapshot lease; only migrated mutation callers use SaveExpected.",
+    "Windows compile success is not Windows native ACL/lifecycle qualification; whole Windows CLI compatibility is not claimed.",
+    "All-consumer function, validity, continuity, Core destruction, supported handoff and final pinned ecosystem acceptance remain mandatory."
+  ]
+}

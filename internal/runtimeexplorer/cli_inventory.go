@@ -113,7 +113,7 @@ func (b *CLIContainerBackend) listNetworks(ctx context.Context) ([]InventoryReso
 }
 
 func (b *CLIContainerBackend) listPods(ctx context.Context) ([]InventoryResource, error) {
-	out, err := b.runtime.DirectOutput(ctx, "pod", "ps", "-a", "--no-trunc", "--format", "{{.ID}}|{{.Name}}|{{.Status}}")
+	out, err := b.runtime.DirectOutput(ctx, "pod", "ps", "--no-trunc", "--format", "{{.ID}}|{{.Name}}|{{.Status}}")
 	if err != nil {
 		return nil, err
 	}

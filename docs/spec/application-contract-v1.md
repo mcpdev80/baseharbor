@@ -14,9 +14,13 @@ This specification defines the stable portable application-intent boundary.
 
 ## Stable identity
 
-Portable/persisted manifests MUST contain a valid opaque UUIDv4 `app.id`.
-
-`app.id` is the stable `application_id`.
+Developer-authored manifests MUST NOT contain `app.id`. BaseHarbor MUST generate
+a UUIDv4 once during explicit initialization as the stable `application_id` and
+persist it in the existing system-owned canonical state. Reading/parsing MUST NOT
+allocate IDs or state. Authored IDs MUST be rejected before mutation; no ID
+question, flag or legacy conversion. Internal canonical records and machine
+outputs MAY contain the system-owned ID. Intake boundaries are defined in
+[Capability-first v0.4.25](capability-first-v0425.md).
 
 Human-readable application name, environment, repository path, Compose project name and runtime-native object names MUST NOT replace `application_id` as durable ownership identity.
 

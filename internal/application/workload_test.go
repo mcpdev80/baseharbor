@@ -16,7 +16,7 @@ import (
 func TestWorkloadManifestRoundTrip(t *testing.T) {
 	m := New("mailflow", "prod", true, true, false)
 	m = WithWorkloadComponents(m, "api", "worker", "web")
-	parsed, err := ParseYAML(m.YAML())
+	parsed, err := ParseCanonicalYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}

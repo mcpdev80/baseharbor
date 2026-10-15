@@ -17,6 +17,10 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# Python test/import caches are generated, not qualification inputs
+__pycache__/
+*.py[cod]
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

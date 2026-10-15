@@ -31,6 +31,15 @@ Jede Ressource MUSS eine stabile Referenz mit:
 
 Runtime-native Display-Namen sind Metadaten, nicht BaseHarbor logische Identität.
 
+Clients MÜSSEN Ressourcen-IDs als opake Referenzen behandeln. Lokale, durch
+Quadlet verwaltete Podman-Container verwenden die vorhandene geschützte
+Unit-Datei als stabile Referenz, da ein gesteuerter Stop den nativen Container
+entfernen kann. Start, Stop und Neustart laufen über den systemd-Supervisor;
+Logs, Exec und Terminal verwenden den aktuell nachgewiesenen nativen Container.
+Ein fehlender Container gilt nur dann als gestoppt, wenn die vorhandene Unit
+beobachtet inaktiv oder fehlgeschlagen ist. Laufender Container und Bereitschaft
+der Anwendung bleiben getrennte Beobachtungen.
+
 ## Art der Ressourcen
 
 v1 definiert additive Ressourcenarten für:
@@ -128,6 +137,24 @@ Managed resources entlarvt Abgleich Metadaten wie:
 Nicht verwaltete und externe Ressourcen MÜSSEN NICHT als BaseHarbor-eigene Mutation behandelt werden.
 
 Alle maschinenseitigen Mutationen unterliegen weiterhin der gemeinsamen Maschinenbediener-Genehmigungs-, Richtlinien-, Sicherheits- und Audit-Grenze.
+
+Vor direktem `start`, `stop` oder `restart` verlangt der konfigurierte Runtime
+Explorer die bestehende Folgen- und Bestätigungsautorität des Targets und
+Deployments. `runtime.operate` und die einzelnen Maschinenoperationen nehmen
+`provider_change_consent` mit der aktuellen Scope-`plan_id` und den zwei
+Bestätigungen `first` und `second` entgegen. Unbekannte Folgen für andere
+Verbraucher, flüchtige Daten, Zugriff, Erneuerung oder Recovery erfordern
+**Achtung** und beide Bestätigungen. Normale Operationsfreigabe ersetzt keine
+Stufe. Veränderte native Zustände, Target-Bindings oder Recovery-Owner machen
+den vorherigen Plan ungültig.
+
+Das Ergebnis enthält den gemeinsamen `provider_change_result` mit beobachtetem
+Runtime-Zustand und geprüftem erhaltenem Owner. Unbekannte Funktions- und
+Materialfolgen bleiben unvollständig. Auch nach einem fehlgeschlagenen nativen
+Befehl werden tatsächlicher Zustand und Teilergebnis ermittelt. Direkte
+Service-Aufrufe können die Autorität nicht umgehen. Ein Runtime-Stop beweist
+weder funktionierende Authentifizierung noch Recovery oder Verfügbarkeit;
+Restart garantiert keinen Erhalt laufender Arbeit.
 
 ## Protokolle und Metriken
 

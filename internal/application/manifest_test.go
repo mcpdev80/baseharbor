@@ -11,7 +11,7 @@ import (
 
 func TestManifestRoundTrip(t *testing.T) {
 	want := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "SMTP_PASSWORD", "OPENAI_API_KEY")
-	got, err := ParseYAML(want.YAML())
+	got, err := ParseCanonicalYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
 	want.Services.SQL = false
 	want = WithSQLInstances(want, "primary", "analytics")
 	want = WithCacheInstances(want, "cache", "sessions")
-	got, err := ParseYAML(want.YAML())
+	got, err := ParseCanonicalYAML(want.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 		t.Fatalf("observability management UI missing from metrics-only manifest:\n%s", rendered)
 	}
 
-	got, err := ParseYAML(rendered)
+	got, err := ParseCanonicalYAML(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,6 @@ func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T)
 func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
 	input := `version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:
@@ -110,9 +109,9 @@ secrets:
 	}
 }
 
-func TestManifestDefaultsToSQL(t *testing.T) {
+func TestManifestDoesNotDefaultToSQL(t *testing.T) {
 	m := New("demo", "", false, false, false)
-	if m.Environment != "dev" || !m.Services.SQL {
+	if m.Environment != "dev" || m.Services.SQL || m.Services.Cache || m.Services.Secrets {
 		t.Fatalf("unexpected defaults: %#v", m)
 	}
 }
@@ -184,7 +183,7 @@ func TestParserRejectsProviderSpecificServiceNames(t *testing.T) {
 }
 
 func TestParserRejectsUnknownFields(t *testing.T) {
-	_, err := ParseYAML(strings.Replace(New("demo", "dev", true, false, false).YAML(), "app:\n", "app:\n  surprise: yes\n", 1))
+	_, err := ParseCanonicalYAML(strings.Replace(New("demo", "dev", true, false, false).YAML(), "app:\n", "app:\n  surprise: yes\n", 1))
 	if err == nil {
 		t.Fatal("expected unknown field to fail")
 	}
@@ -196,7 +195,7 @@ func TestManifestHTTPExposureRoundTrip(t *testing.T) {
 	m = WithWorkloadComponents(m, "web")
 	m = WithHTTPExposure(m, "public", "web", 8080, "http")
 
-	got, err := ParseYAML(m.YAML())
+	got, err := ParseCanonicalYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +252,7 @@ func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
 	m = WithWorkloadComponents(m, "api")
 	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
 
-	got, err := ParseYAML(m.YAML())
+	got, err := ParseCanonicalYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +302,7 @@ func TestManifestMetricsSourceRoundTrip(t *testing.T) {
 	m = WithWorkloadComponents(m, "api", "worker")
 	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
 
-	got, err := ParseYAML(m.YAML())
+	got, err := ParseCanonicalYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +359,7 @@ func TestManifestLogsRoundTrip(t *testing.T) {
 	m = WithWorkloadComponents(m, "api")
 	m = WithLogsCollection(m, "application")
 
-	got, err := ParseYAML(m.YAML())
+	got, err := ParseCanonicalYAML(m.YAML())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +401,7 @@ func TestApplicationIDRoundTripAndValidation(t *testing.T) {
 	if !strings.Contains(rendered, "  id: "+m.ApplicationID+"\n") {
 		t.Fatalf("manifest does not render application ID:\n%s", rendered)
 	}
-	got, err := ParseYAML(rendered)
+	got, err := ParseCanonicalYAML(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}

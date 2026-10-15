@@ -187,7 +187,7 @@ func loadEnvironmentSelection(repoRoot, path, environment string, environmentSpe
 		}
 	} else {
 		m.Environment = environment
-		if err := m.Validate(); err != nil {
+		if err := m.ValidateIntent(); err != nil {
 			return RepositoryEnvironmentSelection{}, fmt.Errorf("invalid environment selection %q: %w", environment, err)
 		}
 	}

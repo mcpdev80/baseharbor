@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "qualification": "bounded-oidc-discovery-delivery-verification",
+  "commit": "b547956296d51f5d571986baa170cd876b6a21f3",
+  "published_tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+  "local_snapshot": {
+    "source": {
+      "commit": "0235d803e4c5154c31d72e322c4917815dad8c9b",
+      "tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 66.84,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/application",
+      "./internal/identityprovider",
+      "./internal/externalprovider"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.383,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.303,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.106,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.912,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 54.423,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 66.213,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 16.11,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.82,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.829,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "prior_snapshot": {
+    "receipt": {
+      "source": {
+        "commit": "0235d803e4c5154c31d72e322c4917815dad8c9b",
+        "tree": "8dda7cb3019f856e4bd04a800be84c22c75b5aaa",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 76.411,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/identityprovider",
+        "./internal/externalprovider"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 25.08,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "fail",
+          "exit_code": 1,
+          "seconds": 0.604,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.012,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.111,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 64.143,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 75.794,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 23.871,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 6.047,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 4.733,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "cause": "Integrated compact README omitted the existing required Quadlet literal; restored only in its existing infrastructure bullet. All eight other checks passed; final publication tree has all nine PASS."
+  },
+  "local_assertions": [
+    "Actual registered Bind and unchanged Verify succeed; a fresh read-only registered driver verifies existing valid delivery.",
+    "Five delivered fields (issuer, authorization, token, userinfo, JWKS) changed in workload-only or both host/workload projections are rejected by the prepared and fresh driver: ten cases.",
+    "Changed runtime IDENTITY_CONTAINER_ISSUER or application OIDC_ISSUER is rejected: two cases.",
+    "Discovery changes before Bind, after Bind, or together with self-consistent replacement projections are rejected against the prepared snapshot: three cases.",
+    "Endpoints on separate issuer, authorization, token and JWKS hosts remain valid.",
+    "Verification does not rewrite credential delivery; external registration and source-material checks remain active."
+  ],
+  "native_followup": {
+    "run": 38556636146,
+    "status_at_recording": "completed",
+    "result": "success",
+    "scope": "Only TestRegisteredExternalOIDCNativeConsumerHandoff on Docker and rootless Podman. Local route drift cases are not claims of browser/session/remote handoff proof.",
+    "attempt": 1,
+    "verification": [
+      "Both actual ZIP SHA256 values match artifact metadata.",
+      "Both source-sha.txt/source-tree.txt match the exact published and locally qualified tree.",
+      "Actual test PASS, no fail/skip; concrete source/destination TLS, client authentication, JWT/JWKS and original/foreign ownership markers inspected.",
+      "Owned producer cleanup verified on each runtime."
+    ],
+    "docker": {
+      "artifact": 11890288122,
+      "zip_sha256": "6280ebfeddf3b21c237abc363febd73cd1df86fde10684d7aadca77a85808bcc",
+      "source_sha": "b547956296d51f5d571986baa170cd876b6a21f3",
+      "source_tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+      "tests_passed": [
+        "TestRegisteredExternalOIDCNativeConsumerHandoff",
+        null
+      ],
+      "assertions": [
+        "    external_registered_runtime_test.go:145: [native-external-oidc] source and destination consumer TLS, client authentication, JWT issuer/client/expiry and JWKS signature verified; old token rejected by destination; original owners and foreign token issuance retained",
+        "    external_registered_runtime_test.go:61: [native-external-oidc] owned producer cleanup verified",
+        "--- PASS: TestRegisteredExternalOIDCNativeConsumerHandoff (49.60s)",
+        "PASS"
+      ],
+      "go": "go version go1.25.0 linux/amd64",
+      "job": 115827311244
+    },
+    "podman": {
+      "artifact": 11889758279,
+      "zip_sha256": "6e2987091ff13ca6d0b4a42ae01609a1216c645026be08d15405183c948f44a5",
+      "source_sha": "b547956296d51f5d571986baa170cd876b6a21f3",
+      "source_tree": "20dd25a5e1a3d86105a66325a3b09751b0c8ac13",
+      "tests_passed": [
+        "TestRegisteredExternalOIDCNativeConsumerHandoff",
+        null
+      ],
+      "assertions": [
+        "    external_registered_runtime_test.go:145: [native-external-oidc] source and destination consumer TLS, client authentication, JWT issuer/client/expiry and JWKS signature verified; old token rejected by destination; original owners and foreign token issuance retained",
+        "    external_registered_runtime_test.go:61: [native-external-oidc] owned producer cleanup verified",
+        "--- PASS: TestRegisteredExternalOIDCNativeConsumerHandoff (73.31s)",
+        "PASS"
+      ],
+      "go": "go version go1.25.0 linux/amd64",
+      "job": 115827311439
+    }
+  },
+  "complete_provider_package": false,
+  "final_ecosystem_matrix": false,
+  "pre_release_ready": false
+}

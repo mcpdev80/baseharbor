@@ -190,6 +190,10 @@ func (a *keycloakAdmin) reconcileRealmOnce(ctx context.Context, desired keycloak
 }
 
 func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, password string, realmAdmin bool) error {
+	return a.reconcileUserWithPolicy(ctx, realm, username, password, realmAdmin, false)
+}
+
+func (a *keycloakAdmin) reconcileUserWithPolicy(ctx context.Context, realm, username, password string, realmAdmin, preserveExisting bool) error {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
 		return fmt.Errorf("Keycloak development user credentials are incomplete")
@@ -211,6 +215,9 @@ func (a *keycloakAdmin) reconcileUser(ctx context.Context, realm, username, pass
 	}
 	if len(users) > 1 {
 		return fmt.Errorf("Keycloak user %q is ambiguous", username)
+	}
+	if preserveExisting && len(users) == 1 {
+		return a.verifyExistingDeveloperUser(ctx, realm, username, users[0], realmAdmin)
 	}
 
 	desired := keycloakUser{

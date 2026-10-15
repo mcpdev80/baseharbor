@@ -149,13 +149,10 @@ func convergeManagedMetricsBeforeWorkload(ctx context.Context, out io.Writer, pr
 		return nil
 	}
 	if !prepared.enabled {
-		if err := cleanupRegisteredMetricsPlacement(ctx, prepared); err != nil {
-			return err
-		}
 		if len(prepared.manifest.Metrics.Sources) > 0 || application.HasRuntimeMetricsPermissions(prepared.manifest) {
 			fmt.Fprintf(out, "[SKIPPED] metrics          application-source collection disabled by deployment policy for %s\n", prepared.manifest.Name)
 		} else if prepared.registered {
-			fmt.Fprintf(out, "[REMOVED] metrics         obsolete registered metrics provider state for %s\n", prepared.manifest.Name)
+			fmt.Fprintf(out, "[RETAINED] metrics        unused provider resources for %s; reclamation requires explicit ownership-verified cleanup\n", prepared.manifest.Name)
 		}
 		return nil
 	}

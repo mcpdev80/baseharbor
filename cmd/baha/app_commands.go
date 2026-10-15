@@ -22,7 +22,7 @@ func appCreateCommand() *cli.Command {
 		Name:    "create",
 		Summary: "Create an application manifest in BaseHarbor state",
 		Usage:   "baha app create NAME [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...",
-		Long:    "Creates BaseHarbor-managed declarative application source on the effective Target; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. If no service flag is supplied, one default SQL service is enabled; PostgreSQL is the current default provider.",
+		Long:    "Creates BaseHarbor-managed declarative application source on the effective Target; it does not start containers. For a repository-owned source-of-truth manifest prefer 'baha app init'. Services are requested explicitly; application identity is assigned by BaseHarbor.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			filtered, format, err := parseReadOutputArgs(args, "app create")
 			if err != nil {
@@ -141,7 +141,7 @@ func appManifestShowCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(out, resolved.Manifest.YAML())
+			fmt.Fprint(out, resolved.Manifest.AuthoredYAML())
 			return nil
 		},
 	}
@@ -162,7 +162,7 @@ func appPlanCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			plan, err := application.BuildPlan(resolved.Manifest)
+			plan, err := buildResolvedApplicationPlan(ctx, resolved)
 			if err != nil {
 				return err
 			}
@@ -178,6 +178,12 @@ func appPlanCommand(store application.Store) *cli.Command {
 			fmt.Fprintln(out)
 			for i, action := range plan.Actions {
 				fmt.Fprintf(out, "%d. %s %s - %s\n", i+1, action.Kind, action.Resource, action.Description)
+			}
+			fmt.Fprintf(out, "Core: %s; additional providers: %d; unused providers retained: %d\n", plan.Footprint.Core, len(plan.Footprint.Additional), len(plan.Footprint.Unused))
+			if plan.ProviderPlan.Impact != nil {
+				if err := printProviderImpact(out, *plan.ProviderPlan.Impact); err != nil {
+					return err
+				}
 			}
 			fmt.Fprintln(out, "No changes were made.")
 			return nil

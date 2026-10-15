@@ -64,7 +64,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, application.RepositoryManifestName), []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: alpine:3.22\n    command: [\"sleep\", \"3600\"]\n"), 0o644); err != nil {
@@ -230,7 +230,7 @@ func TestMCPGenericClientDiscoversCompleteSemanticSurfaceAndExercisesReadOnlyToo
 		if err := prodManifest.Validate(); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(prodRoot, application.RepositoryManifestName), []byte(prodManifest.YAML()), 0o644); err != nil {
+		if err := writeInitializedAuthoredManifest(t, filepath.Join(prodRoot, application.RepositoryManifestName), prodManifest, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{

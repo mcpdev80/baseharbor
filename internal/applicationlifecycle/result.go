@@ -1,8 +1,16 @@
 package applicationlifecycle
 
-import "github.com/mcpdev80/baseharbor/internal/machine"
+import (
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+)
 
 type Result struct {
+	ProviderChangeResult *application.ProviderChangeResult `json:"provider_change_result,omitempty"`
+	RetainedMaterials    []application.ProviderMaterial    `json:"retained_materials,omitempty"`
+	OwnerPreserved       bool                              `json:"owner_preserved,omitempty"`
+	DataDeleted          *bool                             `json:"data_deleted,omitempty"`
+
 	ContractVersion string `json:"contract_version"`
 	Operation       string `json:"operation"`
 	Target          string `json:"target,omitempty"`

@@ -154,7 +154,7 @@ func BootstrapApplication(request NewApplicationRequest, registry Registry) (Boo
 	}
 	files = append(files, GeneratedFile{
 		Path:    application.RepositoryManifestName,
-		Content: []byte(manifest.YAML()),
+		Content: []byte(manifest.AuthoredYAML()),
 		Mode:    0o644,
 	})
 	if request.RepositoryStackProfile != nil {

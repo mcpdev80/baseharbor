@@ -1,0 +1,79 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "coreless-local-prod-cli-and-stdio",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "c2b0930a8932c0a6d2abd70c9a78e19f92b32364",
+      "candidate_tree": "e07b847d879ab3269a66f6c65f06c816dbd628eb",
+      "workflow_run_id": 38148847169,
+      "result": "FAIL",
+      "observed": "Actual production CLI initialization, plan, apply and status succeed without OIDC or unrelated Core runtime. Doctor reports NOT_CONFIGURED using the obsolete OIDC observation and fails; actual stdio and remaining stop/resume/destroy assertions were not reached. Cleanup executed. Requires changed-source rerun, never a local-prod acceptance.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114497826807,
+          "test_seconds": 17.65,
+          "artifact_id": 11706181368,
+          "artifact_digest": "sha256:d9948163b18acec8fc5db2439c9d56651576684bdf0532c9131cfab55d9c2486"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114497827011,
+          "test_seconds": 28.51,
+          "artifact_id": 11706366195,
+          "artifact_digest": "sha256:182a451cb73b764876d56f5a92083a68da592ff5d52415407a1878dacc69a5b8"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "0e772ac788a51e04c804c4fe93676c3cdd942ae4",
+      "candidate_tree": "7f0519dd248ba53dd20d5e8e0e2df72e44df5107",
+      "workflow_run_id": 38149785324,
+      "result": "FAIL",
+      "observed": "Local production CLI plan/apply/status/doctor now succeed without OIDC. Actual stdio transport initializes and plan succeeds, but named baseharbor.apply returns invalid_workload/workload_missing because registered-name resolution omits the existing repository workload projection. Actual stdio status/doctor and later lifecycle assertions were not reached. Cleanup executed. This failed attempt is not local production acceptance.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 114500646834,
+          "test_seconds": 28.14,
+          "artifact_id": 11706332819,
+          "artifact_digest": "sha256:51a7aacb9e9fc31482d3e882fd9ec54f2d337f504526a71fc19ced44486c20fd"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114500647010,
+          "test_seconds": 59.99,
+          "artifact_id": 11706327934,
+          "artifact_digest": "sha256:0b1794a2c606fe51b2a612e24dc7e99a2d9d93e9b66c0ce9e1b7111f264f93b7"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "dec6b0f51a529ab393466eef13e503dda5c1e067",
+      "candidate_tree": "1e9a253a28440b72fbcf5e9be849ac3588f93be8",
+      "workflow_run_id": 38150415411,
+      "result": "PASS",
+      "scope": "Actual local production CLI initialization/plan/apply/status/doctor, real HTTP workload, actual child-process stdio MCP plan/apply/status/doctor, stop/resume, repeated owned destruction and final deployment record absence. Zero unrelated management Core and no forced operator OIDC; canonical identity and authored source preserved. Only this exact source and scoped journey are qualified, not all providers or final ecosystem readiness.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114502530530,
+          "test_seconds": 29.99,
+          "artifact_id": 11705693186,
+          "artifact_digest": "sha256:ab13afcc9892e36e0f21908a62854ea0b291e119fb2979b5df3bb002f9262ff9"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114502530324,
+          "test_seconds": 72.6,
+          "artifact_id": 11705713233,
+          "artifact_digest": "sha256:963b40dbe4aba83a3afc3c4ccccea767a0310d7d81d185d7d1dc5437c63fbff5"
+        }
+      ]
+    }
+  ]
+}

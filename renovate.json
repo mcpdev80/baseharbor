@@ -1,8 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:best-practices",
-    ":separateMultipleMajorReleases"
+    "config:best-practices"
   ],
   "timezone": "Europe/Berlin",
   "schedule": [
@@ -11,141 +10,77 @@
   "dependencyDashboard": true,
   "rebaseWhen": "behind-base-branch",
   "automerge": false,
-  "automergeType": "pr",
   "platformAutomerge": false,
   "ignoreTests": false,
   "minimumReleaseAge": "14 days",
-  "prConcurrentLimit": 5,
-  "branchConcurrentLimit": 5,
+  "prConcurrentLimit": 1,
+  "branchConcurrentLimit": 1,
+  "pruneStaleBranches": false,
+  "configMigration": false,
+  "groupName": "all dependencies",
+  "groupSlug": "all-dependencies",
+  "groupSingleUpdates": true,
+  "separateMajorMinor": false,
+  "separateMinorPatch": false,
+  "separateMultipleMajor": false,
+  "separateMultipleMinor": false,
+  "branchTopic": "all-dependencies",
+  "group": {
+    "branchTopic": "all-dependencies",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": ""
+  },
   "labels": [
     "dependencies"
   ],
   "packageRules": [
     {
-      "description": "Automerge low-risk patch, pin and digest updates after the release-age buffer and green CI",
-      "matchManagers": [
-        "gomod",
-        "github-actions",
-        "dockerfile",
-        "docker-compose"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "automerge": true
-    },
-    {
-      "description": "Minor and major dependency changes always require human review",
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "description": "Go language and toolchain changes are explicit platform decisions",
-      "matchManagers": [
-        "gomod",
-        "dockerfile"
-      ],
+      "description": "One reviewed batch across managers, update types, pins and digests; override inherited groups and automerge rules",
       "matchPackageNames": [
-        "go",
-        "golang"
+        "*"
       ],
+      "groupName": "all dependencies",
+      "groupSlug": "all-dependencies",
+      "groupSingleUpdates": true,
+      "separateMajorMinor": false,
+      "separateMinorPatch": false,
+      "separateMultipleMajor": false,
+      "separateMultipleMinor": false,
       "automerge": false,
-      "groupName": null
-    },
-    {
-      "description": "Authentication and cryptography dependencies always require review",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchPackageNames": [
-        "github.com/coreos/go-oidc/v3",
-        "github.com/go-jose/go-jose/v4",
-        "golang.org/x/crypto",
-        "golang.org/x/oauth2"
-      ],
-      "automerge": false,
-      "groupName": null
-    },
-    {
-      "description": "Group routine non-sensitive Go dependency updates",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "groupName": "Go dependencies"
-    },
-    {
-      "description": "Group routine GitHub Actions updates; best-practices pins actions to immutable SHAs",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "groupName": "GitHub Actions"
-    },
-    {
-      "description": "Group routine container patch and digest updates",
-      "matchManagers": [
-        "dockerfile",
-        "docker-compose"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "groupName": "container images"
-    },
-    {
-      "description": "Keep container minor and major updates separate for explicit runtime review",
-      "matchManagers": [
-        "dockerfile",
-        "docker-compose"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "groupName": null,
-      "automerge": false
-    },
-    {
-      "description": "Review Go-embedded provider image updates explicitly",
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "automerge": false,
-      "groupName": null
+      "branchTopic": "all-dependencies",
+      "commitMessageAction": "Update",
+      "commitMessageTopic": "all dependencies",
+      "commitMessageExtra": "",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
     }
   ],
   "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": [
-      "* 3-5 * * 1"
-    ],
-    "automerge": true
+    "enabled": false,
+    "automerge": false
   },
   "vulnerabilityAlerts": {
     "enabled": true,
     "minimumReleaseAge": null,
-    "prConcurrentLimit": 5,
-    "labels": [
-      "dependencies",
+    "groupName": "all dependencies",
+    "groupSlug": "all-dependencies",
+    "groupSingleUpdates": true,
+    "separateMajorMinor": false,
+    "separateMinorPatch": false,
+    "separateMultipleMajor": false,
+    "separateMultipleMinor": false,
+    "automerge": false,
+    "branchTopic": "all-dependencies",
+    "commitMessageAction": "Update",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": "",
+    "commitMessageSuffix": "",
+    "prConcurrentLimit": 1,
+    "branchConcurrentLimit": 1,
+    "addLabels": [
       "security"
     ],
-    "automerge": false
+    "vulnerabilityFixStrategy": "highest"
   },
   "baseBranchPatterns": [
     "develop"
@@ -158,9 +93,18 @@
         "/\\.go$/"
       ],
       "matchStrings": [
-        "(?m)(?:Image|image)\\s*=\\s*\"(?<depName>(?:docker\\.io|quay\\.io|ghcr\\.io)/[^\":\\s]+):(?<currentValue>[^\"\\s@]+)\""
+        "(?:Image|image)\\s*=\\s*\"(?<depName>(?:docker\\.io|quay\\.io|ghcr\\.io)/[^\":\\s]+):(?<currentValue>[^\"\\s@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
       ],
       "datasourceTemplate": "docker"
     }
-  ]
+  ],
+  "replacement": {
+    "branchTopic": "all-dependencies",
+    "commitMessageAction": "Update",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": ""
+  },
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps"
 }

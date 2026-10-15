@@ -14,7 +14,13 @@ Diese Spezifikation definiert die stabile, portable Grenze für die Anforderunge
 
 ## Stabile Identität
 
-Portable und persistierte Manifeste MÜSSEN eine gültige opake UUIDv4 als `app.id` enthalten. Sie ist die stabile `application_id`.
+Entwickler-Manifeste DÜRFEN `app.id` NICHT enthalten. BaseHarbor MUSS bei
+expliziter Initialisierung einmal eine UUIDv4 als stabile `application_id` erzeugen
+und im bestehenden systemeigenen kanonischen State speichern. Lesen/Parsen DARF
+keine IDs oder State erzeugen. Entwickler-IDs MÜSSEN vor Änderungen abgelehnt
+werden; es gibt keine ID-Frage, kein ID-Flag oder Legacy-Konvertierung. Interne
+kanonische Records und Machine-Ausgaben DÜRFEN die systemeigene ID enthalten.
+Die Intake-Grenzen definiert [Capability-first v0.4.25](capability-first-v0425.md).
 
 Menschenlesbarer Application-Name, Umgebung, Repository-Pfad, Compose-Projektname und Runtime-eigene Objektnamen DÜRFEN die dauerhafte Eigentümeridentität `application_id` NICHT ersetzen.
 

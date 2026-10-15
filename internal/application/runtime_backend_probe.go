@@ -51,7 +51,10 @@ func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe Bac
 		if database == "" {
 			return "", errors.New("postgres verification database is required")
 		}
-		command := fmt.Sprintf("PGPASSWORD=\"$POSTGRES_PASSWORD\" psql \"host=%s port=5432 user=baseharbor dbname=%s sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1'", postgresAccessService(instance), database)
+		// Retained credentials/database names belong to this actual native
+		// container. A placement change must not assume the default bootstrap
+		// role or regenerate credentials merely to satisfy the verifier.
+		command := fmt.Sprintf(`PGPASSWORD="$POSTGRES_PASSWORD" psql "host=%s port=5432 user=$POSTGRES_USER dbname=$POSTGRES_DB sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem" -tAc 'SELECT 1'`, postgresAccessService(instance))
 		return e.execute(ctx, service, "sh", "-ec", command)
 	case BackendProbeCachePing:
 		service := runtimeServiceName("valkey", instance)

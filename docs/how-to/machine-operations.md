@@ -1,6 +1,17 @@
 # Automate supported operations
 
-Use `baha agent describe -o json` and the MCP client's `tools/list` to inspect current operation IDs, required inputs, safety and approval. These examples run in trusted local `dev`; managed `test`/`prod` requires the configured authenticated operator. File references refer to the execution host where `baha mcp serve` runs.
+`baha app down` and `baseharbor.app.stop` share the current consequence plan.
+Review affected functions, consumers and retained owner locations before
+confirming. Unknown or alternative-less consequences require **Achtung** and
+two explicit acknowledgements. MCP supplies `provider_change_consent` with the
+displayed `plan_id`, `first` and `second`; noninteractive CLI uses the same
+bounded JSON object through `BASEHARBOR_PROVIDER_CHANGE_CONSENT`. `--yes` grants
+neither stage nor data deletion. Stop retains desired intent, provider bindings
+and shared providers for a later `app up`. The structured
+`provider_change_result` distinguishes verified runtime/recovery ownership from
+consumer effects that remain unverified and partial.
+
+Use `baha agent describe -o json` and the MCP client's `tools/list` to inspect current operation IDs, required inputs, safety and approval. On supported local workloads, CLI/stdio can use verified local runtime access without a separate OIDC login, including `test`/`prod` when no operator policy or management consumer requires OIDC. Remote, protected HTTP, tenant-scoped and explicitly managed operation paths retain authenticated operator requirements. File references refer to the execution host where `baha mcp serve` runs.
 
 ## Create and inspect an application
 
@@ -20,7 +31,6 @@ Equivalent MCP calls use these names and arguments:
   "arguments": {
     "intent": {
       "Version": 1,
-      "ApplicationID": "32e1d8df-82a9-4c38-88f4-3b69b156fab8",
       "Name": "orders",
       "Environment": "dev",
       "Services": {"SQL": true}
@@ -29,7 +39,7 @@ Equivalent MCP calls use these names and arguments:
 }
 ```
 
-Use a fresh stable application UUID for each new application. The typed intent schema is the existing Core manifest model; discovery shows its exact property names. Inspect the result with `baseharbor.app.show`, arguments `{"name":"orders"}`. Creation never replaces existing intent.
+Omit `ApplicationID`: BaseHarbor generates and persists the identity during authorized creation and returns it in the result. Client-supplied IDs are rejected before mutation. Discovery shows the exact authoring schema property names. Inspect the result with `baseharbor.app.show`, arguments `{"name":"orders"}`. Creation never replaces existing intent.
 
 For a repository, use deterministic `baha app init orders --sql --json`, or `baseharbor.app.adopt` with `repository` and complete `intent`. Existing repository deployment inputs use `baseharbor.app.configure` with explicit `hostname`, `tls_mode` and, for existing TLS, `certificate_directory`; ambiguous or missing inputs produce errors rather than prompts.
 
@@ -40,7 +50,7 @@ For the reference demo:
 ```bash
 git clone https://github.com/mcpdev80/baseharbor-demo.git
 cd baseharbor-demo
-git checkout 37c3b91287978351d0c23643ce9782c9de224a10
+git checkout b2b2a91cb8a78aa180abd8ca90f61b3b42cd5d63
 baha app inspect .
 baha --no-input app init --quick --json
 baha app preflight --json

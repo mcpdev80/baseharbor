@@ -43,3 +43,12 @@ Schemas, Go-Draht-Typen, OpenAPI- oder Protobuf-Definitionen.
 Abdeckung für v0.4.23: komplette Konfigurations-Konsumenten, interaktiv
 Terminallaufzeit/Browser-Qualifikation und echte Remote/Console-Integration werden in #609 verfolgt,
 #806, #807 und #808. Behandeln Sie einen Eintrag in diesem Register nicht als Live-Unterstützung.
+
+## Vertragsgrundlage v0.4.25
+
+| Oberfläche | Kanonisches Artefakt | Grenze |
+| --- | --- | --- |
+| Minimale Absicht / stabile Identität | [Capability-first](../spec/capability-first-v0425.md), Application-Resolver-APIs | Bestehendes Manifest v1 und Store-Owner; keine ID-Erzeugung beim Lesen |
+| Lesender Footprint | `contracts/footprint/v1/footprint.schema.json`, `internal/application/footprint.go` | baseharbor.footprint/v1; keine Provisionierung oder erfundenen Zahlen |
+| #777 Connection-Profile-Transport | `contracts/connection-profile/v1/profile.schema.json`, [Spezifikation](../spec/capability-first-v0425.md) | Nur Format/Semantik; Import-/Export-Implementierung später |
+| Host Platform | [Spezifikation](../spec/capability-first-v0425.md) | Nur semantische Adaptergrenze; Plattformimplementierung später |

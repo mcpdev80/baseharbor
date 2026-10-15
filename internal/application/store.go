@@ -69,7 +69,7 @@ func (s Store) Load(name string) (Manifest, string, error) {
 		}
 		return Manifest{}, path, err
 	}
-	m, err := ParseYAML(string(data))
+	m, err := ParseCanonicalYAML(string(data))
 	return m, path, err
 }
 

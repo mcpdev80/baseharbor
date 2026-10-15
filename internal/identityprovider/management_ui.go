@@ -56,10 +56,8 @@ func ExistingKeycloakFilesAt(app application.Manifest, dataDir, namespace string
 	if err != nil {
 		return KeycloakFiles{}, err
 	}
-	nativeMaterial, err = projectKeycloakTLSMaterial(filepath.Join(dir, "native-tls", "runtime"), nativeMaterial)
-	if err != nil {
-		return KeycloakFiles{}, err
-	}
+	// Existing inspection consumes the validated authoritative TLS material.
+	// Runtime projection and repair belong to the approved realization path.
 
 	publicURL := "https://" + keycloakPublicHost + ":" + strconv.Itoa(publicPort)
 	canonicalPublicURL := publicURL

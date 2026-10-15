@@ -32,9 +32,15 @@ type managedTracesExecution struct {
 	namespace       string
 }
 
+// Managed trace storage is a dependency of the managed Collector transport.
+// External export retains its authored signals without acquiring a Tempo owner.
+func requiresManagedTraceStorage(m application.Manifest) bool {
+	return application.HasTraceSignal(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector
+}
+
 func prepareManagedTraces(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedTracesExecution, error) {
 	m := resolved.Manifest
-	if !application.HasTraceSignal(m) {
+	if !requiresManagedTraceStorage(m) {
 		return nil, nil
 	}
 	policy, err := application.TracesPolicy(m)
@@ -245,7 +251,7 @@ func managedTracesRegistryResources(prepared *managedTracesExecution) []capabili
 }
 
 func printResolvedTracesPlacement(out io.Writer, m application.Manifest) error {
-	if !application.HasTraceSignal(m) {
+	if !requiresManagedTraceStorage(m) {
 		return nil
 	}
 	enabled, err := application.TracesCollectionEnabled(m)

@@ -80,6 +80,11 @@ func (d *KeycloakDriver) SetApplicationOrigins(origins []string) error {
 		normalized = append(normalized, raw)
 	}
 	normalized = sortedUnique(normalized)
+	if strings.Join(d.origins, "\x00") != strings.Join(normalized, "\x00") {
+		// Newly realized callback origins need actual client reconciliation,
+		// even when the provider was already provisioned before exposure.
+		d.provisioned = false
+	}
 	d.origins = normalized
 	return nil
 }
@@ -496,7 +501,7 @@ func (d *KeycloakDriver) RotatePKI(ctx context.Context) error {
 		if err != nil {
 			return KeycloakFiles{}, err
 		}
-		if err := setApplicationKeycloakCanonicalURL(files, publicBase); err != nil {
+		if err := prepareApplicationKeycloakCanonicalURL(r.runtime, r.namespace, files, publicBase); err != nil {
 			return KeycloakFiles{}, err
 		}
 		if err := r.lifecycle.Validate(ctx, files); err != nil {

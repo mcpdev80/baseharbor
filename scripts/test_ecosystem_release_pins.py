@@ -24,6 +24,19 @@ class EcosystemPinsTests(unittest.TestCase):
         self.assertEqual(joint['console']['origin'], joint['connector']['origin'])
         self.assertEqual(joint['console']['origin']['gate'], 'integration/docker/remote-target')
 
+    def test_v0425_requires_matching_consumer_release_and_exact_core(self):
+        candidate = {**self.candidate, 'release': '0.4.25'}
+        console = {**self.console_candidate, 'release': '0.4.25'}
+        pins = resolve_pins(self.core, self.connector, candidate, console,
+                            self.core, release='0.4.25')
+        self.assertEqual(len(pins['gates']), 3)
+        with self.assertRaises(ValueError):
+            resolve_pins(self.core, self.connector, candidate,
+                         self.console_candidate, self.core, release='0.4.25')
+        with self.assertRaises(ValueError):
+            resolve_pins(self.core, self.connector, candidate, console,
+                         self.core, release='0.4.26')
+
     def test_mixed_core_demo_console_or_release_cannot_generate_source_pins(self):
         for field in ['core', 'console', 'demo', 'release', 'schema']:
             candidate = copy.deepcopy(self.candidate)

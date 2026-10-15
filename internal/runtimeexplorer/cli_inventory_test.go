@@ -32,7 +32,7 @@ func (f *inventoryDirectRuntime) DirectOutput(_ context.Context, args ...string)
 		return "net-a\nnet-b\n", nil
 	case strings.HasPrefix(call, "network inspect --format "):
 		return "network-id-a|net-a\nnetwork-id-b|net-b\n", nil
-	case strings.HasPrefix(call, "pod ps "):
+	case call == "pod ps --no-trunc --format {{.ID}}|{{.Name}}|{{.Status}}":
 		return "pod-id|demo-pod|Running\n", nil
 	default:
 		return "", fmt.Errorf("unexpected runtime call %q", call)

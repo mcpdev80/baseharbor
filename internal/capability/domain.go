@@ -50,6 +50,7 @@ const (
 	ProviderTempo           ProviderKind = "tempo"
 	ProviderRuntimeBroker   ProviderKind = "runtime-broker"
 	ProviderRuntimeExecutor ProviderKind = "runtime-executor"
+	ProviderRuntimeWorkload ProviderKind = "runtime-workload"
 	ProviderKeycloak        ProviderKind = "keycloak"
 	ProviderExternalOIDC    ProviderKind = "external-oidc"
 	ProviderRabbitMQ        ProviderKind = "rabbitmq"

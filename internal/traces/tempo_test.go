@@ -27,7 +27,7 @@ func TestTempoConfigUsesExplicitOTLPAndLocalStorage(t *testing.T) {
 func TestTempoComposeIsHardenedAndLoopbackPublished(t *testing.T) {
 	rendered := composeYAML(Placement{Scope: capability.ScopeShared, Network: "baseharbor-traces", Volume: "baseharbor-tempo-data"})
 	for _, want := range []string{
-		"docker.io/grafana/tempo:3.0.2",
+		"docker.io/grafana/tempo:3.1.0",
 		"user: \"10001:10001\"",
 		"read_only: true",
 		"cap_drop: [\"ALL\"]",

@@ -66,7 +66,7 @@ func TestFullDestroyRemovesOwnedLocalStateButPreservesSourceRepository(t *testin
 	}
 
 	var out bytes.Buffer
-	if err := runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out); err != nil {
+	if err := runtimeDestroyAll(currentInstallationDestroyConsent(t), []string{"--all", "--yes"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 
@@ -150,7 +150,7 @@ func TestFullDestroyPreservesGlobalOwnershipOnHostCAFailure(t *testing.T) {
 	}
 	defer func() { removeHostTrustForFullDestroy = original }()
 	var out bytes.Buffer
-	err = runtimeDestroyAll(context.Background(), []string{"--all", "--yes"}, &out, &out)
+	err = runtimeDestroyAll(currentInstallationDestroyConsent(t), []string{"--all", "--yes"}, &out, &out)
 	if err == nil {
 		t.Fatalf("unverified anchor unexpectedly permitted destroy: %s", out.String())
 	}
@@ -172,7 +172,7 @@ func TestFullDestroyJSONReportsPreservedCAOnFailure(t *testing.T) {
 	}
 	defer func() { removeHostTrustForFullDestroy = original }()
 	var out bytes.Buffer
-	err := runtimeDestroyCommand(context.Background(), []string{"--all", "--yes", "--json"}, &out, &out)
+	err := runtimeDestroyCommand(currentInstallationDestroyConsent(t), []string{"--all", "--yes", "--json"}, &out, &out)
 	if err == nil {
 		t.Fatal("unsafe destroy reported success")
 	}

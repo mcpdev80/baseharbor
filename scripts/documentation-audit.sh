@@ -197,7 +197,7 @@ for file in "${runtime_docs[@]}"; do
 done
 
 grep -Fq "Podman" README.md
-grep -Fq "Quadlet" README.md
+grep -Fq "Quadlet" docs/explanation/architecture.md
 grep -Fq "Quadlet" docs/reference/runtime-compose.md
 grep -Fq "Quadlet" docs/de/explanation/architecture.md
 

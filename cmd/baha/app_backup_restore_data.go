@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -16,6 +19,9 @@ import (
 )
 
 type applicationRestoreData struct {
+	archiveRevision  string
+	archivePath      string
+	backupCreatedAt  time.Time
 	manifest         application.Manifest
 	recoveryManifest applicationbackup.RecoveryManifest
 	postgresBackups  []application.PostgresBackup
@@ -208,7 +214,12 @@ func loadApplicationRestoreData(backupPath string, password []byte, name, enviro
 			return applicationRestoreData{}, errors.New("recovery manifest selects observability.logs but the payload is missing")
 		}
 	}
-	return applicationRestoreData{manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
+	digest := sha256.Sum256(archive)
+	absolutePath, err := filepath.Abs(backupPath)
+	if err != nil {
+		return applicationRestoreData{}, err
+	}
+	return applicationRestoreData{archiveRevision: hex.EncodeToString(digest[:]), archivePath: absolutePath, backupCreatedAt: payload.Manifest.CreatedAt, manifest: m, recoveryManifest: recoveryManifest, postgresBackups: postgresBackups, secretBackup: secretBackup, objectStorage: objectBackups, workloadStorage: workloadStorage, logsHistory: logsHistory}, nil
 }
 
 func recoveryManifestHasSelected(manifest applicationbackup.RecoveryManifest, class applicationbackup.RecoveryStateClass) bool {
