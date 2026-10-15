@@ -45,8 +45,9 @@ class AuthenticatedResultsTests(unittest.TestCase):
         native = dict(PLAN, selected_gates=['atomic/docker/backup-restore'])
         with self.assertRaises(PermissionError):
             mod.authenticated_results(native, RUN, JOBS, 123, 1, HEAD)
-        jobs = JOBS + [{'name':'PR · Exact Candidate','run_id':123,
-                        'run_attempt':1,'conclusion':'success'}]
+        jobs = JOBS + [{'name':name,'run_id':123,
+                        'run_attempt':1,'conclusion':'success'} for name in
+                       ('PR · Exact Candidate','PR · Consumer Pins')]
         result=mod.authenticated_results(native, RUN, jobs, 123, 1, HEAD)
         self.assertFalse(any(x['kind']=='gate' for x in result['results']))
         failed=jobs[:-1]+[dict(jobs[-1], conclusion='failure')]
