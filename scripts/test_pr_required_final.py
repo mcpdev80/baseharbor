@@ -10,7 +10,7 @@ spec.loader.exec_module(final)
 A = 'a' * 40
 B = 'b' * 40
 C = 'c' * 40
-PLAN = {'schema':'baseharbor.pr-gate-plan/v1','release':'v0.4.26','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'selected_gates':['atomic/static/init'],'required_validation_checks':[{'id':'documentation-audit'}]}
+PLAN = {'schema':'baseharbor.pr-gate-plan/v1','release':'v0.4.26','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'coverage_status':'resolved','unresolved_coverage':[],'selected_gates':['atomic/static/init'],'required_validation_checks':[{'id':'documentation-audit'}]}
 CATALOG = {'gates':[{'id':'atomic/static/init','required_for':['v0.4.26']}]}
 REPORT = {'schema':'baseharbor.pr-check-results/v1','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'required_job_conclusions':[{'name':'PR · Focused Python','conclusion':'success'},{'name':'Workflow policy','conclusion':'success'}],'results':[{'kind':'gate','id':'atomic/static/init','conclusion':'success'},{'kind':'validation','id':'documentation-audit','conclusion':'success'}]}
 
@@ -52,6 +52,24 @@ class FinalChecks(unittest.TestCase):
                 report=copy.deepcopy(REPORT)
                 report[field]=A if field != 'target_base_sha' else B
                 self.assertTrue(final.verify(PLAN,report,CATALOG))
+
+    def test_zero_gate_validation_only_passes(self):
+        plan=copy.deepcopy(PLAN)
+        plan['selected_gates']=[]
+        report=copy.deepcopy(REPORT)
+        report['results']=[r for r in report['results'] if r['kind']=='validation']
+        self.assertEqual([],final.verify(plan,report,CATALOG))
+        report['results'][0]['conclusion']='cancelled'
+        self.assertTrue(final.verify(plan,report,CATALOG))
+
+    def test_unresolved_blocks_even_with_successful_validation(self):
+        plan=copy.deepcopy(PLAN)
+        plan['selected_gates']=[]
+        plan['coverage_status']='unresolved'
+        plan['unresolved_coverage']=['unreviewed CI workflow impact']
+        report=copy.deepcopy(REPORT)
+        report['results']=[r for r in report['results'] if r['kind']=='validation']
+        self.assertTrue(any('coverage-unresolved' in x for x in final.verify(plan,report,CATALOG)))
 
     def test_empty_unknown_and_not_required(self):
         plan=copy.deepcopy(PLAN)
