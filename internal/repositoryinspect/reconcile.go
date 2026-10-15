@@ -10,6 +10,7 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 	declared = append([]CapabilityIntent(nil), declared...)
 	items := make([]ReconciliationItem, 0, len(declared)+len(findings))
 	matchedFinding := make([]bool, len(findings))
+	groups := evidenceBackedInstances(findings)
 
 	for _, intent := range declared {
 		item := ReconciliationItem{
@@ -20,7 +21,7 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 		}
 		best := -1
 		for i, finding := range findings {
-			if !findingMatchesIntent(finding, intent) {
+			if !findingMatchesIntentAliasesDefault(finding, intent, groups) {
 				continue
 			}
 			evidence := nonManifestEvidence(finding.Evidence)
@@ -100,6 +101,70 @@ func findingMatchesIntent(finding Finding, intent CapabilityIntent) bool {
 		}
 	}
 	return finding.Name == intent.Name
+}
+
+// instanceGroup identifies the distinct named instances detected for one
+// capability in one direction.
+type instanceGroup struct {
+	capability string
+	direction  Direction
+}
+
+// evidenceBackedInstances collects distinct named instance identities that
+// carry non-manifest evidence. Duplicate evidence rows for the same instance
+// name count once, so evidence volume never inflates ambiguity.
+func evidenceBackedInstances(findings []Finding) map[instanceGroup]map[string]struct{} {
+	groups := map[instanceGroup]map[string]struct{}{}
+	for _, finding := range findings {
+		if finding.Name == "" || len(nonManifestEvidence(finding.Evidence)) == 0 {
+			continue
+		}
+		key := instanceGroup{finding.Capability, normalizedDirection(finding)}
+		if groups[key] == nil {
+			groups[key] = map[string]struct{}{}
+		}
+		groups[key][finding.Name] = struct{}{}
+	}
+	return groups
+}
+
+// findingMatchesIntentAliasesDefault extends findingMatchesIntent with the
+// fail-closed canonical default alias: a declared "default" instance may
+// reconcile exactly one distinct evidence-backed named instance of the same
+// capability and direction, keeping the declared name. More than one named
+// instance is never guessed, and while instances are ambiguous, nameless
+// evidence may not satisfy or conceal the declared default. telemetry.otlp
+// keeps its dedicated signal rule unchanged.
+func findingMatchesIntentAliasesDefault(finding Finding, intent CapabilityIntent, groups map[instanceGroup]map[string]struct{}) bool {
+	if intent.Name != "default" || finding.Capability == "telemetry.otlp" {
+		return findingMatchesIntent(finding, intent)
+	}
+	ambiguous := len(defaultInstanceGroup(intent, finding, groups)) > 1
+	if finding.Name == "" {
+		if ambiguous {
+			return false
+		}
+		return findingMatchesIntent(finding, intent)
+	}
+	if findingMatchesIntent(finding, intent) {
+		return true
+	}
+	if finding.Capability != intent.Capability {
+		return false
+	}
+	direction := normalizedDirection(finding)
+	if intent.Direction != "" && direction != "" && direction != intent.Direction {
+		return false
+	}
+	return !ambiguous && len(defaultInstanceGroup(intent, finding, groups)) == 1
+}
+
+func defaultInstanceGroup(intent CapabilityIntent, finding Finding, groups map[instanceGroup]map[string]struct{}) map[string]struct{} {
+	direction := intent.Direction
+	if direction == "" {
+		direction = normalizedDirection(finding)
+	}
+	return groups[instanceGroup{intent.Capability, direction}]
 }
 
 func normalizedDirection(finding Finding) Direction {
