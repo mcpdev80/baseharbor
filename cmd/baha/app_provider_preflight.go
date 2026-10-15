@@ -34,7 +34,7 @@ func requiresManagedServiceIssuer(m application.Manifest) bool {
 	if application.HasManagedRuntimeServices(m) || requiresObjectStorageProviderAdmin(m) {
 		return true
 	}
-	if application.HasTraceSignal(m) || application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) || application.HasLogsCollection(m) {
+	if requiresManagedTraceStorage(m) || application.HasMetricsSources(m) || application.HasRuntimeMetricsPermissions(m) || application.HasLogsCollection(m) {
 		return true
 	}
 	return application.HasOTLPTelemetry(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector
@@ -56,7 +56,7 @@ func appendManagedProviderPreflights(
 			return err
 		}})
 	}
-	if application.HasTraceSignal(m) {
+	if requiresManagedTraceStorage(m) {
 		checks = append(checks, preflight.Check{Name: "managed traces provider", Run: func(ctx context.Context) error {
 			var err error
 			state.traces, err = prepareManagedTraces(ctx, *compose, resolved, *issuer)

@@ -66,7 +66,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          go-version: '1.26.9'
           cache: false
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
@@ -80,6 +80,7 @@ jobs:
           git rev-parse HEAD > "$out/source.txt"
           git rev-parse 'HEAD^{tree}' > "$out/tree.txt"
           go version > "$out/go-version.txt"
+          test "$(go env GOVERSION)" = "go1.26.9"
           "$BASEHARBOR_TEST_RUNTIME" version > "$out/runtime-version.txt"
           go test -race -count=1 -json ./cmd/baha -run '^TestManagedRegisteredOTLPNativeConsumerHandoff$' -timeout 15m | tee "$out/handoff.jsonl"
           python3 - "$out/handoff.jsonl" <<'PY'
