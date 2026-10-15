@@ -429,3 +429,63 @@ jobs:
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
           retention-days: 1
+
+  pr935_inspect_go_pilot:
+    name: PR935 · Exact Inspect Go
+    if: github.event_name == 'pull_request' && github.head_ref == 'runtime-validation/ci/935-inspect-go-exact'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 4804cb1d53a1caaa44da6f384b0a18c170cae431
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Assert immutable PR935 source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '4804cb1d53a1caaa44da6f384b0a18c170cae431'
+          echo "Tested source SHA: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate formatting of both changed files
+        id: formatting
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gofmt -d internal/repositoryinspect/reconcile.go internal/repositoryinspect/reconcile_default_instance_test.go
+          test -z "$(gofmt -l internal/repositoryinspect/reconcile.go internal/repositoryinspect/reconcile_default_instance_test.go)"
+      - name: Repository inspect regression tests
+        id: inspect
+        continue-on-error: true
+        run: go test -count=1 ./internal/repositoryinspect/
+      - name: Repository inspect vet
+        id: vet
+        continue-on-error: true
+        run: go vet ./internal/repositoryinspect/
+      - name: CLI Inspect and Reconcile regressions
+        id: cli_tests
+        continue-on-error: true
+        run: go test -count=1 ./cmd/baha/ -run 'Inspect|Reconcile'
+      - name: CLI build
+        id: build
+        continue-on-error: true
+        run: go build -o "$RUNNER_TEMP/baha-pr935" ./cmd/baha
+      - name: Enforce all five checks
+        if: always()
+        env:
+          FORMAT: ${{ steps.formatting.outcome }}
+          INSPECT: ${{ steps.inspect.outcome }}
+          VET: ${{ steps.vet.outcome }}
+          CLI_TESTS: ${{ steps.cli_tests.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          printf 'format=%s inspect=%s vet=%s cli_tests=%s build=%s\n' "$FORMAT" "$INSPECT" "$VET" "$CLI_TESTS" "$BUILD"
+          test "$FORMAT" = success
+          test "$INSPECT" = success
+          test "$VET" = success
+          test "$CLI_TESTS" = success
+          test "$BUILD" = success
