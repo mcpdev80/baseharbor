@@ -168,23 +168,21 @@ def finalize_cleanup(root, lane_id, run_id, attempt):
     runtime = lease["runtime"]
     if runtime not in RUNTIMES:
         raise ValueError("invalid lease runtime")
-    for kind, name in (("network", lease["network"]),
-                       ("volume", lease["volume_prefix"])):
+    # Enumerate every owned object, not merely the canonical single name.
+    # A failed list/inspect is uncertainty, never proof of deletion.
+    prefix = lease["volume_prefix"]
+    for kind in ("container", "network", "volume"):
+        command = [runtime, kind, "ls", "-a", "--format", "{{.Names}}"] if kind == "container" else [runtime, kind, "ls", "--format", "{{.Name}}"]
         try:
-            result = subprocess.run([runtime, kind, "inspect", name],
-                                    capture_output=True, check=False, timeout=20)
+            result = subprocess.run(command, capture_output=True, check=False, timeout=20)
         except (OSError, subprocess.TimeoutExpired) as error:
-            raise RuntimeError("runtime cleanup cannot be verified") from error
-        if result.returncode == 0:
-            raise RuntimeError("own runtime " + kind + " remains after cleanup")
-        # Docker uses 1 for not-found; rootless Podman can use 125. In
-        # either case require the native diagnostic to identify absence.
-        detail = (result.stderr + result.stdout).decode(errors="replace").lower()
-        missing = any(marker in detail for marker in
-                      ("not found", "does not exist", "no such network",
-                       "no such volume"))
-        if result.returncode not in (1, 125) or not missing:
-            raise RuntimeError("runtime cleanup inspector failed or absence unproven")
+            raise RuntimeError("runtime inventory unavailable: " + kind) from error
+        if result.returncode != 0:
+            raise RuntimeError("runtime inventory failed: " + kind)
+        names = result.stdout.decode(errors="replace").splitlines()
+        owned = [name for name in names if name == prefix or name.startswith(prefix + "-")]
+        if owned:
+            raise RuntimeError("owned " + kind + " resources remain: " + ", ".join(owned))
     lock_file = root / ".pr-runner-capacity.lock"
     with lock_file.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
