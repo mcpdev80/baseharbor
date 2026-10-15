@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 spec = importlib.util.spec_from_file_location(
     "isolation", Path(__file__).with_name("pr-runner-isolation.py"))
@@ -38,6 +39,17 @@ class IsolationFixtures(unittest.TestCase):
         for lease in (first, second):
             self.assertTrue((Path(lease["isolation_root"]) / "recovery").is_dir())
             self.assertTrue((Path(lease["isolation_root"]) / "secrets").is_dir())
+
+    def test_concurrent_capacity_is_atomic(self):
+        def acquire(n):
+            try:
+                return isolation.prepare(REQUEST, self.root, "run" + str(n), 1, 1, trusted=True)
+            except RuntimeError:
+                return None
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(acquire, range(8)))
+        self.assertEqual(1, sum(item is not None for item in results))
+        self.assertEqual(1, len(list(self.root.glob("pr-*"))))
 
     def test_fork_or_unadmitted_cannot_acquire(self):
         with self.assertRaises(PermissionError):
