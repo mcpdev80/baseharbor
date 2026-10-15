@@ -12,11 +12,24 @@ B = 'b' * 40
 C = 'c' * 40
 PLAN = {'schema':'baseharbor.pr-gate-plan/v1','release':'v0.4.26','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'selected_gates':['atomic/static/init'],'required_validation_checks':[{'id':'documentation-audit'}]}
 CATALOG = {'gates':[{'id':'atomic/static/init','required_for':['v0.4.26']}]}
-REPORT = {'schema':'baseharbor.pr-check-results/v1','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'results':[{'kind':'gate','id':'atomic/static/init','conclusion':'success'},{'kind':'validation','id':'documentation-audit','conclusion':'success'}]}
+REPORT = {'schema':'baseharbor.pr-check-results/v1','target_base_sha':A,'head_sha':B,'merge_base_sha':C,'integration_sha':None,'required_job_conclusions':[{'name':'PR · Focused Python','conclusion':'success'},{'name':'Workflow policy','conclusion':'success'}],'results':[{'kind':'gate','id':'atomic/static/init','conclusion':'success'},{'kind':'validation','id':'documentation-audit','conclusion':'success'}]}
 
 class FinalChecks(unittest.TestCase):
     def test_success(self):
         self.assertEqual([], final.verify(PLAN,REPORT,CATALOG))
+
+    def test_missing_forged_and_failed_authenticated_prerequisites(self):
+        for conclusion in ('failure','cancelled','skipped',None):
+            with self.subTest(conclusion=conclusion):
+                report=copy.deepcopy(REPORT)
+                report['required_job_conclusions'][1]['conclusion']=conclusion
+                self.assertTrue(final.verify(PLAN,report,CATALOG))
+        report=copy.deepcopy(REPORT)
+        report['required_job_conclusions']=[]
+        self.assertTrue(final.verify(PLAN,report,CATALOG))
+        report=copy.deepcopy(REPORT)
+        report['required_job_conclusions'].append({'name':'PR · Focused Python','conclusion':'success'})
+        self.assertTrue(final.verify(PLAN,report,CATALOG))
 
     def test_blocking_conclusions(self):
         for conclusion in ('failure','cancelled','timed_out','skipped','pending','blocked',None):
