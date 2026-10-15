@@ -540,7 +540,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.consumer_mode == 'demo'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -551,17 +551,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_CORE_SHA: ${{ github.sha }}
+          EXPLICIT_PR_DEMO_SHA: ${{ vars.BASEHARBOR_PR_DEMO_SOURCE_SHA }}
         shell: bash
         run: |
           set -euo pipefail
-          demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+          # PR qualification chooses an immutable Demo *source*; it never
+          # rewrites or validates the Demo release-candidate Core pin.
+          # A trusted repository variable can select a reviewed Demo SHA.
+          # Otherwise resolve main ONCE, then verify that exact commit.
+          if [ -n "$EXPLICIT_PR_DEMO_SHA" ]; then
+            demo_sha="$EXPLICIT_PR_DEMO_SHA"
+          else
+            demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+          fi
           [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/pr-demo"
           git -C "$RUNNER_TEMP/pr-demo" fetch --depth=1 origin "$demo_sha"
           git -C "$RUNNER_TEMP/pr-demo" checkout --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/pr-demo" rev-parse HEAD)" = "$demo_sha"
-          actual="$(tr -d '[:space:]' < "$RUNNER_TEMP/pr-demo/baseharbor-core.ref")"
-          test "$actual" = "$EXPECTED_CORE_SHA" || { echo 'BLOCKED: immutable Demo Core pin differs from selected integration' >&2; exit 1; }
+          test -s "$RUNNER_TEMP/pr-demo/baseharbor-core.ref"
+          # BASEHARBOR_SOURCE_REF in existing demo/tests/acceptance.sh
+          # forces the exact PR candidate; actual gate compatibility and
+          # canonical manifest/evidence verification remain mandatory.
+          echo "PR demo source $demo_sha paired with exact Core $EXPECTED_CORE_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "$demo_sha" > "$RUNNER_TEMP/verified-demo.sha"
           echo "demo_ref=$demo_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
