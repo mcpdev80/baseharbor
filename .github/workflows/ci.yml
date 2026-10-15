@@ -453,19 +453,36 @@ jobs:
           test "$(git rev-parse HEAD)" = 'd7a004434c459360bf3158983d495f138c4cd09d'
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - name: Format the two changed Go sources
+        id: formatting
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           test -z "$(gofmt -l cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go)"
       - name: Focused guided and affected application contracts
+        id: regression
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           go test ./cmd/baha -run '^TestGuided' -count=1
           go test ./internal/application/... ./contracts/... -count=1
       - name: Vet and build CLI
+        id: cli
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           go vet ./cmd/baha
           go build -o "$RUNNER_TEMP/baha-pr934" ./cmd/baha
+      - name: Require all focused checks to pass
+        if: always()
+        env:
+          FORMAT_RESULT: ${{ steps.formatting.outcome }}
+          REGRESSION_RESULT: ${{ steps.regression.outcome }}
+          CLI_RESULT: ${{ steps.cli.outcome }}
+        run: |
+          printf 'format=%s regressions=%s vet_build=%s\n' "$FORMAT_RESULT" "$REGRESSION_RESULT" "$CLI_RESULT"
+          test "$FORMAT_RESULT" = success
+          test "$REGRESSION_RESULT" = success
+          test "$CLI_RESULT" = success
