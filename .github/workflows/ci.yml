@@ -429,3 +429,20 @@ jobs:
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
           retention-days: 1
+
+  pr_isolation_fixtures:
+    name: PR Runner Isolation Fixtures
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run exact-commit isolation fixtures
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p test_pr_runner_isolation.py -v
+          python3 -m py_compile scripts/pr-runner-isolation.py scripts/test_pr_runner_isolation.py
