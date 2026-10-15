@@ -98,3 +98,5 @@ are planned. See the documentation for supported paths and current limits.
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+<!-- CI pilot: verify trusted zero-release-gate documentation validation without changing runtime code. -->
