@@ -193,6 +193,25 @@ class MappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
 
+    def test_exact_core893_review_bundle_requires_original_three_gates(self):
+        reviewed = sorted(planner.AUDITED_CORE_893_PATHS)
+        inventory = json.loads((ROOT / 'release-requirements.json').read_text())
+        expected = planner.CORE_893_GATE_QUALIFICATION
+        complete = planner.plan(diff(paths(*reviewed)), inventory, MAP)
+        self.assertEqual('resolved', complete['coverage_status'])
+        self.assertEqual(expected, set(complete['selected_gates']))
+        self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests'},
+                         {c['id'] for c in complete['required_validation_checks']})
+        for changed in (reviewed[:-1], reviewed + ['scripts/ci-unknown.py'],
+                        ['.github/workflows/ci.yml']):
+            with self.subTest(changed=changed):
+                result = planner.plan(diff(paths(*changed)), inventory, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        altered = planner.plan(diff(paths(*reviewed), broad=True), inventory, MAP)
+        self.assertEqual('unresolved', altered['coverage_status'])
+        insufficient = planner.plan(diff(paths(*reviewed)), REQ, MAP)
+        self.assertEqual('unresolved', insufficient['coverage_status'])
+
     def test_actual_repository_release_catalog(self):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
         self.assertEqual(65, len([g for g in requirements['gates']
