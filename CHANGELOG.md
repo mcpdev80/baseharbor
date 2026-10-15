@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.4.25] - 2026-10-11
+## [0.4.25] - 2026-10-15
 
 ### Added
 
@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- PostgreSQL/Valkey placement replacement retains the original application runtime owner after convergence and later shared-consumer withdrawal, so preserved resources remain verifiable.
 - Backend binding reconciliation preserves independently managed Identity trust, credentials and discovery files, together with the directory mounted by running workloads.
 - Remote provider changes present concrete current consequences and require applicable acknowledgements before technical execution admission; unsupported execution still fails before staging.
 - Restore consent tracks current registered OTLP credentials, trust and client identity even without retained delivery, so changed material invalidates earlier confirmations without exposing secrets in public plans.
