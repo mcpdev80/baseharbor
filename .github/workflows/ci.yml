@@ -440,7 +440,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 03088e52f0b98b4106f703647ca02dae49f37e0e
+          ref: 574488ba3ae9b3c07ac78e057f7abc5168d69e5a
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -450,7 +450,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '03088e52f0b98b4106f703647ca02dae49f37e0e'
+          test "$(git rev-parse HEAD)" = '574488ba3ae9b3c07ac78e057f7abc5168d69e5a'
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - name: Format the two changed Go sources
         id: formatting
@@ -458,7 +458,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -z "$(gofmt -l cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go)"
+          if ! test -z "$(gofmt -l cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go)"; then
+            gofmt -d cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go
+            exit 1
+          fi
       - name: Guided tests
         id: guided
         continue-on-error: true
