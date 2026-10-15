@@ -24,13 +24,12 @@ PINS = ("demo_sha", "console_sha", "connector_sha")
 
 
 def github_json(url, token):
-    if not token:
-        raise PermissionError("verified GitHub API token required")
     if not url.startswith("https://api.github.com/repos/"):
         raise ValueError("invalid GitHub API endpoint")
-    request = urllib.request.Request(
-        url, headers={"Authorization": "Bearer " + token,
-                      "Accept": "application/vnd.github+json"})
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "baseharbor-ci-isolation"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)
 
