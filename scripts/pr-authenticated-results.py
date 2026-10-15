@@ -19,6 +19,12 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
     expected = [c["id"] for c in plan["required_validation_checks"]]
     names = ["PR · Validation · " + name for name in expected]
     required = ["PR · Focused Python", "Workflow policy"]
+    selected_gates = plan.get("selected_gates", [])
+    if any(isinstance(gate, str) and (
+            gate.startswith(("atomic/docker/", "atomic/podman/",
+                             "integration/docker/", "integration/podman/")))
+           for gate in selected_gates):
+        required.append("PR · Exact Candidate")
     by_name = {}
     for job in jobs:
         if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:
