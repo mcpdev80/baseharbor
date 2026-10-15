@@ -7,6 +7,8 @@ from pathlib import Path
 
 def dependency_mode(plan, requirements):
     selected = plan.get("selected_gates")
+    if plan.get("coverage_status") not in ("resolved", "unresolved"):
+        raise ValueError("missing trusted coverage status")
     if not isinstance(selected, list):
         raise ValueError("missing selected gates")
     catalog = {g["id"]: g for g in requirements["gates"]
