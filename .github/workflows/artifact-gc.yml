@@ -83,16 +83,50 @@ jobs:
                       candidates.append(artifact)
               page += 1
 
+          # Discover live heads before deleting anything. Unavailable/partial
+          # discovery fails closed; it is not evidence that a ref is inactive.
+          def pages(path, key):
+              result = []
+              page = 1
+              while True:
+                  payload = request(
+                      f"https://api.github.com/repos/{repo}/{path}"
+                      f"{'&' if '?' in path else '?'}per_page=100&page={page}"
+                  )
+                  entries = payload if isinstance(payload, list) else payload[key]
+                  if not isinstance(entries, list):
+                      raise ValueError("incomplete GC reference discovery")
+                  result.extend(entries)
+                  if len(entries) < 100:
+                      return result
+                  page += 1
+
+          open_heads = set()
+          for pr in pages("pulls?state=open", "pulls"):
+              head = pr.get("head") or {}
+              if (head.get("repo") or {}).get("full_name") == repo:
+                  open_heads.add(head["ref"])
+          active_refs = {"main", "develop"} | open_heads
+          for branch in pages("branches", "branches"):
+              name = branch["name"]
+              if (branch.get("protected") or name.startswith(
+                      ("release/v", "candidate/", "release-candidate/"))):
+                  active_refs.add(name)
+
           deleted = 0
           for artifact in candidates:
               run = artifact.get("workflow_run") or {}
               run_id = run.get("id")
+              if not run_id:
+                  print(f"keep unbound artifact {artifact['id']} {artifact['name']}")
+                  continue
               if run_id:
                   run_state = request(
                       f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
                   )
-                  if run_state.get("status") != "completed":
-                      print(f"keep active-run artifact {artifact['id']} {artifact['name']}")
+                  if (run_state.get("status") != "completed" or
+                          run_state.get("head_branch") in active_refs):
+                      print(f"keep active-ref artifact {artifact['id']} {artifact['name']}")
                       continue
 
               request(
@@ -201,6 +235,8 @@ jobs:
               while True:
                   sep = "&" if "?" in url else "?"
                   items = request(f"{url}{sep}per_page=100&page={page}")
+                  if items is None:
+                      raise ValueError("GC reference discovery unavailable")
                   if not items:
                       break
                   if isinstance(items, dict):
@@ -264,6 +300,7 @@ jobs:
               )
 
           # Open PR branches are always protected from cleanup.
+          # A missing discovery response must never authorize deletion.
           open_pr_heads = set()
           for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=open"):
               head = pr.get("head") or {}
@@ -296,7 +333,8 @@ jobs:
                   continue
               if branch.get("protected"):
                   continue
-              if name in open_pr_heads:
+              if name in open_pr_heads or name.startswith(
+                      ("candidate/", "release-candidate/", "release/v0.4.26")):
                   continue
 
               ephemeral = name.startswith(ephemeral_prefixes)
