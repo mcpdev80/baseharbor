@@ -81,7 +81,7 @@ class ArtifactGC(unittest.TestCase):
                 deleted.append(path)
                 return Response(status=204)
             if path.startswith('actions/artifacts?'):
-                return Response({'artifacts': artifacts if 'page=1' in path else []})
+                return Response({'artifacts': artifacts if path.endswith('page=1') else []})
             if path.startswith('pulls?'):
                 return Response([{'head': {'ref': branches[0],
                                           'repo': {'full_name': 'example/core'}}}])
