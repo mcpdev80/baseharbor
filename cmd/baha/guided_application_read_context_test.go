@@ -243,7 +243,7 @@ func TestGuidedReadExistingProviderBindingAndConsequences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("existing binding: %v", err)
 	}
-	snapshot, prefs, err := applicationLifecycleSnapshot(r, observeApplicationProviderFacts(context.Background(), r))
+	_, prefs, err := applicationLifecycleSnapshot(r, observeApplicationProviderFacts(context.Background(), r))
 	if err != nil {
 		t.Fatal(err)
 	}
