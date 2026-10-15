@@ -56,6 +56,21 @@ CODE_CHECKS = [
     {'id': 'source-contracts', 'owner': 'CI source / contracts',
      'command': 'go test ./internal/application/... ./contracts/...'},
 ]
+CLI_CHECKS = [
+    {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
+     'command': "go test ./cmd/baha -run '^TestGuided' -count=1"},
+    {'id': 'cli-vet', 'owner': 'cmd/baha package', 'command': 'go vet ./cmd/baha'},
+    {'id': 'cli-build', 'owner': 'cmd/baha package', 'command': 'go build ./cmd/baha'},
+]
+# Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
+# command routing and any newly added CLI source remain unresolved.
+READ_ONLY_CLI = {
+    'cmd/baha/guided_application_read_context.go',
+    'cmd/baha/guided_application_read_context_test.go',
+}
+PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                    'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
+PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -113,22 +128,42 @@ def plan(diff, requirements, mapping):
                 path.startswith('site/')):
             area = 'documentation'
             require(DOC_CHECKS)
-        elif path.startswith(('cmd/baha/', 'internal/application/', 'internal/capability/',
+        elif path in READ_ONLY_CLI:
+            area = 'cli-read-only'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('integration/static/public-contracts')
+        elif path.startswith('cmd/baha/') and path.endswith('.go'):
+            area = 'cli-unresolved-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            unresolved.append('CLI runtime impact needs qualified targeted native coverage: ' + path)
+        elif path.startswith(('internal/application/', 'internal/capability/',
                               'contracts/')) and path.endswith(('.go', '.json')):
             area = 'application-contract'
             require(CODE_CHECKS)
-            selected.update({'integration/static/public-contracts'})
+            selected.add('integration/static/public-contracts')
         elif path.startswith('deploy/docker/') and path.endswith(('.yaml', '.yml', '.sh')):
             area = 'docker-runtime'
             require(CODE_CHECKS)
             selected.update({'atomic/docker/lifecycle'})
-        elif (path.startswith('scripts/pr-') or path.startswith('scripts/ci-') or
-              path.startswith('.github/workflows/') or
-              path.startswith('scripts/test_pr_')):
-            area = 'ci-evidence'
+        elif path in PLANNING_WORKFLOWS:
+            area = 'documentation-workflow'
+            require(DOC_CHECKS)
             require(CI_CHECKS)
-            # CI code does not by itself authorize a large native matrix.
-            # A specific native impact must be justified independently.
+        elif path in PLANNING_SCRIPTS:
+            area = 'ci-planner'
+            require(CI_CHECKS)
+        elif path.startswith('.github/workflows/'):
+            area = 'runtime-workflow-unresolved'
+            require(CI_CHECKS)
+            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+        elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
+              path.startswith('scripts/test_pr_') or
+              path.startswith('scripts/verify-') or 'evidence' in path):
+            area = 'ci-executor-unresolved'
+            require(CI_CHECKS)
+            unresolved.append('CI execution/evidence impact requires specific qualification: ' + path)
         else:
             area = 'unresolved'
             unresolved.append('unknown impact for ' + path)
