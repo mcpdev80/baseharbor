@@ -477,7 +477,7 @@ jobs:
   pr_runner_interface:
     name: PR · Runner Interface
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -580,7 +580,7 @@ jobs:
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -751,9 +751,9 @@ jobs:
           test "$PLAN_JOB" = success
           test -s pr-plan.json
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
-          git fetch --no-tags origin cf853c9c1d4d1221bfbaa13d5009795498967c14 d530b85fe5d1b8c48a50a01da0645ed4a7025cad
+          git fetch --no-tags origin cf853c9c1d4d1221bfbaa13d5009795498967c14 c06839c9061e94f1ebf3b05550bed7952c33a516
           git show cf853c9c1d4d1221bfbaa13d5009795498967c14:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
-          git show d530b85fe5d1b8c48a50a01da0645ed4a7025cad:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
+          git show c06839c9061e94f1ebf3b05550bed7952c33a516:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
           if [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
