@@ -34,6 +34,8 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             raise PermissionError("unknown consumer dependency")
         if set(dependencies) & {"console", "connector"}:
             required.append("PR · Consumer Pins")
+        elif "demo" in dependencies:
+            required.append("PR · Demo Pin")
     by_name = {}
     for job in jobs:
         if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:
