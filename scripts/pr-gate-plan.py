@@ -77,7 +77,7 @@ CI_CHECKS = [
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
-     'command': 'python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
 ]
 
 def plan(diff, requirements, mapping):
