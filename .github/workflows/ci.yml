@@ -440,7 +440,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 1c5e5537aeba652c91253539e49b6c7f07398b10
+          ref: 3e13765516d429e371871f31c95abbb7c071d739
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -450,7 +450,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '1c5e5537aeba652c91253539e49b6c7f07398b10'
+          test "$(git rev-parse HEAD)" = '3e13765516d429e371871f31c95abbb7c071d739'
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - name: Format the two changed Go sources
         id: formatting
