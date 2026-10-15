@@ -65,6 +65,58 @@ class MappingTests(unittest.TestCase):
                 self.assertTrue(result['broad_required'])
                 self.assertEqual(ALL, result['selected_gates'])
 
+    def test_incomplete_diff_cannot_narrow(self):
+        malformed = {'changes': [{'status': 'modified', 'path': 'docs/how-to/x.md'}]}
+        result = planner.plan(malformed, REQ, MAP)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual(ALL, result['selected_gates'])
+        self.assertIn('broad_required', str(result['reasons']))
+
+    def test_malformed_input_table(self):
+        for mutation in [
+            {'head_sha': 'abc'}, {'target_base_sha': 15},
+            {'merge_base_sha': None}, {'integration_sha': False},
+            {'broad_required': 'false'}, {'changes': 'not-an-array'},
+            {'changes': [None]}, {'reasons': 'not-an-array'},
+        ]:
+            with self.subTest(mutation=mutation):
+                payload = diff([{'status': 'modified', 'path': 'docs/a.md'}])
+                payload.update(mutation)
+                result = planner.plan(payload, REQ, MAP)
+                self.assertTrue(result['broad_required'])
+                self.assertEqual(ALL, result['selected_gates'])
+
+    def test_legitimate_fallback_and_optional_integration(self):
+        payload = diff([{'status': 'modified', 'path': 'docs/a.md'}], True)
+        payload['target_base_sha'] = None
+        payload['merge_base_sha'] = None
+        payload['integration_sha'] = None
+        self.assertTrue(planner.plan(payload, REQ, MAP)['broad_required'])
+        payload = diff([{'status': 'modified', 'path': 'docs/a.md'}])
+        payload['integration_sha'] = None
+        self.assertFalse(planner.plan(payload, REQ, MAP)['broad_required'])
+
+    def test_documentation_requires_existing_validation_owners(self):
+        result = planner.plan(diff([{'status': 'modified', 'path': 'docs/how-to/x.md'}]), REQ, MAP)
+        self.assertEqual({'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
+                          'pages-candidate-build'},
+                         {check['id'] for check in result['required_validation_checks']})
+        self.assertTrue(all(check['owner'] and check['command'] for check in result['required_validation_checks']))
+        self.assertIn('#893', result['validation_contract'])
+
+    def test_actual_release_requirements_inventory(self):
+        requirements = json.loads((ROOT / 'release-requirements.json').read_text())
+        self.assertEqual('baseharbor.release-requirements/v1', requirements['schema'])
+        self.assertEqual(65, len([g for g in requirements['gates'] if 'v0.4.26' in g['required_for']]))
+        docs = planner.plan(diff([{'status': 'modified', 'path': 'docs/how-to/x.md'}]),
+                            requirements, MAP)
+        self.assertEqual(9, len(docs['selected_gates']))
+        self.assertEqual(4, len(docs['required_validation_checks']))
+        fallback = planner.plan(diff([{'status': 'modified', 'path': 'go.mod'}]),
+                                requirements, MAP)
+        self.assertTrue(fallback['broad_required'])
+        self.assertEqual(65, len(fallback['selected_gates']))
+
     def test_catalog_mismatch_is_not_silent(self):
         mapping = json.loads(json.dumps(MAP))
         mapping['areas']['prose']['exact'].append('invented/gate')
