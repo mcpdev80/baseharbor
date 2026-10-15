@@ -41,6 +41,18 @@ class AuthenticatedResultsTests(unittest.TestCase):
                 out=mod.authenticated_results(PLAN,RUN,jobs,123,1,HEAD)
                 self.assertEqual('blocked',out['results'][0]['conclusion'])
 
+    def test_native_gate_requires_exact_candidate_job(self):
+        native = dict(PLAN, selected_gates=['atomic/docker/backup-restore'])
+        with self.assertRaises(PermissionError):
+            mod.authenticated_results(native, RUN, JOBS, 123, 1, HEAD)
+        jobs = JOBS + [{'name':'PR · Exact Candidate','run_id':123,
+                        'run_attempt':1,'conclusion':'success'}]
+        result=mod.authenticated_results(native, RUN, jobs, 123, 1, HEAD)
+        self.assertFalse(any(x['kind']=='gate' for x in result['results']))
+        failed=jobs[:-1]+[dict(jobs[-1], conclusion='failure')]
+        with self.assertRaises(PermissionError):
+            mod.authenticated_results(native, RUN, failed, 123, 1, HEAD)
+
     def test_focused_and_policy_failure_blocks(self):
         for name in ('PR · Focused Python','Workflow policy'):
             jobs=[dict(x,conclusion='failure') if x['name']==name else x for x in JOBS]
