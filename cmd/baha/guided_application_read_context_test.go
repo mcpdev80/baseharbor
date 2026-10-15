@@ -293,6 +293,40 @@ func TestGuidedReadExistingProviderBindingAndConsequences(t *testing.T) {
 	}
 }
 
+func TestGuidedAuthorityErrorWithSecretBearingStateIsRedacted(t *testing.T) {
+	r := corelessResolvedFixture(t)
+	secret := "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"
+	if err := os.MkdirAll(r.TargetStateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	registry := filepath.Join(r.TargetStateRoot, "provider-registry.json")
+	if err := os.WriteFile(registry, []byte("{"+secret+"}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := guidedTreeDigest(r.TargetStateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = readGuidedApplicationContext(context.Background(), r)
+	if err == nil {
+		t.Fatal("invalid authoritative registry accepted")
+	}
+	var typed *GuidedReadError
+	if !errors.As(err, &typed) || typed.Kind != "unverifiable" {
+		t.Fatalf("missing concrete typed error: %T", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatal("raw registry error leaked secret into public message")
+	}
+	after, err := guidedTreeDigest(r.TargetStateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatal("read modified protected invalid registry input")
+	}
+}
+
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
 	a, err := guidedRevision(struct {
 		Target  string
