@@ -92,8 +92,8 @@ class ArtifactGC(unittest.TestCase):
                                  'head_branch': run_branches[int(path.rsplit('/', 1)[-1])]})
             raise AssertionError(path)
 
-        with patch.dict(os.environ, {'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only'}), \\
-                patch.object(urllib.request, 'urlopen', request), \\
+        with patch.dict(os.environ, {'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only'}), \
+                patch.object(urllib.request, 'urlopen', request), \
                 contextlib.redirect_stdout(io.StringIO()):
             exec(compile(source, 'artifact-gc-artifacts.yml', 'exec'), {})
         self.assertEqual(deleted, ['actions/artifacts/3', 'actions/artifacts/4'])
@@ -122,7 +122,7 @@ class ArtifactGC(unittest.TestCase):
 
             with self.subTest(job=job), patch.dict(os.environ, {
                     'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only',
-                    'CURRENT_RUN_ID': '99'}), patch.object(urllib.request, 'urlopen', request), \\
+                    'CURRENT_RUN_ID': '99'}), patch.object(urllib.request, 'urlopen', request), \
                     contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(urllib.error.HTTPError):
                     exec(compile(source, 'artifact-gc.yml', 'exec'), {})
