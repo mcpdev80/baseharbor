@@ -460,6 +460,34 @@ jobs:
           path: pr-plan.json
           retention-days: 2
 
+  pr_consumer_pins:
+    name: PR · Consumer Pins
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Resolve verified immutable v0.4.26 consumer graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INTEGRATION_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ecosystem_release_pins.py --tag v0.4.26 --core "$INTEGRATION_SHA" --output "$RUNNER_TEMP/pr-consumer-pins.json"
+          test -s "$RUNNER_TEMP/pr-consumer-pins.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-consumer-pins
+          path: ${{ runner.temp }}/pr-consumer-pins.json
+          if-no-files-found: error
+          retention-days: 2
+
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
@@ -563,7 +591,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [pr_plan, pr_focused, pr_validations]
+    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8
