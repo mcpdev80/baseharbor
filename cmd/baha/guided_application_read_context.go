@@ -80,7 +80,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	}
 	planRev, err := guidedRevision(plan)
 	if plan.Impact != nil && plan.Impact.PlanID != "" {
-		planRev = plan.Impact.Scope.PlanID
+		planRev = plan.Impact.PlanID
 	}
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
