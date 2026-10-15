@@ -66,7 +66,7 @@ def execute(runtime):
             peer_names = resources(runtime, peer)
             for outcome in ("success", "failure", "cancellation"):
                 main = isolation.prepare(main_request, root, run_id, attempt, 2,
-                                         repository, pr["number"], "")
+                                         repository, pr["number"], None)
                 names = None
                 try:
                     names = resources(runtime, main)
