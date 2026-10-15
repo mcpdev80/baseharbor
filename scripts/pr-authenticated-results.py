@@ -24,8 +24,16 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             gate.startswith(("atomic/docker/", "atomic/podman/",
                              "integration/docker/", "integration/podman/")))
            for gate in selected_gates):
-        required.extend(("PR · Exact Candidate", "PR · Consumer Pins",
-                         "PR · Runner Interface"))
+        required.extend(("PR · Exact Candidate", "PR · Runner Interface"))
+        # The trusted authoritative inventory owns consumer dependency edges.
+        # No private Console/Connector prerequisite for Core+Demo backup.
+        dependencies = plan.get("required_consumer_dependencies")
+        if not isinstance(dependencies, list):
+            raise PermissionError("unqualified selected-gate dependencies")
+        if not set(dependencies) <= {"core", "demo", "console", "connector"}:
+            raise PermissionError("unknown consumer dependency")
+        if set(dependencies) & {"console", "connector"}:
+            required.append("PR · Consumer Pins")
     by_name = {}
     for job in jobs:
         if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:
