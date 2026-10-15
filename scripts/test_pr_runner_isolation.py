@@ -81,7 +81,7 @@ class IsolationFixtures(unittest.TestCase):
     def test_verified_final_cleanup_releases_only_owned_lane(self):
         first = isolation.prepare(REQUEST, self.root, "100", 1, 2, "mcpdev80/baseharbor", 932, "token")
         second = isolation.prepare(REQUEST, self.root, "101", 1, 2, "mcpdev80/baseharbor", 932, "token")
-        absent = SimpleNamespace(returncode=1, stderr=b"not found", stdout=b"")
+        absent = SimpleNamespace(returncode=0, stderr=b"", stdout=b"")
         with patch.object(isolation.subprocess, "run", return_value=absent):
             receipt = isolation.finalize_cleanup(self.root, first["lane_id"], "100", 1)
         self.assertEqual("verified-empty-and-released", receipt["state"])
@@ -93,7 +93,7 @@ class IsolationFixtures(unittest.TestCase):
 
     def test_cleanup_never_releases_unverified_runtime(self):
         lease = isolation.prepare(REQUEST, self.root, "100", 1, 1, "mcpdev80/baseharbor", 932, "token")
-        cases = [SimpleNamespace(returncode=0, stderr=b"", stdout=b"present"),
+        cases = [SimpleNamespace(returncode=0, stderr=b"", stdout=b"bh-owned-container"),
                  SimpleNamespace(returncode=125, stderr=b"permission denied", stdout=b"")]
         for result in cases:
             with self.subTest(result=result):
