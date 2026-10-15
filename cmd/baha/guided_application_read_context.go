@@ -34,6 +34,21 @@ type GuidedReadError struct {
 func (e *GuidedReadError) Error() string { return fmt.Sprintf("guided read %s", e.Kind) }
 func (e *GuidedReadError) Unwrap() error { return e.Cause }
 
+func guidedReadAuthorityError(err error, fallback string) error {
+	var resolution *application.ResolutionError
+	if errors.As(err, &resolution) {
+		switch resolution.Code {
+		case "missing", "missing-dependency":
+			fallback = "missing"
+		case "ambiguous", "binding-conflict":
+			fallback = "ambiguous"
+		case "incompatible", "dependency-cycle", "foreign", "foreign-target":
+			fallback = "incompatible"
+		}
+	}
+	return &GuidedReadError{Kind: fallback, Cause: err}
+}
+
 func guidedRevision(value any) (string, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -56,11 +71,11 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	}
 	contract, err := application.PortableContractFromManifest(resolved.Manifest)
 	if err != nil {
-		return GuidedReadContext{}, &GuidedReadError{Kind: "incompatible", Cause: err}
+		return GuidedReadContext{}, guidedReadAuthorityError(err, "incompatible")
 	}
 	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
-		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
+		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}
 	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
 	if err != nil {
