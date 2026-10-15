@@ -286,9 +286,26 @@ jobs:
                   break
               page += 1
 
+          # Discover all active source owners before *any* deletion. In
+          # particular, a failed PR/branch API cannot permit run pruning.
+          active_pr_heads = set()
+          for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=open"):
+              head = pr.get("head") or {}
+              if (head.get("repo") or {}).get("full_name") == repo and head.get("ref"):
+                  active_pr_heads.add(head["ref"])
+          discovered_branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          active_candidate_heads = {
+              branch["name"] for branch in discovered_branches
+              if branch.get("protected") or branch["name"].startswith(
+                  ("candidate/", "release-candidate/", "release/v0.4.26"))
+          }
+          protected_run_heads = active_pr_heads | active_candidate_heads
+
           deleted_runs = 0
           max_run_deletes = 2000
           for run in run_candidates[:max_run_deletes]:
+              if run.get("head_branch") in protected_run_heads:
+                  continue
               request(
                   f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}",
                   method="DELETE",
@@ -322,7 +339,7 @@ jobs:
               if head_repo == repo and head.get("ref"):
                   merged_pr_heads.add(head["ref"])
 
-          branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          branches = discovered_branches
           deleted_branches = 0
 
           for branch in branches:
