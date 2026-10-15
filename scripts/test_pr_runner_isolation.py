@@ -56,8 +56,9 @@ class IsolationFixtures(unittest.TestCase):
         self.assertEqual(1, len(list(self.root.glob("pr-*"))))
 
     def test_fork_or_unadmitted_cannot_acquire(self):
-        with self.assertRaises(PermissionError):
-            isolation.prepare(REQUEST, self.root, "fork", 1, 2, "mcpdev80/baseharbor", 932, "")
+        with patch.object(isolation, "verify_github_admission", side_effect=PermissionError("denied")):
+            with self.assertRaises(PermissionError):
+                isolation.prepare(REQUEST, self.root, "103", 1, 2, "mcpdev80/baseharbor", 932, "")
         self.assertEqual([], list(self.root.iterdir()))
 
     def test_capacity_cannot_clean_peer(self):
