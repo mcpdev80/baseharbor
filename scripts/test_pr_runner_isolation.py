@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 
 spec = importlib.util.spec_from_file_location(
@@ -76,6 +77,33 @@ class IsolationFixtures(unittest.TestCase):
             result = isolation.cleanup(self.root, lease["lane_id"], "100", 1)
             self.assertEqual("pending-runtime-cleanup", result["state"])
             self.assertTrue(result["cleanup_required"])
+
+    def test_verified_final_cleanup_releases_only_owned_lane(self):
+        first = isolation.prepare(REQUEST, self.root, "100", 1, 2, "mcpdev80/baseharbor", 932, "token")
+        second = isolation.prepare(REQUEST, self.root, "101", 1, 2, "mcpdev80/baseharbor", 932, "token")
+        absent = SimpleNamespace(returncode=1, stderr=b"not found", stdout=b"")
+        with patch.object(isolation.subprocess, "run", return_value=absent):
+            receipt = isolation.finalize_cleanup(self.root, first["lane_id"], "100", 1)
+        self.assertEqual("verified-empty-and-released", receipt["state"])
+        self.assertFalse(receipt["gate_evidence"])
+        self.assertFalse(Path(first["isolation_root"]).exists())
+        self.assertTrue(Path(second["isolation_root"]).exists())
+        third = isolation.prepare(REQUEST, self.root, "102", 1, 2, "mcpdev80/baseharbor", 932, "token")
+        self.assertNotEqual(third["lane_id"], second["lane_id"])
+
+    def test_cleanup_never_releases_unverified_runtime(self):
+        lease = isolation.prepare(REQUEST, self.root, "100", 1, 1, "mcpdev80/baseharbor", 932, "token")
+        cases = [SimpleNamespace(returncode=0, stderr=b"", stdout=b"present"),
+                 SimpleNamespace(returncode=125, stderr=b"permission denied", stdout=b"")]
+        for result in cases:
+            with self.subTest(result=result):
+                with patch.object(isolation.subprocess, "run", return_value=result):
+                    with self.assertRaises(RuntimeError):
+                        isolation.finalize_cleanup(self.root, lease["lane_id"], "100", 1)
+                self.assertTrue(Path(lease["isolation_root"]).exists())
+        with patch.object(isolation.subprocess, "run", side_effect=OSError("absent binary")):
+            with self.assertRaises(RuntimeError):
+                isolation.finalize_cleanup(self.root, lease["lane_id"], "100", 1)
 
     def test_authenticated_admission_rejects_spoofed_run(self):
         run = {'event':'pull_request','repository':{'id':10},'run_attempt':1,
