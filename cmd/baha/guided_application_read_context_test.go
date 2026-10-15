@@ -342,7 +342,7 @@ func TestGuidedResolutionErrorCategoriesRemainTypedAndRedacted(t *testing.T) {
 		t.Run(tc.code, func(t *testing.T) {
 			secret := "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"
 			err := guidedReadAuthorityError(&application.ResolutionError{
-				Code: tc.code,
+				Code:       tc.code,
 				InstanceID: secret,
 			}, "unverifiable")
 			var typed *GuidedReadError
