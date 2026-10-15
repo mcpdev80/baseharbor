@@ -449,7 +449,9 @@ jobs:
 
   pr_isolation_pilots:
     name: PR Isolation Pilot · ${{ matrix.runtime }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    # Qualification-only: opt-in workflow_dispatch after the recorded PR pilot.
+    # Never schedule both native runtimes for every normal pull request.
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
