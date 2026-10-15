@@ -460,7 +460,7 @@ jobs:
           git fetch --no-tags origin 238e66bd7af2323e1cf50ddcfc3b2bb139a634f2
           git show 238e66bd7af2323e1cf50ddcfc3b2bb139a634f2:scripts/pr-gate-dependencies.py > "$RUNNER_TEMP/pr-gate-dependencies.py"
           python3 "$RUNNER_TEMP/pr-gate-dependencies.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-gate-dependencies.json"
-          python3 -c 'import json,sys; path=sys.argv[1]; plan=json.load(open(path)); dependencies=json.load(open(sys.argv[2])); plan["required_consumer_dependencies"]=dependencies["dependencies"]; open(path,"w").write(json.dumps(plan)+"\\n")' pr-plan.json "$RUNNER_TEMP/pr-gate-dependencies.json"
+          python3 -c 'import json,sys; path=sys.argv[1]; plan=json.load(open(path)); dependencies=json.load(open(sys.argv[2])); plan["required_consumer_dependencies"]=dependencies["dependencies"]; open(path,"w").write(json.dumps(plan))' pr-plan.json "$RUNNER_TEMP/pr-gate-dependencies.json"
           mode="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mode"])' "$RUNNER_TEMP/pr-gate-dependencies.json")"
           echo "consumer_mode=$mode" >> "$GITHUB_OUTPUT"
           git fetch --no-tags origin b4a6f35ab0fb06208a480a50040947888ba3164d
