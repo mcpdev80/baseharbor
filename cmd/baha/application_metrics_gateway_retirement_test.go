@@ -68,7 +68,7 @@ func TestRetiredSharedMetricsWithdrawsOnlyItsAcknowledgedCanonicalGatewayRoute(t
 	if err != nil || len(groups) != 1 || groups[0].Owner != route.Owner || len(groups[0].Routes) != 0 {
 		t.Fatalf("retired metrics leaves a canonical gateway pointing at its absent upstream: %#v %v", groups, err)
 	}
-	for _, kind := range []string{"consumer", "required", "incomplete", "foreign Target", "foreign owner", "wrong protocol", "foreign upstream", "foreign network", "foreign trust", "foreign host", "foreign path"} {
+	for _, kind := range []string{"consumer", "required", "incomplete active", "incomplete start", "incomplete", "foreign Target", "foreign owner", "wrong protocol", "foreign upstream", "foreign network", "foreign trust", "foreign host", "foreign path"} {
 		t.Run(kind, func(t *testing.T) {
 			bad := plan
 			bad.Changes = append([]application.ProviderChange(nil), plan.Changes...)
@@ -80,6 +80,14 @@ func TestRetiredSharedMetricsWithdrawsOnlyItsAcknowledgedCanonicalGatewayRoute(t
 				preserve = true
 			case "required":
 				bad.Required = []string{instance.ID}
+				preserve = true
+			case "incomplete active":
+				bad.Complete = false
+				bad.Required = []string{instance.ID}
+				preserve = true
+			case "incomplete start":
+				bad.Complete = false
+				bad.Changes[0].Action = "start"
 				preserve = true
 			case "incomplete":
 				bad.Complete = false

@@ -44,9 +44,6 @@ func (e *applicationApplyExecution) loadRetiredSharedMetricsGatewayRoutes(ctx co
 // acknowledged union and the same canonical owner as native retirement; an
 // unrelated or still-required provider keeps its routes.
 func retiredSharedMetricsGatewayRoutes(resolved resolvedApplication, provider bhruntime.RuntimeProvider, plan application.ProviderPlan, routes []devgateway.Route) ([]devgateway.OwnerRoutes, error) {
-	if plan.Version != application.ProviderPlanVersion || plan.Target != resolved.Target.Name || !plan.Complete {
-		return nil, invalidProviderConsumerInventory(fmt.Errorf("metrics route retirement requires its complete current Target plan"))
-	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
 		return nil, err
@@ -72,6 +69,9 @@ func retiredSharedMetricsGatewayRoutes(resolved resolvedApplication, provider bh
 		}
 		if !selected {
 			continue
+		}
+		if plan.Version != application.ProviderPlanVersion || plan.Target != resolved.Target.Name || !plan.Complete {
+			return nil, invalidProviderConsumerInventory(fmt.Errorf("metrics route retirement requires its complete current Target plan"))
 		}
 		for _, binding := range registry.BindingsForProviderInstance(instance.ID) {
 			released := false
