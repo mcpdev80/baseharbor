@@ -1,0 +1,1 @@
+Unclassified CI path must stay unresolved and block PR Selected Checks.
