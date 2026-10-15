@@ -180,22 +180,10 @@ func TestManagedRegisteredOTLPNativeConsumerHandoff(t *testing.T) {
 
 func runNativeOTLPConsumer(t *testing.T, ctx context.Context, payload, actor string) {
 	t.Helper()
-	const script = `import os,ssl,sys,urllib.request
-context=ssl.create_default_context(cafile=os.environ['OTEL_EXPORTER_OTLP_CERTIFICATE'])
-cert=os.environ.get('OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE','')
-if cert: context.load_cert_chain(cert,os.environ['OTEL_EXPORTER_OTLP_CLIENT_KEY'])
-headers={'Content-Type':'application/x-protobuf','X-Fixture-Workload':sys.argv[2]}
-for pair in os.environ.get('OTEL_EXPORTER_OTLP_HEADERS','').split(','):
- if '=' in pair:
-  key,value=pair.split('=',1);headers[key]=value
-url=os.environ['OTEL_EXPORTER_OTLP_ENDPOINT'].rstrip('/')+'/v1/traces'
-request=urllib.request.Request(url,data=bytes.fromhex(sys.argv[1]),headers=headers,method='POST')
-with urllib.request.urlopen(request,context=context,timeout=15) as response:
- assert response.status==200
-print('native OTLP consumer accepted')`
+
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "exec", "api", "python", "-c", script, payload, actor}, &out, &out); err != nil {
-		t.Fatalf("actual native OTLP consumer failed in %s: %v", actor, err)
+	if err := runWithIO(ctx, []string{"app", "exec", "api", "python", "-c", nativeOTLPConsumerPython, payload, actor}, &out, &out); err != nil {
+		t.Fatalf("actual native OTLP consumer failed in %s: %v\n%s", actor, err, out.String())
 	}
 	if !strings.Contains(out.String(), "native OTLP consumer accepted") {
 		t.Fatal("native OTLP acceptance marker missing")
@@ -305,3 +293,29 @@ func startNativeOTLPReceiver(t *testing.T, ctx context.Context, runtime bhruntim
 	receiver.material = nativeOTLPMaterialSnapshot(t, root)
 	return receiver
 }
+
+const nativeOTLPConsumerPython = `import json,os,ssl,sys,urllib.request
+stage='trust'
+try:
+ context=ssl.create_default_context(cafile=os.environ['OTEL_EXPORTER_OTLP_CERTIFICATE'])
+ stage='client-identity'
+ cert=os.environ.get('OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE','')
+ if cert: context.load_cert_chain(cert,os.environ['OTEL_EXPORTER_OTLP_CLIENT_KEY'])
+ stage='request'
+ headers={'Content-Type':'application/x-protobuf','X-Fixture-Workload':sys.argv[2]}
+ for pair in os.environ.get('OTEL_EXPORTER_OTLP_HEADERS','').split(','):
+  if '=' in pair:
+   key,value=pair.split('=',1);headers[key]=value
+ url=os.environ['OTEL_EXPORTER_OTLP_ENDPOINT'].rstrip('/')+'/v1/traces'
+ request=urllib.request.Request(url,data=bytes.fromhex(sys.argv[1]),headers=headers,method='POST')
+ stage='receiver'
+ with urllib.request.urlopen(request,context=context,timeout=15) as response:
+  assert response.status==200
+ print('native OTLP consumer accepted')
+except Exception as error:
+ reason=getattr(error,'reason',error)
+ print(json.dumps({'stage':stage,'error_type':type(error).__name__,
+                   'reason_type':type(reason).__name__,
+                   'http_status':getattr(error,'code',None),
+                   'tls_verify_code':getattr(reason,'verify_code',None)}))
+ sys.exit(1)`

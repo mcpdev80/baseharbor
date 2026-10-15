@@ -45,14 +45,14 @@ concurrency:
 
 jobs:
   registered_otlp_handoff:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[otlp-handoff-runtime]') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[otlp-handoff-runtime]') || contains(github.event.head_commit.message, '[otlp-handoff-podman]')) }}
     name: Native OTLP handoff · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ contains(github.event.head_commit.message, '[otlp-handoff-podman]') && fromJSON('["podman"]') || fromJSON('["docker", "podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_OTLP_HANDOFF_ACCEPTANCE: "1"
