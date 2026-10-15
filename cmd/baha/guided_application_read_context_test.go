@@ -233,6 +233,55 @@ func TestGuidedReadProjectsCapabilityFootprintAndAuthorityPlan(t *testing.T) {
 	}
 }
 
+func TestGuidedReadExistingProviderBindingAndConsequences(t *testing.T) {
+	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
+	before, err := guidedTreeDigest(r.TargetStateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := readGuidedApplicationContext(context.Background(), r)
+	if err != nil {
+		t.Fatalf("existing binding: %v", err)
+	}
+	snapshot, prefs, err := applicationLifecycleSnapshot(r, observeApplicationProviderFacts(context.Background(), r))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority, err := resolveApplicationProviderPlanFromSnapshot(r, snapshot, prefs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prefs) == 0 || len(state.Preferences) != len(prefs) {
+		t.Fatalf("existing selected binding was lost: %+v", state.Preferences)
+	}
+	if len(state.Footprint.Requirements) == 0 ||
+		len(state.Changes) != len(authority.Changes) ||
+		len(state.Footprint.Existing) != len(authority.Consumers["application/"+r.Manifest.ApplicationID+"/"+r.Manifest.Environment].Existing) {
+		t.Fatalf("provider consequences diverge from authoritative union: %+v vs %+v", state, authority)
+	}
+	if authority.Impact != nil && authority.Impact.PlanID != "" && state.PlanRevision != authority.Impact.PlanID {
+		t.Fatalf("authoritative consent PlanID changed: %s vs %s", state.PlanRevision, authority.Impact.PlanID)
+	}
+	after, err := guidedTreeDigest(r.TargetStateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatal("read mutated existing provider/Target/deployment files")
+	}
+	r.Manifest.Services.Cache = true
+	changed, err := readGuidedApplicationContext(context.Background(), r)
+	if err != nil {
+		t.Fatalf("changed real capability intent: %v", err)
+	}
+	if changed.SnapshotRevision == state.SnapshotRevision {
+		t.Fatal("changed provider input did not invalidate snapshot revision")
+	}
+	if changed.PlanRevision == state.PlanRevision {
+		t.Fatal("changed provider plan retained the old revision")
+	}
+}
+
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
 	a, err := guidedRevision(struct {
 		Target  string
