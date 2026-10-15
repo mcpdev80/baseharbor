@@ -48,11 +48,12 @@ def execute(runtime):
     run_id = os.environ["GITHUB_RUN_ID"]
     attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
     repository = os.environ["GITHUB_REPOSITORY"]
+    verified_pr = isolation.github_json("https://api.github.com/repos/" + repository + "/pulls/" + str(pr["number"]), "")
     pins = {"demo_sha": "1" * 40, "console_sha": "2" * 40, "connector_sha": "3" * 40}
     common = {"schema": "baseharbor.pr-runtime-request/v1",
               "runtime": runtime, "target_base_sha": pr["base"]["sha"],
               "head_sha": pr["head"]["sha"], "merge_base_sha": pr["base"]["sha"],
-              "integration_sha": pr["merge_commit_sha"], "consumer_pins": pins,
+              "integration_sha": verified_pr["merge_commit_sha"], "consumer_pins": pins,
               "admission": "requires-trusted-isolated-runner",
               "evidence": "existing-verifier-only"}
     main_request = dict(common, gate_id="atomic/" + runtime + "/backup-restore")
