@@ -13,9 +13,6 @@ on:
     branches:
       - develop
       - main
-    paths:
-      - '.github/workflows/**'
-      - 'scripts/ci-workflow-policy.sh'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -429,3 +426,123 @@ jobs:
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
           retention-days: 1
+
+  pr_plan:
+    name: PR · Trusted Plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve exact immutable PR inputs using trusted base policy
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INTEGRATION_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
+          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
+          python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
+          echo "matrix=$(python3 scripts/pr-check-runner.py matrix --plan pr-plan.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trusted-pr-plan
+          path: pr-plan.json
+          retention-days: 2
+
+  pr_focused:
+    name: PR · Focused Python
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Focused diff/planner/verifier/pins regressions
+        run: |
+          set -euo pipefail
+          python3 scripts/test_pr_diff_base.py
+          python3 scripts/test_pr_gate_plan.py
+          python3 scripts/test_pr_required_final.py
+          python3 scripts/test_pr_check_runner.py
+          python3 scripts/test_ecosystem_release_pins.py
+          python3 scripts/test_pre_release_resume.py
+
+  pr_validations:
+    name: PR · Validation · ${{ matrix.check }}
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Execute existing validation owner without publication
+        env:
+          VALIDATION: ${{ matrix.check }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$VALIDATION" in
+            not-required) echo 'NOT REQUIRED (not PASS)' ;;
+            documentation-audit) bash scripts/documentation-audit.sh ;;
+            mkdocs-en-strict|mkdocs-de-strict|pages-candidate-build)
+              python -m pip install --disable-pip-version-check -r requirements-docs.txt
+              case "$VALIDATION" in
+                mkdocs-en-strict) mkdocs build --strict --config-file mkdocs.yml ;;
+                mkdocs-de-strict) mkdocs build --strict --config-file mkdocs.de.yml ;;
+                pages-candidate-build)
+                  mkdocs build --strict --config-file mkdocs.yml
+                  mkdocs build --strict --config-file mkdocs.de.yml
+                  test -f site/index.html
+                  ;;
+              esac ;;
+            *) exit 2 ;;
+          esac
+
+  pr_selected_final:
+    name: PR Selected Checks
+    needs: [pr_plan, pr_focused, pr_validations]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.pr_plan.result == 'success'
+        with:
+          name: trusted-pr-plan
+      - name: Enforce every required check (unqualified runtime remains blocked)
+        env:
+          PLAN_JOB: ${{ needs.pr_plan.result }}
+          FOCUSED_JOB: ${{ needs.pr_focused.result }}
+          VALIDATION_JOB: ${{ needs.pr_validations.result }}
+        run: |
+          set -euo pipefail
+          test "$PLAN_JOB" = success
+          test -s pr-plan.json
+          python3 scripts/pr-check-runner.py results --plan pr-plan.json --job-conclusion "$FOCUSED_JOB" --matrix-result "$VALIDATION_JOB" > "$RUNNER_TEMP/pr-results.json"
+          python3 scripts/pr-required-final.py --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
