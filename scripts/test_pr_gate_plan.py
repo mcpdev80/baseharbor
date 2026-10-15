@@ -84,6 +84,8 @@ class MappingTests(unittest.TestCase):
                 self.assertIn('ci-executor-verifier-tests',
                               {c['id'] for c in result['required_validation_checks']})
                 self.assertEqual([], result['selected_gates'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertTrue(any(c.startswith('PYTHONPATH=scripts python3 -m unittest') for c in commands))
 
     def test_documentation_workflow_has_validation_without_native_gates(self):
         result = planner.plan(diff(paths('.github/workflows/pages.yml')), REQ, MAP)
