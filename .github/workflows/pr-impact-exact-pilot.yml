@@ -20,3 +20,9 @@ jobs:
         run: python3 -m py_compile scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py
       - name: Focused regressions
         run: python3 -m unittest discover -s scripts -p 'test_pr_gate_plan.py' -v
+      - name: Exercise selected CLI and verifier checks
+        run: |
+          go test ./cmd/baha -run '^TestGuided' -count=1
+          go vet ./cmd/baha
+          go build -o "$RUNNER_TEMP/baha-pr-impact" ./cmd/baha
+          python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py
