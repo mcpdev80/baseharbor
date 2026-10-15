@@ -327,6 +327,34 @@ func TestGuidedAuthorityErrorWithSecretBearingStateIsRedacted(t *testing.T) {
 	}
 }
 
+func TestGuidedResolutionErrorCategoriesRemainTypedAndRedacted(t *testing.T) {
+	for _, tc := range []struct {
+		code string
+		kind string
+	}{
+		{"missing", "missing"},
+		{"ambiguous", "ambiguous"},
+		{"incompatible", "incompatible"},
+		{"foreign-target", "incompatible"},
+		{"unverifiable", "unverifiable"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			secret := "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"
+			err := guidedReadAuthorityError(&application.ResolutionError{
+				Code: tc.code,
+				InstanceID: secret,
+			}, "unverifiable")
+			var typed *GuidedReadError
+			if !errors.As(err, &typed) || typed.Kind != tc.kind {
+				t.Fatalf("resolution code %s classified as %v", tc.code, err)
+			}
+			if strings.Contains(err.Error(), secret) {
+				t.Fatal("authority error leaked a secret identifier")
+			}
+		})
+	}
+}
+
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
 	a, err := guidedRevision(struct {
 		Target  string
