@@ -119,8 +119,10 @@ def validate(request, run_id, attempt, capacity):
     if any(not isinstance(request.get(k), str) or not SHA.fullmatch(request[k]) for k in FIELDS):
         raise ValueError("invalid immutable candidate identity")
     pins = request.get("consumer_pins")
-    if not isinstance(pins, dict) or any(not isinstance(pins.get(k), str) or not SHA.fullmatch(pins[k]) for k in PINS):
-        raise ValueError("unverified consumer pins")
+    if (not isinstance(pins, dict) or "demo_sha" not in pins or
+            not set(pins) <= set(PINS) or
+            any(not isinstance(pins.get(k), str) or not SHA.fullmatch(pins[k]) for k in pins)):
+        raise ValueError("unverified declared consumer pins")
     if not isinstance(run_id, str) or not SLUG.fullmatch(run_id) or not isinstance(attempt, int) or attempt < 1:
         raise ValueError("invalid run identity")
     if not isinstance(capacity, int) or not 1 <= capacity <= 64:
