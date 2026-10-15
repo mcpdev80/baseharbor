@@ -651,13 +651,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Execute existing validation owner without publication
         env:
           VALIDATION: ${{ matrix.check }}
@@ -678,6 +682,17 @@ jobs:
                   test -f site/index.html
                   ;;
               esac ;;
+            source-contracts)
+              go test ./internal/application/... ./contracts/... -count=1 ;;
+            cli-guided-tests) go test ./cmd/baha -run '^TestGuided' -count=1 ;;
+            cli-vet) go vet ./cmd/baha ;;
+            cli-build) go build -o "$RUNNER_TEMP/baha-validation" ./cmd/baha ;;
+            capability-package-tests) go test ./internal/capability/... -count=1 ;;
+            pr-planner-tests)
+              python3 -m unittest scripts/test_pr_gate_plan.py ;;
+            ci-policy) bash scripts/ci-workflow-policy.sh ;;
+            ci-executor-verifier-tests)
+              PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
             *) exit 2 ;;
           esac
 
