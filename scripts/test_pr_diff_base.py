@@ -123,6 +123,52 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('ambiguous_merge_base', result['reasons'][0]['code'])
         self.assertEqual([], result['changes'])
 
+    def test_exact_integration_is_accepted(self):
+        self.branch('feature')
+        self.write('feature.txt', 'feature\n')
+        head = self.commit('feature')
+        target = self.initial
+        integration = self.integration_commit('main', 'feature')
+
+        result = resolver.resolve_pr_diff(self.root, target, head, integration)
+
+        self.assertFalse(result['broad_required'])
+        self.assertEqual(integration, result['integration_sha'])
+        self.assertEqual([{'status': 'added', 'path': 'feature.txt'}], result['changes'])
+
+    def test_descendant_of_exact_integration_is_rejected(self):
+        self.branch('feature')
+        self.write('feature.txt', 'feature\n')
+        head = self.commit('feature')
+        target = self.initial
+        self.integration_commit('main', 'feature')
+        self.write('unrelated.txt', 'unrelated change\n')
+        descendant = self.commit('unrelated change after integration')
+
+        result = resolver.resolve_pr_diff(self.root, target, head, descendant)
+
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+        self.assertEqual([], result['changes'])
+
+    def test_expected_integration_parents_with_modified_tree_is_rejected(self):
+        self.branch('feature')
+        self.write('feature.txt', 'feature\n')
+        head = self.commit('feature')
+        target = self.initial
+        self.integration_commit('main', 'feature')
+        self.write('unrelated.txt', 'injected into merge tree\n')
+        self.git('add', '-A')
+        forged_tree = self.git('write-tree')
+        forged_merge = self.git('commit-tree', forged_tree, '-p', target, '-p', head,
+                                input_data='modified merge tree\n')
+
+        result = resolver.resolve_pr_diff(self.root, target, head, forged_merge)
+
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_tree_mismatch', result['reasons'][0]['code'])
+        self.assertEqual([], result['changes'])
+
     def test_stale_integration_sha_requires_broad_checks(self):
         self.branch('feature')
         self.write('feature.txt', 'feature\n')
