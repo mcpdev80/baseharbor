@@ -492,7 +492,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pinned=174dc6d56b40dea85f2708b95e71b3a7b3638c4c
+          pinned=ab197b5a9a1b93bb87b1da161532a0929cd2052e
           git fetch --no-tags origin "$pinned"
           out="$RUNNER_TEMP/pr-896-isolation-exact"
           mkdir -p "$out"
