@@ -42,6 +42,14 @@ func applicationRuntimeOwners(resolved resolvedApplication) ([]resolvedApplicati
 		if retained := record.Applied.GeneratedState["retired_intent"]; retained != "" {
 			intents = append(intents, json.RawMessage(retained))
 		}
+		history, err := retiredRuntimeHistory(record)
+		if err != nil {
+			return nil, err
+		}
+		historyStart := len(intents)
+		for _, archived := range history {
+			intents = append(intents, archived.Intent)
+		}
 		for index, intent := range intents {
 			var m application.Manifest
 			id := record.Identity
@@ -58,7 +66,11 @@ func applicationRuntimeOwners(resolved resolvedApplication) ([]resolvedApplicati
 			} else if index > 0 {
 				placementKey = "retired_backend_placements"
 			}
-			m, err = retainedBackendPlacementProjection(resolved, m, record.Applied.GeneratedState[placementKey])
+			placements := record.Applied.GeneratedState[placementKey]
+			if index >= historyStart {
+				placements = history[index-historyStart].BackendPlacements
+			}
+			m, err = retainedBackendPlacementProjection(resolved, m, placements)
 			if err != nil {
 				return nil, err
 			}

@@ -40,6 +40,11 @@ func recordPendingApplicationRuntimeRetirement(resolved resolvedApplication, pla
 	}
 	record.Applied.GeneratedState["previous_intent"] = string(previous)
 	if record.Applied.GeneratedState["retired_intent"] == "" || (prior.Validate() == nil && record.Observed.State != "runtime-retired") {
+		if record.Applied.GeneratedState["retired_intent"] != string(record.Applied.Intent) || record.Applied.GeneratedState["retired_backend_placements"] != record.Applied.GeneratedState["backend_placements"] {
+			if err := archiveReplacedRetiredRuntime(&record); err != nil {
+				return record, err
+			}
+		}
 		record.Applied.GeneratedState["retired_intent"] = string(record.Applied.Intent)
 		record.Applied.GeneratedState["retired_backend_placements"] = record.Applied.GeneratedState["backend_placements"]
 	}

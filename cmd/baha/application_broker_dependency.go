@@ -51,6 +51,13 @@ func applicationBrokerOwners(resolved resolvedApplication) ([]applicationBrokerO
 		if retained := record.Applied.GeneratedState["retired_intent"]; retained != "" {
 			intents = append(intents, json.RawMessage(retained))
 		}
+		history, err := retiredRuntimeHistory(record)
+		if err != nil {
+			return nil, err
+		}
+		for _, archived := range history {
+			intents = append([]json.RawMessage{archived.Intent}, intents...)
+		}
 		for index, intent := range intents {
 			var m application.Manifest
 			id := record.Identity
