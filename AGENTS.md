@@ -42,6 +42,10 @@ For an existing shared task, continue its branch/PR; preserve other sessions'
 commits and integrate remote changes before pushing. Checkpoints are leads;
 confirm their claims against current source, comments and results.
 
+Several sessions often run in parallel; follow the
+[development process](docs/DEVELOPMENT_GUIDELINES.md#development-process) for
+ownership, Maintainer approval and multi-session rules.
+
 Keep runtime, capability and delivery separate. Mutations follow
 plan → preflight → apply → verify; CLI, JSON and MCP share domain semantics.
 Preserve ownership, concrete consequence/consent checks and secret protection.

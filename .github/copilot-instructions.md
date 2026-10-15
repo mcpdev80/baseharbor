@@ -13,6 +13,9 @@ When reviewing or generating changes:
 7. Keep `baha` stable, discoverable, fail-closed, and truthful about operational success.
 8. Do not claim CI, runtime, backup, restore, TLS, or service readiness without observed evidence.
 9. If code and canonical documentation disagree, report and resolve the inconsistency rather than choosing a new design implicitly.
-10. Do not approve merge or roadmap progression on behalf of the human maintainer.
+10. Do not approve merge or roadmap progression on behalf of the human Maintainer.
 
 Use review severities from the canonical guidelines: `BLOCKER`, `MAJOR`, `MINOR`, and `INFO`.
+
+For process, ownership and Maintainer approval, follow the
+[development process](../docs/DEVELOPMENT_GUIDELINES.md#development-process).

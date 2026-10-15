@@ -100,10 +100,29 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 - Langlebige Branchen beschränken sich auf explizit bezeichnete Integration oder gepflegte Arbeitsspuren wie z.B.`main `, ` develop`und absichtlich beibehaltene aktive Merkmals-/Prüfzweige.
 - Vergewissern Sie sich vor dem Löschen eines abweichenden Zweigs, dass alle erforderlichen Änderungen bereits im Zielzweig vorhanden sind oder absichtlich obsolet sind.
 
+## Entwicklungsablauf
+
+`develop` integriert die nächste Veröffentlichung und `main` enthält veröffentlichten Quellcode; das maßgebliche Branch- und Release-Modell steht in [Releases und Versionierung](reference/releases.md). Ab v0.4.26 wird jede Arbeitseinheit als eigener kleiner Branch und Pull Request gegen `develop` geliefert. v0.4.25 wurde nach dem früheren Shared-Branch-Verfahren abgeschlossen ([PR #881](https://github.com/mcpdev80/baseharbor/pull/881)); dessen Workflows und Nachweise bleiben unverändert und werden nicht nachträglich neu eingespielt.
+
+**Maintainer.** Die Rolle Maintainer besitzt die Merge- und Freigabe-Hoheit für `develop`. Die aktuelle Zuordnung ist `@mcpdev80` und wird hier zentral definiert; ein weiterer Maintainer erfordert eine ausdrücklich aktualisierte Zuständigkeit. Einstiege nennen die Rolle „Maintainer" statt eines persönlichen Kontos.
+
+**Review- und Freigabegrenze.** Ein Pull Request eines anderen Beitragenden in `develop` erfordert Maintainer-Freigabe und grüne Pflichtprüfungen; neue Commits entwerten eine frühere Freigabe. Ein Maintainer darf den eigenen Pull Request vorerst ohne Fremdreview mergen, aber Pull Request und dessen erforderliche grüne Prüfungen bleiben Pflicht. Es gibt kein direktes Push auf einen geschützten Branch und keinen pauschalen Contributor-Bypass; dies ist ein transparenter Solo-Maintainer-Kompromiss, keine kontobezogene Sicherheitsgarantie. Review- und CI-Schutz werden getrennt konfiguriert und nachgeprüft.
+
+**Multi-Session-Ausführung.** Wenn mehrere Agent- oder menschliche Sitzungen parallel arbeiten:
+
+- eine zugewiesene Issue pro Sitzung und Zeitpunkt;
+- ein eigener Branch und Pull Request pro Task;
+- Ownership vor Änderungen prüfen und dokumentieren, nachdem aktuelle Regeln und Remote-Stände gelesen wurden;
+- Task-Dateigrenzen und integrierte Abhängigkeiten einhalten;
+- Commits anderer Sitzungen erhalten und Remote-Änderungen vor dem Push integrieren;
+- nach Implementierung, Verifikation und Pull-Request-Übergabe stoppen;
+- die nächste Issue erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
+- eine blockierende Abhängigkeit melden, statt autonom die Aufgabe zu wechseln.
+
 ## Dokumentation
 
 Folgen[Documentation style](STYLE_GUIDE.md).
 
 Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. GitHub Issues planen zukünftige Arbeit. Releases bewahren Geschichte.
 
-Jedes Release läuft das kompletteinternen Pre-Release-Dokumentations-Audit. Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
+Jedes Release läuft das komplette [interne Pre-Release-Dokumentations-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.

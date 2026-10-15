@@ -59,6 +59,10 @@ scripts/    Project automation
 
 Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch represents released source.
 
+### Process and ownership
+
+`develop` integrates the next release and each task lands as one small pull request. Follow the [development process](docs/DEVELOPMENT_GUIDELINES.md#development-process) for ownership, Maintainer approval and multi-session rules; they are not duplicated here.
+
 ### Production hotfixes
 
 Production hotfixes are the exception to the normal `develop` flow.

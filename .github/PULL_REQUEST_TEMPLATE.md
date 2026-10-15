@@ -1,32 +1,15 @@
-## What changed?
+## Outcome
 
-<!-- Keep this focused. Describe the behavior or structure that changed. -->
+<!-- The concrete result of this change. Use the title schema `[release] Area: outcome` and link the issue with `Closes #NNN`. -->
 
-## Why?
+## Dependencies
 
-<!-- What problem does this solve? -->
+<!-- Issues, tasks or changes this pull request relies on, or `None` when standalone. -->
+
+## Acceptance
+
+<!-- The acceptance criteria from the linked issue, as checked items. -->
 
 ## Verification
 
-<!-- Commands, tests, CI runs or acceptance evidence used to verify the change. -->
-
-## Contracts / compatibility / security
-
-- [ ] No contract, compatibility or security impact.
-- [ ] Manifest / specification behavior changed and the normative docs were updated.
-- [ ] CLI / JSON / MCP behavior changed and the interfaces remain aligned.
-- [ ] Runtime / provider behavior changed and relevant acceptance coverage was updated.
-- [ ] Security-sensitive behavior changed and fail-closed behavior was verified.
-
-## Documentation
-
-- [ ] No user-facing documentation change is required.
-- [ ] Documentation was updated.
-- [ ] Release notes / changelog were updated when required.
-
-## Contributor checks
-
-- [ ] I reviewed the existing architecture and reused existing abstractions.
-- [ ] The change is focused and does not introduce a parallel lifecycle or provider model.
-- [ ] Relevant local tests pass.
-- [ ] No secrets, credentials, private keys or recovery material are included.
+<!-- Commands, tests, CI runs or evidence that prove the acceptance criteria; note any contract, compatibility or security impact and that no secrets are included. -->
