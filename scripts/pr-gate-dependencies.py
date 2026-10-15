@@ -7,7 +7,7 @@ from pathlib import Path
 
 def dependency_mode(plan, requirements):
     selected = plan.get("selected_gates")
-    if not isinstance(selected, list) or not selected:
+    if not isinstance(selected, list):
         raise ValueError("missing selected gates")
     catalog = {g["id"]: g for g in requirements["gates"]
                if "v0.4.26" in g.get("required_for", [])}
