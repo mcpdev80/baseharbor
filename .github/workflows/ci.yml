@@ -429,3 +429,43 @@ jobs:
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
           retention-days: 1
+
+  pr934_guided_go_pilot:
+    name: PR934 · Exact Guided Go
+    if: github.event_name == 'push' && github.ref_name == 'runtime-validation/ci/934-guided-go-exact'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d7a004434c459360bf3158983d495f138c4cd09d
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify immutable PR934 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 'd7a004434c459360bf3158983d495f138c4cd09d'
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Format the two changed Go sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go)"
+      - name: Focused guided and affected application contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestGuided' -count=1
+          go test ./internal/application/... ./contracts/... -count=1
+      - name: Vet and build CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          go vet ./cmd/baha
+          go build -o "$RUNNER_TEMP/baha-pr934" ./cmd/baha
