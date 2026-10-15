@@ -42,12 +42,12 @@ class AuthenticatedResultsTests(unittest.TestCase):
                 self.assertEqual('blocked',out['results'][0]['conclusion'])
 
     def test_native_gate_requires_exact_candidate_job(self):
-        native = dict(PLAN, selected_gates=['atomic/docker/backup-restore'])
+        native = dict(PLAN, selected_gates=['atomic/docker/backup-restore'], required_consumer_dependencies=['core','demo'])
         with self.assertRaises(PermissionError):
             mod.authenticated_results(native, RUN, JOBS, 123, 1, HEAD)
         jobs = JOBS + [{'name':name,'run_id':123,
                         'run_attempt':1,'conclusion':'success'} for name in
-                       ('PR · Exact Candidate','PR · Consumer Pins','PR · Runner Interface')]
+                       ('PR · Exact Candidate','PR · Runner Interface')]
         result=mod.authenticated_results(native, RUN, jobs, 123, 1, HEAD)
         self.assertFalse(any(x['kind']=='gate' for x in result['results']))
         failed=jobs[:-1]+[dict(jobs[-1], conclusion='failure')]
