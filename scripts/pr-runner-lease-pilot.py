@@ -48,12 +48,11 @@ def execute(runtime):
     run_id = os.environ["GITHUB_RUN_ID"]
     attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
     repository = os.environ["GITHUB_REPOSITORY"]
-    verified_pr = isolation.github_json("https://api.github.com/repos/" + repository + "/pulls/" + str(pr["number"]), "")
     pins = {"demo_sha": "1" * 40, "console_sha": "2" * 40, "connector_sha": "3" * 40}
     common = {"schema": "baseharbor.pr-runtime-request/v1",
               "runtime": runtime, "target_base_sha": pr["base"]["sha"],
               "head_sha": pr["head"]["sha"], "merge_base_sha": pr["base"]["sha"],
-              "integration_sha": verified_pr["merge_commit_sha"], "consumer_pins": pins,
+              "integration_sha": os.environ["GITHUB_SHA"], "consumer_pins": pins,
               "admission": "requires-trusted-isolated-runner",
               "evidence": "existing-verifier-only"}
     main_request = dict(common, gate_id="atomic/" + runtime + "/backup-restore")
@@ -61,7 +60,7 @@ def execute(runtime):
     call(runtime, "pull", "docker.io/library/alpine:3.21")
     with tempfile.TemporaryDirectory(prefix="bh-pilot-", dir=os.environ["RUNNER_TEMP"]) as root:
         peer = isolation.prepare(peer_request, root, run_id, attempt, 2,
-                                 repository, pr["number"], "")
+                                 repository, pr["number"], None)
         peer_names = None
         try:
             peer_names = resources(runtime, peer)
