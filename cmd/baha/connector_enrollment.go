@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -53,7 +54,9 @@ func (e *bahaMachineExecutor) ConnectorEnrollmentHTTP(ctx context.Context, store
 	// Pin the same installation that owns enrollment. Machine input may select
 	// an execution node, but never a different SQL/Secrets/Identity authority.
 	e.coreAuthority = &target
-	return targetenrollment.NewHTTP(authority, resolveConnectorEnrollmentScope)
+	return targetenrollment.NewHTTP(authority, resolveConnectorEnrollmentScope, func(ctx context.Context, scope targetenrollment.Scope, consent json.RawMessage) (any, error) {
+		return disconnectNodeWithImpact(ctx, authority, scope, consent)
+	})
 }
 
 func resolveConnectorEnrollmentScope(ctx context.Context, targetID, nodeID, environment string) (targetenrollment.Scope, error) {

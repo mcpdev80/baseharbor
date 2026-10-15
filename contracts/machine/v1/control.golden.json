@@ -364,7 +364,7 @@
             "id": "app.stop",
             "description": "Stop owned application runtime while preserving persistent data.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.app.stop"
@@ -452,7 +452,7 @@
           },
           {
             "id": "node.disconnect",
-            "description": "Revoke a remote node identity before removing its empty Target registration.",
+            "description": "Revoke remote node access after concrete impact acknowledgement and preserve registration/recovery owners.",
             "safety": "destructive",
             "confirmation_required": true,
             "policy_required": false,
@@ -461,7 +461,7 @@
           },
           {
             "id": "target.create",
-            "description": "Create explicit runtime and access Target configuration.",
+            "description": "Create explicit runtime/access Target configuration, or restore protected original references with current impact acknowledgement.",
             "safety": "mutating",
             "confirmation_required": false,
             "policy_required": false,
@@ -470,9 +470,9 @@
           },
           {
             "id": "target.delete",
-            "description": "Delete empty Target configuration without mutating owned or foreign infrastructure.",
+            "description": "Detach Target configuration with two current-plan acknowledgements, preserving original-definition recovery and runtime/data owners.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": false,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.target.delete"
@@ -580,7 +580,7 @@
             "id": "runtime.start",
             "description": "Start one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.start"
@@ -589,7 +589,7 @@
             "id": "runtime.stop",
             "description": "Stop one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.stop"
@@ -598,7 +598,7 @@
             "id": "runtime.restart",
             "description": "Restart one authorized concrete runtime resource through Runtime Explorer.",
             "safety": "mutating",
-            "confirmation_required": false,
+            "confirmation_required": true,
             "policy_required": true,
             "contract_version": "v1",
             "mcp_tool": "baseharbor.runtime.restart"

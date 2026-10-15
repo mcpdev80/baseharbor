@@ -12,7 +12,7 @@ BaseHarbor brings applications and their backends together on verified Linux Tar
 [Get started](tutorials/getting-started.md){ .md-button .md-button--primary }
 [GitHub](https://github.com/mcpdev80/baseharbor){ .md-button }
 
-Documentation for **BaseHarbor v0.4.24**. Published versions and installation binaries are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
+Documentation for the **BaseHarbor v0.4.25 candidate**; the published baseline is v0.4.24. Published versions and installation binaries are available in the [GitHub releases](https://github.com/mcpdev80/baseharbor/releases).
 
 ## From repository to running application
 
@@ -24,13 +24,13 @@ baha up
 baha status
 ```
 
-`baha init` adopts the repository and reuses an existing Core, or guides you through the required setup. Core means **SQL + Secrets + Identity**; the Console is optional. `baha up` converges the application. Status distinguishes verified readiness from a workload that is merely running.
+`baha init` adopts the repository and records its system-generated application identity. `baha up` provisions or reuses the requested providers and their genuine dependencies. A supported local application with no requested managed services needs no unrelated service containers or compulsory login. An explicitly enabled management Core or Console has its own security dependencies. Status distinguishes verified readiness from a workload that is merely running.
 
 ## Build with your normal tools
 
 Keep your application code and libraries. BaseHarbor detects supported Compose, Quadlet and Kubernetes workload sources, resolves provider-neutral requirements and supplies protected bindings. Ambiguous or [unsupported sources](explanation/workload-sources.md) require an explicit next action before deployment.
 
-## Run with a shared or isolated Core
+## Run with shared or isolated providers
 
 Choose supported provider placement and a managed local or enrolled remote Target. Ownership, TLS, permissions and retained data remain explicit throughout the lifecycle. [Core resource observations](explanation/core-resources.md) distinguish measured reference topologies from planning estimates and the cost of additional isolation.
 

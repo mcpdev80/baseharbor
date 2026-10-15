@@ -120,11 +120,32 @@ func TestDevelopmentGatewayAllowsNonRoutableWorkload(t *testing.T) {
 	m := application.New("worker", "dev", false, false, false)
 	m.Services.SQL = false
 	m = application.WithWorkloadComponents(m, "worker")
-	if !requiresDevelopmentGateway(m) {
-		t.Fatal("development workload should still participate in route reconciliation")
+	if requiresDevelopmentGateway(m) {
+		t.Fatal("plain development workload must not implicitly provision a gateway")
 	}
 	if requiresDeclaredDevelopmentGatewaySurface(m) {
 		t.Fatal("non-routable workload must not require a canonical development URL")
+	}
+}
+
+func TestBackendCapabilityDoesNotRequestHTTPGateway(t *testing.T) {
+	for _, capability := range []string{"sql", "cache", "secrets", "runtime-permissions"} {
+		t.Run(capability, func(t *testing.T) {
+			m := application.WithWorkloadComponents(application.New("worker", "dev", false, false, false), "worker")
+			switch capability {
+			case "sql":
+				m.Services.SQL = true
+			case "cache":
+				m.Services.Cache = true
+			case "secrets":
+				m.Services.Secrets = true
+			case "runtime-permissions":
+				m.Runtime.Permissions = []application.RuntimePermission{{Capability: "metrics"}}
+			}
+			if requiresDevelopmentGateway(m) {
+				t.Fatal("backend connection implicitly requested HTTP exposure")
+			}
+		})
 	}
 }
 

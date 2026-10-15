@@ -51,7 +51,7 @@ func TestDurableKeyValueManifestRoundTripAndPortableContract(t *testing.T) {
 	if !strings.Contains(rendered, "  key_value:\n") || !strings.Contains(rendered, "      sessions: {}\n") {
 		t.Fatalf("durable key-value service missing from manifest:\n%s", rendered)
 	}
-	got, err := ParseYAML(rendered)
+	got, err := ParseCanonicalYAML(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}

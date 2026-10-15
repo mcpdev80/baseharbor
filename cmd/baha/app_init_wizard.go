@@ -146,7 +146,7 @@ func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer)
 	if cli.OutputOptionsFromContext(ctx).Verbose {
 		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
 		fmt.Fprintln(out, "----------------------------------------")
-		fmt.Fprint(out, m.YAML())
+		fmt.Fprint(out, m.AuthoredYAML())
 		fmt.Fprintln(out, "----------------------------------------")
 	}
 	confirm, err := promptYesNo(reader, out, "Write baseharbor.yaml?", true)
@@ -297,6 +297,8 @@ func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPo
 }
 
 func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io.Writer) error {
+	// Detection uses a transient ID for footprint previews, not an owner claim.
+	m.ApplicationID = ""
 	result, err := persistRepositoryApplication(ctx, ".", m, nil)
 	if err != nil {
 		return err

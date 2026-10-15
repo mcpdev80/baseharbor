@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -30,12 +31,13 @@ type ContainerBackend interface {
 }
 
 type Service struct {
-	backend  ContainerBackend
-	target   string
-	resolver OwnershipResolver
+	backend   ContainerBackend
+	target    string
+	resolver  OwnershipResolver
+	authority MutationAuthority
 }
 
-func NewService(backend ContainerBackend, target string, resolver OwnershipResolver) (*Service, error) {
+func NewService(backend ContainerBackend, target string, resolver OwnershipResolver, authorities ...MutationAuthority) (*Service, error) {
 	if backend == nil {
 		return nil, errors.New("runtime explorer backend is required")
 	}
@@ -43,7 +45,14 @@ func NewService(backend ContainerBackend, target string, resolver OwnershipResol
 	if target == "" {
 		return nil, errors.New("runtime explorer target is required")
 	}
-	return &Service{backend: backend, target: target, resolver: resolver}, nil
+	if len(authorities) > 1 {
+		return nil, errors.New("runtime explorer requires one mutation authority")
+	}
+	service := &Service{backend: backend, target: target, resolver: resolver}
+	if len(authorities) == 1 {
+		service.authority = authorities[0]
+	}
+	return service, nil
 }
 
 func (s *Service) Capabilities(ctx context.Context, target string) (CapabilitySet, error) {
@@ -254,19 +263,33 @@ func (s *Service) Operate(ctx context.Context, request OperationRequest) (Operat
 	if resource.Ownership == OwnershipExternal || resource.Ownership == OwnershipUnmanaged {
 		return OperationResult{}, fmt.Errorf("runtime resource ownership %q does not permit direct mutation", resource.Ownership)
 	}
-	if _, err := s.backend.OperateContainer(ctx, request.Resource.ResourceID, request.Operation, request.Command); err != nil {
-		return OperationResult{}, err
+	if s.authority == nil {
+		return OperationResult{}, errors.New("runtime lifecycle requires the configured Target consequence and acknowledgement authority")
 	}
-	updated, err := s.Inspect(ctx, request.Resource)
+	verify, err := s.authority.AuthorizeRuntimeMutation(ctx, resource, request)
 	if err != nil {
 		return OperationResult{}, err
 	}
-	return OperationResult{
-		Resource:       request.Resource,
-		Operation:      request.Operation,
-		State:          updated.State,
-		Reconciliation: updated.Reconciliation,
-	}, nil
+	if verify == nil {
+		return OperationResult{}, errors.New("runtime mutation authority has no result verifier")
+	}
+	// Reinspect after acknowledgement. A changed owner cannot be authorized by
+	// an earlier observation of the same native container ID.
+	current, err := s.Inspect(ctx, request.Resource)
+	if err != nil {
+		return OperationResult{}, err
+	}
+	if current.Ownership != resource.Ownership || current.Relationship != resource.Relationship || !reflect.DeepEqual(current.State, resource.State) || !reflect.DeepEqual(current.References, resource.References) {
+		return OperationResult{}, errors.New("runtime resource owner changed after acknowledgement")
+	}
+	mutationErr := ctx.Err()
+	if mutationErr == nil {
+		_, mutationErr = s.backend.OperateContainer(ctx, request.Resource.ResourceID, request.Operation, request.Command)
+	}
+	updated, observationErr := s.Inspect(ctx, request.Resource)
+	result := OperationResult{Resource: request.Resource, Operation: request.Operation, State: updated.State, Reconciliation: updated.Reconciliation}
+	result.ProviderChangeResult, err = verify(ctx, updated, errors.Join(mutationErr, observationErr))
+	return result, errors.Join(mutationErr, observationErr, err)
 }
 
 func (s *Service) validateRef(ref ResourceRef) error {
@@ -325,6 +348,17 @@ func (s *Service) containerResource(ctx context.Context, container runtimecontra
 			"runtime.project": container.Project,
 			"runtime.service": container.Service,
 		},
+	}
+	if proof, ok := s.backend.(interface {
+		ContainerResourceEvidence(context.Context, string) (map[string]string, error)
+	}); ok {
+		refs, err := proof.ContainerResourceEvidence(ctx, container.ID)
+		if err != nil {
+			return Resource{}, err
+		}
+		for key, value := range refs {
+			resource.References[key] = value
+		}
 	}
 	if err := resource.Validate(); err != nil {
 		return Resource{}, err

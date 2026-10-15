@@ -1,5 +1,8 @@
 # Release Notes
 
+[v0.4.25-Kandidat](v0.4.25.md) — Core-loser App-Pfad und minimales Manifest; noch nicht veröffentlicht.
+
+
 ## Aktuelle Version
 
 [BaseHarbor v0.4.24](v0.4.24.md): Entwickler-Highlights und Kompatibilitätshinweise.

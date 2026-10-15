@@ -1,0 +1,1082 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "target",
+    "revision",
+    "plan_id",
+    "complete",
+    "confirmations_required",
+    "destructive",
+    "impacts"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.provider-impact/v1"
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "attention": {
+      "const": "Achtung"
+    },
+    "confirmations_required": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "destructive": {
+      "type": "boolean"
+    },
+    "impacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/impact"
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/impact.schema.json",
+  "title": "baseharbor.provider-impact/v1",
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "target",
+        "kind",
+        "reference"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "volume",
+            "path",
+            "external-store",
+            "backup",
+            "recovery"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle"
+      ],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reference": {
+              "type": "string",
+              "pattern": "^baseharbor://[^\\s@?#]+$"
+            }
+          }
+        },
+        "credentials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "reference"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reference": {
+                "type": "string",
+                "pattern": "^baseharbor://[^\\s@?#]+$"
+              }
+            }
+          }
+        },
+        "trust": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "reference"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reference": {
+                "type": "string",
+                "pattern": "^baseharbor://[^\\s@?#]+$"
+              },
+              "format": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "authorization": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [],
+            "properties": {
+              "audience": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "reference"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reference": {
+                "type": "string",
+                "pattern": "^baseharbor://[^\\s@?#]+$"
+              }
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "renewable",
+            "rotatable",
+            "revocable"
+          ],
+          "properties": {
+            "renewable": {
+              "type": "boolean"
+            },
+            "rotatable": {
+              "type": "boolean"
+            },
+            "revocable": {
+              "type": "boolean"
+            }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "severity",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "error"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "security"
+      ],
+      "properties": {
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "security": {
+          "$ref": "#/$defs/security"
+        }
+      }
+    },
+    "realization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "kind",
+        "target",
+        "scope",
+        "ownership",
+        "owner",
+        "state",
+        "locations",
+        "supported",
+        "verified"
+      ],
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "shared",
+            "application",
+            "external"
+          ]
+        },
+        "ownership": {
+          "enum": [
+            "baseharbor",
+            "external"
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "running",
+            "stopped-but-owned",
+            "newly-required",
+            "unverifiable",
+            "foreign",
+            ""
+          ]
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "access": {
+          "$ref": "#/$defs/access"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "ancillary": {
+          "type": "boolean"
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownership",
+        "id",
+        "kind",
+        "recovery",
+        "verified"
+      ],
+      "properties": {
+        "ownership": {
+          "enum": [
+            "baseharbor",
+            "external",
+            ""
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "recovery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "access": {
+          "$ref": "#/$defs/access"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "valid_from": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "retention": {
+          "$ref": "#/$defs/retention"
+        }
+      }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "material_id",
+        "disposition",
+        "supported",
+        "verified"
+      ],
+      "properties": {
+        "material_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "enum": [
+            "retained",
+            "transferred",
+            "deleted",
+            "revoked",
+            "expired",
+            "invalidated",
+            "nonrecoverable",
+            "unknown"
+          ]
+        },
+        "destination": {
+          "$ref": "#/$defs/location"
+        },
+        "access_after": {
+          "$ref": "#/$defs/access"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "function",
+        "via",
+        "required",
+        "outcome"
+      ],
+      "properties": {
+        "consumer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function": {
+          "type": "string",
+          "minLength": 1
+        },
+        "via": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": [
+            "remains",
+            "changed",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "valid_until": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "transition": {
+          "$ref": "#/$defs/consumer_transition"
+        },
+        "remaining_validity_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aspect",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "aspect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "prerequisite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "subject",
+        "supported",
+        "verified",
+        "consequence"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "consequence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prerequisites",
+        "requested_consumers",
+        "instance_id",
+        "operation",
+        "scenario",
+        "selection",
+        "before",
+        "dependencies",
+        "dependents",
+        "functions",
+        "materials",
+        "effects",
+        "notices"
+      ],
+      "properties": {
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prerequisite"
+          }
+        },
+        "requested_consumers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "enum": [
+            "add",
+            "resume",
+            "stop",
+            "destroy",
+            "remove-runtime",
+            "replace",
+            "update",
+            "rebind",
+            "disable",
+            "unbind"
+          ]
+        },
+        "scenario": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "enum": [
+            "automatic",
+            "explicit"
+          ]
+        },
+        "before": {
+          "$ref": "#/$defs/realization"
+        },
+        "after": {
+          "$ref": "#/$defs/realization"
+        },
+        "dependencies": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "dependents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function"
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "before",
+              "after",
+              "meaning"
+            ],
+            "properties": {
+              "before": {
+                "$ref": "#/$defs/material"
+              },
+              "after": {
+                "$ref": "#/$defs/disposition"
+              },
+              "meaning": {
+                "type": "string",
+                "minLength": 1
+              },
+              "remaining_validity_seconds": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "notices": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "continuation_dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency-evidence"
+          }
+        }
+      }
+    },
+    "material_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "material_id",
+        "disposition",
+        "recovery",
+        "verified"
+      ],
+      "properties": {
+        "material_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "enum": [
+            "retained",
+            "transferred",
+            "deleted",
+            "revoked",
+            "expired",
+            "invalidated",
+            "nonrecoverable",
+            "unknown"
+          ]
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "recovery": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "access": {
+          "$ref": "#/$defs/access"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verified",
+        "instance_id",
+        "operation",
+        "status",
+        "materials"
+      ],
+      "properties": {
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "enum": [
+            "add",
+            "resume",
+            "stop",
+            "destroy",
+            "remove-runtime",
+            "replace",
+            "update",
+            "rebind",
+            "disable",
+            "unbind"
+          ]
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "failed",
+            "pending"
+          ]
+        },
+        "after": {
+          "$ref": "#/$defs/realization"
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/material_outcome"
+          }
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/function_outcome"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "continuation_dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency-evidence"
+          }
+        }
+      }
+    },
+    "function_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "instance_id",
+        "function",
+        "outcome",
+        "verified"
+      ],
+      "properties": {
+        "consumer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "enum": [
+            "remains",
+            "changed",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "valid_until": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "transition": {
+          "$ref": "#/$defs/consumer_transition"
+        }
+      }
+    },
+    "consumer_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "consumer",
+        "instance_id",
+        "function",
+        "mode_before",
+        "mode_after",
+        "owner_before",
+        "owner_after",
+        "synchronization_before",
+        "synchronization_after",
+        "rotation_before",
+        "rotation_after",
+        "change_credentials",
+        "supported",
+        "verified",
+        "before",
+        "after",
+        "locations",
+        "dependencies",
+        "outcome"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "consumer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "function": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronization_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronization_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rotation_before": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rotation_after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "change_credentials": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "before": {
+          "$ref": "#/$defs/security"
+        },
+        "after": {
+          "$ref": "#/$defs/security"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "remains",
+            "changed",
+            "unavailable",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "survives_stop",
+        "survives_runtime_removal",
+        "verified"
+      ],
+      "properties": {
+        "survives_stop": {
+          "type": "boolean"
+        },
+        "survives_runtime_removal": {
+          "type": "boolean"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "dependency-evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "realization",
+        "dependencies"
+      ],
+      "properties": {
+        "realization": {
+          "$ref": "#/$defs/realization"
+        },
+        "dependencies": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "complete": {
+            "const": false
+          }
+        },
+        "required": [
+          "complete"
+        ]
+      },
+      "then": {
+        "properties": {
+          "confirmations_required": {
+            "const": 2
+          },
+          "attention": {
+            "const": "Achtung"
+          }
+        },
+        "required": [
+          "attention"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "destructive": {
+            "const": true
+          }
+        },
+        "required": [
+          "destructive"
+        ]
+      },
+      "then": {
+        "properties": {
+          "confirmations_required": {
+            "const": 2
+          }
+        },
+        "required": [
+          "attention"
+        ]
+      }
+    }
+  ]
+}

@@ -9,6 +9,16 @@ import (
 )
 
 func (m Manifest) Validate() error {
+	return m.validate(true)
+}
+
+// ValidateIntent accepts portable authoring before source/workload resolution.
+// Validate retains the existing executable-manifest prerequisites.
+func (m Manifest) ValidateIntent() error {
+	return m.validate(false)
+}
+
+func (m Manifest) validate(requireWorkload bool) error {
 	if m.Version != CurrentVersion {
 		return fmt.Errorf("unsupported manifest version %d (expected %d)", m.Version, CurrentVersion)
 	}
@@ -47,7 +57,7 @@ func (m Manifest) Validate() error {
 	messagingQueue := MessagingQueueInstanceNames(m)
 	messagingPubSub := MessagingPubSubInstanceNames(m)
 	messagingStream := MessagingStreamInstanceNames(m)
-	if len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(documentDatabase) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
+	if requireWorkload && len(sql) == 0 && len(cache) == 0 && len(keyValue) == 0 && len(documentDatabase) == 0 && len(objectStorage) == 0 && len(messagingQueue) == 0 && len(messagingPubSub) == 0 && len(messagingStream) == 0 && !m.Services.Secrets && !m.Services.Identity && !HasExplicitWorkload(m) && !HasOTLPTelemetry(m) && !HasMetricsSources(m) && !HasLogsCollection(m) {
 		return fmt.Errorf("at least one backend service, telemetry binding or explicit Compose workload must be enabled")
 	}
 	for _, name := range sql {

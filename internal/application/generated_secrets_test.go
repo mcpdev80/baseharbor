@@ -9,7 +9,6 @@ import (
 func TestGeneratedSecretManifestRoundTrip(t *testing.T) {
 	input := `version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: demo
   environment: dev
 services:
@@ -38,7 +37,7 @@ secrets:
 	if len(GeneratedSecretRequirements(m)) != 2 {
 		t.Fatalf("generated requirements = %d", len(GeneratedSecretRequirements(m)))
 	}
-	normalized := m.YAML()
+	normalized := m.AuthoredYAML()
 	roundTripped, err := ParseYAML(normalized)
 	if err != nil {
 		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
@@ -125,7 +124,7 @@ func TestOptionalSecretManifestRoundTrip(t *testing.T) {
 			t.Fatalf("manifest missing %q:\n%s", want, normalized)
 		}
 	}
-	roundTripped, err := ParseYAML(normalized)
+	roundTripped, err := ParseCanonicalYAML(normalized)
 	if err != nil {
 		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
 	}

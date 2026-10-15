@@ -2,40 +2,31 @@
 
 This tutorial gets an existing application running under BaseHarbor without requiring provider knowledge or manual manifest editing.
 
-## Core setup
+## Start with what your application needs
 
-BaseHarbor needs its Core before the first application runs: **SQL + Secrets + Identity**
-(PostgreSQL, OpenBao and Keycloak). The Web Console is optional.
+A supported local workload with no managed capabilities runs without installing
+Core or logging in. Inspect and initialize the repository, then plan and start
+it through the existing application lifecycle. SQL is not an implicit default.
+An empty directory still needs a supported workload; intent alone is not READY.
 
-When the first `baha init` or application startup needs setup, BaseHarbor offers:
+When selected capabilities need managed infrastructure, BaseHarbor reuses a
+compatible owned installation or asks for explicit interactive setup consent.
+An explicitly installed management Core still provides **SQL + Secrets + Identity**
+(PostgreSQL, OpenBao and Keycloak); the Web Console is optional. TLS and protected
+credentials remain required for managed services.
 
-```text
-BaseHarbor needs its Core services before the first application can run.
-Set them up now? [Y/n]
-```
+A missing required Core in non-interactive application execution returns
+`core_required`; application `--yes` is not permission to bootstrap Core.
+Automation can first use the explicit `baha up --control-plane-only` path.
+Outside an application repository, `baha status` inspects that installation.
+Retries reconcile the same owned Core after verified readiness.
 
-The setup asks whether this is a development or deployment machine. This controls
-workspace/source defaults only; TLS and protected credentials remain required.
-
-```text
-Is this installation running on a machine where you write code?
-  1. Yes, this is a development machine
-  2. No, this is a deployment machine
-```
-
-The application flow continues after all three Core capabilities reach verified readiness.
-Retries reconcile the same owned installation; they do not create another Core.
-
-To bootstrap only the Core without an application or repository, use the existing
-`baha up --control-plane-only` path. Inspect it with `baha status` outside an application repository.
-Non-interactive application requests return a typed `core_required` outcome unless
-automatic bootstrap was explicitly requested; automation can invoke Core setup first.
-
-Shared placement is the simplest default. Application-isolated providers can add
-instances and resource use. [Measured Core resource observations](../explanation/core-resources.md)
-describe the qualified reference topology. Memory output distinguishes planning estimates from
-measurements; Core idle, startup peak and simultaneous total remain unavailable
-until this exact runtime/topology has been sampled.
+Shared placement reuses compatible providers. Isolated providers can add
+resources; managed native capabilities still use the existing full Core topology.
+The [Core resource observations](../explanation/core-resources.md) and application
+footprint distinguish measured, estimated and unknown values without invented
+savings. See the [application commands](../cli/applications.md) for supported
+Core-less behavior and limits.
 
 ## Try it: a Go order API with SQL
 

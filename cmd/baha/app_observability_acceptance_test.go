@@ -60,7 +60,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 

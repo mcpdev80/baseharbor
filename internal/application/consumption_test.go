@@ -49,7 +49,7 @@ func TestConsumptionIntentRoundTrip(t *testing.T) {
 		{Name: "producer-api", ApplicationID: "b6e60b14-e4d3-4d27-bb91-26589f9dced5", Component: "api", Interface: "http", Protocol: "https"},
 	}
 	data := m.YAML()
-	got, err := ParseYAML(data)
+	got, err := ParseCanonicalYAML(data)
 	if err != nil {
 		t.Fatal(err)
 	}

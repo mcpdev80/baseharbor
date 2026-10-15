@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/availability"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
 const CurrentVersion = 1
@@ -13,22 +14,24 @@ const defaultServiceInstance = "default"
 
 // Manifest is the declarative application backend request understood by BaseHarbor.
 type Manifest struct {
-	Version       int
-	ApplicationID string
-	Name          string
-	Environment   string
-	Services      Services
-	Secrets       SecretRequirements
-	Workload      WorkloadConfig
-	Exposures     []HTTPExposureRequirement
-	Telemetry     TelemetryRequirements
-	Metrics       MetricsRequirements
-	Logs          LogsRequirements
-	Runtime       RuntimeRequirements
-	Identity      IdentityRequirements
-	HA            bool
-	Availability  map[string]availability.Override
-	Consumes      []ConsumptionRequirement
+	// Read-only native owner projection; never authored or serialized intent.
+	backendPlacements map[capability.ProviderKind]capability.ProviderPlacement
+	Version           int
+	ApplicationID     string
+	Name              string
+	Environment       string
+	Services          Services
+	Secrets           SecretRequirements
+	Workload          WorkloadConfig
+	Exposures         []HTTPExposureRequirement
+	Telemetry         TelemetryRequirements
+	Metrics           MetricsRequirements
+	Logs              LogsRequirements
+	Runtime           RuntimeRequirements
+	Identity          IdentityRequirements
+	HA                bool
+	Availability      map[string]availability.Override
+	Consumes          []ConsumptionRequirement
 }
 
 type RuntimeRequirements struct {
@@ -198,9 +201,6 @@ type SecretGeneration struct {
 func New(name, environment string, sql, cache, secrets bool) Manifest {
 	if environment == "" {
 		environment = "dev"
-	}
-	if !sql && !cache && !secrets {
-		sql = true
 	}
 	return Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
 }

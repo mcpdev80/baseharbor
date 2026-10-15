@@ -48,18 +48,10 @@ func registerMCPProviderOrganizationTools(server *mcp.Server) {
 			return machineMCPFailure(err)
 		}
 		id := strings.TrimSpace(input.ID)
-		item, err := application.InspectExternalProvider(id)
+		result, err := removeExternalProviderWithImpact(withProviderChangeConsent(ctx, input.ProviderChangeConsent), id, nil, nil)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		if err := application.RemoveExternalProvider(id); err != nil {
-			return machineMCPFailure(err)
-		}
-		result := struct {
-			ID             string `json:"id"`
-			Removed        bool   `json:"removed"`
-			ForeignMutated bool   `json:"foreign_mutated"`
-		}{ID: item.ID, Removed: true, ForeignMutated: false}
 		return nil, result, nil
 	})
 

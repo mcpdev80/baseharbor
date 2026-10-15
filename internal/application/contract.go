@@ -52,7 +52,7 @@ type PortableContract struct {
 // PortableContractFromManifest translates the current manifest v1 compatibility
 // surface into provider-neutral requirements without changing manifest behavior.
 func PortableContractFromManifest(m Manifest) (PortableContract, error) {
-	if err := m.Validate(); err != nil {
+	if err := m.ValidateIntent(); err != nil {
 		return PortableContract{}, err
 	}
 

@@ -105,7 +105,7 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T
 	}
 	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(m.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: docker-compose.yml\n"), 0o644); err != nil {
@@ -158,7 +158,7 @@ func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T
 	}
 	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
@@ -283,7 +283,7 @@ func TestResolvedRepositoryWorkloadPortsPreferDeploymentStateOverLegacyOverride(
 	}
 	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
@@ -315,7 +315,7 @@ func TestResolvedRepositoryWorkloadPortsPreserveExplicitOperatorValue(t *testing
 	}
 	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
@@ -348,7 +348,7 @@ func TestRepositoryWorkloadEnvironmentAppliesDeploymentPersistedPort(t *testing.
 	}
 	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
 	manifestPath := filepath.Join(repo, "baseharbor.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {

@@ -20,7 +20,7 @@ func TestObjectStorageManifestRoundTrip(t *testing.T) {
 	if !strings.Contains(text, "object_storage:") || !strings.Contains(text, "assets: {}") || !strings.Contains(text, "backups: {}") {
 		t.Fatalf("manifest YAML missing object-storage buckets:\n%s", text)
 	}
-	parsed, err := ParseYAML(text)
+	parsed, err := ParseCanonicalYAML(text)
 	if err != nil {
 		t.Fatal(err)
 	}

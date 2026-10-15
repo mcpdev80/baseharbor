@@ -84,7 +84,7 @@ func TestBugs858860RuntimeAcceptance(t *testing.T) {
 			m, repo := bugApplicationRepository(t)
 			if mode == "configured" || mode == "partial-secret-core" {
 				m.Services.Secrets = true
-				if err := os.WriteFile(filepath.Join(repo, application.RepositoryManifestName), []byte(m.YAML()), 0600); err != nil {
+				if err := writeInitializedAuthoredManifest(t, filepath.Join(repo, application.RepositoryManifestName), m, 0600); err != nil {
 					t.Fatal(err)
 				}
 			}

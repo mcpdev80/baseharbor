@@ -19,12 +19,12 @@ on:
         required: true
         type: string
       consumer_ref:
-        description: Optional exact v0.4.24 Connector candidate SHA; defaults to the reviewed integration branch
+        description: Optional exact Connector candidate SHA; defaults to the reviewed integration branch
         required: false
         default: ''
         type: string
       only_gates:
-        description: Optional comma-separated exact gate IDs to execute; complete approval still requires all proofs
+        description: Optional comma-separated exact gate IDs for targeted execution without release approval
         required: false
         default: ''
         type: string
@@ -77,7 +77,7 @@ jobs:
     steps:
       - name: Checkout candidate source
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
           fetch-depth: 0
@@ -128,8 +128,8 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
-          if [ "$tag" = v0.4.24 ]; then
-            python3 scripts/ecosystem_release_pins.py --core "$(git rev-parse HEAD)" \
+          if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ]; then
+            python3 scripts/ecosystem_release_pins.py --tag "$tag" --core "$(git rev-parse HEAD)" \
               --connector "$INPUT_CONSUMER_REF" --demo "$INPUT_DEMO_REF" \
               --output "docs/releases/$tag.consumer-pins.json" > "$RUNNER_TEMP/v024-consumers.json"
             pinned_demo_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/v024-consumers.json")"
@@ -165,14 +165,14 @@ jobs:
 
       - name: Set up Go
         id: setup_go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Set up Python
         id: setup_python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
 
@@ -261,7 +261,7 @@ jobs:
 
       - name: Build release snapshot
         id: snapshot
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
           version: '~> v2'
@@ -288,7 +288,7 @@ jobs:
 
       - name: Upload source candidate
         id: source_candidate
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-source-candidate
           path: ${{ runner.temp }}/pre-release-candidate
@@ -309,7 +309,10 @@ jobs:
           ONLY_GATES: ${{ inputs.only_gates }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
+          if [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/gates/* ]]; then
+            ONLY_GATES="${GITHUB_REF_NAME#validation/pre-release/selected/gates/}"
+            test -n "$ONLY_GATES"
+          elif [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
             ONLY_GATES="$(python -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
             test -n "$ONLY_GATES"
           fi
@@ -319,7 +322,7 @@ jobs:
             --output "$RUNNER_TEMP/evidence-plan" --only-gates "$ONLY_GATES" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload authenticated evidence plan
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-evidence-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/evidence-plan
@@ -352,7 +355,7 @@ jobs:
 
       - name: Upload source evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-source-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-source-evidence
@@ -371,7 +374,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
@@ -379,14 +382,14 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Download source candidate
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: pre-release-source-candidate
           path: ${{ runner.temp }}/pre-release-candidate
 
       - name: Build runtime image once
         id: runtime_image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: deploy/control-plane/Dockerfile
@@ -409,7 +412,7 @@ jobs:
 
       - name: Upload shared runtime candidate
         id: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-runtime-candidate
           path: ${{ runner.temp }}/pre-release-candidate
@@ -434,12 +437,12 @@ jobs:
         gate: ${{ fromJSON(needs.source.outputs.adoption) }}
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -507,7 +510,7 @@ jobs:
 
       - name: Upload adoption evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-adoption-${{ matrix.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/adoption-evidence
@@ -657,7 +660,7 @@ jobs:
     steps:
       - name: Checkout exact candidate
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
@@ -665,7 +668,7 @@ jobs:
         run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -727,7 +730,7 @@ jobs:
 
       - name: Upload HA evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-v0421-ha-${{ matrix.runtime }}-${{ matrix.group }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v0421-ha-evidence
@@ -752,7 +755,7 @@ jobs:
     steps:
       - name: Checkout exact candidate
         id: checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
@@ -760,7 +763,7 @@ jobs:
         run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -822,7 +825,7 @@ jobs:
 
       - name: Upload HA evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-v0421-ha-${{ matrix.runtime }}-${{ matrix.group }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v0421-ha-evidence
@@ -865,7 +868,7 @@ jobs:
 
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
 
@@ -906,7 +909,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
 
       - name: Download exact candidate artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: pre-release-runtime-candidate
           path: ${{ runner.temp }}/pre-release-candidate
@@ -1043,7 +1046,7 @@ jobs:
 
       - name: Upload reference journey evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-reference-journey-evidence-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/reference-journey-evidence
@@ -1058,13 +1061,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -1083,7 +1086,7 @@ jobs:
 
       - name: Retain source contract evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-static-public-contracts-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-public-contracts
@@ -1098,13 +1101,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -1123,7 +1126,7 @@ jobs:
 
       - name: Retain source contract evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-static-configuration-policy-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-configuration-policy
@@ -1138,13 +1141,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -1163,7 +1166,7 @@ jobs:
 
       - name: Retain source contract evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-static-browser-terminal-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-browser-terminal
@@ -1181,14 +1184,14 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -1207,7 +1210,7 @@ jobs:
           --output "$RUNNER_TEMP/core-bootstrap-docker"
       - name: Retain original runtime proof and failures
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-docker-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/core-bootstrap-docker
@@ -1225,14 +1228,14 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -1251,10 +1254,112 @@ jobs:
           --output "$RUNNER_TEMP/core-bootstrap-podman"
       - name: Retain original runtime proof and failures
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-podman-core-bootstrap-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/core-bootstrap-podman
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_coreless_docker:
+    name: Integration · integration/docker/coreless-lifecycle
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/docker/coreless-lifecycle') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/docker/coreless-lifecycle
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/coreless-lifecycle-docker"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-docker-coreless-lifecycle-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-lifecycle-docker
+          if-no-files-found: error
+          retention-days: 90
+
+  integration_coreless_podman:
+    name: Integration · integration/podman/coreless-lifecycle
+    needs: source
+    if: ${{ needs.source.result == 'success' && contains(fromJSON(needs.source.outputs.integration), 'integration/podman/coreless-lifecycle') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-lifecycle
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.source.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=${{ needs.source.outputs.candidate_sha }} -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          podman build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify fresh Core-less lifecycle, ownership-safe recovery and managed reuse
+        env:
+          CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
+          DEMO_REF: ${{ needs.source.outputs.demo_ref }}
+          TAG: ${{ needs.source.outputs.tag }}
+          BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
+        run: >-
+          python scripts/pre-release-integration.py
+          --gate integration/podman/coreless-lifecycle
+          --candidate "$CANDIDATE_SHA" --demo "$DEMO_REF" --tag "$TAG"
+          --output "$RUNNER_TEMP/coreless-lifecycle-podman"
+      - name: Retain original runtime proof and failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-podman-coreless-lifecycle-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-lifecycle-podman
           if-no-files-found: error
           retention-days: 90
 
@@ -1266,21 +1371,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1297,7 +1402,7 @@ jobs:
           --output "$RUNNER_TEMP/integration-docker-remote-target"
       - name: Retain public commitments and safe qualification failure
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-docker-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-docker-remote-target
@@ -1312,21 +1417,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1343,7 +1448,7 @@ jobs:
           --output "$RUNNER_TEMP/integration-podman-remote-target"
       - name: Retain public commitments and safe qualification failure
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-podman-remote-target-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-podman-remote-target
@@ -1358,21 +1463,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Authenticate full pinned private consumer qualification
         env:
@@ -1389,7 +1494,7 @@ jobs:
           --output "$RUNNER_TEMP/integration-static-live-console"
       - name: Retain public commitments and safe qualification failure
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-integration-static-live-console-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/integration-static-live-console
@@ -1398,12 +1503,13 @@ jobs:
 
   evidence:
     name: Evidence · Candidate Manifest
-    if: ${{ always() && !startsWith(github.ref_name, 'validation/evidence/') }}
+    # Targeted qualification never grants the final release-boundary approval.
+    if: ${{ always() && inputs.only_gates == '' && !startsWith(github.ref_name, 'validation/pre-release/selected/') && !startsWith(github.ref_name, 'validation/evidence/') }}
     needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source.outputs.candidate_sha || github.sha }}
           fetch-depth: 0
@@ -1412,16 +1518,16 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
       - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.24'
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
           DEMO_REF: ${{ needs.source.outputs.demo_ref }}
           BASEHARBOR_CONSUMER_REF: ${{ needs.source.outputs.consumer_ref }}
         run: >-
-          python3 scripts/ecosystem_release_pins.py --core "$CANDIDATE_SHA"
+          python3 scripts/ecosystem_release_pins.py --tag "${{ needs.source.outputs.tag }}" --core "$CANDIDATE_SHA"
           --connector "$BASEHARBOR_CONSUMER_REF" --demo "$DEMO_REF"
-          --output docs/releases/v0.4.24.consumer-pins.json
+          --output "docs/releases/${{ needs.source.outputs.tag }}.consumer-pins.json"
 
       - name: Verify every required input-bound proof and create release approval
         id: approval
@@ -1454,7 +1560,7 @@ jobs:
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-approval-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-approval
@@ -1480,7 +1586,7 @@ jobs:
 
       - name: Upload final pre-release evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-final-evidence
@@ -1496,7 +1602,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout workflow control
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Audit original validation jobs
@@ -1526,12 +1632,12 @@ jobs:
           print("Verified all 56 original validation jobs on the exact product candidate.")
           PY
       - name: Checkout evidence tooling
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 4db0e86e391c037d14d7bd7c13ba7c13ee517420
 
       - name: Download gate evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           pattern: pre-release-gate-*-evidence-*
           path: ${{ runner.temp }}/gate-evidence
@@ -1539,7 +1645,7 @@ jobs:
           run-id: 37335642463
 
       - name: Download adoption evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           pattern: pre-release-adoption-*-evidence-*
           path: ${{ runner.temp }}/adoption-evidence
@@ -1547,7 +1653,7 @@ jobs:
           run-id: 37335642463
 
       - name: Download v0.4.21 HA evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           pattern: pre-release-v0421-ha-*-evidence-*
           path: ${{ runner.temp }}/v0421-ha-evidence
@@ -1555,7 +1661,7 @@ jobs:
           run-id: 37335642463
 
       - name: Download reference journey evidence
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: pre-release-reference-journey-evidence-37335642463-2
           path: ${{ runner.temp }}/reference-journey-evidence
@@ -1760,7 +1866,7 @@ jobs:
 
       - name: Upload immutable release approval
         if: steps.approval.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-approval-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-approval
@@ -1790,7 +1896,7 @@ jobs:
 
       - name: Upload final pre-release evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pre-release-final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pre-release-final-evidence

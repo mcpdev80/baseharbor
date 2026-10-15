@@ -34,7 +34,7 @@ func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, 
 	}
 	for label, value := range map[string]string{"endpoint issuer": endpointIssuer, "expected issuer": expectedIssuer} {
 		u, err := url.Parse(value)
-		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 			return application.IdentityDiscovery{}, fmt.Errorf("OIDC %s must be an HTTPS URL without query or fragment", label)
 		}
 	}
@@ -50,7 +50,7 @@ func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, 
 		return application.IdentityDiscovery{}, fmt.Errorf("decode OIDC discovery: %w", err)
 	}
 	if strings.TrimRight(strings.TrimSpace(doc.Issuer), "/") != expectedIssuer {
-		return application.IdentityDiscovery{}, fmt.Errorf("OIDC discovery issuer %q does not match configured issuer %q", doc.Issuer, expectedIssuer)
+		return application.IdentityDiscovery{}, fmt.Errorf("OIDC discovery issuer does not match configured issuer")
 	}
 	result := application.IdentityDiscovery{
 		Issuer:                expectedIssuer,
@@ -65,13 +65,32 @@ func FetchDiscoveryAt(ctx context.Context, client *http.Client, endpointIssuer, 
 		"token endpoint":         result.TokenEndpoint,
 		"userinfo endpoint":      result.UserinfoEndpoint,
 		"jwks uri":               result.JWKSURI,
+		"end-session endpoint":   result.EndSessionEndpoint,
 	} {
+		if label == "end-session endpoint" && value == "" {
+			continue
+		}
 		parsed, err := url.Parse(value)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" || discoveryCredentialQuery(parsed) {
 			return application.IdentityDiscovery{}, fmt.Errorf("OIDC discovery %s is not an HTTPS URL", label)
 		}
 	}
 	return result, nil
+}
+
+func discoveryCredentialQuery(endpoint *url.URL) bool {
+	query, err := url.ParseQuery(endpoint.RawQuery)
+	if err != nil {
+		return true
+	}
+	for key := range query {
+		key = strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
+		switch key {
+		case "token", "accesstoken", "refreshtoken", "idtoken", "clientsecret", "password", "secret", "apikey", "authorization", "privatekey":
+			return true
+		}
+	}
+	return false
 }
 
 func fetchDiscoveryDocument(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {

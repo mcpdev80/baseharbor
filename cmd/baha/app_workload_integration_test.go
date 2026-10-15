@@ -122,7 +122,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "down"}, &out, &out); err != nil {
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
 		t.Fatalf("down workload application: %v\n%s", err, out.String())
 	}
 	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
@@ -255,7 +255,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "down"}, &out, &out); err != nil {
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
 		t.Fatalf("down workload-only application: %v\n%s", err, out.String())
 	}
 	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)

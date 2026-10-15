@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	ProviderImage   = "docker.io/grafana/tempo:3.0.2"
+	ProviderImage   = "docker.io/grafana/tempo:3.1.0"
 	ProviderService = "tempo"
 )
 
@@ -146,6 +146,12 @@ func PlacementForAt(dataDir, namespace string, m application.Manifest) (Placemen
 	if err != nil {
 		return Placement{}, err
 	}
+	return retainedPlacementIdentityAt(dataDir, namespace, m, p)
+}
+
+// Native owner lookup can use the existing registered placement without
+// letting a new invocation preference redirect retirement to another owner.
+func retainedPlacementIdentityAt(dataDir, namespace string, m application.Manifest, p capability.ProviderPlacement) (Placement, error) {
 	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
 	prefix := ""
 	if namespace != "" {
@@ -299,16 +305,24 @@ func Provision(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer
 	return ProvisionAt(ctx, runtime, issuer, m, dataDir, "")
 }
 
+type tempoBucketPreparation func(context.Context, objectstorage.Runtime, serviceaccess.Issuer, string, string, application.Manifest) (objectstorage.PlatformBucket, error)
+
 func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest, dataDir, namespace string) (Placement, error) {
+	return provisionTempoAt(ctx, runtime, issuer, m, dataDir, namespace, func(ctx context.Context, r objectstorage.Runtime, i serviceaccess.Issuer, root, ns string, app application.Manifest) (objectstorage.PlatformBucket, error) {
+		return objectstorage.EnsurePlatformBucketAt(ctx, r, i, root, ns, "tempo", application.AvailabilityIntent(app).Resolve("object_storage"))
+	})
+}
+
+func provisionTempoAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issuer, m application.Manifest, dataDir, namespace string, prepareBucket tempoBucketPreparation) (Placement, error) {
 	var (
 		files ProviderFiles
 		p     Placement
 		err   error
 	)
 	if application.ComponentHA(m, "traces") {
-		placement, err := PlacementForAt(dataDir, namespace, m)
-		if err != nil {
-			return Placement{}, err
+		placement, placementErr := PlacementForAt(dataDir, namespace, m)
+		if placementErr != nil {
+			return Placement{}, placementErr
 		}
 		if err := providertopology.RequireVariant(filepath.Join(placement.Dir, "compose.yaml"), "tempo", "tempo-distributor-1", true); err != nil {
 			return Placement{}, err
@@ -317,7 +331,7 @@ func ProvisionAt(ctx context.Context, runtime Runtime, issuer serviceaccess.Issu
 		if !ok {
 			return Placement{}, errors.New("Tempo HA requires runtime object-storage administration support")
 		}
-		bucket, bucketErr := objectstorage.EnsurePlatformBucketAt(ctx, storageRuntime, issuer, dataDir, namespace, "tempo", application.AvailabilityIntent(m).Resolve("object_storage"))
+		bucket, bucketErr := prepareBucket(ctx, storageRuntime, issuer, dataDir, namespace, m)
 		if bucketErr != nil {
 			return Placement{}, fmt.Errorf("prepare Tempo HA object storage: %w", bucketErr)
 		}
@@ -627,6 +641,8 @@ distributor:
 storage:
   trace:
     backend: local
+    block:
+      version: vParquet4
     wal:
       path: /var/tempo/wal
     local:

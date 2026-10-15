@@ -25,10 +25,13 @@ func TestRemoteBackendProbeKeepsTLSAndContainerCredentialReference(t *testing.T)
 	if err != nil || output != "1\n" || fixture.project != "baseharbor-owned-dev" || fixture.service != "postgres" || len(fixture.argv) != 3 {
 		t.Fatal("remote probe did not preserve selected service", fixture, err)
 	}
-	for _, required := range []string{"$POSTGRES_PASSWORD", "sslmode=verify-ca", "sslrootcert=/run/baseharbor/tls/ca.pem", "SELECT 1"} {
+	for _, required := range []string{"$POSTGRES_PASSWORD", "user=$POSTGRES_USER", "dbname=$POSTGRES_DB", "sslmode=verify-ca", "sslrootcert=/run/baseharbor/tls/ca.pem", "SELECT 1"} {
 		if !strings.Contains(fixture.argv[2], required) {
 			t.Fatal("remote SQL probe lost its secure contract", required)
 		}
+	}
+	if strings.Contains(fixture.argv[2], "user=baseharbor") {
+		t.Fatal("native probe assumed the default role instead of retained container credentials")
 	}
 	fixture.err = errors.New("selected remote target disconnected")
 	if _, err := executor.ProbeBackend(context.Background(), BackendProbe{Kind: BackendProbeSQLSelectOne, Database: "owned"}); err == nil {

@@ -16,8 +16,8 @@ func TestNonTTYBackupDefaultUsesProtectedExternalArchive(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	m := application.New("demo", "dev", false, false, false)
-	if err := os.WriteFile(filepath.Join(repo, application.RepositoryManifestName), []byte(m.YAML()), 0644); err != nil {
+	m := application.New("demo", "dev", true, false, false)
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(repo, application.RepositoryManifestName), m, 0644); err != nil {
 		t.Fatal(err)
 	}
 	var report bytes.Buffer

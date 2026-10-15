@@ -83,9 +83,12 @@ func newResolvedApplicationStatusCollection(ctx context.Context, resolved resolv
 	if err != nil {
 		return &applicationStatusCollection{}, false, err
 	}
-	services, err := compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
-	if err != nil {
-		return &applicationStatusCollection{}, false, err
+	var services []string
+	if application.HasApplicationScopedRuntimeServices(m) {
+		services, err = compose.RunningServicesProject(ctx, files.Project, files.Compose, files.Env)
+		if err != nil {
+			return &applicationStatusCollection{}, false, err
+		}
 	}
 
 	result := application.StatusResult{

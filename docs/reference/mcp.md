@@ -16,6 +16,12 @@ baha agent describe -o json
 
 ## Semantic tools
 
+For `baseharbor.app.create` and `baseharbor.app.adopt`, declare `Version`, `Name`,
+`Environment` and the application requirements in `intent`. Omit `ApplicationID`:
+BaseHarbor assigns and persists it during authorized creation and returns it in
+the result. Use `tools/list` for the complete generated input schema. Existing
+repository intent is never overwritten by adoption.
+
 The complete current registry is checked against actual MCP discovery by the source tests. The table is generated from the typed operation metadata; handwritten partial tool lists are not authoritative.
 
 <!-- BEGIN GENERATED MCP REGISTRY -->
@@ -56,7 +62,7 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.trust.export` | `mutating` | false | false |
 | `baseharbor.trust.install` | `mutating` | false | true |
 | `baseharbor.trust.uninstall` | `mutating` | false | true |
-| `baseharbor.app.stop` | `mutating` | false | false |
+| `baseharbor.app.stop` | `mutating` | false | true |
 | `baseharbor.app.preflight` | `read_only` | false | false |
 | `baseharbor.secret.list` | `read_only` | false | false |
 | `baseharbor.secret.set` | `mutating` | false | false |
@@ -68,7 +74,7 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.node.status` | `read_only` | false | false |
 | `baseharbor.node.disconnect` | `destructive` | false | true |
 | `baseharbor.target.create` | `mutating` | false | false |
-| `baseharbor.target.delete` | `mutating` | false | false |
+| `baseharbor.target.delete` | `mutating` | false | true |
 | `baseharbor.stack.list` | `read_only` | false | false |
 | `baseharbor.stack.show` | `read_only` | false | false |
 | `baseharbor.stack.create` | `mutating` | false | false |
@@ -80,9 +86,9 @@ The complete current registry is checked against actual MCP discovery by the sou
 | `baseharbor.runtime.list` | `read_only` | true | false |
 | `baseharbor.runtime.inspect` | `read_only` | true | false |
 | `baseharbor.runtime.metrics` | `read_only` | true | false |
-| `baseharbor.runtime.start` | `mutating` | true | false |
-| `baseharbor.runtime.stop` | `mutating` | true | false |
-| `baseharbor.runtime.restart` | `mutating` | true | false |
+| `baseharbor.runtime.start` | `mutating` | true | true |
+| `baseharbor.runtime.stop` | `mutating` | true | true |
+| `baseharbor.runtime.restart` | `mutating` | true | true |
 | `baseharbor.app.list` | `read_only` | false | false |
 | `baseharbor.inspect` | `read_only` | false | false |
 | `baseharbor.workspace.list` | `read_only` | false | false |

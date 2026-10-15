@@ -19,3 +19,17 @@ func AcquireLifecycleLock(root string) (func(), error) {
 	}
 	return lock(root)
 }
+
+// AcquireStateFileLock reuses the existing kernel lock for another existing
+// state owner. The caller proves directory/file ownership and protection using
+// its native metadata authority before entering this serialization boundary.
+func AcquireStateFileLock(root string) (func(), error) {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("state lock requires its existing directory")
+	}
+	return lock(root)
+}

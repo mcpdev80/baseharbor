@@ -1,0 +1,144 @@
+{
+  "version": "baseharbor.provider-continuation-source-evidence/v1",
+  "date": "2026-10-13",
+  "source": {
+    "commit": "691da672e0e12941305d17d678650d45b76b1a1b",
+    "tree": "3f73e6905ead7e29ddd02c9aea6cf4a8e55a7762",
+    "local_equivalent_commit": "134cd0193e64c52f085f4bab63f65dca211b9645",
+    "publication": "GitHub Git Objects API; exact Git blobs/tree verified; expected-head nonforce update"
+  },
+  "scope": "Shared consequence domain verifies actual complete dependency graph for replacement providers and explicitly selected consumer actions. No migration/runtime adapter introduced.",
+  "local_qualification": {
+    "source": {
+      "commit": "f6af38144300c733afadd7ba15f8812c302d8acf",
+      "tree": "625d12fa64a7375e1f37d4553260dbd275b0d463",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 191.674,
+    "race_packages": [
+      "./internal/application",
+      "./cmd/baha"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 57.196,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.818,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 5.926,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 5.652,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 190.752,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 138.542,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 72.6,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 7.951,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 7.52,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "snapshot_limit": "Nine-check snapshot predates the added canonical ancillary/shared-leaf regression and final changelog/release-note paragraphs; production Go files and EN/DE specification are identical to published source. Final added test passes without races and with -race; final EN/DE strict builds and documentation audit pass.",
+  "final_checks": [
+    {
+      "command": "go test ./internal/application -run ^TestContinuation -count=1",
+      "status": "pass"
+    },
+    {
+      "command": "go test -race ./internal/application -run ^TestContinuation -count=1",
+      "status": "pass",
+      "log": "ok github.com/mcpdev80/baseharbor/internal/application 1.329s"
+    },
+    {
+      "command": "python -m mkdocs build --strict",
+      "status": "pass"
+    },
+    {
+      "command": "python -m mkdocs build --strict --config-file mkdocs.de.yml",
+      "status": "pass"
+    },
+    {
+      "command": "bash scripts/documentation-audit.sh",
+      "status": "pass"
+    },
+    {
+      "command": "git diff --check",
+      "status": "pass"
+    }
+  ],
+  "invariants": [
+    "Every replacement root and transitive prerequisite must be registered or canonically ancillary, on the actual selected Target, supported, observed running and verified with realization evidence.",
+    "Missing facts/observations, stopped/new/unknown state, unsupported/unverified realization, unknown dependency lists, foreign Target, cycles and unregistered IDs cannot claim working continuation.",
+    "A planned resume is insufficient; actual verified recovery permits a fresh current-plan continuation.",
+    "Shared dependency leaves do not become false cycles; canonical ancillary ownership still needs runtime evidence.",
+    "Changed prerequisites invalidate old consent; deliberate loss remains possible after both current acknowledgements.",
+    "Read-only planning does not change registry, union, ownership or observation inputs."
+  ],
+  "failed_attempts": [
+    {
+      "test": "TestContinuationUsesCanonicalAncillaryAndSharedDependencyEvidence",
+      "outcome": "fail",
+      "cause": "Test fixture incorrectly exposed SQL capability on an ancillary physical owner. Existing canonical validation rejected it.",
+      "resolution": "Removed the test-only capability offer; production ownership validator unchanged; final source and race regression pass."
+    }
+  ],
+  "native_runtime_qualified": false,
+  "secure_handoff_qualified": false,
+  "pre_release_ready": false,
+  "remaining": [
+    "Operational explicit provider binding replacement/handoff still returns provider_binding_migration_required.",
+    "Complete native all-family consumer execution, secure material delivery and interrupted recovery remain unqualified.",
+    "Immutable Core/Demo/Console/Connector matrix and authenticated Node/Console/browser acceptance remain open.",
+    "No full pre-release, merge, tag, release or Pages publication performed."
+  ]
+}

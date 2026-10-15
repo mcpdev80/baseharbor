@@ -18,7 +18,7 @@ Verified Result
 
 ## Core installation
 
-BaseHarbor Core consists of **SQL + Secrets + Identity**, currently realized by
+An explicitly installed management Core consists of **SQL + Secrets + Identity**, currently realized by
 PostgreSQL, OpenBao and Keycloak. These capabilities are mandatory. The Web Console
 is optional and connects to one selected Core in the same installation/security
 boundary; same-origin HTTPS is the default topology.
@@ -28,8 +28,9 @@ three capabilities and persists one authoritative installation identity. A parti
 failure remains observable; retry reconciles the same owned installation. Foreign
 or ambiguous resources fail closed instead of being adopted or replaced.
 
-The first application flow offers Core setup when needed and resumes after verified
-readiness. Development/deployment machine selection changes workspace/source defaults,
+Application lifecycle provisions only requested providers and their genuine dependencies.
+A supported local workload without managed service requirements needs no service bundle;
+explicitly enabled management/Console consumers retain their own security dependencies. Development/deployment machine selection changes workspace/source defaults,
 not capabilities or transport security. Local development keeps required TLS and
 protected credentials without requiring an interactive login for ordinary local work.
 
@@ -39,7 +40,8 @@ own runtime boundary. Execution revalidates the selected Core configuration;
 changed or unavailable bindings fail closed before native workload inspection or
 mutation. A selected remote Core is never replaced implicitly with a local one.
 
-Core capabilities are mandatory; provider placement may be shared or application-isolated.
+Management Core dependencies are mandatory while that consumer is enabled; application
+provider placement may be shared or application-isolated.
 Additional isolation can require extra provider instances. Resource evidence must
 identify topology/placement, stabilized idle memory, startup/convergence peak and
 simultaneous Core total. Unavailable measurements are not presented as measured values.

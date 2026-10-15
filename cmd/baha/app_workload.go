@@ -28,6 +28,11 @@ func preflightRepositoryWorkload(resolved resolvedApplication) error {
 	if !resolved.FromRepository {
 		return nil
 	}
+	if application.HasExplicitWorkload(resolved.Manifest) {
+		if err := preflightRepositoryWorkloadSourceRealization(resolved.repositoryRoot(), resolved.Manifest); err != nil {
+			return err
+		}
+	}
 	repositoryRoot := resolved.repositoryRoot()
 	composeSource, err := selectedRepositoryComposeSource(repositoryRoot, resolved.Manifest)
 	if err != nil {

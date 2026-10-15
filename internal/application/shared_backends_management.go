@@ -32,9 +32,9 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 			}
 			root := filepath.Join(shared.Dir, "postgresql")
 			policy.ServerName = sharedPostgresAlias()
-			memberNames := []string{sharedPostgresAlias(), sharedPostgresService(m.Environment), "127.0.0.1"}
+			memberNames := []string{sharedPostgresAlias(), sharedPostgresService(state.Environment), "127.0.0.1"}
 			for ordinal := 1; ordinal <= sharedPostgresMemberCount(*state); ordinal++ {
-				memberNames = append(memberNames, sharedPostgresMemberService(m.Environment, ordinal))
+				memberNames = append(memberNames, sharedPostgresMemberService(state.Environment, ordinal))
 			}
 			material, err := serviceaccess.EnsureTLSMaterial(ctx, issuer, policy, filepath.Join(root, "service-access", "pki"), memberNames...)
 			if err != nil {
@@ -44,7 +44,7 @@ func ensureSharedBackendTLS(ctx context.Context, issuer serviceaccess.Issuer, sh
 				return err
 			}
 			if sharedPostgresMemberCount(*state) > 1 {
-				if err := writeSharedPostgresHAProxyConfig(root, m.Environment, sharedPostgresMemberCount(*state)); err != nil {
+				if err := writeSharedPostgresHAProxyConfig(root, state.Environment, sharedPostgresMemberCount(*state)); err != nil {
 					return err
 				}
 			}

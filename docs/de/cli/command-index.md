@@ -17,7 +17,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app cache` | Open the managed cache console for the current application | `baha app cache [INSTANCE] [--app NAME]` | [↗](applications.md) |
 | `baha app create` | Create an application manifest in BaseHarbor state | `baha app create NAME [--environment ENV] [--sql\|--sql-instance NAME] [--cache\|--cache-instance NAME] [--key-value\|--key-value-instance NAME] [--document-db\|--document-db-instance NAME] [--messaging-queue\|--messaging-queue-instance NAME] [--messaging-pubsub\|--messaging-pubsub-instance NAME] [--messaging-stream\|--messaging-stream-instance NAME] [--s3\|--s3-bucket NAME] [--secrets\|--require-secret NAME]...` | [↗](applications.md) |
 | `baha app creds` | Show connection metadata without revealing credentials by default | `baha app creds postgres\|valkey [INSTANCE] [--app NAME] [--reveal]` | [↗](applications.md) |
-| `baha app destroy` | Permanently remove BaseHarbor-managed runtime resources and state | `baha app destroy [NAME] [--yes] [--full-reset]` | [↗](applications.md) |
+| `baha app destroy` | Retire owned application runtime while retaining data and recovery state | `baha app destroy [NAME] [--yes] [--full-reset]` | [↗](applications.md) |
 | `baha app doctor` | Diagnose and safely repair an application's runtime | `baha app doctor [NAME] [--fix --yes]` | [↗](applications.md) |
 | `baha app down` | Stop an application runtime while preserving persistent data | `baha app down [NAME]` | [↗](applications.md) |
 | `baha app env` | Show the standard environment contract for an application | `baha app env [NAME] [--format dotenv\|shell\|json\|yaml] [--reveal] [--path]` | [↗](applications.md) |
@@ -30,7 +30,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app new` | Create a new ecosystem-native application from a BaseHarbor contract | `baha app new [NAME] [--directory PARENT] [--stack go\|nextjs\|python\|quarkus \| --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV\|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app plan` | Show desired resources without changing anything | `baha app plan [NAME] [-o json\|--output json]` | [↗](applications.md) |
 | `baha app preflight` | Validate an application before mutation | `baha app preflight [NAME]` | [↗](applications.md) |
-| `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE]` | [↗](applications.md) |
+| `baha app restore` | Restore and verify an encrypted application recovery unit | `baha app restore [BACKUP] [NAME] [--password-file FILE] [--json]` | [↗](applications.md) |
 | `baha app runtime-identity` | Manage the app-scoped credential used for dynamic secret references | `baha app runtime-identity <rotate\|revoke> [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity revoke` | Immediately revoke the application runtime credential | `baha app runtime-identity revoke [NAME] [--yes]` | [↗](applications.md) |
 | `baha app runtime-identity rotate` | Rotate the application runtime credential | `baha app runtime-identity rotate [NAME] [--yes]` | [↗](applications.md) |
@@ -65,7 +65,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha config prompt` | Configure the optional BaseHarbor shell prompt segment | `baha config prompt [--enable\|--disable] [--preset minimal\|compact\|accessible\|detailed\|none] [--position before-path\|after-path\|right] [--environment never\|critical-only\|always] [--show-application\|--hide-application] [--text-only\|--color-output] [--prod-indicator TEXT] [--label TARGET=LABEL] [--color KEY=VALUE]` | [↗](organization-policy.md) |
 | `baha connect` | Allow one explicit application service to reach another | `baha connect SOURCE TARGET` | [↗](security-trust.md) |
 | `baha connections` | List explicit cross-application connectivity policy | `baha connections` | [↗](security-trust.md) |
-| `baha destroy` | Permanently remove BaseHarbor-managed runtime resources and state | `baha destroy [--yes] \| baha destroy --all [--yes]` | [↗](core.md) |
+| `baha destroy` | Remove owned runtime resources with explicit consequence consent | `baha destroy [--yes] [--delete-data] \| baha destroy --all [--yes]` | [↗](core.md) |
 | `baha dev` | Manage local development conveniences | `baha dev <credentials\|domain>` | [↗](development.md) |
 | `baha dev credentials` | Show or rotate the target-scoped development management login | `baha dev credentials [--reset] [--username USER] [--password-file FILE]` | [↗](development.md) |
 | `baha dev domain` | Show or configure the target-scoped development domain | `baha dev domain [DOMAIN]` | [↗](development.md) |
@@ -83,7 +83,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha node` | Enroll and manage remote Docker or Podman nodes | `baha node [add\|connect\|list\|status\|disconnect]` | [↗](applications.md) |
 | `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] [--target NAME] --runtime docker\|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
 | `baha node connect` | Enroll this host and start the rootless connector service | `baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]` | [↗](applications.md) |
-| `baha node disconnect` | Revoke a node identity and remove its empty Target registration | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
+| `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
@@ -114,9 +114,9 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha status` | Show application status in a repository, otherwise control-plane status | `baha status [-o json\|--output json]` | [↗](core.md) |
 | `baha target` | Inspect and manage BaseHarbor deployment targets | `baha target [list\|show\|create\|delete\|activate\|deactivate] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target activate` | Persist the active deployment target for this user | `baha target activate NAME` | [↗](targets.md) |
-| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]` | [↗](targets.md) |
+| `baha target create` | Create a deployment target | `baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET \| --docker-context CONTEXT] [--docker-mode rootless\|rootful]; baha target create NAME --from-recovery PATH` | [↗](targets.md) |
 | `baha target deactivate` | Clear persisted active deployment target | `baha target deactivate` | [↗](targets.md) |
-| `baha target delete` | Delete an unused target | `baha target delete NAME` | [↗](targets.md) |
+| `baha target delete` | Detach target configuration with protected recovery; preserve runtime and data | `baha target delete NAME` | [↗](targets.md) |
 | `baha target list` | List configured targets | `baha target list [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha target show` | Show one target | `baha target show [NAME] [-o json\|--output json\|--json]` | [↗](targets.md) |
 | `baha trust` | Inspect, export or explicitly install the managed local BaseHarbor CA | `baha trust <status\|export\|install\|uninstall> [options]` | [↗](security-trust.md) |
@@ -125,7 +125,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha trust status` | Show whether the managed-local CA is trusted by this host | `baha trust status` | [↗](security-trust.md) |
 | `baha trust uninstall` | Remove only BaseHarbor-owned host trust anchors | `baha trust uninstall [--yes] [--json]` | [↗](security-trust.md) |
 | `baha tui` | Open the interactive BaseHarbor status dashboard | `baha tui [--json]` | [↗](shell-ux.md) |
-| `baha up` | Start BaseHarbor and, inside an application repository, converge the application | `baha up [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
+| `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
 | `baha update` | Safely inspect or update BaseHarbor itself | `baha update [--check] [--yes] [--channel stable\|rc \| --version VERSION] [--recover]` | [↗](core.md) |
 | `baha use` | Select and persist the active Core or deployment target | `baha use [TARGET]` | [↗](applications.md) |
 | `baha version` | Print build version | `baha version [-o json\|--output json\|--json]` | [↗](core.md) |

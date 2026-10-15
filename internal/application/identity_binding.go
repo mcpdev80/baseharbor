@@ -58,6 +58,10 @@ func MaterializeIdentityBindingWithWorkloadDiscoveryMaterial(m Manifest, files R
 		return fmt.Errorf("identity binding provider and client id are required")
 	}
 
+	if err := checkIdentityMaterialContinuation(files, clientSecret, trustBundle); err != nil {
+		return err
+	}
+
 	binding := filepath.Join(files.Bindings, IdentityBindingName)
 	if err := os.MkdirAll(binding, 0o700); err != nil {
 		return fmt.Errorf("create identity binding: %w", err)
@@ -237,7 +241,7 @@ func VerifyIdentityBinding(m Manifest, files RuntimeFiles) error {
 			return fmt.Errorf("verify identity binding %s: value is empty", name)
 		}
 	}
-	return nil
+	return verifyIdentityCredentialProjections(files)
 }
 
 func validateIdentityDiscovery(d IdentityDiscovery) error {

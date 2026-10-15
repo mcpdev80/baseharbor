@@ -1,5 +1,23 @@
 # Manifest reference
 
+## Minimal authoring
+
+```yaml
+version: 1
+app:
+  name: myapp
+  environment: dev
+```
+
+`services` is optional; no services are implicit. Developers must not set
+`app.id`: authored IDs are rejected before mutation. Explicit initialization
+generates one durable ID in the existing system-owned Store. Reading/parsing
+never allocates IDs. Internal records/machine outputs retain canonical IDs. SQL
+remains `services.sql: true`; provider and placement live in existing Target/
+deployment bindings. No top-level SQL shorthand or authored-ID migration.
+Execution still requires a supported workload.
+
+
 The application manifest is portable Application Intent.
 
 ## Top-level rule
@@ -13,7 +31,6 @@ Runtime/provider implementation details, generated credentials, private keys, ma
 | Field | Meaning |
 |---|---|
 | `version` | application contract version |
-| `app.id` | stable opaque `application_id` owned by the portable repository contract |
 | `app.name` | human-readable application name |
 | `app.environment` | declared/default environment context where supported |
 | `services` | declared application capability needs |

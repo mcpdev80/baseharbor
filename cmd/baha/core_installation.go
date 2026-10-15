@@ -62,6 +62,15 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 	if err != nil {
 		return coreinstallation.State{}, err
 	}
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		return coreinstallation.State{}, err
+	}
+	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: dataRoot})
+	if err != nil {
+		return coreinstallation.State{}, err
+	}
+	defer unlock()
 	role := opts.MachineRole
 	if role == "" {
 		role = coreinstallation.MachineRole(os.Getenv("BASEHARBOR_INSTALLATION_MACHINE_ROLE"))
