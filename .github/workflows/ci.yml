@@ -460,6 +460,35 @@ jobs:
           path: pr-plan.json
           retention-days: 2
 
+  pr_runner_interface:
+    name: PR · Runner Interface
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Qualify exact unmerged #896 interface without copying commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned=ac79cbc3e820c04a015ffb43c63dfd1d72e3dff7
+          git fetch --no-tags origin "$pinned"
+          out="$RUNNER_TEMP/pr-896-isolation-exact"
+          mkdir -p "$out"
+          for file in pr-runner-isolation.py test_pr_runner_isolation.py; do
+            git show "$pinned:scripts/$file" > "$out/$file"
+          done
+          (cd "$out" && python3 -m unittest discover -p test_pr_runner_isolation.py -v)
+          python3 -m py_compile "$out/pr-runner-isolation.py"
+          echo "Qualified #896 source at exact commit $pinned (not merged)" >> "$GITHUB_STEP_SUMMARY"
+
   pr_consumer_pins:
     name: PR · Consumer Pins
     needs: pr_plan
@@ -591,7 +620,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins]
+    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_runner_interface]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8
