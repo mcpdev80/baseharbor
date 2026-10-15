@@ -247,10 +247,11 @@ func TestGuidedReadExistingProviderBindingAndConsequences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authority, err := resolveApplicationProviderPlanFromSnapshot(r, snapshot, prefs)
+	authoritativePlan, err := buildResolvedApplicationPlan(context.Background(), r)
 	if err != nil {
 		t.Fatal(err)
 	}
+	authority := authoritativePlan.ProviderPlan
 	if len(prefs) == 0 || len(state.Preferences) != len(prefs) {
 		t.Fatalf("existing selected binding was lost: %+v", state.Preferences)
 	}
