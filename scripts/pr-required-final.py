@@ -17,10 +17,19 @@ def verify(plan, report, catalog):
         return ['invalid PR check results schema']
     required = plan.get('selected_gates')
     checks = plan.get('required_validation_checks')
-    if not isinstance(required, list) or not required or len(required) != len(set(required)) or not all(isinstance(x, str) for x in required):
+    if not isinstance(required, list) or len(required) != len(set(required)) or not all(isinstance(x, str) for x in required):
         return ['selected gate set missing, empty or malformed']
     if not isinstance(checks, list) or any(not isinstance(c, dict) or not isinstance(c.get('id'), str) for c in checks):
         return ['validation check set malformed']
+    if plan.get('coverage_status') != 'resolved':
+        errors.append('coverage-unresolved: ' + '; '.join(
+            str(x) for x in plan.get('unresolved_coverage', [])
+        ) if isinstance(plan.get('unresolved_coverage'), list) and plan.get('unresolved_coverage')
+        else 'coverage-unresolved: missing explicit coverage resolution')
+    elif plan.get('unresolved_coverage') != []:
+        errors.append('resolved coverage has nonempty or missing unresolved reasons')
+    if not required and not checks:
+        errors.append('no required gates or validations')
     validation = [c['id'] for c in checks]
     if len(validation) != len(set(validation)):
         errors.append('duplicate validation checks')
