@@ -405,6 +405,29 @@ class RequirementTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.23')
 
+    def test_v026_full_requirements_and_historical_receipt_semantics(self):
+        previous = resume.local_requirements('v0.4.25')
+        current = resume.local_requirements('v0.4.26')
+        self.assertEqual(len(previous), 65)
+        self.assertEqual(len(current), 65)
+        self.assertEqual([gate['id'] for gate in previous],
+                         [gate['id'] for gate in current])
+        self.assertEqual(len(resume.local_requirements('v0.4.24')), 63)
+        self.assertEqual({g['id'] for g in current if 'console' in g['dependencies']},
+                         {'integration/static/live-console'})
+        self.assertEqual({g['id'] for g in current if 'connector' in g['dependencies']},
+                         {'integration/docker/remote-target',
+                          'integration/podman/remote-target',
+                          'integration/static/live-console'})
+        coverage = {'schema': 'baseharbor.pre-release.coverage/v2',
+                    'candidate_sha': 'a' * 40, 'demo_ref': 'b' * 40,
+                    'tag': 'v0.4.25', 'required': [g['id'] for g in previous],
+                    'proofs': [{'gate': g['id']} for g in previous], 'pending': {},
+                    'requirements_digest': resume.digest(previous)}
+        resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.25')
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.26')
+
     def test_duplicate_missing_and_unknown_requirements_fail_closed(self):
         original = json.loads(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
         for change in ['duplicate', 'schema', 'empty', 'dependencies']:
