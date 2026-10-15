@@ -17,10 +17,5 @@ When reviewing or generating changes:
 
 Use review severities from the canonical guidelines: `BLOCKER`, `MAJOR`, `MINOR`, and `INFO`.
 
-For process and ownership, follow
-[Development guidelines → Development process](../docs/DEVELOPMENT_GUIDELINES.md#development-process):
-the Maintainer (currently @mcpdev80) owns merge and release approval, pull
-requests from other contributors into `develop` need Maintainer approval plus
-green required checks, and parallel sessions each take one assigned issue on a
-dedicated branch and pull request, record ownership before editing, preserve
-other sessions' work, and stop after PR handoff until the next task is assigned.
+For process, ownership and Maintainer approval, follow the
+[development process](../docs/DEVELOPMENT_GUIDELINES.md#development-process).

@@ -106,7 +106,7 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 
 **Maintainer.** Die Rolle Maintainer besitzt die Merge- und Freigabe-Hoheit für `develop`. Die aktuelle Zuordnung ist `@mcpdev80` und wird hier zentral definiert; ein weiterer Maintainer erfordert eine ausdrücklich aktualisierte Zuständigkeit. Einstiege nennen die Rolle „Maintainer" statt eines persönlichen Kontos.
 
-**Review- und Freigabegrenze.** Ein Pull Request eines anderen Beitragenden in `develop` erfordert Maintainer-Freigabe und grüne Pflichtprüfungen; neue Commits entwerfen eine frühere Freigabe. Ein Maintainer darf den eigenen Pull Request vorerst ohne Fremdreview mergen, aber Pull Request und dessen erforderliche grüne Prüfungen bleiben Pflicht. Es gibt kein direktes Push auf einen geschützten Branch und keinen pauschalen Contributor-Bypass; dies ist ein transparenter Solo-Maintainer-Kompromiss, keine kontobezogene Sicherheitsgarantie. Review- und CI-Schutz werden getrennt konfiguriert und nachgeprüft.
+**Review- und Freigabegrenze.** Ein Pull Request eines anderen Beitragenden in `develop` erfordert Maintainer-Freigabe und grüne Pflichtprüfungen; neue Commits entwerten eine frühere Freigabe. Ein Maintainer darf den eigenen Pull Request vorerst ohne Fremdreview mergen, aber Pull Request und dessen erforderliche grüne Prüfungen bleiben Pflicht. Es gibt kein direktes Push auf einen geschützten Branch und keinen pauschalen Contributor-Bypass; dies ist ein transparenter Solo-Maintainer-Kompromiss, keine kontobezogene Sicherheitsgarantie. Review- und CI-Schutz werden getrennt konfiguriert und nachgeprüft.
 
 **Multi-Session-Ausführung.** Wenn mehrere Agent- oder menschliche Sitzungen parallel arbeiten:
 
