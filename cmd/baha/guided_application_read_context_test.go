@@ -125,6 +125,14 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 					t.Fatalf("secret %q leaked", secret)
 				}
 			}
+			bad := r
+			bad.DeploymentIdentity.Target = "different"
+			bad.DeploymentIdentity.ApplicationID = r.Manifest.ApplicationID
+			_, publicErr := readGuidedApplicationContext(context.Background(), bad)
+			if publicErr == nil { t.Fatal("mismatched Target accepted") }
+			for _, value := range []string{"SENTINEL_PASSWORD_DO_NOT_LEAK", "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"} {
+				if strings.Contains(publicErr.Error(), value) { t.Fatal("public error leaked source secret") }
+			}
 		})
 	}
 }
