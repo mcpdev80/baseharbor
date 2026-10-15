@@ -4,6 +4,12 @@ Thanks for helping improve BaseHarbor.
 
 This page is intentionally short. It gives you the fastest path into the project and links to the authoritative documentation instead of duplicating it.
 
+
+## Planning transition
+
+The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+
+
 ## Start here
 
 Before changing code, read:
@@ -134,3 +140,4 @@ Keep PRs reviewable. If a change requires a new architectural primitive, make th
 ## License
 
 By contributing, you agree that your contributions are licensed under the repository's [Apache License 2.0](LICENSE).
+
