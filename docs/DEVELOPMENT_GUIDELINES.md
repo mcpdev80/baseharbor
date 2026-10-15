@@ -4,6 +4,12 @@ These rules apply to code, tests, documentation and provider/runtime work.
 
 Release readiness is governed by `docs/internal/pre-release-documentation-audit.md`; Core-only green must never be called pre-release-ready.
 
+
+## Planning transition
+
+The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+
+
 ## Project engineering principle
 
 > **AI-generated, human-specified, machine-verified.**  
@@ -126,3 +132,4 @@ Follow [Documentation style](STYLE_GUIDE.md).
 Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. GitHub Issues plan future work. Releases preserve history.
 
 Every release runs the complete [pre-release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
+

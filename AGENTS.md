@@ -8,6 +8,12 @@ for current limits. Applications need only selected services and genuine
 dependencies, not a compulsory SQL/secrets/identity stack. Optional management
 services have their own security requirements.
 
+
+## Planning transition
+
+The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+
+
 ## Read according to your task
 
 Before implementation, read [development guidelines](docs/DEVELOPMENT_GUIDELINES.md).
@@ -75,3 +81,4 @@ Pre-release-ready excludes final complete pre-release approval and promotion.
 Preparation alone does not authorize that full run, merge, tag, publication or
 Pages deployment. Reuse green evidence only when the verifier proves unchanged
 inputs; rerun affected gates.
+

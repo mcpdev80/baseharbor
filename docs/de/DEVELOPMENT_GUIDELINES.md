@@ -4,6 +4,12 @@
 Release-Bereitschaft richtet sich nach `docs/internal/pre-release-documentation-audit.md`; grüne Core-Tests allein bedeuten niemals Pre-Release-ready.
 Diese Regeln gelten für Code, Tests, Dokumentation und Anbieter-/Laufzeitarbeit.
 
+
+## Übergang der Planung
+
+[baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan) enthält den Planungsbereich; [Migrations-PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) bereitet den Wechsel vor. Bis die Entscheidung zur Planungsautorität dort auf `main` akzeptiert ist, bleiben die bisherigen Issues maßgeblich. Danach gelten die zugewiesene Task-Notiz und die dortige `AGENTS.md` für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben. Technische Entwicklungsregeln, PR-Reviews und Release-Nachweise bleiben in ihren bisherigen Repositories. Ein wegen Migration als `not_planned` geschlossenes Issue bedeutet weder Umsetzung noch fachliche Stornierung.
+
+
 ## Prinzip der Projekttechnik
 
 > **AI-generiert, menschlich spezifiziert, maschinenverifiziert.**
@@ -126,3 +132,4 @@ Folgen[Documentation style](STYLE_GUIDE.md).
 Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. GitHub Issues planen zukünftige Arbeit. Releases bewahren Geschichte.
 
 Jedes Release läuft das komplette [interne Pre-Release-Dokumentations-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
+

@@ -2,6 +2,13 @@
 
 Run this audit before every BaseHarbor release.
 
+
+## Planning transition
+
+The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+
+After planning activation, references below to roadmap issues and release-scoped issues mean the canonical release/task notes in baseharbor-plan. A task is complete only after its own acceptance and evidence pass. Migration-closed GitHub issues do not satisfy a release gate. Historical release records remain unchanged.
+
 ## Binding readiness vocabulary
 
 **Pre-release-ready** means the complete release preparation is finished and
@@ -293,3 +300,4 @@ Notes:
 ```
 
 Any materially incorrect documentation, stale machine/demo contract, incomplete release-scoped issue, failed mandatory acceptance/evidence gate, or missing published artifact blocks release completion.
+
