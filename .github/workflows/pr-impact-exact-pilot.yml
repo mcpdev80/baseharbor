@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 7aac0149d0cd5bafcc8a2affcf1f9edc5f4fe085
+          ref: 3a56655669b6ec7850c0ef585715399ef0959bd0
           persist-credentials: false
       - name: Verify immutable source
-        run: test "$(git rev-parse HEAD)" = '7aac0149d0cd5bafcc8a2affcf1f9edc5f4fe085'
+        run: test "$(git rev-parse HEAD)" = '3a56655669b6ec7850c0ef585715399ef0959bd0'
       - name: Python syntax
         run: python3 -m py_compile scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py
       - name: Focused regressions
@@ -25,4 +25,4 @@ jobs:
           go test ./cmd/baha -run '^TestGuided' -count=1
           go vet ./cmd/baha
           go build -o "$RUNNER_TEMP/baha-pr-impact" ./cmd/baha
-          python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py
+          PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py
