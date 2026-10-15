@@ -58,3 +58,7 @@ artifact lifecycle, release and evidence workflows, plus related CI executor
 scripts, require the existing policy/planner/verification regressions **and**
 remain `unresolved` pending justified native qualification. The planner does
 not infer native impact from arbitrary workflow YAML. No automatic full matrix.
+
+## Additional package/runtime boundary
+
+The only `internal/capability/` resolved paths are the audited `domain_test.go` and `integration_contract_test.go` conformance tests. These require the package's actual `go test ./internal/capability/... -count=1`, as well as existing contract checks. All capability implementation/registry/provider paths and all `internal/application/` paths remain explicitly `unresolved` pending scoped impact qualification. The previously broad `deploy/docker/**` lifecycle-only resolution is removed entirely: arbitrary deployment, backup, security, or launch scripts require justified native qualification. No full-matrix fallback is introduced.
