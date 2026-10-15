@@ -440,7 +440,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: d7a004434c459360bf3158983d495f138c4cd09d
+          ref: 1c5e5537aeba652c91253539e49b6c7f07398b10
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -450,7 +450,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 'd7a004434c459360bf3158983d495f138c4cd09d'
+          test "$(git rev-parse HEAD)" = '1c5e5537aeba652c91253539e49b6c7f07398b10'
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - name: Format the two changed Go sources
         id: formatting
@@ -459,30 +459,34 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(gofmt -l cmd/baha/guided_application_read_context.go cmd/baha/guided_application_read_context_test.go)"
-      - name: Focused guided and affected application contracts
+      - name: Guided tests
+        id: guided
+        continue-on-error: true
+        run: go test ./cmd/baha -run '^TestGuided' -count=1
+      - name: Affected application and contract regressions
         id: regression
         continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          go test ./cmd/baha -run '^TestGuided' -count=1
-          go test ./internal/application/... ./contracts/... -count=1
-      - name: Vet and build CLI
-        id: cli
+        run: go test ./internal/application/... ./contracts/... -count=1
+      - name: Vet CLI
+        id: vet
         continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          go vet ./cmd/baha
-          go build -o "$RUNNER_TEMP/baha-pr934" ./cmd/baha
+        run: go vet ./cmd/baha
+      - name: Build CLI
+        id: build
+        continue-on-error: true
+        run: go build -o "$RUNNER_TEMP/baha-pr934" ./cmd/baha
       - name: Require all focused checks to pass
         if: always()
         env:
           FORMAT_RESULT: ${{ steps.formatting.outcome }}
           REGRESSION_RESULT: ${{ steps.regression.outcome }}
-          CLI_RESULT: ${{ steps.cli.outcome }}
+          GUIDED_RESULT: ${{ steps.guided.outcome }}
+          VET_RESULT: ${{ steps.vet.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
         run: |
-          printf 'format=%s regressions=%s vet_build=%s\n' "$FORMAT_RESULT" "$REGRESSION_RESULT" "$CLI_RESULT"
+          printf 'format=%s guided=%s application_contracts=%s vet=%s build=%s\n' "$FORMAT_RESULT" "$GUIDED_RESULT" "$REGRESSION_RESULT" "$VET_RESULT" "$BUILD_RESULT"
           test "$FORMAT_RESULT" = success
           test "$REGRESSION_RESULT" = success
-          test "$CLI_RESULT" = success
+          test "$GUIDED_RESULT" = success
+          test "$VET_RESULT" = success
+          test "$BUILD_RESULT" = success
