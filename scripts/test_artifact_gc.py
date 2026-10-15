@@ -63,7 +63,7 @@ class ArtifactGC(unittest.TestCase):
         workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
                                    '.github/workflows/artifact-gc.yml').read_text())
         shell = workflow['jobs']['artifacts']['steps'][0]['run']
-        source = shell.split("python3 - <<'PY'\\n", 1)[1].rsplit('\\nPY', 1)[0]
+        source = shell.split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
         prefix = 'https://api.github.com/repos/example/core/'
         old = '2020-01-01T00:00:00Z'
         artifacts = [
@@ -103,7 +103,7 @@ class ArtifactGC(unittest.TestCase):
                                    '.github/workflows/artifact-gc.yml').read_text())
         for job, step in [('artifacts', 0), ('repository-hygiene', 0)]:
             shell = workflow['jobs'][job]['steps'][step]['run']
-            source = shell.split("python3 - <<'PY'\\n", 1)[1].rsplit('\\nPY', 1)[0]
+            source = shell.split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
             deleted = []
 
             def request(req):
