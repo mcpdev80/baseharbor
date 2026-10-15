@@ -74,7 +74,7 @@ class FrozenPromotion(unittest.TestCase):
             self.root, fixed, fixed, "v0.4.26"), [])
         # Forward-port is a separate integration; it must not change the frozen SHA.
         self.git("checkout", "-q", "develop")
-        self.git("cherry-pick", "-q", fixed)
+        self.git("cherry-pick", fixed)
         self.assertEqual(self.git("show", "HEAD:internal/product.go"),
                          "approved candidate fix")
         self.assertEqual(self.git("rev-parse", "candidate"), fixed)
