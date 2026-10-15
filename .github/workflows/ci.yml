@@ -432,7 +432,7 @@ jobs:
 
   pr934_guided_go_pilot:
     name: PR934 · Exact Guided Go
-    if: github.event_name == 'push' && github.ref_name == 'runtime-validation/ci/934-guided-go-exact'
+    if: github.event_name == 'pull_request' && github.head_ref == 'runtime-validation/ci/934-guided-go-exact'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
