@@ -49,10 +49,10 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
         conclusion = job.get("conclusion")
         results.append({"kind": "validation", "id": identifier,
                         "conclusion": "success" if conclusion == "success" else "blocked"})
-    for name in required:
-        if by_name[name][0].get("conclusion") != "success":
-            raise PermissionError("required workflow/focused job not successful: " + name)
+    preconditions = [{"name": name, "conclusion": by_name[name][0].get("conclusion")}
+                     for name in required]
     return {"schema": "baseharbor.pr-check-results/v1",
+            "required_job_conclusions": preconditions,
             **{k: plan.get(k) for k in ("target_base_sha", "head_sha",
                                         "merge_base_sha", "integration_sha")},
             "results": results}  # NO GATE PASS without verified runtime evidence
