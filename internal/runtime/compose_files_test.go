@@ -72,3 +72,17 @@ func TestComposeUpProjectFilesUsesResolvedWorkloadPortEnvironment(t *testing.T) 
 		t.Fatal(err)
 	}
 }
+
+func TestComposeBuildFailureRetainsConcreteStdoutDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	command := filepath.Join(root, "docker")
+	script := "#!/bin/sh\necho 'go: example.org/module: proxy lookup failed'\necho 'Dockerfile:4: go mod download failed' >&2\nexit 1\n"
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	backend := NewCLIBackend(command, "compose")
+	err := backend.BuildProjectFilesSelectedProgress(context.Background(), "demo", root, nil, []string{"demo-app"}, nil, filepath.Join(root, "compose.yaml"))
+	if err == nil || !strings.Contains(err.Error(), "proxy lookup failed") || !strings.Contains(err.Error(), "Dockerfile:4") {
+		t.Fatalf("lost concrete build failure: %v", err)
+	}
+}

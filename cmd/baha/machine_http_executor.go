@@ -37,6 +37,7 @@ func (e *bahaMachineExecutor) Execute(
 	input json.RawMessage,
 	report machinehttp.ProgressReporter,
 ) (json.RawMessage, error) {
+	ctx = withoutLocalInvocation(ctx)
 	ctx = targetsession.WithPool(ctx, e.connectorSessions)
 	if e.coreAuthority != nil {
 		ctx = withCoreAuthority(ctx, *e.coreAuthority)

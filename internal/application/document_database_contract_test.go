@@ -27,7 +27,7 @@ func TestDocumentDatabaseManifestContractAndPlan(t *testing.T) {
 			t.Fatalf("manifest missing %q:\n%s", want, rendered)
 		}
 	}
-	parsed, err := ParseYAML(rendered)
+	parsed, err := ParseCanonicalYAML(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}

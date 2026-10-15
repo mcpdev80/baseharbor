@@ -38,7 +38,7 @@ func TestExternalProviderRegistrationAndRemoval(t *testing.T) {
 	if len(registry.Instances) != 1 || registry.Instances[0].Ownership != capability.OwnershipExternal {
 		t.Fatalf("registry=%#v", registry)
 	}
-	if err := RemoveExternalProviderAt(dataDir, "company-db"); err != nil {
+	if err := removeExternalProviderWithAcknowledgedScopeForTest(dataDir, "company-db"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Inspect("company-db"); err == nil {
@@ -94,7 +94,7 @@ func TestExternalProviderBindingAndReleasePreserveForeignInstance(t *testing.T) 
 	if len(registry.BindingsForProviderInstance(instanceID)) != 1 {
 		t.Fatalf("provider bindings=%#v", registry.BindingsForProviderInstance(instanceID))
 	}
-	if err := RemoveExternalProviderAt(dataDir, "company-db"); err == nil {
+	if err := removeExternalProviderWithAcknowledgedScopeForTest(dataDir, "company-db"); err == nil {
 		t.Fatal("expected removal to fail while application binding exists")
 	}
 
@@ -120,7 +120,17 @@ func TestExternalProviderBindingAndReleasePreserveForeignInstance(t *testing.T) 
 	if !found {
 		t.Fatal("external provider instance was destroyed by application release")
 	}
-	if err := RemoveExternalProviderAt(dataDir, "company-db"); err != nil {
+	if err := removeExternalProviderWithAcknowledgedScopeForTest(dataDir, "company-db"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Tests exercise the same plan-bound authority as every public transport.
+func removeExternalProviderWithAcknowledgedScopeForTest(dataDir, id string) error {
+	plan, err := PlanExternalProviderRemovalAt(dataDir, id)
+	if err != nil {
+		return err
+	}
+	_, err = ApplyExternalProviderRemovalAt(dataDir, id, ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true})
+	return err
 }

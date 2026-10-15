@@ -33,6 +33,35 @@ runtime != capability != delivery
 
 Use `baha target show` to inspect the effective Target and provenance before mutation.
 
+## Detach and restore a Target definition
+
+`baha target delete NAME` removes the selected configuration entry after **Achtung**
+and two explicit acknowledgements of its current impact plan. Existing deployments,
+provider bindings, native processes, volumes, data and access definitions remain.
+The command preserves a protected copy of the original Target and access references
+and returns its `recovery_file`. Retention does not establish working service access,
+certificate renewal or authentication continuity; unknown consumer results remain partial.
+
+If the removed entry supplied automatic Target selection, that selection remains
+blocked. BaseHarbor does not silently choose another runtime or access policy.
+Restore the original definition with its displayed recovery file, then explicitly
+select the restored Target when appropriate:
+
+```bash
+baha target delete docker-dev -o json
+baha target create docker-dev --from-recovery /path/from/recovery_file -o json
+baha target activate docker-dev
+```
+
+JSON invocation returns the current structured plan when acknowledgement is missing.
+Use `BASEHARBOR_PROVIDER_CHANGE_CONSENT` in a trusted CLI invocation, or the MCP
+`provider_change_consent` object, with that plan's ID and both independent stages.
+Restoration also requires its own current plan. `--yes` does not grant these stages.
+Restoration cannot override the original runtime/access/authentication references,
+overwrite an existing Target or access owner, or silently move the retained data
+to another data root. It does not activate the restored route automatically.
+Partial preparation retains protected recovery for inspection and a fresh retry.
+
 ## Runtime and Target Access are separate axes
 
 A Target selects both:
@@ -71,14 +100,18 @@ baha node connect /path/to/node-a.json
 
 The remote command consumes the bundle through the existing Connector bootstrap API, keeps the private key local, installs the rootless user service, and establishes outbound mTLS. Token and nonce values are never accepted as process arguments or written to logs. For automation, provide the explicit `node add` options shown by `--help`; non-TTY mode never prompts.
 
-To retire a node, inspect it first and then explicitly approve revocation:
+To disconnect a node, inspect its state and review both explicit acknowledgements of the concrete current plan:
 
 ```bash
 baha node status node-a
 baha node disconnect node-a --yes
 ```
 
-Disconnect revokes Core admission before the empty Target registration is removed. An old CA-trusted connector certificate therefore cannot silently reconnect.
+Disconnect revokes Connector admission and submits its current certificate for issuer revocation. It preserves the Target definition, node registration, provider bindings and deployment recovery owners. Native workloads, provider data and foreign infrastructure are not destroyed; retained material does not prove continued service access.
+
+Review the current concrete plan before confirming. `--yes` and MCP `approval=true` provide ordinary operation approval only. Unknown remote consequences and loss of control access require **Achtung** and two independently explicit acknowledgements of that plan. JSON clients supply `BASEHARBOR_PROVIDER_CHANGE_CONSENT` for a trusted CLI invocation; MCP uses `provider_change_consent`. Missing consent returns the structured plan without revocation. Core HTTP callers obtain the authoritative plan through `POST /api/v1/connectors/disconnect-plan` and acknowledge its current scope ID through `POST /api/v1/connectors/disconnect`; the plan route never executes supplied consent.
+
+The result separates admission revocation, certificate revocation, retained owners and unverified remote data/access. A partial issuer or recovery failure remains partial and retains the owner needed for a newly reviewed retry. CLI/MCP aggregate known local recovery owners with the authenticated Core plan; direct Core HTTP covers its own authoritative owners. Reconnection needs existing authorized enrollment/renewal and never bypasses mTLS.
 
 Kubernetes/OpenShift can use native API access without a Node Connector:
 

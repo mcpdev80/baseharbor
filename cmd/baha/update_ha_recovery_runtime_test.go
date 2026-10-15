@@ -79,7 +79,7 @@ func runCoreHARecoveryAcceptance(t *testing.T, cutover bool) {
 		if t.Failed() {
 			logCoreBootstrapFailure(t, rt, target.Name, engine)
 		}
-		if err := runtimeDestroy(cleanupCtx, []string{"--yes"}, &bytes.Buffer{}); err != nil {
+		if err := approvedNativeFixtureCleanup(t, cleanupCtx, &bytes.Buffer{}); err != nil {
 			t.Errorf("HA fixture cleanup: %v", err)
 		}
 	}()

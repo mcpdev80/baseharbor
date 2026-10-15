@@ -86,6 +86,8 @@ memberlist:
 storage:
   trace:
     backend: s3
+    block:
+      version: vParquet4
     s3:
       endpoint: ${BASEHARBOR_TEMPO_S3_ENDPOINT}
       bucket: ${BASEHARBOR_TEMPO_S3_BUCKET}

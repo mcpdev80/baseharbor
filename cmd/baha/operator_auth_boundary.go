@@ -20,6 +20,11 @@ func ensureOperatorAuthForBoundary(ctx context.Context, target, environment stri
 	if _, ok := operatorauth.PrincipalFromContext(ctx); ok {
 		return nil
 	}
+	if _, local, err := verifiedLocalWorkloadAuthority(ctx, target, environment); err != nil {
+		return err
+	} else if local {
+		return nil
+	}
 	cfg, err := resolveOperatorAuthBoundaryConfig(ctx, target, environment)
 	if err != nil {
 		return err

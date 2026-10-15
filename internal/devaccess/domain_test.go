@@ -1,6 +1,41 @@
 package devaccess
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestCanonicalHostReadsNeverInitializeDomainState(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	if host, err := SharedHost("isolated", "identity"); err != nil || host != "auth.baha.localhost" {
+		t.Fatalf("default shared host: %s %v", host, err)
+	}
+	if host, err := ApplicationHost("isolated", "demo", "api"); err != nil || host != "demo.baha.localhost" {
+		t.Fatalf("default application host: %s %v", host, err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("host inspection initialized Target/domain state")
+	}
+	path, err := domainPath("isolated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "foreign"), path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SharedHost("isolated", "identity"); err == nil {
+		t.Fatal("damaged domain was replaced with a default")
+	}
+	if info, err := os.Lstat(path); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("domain inspection altered unverified state")
+	}
+}
 
 func TestCanonicalDevelopmentHostRules(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())

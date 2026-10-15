@@ -46,6 +46,11 @@ func (b *CLIContainerBackend) ContainerTerminal(ctx context.Context, id string, 
 	if !ok {
 		return nil, machine.NewError(machine.ErrorCapabilityMissing, "Runtime does not supply an interactive terminal.", "Negotiate the resource terminal capability.", false)
 	}
+	var err error
+	id, err = b.nativeContainerID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	return runtime.ContainerTerminal(ctx, id, argv, rows, columns)
 }
 

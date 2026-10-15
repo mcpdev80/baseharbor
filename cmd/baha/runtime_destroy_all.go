@@ -29,10 +29,11 @@ import (
 var removeHostTrustForFullDestroy = hosttrust.RemoveOwnedDetailed
 
 type fullDestroyResult struct {
-	Status   string `json:"status"`
-	Target   string `json:"target,omitempty"`
-	Resource string `json:"resource"`
-	Detail   string `json:"detail,omitempty"`
+	Status     string `json:"status"`
+	Target     string `json:"target,omitempty"`
+	Resource   string `json:"resource"`
+	Detail     string `json:"detail,omitempty"`
+	Diagnostic string `json:"diagnostic,omitempty"`
 }
 
 func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io.Writer) error {
@@ -42,23 +43,26 @@ func runtimeDestroyCommand(parent context.Context, args []string, out, errOut io
 	}
 	args = filtered
 	if format == outputJSON {
-		confirmed, all := false, false
+		confirmed, all, deleteData := false, false, false
 		for _, arg := range args {
 			switch arg {
 			case "--yes":
 				confirmed = true
 			case "--all":
 				all = true
+			case "--delete-data":
+				deleteData = true
 			default:
 				return usageError("unknown destruction argument", "Use --yes or --all.")
 			}
 		}
 		parent, report := withDestroyReport(parent, all)
+		parent = withSelectedCoreDataDeletion(parent, deleteData)
 		var err error
 		if all {
 			err = destroyInstallation(machineNoninteractiveContext(parent), confirmed, io.Discard, io.Discard)
 		} else {
-			err = destroyControlPlane(parent, confirmed, io.Discard)
+			err = destroyControlPlane(machineNoninteractiveContext(parent), confirmed, io.Discard)
 		}
 		if err != nil {
 			// Preserve structured partial failure details, especially
@@ -90,7 +94,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	confirmed := false
 	for _, arg := range args {
 		switch arg {
-		case "--all":
+		case "--all", "--delete-data":
 		case "--yes":
 			confirmed = true
 		default:
@@ -101,6 +105,7 @@ func runtimeDestroyAll(parent context.Context, args []string, out, errOut io.Wri
 	return destroyInstallation(parent, confirmed, out, errOut)
 }
 func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.Writer) error {
+	parent = context.WithValue(parent, runtimeDestroyAcknowledgementKey{}, &application.ProviderChangeConsent{})
 	if err := authorizeCurrentMCPContext(parent, "installation.destroy", "", "", ""); err != nil {
 		return err
 	}
@@ -109,6 +114,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	deployments, deploymentResults := discoverFullDestroyDeployments()
 	// Authorize every discovered stable deployment before any target/network or
 	// best-effort cleanup. One unauthorized boundary blocks the whole operation.
+	blockedTargets := map[string]bool{}
 	for _, record := range deployments {
 		if err := authorizeMCPOperation(parent, "installation.destroy", record.Identity.Target, record.Identity.Environment, record.Identity.ApplicationID, record.Source.Manifest); err != nil {
 			return err
@@ -146,19 +152,43 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	for _, item := range preserved {
 		fmt.Fprintf(out, "  PRESERVED %s %s\n", item.Resource, item.Detail)
 	}
-	if !confirmed {
-		if noInput(parent) || !readerIsTerminal(runtimeInput) {
-			fmt.Fprintln(out, "No changes were made. Re-run with --yes to perform the full cleanup.")
-			return nil
-		}
-		ok, err := promptGuidedConfirmation(runtimeInput, out, "Continue?", false)
+	impact, err := buildRuntimeDestroyImpact(parent, plans, preserved, true)
+	if err != nil {
+		return err
+	}
+	proceed, err := authorizeRuntimeDestroyImpact(parent, impact, confirmed, out)
+	if err != nil || !proceed {
+		return err
+	}
+	currentTargets, currentDiscovery := discoverFullDestroyTargets()
+	currentDeployments, currentDeploymentResults := discoverFullDestroyDeployments()
+	if countFullDestroyBlockers(currentDiscovery)+countFullDestroyBlockers(currentDeploymentResults) > 0 {
+		return invalidProviderConsumerInventory(errors.New("installation discovery changed or is incomplete"))
+	}
+	currentPlans, err := collectFullDestroyInventory(parent, currentTargets)
+	if err != nil {
+		return err
+	}
+	currentPreserved := []fullDestroyResult{}
+	for _, target := range currentTargets {
+		item, err := preservedTargetRecovery(parent, target)
 		if err != nil {
 			return err
 		}
-		if !ok {
-			fmt.Fprintln(out, "Full destroy cancelled; no state was changed.")
-			return nil
+		if item.Status != "" {
+			currentPreserved = append(currentPreserved, item)
 		}
+	}
+	currentImpact, err := buildRuntimeDestroyImpact(parent, currentPlans, currentPreserved, true)
+	if err != nil {
+		return err
+	}
+	if currentImpact.Scope.PlanID != impact.Scope.PlanID || runtimeMutationRevision(currentDeployments) != runtimeMutationRevision(deployments) {
+		return runtimeDestroyImpactError(currentImpact, &application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	parent, err = withInstallationApplicationScopes(parent, currentImpact)
+	if err != nil {
+		return err
 	}
 
 	results := append([]fullDestroyResult{}, preserved...)
@@ -167,7 +197,7 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 	for _, target := range targets {
 		releaseFullDestroyConnectivity(parent, target, &results)
 	}
-	for _, record := range deployments {
+	for index, record := range deployments {
 		targetCtx := withTargetOverride(parent, record.Identity.Target)
 		args := []string{record.Identity.Application, "--environment", record.Identity.Environment, "--yes", "--full-reset"}
 		if err := executeApplicationDestroyLifecycle(targetCtx, application.Store{}, args, out, errOut); err != nil {
@@ -177,7 +207,9 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 				Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
 				Detail:   err.Error(),
 			})
-			bestEffortApplicationCleanup(targetCtx, record, &results)
+			// A failed child may have stale authority or partially removed resources.
+			// Keep its retry owner; a lower adapter must not bypass its current plan.
+			blockedTargets[record.Identity.Target] = true
 			continue
 		}
 		results = append(results, fullDestroyResult{
@@ -185,9 +217,20 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 			Target:   record.Identity.Target,
 			Resource: "deployment " + record.Identity.Application + "/" + record.Identity.Environment,
 		})
+		if index+1 < len(deployments) {
+			parent, currentImpact, err = advanceInstallationDestruction(parent, currentImpact, record.Identity.DeploymentID, out)
+			if err != nil {
+				recordDestroyResults(parent, results, false)
+				return err
+			}
+		}
 	}
 
 	for i, target := range targets {
+		if blockedTargets[target.Name] {
+			results = append(results, fullDestroyResult{Status: "SKIPPED", Target: target.Name, Resource: "target-runtime", Detail: "application reset incomplete; protected Target resources and retry owners preserved"})
+			continue
+		}
 		destroyTargetBestEffort(parent, target, &results, plans[i])
 	}
 
@@ -298,7 +341,7 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 			}
 			byName[name] = deployment.ResolvedTarget{Name: name, RuntimeProvider: provider}
 			if provider == "" {
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"})
+				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely", Diagnostic: "unregistered-target-runtime"})
 			}
 		}
 	}
@@ -385,10 +428,11 @@ func discoverFullDestroyDeployments() ([]deployment.DeploymentRecord, []fullDest
 			resource = "deployment unknown"
 		}
 		results = append(results, fullDestroyResult{
-			Status:   "SKIPPED",
-			Target:   stateErr.Identity.Target,
-			Resource: resource,
-			Detail:   "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
+			Status:     "SKIPPED",
+			Target:     stateErr.Identity.Target,
+			Resource:   resource,
+			Detail:     "incomplete deployment state has no usable deployment.json; refusing to guess semantic/runtime ownership, local BaseHarbor state will still be removed",
+			Diagnostic: "unregistered-deployment-state",
 		})
 	}
 	return records, results
@@ -407,7 +451,7 @@ func bestEffortApplicationCleanup(parent context.Context, record deployment.Depl
 		*results = append(*results, fullDestroyResult{Status: "FAILED", Target: record.Identity.Target, Resource: "deployment-fallback", Detail: err.Error()})
 		return
 	}
-	resolved, err := resolveRegisteredApplication(target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
+	resolved, err := resolveRegisteredApplication(parent, target, targetRoot, record.Identity.Application, record.Identity.Environment, "destroy")
 	if err == nil && strings.TrimSpace(target.RuntimeProvider) != "" {
 		compose, composeErr := detectRuntimeForTarget(parent, target)
 		if composeErr != nil {

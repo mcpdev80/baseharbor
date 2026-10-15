@@ -1,5 +1,6 @@
 # Veröffentlichungen und Versionierung
 
+[Pre-Release-Bereitschaft](../development/pre-release-readiness.md)
 BaseHarbor verwendet Semantic Versioning für normale Versionen mit Git-Tags, die von `v`. Während der v0.4 Linie verwenden Notfall-Hotfixes den dokumentierten Vier-Teil ` MAJOR.MINOR.PATCH.HOTFIX`Erweiterung.
 
 Beispiele:`v0.3.0 `, ` v0.4.15 `, ` v0.4.15.1 `, ` v1.0.0`.
@@ -100,7 +101,17 @@ Verschieben Sie niemals ein veröffentlichtes Versions-Tag. Beheben Sie eine sch
 
 ### Unveränderliche Ökosystem-Eingaben für v0.4.24
 
-Für v0.4.24 bindet die `integration-candidate.json` des finalen Connector-Commits die exakten Core-, Console- und Demo-Commits. Das Console-Manifest muss denselben Core und dieselbe Demo binden; die `baseharbor-core.ref` der Demo muss diesem Core-Commit entsprechen. Dies ersetzt für v0.4.24 die Core-eigene `.demo-ref`: Das gegenseitige Pinnen zukünftiger Git-Commits würde eine zyklische Abhängigkeit erzeugen.
+Für v0.4.24 und v0.4.25 bindet die `integration-candidate.json` des finalen Connector-Commits die exakten Core-, Console- und Demo-Commits. Das Console-Manifest muss denselben Core und dieselbe Demo binden; die `baseharbor-core.ref` der Demo muss diesem Core-Commit entsprechen. Dies ersetzt für diese Releases die Core-eigene `.demo-ref`: Das gegenseitige Pinnen zukünftiger Git-Commits würde eine zyklische Abhängigkeit erzeugen. Gezielte atomare Pushes für v0.4.25 verwenden denselben kanonischen Matrix-Resolver wie der Pre-Release-Quellschritt; gemischte oder bewegliche Quellen werden vor der Ausführung abgelehnt.
+
+Eine explizite `only_gates`-Auswahl oder ein Branch unter
+`validation/pre-release/selected/*` führt nur die ausgewählten Qualifikationen
+aus und überspringt den abschließenden Freigabejob. Einzelartefakte sind Nachweise;
+sie können keine Release-Freigabe erzeugen.
+Für einen unveränderten Kandidaten kann ein temporärer Ref namens
+`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` direkt
+auf dessen unveränderlichen Commit zeigen. Der bestehende Selektor prüft jede
+angeforderte ID; eine andere kleine Gruppe erfordert keine Quell- oder Consumer-
+Pin-Änderung.
 
 `scripts/ecosystem_release_pins.py` prüft alle Bindungen und erstellt das öffentliche Manifest der Consumer-Nachweise. Der Pre-Release-Workflow akzeptiert eine optionale exakte `consumer_ref` oder löst den geprüften Connector-Integrationsbranch einmalig auf und hält dessen 40-stelligen SHA fest. Die Freigabe bewahrt diese unveränderliche Consumer-Quelle; die Release-Nachprüfung löst dieselben Commits auf. Der vollständige native Connector-Job prüft auch das exakte Console-Browser-Receipt. Sein authentifiziertes Artefakt kann deshalb die Console-Integration ohne Wiederholung derselben Journey belegen. Alle bisherigen atomaren Gates bleiben erforderlich.
 

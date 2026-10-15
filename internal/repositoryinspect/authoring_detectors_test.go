@@ -25,7 +25,7 @@ func TestAuthoringDetectorsSatisfyHTTPAndSecrets(t *testing.T) {
 			Name: "web", Service: "app", Port: 8080, Protocol: "http", Visibility: "public",
 		}},
 	}
-	if err := os.WriteFile(filepath.Join(root, application.RepositoryManifestName), []byte(manifest.YAML()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, application.RepositoryManifestName), []byte(manifest.AuthoredYAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("APP_SECRET=\n"), 0o644); err != nil {

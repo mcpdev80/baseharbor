@@ -60,6 +60,10 @@
         "remediation_class": {
           "type": "string",
           "maxLength": 256
+        },
+        "details": {
+          "type": "object",
+          "description": "Redacted structured operation-specific error details. Provider consequences use the versioned provider-impact schemas."
         }
       },
       "required": [

@@ -50,6 +50,15 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 	if err != nil {
 		return "", err
 	}
+	records, err := deployment.ListDeployments(target.Name)
+	if err != nil {
+		return "", err
+	}
+	for _, record := range records {
+		if record.Identity.Application == m.Name && record.Identity.Environment == m.Environment {
+			return "", fmt.Errorf("%w: %s/%s/%s [%s]", application.ErrExists, target.Name, m.Name, m.Environment, record.Identity.DeploymentID)
+		}
+	}
 	if existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment); err != nil {
 		return "", err
 	} else if found {
@@ -74,7 +83,7 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 		return "", err
 	}
 	path := filepath.Join(sourceRoot, application.RepositoryManifestName)
-	if err := os.WriteFile(path, []byte(m.YAML()), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(m.AuthoredYAML()), 0o600); err != nil {
 		_ = os.RemoveAll(root)
 		return "", err
 	}
@@ -204,6 +213,9 @@ func appInitCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			// Repository authoring proposes intent, not another identity claim.
+			// Reuse retained source/deployment owners before assigning a new ID.
+			m.ApplicationID = ""
 			var selected *repositoryinspect.WorkloadSourceCandidate
 			if sourceExplicit && persistSourceSelection {
 				selected = &sourceSelection

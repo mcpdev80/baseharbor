@@ -19,7 +19,7 @@ func telemetryManifest() Manifest {
 func TestOTLPTelemetryManifestRoundTrip(t *testing.T) {
 	m := telemetryManifest()
 	data := m.YAML()
-	got, err := ParseYAML(data)
+	got, err := ParseCanonicalYAML(data)
 	if err != nil {
 		t.Fatal(err)
 	}

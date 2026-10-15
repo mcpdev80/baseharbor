@@ -64,6 +64,7 @@ type Error struct {
 	Next        string    `json:"next,omitempty"`
 	Resource    string    `json:"resource,omitempty"`
 	Remediation string    `json:"remediation_class,omitempty"`
+	Details     any       `json:"details,omitempty"`
 	Cause       error     `json:"-"`
 }
 
@@ -191,7 +192,7 @@ func Operations() []Operation {
 		{ID: "trust.export", MCPTool: "baseharbor.trust.export", Description: "Export public managed CA material without private keys.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "trust.install", MCPTool: "baseharbor.trust.install", Description: "Install public managed CA on the execution host after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "trust.uninstall", MCPTool: "baseharbor.trust.uninstall", Description: "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
-		{ID: "app.stop", MCPTool: "baseharbor.app.stop", Description: "Stop owned application runtime while preserving persistent data.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "app.stop", MCPTool: "baseharbor.app.stop", Description: "Stop owned application runtime while preserving persistent data.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.preflight", MCPTool: "baseharbor.app.preflight", Description: "Validate application preflight without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "secret.list", MCPTool: "baseharbor.secret.list", Description: "List configured secret names without values.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "secret.set", MCPTool: "baseharbor.secret.set", Description: "Set one application secret from protected input.", Safety: SafetyMutating, ContractVersion: ContractVersion},
@@ -201,9 +202,9 @@ func Operations() []Operation {
 		{ID: "node.connect", MCPTool: "baseharbor.node.connect", Description: "Consume a protected local enrollment bundle and install the rootless Node Connector service.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "node.list", MCPTool: "baseharbor.node.list", Description: "List configured remote connector nodes without credential material.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "node.status", MCPTool: "baseharbor.node.status", Description: "Inspect persisted Core enrollment status for one remote node.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
-		{ID: "node.disconnect", MCPTool: "baseharbor.node.disconnect", Description: "Revoke a remote node identity before removing its empty Target registration.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
-		{ID: "target.create", MCPTool: "baseharbor.target.create", Description: "Create explicit runtime and access Target configuration.", Safety: SafetyMutating, ContractVersion: ContractVersion},
-		{ID: "target.delete", MCPTool: "baseharbor.target.delete", Description: "Delete empty Target configuration without mutating owned or foreign infrastructure.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "node.disconnect", MCPTool: "baseharbor.node.disconnect", Description: "Revoke remote node access after concrete impact acknowledgement and preserve registration/recovery owners.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "target.create", MCPTool: "baseharbor.target.create", Description: "Create explicit runtime/access Target configuration, or restore protected original references with current impact acknowledgement.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "target.delete", MCPTool: "baseharbor.target.delete", Description: "Detach Target configuration with two current-plan acknowledgements, preserving original-definition recovery and runtime/data owners.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "stack.list", MCPTool: "baseharbor.stack.list", Description: "List reusable development Stack Profiles.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "stack.show", MCPTool: "baseharbor.stack.show", Description: "Resolve one reusable development Stack Profile.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "stack.create", MCPTool: "baseharbor.stack.create", Description: "Validate and persist a reusable development Stack Profile.", Safety: SafetyMutating, ContractVersion: ContractVersion},
@@ -215,9 +216,9 @@ func Operations() []Operation {
 		{ID: "runtime.list", MCPTool: "baseharbor.runtime.list", Description: "List provider-neutral runtime resources with authoritative ownership and BaseHarbor relationships.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "runtime.inspect", MCPTool: "baseharbor.runtime.inspect", Description: "Inspect one stable runtime resource reference without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
 		{ID: "runtime.metrics", MCPTool: "baseharbor.runtime.metrics", Description: "Resolve the provider-neutral metrics handle for one stable runtime resource.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
-		{ID: "runtime.start", MCPTool: "baseharbor.runtime.start", Description: "Start one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
-		{ID: "runtime.stop", MCPTool: "baseharbor.runtime.stop", Description: "Stop one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
-		{ID: "runtime.restart", MCPTool: "baseharbor.runtime.restart", Description: "Restart one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.start", MCPTool: "baseharbor.runtime.start", Description: "Start one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.stop", MCPTool: "baseharbor.runtime.stop", Description: "Stop one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.restart", MCPTool: "baseharbor.runtime.restart", Description: "Restart one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
 		{ID: "app.list", MCPTool: "baseharbor.app.list", Description: "List registered application deployments using stable identity and secret-safe observed state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.list", MCPTool: "baseharbor.workspace.list", Description: "List developer-local workspace mappings without mutating source or runtime state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},

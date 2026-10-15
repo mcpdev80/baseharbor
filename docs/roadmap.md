@@ -2,28 +2,25 @@
 
 Detailed planning lives in GitHub Issues. This page shows product direction; [issue #155](https://github.com/mcpdev80/baseharbor/issues/155) is the overarching roadmap.
 
-## Current — v0.4.24
+## Current — v0.4.25 candidate
 
-Implementation and pre-release validation are complete.
-
-- Task-oriented CLI and repository-aware application lifecycle.
-- Explicit Core/Target selection and rootless Docker by default.
-- Shared providers without duplicate servers, with opt-in HA.
-- Guarded provider updates, PostgreSQL/etcd recovery and bounded upgrade paths.
-- Joint Console/Node Connector workflows and complete EN/DE documentation.
-
-The [release notes](releases/v0.4.24.md) describe the highlights and compatibility notes. Detailed scope and evidence are recorded in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+[v0.4.24 is published](releases/v0.4.24.md). The current candidate follows
+[issue #872](https://github.com/mcpdev80/baseharbor/issues/872) and
+[PR #881](https://github.com/mcpdev80/baseharbor/pull/881): capability-first contracts,
+minimal authoring with stable application identity, truthful footprint and a
+Core-less local application lifecycle. Explicit management Core remains intact.
+Complete ecosystem/release preparation is reviewed separately; development
+qualification does not automatically mean pre-release-ready.
 
 ## Before the v0.5 freeze
 
-### v0.4.25
+The binding split is recorded in [#427](https://github.com/mcpdev80/baseharbor/issues/427):
 
-Semantic Acceptance.
-
-- prove CLI/JSON/MCP semantic parity;
-- prove runtime/provider boundaries and ownership;
-- prove provider compatibility is richer than capability-name matching;
-- perform the final architecture and lifecycle acceptance before freeze.
+- v0.4.26: TUI and developer journeys (#873).
+- v0.4.27: onboarding, profiles and Node authority (#874).
+- v0.4.28: Console API and UX (#875).
+- v0.4.29: host platforms including WSL2/macOS (#876).
+- v0.4.30: final semantic acceptance (#174).
 
 ## v0.5
 

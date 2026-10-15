@@ -29,6 +29,18 @@ func ProviderExternalReferenceEnv(provider capability.ProviderKind) string {
 	return "BASEHARBOR_PROVIDER_" + providerPlacementEnvToken(provider) + "_EXTERNAL_REFERENCE"
 }
 
+// Explicit operator policy can request replacement. Defaults alone never
+// override a previously applied deployment selection.
+func HasExplicitProviderPlacement(m Manifest, provider capability.ProviderKind) (bool, error) {
+	for _, name := range []string{ProviderScopeEnv(provider), ProviderSharingBoundaryEnv(provider), ProviderExternalReferenceEnv(provider)} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true, nil
+		}
+	}
+	_, selected, err := resolveOrganizationProviderPlacement(m, provider)
+	return selected, err
+}
+
 func DefaultProviderPlacement(provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	switch provider {
 	case capability.ProviderPostgreSQL, capability.ProviderValkey:
@@ -63,14 +75,17 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 			ExternalReference: "default",
 		}, nil
 	case capability.ProviderExternalOIDC:
-		issuer := strings.TrimSpace(os.Getenv("BASEHARBOR_EXTERNAL_OIDC_ISSUER"))
-		if issuer == "" {
-			return capability.ProviderPlacement{}, fmt.Errorf("BASEHARBOR_EXTERNAL_OIDC_ISSUER is required when external OIDC is selected")
+		reference := strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(provider)))
+		if reference == "" {
+			reference = strings.TrimSpace(os.Getenv("BASEHARBOR_EXTERNAL_OIDC_ISSUER"))
+		}
+		if reference == "" {
+			return capability.ProviderPlacement{}, fmt.Errorf("select a registered external OIDC reference with %s or BASEHARBOR_EXTERNAL_OIDC_ISSUER", ProviderExternalReferenceEnv(provider))
 		}
 		return capability.ProviderPlacement{
 			Scope:             capability.ScopeExternal,
 			Ownership:         capability.OwnershipExternal,
-			ExternalReference: issuer,
+			ExternalReference: reference,
 		}, nil
 	default:
 		return capability.ProviderPlacement{}, fmt.Errorf("no default provider placement for %q", provider)
@@ -82,6 +97,15 @@ func DefaultProviderPlacement(provider capability.ProviderKind) (capability.Prov
 // deliberately simple; advanced users can override supported placement fields
 // through the generic provider policy namespace.
 func ResolveProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
+	if placement, pinned := m.backendPlacements[provider]; pinned {
+		return placement, nil
+	}
+	return ResolveConfiguredProviderPlacement(m, provider)
+}
+
+// Read current operator policy for a new selection/revalidation. Runtime
+// execution uses ResolveProviderPlacement's captured owner/intent projection.
+func ResolveConfiguredProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, error) {
 	placement, err := DefaultProviderPlacement(provider)
 	if err != nil {
 		return capability.ProviderPlacement{}, err

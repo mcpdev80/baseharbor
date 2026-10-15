@@ -3,7 +3,9 @@ package externalprovider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,12 +62,12 @@ func verifyPostgreSQL(ctx context.Context, reg Registration) (Verification, erro
 	defer cancel()
 	conn, err := pgx.ConnectConfig(verifyCtx, config)
 	if err != nil {
-		return Verification{}, fmt.Errorf("verify external PostgreSQL binding: %w", err)
+		return Verification{}, errors.New("external PostgreSQL connection or authentication failed")
 	}
 	defer conn.Close(context.Background())
 	var one int
 	if err := conn.QueryRow(verifyCtx, "SELECT 1").Scan(&one); err != nil {
-		return Verification{}, fmt.Errorf("verify external PostgreSQL semantic path: %w", err)
+		return Verification{}, errors.New("external PostgreSQL semantic query failed")
 	}
 	if one != 1 {
 		return Verification{}, fmt.Errorf("external PostgreSQL semantic verification returned %d", one)
@@ -90,8 +92,9 @@ func verifyOIDC(ctx context.Context, reg Registration) (Verification, error) {
 		return Verification{}, err
 	}
 	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: tlsConfig},
+		Timeout:       15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport:     &http.Transport{TLSClientConfig: tlsConfig},
 	}
 	discoveryURL := strings.TrimRight(reg.Endpoint, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
@@ -100,7 +103,7 @@ func verifyOIDC(ctx context.Context, reg Registration) (Verification, error) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return Verification{}, fmt.Errorf("verify external OIDC discovery: %w", err)
+		return Verification{}, errors.New("external OIDC discovery connection or TLS verification failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -112,11 +115,12 @@ func verifyOIDC(ctx context.Context, reg Registration) (Verification, error) {
 		TokenEndpoint         string `json:"token_endpoint"`
 		JWKSURI               string `json:"jwks_uri"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return Verification{}, fmt.Errorf("decode external OIDC discovery: %w", err)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMaterialBytes+1))
+	if err != nil || len(body) > maxMaterialBytes || json.Unmarshal(body, &doc) != nil {
+		return Verification{}, errors.New("external OIDC discovery document is invalid or exceeds its size limit")
 	}
-	if strings.TrimSpace(doc.Issuer) == "" || strings.TrimSpace(doc.AuthorizationEndpoint) == "" || strings.TrimSpace(doc.JWKSURI) == "" {
-		return Verification{}, fmt.Errorf("external OIDC discovery is missing issuer, authorization_endpoint or jwks_uri")
+	if strings.TrimRight(doc.Issuer, "/") != strings.TrimRight(reg.Endpoint, "/") || !safeDiscoveryEndpoint(doc.AuthorizationEndpoint) || !safeDiscoveryEndpoint(doc.TokenEndpoint) || !safeDiscoveryEndpoint(doc.JWKSURI) {
+		return Verification{}, fmt.Errorf("external OIDC discovery issuer or required HTTPS endpoints are invalid")
 	}
 	return Verification{
 		ID: reg.ID, Endpoint: reg.Endpoint, Reachability: "ok", TLS: "ok",
@@ -132,4 +136,22 @@ func tlsStatusForScheme(scheme string) string {
 	default:
 		return "not_applicable"
 	}
+}
+
+func safeDiscoveryEndpoint(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return false
+	}
+	values, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return false
+	}
+	for key := range values {
+		switch strings.NewReplacer("-", "", "_", "", ".", "").Replace(strings.ToLower(key)) {
+		case "token", "accesstoken", "refreshtoken", "idtoken", "clientsecret", "password", "secret", "apikey", "authorization", "privatekey":
+			return false
+		}
+	}
+	return true
 }

@@ -123,6 +123,11 @@ func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error 
 	ctx = cli.WithOutputOptions(ctx, opts)
 	ctx = operatorauth.WithEnforcement(ctx)
 	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
+	ctx = localCLIProviderConsentContext(ctx, filtered)
+	ctx = withLocalInvocation(ctx, "cli")
+	if len(filtered) > 1 && filtered[0] == "app" {
+		ctx = localWorkloadScope(ctx, applicationBoundaryOperation(filtered[1]))
+	}
 	return rootCommand().Execute(ctx, filtered, out, errOut)
 }
 

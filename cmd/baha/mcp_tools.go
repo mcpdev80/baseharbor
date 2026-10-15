@@ -145,7 +145,7 @@ func registerMCPApplicationReadTools(server *mcp.Server, store application.Store
 		if err := authorizeResolvedMCPOperation(ctx, "plan", resolved, ""); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := application.BuildPlan(resolved.Manifest)
+		result, err := buildResolvedApplicationPlan(ctx, resolved)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
@@ -466,6 +466,7 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 
 func registerMCPApplicationMutationTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
 		args := machineApplicationArgs(input.Name, input.Environment)
@@ -625,6 +626,7 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 	})
 
 	mcp.AddTool(server, machineMCPTool("restore", "Restore and verify the currently supported encrypted application recovery unit. Passwords are accepted only through an owner-only local file reference.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineRestoreInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		backupPath := strings.TrimSpace(input.BackupPath)
 		passwordFile := strings.TrimSpace(input.PasswordFile)
@@ -656,15 +658,11 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 			}
 			return nil, result, nil
 		}
-		result := applicationlifecycle.NewResult("restore", strings.TrimSpace(input.Name), strings.TrimSpace(input.Environment), "restored", true)
-		if target, targetErr := effectiveTarget(ctx); targetErr == nil {
-			result = result.WithTarget(target.Name)
-		}
-		result.Detail = "Recovery unit restored and verified by the restore lifecycle; application identity can be discovered with baseharbor.status in repository context."
-		return nil, result, nil
+		return machineMCPFailure(err)
 	})
 
 	mcp.AddTool(server, machineMCPTool("destroy", "Permanently remove BaseHarbor-owned application runtime resources and state. Explicit approval is mandatory and ownership verification remains fail-closed.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineDestroyInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := applicationlifecycle.RequireApproval("destroy", input.Approval); err != nil {
 			return machineMCPFailure(err)
@@ -686,7 +684,10 @@ func registerMCPRecoveryTools(server *mcp.Server, store application.Store) {
 		if err := executeApplicationDestroyLifecycle(ctx, store, args, io.Discard, io.Discard); err != nil {
 			return machineMCPFailure(err)
 		}
-		result := applicationlifecycle.NewResult("destroy", resolved.Manifest.Name, resolved.Manifest.Environment, "destroyed", true).WithTarget(resolved.Target.Name)
+		result, err := applicationDestroyResult(resolved, input.FullReset)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
 		return nil, result, nil
 	})
 }

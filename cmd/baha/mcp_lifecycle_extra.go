@@ -14,18 +14,19 @@ func machineNoninteractiveContext(ctx context.Context) context.Context {
 	return cli.WithOutputOptions(ctx, options)
 }
 func registerMCPAdditionalLifecycleTools(server *mcp.Server, store application.Store) {
-	mcp.AddTool(server, machineMCPTool("app.stop", "Stop owned application runtime and verify removal while preserving persistent data.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
-		ctx = machineNoninteractiveContext(withTargetOverride(ctx, input.Target))
+	mcp.AddTool(server, machineMCPTool("app.stop", "Stop owned application runtime and verify removal while preserving persistent data.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationStopInput) (*mcp.CallToolResult, any, error) {
+		ctx = machineNoninteractiveContext(withProviderChangeConsent(withTargetOverride(ctx, input.Target), input.ProviderChangeConsent))
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "down")
 		if err != nil {
 			return machineMCPFailure(err)
 		}
 		ctx, cancel := machineLifecycleContext(ctx)
 		defer cancel()
-		if err := stopApplicationRuntime(ctx, resolved, io.Discard, io.Discard); err != nil {
+		result, err := stopApplicationRuntimeWithResult(ctx, resolved, io.Discard, io.Discard)
+		if err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "stopped", DataPreserved: true}, nil
+		return nil, result, nil
 	})
 	mcp.AddTool(server, machineMCPTool("app.preflight", "Run shared application preflight without mutation or interactive memory overrides.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = machineNoninteractiveContext(withTargetOverride(ctx, input.Target))

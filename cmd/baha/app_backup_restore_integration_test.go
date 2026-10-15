@@ -38,7 +38,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
 		t.Fatalf("runtime up: %v", err)
 	}
-	defer func() { _ = runtimeDown(context.Background(), io.Discard) }()
+	defer func() { _ = approvedNativeCoreStop(t, context.Background(), io.Discard) }()
 	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatal(err)

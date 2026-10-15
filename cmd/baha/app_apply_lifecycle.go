@@ -30,6 +30,7 @@ type applicationApplyExecution struct {
 	coreRuntime      bhruntime.RuntimeProvider
 	platformFiles    bhruntime.Files
 	issuer           serviceaccess.Issuer
+	providerPlan     application.ProviderPlan
 	providers        *managedProviderPreflightState
 	workloadSecurity application.WorkloadSecurityReport
 	files            application.RuntimeFiles
@@ -78,7 +79,7 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 	checks := e.preflightChecks()
 	needsServiceIssuer := requiresManagedServiceIssuer(e.manifest)
 
-	if needsServiceIssuer || application.RequiresRuntimeBroker(e.manifest) {
+	if application.RequiresRuntimeBroker(e.manifest) {
 		checks = append(checks, preflight.Check{Name: "BaseHarbor control-plane runtime", Run: func(context.Context) error {
 			var err error
 			e.coreRuntime, e.platformFiles, err = resolveApplicationCoreRuntime(ctx, e.resolved, e.compose)
@@ -90,16 +91,10 @@ func (e *applicationApplyExecution) runPreflight(ctx context.Context) error {
 	}
 	if needsServiceIssuer {
 		checks = append(checks, preflight.Check{Name: "managed service PKI", Run: func(ctx context.Context) error {
-			if e.coreRuntime == nil {
-				return unavailableApplicationCoreRuntime()
-			}
-			e.issuer = openbao.NewServiceIssuer(e.coreRuntime, e.platformFiles)
-			status, err := e.issuer.Status(ctx)
+			var err error
+			e.issuer, err = resolveApplicationServiceIssuer(ctx, e.resolved, e.compose)
 			if err != nil {
-				return fmt.Errorf("managed service PKI is not ready: %w", err)
-			}
-			if !status.Ready {
-				return errors.New("managed service PKI is not ready")
+				return fmt.Errorf("managed service PKI preflight: %w", err)
 			}
 			return nil
 		}})
@@ -184,6 +179,9 @@ func (e *applicationApplyExecution) preflightChecks() []preflight.Check {
 }
 
 func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) error {
+	if err := materializeApplicationServiceIssuer(e.issuer); err != nil {
+		return fmt.Errorf("prepare managed service PKI: %w", err)
+	}
 	files, err := application.EnsureRuntime(ctx, e.issuer, e.resolved.Store, e.manifest)
 	if err != nil {
 		return err
@@ -200,7 +198,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 			e.manifest.Services.SecretsManagementUI ||
 			e.manifest.Services.IdentityManagementUI ||
 			e.manifest.Services.ObservabilityManagementUI ||
-			e.manifest.Services.Identity) {
+			hasManagedDevelopmentIdentity(e.manifest)) {
 		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("prepare developer access: %w", err)
@@ -226,6 +224,7 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 				e.resolved.Target.Name,
 				e.manifest,
 				e.files,
+				e.providerPlan,
 			)
 			return err
 		}); err != nil {
@@ -238,11 +237,11 @@ func (e *applicationApplyExecution) prepareManagedRuntime(ctx context.Context) e
 		return err
 	}
 	if err := activity(ctx, e.term, "Reconciling application identity", func(progress io.Writer) error {
-		return provisionAndVerifyManagedIdentity(ctx, progress, e.providers.identity, e.providers.exposure)
+		return provisionManagedIdentityBeforeExposure(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
 		return err
 	}
-	if devaccess.Enabled(e.manifest.Environment) && e.manifest.Services.Identity {
+	if devaccess.Enabled(e.manifest.Environment) && requiresManagedDevelopmentOperatorRealm(e.manifest) {
 		credentials, err := ensureAuthoritativeDeveloperCredentials(ctx, e.resolved.Target.Name, e.manifest.Environment)
 		if err != nil {
 			return fmt.Errorf("load developer access for OIDC: %w", err)
@@ -391,10 +390,6 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}); err != nil {
 		return err
 	}
-	// Provider ownership survives failed workload convergence and remains available for safe cleanup.
-	if err := e.recordRealizedProviders(); err != nil {
-		return err
-	}
 	if err := e.startRepositoryWorkload(ctx); err != nil {
 		return err
 	}
@@ -413,6 +408,11 @@ func (e *applicationApplyExecution) convergeApplicationRuntime(ctx context.Conte
 	}
 	if err := activity(ctx, e.term, "Verifying application exposure", func(progress io.Writer) error {
 		return convergeManagedExposure(ctx, progress, e.providers.exposure)
+	}); err != nil {
+		return err
+	}
+	if err := activity(ctx, e.term, "Verifying identity callback access", func(progress io.Writer) error {
+		return verifyManagedIdentityAfterExposure(ctx, progress, e.providers.identity, e.providers.exposure)
 	}); err != nil {
 		return err
 	}
@@ -464,6 +464,15 @@ func (e *applicationApplyExecution) recordRealizedProviders() error {
 	registryResources = append(registryResources, managedTracesRegistryResources(e.providers.traces)...)
 	if err := application.ReconcileReferenceProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest, registryResources...); err != nil {
 		return fmt.Errorf("record provider registry after provider realization: %w", err)
+	}
+	return nil
+}
+
+func (e *applicationApplyExecution) retainPendingProviderOwners() error {
+	resources := managedLogsRegistryResources(e.providers.logs)
+	resources = append(resources, managedTracesRegistryResources(e.providers.traces)...)
+	if err := application.RetainPendingProviderOwnersAt(e.resolved.TargetStateRoot, e.manifest, resources...); err != nil {
+		return fmt.Errorf("retain pending provider owners before runtime mutation: %w", err)
 	}
 	return nil
 }

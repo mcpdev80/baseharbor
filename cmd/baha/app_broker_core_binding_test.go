@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/mcpdev80/baseharbor/internal/application"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"io"
 	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 type coreBrokerReconcileFixture struct {
@@ -20,19 +22,25 @@ func (r *coreBrokerReconcileFixture) UpProject(_ context.Context, project, _, _ 
 	return r.stop
 }
 
-func TestRuntimeBrokerReconcilesCoreOnInstallationProvider(t *testing.T) {
+func TestRuntimeBrokerUsesInstallationPKIWithoutRestartingCore(t *testing.T) {
 	t.Setenv("BASEHARBOR_RUNTIME_IMAGE", "")
-	stop := errors.New("stop after Core reconciliation")
-	core := &coreBrokerReconcileFixture{stop: stop}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	core := &brokerPKIReadinessRuntime{started: true, recover: true, stopPKI: cancel}
 	workload := &coreBrokerReconcileFixture{stop: errors.New("workload must not receive Core reconciliation")}
 	m := application.New("core-bound-broker", "dev", false, false, true)
 	if !application.RequiresRuntimeBroker(m) {
 		t.Fatal("fixture needs runtime broker")
 	}
-	files := bhruntime.Files{Project: "installation-core", Compose: "/core/compose.yaml", Env: "/core/runtime.env"}
-	err := ensureAndStartRuntimeBrokerWithCore(context.Background(), io.Discard, workload, core, files, m, application.RuntimeFiles{})
-	if !errors.Is(err, stop) || len(core.upProjects) != 1 || core.upProjects[0] != files.Project || len(workload.upProjects) != 0 {
-		t.Fatal("Core project was forwarded to Application provider", err, core.upProjects, workload.upProjects)
+	files := brokerReadinessFiles(t)
+	err := ensureAndStartRuntimeBrokerWithCore(ctx, io.Discard, workload, core, files, m, application.RuntimeFiles{})
+	if !errors.Is(err, context.Canceled) || len(core.projects) != 4 || core.upCalls != 0 || len(workload.upProjects) != 0 {
+		t.Fatal("broker restarted Core or forwarded its PKI to Application provider", err, core.upCalls, workload.upProjects)
+	}
+	for _, project := range core.projects {
+		if project != files.Project {
+			t.Fatal("PKI request used a different installation", project)
+		}
 	}
 	if err := ensureAndStartRuntimeBrokerWithCore(context.Background(), io.Discard, workload, nil, files, m, application.RuntimeFiles{}); err == nil || len(workload.upProjects) != 0 {
 		t.Fatal("missing Core authority fell back to Application provider", err)

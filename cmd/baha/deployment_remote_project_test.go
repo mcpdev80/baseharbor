@@ -17,7 +17,7 @@ func TestDeploymentTransitionsRetainSelectedRemoteProject(t *testing.T) {
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
 	manifest := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
-	mustWriteWizardTestFile(t, application.RepositoryManifestName, manifest.YAML())
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest)
 	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatal(err)

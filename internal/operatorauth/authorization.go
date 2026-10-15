@@ -82,6 +82,12 @@ func AuthorizeMachineOperation(ctx context.Context, request AuthorizationRequest
 			}
 		}
 	}
+	if !ok && localRuntimeAuthorityMatches(ctx, request) {
+		decision.Allowed = true
+		decision.Actor = MachineActorRef{Mode: "local-runtime", Subject: "local-runtime/" + decision.Context.Target}
+		setAuthorizationDecision(ctx, decision)
+		return decision, nil
+	}
 	if !ManagedEnvironment(decision.Context.Environment) && !ok {
 		decision.Allowed = true
 		decision.Actor = MachineActorRef{Mode: "trusted-local", Subject: "trusted-local"}

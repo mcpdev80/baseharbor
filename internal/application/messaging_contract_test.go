@@ -31,7 +31,7 @@ func TestMessagingManifestRoundTripPortableContractAndPlan(t *testing.T) {
 			t.Fatalf("manifest missing %q:\n%s", want, rendered)
 		}
 	}
-	got, err := ParseYAML(rendered)
+	got, err := ParseCanonicalYAML(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}

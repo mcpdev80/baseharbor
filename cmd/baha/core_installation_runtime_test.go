@@ -3,10 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,14 +23,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/auth"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/development/pythonadapter"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
 )
 
@@ -98,7 +112,15 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cleanupCancel()
-		if err := runtimeDestroy(cleanupCtx, []string{"--yes"}, &bytes.Buffer{}); err != nil {
+		if role == coreinstallation.Deployment {
+			var err error
+			cleanupCtx, err = authenticatedCoreBootstrapFixtureCleanup(cleanupCtx, target)
+			if err != nil {
+				t.Errorf("Core fixture operator authentication failed; owners retained: %v", err)
+				return
+			}
+		}
+		if err := approvedNativeFixtureCleanup(t, cleanupCtx, &bytes.Buffer{}); err != nil {
 			t.Errorf("Core cleanup failed: %v", err)
 		}
 	}()
@@ -131,6 +153,7 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	if err != nil || !report.Ready || report.Installation == nil || report.Installation.ID != first.ID {
 		t.Fatalf("independent inspection failed: %+v %v", report, err)
 	}
+	verifyIndependentManagementProviderUnion(t, ctx, target, first)
 	files, err := existingTargetRuntimeFiles(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -224,6 +247,168 @@ func runCoreOnlyBootstrapRuntimeWithHA(t *testing.T, role coreinstallation.Machi
 	}
 }
 
+// The deployment fixture must authenticate its real installed operator before
+// entering the unchanged, plan-bound installation destroy authority. An OAuth
+// access token alone is not a principal: verify the issued ID token through the
+// real issuer/JWKS with the normal signature, audience and expiry checks.
+func authenticatedCoreBootstrapFixtureCleanup(ctx context.Context, target deployment.ResolvedTarget) (context.Context, error) {
+	dataDir, err := targetDataRoot(target)
+	if err != nil {
+		return ctx, err
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return ctx, err
+	}
+	state, err := coreinstallation.Load(root)
+	if err != nil || state.Spec.Target != target.Name || state.Spec.Runtime != target.RuntimeProvider {
+		return ctx, errors.New("Core fixture installation owner is unavailable or differs")
+	}
+	if err := identityprovider.VerifyCoreOperatorTokenFlow(ctx, dataDir, target.Name, state.ID, state.IdentityIssuer); err != nil {
+		return ctx, err
+	}
+	files, err := identityprovider.ExistingCoreRuntimeFiles(dataDir, target.Name)
+	if err != nil {
+		return ctx, err
+	}
+	values := map[string]string{}
+	for _, path := range []string{files.Env, filepath.Join(files.Dir, "active-admin.env")} {
+		data, err := runtimeMutationOwnerBytes(path, path != files.Env)
+		if err != nil {
+			return ctx, err
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			key, value, ok := strings.Cut(line, "=")
+			if ok {
+				values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+			}
+		}
+		zeroBytes(data)
+	}
+	defer clear(values)
+	username, password := values["BASEHARBOR_KEYCLOAK_ADMIN_USER"], values["BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD"]
+	if username == "" || password == "" || !strings.HasSuffix(state.IdentityIssuer, "/realms/baseharbor") {
+		return ctx, errors.New("Core fixture protected operator or issuer is incomplete")
+	}
+	// Core's baseharbor realm deliberately has its native frontendUrl. Master
+	// uses KC_HOSTNAME, whose distinct canonical origin is protected runtime input.
+	issuer := strings.TrimRight(values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"], "/") + "/realms/master"
+	if err := (auth.Config{Issuer: issuer, Audiences: []string{"admin-cli"}}).Validate(); err != nil {
+		return ctx, errors.New("Core fixture protected master issuer is incomplete")
+	}
+	issuerURL, err := url.Parse(issuer)
+	if err != nil {
+		return ctx, err
+	}
+	adminURL, err := url.Parse(files.AdminURL)
+	if err != nil {
+		return ctx, err
+	}
+	client, err := serviceaccess.NewHTTPClient(files.AdminAccess.Material, false)
+	if err != nil {
+		return ctx, err
+	}
+	transport := client.Transport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	dial := transport.DialContext
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address != adminURL.Host && address != issuerURL.Host && address != net.JoinHostPort(issuerURL.Hostname(), "443") {
+			return nil, errors.New("Core fixture authentication refused another HTTP authority")
+		}
+		return dial(ctx, network, adminURL.Host)
+	}
+	client.Transport = transport
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	defer transport.CloseIdleConnections()
+	form := url.Values{"grant_type": {"password"}, "client_id": {"admin-cli"}, "username": {username}, "password": {password}, "scope": {"openid"}}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, files.AdminURL+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return ctx, err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := client.Do(request)
+	if err != nil {
+		return ctx, errors.New("Core fixture operator OAuth endpoint is unavailable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return ctx, fmt.Errorf("Core fixture operator OAuth rejected: HTTP %d", response.StatusCode)
+	}
+	var token struct {
+		IDToken string `json:"id_token"`
+	}
+	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&token) != nil || token.IDToken == "" {
+		return ctx, errors.New("Core fixture operator OAuth did not supply an ID token")
+	}
+	return verifyCoreBootstrapFixtureIDToken(ctx, client, issuer, token.IDToken)
+}
+
+func verifyCoreBootstrapFixtureIDToken(ctx context.Context, client *http.Client, issuer, token string) (context.Context, error) {
+	verifiedCtx := oidc.ClientContext(ctx, client)
+	verifier, err := auth.NewOIDCVerifier(verifiedCtx, auth.Config{Issuer: issuer, Audiences: []string{"admin-cli"}})
+	if err != nil {
+		return ctx, errors.New("Core fixture operator OIDC discovery failed")
+	}
+	principal, err := verifier.Verify(verifiedCtx, token)
+	if err != nil {
+		return ctx, errors.New("Core fixture operator ID token failed verification")
+	}
+	return operatorauth.WithVerifiedPrincipal(ctx, principal), nil
+}
+
+func TestCoreBootstrapFixtureCleanupRequiresVerifiedOIDC(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var issuer string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
+		case "/keys":
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "fixture", Algorithm: "RS256", Use: "sig"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	issuer = server.URL
+	sign := func(audience, tokenIssuer string, expiry int64) string {
+		t.Helper()
+		claims, err := json.Marshal(map[string]any{"iss": tokenIssuer, "sub": "verified-fixture-operator", "aud": audience, "exp": expiry, "iat": time.Now().Unix()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithHeader("kid", "fixture"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		object, err := signer.Sign(claims)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, err := object.CompactSerialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	valid := sign("admin-cli", issuer, time.Now().Add(time.Minute).Unix())
+	ctx, err := verifyCoreBootstrapFixtureIDToken(t.Context(), server.Client(), issuer, valid)
+	principal, authenticated := operatorauth.PrincipalFromContext(ctx)
+	if err != nil || !authenticated || principal.Subject != "verified-fixture-operator" || principal.Issuer != issuer {
+		t.Fatal("actual signed issuer token did not yield the verified principal")
+	}
+	for _, token := range []string{"", "access-token-is-not-an-ID-token", sign("another-client", issuer, time.Now().Add(time.Minute).Unix()), sign("admin-cli", "https://another-issuer.invalid", time.Now().Add(time.Minute).Unix()), sign("admin-cli", issuer, time.Now().Add(-time.Minute).Unix())} {
+		ctx, err := verifyCoreBootstrapFixtureIDToken(t.Context(), server.Client(), issuer, token)
+		if _, authenticated := operatorauth.PrincipalFromContext(ctx); err == nil || authenticated {
+			t.Fatal("invalid issuer, audience, expiry or token manufactured an authenticated operator")
+		}
+	}
+}
+
 // Observe only this fixture's resources before deferred cleanup removes them.
 // Emit lifecycle state and known error categories, never raw provider logs or
 // credential-bearing environments.
@@ -265,18 +450,22 @@ func runManagedProviderOnlyReadinessRegression(t *testing.T, ctx context.Context
 	t.Helper()
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeShared))
 	manifest := application.New("provider-only-readiness", "dev", true, false, false)
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("provider-only cleanup: %v", err)
+		// Exercise default provider-only retirement with no runtime directory,
+		// then dispose of the isolated recovery owner before reusing its source.
+		if err := destroySelectiveApplicationWithConsent(cleanup); err != nil {
+			t.Errorf("provider-only retirement: %v", err)
+			return
 		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		t.Fatalf("provider-only apply: %v\n%s", err, output.String())
 	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "readiness regression")
@@ -328,7 +517,7 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	if manifest.Services.Secrets || !application.RequiresRuntimeBroker(manifest) {
 		t.Fatal("fixture must require a broker without application secrets")
 	}
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	compose := `services:
@@ -347,12 +536,10 @@ func runManagedReadinessAndBackupRegression(t *testing.T, ctx context.Context) {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("fixture cleanup: %v", err)
-		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"app", "apply"}, &output, &output); err != nil {
 		runtime, runtimeErr := detectRuntimeForTarget(ctx, mustEffectiveTestTarget(t, ctx))
 		if runtimeErr == nil {
 			containers, _ := runtime.ListRuntimeContainers(ctx)
@@ -452,12 +639,10 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if err := runWithIO(cleanup, []string{"app", "destroy", "--yes"}, &bytes.Buffer{}, &bytes.Buffer{}); err != nil {
-			t.Errorf("generated fixture cleanup: %v", err)
-		}
+		resetCoreBootstrapFixtureApplication(t, cleanup)
 	}()
 	var output runtimeAcceptanceOutput
-	err = runWithIO(ctx, []string{"up", "--yes"}, &output, &output)
+	err = runWithIO(generatedCoreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output)
 	var missing *machine.Error
 	if !errors.As(err, &missing) || missing.Code != machine.ErrorRequiredSecretMissing {
 		t.Fatalf("non-TTY first up must fail closed for missing secret: %v\n%s", err, output.String())
@@ -470,7 +655,7 @@ func runGeneratedSecretDeliveryRegression(t *testing.T, ctx context.Context) {
 	if err := runWithIO(ctx, []string{"app", "secret", "set", "API_TOKEN", "--file", secretPath}, &output, &output); err != nil {
 		t.Fatalf("supply required managed secret: %v\n%s", err, output.String())
 	}
-	if err := runWithIO(ctx, []string{"up", "--yes"}, &output, &output); err != nil {
+	if err := runWithIO(coreBootstrapFixtureConsent(t, ctx), []string{"up", "--yes"}, &output, &output); err != nil {
 		t.Fatalf("resume generated application: %v\n%s", err, output.String())
 	}
 	status, err := collectApplicationStatus(ctx, application.DefaultStore(), nil)
@@ -526,4 +711,89 @@ func (b *runtimeAcceptanceOutput) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buffer.Reset()
+}
+
+// Native fixtures review and acknowledge their actual current provider plan;
+// ordinary --yes is never promoted to either independent acknowledgement.
+func coreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if impact := plan.ProviderPlan.Impact; impact != nil {
+		return withProviderChangeConsent(ctx, &application.ProviderChangeConsent{PlanID: impact.PlanID, First: true, Second: true})
+	}
+	return ctx
+}
+
+func TestGeneratedBootstrapConsentRetainsCurrentIntent(t *testing.T) {
+	configureTestTarget(t)
+	root := filepath.Join(t.TempDir(), "generated")
+	registry, err := development.NewRegistry(pythonadapter.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = development.CreateApplication(root, development.NewApplicationRequest{Name: "generated-secret-regression", Adapter: pythonadapter.AdapterID, Capabilities: []capability.Kind{capability.SQL, capability.Secrets, capability.ExposureHTTP}, Secrets: []string{"API_TOKEN"}}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	ctx := machineNoninteractiveContext(t.Context())
+	beforeInitialization := coreBootstrapFixtureConsent(t, ctx)
+	consent := generatedCoreBootstrapFixtureConsent(t, ctx)
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conflict *machine.Error
+	if err := authorizeApplicationProviderChanges(beforeInitialization, resolved, nil, &bytes.Buffer{}); !errors.As(err, &conflict) || conflict.Code != machine.ErrorConflict {
+		t.Fatalf("deployment input initialization did not invalidate earlier consent: %v", err)
+	}
+	for attempt := 0; attempt < 4; attempt++ {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
+			t.Fatalf("unchanged generated intent: %v", err)
+		}
+		if err := authorizeApplicationProviderChanges(consent, resolved, nil, &bytes.Buffer{}); err != nil {
+			t.Fatalf("unchanged generated consent: %v", err)
+		}
+	}
+}
+
+// Ordinary up resolves deployment inputs before entering application apply.
+// A fixture must acknowledge the resulting owner/input state, not the proposal
+// that existed before this normal preparation. It never retries stale consent.
+func generatedCoreBootstrapFixtureConsent(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	if err := ensureRepositoryDeploymentInputsForUp(ctx, strings.NewReader(""), &bytes.Buffer{}, runtimeUpOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	return coreBootstrapFixtureConsent(t, ctx)
+}
+
+func resetCoreBootstrapFixtureApplication(t *testing.T, ctx context.Context) {
+	t.Helper()
+	current, err := resolveApplication(ctx, application.Store{}, nil, "destroy")
+	if err != nil {
+		t.Errorf("fixture reset owner: %v", err)
+		return
+	}
+	plan, err := buildApplicationDestructionPlan(ctx, current, true)
+	if err != nil {
+		t.Errorf("fixture reset plan: %v", err)
+		return
+	}
+	ack := &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true}
+	var out runtimeAcceptanceOutput
+	if err := runWithIO(withProviderChangeConsent(ctx, ack), []string{"app", "destroy", "--yes", "--full-reset"}, &out, &out); err != nil {
+		t.Errorf("fixture reset failed; owner/source retained: %v\n%s", err, out.String())
+	}
 }

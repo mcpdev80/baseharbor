@@ -42,19 +42,36 @@ func CheckReferenceProviderRegistry(m Manifest) error {
 }
 
 func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
+	_, err := PreviewReferenceProviderRegistryAt(dataDir, m)
+	return err
+}
+
+// PreviewReferenceProviderRegistryAt uses the existing provider registration
+// plan without writing Target state. Removed capability instances retain their
+// ownership; releasing a binding does not reclaim a provider.
+func PreviewReferenceProviderRegistryAt(dataDir string, m Manifest) (capability.Registry, error) {
 	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
-		return err
+		return capability.Registry{}, err
 	}
 	registry, err := store.Load()
 	if err != nil {
-		return err
+		return capability.Registry{}, err
 	}
-	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
-	if err := registerReferenceProviders(&registry, m); err != nil {
-		return err
+	releaseManagedBindingsPreservingInstances(&registry, m)
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
+		return capability.Registry{}, err
 	}
-	return registry.Validate()
+	return registry, registry.Validate()
+}
+
+func releaseManagedBindingsPreservingInstances(registry *capability.Registry, m Manifest) {
+	instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+	// Applications own their references to external offers, not the foreign
+	// infrastructure. Project the complete desired deployment binding set;
+	// normal reconciliation publishes it only after acknowledged verification.
+	registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+	registry.Instances = instances
 }
 
 func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Resource) error {
@@ -71,8 +88,8 @@ func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
-		registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
-		if err := registerReferenceProviders(registry, m); err != nil {
+		releaseManagedBindingsPreservingInstances(registry, m)
+		if err := registerReferenceProvidersAt(dataDir, registry, m); err != nil {
 			return err
 		}
 		return registerAdditionalProviderResources(registry, m, additional)
@@ -96,8 +113,8 @@ func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional [
 	if err != nil {
 		return err
 	}
-	registry.ReleaseManagedDeployment(m.ApplicationID, m.Environment)
-	if err := registerReferenceProviders(&registry, m); err != nil {
+	releaseManagedBindingsPreservingInstances(&registry, m)
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
 		return err
 	}
 	if err := registerAdditionalProviderResources(&registry, m, additional); err != nil {
@@ -235,18 +252,48 @@ func ReleaseApplicationProviderRegistry(m Manifest) error {
 	return ReleaseApplicationProviderRegistryAt(dataDir, m)
 }
 
+// Release runtime consumer references while preserving every existing owner.
+// External resources are never deletion targets of reference release.
+func ReleaseApplicationProviderReferencesAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	return store.Update(func(registry *capability.Registry) error {
+		instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		registry.Instances = instances
+		return nil
+	})
+}
+
 func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
 	store, err := referenceProviderRegistryStoreAt(dataDir)
 	if err != nil {
 		return err
 	}
 	return store.Update(func(registry *capability.Registry) error {
+		var retained []capability.ProviderInstance
+		for _, instance := range registry.Instances {
+			if instance.Scope == capability.ScopeShared {
+				retained = append(retained, instance)
+			}
+		}
 		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		for _, instance := range retained {
+			if err := registry.Register(instance); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
 
 func registerReferenceProviders(registry *capability.Registry, m Manifest) error {
+	return registerReferenceProvidersAt("", registry, m)
+}
+
+func registerReferenceProvidersAt(dataDir string, registry *capability.Registry, m Manifest) error {
 	contract, err := PortableContractFromManifest(m)
 	if err != nil {
 		return err
@@ -254,6 +301,22 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 	resources, err := ResolveCapabilityResources(contract)
 	if err != nil {
 		return err
+	}
+	// Runtime permission delivery uses the existing OpenBao realization even
+	// when the application does not request managed secrets. Register that
+	// dependency without manufacturing a portable capability or binding.
+	if RequiresRuntimeBroker(m) && !m.Services.Secrets {
+		resource := capability.Resource{Application: m.Name, Kind: capability.Secrets, Name: "default", Provider: capability.ProviderOpenBao}
+		instance, err := referenceProviderInstance(m, resource)
+		if err != nil {
+			return err
+		}
+		if instance.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("runtime broker requires its supported managed OpenBao realization")
+		}
+		if err := registry.Register(instance); err != nil {
+			return err
+		}
 	}
 
 	var metricsPolicy MetricsDeploymentPolicy
@@ -281,6 +344,15 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 			}
 		}
 
+		placement, err := ResolveProviderPlacement(m, resource.Provider)
+		if err != nil {
+			return err
+		}
+		if dataDir != "" && placement.Scope == capability.ScopeExternal {
+			if err := projectExternalProviderOfferAt(dataDir, registry, resource.Provider, placement, m.ApplicationID); err != nil {
+				return err
+			}
+		}
 		if err := bindProviderResource(registry, m, resource); err != nil {
 			return err
 		}

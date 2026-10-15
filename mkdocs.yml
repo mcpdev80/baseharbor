@@ -155,6 +155,7 @@ nav:
       - Development guidelines: DEVELOPMENT_GUIDELINES.md
       - Documentation style: STYLE_GUIDE.md
       - Release requirements: development/v0.4.23-release-requirements.md
+      - Pre-release readiness: development/pre-release-readiness.md
       - Architecture decisions: decisions/index.md
       - Specifications:
           - Overview: spec/README.md

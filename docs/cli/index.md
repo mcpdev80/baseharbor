@@ -43,3 +43,5 @@ Each command section should answer the same questions:
 7. Is there equivalent JSON/MCP behavior?
 8. What are the common failure modes?
 9. What is the safest next action?
+
+Full installation destruction displays the exact application reset plans inside the aggregate plan. Two acknowledgements and separate data consent apply to that displayed scope. Each child owner is checked again before execution; changed child consequences fail with preserved retry state. Generic approval does not authorize another application plan.

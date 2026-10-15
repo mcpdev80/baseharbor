@@ -32,3 +32,4 @@ baha status
 baha doctor
 baha down
 ```
+Die vollständige Installationslöschung zeigt die einzelnen App-Reset-Pläne im Gesamtplan. Zwei Bestätigungen und die separate Datenzustimmung gelten für genau diesen angezeigten Umfang. Vor jeder Ausführung wird der jeweilige Eigentümer erneut geprüft; geänderte Teilfolgen führen zu einem Fehler mit erhaltenem Retry-Zustand. Eine allgemeine Freigabe autorisiert keinen anderen App-Plan.

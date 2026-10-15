@@ -4,6 +4,47 @@ All notable changes to BaseHarbor are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
+## [Unreleased]
+
+## [0.4.25] - 2026-10-11
+
+### Added
+
+- Core-less supported local application lifecycle on Docker and rootless Podman, without management login or implicit service installation.
+- Minimal Manifest v1 authoring with stable system-generated application identity and optional services; developer-authored `app.id` is rejected before mutation.
+- Shared capability/provider resolution and truthful versioned footprint across CLI, JSON, MCP and HTTP.
+- EN/DE capability-first contracts, connection-profile transport schema and permanent complete ecosystem pre-release-readiness policy.
+
+### Changed
+
+- Owned PostgreSQL/Valkey placement changes between shared and application scope use the existing acknowledged apply/verify authority, preserve both data owners and disclose independent destination data without automatic content migration. Pending deployment placement metadata protects original and destination realizations across retry and sibling convergence.
+- Services are requested explicitly; selected provider realization follows resolved requirements and genuine dependencies rather than a mandatory application Core bundle.
+- Selective SQL, cache and Identity lifecycle releases removed capability bindings and retires unneeded owned runtime while preserving active shared consumers and persistent data/recovery material.
+- Provider-change contracts describe consumer functions, dependencies, actual material locations and verified continuation; unknown or alternative-less effects require two concrete-plan acknowledgements, with independent destructive consent for data deletion.
+- Selected Core destroy permits deliberately acknowledged outages with active consumers, removes only canonical Core containers/startup units and retains volumes, protected credentials, bindings and workloads by default. Explicit `--delete-data` selects owned Core volumes with fresh plan acknowledgements and separate deletion consent; interrupted cleanup retains existing owners for retry.
+- Default application runtime retirement preserves its canonical owner, archived live intent, protected credentials and data for same-owner reactivation; selective Secrets re-add restores actual original secret access.
+- Managed production OIDC callbacks reconcile only after the actual public HTTPS exposure is realized; reapply/start preserve the verified client and user session.
+- Node disconnect shares a concrete impact plan, independent acknowledgements, current authority revalidation and truthful final/partial results across CLI, MCP and Core HTTP.
+- Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
+- Release builds select the patched Go 1.26.9 toolchain while retaining the Go 1.25 language floor.
+
+### Fixed
+
+- Backend binding reconciliation preserves independently managed Identity trust, credentials and discovery files, together with the directory mounted by running workloads.
+- Remote provider changes present concrete current consequences and require applicable acknowledgements before technical execution admission; unsupported execution still fails before staging.
+- Restore consent tracks current registered OTLP credentials, trust and client identity even without retained delivery, so changed material invalidates earlier confirmations without exposing secrets in public plans.
+- Native Podman Quadlet volume deletion no longer forces removal of containers using the volume; foreign/shared consumers remain protected and in-use failures retain retry owners.
+- Full installation destruction binds application resets to their displayed current child scopes; failed or stale child cleanup preserves affected Target resources and retry owners instead of bypassing consent through fallback adapters.
+- Application restore binds the validated archive and current protected owner to the existing consequence scope before resetting state. Two current acknowledgements and separate data consent are required in CLI/JSON, MCP and HTTP; lower reset adapters cannot bypass the verified authority.
+- Provider replacements and selected consumer actions verify every node of their actual Target dependency graph before claiming continuation. A running endpoint, missing realization evidence or merely planned restart cannot conceal stopped, unknown, foreign or cyclic prerequisites; deliberate acknowledged loss remains possible.
+
+### Compatibility
+
+- Explicit management Core installation and TLS/OIDC/HA/recovery invariants remain unchanged.
+- Unsupported native BYO realization fails before provisioning; there is no authored-ID migration or obsolete-syntax compatibility promise.
+- Capability/provider wizard, future UI/onboarding and host features remain deferred. Selective lifecycle and provider-removal acceptance belong to this release.
+- Candidate qualification remains incomplete until the full selective lifecycle, provider mutation coverage and exact-candidate Demo/Console/Connector acceptance pass; scoped native successes do not establish pre-release readiness.
+
 ## [0.4.24] - 2026-10-11
 
 ### Added

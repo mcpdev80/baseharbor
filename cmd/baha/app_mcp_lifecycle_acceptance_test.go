@@ -48,7 +48,7 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	if err := manifest.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(application.RepositoryManifestName, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("compose.yaml", []byte("services:\n  api:\n    image: alpine:3.22\n    command: [\"sleep\", \"3600\"]\n    healthcheck:\n      test: [\"CMD-SHELL\", \"echo ok\"]\n      interval: 1s\n      timeout: 1s\n      retries: 10\n"), 0o644); err != nil {

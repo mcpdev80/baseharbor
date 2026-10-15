@@ -40,7 +40,7 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 		f, e := objectstorage.ExistingProviderFilesAt(root, namespace)
 		sources = append(sources, topologySource{"object-storage", f.Project, f.Compose, f.Env, e})
 	}
-	if application.HasOTLPTelemetry(m) {
+	if application.HasOTLPTelemetry(m) && application.TelemetryProviderForDeployment().Kind == capability.ProviderOTelCollector {
 		f, e := telemetry.ExistingProviderFilesAt(root, namespace)
 		sources = append(sources, topologySource{"telemetry", f.Project, f.Compose, f.Env, e})
 	}
@@ -54,7 +54,7 @@ func collectProviderTopologyChecks(ctx context.Context, runtime bhruntime.Runtim
 		p, pe := logsprovider.PlacementForAt(root, namespace, m)
 		sources = append(sources, topologySource{"logs", p.Project, f.Compose, f.Env, errors.Join(e, pe)})
 	}
-	if application.HasTraceSignal(m) {
+	if requiresManagedTraceStorage(m) {
 		f, p, e := traces.ExistingProviderFilesAt(root, namespace, m)
 		sources = append(sources, topologySource{"traces", p.Project, f.Compose, f.Env, e})
 	}

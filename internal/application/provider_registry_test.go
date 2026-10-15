@@ -177,8 +177,12 @@ func TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement(t *testin
 		t.Fatal(err)
 	}
 
-	if len(registry.Instances) != 1 {
+	if len(registry.Instances) != 2 {
 		t.Fatalf("instances=%#v", registry.Instances)
+	}
+	roots, err := RuntimeDependencyRoots(m, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("runtime broker roots=%v err=%v", roots, err)
 	}
 	if len(registry.Bindings) != 1 {
 		t.Fatalf("bindings=%#v", registry.Bindings)
@@ -361,8 +365,13 @@ func TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated(t *testing.T) 
 	if len(registry.Bindings) != 1 || registry.Bindings[0].Environment != "prod" {
 		t.Fatalf("destroying dev changed prod binding: %#v", registry.Bindings)
 	}
-	if len(registry.Instances) != 1 || registry.Instances[0].ID != prodID || registry.Instances[0].OwnerEnvironment != "" {
-		t.Fatalf("destroying dev changed shared provider instance: %#v", registry.Instances)
+	if len(registry.Instances) != 2 {
+		t.Fatalf("destroying dev discarded retained shared provider ownership: %#v", registry.Instances)
+	}
+	for _, instance := range registry.Instances {
+		if (instance.ID != devID && instance.ID != prodID) || instance.OwnerEnvironment != "" {
+			t.Fatalf("destroying dev changed shared provider instance: %#v", instance)
+		}
 	}
 }
 

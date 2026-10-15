@@ -96,3 +96,59 @@ Credential-bearing URLs MUST NOT be returned as normal machine output.
 - Docker/Compose and Podman/Quadlet MUST expose the same agent-facing semantic operations where the lifecycle operation is supported.
 
 The typed machine operation registry in `internal/machine` is the authoritative operation/safety definition.
+
+## Core and installation destruction consent
+
+`control-plane.destroy` and `installation.destroy` accept
+`provider_change_consent` in addition to ordinary `approval`. Execution requires
+both stages for the current aggregate scope. Installation destruction and selected
+Core volume deletion additionally require independent consent `delete_data=true`.
+`--yes` or `approval=true` alone cannot authorize destruction. The CLI preview
+and typed denial expose the current concrete scope; JSON reports include
+`provider_change_plan`. Changed configuration bytes, consumer registrations,
+protected Core owner bytes, Target membership or native resource inventory
+invalidate prior consent before cleanup starts. Retained unbound application
+providers and protected management consumers require their own authorization.
+
+Selected-Core destruction accepts `delete_data` as an optional selection. Its
+absence removes only canonical Core containers/startup units and retains volumes,
+networks, protected owners, consumer registrations and other providers/workloads.
+Active bindings are consequences requiring two current-plan acknowledgements,
+not a permanent removal veto. Selecting data deletion changes the plan and also
+requires independent `provider_change_consent.delete_data=true`. Partial native
+cleanup retains owners for fresh replan/retry; its consequence receipt remains
+partial until all actual consumer functions are separately verified.
+
+## Application stop through HTTP
+
+Core discovery now includes the existing `app.stop` operation. Its HTTP adapter
+uses the same selected deployment, provider consequence scope, independent
+plan-bound acknowledgements, ownership revalidation and actual stop result as
+CLI/JSON/MCP. The input accepts `provider_change_consent`; generic approval
+cannot substitute either required stage. A Console must acknowledge the outer
+`baseharbor.provider-impact-scope/v1` plan for that selected deployment, rather
+than one of its leaf plans. Foreign selectors and ambiguous consent objects
+are rejected before the runtime operation. Retained owners do not establish
+continued consumer functionality; incomplete consequences remain partial.
+
+Transport source checks do not replace source-matched authenticated browser or
+native runtime qualification; final v0.4.25 ecosystem acceptance remains open.
+
+### Selected Core stop
+
+`control-plane.stop` accepts `target` and optional `provider_change_consent`
+with the same current scope plan ID and independent acknowledgement stages as
+other provider changes. Generic approval and `--yes` do not supply these stages.
+The local Core-mode `baha down --json` and MCP operation share the selected
+PostgreSQL/OpenBao stop authority and typed result: `target`, `state`, `runtime`
+and `provider_change_result`. Other providers, workloads and connectivity stay
+requested and running. The native verifier checks selected process state,
+persistent resource retention and consolidated-project sibling preservation.
+The existing native adapter may remove selected stopped containers; the result
+inventories actual removed and retained resources without claiming data deletion.
+The current plan binds observed native process identities/state and internal
+image identity revisions as well as protected file bytes; restart/image changes
+invalidate earlier acknowledgement. A stopped
+runtime does not establish complete consumer/secret/PKI/session continuity;
+that consequence result remains partial where unverified. There is no HTTP
+Core-stop adapter or authenticated browser acceptance implied by this seam.

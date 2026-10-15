@@ -42,6 +42,7 @@ func EnsureRuntimeContract(m Manifest, files RuntimeFiles) (RuntimeContract, err
 	if err != nil {
 		return RuntimeContract{}, err
 	}
+	values = nativeRuntimeBindingValues(m, values)
 
 	bindingsDir := filepath.Join(files.Dir, "bindings")
 	bindingsAbs, err := filepath.Abs(bindingsDir)
@@ -286,11 +287,8 @@ func workloadServiceBindingProjectionDir(files RuntimeFiles) string {
 
 func ensureWorkloadServiceBindingProjection(m Manifest, files RuntimeFiles, values map[string]string) (string, error) {
 	root := workloadServiceBindingProjectionDir(files)
-	if err := os.RemoveAll(root); err != nil {
+	if err := resetWorkloadBindingProjection(m, root); err != nil {
 		return "", fmt.Errorf("reset workload service binding projection: %w", err)
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", fmt.Errorf("create workload service binding projection: %w", err)
 	}
 
 	postgres := SQLInstanceNames(m)
@@ -698,19 +696,7 @@ func writeBinding(dir string, values map[string]string) error {
 }
 
 func writeOwnerOnlyFile(path string, content []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, content, 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writePrivateRuntimeOwnerFile(path, content)
 }
 
 func readRuntimeEnv(path string) (map[string]string, error) {

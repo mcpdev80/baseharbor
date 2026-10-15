@@ -2,6 +2,8 @@
 
 These rules apply to code, tests, documentation and provider/runtime work.
 
+Release readiness is governed by `docs/internal/pre-release-documentation-audit.md`; Core-only green must never be called pre-release-ready.
+
 ## Project engineering principle
 
 > **AI-generated, human-specified, machine-verified.**  

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"io"
 	"strings"
@@ -10,7 +11,7 @@ import (
 func controlPlaneDownCLI(ctx context.Context, args []string, out, errOut io.Writer) error {
 	for _, arg := range args {
 		if arg == "--yes" || arg == "-y" {
-			return &cli.UsageError{Message: "down does not accept " + arg, Hint: "Use baha down; down preserves persistent data and does not require --yes.", NoSuggestions: true}
+			return &cli.UsageError{Message: "down does not accept " + arg, Hint: "Review the current Core stop plan and provide both explicit acknowledgements; --yes does not provide them.", NoSuggestions: true}
 		}
 	}
 	filtered, format, err := parseReadOutputArgs(args, "down")
@@ -29,15 +30,13 @@ func controlPlaneDownCLI(ctx context.Context, args []string, out, errOut io.Writ
 	if format == outputJSON {
 		progress = io.Discard
 	}
-	if err := runtimeDown(ctx, progress); err != nil {
+	result, err := runtimeDownWithResult(ctx, progress)
+	if err != nil {
 		return err
 	}
 	if format == outputJSON {
-		result, err := inspectControlPlane(ctx)
-		if err != nil {
-			return err
-		}
 		return writeJSON(out, result)
 	}
+	fmt.Fprintln(out, "BaseHarbor selected Core services stopped; recovery owners retained. Consumer continuity remains unverified.")
 	return nil
 }

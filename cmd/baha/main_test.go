@@ -94,7 +94,8 @@ func TestAppCreateListShowPlan(t *testing.T) {
 		}
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "baseharbor.yaml"), []byte(m.YAML()), 0o644); err != nil {
+	m.ApplicationID = record.Identity.ApplicationID
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(dir, "baseharbor.yaml"), m, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()

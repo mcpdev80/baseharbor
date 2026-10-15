@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -19,7 +18,7 @@ func workspaceMutationFixture(t *testing.T, environment string) string {
 	root := t.TempDir()
 	manifest := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "workspace-demo", Environment: environment, Workload: application.WorkloadConfig{Components: []string{"api"}}}
 	path := filepath.Join(root, application.RepositoryManifestName)
-	if err := os.WriteFile(path, []byte(manifest.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, path, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
 	return path

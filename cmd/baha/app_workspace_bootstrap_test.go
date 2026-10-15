@@ -119,7 +119,7 @@ func TestWorkspaceMapBootstrapDoesNotGuessMultiComponentMapping(t *testing.T) {
 func writeWorkspaceBootstrapManifest(t *testing.T, root string, components []string) {
 	t.Helper()
 	var b strings.Builder
-	b.WriteString("version: 1\napp:\n  id: 33333333-3333-4333-8333-333333333333\n  name: demo\n  environment: dev\nworkload:\n  components:\n")
+	b.WriteString("version: 1\napp:\n  name: demo\n  environment: dev\nworkload:\n  components:\n")
 	for _, component := range components {
 		b.WriteString("    - " + component + "\n")
 	}

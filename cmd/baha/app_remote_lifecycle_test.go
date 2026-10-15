@@ -53,7 +53,7 @@ func TestRemoteApplicationConstructorsDoNotRequireLocalRuntimeSource(t *testing.
 	ctx, core, node := remoteApplicationCoreFixture(t)
 	ctx = withCoreAuthority(ctx, core)
 	store := application.Store{Root: t.TempDir()}
-	manifest := application.New("retained", "dev", false, false, false)
+	manifest := application.New("retained", "dev", true, false, false)
 	if _, err := store.Create(manifest); err != nil {
 		t.Fatal(err)
 	}

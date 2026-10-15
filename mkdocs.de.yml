@@ -133,6 +133,7 @@ nav:
   - Entwicklungsrichtlinien: DEVELOPMENT_GUIDELINES.md
   - Doku-Stil: STYLE_GUIDE.md
   - Release-Anforderungen: development/v0.4.23-release-requirements.md
+  - Pre-Release-Bereitschaft: development/pre-release-readiness.md
   - Architekturentscheidungen: decisions/index.md
   - Spezifikationen:
     - Überblick: spec/README.md

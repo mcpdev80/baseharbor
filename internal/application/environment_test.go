@@ -13,7 +13,7 @@ func writeEnvironmentTestManifest(t *testing.T, path, name, environment string) 
 		t.Fatal(err)
 	}
 	m := New(name, environment, true, false, false)
-	if err := os.WriteFile(path, []byte(m.YAML()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(m.AuthoredYAML()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

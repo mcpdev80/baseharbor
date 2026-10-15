@@ -222,6 +222,9 @@ func appGuidedRestoreCommand(store application.Store) *cli.Command {
 
 		return withInMemoryPasswordFile(password, func(passwordPath string) error {
 			forwarded := append(append([]string(nil), args...), "--password-file", passwordPath)
+			// Plan acknowledgements must remain visible while the activity
+			// renderer buffers ordinary restore progress.
+			ctx = context.WithValue(ctx, restorePromptOutputKey{}, out)
 			return runGuidedActivity(ctx, out, "Restoring encrypted backup", func(buffer io.Writer) error {
 				return baseRun(ctx, forwarded, buffer, errOut)
 			})

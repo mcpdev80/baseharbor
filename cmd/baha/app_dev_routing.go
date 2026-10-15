@@ -88,10 +88,10 @@ func developmentExposureUpstream(project, routeName, protocol string, port int) 
 }
 
 func requiresDevelopmentGateway(m application.Manifest) bool {
-	if !devaccess.Enabled(m.Environment) {
-		return false
-	}
-	return application.HasExplicitWorkload(m) || requiresDeclaredDevelopmentGatewaySurface(m)
+	// A database/cache/broker connection does not request an HTTP frontend.
+	// Only declared exposure or an actual selected management/login surface
+	// requires the development gateway.
+	return requiresDeclaredDevelopmentGatewaySurface(m)
 }
 
 func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {
@@ -99,7 +99,7 @@ func requiresDeclaredDevelopmentGatewaySurface(m application.Manifest) bool {
 		return false
 	}
 	return len(m.Exposures) > 0 ||
-		m.Services.Identity ||
+		hasManagedDevelopmentIdentity(m) ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
 		m.Services.KeyValueManagementUI ||
@@ -115,7 +115,7 @@ func requiresDevelopmentManagementAccess(m application.Manifest) bool {
 	if !devaccess.Enabled(m.Environment) {
 		return false
 	}
-	return m.Services.Identity ||
+	return hasManagedDevelopmentIdentity(m) ||
 		m.Services.SQLManagementUI ||
 		m.Services.CacheManagementUI ||
 		m.Services.KeyValueManagementUI ||
@@ -151,7 +151,10 @@ func diagnoseDevelopmentGatewayVerification(err error) error {
 
 func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx context.Context) error {
 	if !requiresDevelopmentGateway(e.manifest) {
-		return nil
+		if !devaccess.Enabled(e.manifest.Environment) {
+			return nil
+		}
+		return removeApplicationGatewayOwners(ctx, e.compose, e.resolved, "app/"+e.manifest.Name+"/"+e.manifest.Environment)
 	}
 	target := e.resolved.Target.Name
 	if _, err := devaccess.EnsureDomain(target); err != nil {
@@ -174,6 +177,16 @@ func (e *applicationApplyExecution) reconcileDevelopmentCanonicalRoutes(ctx cont
 		}
 	}
 	plan.groups = append(plan.groups, devgateway.OwnerRoutes{Owner: plan.appOwner, Routes: plan.appRoutes})
+	retired, err := loadSharedBackendGatewayRetirements(e.resolved)
+	if err != nil {
+		return err
+	}
+	plan.groups = append(plan.groups, retired...)
+	retiredMetrics, err := e.loadRetiredSharedMetricsGatewayRoutes(ctx)
+	if err != nil {
+		return err
+	}
+	plan.groups = append(plan.groups, retiredMetrics...)
 	if err := devgateway.ReplaceRoutes(ctx, e.compose, e.issuer, target, plan.groups...); err != nil {
 		return fmt.Errorf("reconcile canonical development routes: %w", err)
 	}
@@ -302,7 +315,7 @@ func (e *applicationApplyExecution) addDevelopmentBackendRoutes(_ context.Contex
 }
 
 func (e *applicationApplyExecution) addDevelopmentIdentityRoutes(_ context.Context, plan *developmentRoutePlan) error {
-	if !e.manifest.Services.Identity {
+	if !hasManagedDevelopmentIdentity(e.manifest) {
 		return nil
 	}
 	placement, err := application.ResolveProviderPlacement(e.manifest, capability.ProviderKeycloak)

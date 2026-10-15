@@ -53,7 +53,7 @@ func CheckSupportedRuntimeServices(m Manifest) error {
 		return fmt.Errorf("%w: application-scoped PostgreSQL is single-instance; select native shared placement for HA", ErrUnsupportedService)
 	}
 	if !HasManagedRuntimeServices(m) {
-		if m.Services.Secrets {
+		if m.Services.Secrets && !HasExplicitWorkload(m) {
 			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
 		}
 		if HasObjectStorage(m) || HasExplicitWorkload(m) {
@@ -487,7 +487,16 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 		return fmt.Errorf("inspect application runtime environment: %w", err)
 	}
 
+	if err := validateProtectedRuntimeValues(values); err != nil {
+		return err
+	}
+	if err := validateRetainedRuntimeCredentials(path, values, m); err != nil {
+		return err
+	}
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
+		return err
+	}
+	if err := ensureNativeBackendEndpointValues(values, m); err != nil {
 		return err
 	}
 	if err := validateRuntimeValues(values, m); err != nil {
@@ -501,6 +510,9 @@ func newRuntimeEnv(m Manifest) (string, error) {
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return "", err
 	}
+	if err := ensureNativeBackendEndpointValues(values, m); err != nil {
+		return "", err
+	}
 	return runtimeEnvContent(m, values), nil
 }
 
@@ -511,7 +523,7 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 			continue
 		}
 		if err := validatePortValue(value, key); err != nil {
-			return err
+			return errors.New("protected application runtime environment contains an invalid port reference")
 		}
 		port, _ := strconv.Atoi(value)
 		excluded[port] = struct{}{}
@@ -698,6 +710,9 @@ func ensureDesiredRuntimeValues(values map[string]string, m Manifest) error {
 }
 
 func writeRuntimeEnv(path string, m Manifest, values map[string]string) error {
+	if err := validateProtectedRuntimeValues(values); err != nil {
+		return err
+	}
 	if err := writeOwnerOnlyFile(path, []byte(runtimeEnvContent(m, values))); err != nil {
 		return fmt.Errorf("write application runtime environment: %w", err)
 	}
@@ -775,6 +790,7 @@ func runtimeEnvContent(m Manifest, values map[string]string) string {
 			}
 		}
 	}
+	appendRetainedRuntimeValues(&b, values)
 	return b.String()
 }
 

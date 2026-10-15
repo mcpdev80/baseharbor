@@ -562,6 +562,10 @@ func quadletComposeVolumeTarget(node *yaml.Node) string {
 }
 
 func mergeQuadletYAMLMap(base, override *yaml.Node) {
+	mergeQuadletYAMLMapAt(base, override, nil)
+}
+
+func mergeQuadletYAMLMapAt(base, override *yaml.Node, path []string) {
 	for i := 0; i+1 < len(override.Content); i += 2 {
 		key := override.Content[i]
 		value := override.Content[i+1]
@@ -590,8 +594,16 @@ func mergeQuadletYAMLMap(base, override *yaml.Node) {
 			base.Content[found+1] = replacement
 			continue
 		}
+		if len(path) == 2 && path[0] == "services" && key.Value == "networks" {
+			baseAttachments, overrideAttachments := quadletNetworkAttachmentMap(baseValue), quadletNetworkAttachmentMap(value)
+			if baseAttachments != nil && overrideAttachments != nil {
+				mergeQuadletYAMLMap(baseAttachments, overrideAttachments)
+				base.Content[found+1] = baseAttachments
+				continue
+			}
+		}
 		if baseValue.Kind == yaml.MappingNode && value.Kind == yaml.MappingNode {
-			mergeQuadletYAMLMap(baseValue, value)
+			mergeQuadletYAMLMapAt(baseValue, value, append(append([]string(nil), path...), key.Value))
 			continue
 		}
 		if key.Value == "volumes" && baseValue.Kind == yaml.SequenceNode && value.Kind == yaml.SequenceNode {
