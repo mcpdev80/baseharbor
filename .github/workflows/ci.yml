@@ -479,6 +479,7 @@ jobs:
           python3 scripts/test_pr_gate_plan.py
           python3 scripts/test_pr_required_final.py
           python3 scripts/test_pr_check_runner.py
+          python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
 
