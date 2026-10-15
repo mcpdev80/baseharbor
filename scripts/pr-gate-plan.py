@@ -68,6 +68,16 @@ READ_ONLY_CLI = {
     'cmd/baha/guided_application_read_context.go',
     'cmd/baha/guided_application_read_context_test.go',
 }
+# Package-local conformance tests only. No production lifecycle, resolver or
+# registry implementation is assumed safe from its package tests alone.
+SAFE_CAPABILITY_TESTS = {
+    'internal/capability/domain_test.go',
+    'internal/capability/integration_contract_test.go',
+}
+CAPABILITY_CHECKS = [
+    {'id': 'capability-package-tests', 'owner': 'internal/capability',
+     'command': 'go test ./internal/capability/... -count=1'},
+]
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
@@ -138,15 +148,28 @@ def plan(diff, requirements, mapping):
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             unresolved.append('CLI runtime impact needs qualified targeted native coverage: ' + path)
-        elif path.startswith(('internal/application/', 'internal/capability/',
-                              'contracts/')) and path.endswith(('.go', '.json')):
-            area = 'application-contract'
+        elif path in SAFE_CAPABILITY_TESTS:
+            area = 'capability-conformance-test'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            selected.add('integration/static/public-contracts')
+        elif path.startswith('internal/capability/'):
+            area = 'capability-implementation-unresolved'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path.startswith('internal/application/'):
+            area = 'application-implementation-unresolved'
+            require(CODE_CHECKS)
+            unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
+            area = 'contract'
             require(CODE_CHECKS)
             selected.add('integration/static/public-contracts')
-        elif path.startswith('deploy/docker/') and path.endswith(('.yaml', '.yml', '.sh')):
-            area = 'docker-runtime'
+        elif path.startswith('deploy/docker/'):
+            area = 'docker-deployment-unresolved'
             require(CODE_CHECKS)
-            selected.update({'atomic/docker/lifecycle'})
+            unresolved.append('deployment/security/backup script impact needs specific native qualification: ' + path)
         elif path in PLANNING_WORKFLOWS:
             area = 'documentation-workflow'
             require(DOC_CHECKS)
