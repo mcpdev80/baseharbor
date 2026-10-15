@@ -210,6 +210,16 @@ jobs:
             }
           fi
 
+          if [ "$tag" = v0.4.25 ] && [ "$run_id" = 38761050556 ]; then
+            jq -e '[.artifacts[] | select(.id == 11984974183 and .expired == false and
+              .name == "pre-release-approval-38761050556-1" and
+              .digest == "sha256:a76c42c77ced7e8d43e7ccd9fb8913df3b62d78e20126b15e07e6ef7a18b0e6f")] | length == 1' \
+              <<<"${artifacts_json}" >/dev/null || {
+              echo "Verified v0.4.25 recovery approval artifact differs." >&2
+              exit 1
+            }
+          fi
+
           approval_artifact="$(jq -r '
             [.artifacts[]
              | select(.expired == false)
@@ -217,6 +227,10 @@ jobs:
             | first
             | .name // empty
           ' <<<"${artifacts_json}")"
+
+          if [ "$tag" = v0.4.25 ] && [ "$run_id" = 38761050556 ]; then
+            approval_artifact="pre-release-approval-38761050556-1"
+          fi
 
           split_pre_release="false"
           if [ -z "${approval_artifact}" ]; then
@@ -323,7 +337,12 @@ jobs:
                   --output "docs/releases/$tag.consumer-pins.json"
               fi
               git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/release-evidence-demo"
-              python scripts/pre-release-resume.py check-approval --candidate "$tested_sha" \
+              evidence_verifier=scripts/pre-release-resume.py
+              if [ "$tag" = v0.4.25 ] && [ "$run_id" = 38761050556 ]; then
+                test "$(jq -r '.workflow_run_attempt' "$approval_json")" = 1
+                evidence_verifier=scripts/evidence_api_transport.py
+              fi
+              python "$evidence_verifier" check-approval --candidate "$tested_sha" \
                 --demo "$(jq -r '.demo_sha' "$approval_json")" --tag "$tag" \
                 --demo-repo "$RUNNER_TEMP/release-evidence-demo" --output "$approval_dir"
             fi
