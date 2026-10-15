@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 
-def select(plan, requirements, capacity=2):
+def select(plan, requirements):
     selected = plan.get("selected_gates")
     if not isinstance(selected, list) or len(selected) != len(set(selected)):
         raise ValueError("invalid selected gate set")
@@ -17,13 +17,11 @@ def select(plan, requirements, capacity=2):
         parts = gate.split("/")
         if len(parts) == 3 and parts[0] == "atomic" and parts[1] in ("docker", "podman"):
             supported.append({"id":gate,"runtime":parts[1],"gate":parts[2]})
-    # Priority is the focused Backup/Restore qualification. Any deferred
-    # mandatory gate remains in the *original plan* and final acceptance blocks.
-    supported.sort(key=lambda item: (item["gate"] != "backup-restore",item["id"]))
-    included = supported[:capacity]
-    pending = [item["id"] for item in supported[capacity:]]
+    # Schedule ALL supported gates. Workflow matrix max-parallel caps concurrency,
+    # not coverage. Unsupported selected gates remain blocking in final acceptance.
+    included = sorted(supported, key=lambda item: item["id"])
     return {"include": included or [{"id":"not-required","runtime":"static","gate":"not-required"}],
-            "required": bool(included), "deferred": pending}
+            "required": bool(supported), "unsupported": sorted(set(selected) - {x["id"] for x in supported} - {"integration/static/public-contracts"})}
 
 
 def main():
