@@ -50,76 +50,108 @@ def validated_diff(diff):
 
 
 
+# Validation checks are independent of release-gate requirements. A legitimate
+# PR plan may require validations and select zero native release gates.
+CODE_CHECKS = [
+    {'id': 'source-contracts', 'owner': 'CI source / contracts',
+     'command': 'go test ./internal/application/... ./contracts/...'},
+]
+CI_CHECKS = [
+    {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
+     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
+    {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
+     'command': 'bash scripts/ci-workflow-policy.sh'},
+    {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
+     'command': 'run the existing trusted planner/executor/verifier regression checks'},
+]
+
 def plan(diff, requirements, mapping):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
     if release not in requirements.get('releases', []):
         raise ValueError('release absent from gate catalog')
-    gates = [g['id'] for g in requirements['gates'] if release in g['required_for']]
-    if len(set(gates)) != len(gates) or not gates:
+    catalog = [g['id'] for g in requirements['gates'] if release in g['required_for']]
+    if len(set(catalog)) != len(catalog) or not catalog:
         raise ValueError('duplicate or empty gate catalog')
-    all_gates = set(gates)
-    identifiers = {key: diff.get(key) for key in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha')}
+    available = set(catalog)
+    identifiers = {key: diff.get(key) for key in
+                   ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha')}
     valid, problems = validated_diff(diff)
-    reasons = ['invalid diff-base input: ' + problem for problem in problems]
-    broad = bool(diff.get('broad_required')) or not valid
-    paths = []
-    if broad:
-        reasons.append('diff-base resolver requires broad checks: ' + json.dumps(diff.get('reasons', []), sort_keys=True))
-    for change in (diff.get('changes', []) if valid else []):
-        status = change.get('status')
-        if status in ('renamed', 'copied'):
-            names = [change.get('old_path'), change.get('new_path')]
-        elif status in ('added', 'deleted', 'modified', 'type_changed'):
-            names = [change.get('path')]
-        else:
-            broad = True
-            reasons.append('unrecognized change status: ' + repr(status))
-            names = []
-        if any(not isinstance(n, str) or not n or n.startswith('/') or '..' in n.split('/') for n in names):
-            broad = True
-            reasons.append('invalid changed path')
-        paths.extend(n for n in names if isinstance(n, str))
-    if not paths and not broad:
-        broad = True
-        reasons.append('empty or unverified changes cannot exempt tests')
+    unresolved = ['invalid diff-base input: ' + p for p in problems]
+    reasons = []
     areas = set()
+    paths = []
+    if valid and diff['broad_required']:
+        unresolved.append('diff-base requires unresolved coverage: ' +
+                          json.dumps(diff.get('reasons', []), sort_keys=True))
+    if valid:
+        for change in diff['changes']:
+            status = change.get('status')
+            if status in ('renamed', 'copied'):
+                names = [change.get('old_path'), change.get('new_path')]
+            elif status in ('added', 'deleted', 'modified', 'type_changed'):
+                names = [change.get('path')]
+            else:
+                unresolved.append('unrecognized change status: ' + repr(status))
+                continue
+            if any(not isinstance(n, str) or not n or n.startswith('/') or
+                   '..' in n.split('/') for n in names):
+                unresolved.append('invalid changed path')
+                continue
+            paths.extend(names)
+    if not paths:
+        unresolved.append('empty or unverified changes cannot exempt checks')
+    selected = set()
+    validations = {}
+    def require(checks):
+        for check in checks:
+            validations[check['id']] = check
     for path in paths:
-        # These exact prefixes are deliberately limited; anything with uncertain
-        # transitive effects, build tags, test imports, generated/embed input,
-        # OS/arch or downstream consumers needs the full existing catalog.
-        if path.startswith('docs/') and path.endswith('.md') and not path.startswith(('docs/spec/', 'docs/internal/')):
-            area = 'prose'
+        if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
+                path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
+                path.startswith('site/')):
+            area = 'documentation'
+            require(DOC_CHECKS)
+        elif path.startswith(('cmd/baha/', 'internal/application/', 'internal/capability/',
+                              'contracts/')) and path.endswith(('.go', '.json')):
+            area = 'application-contract'
+            require(CODE_CHECKS)
+            selected.update({'integration/static/public-contracts'})
         elif path.startswith('deploy/docker/') and path.endswith(('.yaml', '.yml', '.sh')):
-            area = 'docker'
+            area = 'docker-runtime'
+            require(CODE_CHECKS)
+            selected.update({'atomic/docker/lifecycle'})
+        elif (path.startswith('scripts/pr-') or path.startswith('scripts/ci-') or
+              path.startswith('.github/workflows/') or
+              path.startswith('scripts/test_pr_')):
+            area = 'ci-evidence'
+            require(CI_CHECKS)
+            # CI code does not by itself authorize a large native matrix.
+            # A specific native impact must be justified independently.
         else:
-            area = 'full'
+            area = 'unresolved'
+            unresolved.append('unknown impact for ' + path)
         areas.add(area)
         reasons.append(path + ': ' + area)
-        if area == 'full':
-            broad = True
-    if broad:
-        selected = all_gates
-        reasons.append('conservative full-catalog fallback: unknown/shared/toolchain/security/consumer impact')
-    else:
-        selected = set()
-        for area in areas:
-            definition = mapping['areas'][area]
-            selected.update(g for g in gates if any(g.startswith(p) for p in definition['prefixes']))
-            selected.update(definition['exact'])
-        if not selected or not selected <= all_gates:
-            selected = all_gates
-            broad = True
-            reasons.append('empty or unrecognized mapping: full-catalog fallback')
-    documentation_required = broad or 'prose' in areas
+    absent = sorted(selected - available)
+    if absent:
+        unresolved.append('required mapped gates absent from trusted catalog: ' +
+                          ', '.join(absent))
+        selected.difference_update(absent)
+    status = 'unresolved' if unresolved else 'resolved'
     return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
             'mapping_schema': mapping['schema'], 'release': release,
-            'broad_required': broad, 'selected_gates': sorted(selected),
-            'required_validation_checks': DOC_CHECKS if documentation_required else [],
-            'validation_contract': 'required_validation_checks are mandatory named checks; #893 must enforce successful results independently of release gate IDs',
+            'coverage_status': status, 'unresolved_coverage': unresolved,
+            'broad_required': bool(unresolved),
+            'selected_gates': sorted(selected),
+            'required_validation_checks': [validations[k] for k in sorted(validations)],
+            'validation_contract': (
+                'Enforce all required_validation_checks independently of selected_gates; '
+                'zero selected_gates is valid only when coverage_status is resolved. '
+                'If unresolved, final check MUST fail closed; never treat as no checks '
+                'or automatically run the complete release catalog.'),
             'reasons': reasons}
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
