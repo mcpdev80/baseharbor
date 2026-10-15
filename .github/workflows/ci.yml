@@ -749,8 +749,8 @@ jobs:
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
           if [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
-            git fetch --no-tags origin ecaefac7d5214c37101e24da1b39d8016f445645
-            git show ecaefac7d5214c37101e24da1b39d8016f445645:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"
+            git fetch --no-tags origin 0cab2ef846b9510ae3224846a757a1bd0e11977e
+            git show 0cab2ef846b9510ae3224846a757a1bd0e11977e:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"
             python3 "$RUNNER_TEMP/pr-verified-atomic-evidence.py" \
               --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" \
               --requirements scripts/release-requirements.json \
