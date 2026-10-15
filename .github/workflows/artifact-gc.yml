@@ -6,15 +6,42 @@ on:
     - cron: "17 * * * *"
     - cron: "37 */2 * * *"
   workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - '.github/workflows/artifact-gc.yml'
+      - 'scripts/test_artifact_gc.py'
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: read
+permissions: {}
 
 jobs:
+  gc-tests:
+    name: GC tests
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install 'PyYAML==6.0.2'
+      - name: Validate workflow and execute mocked GC tests
+        run: |
+          python -m py_compile scripts/test_artifact_gc.py
+          python -c 'import yaml; yaml.safe_load(open(".github/workflows/artifact-gc.yml"))'
+          python -m unittest discover -s scripts -p test_artifact_gc.py -v
+
   artifacts:
     name: Delete ephemeral artifacts older than 2h
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *' }}
     runs-on: ubuntu-latest
     steps:
@@ -154,6 +181,10 @@ jobs:
 
   repository-hygiene:
     name: Prune completed runs and stale branches
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '37 */2 * * *' }}
     runs-on: ubuntu-latest
     steps:
