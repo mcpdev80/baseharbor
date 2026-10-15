@@ -35,6 +35,36 @@ def verify(plan, report, catalog):
     for k in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha'):
         if report.get(k) != plan.get(k):
             errors.append('mismatched integration input ' + k)
+    expected_jobs = ['PR · Focused Python', 'Workflow policy']
+    if any(isinstance(gate, str) and gate.startswith(
+            ('atomic/docker/', 'atomic/podman/', 'integration/docker/', 'integration/podman/'))
+           for gate in required):
+        expected_jobs += ['PR · Exact Candidate', 'PR · Runner Interface']
+        deps = plan.get('required_consumer_dependencies')
+        if not isinstance(deps, list) or not set(deps) <= {'core', 'demo', 'console', 'connector'}:
+            errors.append('unqualified gate consumer dependency projection')
+        elif set(deps) & {'console', 'connector'}:
+            expected_jobs.append('PR · Consumer Pins')
+        elif 'demo' in deps:
+            expected_jobs.append('PR · Demo Pin')
+    rows = report.get('required_job_conclusions')
+    if not isinstance(rows, list):
+        errors.append('missing authenticated job prerequisite conclusions')
+    else:
+        seen_jobs = {}
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get('name'), str):
+                errors.append('invalid authenticated job prerequisite')
+                continue
+            name = row['name']
+            if name in seen_jobs:
+                errors.append('duplicate authenticated prerequisite: ' + name)
+            seen_jobs[name] = row.get('conclusion')
+        for name in expected_jobs:
+            if name not in seen_jobs or seen_jobs[name] != SUCCESS:
+                errors.append('required authenticated job not successful: ' + name)
+        if set(seen_jobs) != set(expected_jobs):
+            errors.append('authenticated job prerequisite set differs from trusted plan')
     entries = report.get('results')
     if not isinstance(entries, list):
         return errors + ['results must be an array']
