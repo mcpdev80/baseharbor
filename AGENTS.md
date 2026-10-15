@@ -11,7 +11,7 @@ services have their own security requirements.
 
 ## Planning transition
 
-The planning workspace is [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan); [migration PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) prepares the switch. Until its planning-authority decision is accepted on `main`, existing issues remain authoritative. After activation, read the assigned task and `AGENTS.md` there; scope, dependencies, ownership and handoffs live in the task note. Product engineering rules, PR reviews and release evidence stay in their existing repositories. A migrated issue closed as `not_planned` is a relocation, not proof of implementation or cancellation.
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
 
 
 ## Read according to your task
@@ -26,7 +26,7 @@ Use these existing sources instead of duplicating their contents:
 | Application intent and provider boundaries | [Application contract](docs/explanation/application-contract.md), [providers](docs/explanation/providers.md), [Targets](docs/explanation/targets.md) |
 | Normative and machine contracts | [Specifications](docs/spec/README.md), [schemas](spec/), [CLI](docs/reference/cli.md), [MCP](docs/reference/mcp.md) |
 | Contribution and documentation rules | [Contributing](CONTRIBUTING.md), [documentation style](docs/STYLE_GUIDE.md) |
-| Planned work and release evidence | [Roadmap](docs/roadmap.md), the task's issue/PR and latest comments, [internal audits](docs/internal/) |
+| Planned work and release evidence | [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan) task/release notes; the task's PR and [internal audits](docs/internal/) for evidence |
 
 ## Find the implementation
 

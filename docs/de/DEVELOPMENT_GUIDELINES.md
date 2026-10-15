@@ -7,7 +7,7 @@ Diese Regeln gelten für Code, Tests, Dokumentation und Anbieter-/Laufzeitarbeit
 
 ## Übergang der Planung
 
-[baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan) enthält den Planungsbereich; [Migrations-PR #1](https://github.com/mcpdev80/baseharbor-plan/pull/1) bereitet den Wechsel vor. Bis die Entscheidung zur Planungsautorität dort auf `main` akzeptiert ist, bleiben die bisherigen Issues maßgeblich. Danach gelten die zugewiesene Task-Notiz und die dortige `AGENTS.md` für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben. Technische Entwicklungsregeln, PR-Reviews und Release-Nachweise bleiben in ihren bisherigen Repositories. Ein wegen Migration als `not_planned` geschlossenes Issue bedeutet weder Umsetzung noch fachliche Stornierung.
+Die Planung liegt in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), aktiviert mit `47474109ea69475e60be4f065ad17476c71665bb`. Für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben gelten die dortige `AGENTS.md` und die zugewiesene Task-Notiz. Technische Entwicklungsregeln, PR-Reviews und authentifizierte Release-Nachweise bleiben in ihren bisherigen Repositories. Wegen Migration geschlossene Issues sind historische Verweise und kein Umsetzungsnachweis.
 
 
 ## Prinzip der Projekttechnik
@@ -116,20 +116,20 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 
 **Multi-Session-Ausführung.** Wenn mehrere Agent- oder menschliche Sitzungen parallel arbeiten:
 
-- eine zugewiesene Issue pro Sitzung und Zeitpunkt;
+- eine zugewiesene Aufgabe pro Sitzung und Zeitpunkt;
 - ein eigener Branch und Pull Request pro Task;
 - Ownership vor Änderungen prüfen und dokumentieren, nachdem aktuelle Regeln und Remote-Stände gelesen wurden;
 - Task-Dateigrenzen und integrierte Abhängigkeiten einhalten;
 - Commits anderer Sitzungen erhalten und Remote-Änderungen vor dem Push integrieren;
 - nach Implementierung, Verifikation und Pull-Request-Übergabe stoppen;
-- die nächste Issue erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
+- die nächste Aufgabe erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
 - eine blockierende Abhängigkeit melden, statt autonom die Aufgabe zu wechseln.
 
 ## Dokumentation
 
 Folgen[Documentation style](STYLE_GUIDE.md).
 
-Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. GitHub Issues planen zukünftige Arbeit. Releases bewahren Geschichte.
+Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. baseharbor-plan enthält die zukünftige Planung; GitHub Issues dienen externen Meldungen und Diskussionen. Releases bewahren Geschichte.
 
 Jedes Release läuft das komplette [interne Pre-Release-Dokumentations-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
 
