@@ -46,16 +46,20 @@ def verify_github_admission(request, run_id, attempt, repository, pr_number, tok
     run = github_json(prefix + "/actions/runs/" + run_id, token)
     pr = github_json(prefix + "/pulls/" + str(pr_number), token)
     repo_info = github_json(prefix, token)
-    if (run.get("event") != "pull_request" or
-            run.get("repository", {}).get("id") != repo_info.get("id") or
-            run.get("run_attempt") != attempt or
-            run.get("head_sha") != request.get("head_sha") or
-            pr.get("base", {}).get("ref") != "develop" or
-            pr.get("base", {}).get("sha") != request.get("target_base_sha") or
-            pr.get("head", {}).get("sha") != request.get("head_sha") or
-            pr.get("state") != "open" or
-            pr.get("merge_commit_sha") != request.get("integration_sha")):
-        raise PermissionError("GitHub run/PR/integration identity mismatch")
+    matches = {
+        "event": run.get("event") == "pull_request",
+        "repository": run.get("repository", {}).get("id") == repo_info.get("id"),
+        "attempt": run.get("run_attempt") == attempt,
+        "run_head": run.get("head_sha") == request.get("head_sha"),
+        "base_ref": pr.get("base", {}).get("ref") == "develop",
+        "base_sha": pr.get("base", {}).get("sha") == request.get("target_base_sha"),
+        "pr_head": pr.get("head", {}).get("sha") == request.get("head_sha"),
+        "pr_open": pr.get("state") == "open",
+        "integration": pr.get("merge_commit_sha") == request.get("integration_sha"),
+    }
+    if not all(matches.values()):
+        raise PermissionError("GitHub run/PR/integration mismatch: " +
+                              ", ".join(key for key, valid in matches.items() if not valid))
     # Only an authenticated repository-owner PR can enter this initial
     # privileged admission class. External PRs require separate reviewed
     # qualification and must not enter privileged runtime runners.
