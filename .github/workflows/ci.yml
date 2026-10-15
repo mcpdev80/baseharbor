@@ -633,6 +633,7 @@ jobs:
           python3 scripts/test_pr_authenticated_results.py
           python3 scripts/test_pr_gate_dependencies.py
           python3 scripts/test_pr_selected_runtime_matrix.py
+          python3 scripts/test_pr_verified_atomic_evidence.py
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
 
@@ -721,6 +722,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_RUN_ID: ${{ github.run_id }}
           ACTIONS_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SELECTED_RUNTIME_REQUIRED: ${{ needs.pr_plan.outputs.runtime_required }}
+          SELECTED_RUNTIME_JOB: ${{ needs.pr_runtime_selected.result }}
+          VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
           test "$PLAN_JOB" = success
@@ -730,4 +734,15 @@ jobs:
           git show 5285e67040c9cb67d0cf059816a34ab54a411553:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"
           git show 327444dc4480e230dcd7ee50c5f3824624d91ee7:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
+          if [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; then
+            [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git fetch --no-tags origin ecaefac7d5214c37101e24da1b39d8016f445645
+            git show ecaefac7d5214c37101e24da1b39d8016f445645:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"
+            python3 "$RUNNER_TEMP/pr-verified-atomic-evidence.py" \
+              --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" \
+              --requirements scripts/release-requirements.json \
+              --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" \
+              --head-sha "$EXPECTED_HEAD" --integration-sha "$EXPECTED_INTEGRATION" \
+              --demo-sha "$VERIFIED_DEMO_SHA"
+          fi
           python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
