@@ -21,7 +21,7 @@ PLAN={"head_sha":HEAD,"integration_sha":MERGE,"selected_gates":[KEY]}
 CATALOG={"gates":[{"id":KEY,"required_for":["v0.4.26"],"dependencies":["core","demo"]}]}
 RESULTS={"results":[]}
 JOBS=[{"name":"PR · Selected Runtime / docker · backup-restore","run_id":RUN,"run_attempt":ATTEMPT,
-       "head_sha":MERGE,"status":"completed","conclusion":"success"}]
+       "head_sha":HEAD,"status":"completed","conclusion":"success"}]
 
 
 def fixture(outcome="success",cleanup="success",candidate=MERGE):
@@ -35,7 +35,7 @@ def fixture(outcome="success",cleanup="success",candidate=MERGE):
     data=file.getvalue()
     artifact={"id":88,"name":f"pre-release-gate-docker-backup-restore-evidence-{RUN}-{ATTEMPT}",
               "expired":False,"digest":"sha256:"+hashlib.sha256(data).hexdigest(),
-              "workflow_run":{"id":RUN,"head_sha":MERGE}}
+              "workflow_run":{"id":RUN,"head_sha":HEAD}}
     return data, artifact
 
 
@@ -57,7 +57,7 @@ class RealVerifierFixtures(unittest.TestCase):
             with self.subTest(outcome=outcome):
                 jobs=[dict(JOBS[0],conclusion=outcome)]
                 self.assertEqual([],check(jobs=jobs)["results"])
-        self.assertEqual([],check(jobs=[dict(JOBS[0],head_sha=BASE)])["results"])
+        self.assertEqual([],check(jobs=[dict(JOBS[0],head_sha=MERGE)])["results"])
 
     def test_missing_or_duplicated_artifact(self):
         data,artifact=fixture()
