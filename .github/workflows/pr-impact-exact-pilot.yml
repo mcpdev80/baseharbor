@@ -12,16 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 3a56655669b6ec7850c0ef585715399ef0959bd0
+          ref: 4e13aa58a2007fe6c1d847621ced67739f2f0c33
           persist-credentials: false
       - name: Verify immutable source
-        run: test "$(git rev-parse HEAD)" = '3a56655669b6ec7850c0ef585715399ef0959bd0'
+        run: test "$(git rev-parse HEAD)" = '4e13aa58a2007fe6c1d847621ced67739f2f0c33'
       - name: Python syntax
         run: python3 -m py_compile scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py
       - name: Focused regressions
         run: python3 -m unittest discover -s scripts -p 'test_pr_gate_plan.py' -v
       - name: Exercise selected CLI and verifier checks
         run: |
+          go test ./internal/capability/... -count=1
           go test ./cmd/baha -run '^TestGuided' -count=1
           go vet ./cmd/baha
           go build -o "$RUNNER_TEMP/baha-pr-impact" ./cmd/baha
