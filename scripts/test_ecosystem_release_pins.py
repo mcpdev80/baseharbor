@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from ecosystem_release_pins import resolve_pins
+from ecosystem_release_pins import resolve_pins, validate_ecosystem_graph
 
 
 class EcosystemPinsTests(unittest.TestCase):
@@ -52,6 +52,65 @@ class EcosystemPinsTests(unittest.TestCase):
             self.resolve(demo_core='e' * 40)
         with self.assertRaises(ValueError):
             self.resolve(requested='e' * 40)
+
+    def test_v0426_complete_immutable_consumer_graph(self):
+        candidate = {**self.candidate, 'release': '0.4.26'}
+        console = {**self.console_candidate, 'release': '0.4.26'}
+        pins = resolve_pins(self.core, self.connector, candidate, console,
+                            self.core, release='0.4.26')
+        graph = pins['ecosystem']
+        self.assertEqual(set(graph), {'core', 'demo', 'console', 'connector'})
+        for role, sha in [('core', self.core), ('demo', self.demo),
+                          ('console', self.console), ('connector', self.connector)]:
+            self.assertEqual(graph[role]['commit'], sha)
+        self.assertEqual(graph['connector']['consumes'],
+                         {'core': self.core, 'demo': self.demo, 'console': self.console})
+        self.assertEqual(graph['console']['consumes'],
+                         {'core': self.core, 'demo': self.demo})
+        self.assertEqual(graph['demo']['consumes'], {'core': self.core})
+        self.assertEqual(graph['core']['consumes'], {})
+        self.assertEqual(pins['gates']['integration/static/live-console']['console']['commit'],
+                         self.console)
+
+    def test_v0426_rejects_mutable_missing_mismatched_and_cyclic_consumer_pins(self):
+        candidate = {**self.candidate, 'release': '0.4.26'}
+        console = {**self.console_candidate, 'release': '0.4.26'}
+        valid = resolve_pins(self.core, self.connector, candidate, console,
+                             self.core, release='0.4.26')['ecosystem']
+        for role in valid:
+            for field in ('commit', 'repository'):
+                corrupted = copy.deepcopy(valid)
+                corrupted[role][field] = '' if field == 'commit' else 'wrong/repo'
+                with self.subTest(role=role, field=field), self.assertRaises(ValueError):
+                    validate_ecosystem_graph(corrupted)
+        for role, dependency in [('demo', 'core'), ('console', 'demo'),
+                                 ('connector', 'console')]:
+            for broken in ('main', 'f' * 40, ''):
+                corrupted = copy.deepcopy(valid)
+                corrupted[role]['consumes'][dependency] = broken
+                with self.subTest(role=role, dependency=dependency, broken=broken), self.assertRaises(ValueError):
+                    validate_ecosystem_graph(corrupted)
+        cyclic = copy.deepcopy(valid)
+        cyclic['core']['consumes'] = {'connector': self.connector}
+        with self.assertRaises(ValueError):
+            validate_ecosystem_graph(cyclic)
+        for broken in ({**candidate, 'demo': 'main'}, {**candidate, 'console': ''},
+                       {**candidate, 'core': 'f' * 40}, {**candidate, 'release': '0.4.25'}):
+            with self.assertRaises(ValueError):
+                resolve_pins(self.core, self.connector, broken, console,
+                             self.core, release='0.4.26')
+        with self.assertRaises(ValueError):
+            resolve_pins(self.core, 'main', candidate, console, self.core, release='0.4.26')
+        with self.assertRaises(ValueError):
+            resolve_pins(self.core, self.connector, candidate, console,
+                         'f' * 40, release='0.4.26')
+
+    def test_historical_release_output_is_unchanged(self):
+        self.assertNotIn('ecosystem', self.resolve())
+        candidate = {**self.candidate, 'release': '0.4.25'}
+        console = {**self.console_candidate, 'release': '0.4.25'}
+        self.assertNotIn('ecosystem', resolve_pins(self.core, self.connector, candidate,
+                                                   console, self.core, release='0.4.25'))
 
 
 if __name__ == '__main__':
