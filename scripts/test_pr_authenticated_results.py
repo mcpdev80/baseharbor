@@ -47,7 +47,7 @@ class AuthenticatedResultsTests(unittest.TestCase):
             mod.authenticated_results(native, RUN, JOBS, 123, 1, HEAD)
         jobs = JOBS + [{'name':name,'run_id':123,
                         'run_attempt':1,'conclusion':'success'} for name in
-                       ('PR · Exact Candidate','PR · Runner Interface')]
+                       ('PR · Exact Candidate','PR · Runner Interface','PR · Demo Pin')]
         result=mod.authenticated_results(native, RUN, jobs, 123, 1, HEAD)
         self.assertFalse(any(x['kind']=='gate' for x in result['results']))
         failed=jobs[:-1]+[dict(jobs[-1], conclusion='failure')]
