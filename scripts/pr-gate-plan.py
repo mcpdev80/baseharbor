@@ -50,76 +50,166 @@ def validated_diff(diff):
 
 
 
+# Validation checks are independent of release-gate requirements. A legitimate
+# PR plan may require validations and select zero native release gates.
+CODE_CHECKS = [
+    {'id': 'source-contracts', 'owner': 'CI source / contracts',
+     'command': 'go test ./internal/application/... ./contracts/...'},
+]
+CLI_CHECKS = [
+    {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
+     'command': "go test ./cmd/baha -run '^TestGuided' -count=1"},
+    {'id': 'cli-vet', 'owner': 'cmd/baha package', 'command': 'go vet ./cmd/baha'},
+    {'id': 'cli-build', 'owner': 'cmd/baha package', 'command': 'go build ./cmd/baha'},
+]
+# Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
+# command routing and any newly added CLI source remain unresolved.
+READ_ONLY_CLI = {
+    'cmd/baha/guided_application_read_context.go',
+    'cmd/baha/guided_application_read_context_test.go',
+}
+# Package-local conformance tests only. No production lifecycle, resolver or
+# registry implementation is assumed safe from its package tests alone.
+SAFE_CAPABILITY_TESTS = {
+    'internal/capability/domain_test.go',
+    'internal/capability/integration_contract_test.go',
+}
+CAPABILITY_CHECKS = [
+    {'id': 'capability-package-tests', 'owner': 'internal/capability',
+     'command': 'go test ./internal/capability/... -count=1'},
+]
+PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
+                    'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
+PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
+CI_CHECKS = [
+    {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
+     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
+    {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
+     'command': 'bash scripts/ci-workflow-policy.sh'},
+    {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+]
+
 def plan(diff, requirements, mapping):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
     if release not in requirements.get('releases', []):
         raise ValueError('release absent from gate catalog')
-    gates = [g['id'] for g in requirements['gates'] if release in g['required_for']]
-    if len(set(gates)) != len(gates) or not gates:
+    catalog = [g['id'] for g in requirements['gates'] if release in g['required_for']]
+    if len(set(catalog)) != len(catalog) or not catalog:
         raise ValueError('duplicate or empty gate catalog')
-    all_gates = set(gates)
-    identifiers = {key: diff.get(key) for key in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha')}
+    available = set(catalog)
+    identifiers = {key: diff.get(key) for key in
+                   ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha')}
     valid, problems = validated_diff(diff)
-    reasons = ['invalid diff-base input: ' + problem for problem in problems]
-    broad = bool(diff.get('broad_required')) or not valid
-    paths = []
-    if broad:
-        reasons.append('diff-base resolver requires broad checks: ' + json.dumps(diff.get('reasons', []), sort_keys=True))
-    for change in (diff.get('changes', []) if valid else []):
-        status = change.get('status')
-        if status in ('renamed', 'copied'):
-            names = [change.get('old_path'), change.get('new_path')]
-        elif status in ('added', 'deleted', 'modified', 'type_changed'):
-            names = [change.get('path')]
-        else:
-            broad = True
-            reasons.append('unrecognized change status: ' + repr(status))
-            names = []
-        if any(not isinstance(n, str) or not n or n.startswith('/') or '..' in n.split('/') for n in names):
-            broad = True
-            reasons.append('invalid changed path')
-        paths.extend(n for n in names if isinstance(n, str))
-    if not paths and not broad:
-        broad = True
-        reasons.append('empty or unverified changes cannot exempt tests')
+    unresolved = ['invalid diff-base input: ' + p for p in problems]
+    reasons = []
     areas = set()
+    paths = []
+    if valid and diff['broad_required']:
+        unresolved.append('diff-base requires unresolved coverage: ' +
+                          json.dumps(diff.get('reasons', []), sort_keys=True))
+    if valid:
+        for change in diff['changes']:
+            status = change.get('status')
+            if status in ('renamed', 'copied'):
+                names = [change.get('old_path'), change.get('new_path')]
+            elif status in ('added', 'deleted', 'modified', 'type_changed'):
+                names = [change.get('path')]
+            else:
+                unresolved.append('unrecognized change status: ' + repr(status))
+                continue
+            if any(not isinstance(n, str) or not n or n.startswith('/') or
+                   '..' in n.split('/') for n in names):
+                unresolved.append('invalid changed path')
+                continue
+            paths.extend(names)
+    if not paths:
+        unresolved.append('empty or unverified changes cannot exempt checks')
+    selected = set()
+    validations = {}
+    def require(checks):
+        for check in checks:
+            validations[check['id']] = check
     for path in paths:
-        # These exact prefixes are deliberately limited; anything with uncertain
-        # transitive effects, build tags, test imports, generated/embed input,
-        # OS/arch or downstream consumers needs the full existing catalog.
-        if path.startswith('docs/') and path.endswith('.md') and not path.startswith(('docs/spec/', 'docs/internal/')):
-            area = 'prose'
-        elif path.startswith('deploy/docker/') and path.endswith(('.yaml', '.yml', '.sh')):
-            area = 'docker'
+        if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
+                path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
+                path.startswith('site/')):
+            area = 'documentation'
+            require(DOC_CHECKS)
+        elif path in READ_ONLY_CLI:
+            area = 'cli-read-only'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('integration/static/public-contracts')
+        elif path.startswith('cmd/baha/') and path.endswith('.go'):
+            area = 'cli-unresolved-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            unresolved.append('CLI runtime impact needs qualified targeted native coverage: ' + path)
+        elif path in SAFE_CAPABILITY_TESTS:
+            area = 'capability-conformance-test'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            selected.add('integration/static/public-contracts')
+        elif path.startswith('internal/capability/'):
+            area = 'capability-implementation-unresolved'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path.startswith('internal/application/'):
+            area = 'application-implementation-unresolved'
+            require(CODE_CHECKS)
+            unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
+            area = 'contract'
+            require(CODE_CHECKS)
+            selected.add('integration/static/public-contracts')
+        elif path.startswith('deploy/docker/'):
+            area = 'docker-deployment-unresolved'
+            require(CODE_CHECKS)
+            unresolved.append('deployment/security/backup script impact needs specific native qualification: ' + path)
+        elif path in PLANNING_WORKFLOWS:
+            area = 'documentation-workflow'
+            require(DOC_CHECKS)
+            require(CI_CHECKS)
+        elif path in PLANNING_SCRIPTS:
+            area = 'ci-planner'
+            require(CI_CHECKS)
+        elif path.startswith('.github/workflows/'):
+            area = 'runtime-workflow-unresolved'
+            require(CI_CHECKS)
+            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+        elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
+              path.startswith('scripts/test_pr_') or
+              path.startswith('scripts/verify-') or 'evidence' in path):
+            area = 'ci-executor-unresolved'
+            require(CI_CHECKS)
+            unresolved.append('CI execution/evidence impact requires specific qualification: ' + path)
         else:
-            area = 'full'
+            area = 'unresolved'
+            unresolved.append('unknown impact for ' + path)
         areas.add(area)
         reasons.append(path + ': ' + area)
-        if area == 'full':
-            broad = True
-    if broad:
-        selected = all_gates
-        reasons.append('conservative full-catalog fallback: unknown/shared/toolchain/security/consumer impact')
-    else:
-        selected = set()
-        for area in areas:
-            definition = mapping['areas'][area]
-            selected.update(g for g in gates if any(g.startswith(p) for p in definition['prefixes']))
-            selected.update(definition['exact'])
-        if not selected or not selected <= all_gates:
-            selected = all_gates
-            broad = True
-            reasons.append('empty or unrecognized mapping: full-catalog fallback')
-    documentation_required = broad or 'prose' in areas
+    absent = sorted(selected - available)
+    if absent:
+        unresolved.append('required mapped gates absent from trusted catalog: ' +
+                          ', '.join(absent))
+        selected.difference_update(absent)
+    status = 'unresolved' if unresolved else 'resolved'
     return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
             'mapping_schema': mapping['schema'], 'release': release,
-            'broad_required': broad, 'selected_gates': sorted(selected),
-            'required_validation_checks': DOC_CHECKS if documentation_required else [],
-            'validation_contract': 'required_validation_checks are mandatory named checks; #893 must enforce successful results independently of release gate IDs',
+            'coverage_status': status, 'unresolved_coverage': unresolved,
+            'broad_required': bool(unresolved),
+            'selected_gates': sorted(selected),
+            'required_validation_checks': [validations[k] for k in sorted(validations)],
+            'validation_contract': (
+                'Enforce all required_validation_checks independently of selected_gates; '
+                'zero selected_gates is valid only when coverage_status is resolved. '
+                'If unresolved, final check MUST fail closed; never treat as no checks '
+                'or automatically run the complete release catalog.'),
             'reasons': reasons}
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
