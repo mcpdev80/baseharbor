@@ -111,6 +111,8 @@ class ArtifactGC(unittest.TestCase):
                 if req.get_method() == 'DELETE':
                     deleted.append(path)
                     return Response(status=204)
+                if path.startswith('actions/artifacts?') and not path.endswith('page=1'):
+                    return Response({'artifacts': []})
                 if path.startswith('actions/artifacts?'):
                     return Response({'artifacts': [{'id': 1, 'name': 'targeted-old',
                         'created_at': '2020-01-01T00:00:00Z', 'workflow_run': {'id': 1}}]})
