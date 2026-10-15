@@ -87,6 +87,17 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// An actual source fixture contains nested credential material; it must
+			// never appear in the adapter's returned JSON or public errors.
+			secret := "SENTINEL_PASSWORD_DO_NOT_LEAK"
+			source := filepath.Join(r.RepositoryRoot, "compose.yaml")
+			compose, err := os.ReadFile(source)
+			if err != nil { t.Fatal(err) }
+			if err := os.WriteFile(source, append(compose, []byte("    environment:\\n      DATABASE_PASSWORD: "+secret+"\\n")...), 0o600); err != nil { t.Fatal(err) }
+			before, err = guidedTreeDigest(r.TargetStateRoot)
+			if err != nil { t.Fatal(err) }
+			sourceBefore, err = guidedTreeDigest(r.RepositoryRoot)
+			if err != nil { t.Fatal(err) }
 			state, err := readGuidedApplicationContext(context.Background(), r)
 			if err != nil {
 				t.Fatalf("actual read: %v", err)
@@ -153,6 +164,21 @@ func TestGuidedNestedOutputHasNoSecretValues(t *testing.T) {
 	if strings.Contains(string(encoded), sentinel) {
 		t.Fatal("secret leaked through nested output")
 	}
+}
+
+// Test the adapter with real changed application inputs rather than hashing
+// an unrelated artificial structure.
+func TestGuidedReadRevisionChangesWithApplicationIntent(t *testing.T) {
+	r := corelessResolvedFixture(t)
+	first, err := readGuidedApplicationContext(context.Background(), r)
+	if err != nil { t.Fatal(err) }
+	r.Manifest.Environment = "other"
+	second, err := readGuidedApplicationContext(context.Background(), r)
+	if err != nil { t.Fatal(err) }
+	if first.SnapshotRevision == second.SnapshotRevision {
+		t.Fatal("changed environment retained snapshot revision")
+	}
+	if first.Target != second.Target { t.Fatal("intent change replaced Target") }
 }
 
 func TestGuidedRevisionsTrackInputs(t *testing.T) {
