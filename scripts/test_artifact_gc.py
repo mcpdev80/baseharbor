@@ -131,5 +131,73 @@ class ArtifactGC(unittest.TestCase):
             self.assertFalse(deleted)
 
 
+    def test_candidate_sha_and_second_page_fail_closed(self):
+        workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
+                                   '.github/workflows/artifact-gc.yml').read_text())
+        old = '2020-01-01T00:00:00Z'
+        same = 'a' * 40
+        advanced = 'b' * 40
+        for job in ('artifacts', 'repository-hygiene'):
+            shell = workflow['jobs'][job]['steps'][0]['run']
+            source = shell.split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+            for case in ('reused', 'merged', 'page2-active', 'page2-failure'):
+                deleted = []
+                branch_name = 'candidate/v0.4.26'
+                current_sha = same if case == 'merged' else advanced
+                prs = ([{'merged_at': old, 'head': {'ref': branch_name,
+                        'sha': same, 'repo': {'full_name': 'example/core'}}}])
+                def request(req):
+                    url = req.full_url.split('/example/core/', 1)[-1]
+                    if req.get_method() == 'DELETE':
+                        deleted.append(url)
+                        return Response(status=204)
+                    page2 = url.endswith('page=2')
+                    if url.startswith('actions/artifacts?'):
+                        return Response({'artifacts': [{'id': 9, 'name': 'targeted-fixture',
+                            'created_at': old, 'workflow_run': {'id': 9}}]
+                            if url.endswith('page=1') else []})
+                    if url.startswith('actions/runs?'):
+                        return Response({'workflow_runs': [{'id': 9, 'head_branch': branch_name,
+                            'path': '.github/workflows/ci.yml', 'status': 'completed',
+                            'updated_at': old}] if url.endswith('page=1') else []})
+                    if url.startswith('actions/runs/'):
+                        return Response({'status': 'completed', 'head_branch': branch_name})
+                    if url.startswith('pulls?state=open'):
+                        if case.startswith('page2'):
+                            if page2 and case == 'page2-failure':
+                                raise urllib.error.HTTPError(req.full_url, 503, 'failed', {}, None)
+                            rows = [{'head': {'ref': branch_name, 'repo': {
+                                'full_name': 'example/core'}}}] if page2 else [{}] * 100
+                            return Response(rows)
+                        return Response([])
+                    if url.startswith('pulls?state=closed'):
+                        return Response(prs if url.endswith('page=1') else [])
+                    if url.startswith('branches?'):
+                        rows = [{'name': branch_name, 'protected': False,
+                                 'commit': {'sha': current_sha}}]
+                        if case.startswith('page2'):
+                            return Response(rows if page2 else [{'name': 'filler/' + str(i),
+                                'protected': False, 'commit': {'sha': same}}
+                                for i in range(100)])
+                        return Response(rows)
+                    if url.startswith('commits/'):
+                        return Response({'commit': {'committer': {'date': old}}})
+                    raise AssertionError(url)
+                with self.subTest(job=job, case=case), patch.dict(os.environ, {
+                        'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only',
+                        'CURRENT_RUN_ID': '99'}), patch.object(urllib.request, 'urlopen', request), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    if case == 'page2-failure':
+                        with self.assertRaises(urllib.error.HTTPError):
+                            exec(compile(source, 'gc.yml', 'exec'), {})
+                        self.assertEqual(deleted, [])
+                    else:
+                        exec(compile(source, 'gc.yml', 'exec'), {})
+                        if case == 'merged':
+                            self.assertTrue(deleted)
+                        else:
+                            self.assertEqual(deleted, [])
+
+
 if __name__ == '__main__':
     unittest.main()
