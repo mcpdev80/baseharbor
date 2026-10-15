@@ -72,3 +72,5 @@ func TestProviderAndBindingSchemasUseJSONSchema202012(t *testing.T) {
 		}
 	}
 }
+
+// Core-893 scoped public-contracts owner verification; no behavior changes.
