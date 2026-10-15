@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -114,6 +115,43 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGuidedErrorDoesNotExposeUnderlyingSecret(t *testing.T) {
+	sentinel := "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"
+	err := &GuidedReadError{Kind: "unverifiable", Cause: errors.New(sentinel)}
+	if strings.Contains(err.Error(), sentinel) {
+		t.Fatal("authority error exposed secret data")
+	}
+	var typed *GuidedReadError
+	if !errors.As(err, &typed) {
+		t.Fatal("typed error was lost")
+	}
+}
+
+func TestGuidedNestedOutputHasNoSecretValues(t *testing.T) {
+	sentinel := "SENTINEL_PASSWORD_DO_NOT_LEAK"
+	state := GuidedReadContext{
+		Name: "real", Target: "development",
+		Capabilities: []capability.Requirement{{Kind: capability.SQL, Name: "primary"}},
+		Footprint: application.Footprint{
+			Target: "development",
+			Requirements: []application.RequirementResolution{
+				{Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"}, Binding: "automatic"},
+			},
+		},
+		Preferences: []application.ProviderPreference{{Requirement: capability.Requirement{Kind: capability.SQL, Name: "primary"}}},
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), "primary") {
+		t.Fatal("nested projection was not populated")
+	}
+	if strings.Contains(string(encoded), sentinel) {
+		t.Fatal("secret leaked through nested output")
 	}
 }
 
