@@ -487,3 +487,25 @@ jobs:
           rc=$?
           set -e
           test "$rc" -eq 143
+
+  pr_real_lease_pilot:
+    name: PR Lease Pilot · ${{ matrix.runtime }}
+    if: github.event_name == 'pull_request' && github.head_ref == 'work/v0.4.26-896-isolated-pr-runners'
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise authenticated admission and own/peer native cleanup
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -euo pipefail
+          python3 scripts/pr-runner-lease-pilot.py "$RUNTIME"
