@@ -42,3 +42,19 @@ verification are unchanged.
 The existing core-893 workflow/final-check owners must integrate and
 independently review this contract before enabling it on ordinary PRs.
 A green planner unit-test job does not qualify that consumer integration.
+
+## Narrow source classification (review correction)
+
+Only the audited guided read-adapter CLI files are treated as statically
+resolved; even those require the real `cmd/baha` package's focused tests,
+`go vet`, and `go build`. All other `cmd/baha/*.go`, including
+backup/restore, lifecycle, mutable commands, and newly introduced files, return
+`coverage_status: unresolved` with an explicit native qualification
+requirement. CLI checks alone do **not** resolve their runtime impact.
+
+Only audited planning scripts and the Pages documentation workflow are eligible
+for resolved CI/documentation-only classification. Runtime execution, GC,
+artifact lifecycle, release and evidence workflows, plus related CI executor
+scripts, require the existing policy/planner/verification regressions **and**
+remain `unresolved` pending justified native qualification. The planner does
+not infer native impact from arbitrary workflow YAML. No automatic full matrix.
