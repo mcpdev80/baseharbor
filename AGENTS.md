@@ -42,6 +42,15 @@ For an existing shared task, continue its branch/PR; preserve other sessions'
 commits and integrate remote changes before pushing. Checkpoints are leads;
 confirm their claims against current source, comments and results.
 
+Several sessions often run in parallel. Follow
+[Development guidelines → Development process](docs/DEVELOPMENT_GUIDELINES.md#development-process):
+one assigned issue at a time, one dedicated branch and PR per task, record
+ownership before editing, respect task file boundaries and integrated
+dependencies, preserve other sessions' changes, and stop after implementation,
+verification and PR handoff. The **Maintainer** (currently `@mcpdev80`) accepts
+the result and explicitly assigns the next issue. Report a blocking dependency
+rather than switching tasks autonomously.
+
 Keep runtime, capability and delivery separate. Mutations follow
 plan → preflight → apply → verify; CLI, JSON and MCP share domain semantics.
 Preserve ownership, concrete consequence/consent checks and secret protection.

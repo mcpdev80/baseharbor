@@ -59,6 +59,10 @@ scripts/    Project automation
 
 Normal feature, fix, chore and dependency pull requests target `develop`. The `main` branch represents released source.
 
+### Process, ownership and review
+
+The central development process lives in [Development guidelines → Development process](docs/DEVELOPMENT_GUIDELINES.md#development-process): `develop` integrates, each task lands as its own small pull request, and the **Maintainer** role (currently `@mcpdev80`) owns merge and release approval. When several sessions work in parallel, claim one assigned issue at a time on a dedicated branch, record ownership before editing, respect task file boundaries, preserve other sessions' work and stop after the pull-request handoff until the Maintainer accepts and assigns the next task. These rules are not duplicated here.
+
 ### Production hotfixes
 
 Production hotfixes are the exception to the normal `develop` flow.

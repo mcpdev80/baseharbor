@@ -100,10 +100,29 @@ Branches are temporary work surfaces, not long-lived history.
 - Long-lived branches are limited to explicitly designated integration or maintained work tracks such as `main`, `develop` and intentionally retained active feature/test branches.
 - Before deleting a diverged branch, verify that any required changes are already present in the target branch or are intentionally obsolete.
 
+## Development process
+
+`develop` integrates the next release and `main` holds released source; the authoritative branch and release model lives in [Releases and versioning](reference/releases.md). From v0.4.26 each unit of work lands as its own small branch and pull request against `develop`. v0.4.25 was completed under the earlier shared-branch procedure ([PR #881](https://github.com/mcpdev80/baseharbor/pull/881)); its workflows and evidence remain unchanged and are not retroactively restaged.
+
+**Maintainer.** The Maintainer role owns merge and release approval for `develop`. The current assignment is `@mcpdev80`, defined centrally here; adding a Maintainer requires an explicitly updated responsibility grant. Entry points name the role "Maintainer" rather than a personal account.
+
+**Review and release boundary.** A pull request from another contributor into `develop` requires Maintainer approval and green required checks, and new commits invalidate a prior approval. A Maintainer may merge their own pull request without foreign review for now, but the pull request and its required green checks remain mandatory. There is no direct push to a protected branch and no blanket contributor bypass; this is a transparent solo-maintainer compromise, not an account-scoped security guarantee. Review and CI protection are configured and verified separately.
+
+**Multi-session execution.** When several agent or human sessions run in parallel:
+
+- one assigned issue at a time per session;
+- one dedicated branch and pull request per task;
+- check and record ownership before editing, after reading the current rules and remote state;
+- respect task file boundaries and integrated dependencies;
+- preserve other sessions' commits and integrate remote changes before pushing;
+- stop after implementation, verification and pull-request handoff;
+- start the next issue only after the Maintainer accepts the result and assigns it;
+- report a blocking dependency rather than switching tasks autonomously.
+
 ## Documentation
 
 Follow [Documentation style](STYLE_GUIDE.md).
 
 Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. GitHub Issues plan future work. Releases preserve history.
 
-Every release runs the complete [pre-release audit](https://github.com/mcpdev80/baseharbor/blob/work/v0.4.24-core-ha-updates/docs/internal/pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
+Every release runs the complete [pre-release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
