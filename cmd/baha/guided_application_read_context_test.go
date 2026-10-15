@@ -4,6 +4,7 @@ import (
     "context"
     "encoding/json"
     "errors"
+    "os"
     "strings"
     "testing"
 
@@ -33,6 +34,35 @@ func TestGuidedReadContextRefusesMissingAndWrongTarget(t *testing.T) {
             _,err:=readGuidedApplicationContext(context.Background(),tc.resolved)
             var typed *GuidedReadError
             if !errors.As(err,&typed) || typed.Kind!=tc.kind { t.Fatalf("error = %v, expected %s",err,tc.kind) }
+        })
+    }
+}
+
+func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
+    for _, edit := range []bool{false, true} {
+        t.Run(map[bool]string{false:"new",true:"edit"}[edit],func(t *testing.T) {
+            r:=corelessResolvedFixture(t)
+            if edit {
+                r.DeploymentIdentity=deployment.DeploymentIdentity{
+                    Target:r.Target.Name,ApplicationID:r.Manifest.ApplicationID,
+                    DeploymentID:"existing"}
+            }
+            before, statErr:=os.Stat(r.TargetStateRoot)
+            state,err:=readGuidedApplicationContext(context.Background(),r)
+            if err!=nil {t.Fatalf("actual read: %v",err)}
+            if state.Target!=r.Target.Name || state.Name!=r.Manifest.Name ||
+                state.SnapshotRevision=="" || state.PlanRevision=="" {
+                t.Fatalf("incomplete authoritative projection: %+v",state)
+            }
+            after, afterErr:=os.Stat(r.TargetStateRoot)
+            if (statErr==nil)!=(afterErr==nil) || (before!=nil && after!=nil && !os.SameFile(before,after)) {
+                t.Fatalf("read modified target root: %v / %v",statErr,afterErr)
+            }
+            payload,err:=json.Marshal(state)
+            if err!=nil {t.Fatal(err)}
+            if strings.Contains(string(payload),"secret_value") || strings.Contains(string(payload),"password") {
+                t.Fatal("secret material leaked")
+            }
         })
     }
 }
