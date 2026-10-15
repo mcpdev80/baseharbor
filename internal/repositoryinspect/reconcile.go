@@ -177,7 +177,11 @@ func findingMatchesIntentAliasesDefault(finding Finding, intent CapabilityIntent
 	if intent.Direction != "" && direction != "" && direction != intent.Direction {
 		return false
 	}
-	return len(candidates) == 1
+	// The alias must bind the current finding itself, not any sole
+	// candidate seen from another finding's perspective: an explicitly
+	// claimed instance is excluded from candidates and must never be
+	// consumed for the default declaration.
+	return len(candidates) == 1 && candidates[0] == finding.Name
 }
 
 // defaultInstanceCandidates lists evidence-backed named instance identities

@@ -410,6 +410,62 @@ func TestReconcileExplicitClaimWithDuplicateEvidenceAndNameless(t *testing.T) {
 	})
 }
 
+func TestReconcileDefaultAliasesOnlyTheSoleUnclaimedInstance(t *testing.T) {
+	findings := []Finding{
+		{
+			Capability: "database.sql",
+			Name:       "postgres",
+			Confidence: ConfidenceDetected,
+			Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service postgres"}},
+		},
+		{
+			Capability: "database.sql",
+			Name:       "analytics",
+			Confidence: ConfidenceDetected,
+			Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service analytics"}},
+		},
+	}
+	orders := map[string][]CapabilityIntent{
+		"default first": {
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+		},
+		"postgres first": {
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+		},
+	}
+
+	for label, declared := range orders {
+		t.Run(label, func(t *testing.T) {
+			_, items := Reconcile(findings, declared)
+			if len(items) != 2 {
+				t.Fatalf("items = %#v", items)
+			}
+			for _, item := range items {
+				switch item.Name {
+				case "postgres":
+					if item.State != ReconciliationSatisfied {
+						t.Fatalf("explicit claim lost: %#v", item)
+					}
+					if len(item.Evidence) != 1 || item.Evidence[0].Detail != "service postgres" {
+						t.Fatalf("postgres evidence misattributed: %#v", item)
+					}
+				case "default":
+					if item.State != ReconciliationSatisfied {
+						t.Fatalf("default did not alias the sole unclaimed instance: %#v", item)
+					}
+					if len(item.Evidence) != 1 || item.Evidence[0].Detail != "service analytics" {
+						t.Fatalf("default must not consume claimed postgres evidence: %#v", item)
+					}
+				default:
+					t.Fatalf("unexpected duplicate item: %#v", item)
+				}
+			}
+		})
+	}
+}
+
 func TestInspectReconcilesQuickInitDefaultSQLAndCacheWithComposeProviders(t *testing.T) { // (752-historical)
 	root := t.TempDir()
 	writeTestFile(t, root, "baseharbor.yaml", `version: 1
