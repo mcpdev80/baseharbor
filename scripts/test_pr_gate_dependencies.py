@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import json
 
 spec = importlib.util.spec_from_file_location("dependencies", Path(__file__).with_name("pr-gate-dependencies.py"))
 module = importlib.util.module_from_spec(spec)
@@ -12,6 +13,14 @@ CATALOG = {"gates": [
 ]}
 
 class Dependencies(unittest.TestCase):
+    def test_actual_release_backup_requirements(self):
+        catalog=json.loads(Path(__file__).with_name("release-requirements.json").read_text())
+        for runtime in ("docker", "podman"):
+            with self.subTest(runtime=runtime):
+                plan={"selected_gates":["atomic/"+runtime+"/backup-restore"]}
+                result=module.dependency_mode(plan,catalog)
+                self.assertEqual({"dependencies":["core","demo"],"mode":"demo"},result)
+
     def test_backup_is_core_demo_only(self):
         result = module.dependency_mode({"selected_gates": ["atomic/docker/backup-restore"]}, CATALOG)
         self.assertEqual("demo", result["mode"])
