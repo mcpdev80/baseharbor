@@ -77,7 +77,8 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 		t.Run(map[bool]string{false: "new", true: "edit"}[edit], func(t *testing.T) {
 			r := corelessResolvedFixture(t)
 			if edit {
-				r.DeploymentIdentity = deployment.DeploymentIdentity{Target: r.Target.Name, ApplicationID: r.Manifest.ApplicationID, DeploymentID: "existing"}
+				// An Edit is a persisted deployment, not a fabricated ID.
+				r = backendBindingFixture(t, capability.ProviderPostgreSQL)
 			}
 			before, err := guidedTreeDigest(r.TargetStateRoot)
 			if err != nil {
