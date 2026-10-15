@@ -92,12 +92,20 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 			secret := "SENTINEL_PASSWORD_DO_NOT_LEAK"
 			source := filepath.Join(r.RepositoryRoot, "compose.yaml")
 			compose, err := os.ReadFile(source)
-			if err != nil { t.Fatal(err) }
-			if err := os.WriteFile(source, append(compose, []byte("    environment:\n      DATABASE_PASSWORD: "+secret+"\n      PRIVATE_KEY: SENTINEL_PRIVATE_KEY_DO_NOT_LEAK\n")...), 0o600); err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(source, append(compose, []byte("    environment:\n      DATABASE_PASSWORD: "+secret+"\n      PRIVATE_KEY: SENTINEL_PRIVATE_KEY_DO_NOT_LEAK\n")...), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			before, err = guidedTreeDigest(r.TargetStateRoot)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			sourceBefore, err = guidedTreeDigest(r.RepositoryRoot)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			state, err := readGuidedApplicationContext(context.Background(), r)
 			if err != nil {
 				t.Fatalf("actual read: %v", err)
@@ -129,9 +137,13 @@ func TestGuidedReadNewAndEditDoNotWriteState(t *testing.T) {
 			bad.DeploymentIdentity.Target = "different"
 			bad.DeploymentIdentity.ApplicationID = r.Manifest.ApplicationID
 			_, publicErr := readGuidedApplicationContext(context.Background(), bad)
-			if publicErr == nil { t.Fatal("mismatched Target accepted") }
+			if publicErr == nil {
+				t.Fatal("mismatched Target accepted")
+			}
 			for _, value := range []string{"SENTINEL_PASSWORD_DO_NOT_LEAK", "SENTINEL_PRIVATE_KEY_DO_NOT_LEAK"} {
-				if strings.Contains(publicErr.Error(), value) { t.Fatal("public error leaked source secret") }
+				if strings.Contains(publicErr.Error(), value) {
+					t.Fatal("public error leaked source secret")
+				}
 			}
 		})
 	}
@@ -179,28 +191,40 @@ func TestGuidedNestedOutputHasNoSecretValues(t *testing.T) {
 func TestGuidedReadRevisionChangesWithApplicationIntent(t *testing.T) {
 	r := corelessResolvedFixture(t)
 	first, err := readGuidedApplicationContext(context.Background(), r)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	r.Manifest.Environment = "other"
 	second, err := readGuidedApplicationContext(context.Background(), r)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if first.SnapshotRevision == second.SnapshotRevision {
 		t.Fatal("changed environment retained snapshot revision")
 	}
-	if first.Target != second.Target { t.Fatal("intent change replaced Target") }
+	if first.Target != second.Target {
+		t.Fatal("intent change replaced Target")
+	}
 }
 
 func TestGuidedReadProjectsCapabilityFootprintAndAuthorityPlan(t *testing.T) {
 	r := corelessResolvedFixture(t)
 	r.Manifest = application.WithHTTPExposure(r.Manifest, "public", "api", 8080, "http")
 	state, err := readGuidedApplicationContext(context.Background(), r)
-	if err != nil { t.Fatalf("read actual exposure requirement: %v", err) }
+	if err != nil {
+		t.Fatalf("read actual exposure requirement: %v", err)
+	}
 	if len(state.Capabilities) == 0 || len(state.Footprint.Requirements) == 0 {
 		t.Fatalf("missing projected capability or footprint: %+v", state)
 	}
 	snapshot, preferences, err := applicationLifecycleSnapshot(r, observeApplicationProviderFacts(context.Background(), r))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	authority, err := resolveApplicationProviderPlanFromSnapshot(r, snapshot, preferences)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if authority.Impact != nil && authority.Impact.PlanID != "" && state.PlanRevision != authority.Impact.PlanID {
 		t.Fatalf("consent PlanID not propagated: got %s, want %s", state.PlanRevision, authority.Impact.PlanID)
 	}
