@@ -33,7 +33,7 @@ class RuntimeMatrix(unittest.TestCase):
 
     def test_actual_workflow_pinned_helper_schedules_all_three(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
-        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\\.py',workflow)
+        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
         self.assertIsNotNone(match,"workflow must pin exact runtime helper")
         source=subprocess.check_output(["git","show",match.group(1)+":scripts/pr-selected-runtime-matrix.py"],text=True)
         gates=["atomic/docker/backup-restore","atomic/podman/backup-restore","atomic/docker/lifecycle"]
