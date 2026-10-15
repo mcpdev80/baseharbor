@@ -13,6 +13,7 @@ on:
     branches:
       - develop
       - main
+      - pilot/core-893-trusted-base
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -429,7 +430,7 @@ jobs:
 
   pr_plan:
     name: PR · Trusted Plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     outputs:
@@ -477,7 +478,7 @@ jobs:
   pr_runner_interface:
     name: PR · Runner Interface
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base' && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -501,7 +502,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.resolve.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base' && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -533,7 +534,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base' && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -580,7 +581,7 @@ jobs:
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base' && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -619,7 +620,7 @@ jobs:
   pr_focused:
     name: PR · Focused Python
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -646,7 +647,7 @@ jobs:
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
@@ -699,7 +700,7 @@ jobs:
   pr_runtime_selected:
     name: PR · Selected Runtime
     needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base' && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -717,7 +718,7 @@ jobs:
   pr_selected_final:
     name: PR Selected Checks
     needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'pilot/core-893-trusted-base'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
