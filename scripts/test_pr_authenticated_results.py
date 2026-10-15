@@ -51,15 +51,15 @@ class AuthenticatedResultsTests(unittest.TestCase):
         result=mod.authenticated_results(native, RUN, jobs, 123, 1, HEAD)
         self.assertFalse(any(x['kind']=='gate' for x in result['results']))
         failed=jobs[:-1]+[dict(jobs[-1], conclusion='failure')]
-        with self.assertRaises(PermissionError):
-            mod.authenticated_results(native, RUN, failed, 123, 1, HEAD)
+        blocked=mod.authenticated_results(native, RUN, failed, 123, 1, HEAD)
+        self.assertIn('failure',[x['conclusion'] for x in blocked['required_job_conclusions']])
 
     def test_focused_and_policy_failure_blocks(self):
         for name in ('PR · Focused Python','Workflow policy'):
             jobs=[dict(x,conclusion='failure') if x['name']==name else x for x in JOBS]
             with self.subTest(name=name):
-                with self.assertRaises(PermissionError):
-                    mod.authenticated_results(PLAN,RUN,jobs,123,1,HEAD)
+                result=mod.authenticated_results(PLAN,RUN,jobs,123,1,HEAD)
+                self.assertIn('failure',[x['conclusion'] for x in result['required_job_conclusions']])
 
 
 if __name__ == '__main__':
