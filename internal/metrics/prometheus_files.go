@@ -342,6 +342,9 @@ func EnsureProviderFilesWithRuntimeCAAt(ctx context.Context, issuer serviceacces
 	if err != nil {
 		return ProviderFiles{}, err
 	}
+	if err := writeRuntimeSourceSnapshot(files, placement, providerSources); err != nil {
+		return ProviderFiles{}, err
+	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {
 		return ProviderFiles{}, err
 	}
@@ -491,6 +494,9 @@ func UnregisterSharedApplicationAt(ctx context.Context, runtime Runtime, issuer 
 	}
 	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
 	if err != nil {
+		return err
+	}
+	if err := writeRuntimeSourceSnapshot(files, placement, providerSources); err != nil {
 		return err
 	}
 	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithProviderNetworksAndAccess(placement, registrations, providerNetworks, hasRuntimeCA, hasSecureProviderMetrics(providerSources), accessFiles, providerSources)), 0o600); err != nil {

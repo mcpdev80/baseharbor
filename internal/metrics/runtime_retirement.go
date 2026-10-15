@@ -49,9 +49,17 @@ func ExistingRuntimeInventoryAt(dataDir, namespace string, m application.Manifes
 	for _, registration := range registrations {
 		apps = append(apps, registration.Application)
 	}
-	sources, err := observability.ListMetrics(placement, apps, policy.Collect[application.MetricsSourceApplicationProvider], policy.Collect[application.MetricsSourcePlatformProvider])
+	sources, retained, err := readRuntimeSourceSnapshot(files, p)
+	if !retained && err == nil {
+		// Legacy owners still require an exact match with the live renderer;
+		// absence never authorizes adoption of an arbitrary old definition.
+		sources, err = observability.ListMetrics(placement, apps, policy.Collect[application.MetricsSourceApplicationProvider], policy.Collect[application.MetricsSourcePlatformProvider])
+	}
 	if err != nil {
 		return files, p, nil, err
+	}
+	if retained {
+		protected = append(protected, filepath.Join(files.Dir, "runtime-sources.json"))
 	}
 	_, caErr := os.Stat(files.RuntimeCA)
 	if caErr != nil && !errors.Is(caErr, os.ErrNotExist) {
