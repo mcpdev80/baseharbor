@@ -19,3 +19,5 @@ Use review severities from the canonical guidelines: `BLOCKER`, `MAJOR`, `MINOR`
 
 For process, ownership and Maintainer approval, follow the
 [development process](../docs/DEVELOPMENT_GUIDELINES.md#development-process).
+
+Planning: first read [AGENTS.md](../AGENTS.md), the current [baseharbor-plan instructions](https://github.com/mcpdev80/baseharbor-plan/blob/main/AGENTS.md) and the assigned task note. Follow the ownership protocol; update and push status, blockers, PR/source SHA, verification and handoff in that note. Source GitHub issues retain discussion/history only.
