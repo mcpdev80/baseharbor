@@ -22,6 +22,12 @@ class RequestTests(unittest.TestCase):
         self.assertEqual('existing-verifier-only', rows[0]['evidence'])
         self.assertEqual('requires-trusted-isolated-runner', rows[0]['admission'])
 
+    def test_only_declared_demo_pin_for_backup(self):
+        result=module.requests(PLAN,CATALOG,{"demo_sha":"1"*40})
+        self.assertEqual({"demo_sha":"1"*40},result[0]["consumer_pins"])
+        with self.assertRaises(ValueError):
+            module.requests(PLAN,CATALOG,{"console_sha":"2"*40})
+
     def test_no_runtime_is_not_a_fake_result(self):
         plan = dict(PLAN, selected_gates=['atomic/static/init'])
         self.assertEqual([], module.requests(plan, CATALOG, PINS))
