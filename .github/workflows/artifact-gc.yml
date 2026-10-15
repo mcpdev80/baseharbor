@@ -111,13 +111,15 @@ jobs:
               head = pr.get("head") or {}
               if (pr.get("merged_at") and
                       (head.get("repo") or {}).get("full_name") == repo):
-                  merged_heads.add(head["ref"])
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and len(sha) == 40:
+                      merged_heads.add((head["ref"], sha))
           active_refs = {"main", "develop"} | open_heads
           for branch in pages("branches", "branches"):
               name = branch["name"]
               if (branch.get("protected") or
                       (name.startswith(("release/v", "candidate/", "release-candidate/"))
-                       and name not in merged_heads)):
+                       and (name, (branch.get("commit") or {}).get("sha")) not in merged_heads)):
                   active_refs.add(name)
 
           deleted = 0
@@ -310,13 +312,15 @@ jobs:
               head = pr.get("head") or {}
               if (pr.get("merged_at") and
                       (head.get("repo") or {}).get("full_name") == repo):
-                  merged_heads.add(head["ref"])
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and len(sha) == 40:
+                      merged_heads.add((head["ref"], sha))
           active_candidate_heads = {
               branch["name"] for branch in discovered_branches
               if branch.get("protected") or
               (branch["name"].startswith(
                   ("candidate/", "release-candidate/", "release/v0.4.26"))
-               and branch["name"] not in merged_heads)
+               and (branch["name"], (branch.get("commit") or {}).get("sha")) not in merged_heads)
           }
           protected_run_heads = active_pr_heads | active_candidate_heads
 
@@ -356,7 +360,9 @@ jobs:
               head = pr.get("head") or {}
               head_repo = (head.get("repo") or {}).get("full_name")
               if head_repo == repo and head.get("ref"):
-                  merged_pr_heads.add(head["ref"])
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and len(sha) == 40:
+                      merged_pr_heads.add((head["ref"], sha))
 
           branches = discovered_branches
           deleted_branches = 0
@@ -375,7 +381,7 @@ jobs:
               ephemeral = name.startswith(ephemeral_prefixes)
               merged_work = (
                   name.startswith(merged_work_prefixes)
-                  and name in merged_pr_heads
+                  and (name, (branch.get("commit") or {}).get("sha")) in merged_pr_heads
               )
               if not (ephemeral or merged_work):
                   continue
