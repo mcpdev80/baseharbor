@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e29c03b41a0c214bb011c42fb9d707a310ed4d0b
+          ref: 4394edd2dc16805bf5c2663d141f3303c460ab21
           persist-credentials: false
       - name: Verify immutable source
-        run: test "$(git rev-parse HEAD)" = 'e29c03b41a0c214bb011c42fb9d707a310ed4d0b'
+        run: test "$(git rev-parse HEAD)" = '4394edd2dc16805bf5c2663d141f3303c460ab21'
       - name: Python syntax
         run: python3 -m py_compile scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py
       - name: Focused regressions
