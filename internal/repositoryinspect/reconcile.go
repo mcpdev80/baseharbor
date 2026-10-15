@@ -11,6 +11,7 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 	items := make([]ReconciliationItem, 0, len(declared)+len(findings))
 	matchedFinding := make([]bool, len(findings))
 	groups := evidenceBackedInstances(findings)
+	claims := explicitInstanceClaims(declared)
 
 	for _, intent := range declared {
 		item := ReconciliationItem{
@@ -21,7 +22,7 @@ func Reconcile(findings []Finding, declared []CapabilityIntent) ([]CapabilityInt
 		}
 		best := -1
 		for i, finding := range findings {
-			if !findingMatchesIntentAliasesDefault(finding, intent, groups) {
+			if !findingMatchesIntentAliasesDefault(finding, intent, groups, claims) {
 				continue
 			}
 			evidence := nonManifestEvidence(finding.Evidence)
@@ -128,20 +129,40 @@ func evidenceBackedInstances(findings []Finding) map[instanceGroup]map[string]st
 	return groups
 }
 
+// instanceClaim is an explicit non-default identity declaration. Such claims
+// are resolved before any canonical default alias may consider the same
+// instance, independently of declaration order.
+type instanceClaim struct {
+	capability string
+	name       string
+	direction  Direction
+}
+
+func explicitInstanceClaims(declared []CapabilityIntent) []instanceClaim {
+	claims := make([]instanceClaim, 0, len(declared))
+	for _, intent := range declared {
+		if intent.Name != "" && intent.Name != "default" {
+			claims = append(claims, instanceClaim{intent.Capability, intent.Name, intent.Direction})
+		}
+	}
+	return claims
+}
+
 // findingMatchesIntentAliasesDefault extends findingMatchesIntent with the
 // fail-closed canonical default alias: a declared "default" instance may
 // reconcile exactly one distinct evidence-backed named instance of the same
-// capability and direction, keeping the declared name. More than one named
-// instance is never guessed, and while instances are ambiguous, nameless
-// evidence may not satisfy or conceal the declared default. telemetry.otlp
-// keeps its dedicated signal rule unchanged.
-func findingMatchesIntentAliasesDefault(finding Finding, intent CapabilityIntent, groups map[instanceGroup]map[string]struct{}) bool {
+// capability and direction that is not claimed by an explicit declaration,
+// keeping the declared name. More than one named instance is never guessed,
+// and while instances are ambiguous, nameless evidence may not satisfy or
+// conceal the declared default. telemetry.otlp keeps its dedicated signal
+// rule unchanged.
+func findingMatchesIntentAliasesDefault(finding Finding, intent CapabilityIntent, groups map[instanceGroup]map[string]struct{}, claims []instanceClaim) bool {
 	if intent.Name != "default" || finding.Capability == "telemetry.otlp" {
 		return findingMatchesIntent(finding, intent)
 	}
-	ambiguous := len(defaultInstanceGroup(intent, finding, groups)) > 1
+	candidates := defaultInstanceCandidates(intent, finding, groups, claims)
 	if finding.Name == "" {
-		if ambiguous {
+		if len(candidates) > 1 {
 			return false
 		}
 		return findingMatchesIntent(finding, intent)
@@ -156,15 +177,37 @@ func findingMatchesIntentAliasesDefault(finding Finding, intent CapabilityIntent
 	if intent.Direction != "" && direction != "" && direction != intent.Direction {
 		return false
 	}
-	return !ambiguous && len(defaultInstanceGroup(intent, finding, groups)) == 1
+	return len(candidates) == 1
 }
 
-func defaultInstanceGroup(intent CapabilityIntent, finding Finding, groups map[instanceGroup]map[string]struct{}) map[string]struct{} {
+// defaultInstanceCandidates lists evidence-backed named instance identities
+// a default intent could still alias in this direction: names explicitly
+// claimed by another declaration are resolved first and excluded.
+func defaultInstanceCandidates(intent CapabilityIntent, finding Finding, groups map[instanceGroup]map[string]struct{}, claims []instanceClaim) []string {
 	direction := intent.Direction
 	if direction == "" {
 		direction = normalizedDirection(finding)
 	}
-	return groups[instanceGroup{intent.Capability, direction}]
+	names := groups[instanceGroup{intent.Capability, direction}]
+	candidates := make([]string, 0, len(names))
+	for name := range names {
+		if !nameExplicitlyClaimed(claims, intent.Capability, name, direction) {
+			candidates = append(candidates, name)
+		}
+	}
+	return candidates
+}
+
+func nameExplicitlyClaimed(claims []instanceClaim, capability, name string, direction Direction) bool {
+	for _, claim := range claims {
+		if claim.capability != capability || claim.name != name {
+			continue
+		}
+		if claim.direction == "" || direction == "" || claim.direction == direction {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizedDirection(finding Finding) Direction {

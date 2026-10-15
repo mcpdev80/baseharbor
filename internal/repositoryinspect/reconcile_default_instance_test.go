@@ -271,6 +271,145 @@ func TestReconcileOTLPDefaultSignalBehaviorUnchanged(t *testing.T) {
 	}
 }
 
+func TestReconcileExplicitClaimWinsOverDefaultAliasInBothOrders(t *testing.T) {
+	findings := []Finding{{
+		Capability: "database.sql",
+		Name:       "postgres",
+		Confidence: ConfidenceDetected,
+		Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service postgres"}},
+	}}
+	orders := map[string][]CapabilityIntent{
+		"default first": {
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+		},
+		"postgres first": {
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+		},
+	}
+
+	for label, declared := range orders {
+		t.Run(label, func(t *testing.T) {
+			_, items := Reconcile(findings, declared)
+			if len(items) != 2 {
+				t.Fatalf("items = %#v", items)
+			}
+			for _, item := range items {
+				switch item.Name {
+				case "postgres":
+					if item.State != ReconciliationSatisfied {
+						t.Fatalf("explicit claim lost: %#v", item)
+					}
+				case "default":
+					if item.State != ReconciliationStale {
+						t.Fatalf("default aliased an explicitly claimed instance: %#v", item)
+					}
+				default:
+					t.Fatalf("unexpected item: %#v", item)
+				}
+			}
+		})
+	}
+}
+
+func TestReconcileExplicitClaimWithDuplicateEvidenceAndNameless(t *testing.T) {
+	t.Run("duplicate evidence rows stay one claim", func(t *testing.T) {
+		_, items := Reconcile([]Finding{
+			{
+				Capability: "database.sql",
+				Name:       "postgres",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service postgres"}},
+			},
+			{
+				Capability: "database.sql",
+				Name:       "postgres",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceDependency, Path: "go.mod", Detail: "pq driver"}},
+			},
+		}, []CapabilityIntent{
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+		})
+		if len(items) != 2 {
+			t.Fatalf("items = %#v", items)
+		}
+		for _, item := range items {
+			switch item.Name {
+			case "postgres":
+				if item.State != ReconciliationSatisfied || len(item.Evidence) != 2 {
+					t.Fatalf("explicit claim evidence wrong: %#v", item)
+				}
+			case "default":
+				if item.State != ReconciliationStale {
+					t.Fatalf("default aliased claimed instance: %#v", item)
+				}
+			default:
+				t.Fatalf("unexpected item: %#v", item)
+			}
+		}
+	})
+
+	t.Run("nameless evidence still enriches default", func(t *testing.T) {
+		_, items := Reconcile([]Finding{
+			{
+				Capability: "database.sql",
+				Name:       "postgres",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service postgres"}},
+			},
+			{
+				Capability: "database.sql",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceEnv, Path: ".env.example", Detail: "DATABASE_URL"}},
+			},
+		}, []CapabilityIntent{
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+		})
+		if len(items) != 2 {
+			t.Fatalf("items = %#v", items)
+		}
+		for _, item := range items {
+			if item.State != ReconciliationSatisfied {
+				t.Fatalf("expected no stale or duplicate new item: %#v", item)
+			}
+		}
+	})
+
+	t.Run("claimed plus one unclaimed still aliases", func(t *testing.T) {
+		_, items := Reconcile([]Finding{
+			{
+				Capability: "database.sql",
+				Name:       "postgres",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service postgres"}},
+			},
+			{
+				Capability: "database.sql",
+				Name:       "analytics",
+				Confidence: ConfidenceDetected,
+				Evidence:   []Evidence{{Kind: EvidenceCompose, Path: "compose.yaml", Detail: "service analytics"}},
+			},
+		}, []CapabilityIntent{
+			{Capability: "database.sql", Name: "postgres", Direction: DirectionConsume},
+			{Capability: "database.sql", Name: "default", Direction: DirectionConsume},
+		})
+		if len(items) != 2 {
+			t.Fatalf("items = %#v", items)
+		}
+		for _, item := range items {
+			if item.Name == "default" && item.State != ReconciliationSatisfied {
+				t.Fatalf("default did not alias the single unclaimed instance: %#v", item)
+			}
+			if item.Name == "postgres" && item.State != ReconciliationSatisfied {
+				t.Fatalf("explicit claim regressed: %#v", item)
+			}
+		}
+	})
+}
+
 func TestInspectReconcilesQuickInitDefaultSQLAndCacheWithComposeProviders(t *testing.T) { // (752-historical)
 	root := t.TempDir()
 	writeTestFile(t, root, "baseharbor.yaml", `version: 1
