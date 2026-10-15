@@ -40,17 +40,22 @@ type Runtime interface {
 }
 
 type Driver struct {
-	runtime          Runtime
-	realization      OTLPRealization
-	app              application.Manifest
-	files            application.RuntimeFiles
-	issuer           serviceaccess.Issuer
-	externalEndpoint string
-	traceEndpoint    string
-	traceNetwork     string
-	client           *http.Client
-	dataDir          string
-	namespace        string
+	runtime            Runtime
+	realization        OTLPRealization
+	app                application.Manifest
+	files              application.RuntimeFiles
+	issuer             serviceaccess.Issuer
+	registeredExternal *registeredOTLPSource
+	externalEndpoint   string
+	externalHeaders    string
+	externalInput      string
+	externalExplicit   bool
+	externalAuthErr    error
+	traceEndpoint      string
+	traceNetwork       string
+	client             *http.Client
+	dataDir            string
+	namespace          string
 }
 
 type ProviderFiles struct {
@@ -63,36 +68,49 @@ type ProviderFiles struct {
 }
 
 func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
-	return &Driver{
+	d := &Driver{
 		runtime:          runtime,
 		realization:      newRuntimeOTLPRealization(runtime, app, issuer, "", ""),
 		app:              app,
 		files:            files,
 		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
 	}
+	d.prepareExternalAuthorization()
+	return d
 }
 
 func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
-	return &Driver{
+	d := &Driver{
 		runtime:          runtime,
 		realization:      newRuntimeOTLPRealization(runtime, app, issuer, dataDir, namespace),
 		app:              app,
 		files:            files,
 		issuer:           issuer,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
 	}
+	if application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
+	} else {
+		d.prepareExternalAuthorization()
+	}
+	return d
 }
 
 func NewDriverWithRealization(realization OTLPRealization, app application.Manifest, files application.RuntimeFiles) *Driver {
-	return &Driver{
+	d := &Driver{
 		realization:      realization,
 		app:              app,
 		files:            files,
 		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
 	}
+	d.prepareExternalAuthorization()
+	return d
 }
 
 func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
@@ -135,6 +153,20 @@ func (d *Driver) Preflight(_ context.Context, resource capability.Resource, bind
 		return errors.New("OTLP provider requires at least one telemetry signal")
 	}
 	if resource.Provider == capability.ProviderExternalOTLP {
+		if d.externalAuthErr != nil {
+			return d.externalAuthErr
+		}
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
+		}
+		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
+			return err
+		}
 		if strings.TrimSpace(d.externalEndpoint) == "" {
 			return errors.New("external OTLP provider requires BASEHARBOR_OTLP_ENDPOINT")
 		}
@@ -175,7 +207,24 @@ func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ 
 
 func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
 	if resource.Provider == capability.ProviderExternalOTLP {
-		return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, d.externalEndpoint, d.externalEndpoint)
+		if err := d.revalidateExternalAuthorization(); err != nil {
+			return err
+		}
+		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
+		}
+		if err := application.MaterializeExternalOTLPBinding(d.app, d.files, d.externalEndpoint, d.externalHeaders); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			return application.MaterializeOTLPTLSBindingMaterial(d.app, d.files, source.trust, source.certificate, source.key)
+		}
+		return nil
 	}
 	if d.realization == nil {
 		return errors.New("managed OTLP realization is required")
@@ -201,18 +250,14 @@ func VerifyApplication(ctx context.Context, m application.Manifest, files applic
 }
 
 func VerifyApplicationAt(ctx context.Context, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
-	data, err := os.ReadFile(files.Env)
+	bound, ok, err := application.ExistingRuntimeOTLPBinding(m, files)
 	if err != nil {
 		return err
 	}
-	values := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok {
-			values[key] = strings.TrimSpace(value)
-		}
+	if !ok {
+		return errors.New("materialized OTLP provider binding is missing")
 	}
-	provider := capability.ProviderKind(values["OTLP_PROVIDER"])
+	provider := bound.Provider
 	switch provider {
 	case capability.ProviderOTelCollector, capability.ProviderExternalOTLP:
 	default:
@@ -221,9 +266,13 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 	d := &Driver{
 		app:              m,
 		files:            files,
-		externalEndpoint: values["OTLP_HOST_ENDPOINT"],
+		externalEndpoint: bound.ContainerEndpoint,
+		externalHeaders:  bound.Headers,
 		dataDir:          filepath.Clean(dataDir),
 		namespace:        strings.TrimSpace(namespace),
+	}
+	if provider == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
 	}
 	if provider == capability.ProviderOTelCollector {
 		d.realization = newRuntimeOTLPRealization(nil, m, nil, dataDir, namespace)
@@ -238,6 +287,17 @@ func VerifyApplicationAt(ctx context.Context, m application.Manifest, files appl
 }
 
 func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
+	if resource.Provider == capability.ProviderExternalOTLP && d.externalAuthErr != nil {
+		return d.externalAuthErr
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		if err := d.verifyRegisteredExternalDelivery(); err != nil {
+			return err
+		}
+	}
 	endpoint := d.externalEndpoint
 	if resource.Provider != capability.ProviderExternalOTLP {
 		if d.realization == nil {
@@ -263,11 +323,21 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	if resource.Provider == capability.ProviderExternalOTLP {
-		for key, value := range externalHeaders() {
+		headers, err := parseExternalHeaders(d.externalHeaders)
+		if err != nil {
+			return err
+		}
+		for key, value := range headers {
 			req.Header.Set(key, value)
 		}
 	}
-	resp, err := d.client.Do(req)
+	client := *d.client
+	if resource.Provider == capability.ProviderExternalOTLP {
+		// Authorization selected for this receiver cannot follow a redirect
+		// to another endpoint, including non-standard sensitive headers.
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("export OTLP verification trace: %w", err)
 	}
@@ -275,6 +345,12 @@ func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ cap
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("export OTLP verification trace: endpoint returned HTTP %d", resp.StatusCode)
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		return d.verifyRegisteredExternalDelivery()
 	}
 	return nil
 }
@@ -666,17 +742,6 @@ func allocatePort() (int, error) {
 	}
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port, nil
-}
-
-func externalHeaders() map[string]string {
-	result := map[string]string{}
-	for _, item := range strings.Split(os.Getenv(ExternalHeadersEnv), ",") {
-		key, value, ok := strings.Cut(strings.TrimSpace(item), "=")
-		if ok && strings.TrimSpace(key) != "" {
-			result[strings.TrimSpace(key)] = strings.TrimSpace(value)
-		}
-	}
-	return result
 }
 
 func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {

@@ -4,33 +4,47 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"os"
 	"strings"
 )
 
 type machineTargetCreateInput struct {
-	DockerEndpoint  string `json:"docker_endpoint,omitempty"`
-	DockerContext   string `json:"docker_context,omitempty"`
-	DockerMode      string `json:"docker_mode,omitempty"`
-	Name            string `json:"name"`
-	TenantID        string `json:"tenant_id,omitempty"`
-	RuntimeProvider string `json:"runtime_provider"`
-	AccessProvider  string `json:"access_provider,omitempty"`
-	Access          string `json:"access"`
-	Reference       string `json:"reference"`
-	Scope           string `json:"scope,omitempty"`
-	Default         bool   `json:"default,omitempty"`
+	RecoveryFile          string                             `json:"recovery_file,omitempty"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+	DockerEndpoint        string                             `json:"docker_endpoint,omitempty"`
+	DockerContext         string                             `json:"docker_context,omitempty"`
+	DockerMode            string                             `json:"docker_mode,omitempty"`
+	Name                  string                             `json:"name"`
+	TenantID              string                             `json:"tenant_id,omitempty"`
+	RuntimeProvider       string                             `json:"runtime_provider"`
+	AccessProvider        string                             `json:"access_provider,omitempty"`
+	Access                string                             `json:"access"`
+	Reference             string                             `json:"reference"`
+	Scope                 string                             `json:"scope,omitempty"`
+	Default               bool                               `json:"default,omitempty"`
 }
 type targetMutationResult struct {
-	ContractVersion string `json:"contract_version"`
-	Name            string `json:"name"`
-	Created         bool   `json:"created,omitempty"`
-	Deleted         bool   `json:"deleted,omitempty"`
+	RecoveryFile         string                                 `json:"recovery_file,omitempty"`
+	ProviderChangeResult *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
+	RetainedMaterials    []application.MaterialOutcome          `json:"retained_materials,omitempty"`
+	ContractVersion      string                                 `json:"contract_version"`
+	Name                 string                                 `json:"name"`
+	Created              bool                                   `json:"created,omitempty"`
+	Deleted              bool                                   `json:"deleted,omitempty"`
 }
 
 func createTargetDefinition(ctx context.Context, input machineTargetCreateInput) (targetMutationResult, error) {
+	if input.RecoveryFile != "" {
+		if input.RuntimeProvider != "" || input.AccessProvider != "" || input.Access != "" || input.Reference != "" || input.TenantID != "" || input.Scope != "" || input.Default || input.DockerEndpoint != "" || input.DockerContext != "" || input.DockerMode != "" {
+			return targetMutationResult{}, errors.New("Target recovery cannot override original runtime, access, authentication or recovery references")
+		}
+		if input.ProviderChangeConsent != nil {
+			ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+		}
+		return changeTargetDefinition(ctx, input.Name, input.RecoveryFile, nil)
+	}
 	if err := authorizeCurrentMCPContext(ctx, "target.create", "", "", ""); err != nil {
 		return targetMutationResult{}, err
 	}
@@ -49,7 +63,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 			return targetMutationResult{}, machine.Wrap(machine.ErrorValidationFailed, fmt.Errorf("non-local target requires an access provider"), "Select a configured target access provider.", false)
 		}
 	}
-	cfg, err := deployment.LoadConfig()
+	cfg, expected, err := deployment.LoadConfigForMutation()
 	if err != nil {
 		return targetMutationResult{}, err
 	}
@@ -72,60 +86,11 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	if makeDefault {
 		cfg.DefaultTarget = name
 	}
-	if err := cfg.Save(); err != nil {
+	if err := cfg.SaveExpected(expected); err != nil {
 		return targetMutationResult{}, err
 	}
 	return targetMutationResult{ContractVersion: machine.ContractVersion, Name: name, Created: true}, nil
 }
 func deleteTargetDefinition(ctx context.Context, name string) (targetMutationResult, error) {
-	if err := authorizeCurrentMCPContext(ctx, "target.delete", "", "", ""); err != nil {
-		return targetMutationResult{}, err
-	}
-	if err := deployment.ValidateTargetName(name); err != nil {
-		return targetMutationResult{}, err
-	}
-	cfg, err := deployment.LoadConfig()
-	if err != nil {
-		return targetMutationResult{}, err
-	}
-	if _, ok := cfg.Targets[name]; !ok {
-		return targetMutationResult{}, fmt.Errorf("target %q is not configured", name)
-	}
-	deployments, err := deployment.ListDeployments(name)
-	if err != nil {
-		return targetMutationResult{}, err
-	}
-	if len(deployments) != 0 {
-		return targetMutationResult{}, fmt.Errorf("target %q still owns %d deployment(s); destroy them before deleting the target", name, len(deployments))
-	}
-	root, err := deployment.TargetStateRoot(name)
-	if err != nil {
-		return targetMutationResult{}, err
-	}
-	if entries, err := os.ReadDir(root); err == nil && len(entries) != 0 {
-		return targetMutationResult{}, fmt.Errorf("target %q still owns runtime state under %s; destroy or detach owned state before deleting the target", name, root)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return targetMutationResult{}, err
-	}
-	delete(cfg.Targets, name)
-	if cfg.DefaultTarget == name {
-		cfg.DefaultTarget = ""
-	}
-	if err := cfg.Save(); err != nil {
-		return targetMutationResult{}, err
-	}
-	// A deleted Target must not remain activated for future CLI processes.
-	active, err := readPersistedTarget()
-	if err != nil {
-		return targetMutationResult{}, fmt.Errorf("target deleted, but active selection could not be inspected: %w", err)
-	}
-	if active == name {
-		if err := clearPersistedTarget(); err != nil {
-			return targetMutationResult{}, fmt.Errorf("target deleted, but active selection could not be cleared: %w", err)
-		}
-	}
-	if err := os.Remove(root); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return targetMutationResult{}, fmt.Errorf("remove empty target state directory: %w", err)
-	}
-	return targetMutationResult{ContractVersion: machine.ContractVersion, Name: name, Deleted: true}, nil
+	return changeTargetDefinition(ctx, name, "", nil)
 }

@@ -103,7 +103,7 @@ func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testin
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := runtimeDestroyCommand(context.Background(), []string{"--all", "--yes", "-o", "json"}, &out, &out); err != nil {
+	if err := runtimeDestroyCommand(currentInstallationDestroyConsent(t), []string{"--all", "--yes", "-o", "json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
 	var report destroyReport

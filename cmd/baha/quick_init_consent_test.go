@@ -10,10 +10,9 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
-	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-func TestQuickInitNonTTYRequiresCoreWithoutPromptOrMutation(t *testing.T) {
+func TestQuickInitNonTTYDoesNotRequireCore(t *testing.T) {
 	configureTestTarget(t)
 	t.Chdir(httpsAdoptionFixture(t, false))
 	old := appInitInput
@@ -26,23 +25,22 @@ func TestQuickInitNonTTYRequiresCoreWithoutPromptOrMutation(t *testing.T) {
 	t.Cleanup(func() { appInitInput = old })
 	var out bytes.Buffer
 	err = runWithIO(context.Background(), []string{"app", "init", "--quick"}, &out, io.Discard)
-	var typed *machine.Error
-	if !errors.As(err, &typed) || typed.CauseCode != "core_required" || strings.Contains(out.String(), "Set them up now?") {
-		t.Fatalf("non-TTY prerequisite: %v %s", err, out.String())
+	if err != nil || strings.Contains(out.String(), "Set them up now?") {
+		t.Fatalf("unexpected Core prerequisite: %v %s", err, out.String())
 	}
-	if _, err := os.Stat("baseharbor.yaml"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("wrote manifest without Core")
+	if _, err := os.Stat("baseharbor.yaml"); err != nil {
+		t.Fatal("authored intent was not initialized")
 	}
 }
 
-func TestQuickInitYesAcceptsConsentButKeepsBootstrapFailureAtomic(t *testing.T) {
+func TestQuickInitYesDoesNotAuthorizeUnrequestedCore(t *testing.T) {
 	for _, flag := range []string{"--yes", "-y"} {
 		t.Run(flag, func(t *testing.T) {
 			configureTestTarget(t)
 			t.Chdir(httpsAdoptionFixture(t, false))
 			old, oldInput := applicationCoreBootstrap, appInitInput
 			t.Cleanup(func() { applicationCoreBootstrap, appInitInput = old, oldInput })
-			appInitInput = strings.NewReader("")
+			appInitInput = interactiveCoreInput(t, "")
 			called := false
 			failure := errors.New("bootstrap blocked safely")
 			applicationCoreBootstrap = func(ctx context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) (coreinstallation.State, error) {
@@ -50,11 +48,11 @@ func TestQuickInitYesAcceptsConsentButKeepsBootstrapFailureAtomic(t *testing.T) 
 				return coreinstallation.State{}, failure
 			}
 			err := runWithIO(context.Background(), []string{"app", "init", "--quick", flag}, io.Discard, io.Discard)
-			if !called || !errors.Is(err, failure) {
-				t.Fatalf("consent did not reach bootstrap: %v %v", called, err)
+			if called || err != nil {
+				t.Fatalf("unrequested Core bootstrap: %v %v", called, err)
 			}
-			if _, err := os.Stat("baseharbor.yaml"); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("manifest written after failed bootstrap")
+			if _, err := os.Stat("baseharbor.yaml"); err != nil {
+				t.Fatal("authored intent was not initialized")
 			}
 		})
 	}

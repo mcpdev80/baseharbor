@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 const ContractVersion = "baseharbor.runtime-explorer/v1"
@@ -142,10 +144,11 @@ type OperationRequest struct {
 }
 
 type OperationResult struct {
-	Resource       ResourceRef        `json:"resource"`
-	Operation      Operation          `json:"operation"`
-	State          ResourceState      `json:"state,omitempty"`
-	Reconciliation ReconciliationHint `json:"reconciliation,omitempty"`
+	ProviderChangeResult *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
+	Resource             ResourceRef                            `json:"resource"`
+	Operation            Operation                              `json:"operation"`
+	State                ResourceState                          `json:"state,omitempty"`
+	Reconciliation       ReconciliationHint                     `json:"reconciliation,omitempty"`
 }
 
 type Explorer interface {

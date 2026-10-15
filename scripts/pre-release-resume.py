@@ -184,32 +184,61 @@ class GitInputs:
                  hashlib.sha256(canonical[path]).hexdigest()) if path in canonical
                 else (path, meta) for path, meta in objects]
 
+    @functools.lru_cache(maxsize=None)
+    def cli_ignores_bootstrap_test_source(self, candidate):
+        # This fixture is ignored by the CLI's go build. Keep it if the CLI
+        # package embeds any source as data; unknown embed use stays conservative.
+        result = subprocess.run(['git', 'grep', '-q', '//go:embed', candidate,
+                                 '--', 'cmd/baha/*.go'], cwd=self.product)
+        return result.returncode == 1
+
     def fingerprint(self, candidate, demo, tag, key):
-        native_runtime = tag == 'v0.4.24' and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        requirements = self.requirements(candidate, tag)
+        requirement = next((gate for gate in requirements if gate['id'] == key), None)
+        if requirement is None:
+            raise ValueError('gate is outside candidate release requirements')
+        native_runtime = tag in {'v0.4.24', 'v0.4.25'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
         # Source-plan tools do not execute inside native runtime jobs. The current
         # verifier still authenticates every immutable origin and ZIP. Static
         # evidence keeps these tooling bytes as part of its execution inputs.
         collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+        # Core-owned bootstrap/coreless producers consume the explicit Demo SHA
+        # as an evidence identity, never files from the Demo checkout. Their
+        # canonical requirements declare only Core execution dependencies.
+        # They DO import this collector: keep its bytes in their product inputs.
+        core_owned = tag == 'v0.4.25' and requirement['dependencies'] == ['core'] and key in {
+            'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap',
+            'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'}
+        pin_independent = native_runtime or core_owned
         objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
+        cli_only_fixture = (tag == 'v0.4.25' and key in {
+            'atomic/docker/backup-restore', 'atomic/podman/backup-restore',
+            'atomic/docker/identity', 'atomic/podman/identity',
+            'atomic/docker/security', 'atomic/podman/security',
+            'atomic/docker/guided', 'atomic/podman/guided',
+            'atomic/docker/lifecycle', 'atomic/podman/lifecycle',
+            'atomic/docker/connectivity', 'atomic/podman/connectivity',
+            'atomic/docker/full-destroy', 'atomic/podman/full-destroy'} and
+            self.cli_ignores_bootstrap_test_source(candidate))
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
-                   and not (native_runtime and path in collectors)]
+                   and not (native_runtime and path in collectors)
+                   and not (cli_only_fixture and path == 'cmd/baha/core_installation_runtime_test.go')]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
-                        if not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
+                        if not core_owned
+                        and not (tag == 'v0.4.25' and path == 'tests/config-matrix/run.sh'
+                                 and key != 'atomic/static/config-matrix' and not key.startswith('journey/'))
+                        and not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
                                 and not key.startswith('journey/'))
                         # Atomic bootstrap does not source this isolated gate.
-                        and not (tag == 'v0.4.24' and key.startswith('atomic/')
+                        and not (tag in {'v0.4.24', 'v0.4.25'} and key.startswith('atomic/')
                                  and path in {'tests/backup-restore/run.sh',
                                               'tests/native-default-topology.py',
                                               'tests/native_default_topology_test.py'}
                                  and not key.endswith('/backup-restore'))
                         # pin() separately requires this exact Core binding on
                         # both candidate and original v0.4.24 Demo revisions.
-                        and not (native_runtime and path == 'baseharbor-core.ref')]
-        requirements = self.requirements(candidate, tag)
-        requirement = next((gate for gate in requirements if gate['id'] == key), None)
-        if requirement is None:
-            raise ValueError('gate is outside candidate release requirements')
+                        and not (pin_independent and path == 'baseharbor-core.ref')]
         jobs = self.workflow(candidate)
         # Only scheduling edges and fan-out may change without new evidence.
         # Static/reusable call arguments, all build steps and evidence generation
@@ -235,7 +264,7 @@ class GitInputs:
                 command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
 
     def pin(self, candidate, tag, demo_ref=None):
-        if tag == 'v0.4.24':
+        if tag in {'v0.4.24', 'v0.4.25'}:
             # Consumers can pin an existing Core SHA; Core cannot also embed
             # their future commit without a circular Git object dependency.
             resolved = self.demo_ref if demo_ref is None else demo_ref
@@ -357,7 +386,7 @@ class GitHub:
 
 def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
     """Recover the immutable origin pin from digest-verified gate archives."""
-    if tag != 'v0.4.24':
+    if tag not in {'v0.4.24', 'v0.4.25'}:
         return inputs.pin(candidate, tag)
     pins = set()
     for job in jobs:
@@ -466,7 +495,7 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
-        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=100', 'jobs'), expected)
+        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=30', 'jobs'), expected)
         archives = {}
         origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
                                      artifacts, jobs, expected, archives)
@@ -619,7 +648,7 @@ def main():
                     'gate_count': len(requirements), 'requirements_digest': digest(requirements),
                     'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
                     'coverage_digest': digest(coverage)}
-        if args.tag == 'v0.4.24':
+        if args.tag in {'v0.4.24', 'v0.4.25'}:
             consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
             if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
                 raise ValueError('v0.4.24 requires an immutable complete consumer origin')

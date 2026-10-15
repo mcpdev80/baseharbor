@@ -66,10 +66,17 @@ func (r resolvedApplication) stateRoot() string {
 }
 
 func resolveApplication(ctx context.Context, store application.Store, args []string, command string) (resolvedApplication, error) {
+	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
-func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolvedApplication, error) {
+func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
+	defer func() {
+		if err == nil {
+			resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+		}
+	}()
+	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
 	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -101,6 +108,13 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		}
 		selection, err := application.ResolveRepositoryEnvironment(cwd, environment)
 		if err == nil {
+			if authErr := ensureOperatorAuthForBoundary(ctx, target.Name, selection.Manifest.Environment); authErr != nil {
+				return resolvedApplication{}, authErr
+			}
+			selection, err = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
+			if err != nil {
+				return resolvedApplication{}, err
+			}
 			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection)
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr
@@ -119,7 +133,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		)
 	}
 
-	resolved, err := resolveRegisteredApplication(target, targetRoot, args[0], environment, command)
+	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -169,7 +183,7 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	}, nil
 }
 
-func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
+func resolveRegisteredApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
 	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -256,12 +270,24 @@ func resolveRegisteredApplication(target deployment.ResolvedTarget, targetRoot, 
 	if resolved.SourceAvailable {
 		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
 		if sourceErr == nil {
+			if selection.Manifest.Name != record.Identity.Application || selection.Manifest.Environment != record.Identity.Environment {
+				return resolvedApplication{}, fmt.Errorf("registered source does not match authoritative deployment name/environment")
+			}
+			// Authored intent never supplies identity. This read projects the ID
+			// from the existing authoritative deployment; it allocates no state.
+			if selection.Manifest.ApplicationID == "" {
+				selection.Manifest.ApplicationID = record.Identity.ApplicationID
+			}
 			if selection.Manifest.ApplicationID != record.Identity.ApplicationID {
 				return resolvedApplication{}, fmt.Errorf(
 					"registered source resolves application_id %q, expected %q",
 					selection.Manifest.ApplicationID,
 					record.Identity.ApplicationID,
 				)
+			}
+			selection, sourceErr = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
+			if sourceErr != nil {
+				return resolvedApplication{}, sourceErr
 			}
 			resolved.DeploymentIdentity.Application = selection.Manifest.Name
 			resolved.Manifest = selection.Manifest

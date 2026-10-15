@@ -5,20 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/devaccess"
-	"github.com/mcpdev80/baseharbor/internal/devgateway"
-	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
-	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/preflight"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
-	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
 )
 
 func appDownCommand(store application.Store) *cli.Command {
@@ -34,7 +31,7 @@ func appDownCommand(store application.Store) *cli.Command {
 			}
 			for _, arg := range filtered {
 				if strings.HasPrefix(arg, "-") {
-					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and does not require --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
+					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app down [NAME]; down preserves persistent data and requires acknowledgement of its current consequence plan. --yes does not provide either acknowledgement.", NoSuggestions: arg == "--yes" || arg == "-y"}
 				}
 			}
 			args = filtered
@@ -46,28 +43,27 @@ func appDownCommand(store application.Store) *cli.Command {
 			if format == outputJSON {
 				humanOut, humanErr = io.Discard, io.Discard
 			}
-			if err := stopApplicationRuntime(ctx, resolved, humanOut, humanErr); err != nil {
+			result, err := stopApplicationRuntimeWithResult(ctx, resolved, humanOut, humanErr)
+			if err != nil {
 				return err
 			}
 			if format == outputJSON {
-				return writeJSON(out, applicationStopResult{Application: resolved.Manifest.Name, Environment: resolved.Manifest.Environment, State: "stopped", DataPreserved: true})
+				return writeJSON(out, result)
 			}
-			return nil
+			return writeJSON(out, result)
 		},
 	}
 }
 
 type applicationStopResult struct {
-	Application   string `json:"application"`
-	Environment   string `json:"environment"`
-	State         string `json:"state"`
-	DataPreserved bool   `json:"data_preserved"`
+	Application          string                                 `json:"application"`
+	Environment          string                                 `json:"environment"`
+	State                string                                 `json:"state"`
+	DataPreserved        bool                                   `json:"data_preserved"`
+	ProviderChangeResult *application.ProviderImpactScopeResult `json:"provider_change_result,omitempty"`
 }
 
-func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
-	if err := authorizeApplicationOperation(ctx, "app.stop", resolved); err != nil {
-		return err
-	}
+func executeApplicationStop(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) error {
 	m := resolved.Manifest
 	runtimeProject := application.RuntimeComposeProjectNameForStore(resolved.Store, m)
 	resourceProject := application.RuntimeProjectNameForStore(resolved.Store, m)
@@ -95,6 +91,9 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 			return err
 		}},
 		{Name: "runtime configuration", Run: func(ctx context.Context) error {
+			if !application.HasApplicationScopedRuntimeServices(m) {
+				return nil
+			}
 			return compose.ConfigProject(ctx, runtimeProject, files.Compose, files.Env)
 		}},
 		{Name: "runtime ownership", Run: func(ctx context.Context) error {
@@ -121,23 +120,32 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 		}
 		term.Result("STOPPED", "managed-exposure", "application exposure provider stopped")
 	}
-	if err := metricsprovider.StopProvider(ctx, compose, m); err != nil {
-		return fmt.Errorf("stop application-scoped metrics provider: %w", err)
-	}
-	if tracePlacement, found, err := application.RegisteredProviderPlacementAt(resolved.TargetStateRoot, m, capability.ProviderTempo); err != nil {
+	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+	if err != nil {
 		return err
-	} else if found && tracePlacement.Scope == capability.ScopeApplication {
-		if err := tracesprovider.StopProvider(ctx, compose, m); err != nil {
-			return fmt.Errorf("stop application-scoped traces provider: %w", err)
+	}
+	for _, instance := range registry.Instances {
+		if standaloneProviderKind(instance.Provider.Kind) && instance.Scope == capability.ScopeApplication && instance.Ownership == capability.OwnershipBaseHarbor && instance.OwnerApplicationID == m.ApplicationID && instance.OwnerEnvironment == m.Environment {
+			if err := retireStandaloneApplicationProvider(ctx, resolved, compose, instance, registry, out); err != nil {
+				return fmt.Errorf("stop application-scoped provider: %w", err)
+			}
+			continue
+		}
+		if instance.Provider.Kind != capability.ProviderKeycloak || instance.Scope != capability.ScopeApplication || instance.Ownership != capability.OwnershipBaseHarbor || instance.OwnerApplicationID != m.ApplicationID || instance.OwnerEnvironment != m.Environment {
+			continue
+		}
+		result, err := identityprovider.RetireKeycloakRuntime(ctx, compose, m, providerInstancePlacement(instance), resolved.TargetStateRoot, resolved.Target.Name)
+		for _, item := range result.Retained {
+			fmt.Fprintf(out, "Retained %s %s: %s\n", item.Resource.Kind, item.Resource.Name, item.Reason)
+		}
+		if err != nil {
+			return fmt.Errorf("stop application-scoped Identity runtime: %w", err)
 		}
 	}
 	if removed, err := destroyRepositoryWorkloadRuntime(ctx, compose, resolved, files); err != nil {
 		return err
 	} else if removed {
 		term.Result("STOPPED", "workload", "repository workload containers and networks removed; application-owned volumes preserved")
-	}
-	if err := logsprovider.StopProviderAt(ctx, compose, resolved.TargetStateRoot, resolved.Target.Name, m); err != nil {
-		return fmt.Errorf("stop application-scoped logs provider: %w", err)
 	}
 	if application.RequiresRuntimeBroker(m) {
 		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
@@ -147,8 +155,10 @@ func stopApplicationRuntime(ctx context.Context, resolved resolvedApplication, o
 	}
 
 	project := runtimeProject
-	if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
-		return err
+	if application.HasApplicationScopedRuntimeServices(m) {
+		if err := compose.DownProject(ctx, project, files.Compose, files.Env); err != nil {
+			return err
+		}
 	}
 	after, err := compose.InspectProjectResources(ctx, runtimeProject, application.ExpectedRuntimeResourcesForIdentity(m, runtimeProject, resourceProject))
 	if err != nil {
@@ -183,16 +193,8 @@ func runBestEffortDevelopmentRouteSuspension(term *cli.Terminal, suspend func() 
 }
 
 func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, m application.Manifest) error {
-	if !devaccess.Enabled(m.Environment) {
-		return nil
-	}
-	files, err := existingTargetRuntimeFiles(ctx)
-	if err != nil {
-		return fmt.Errorf("load target runtime for development route suspension: %w", err)
-	}
-	issuer := openbao.NewServiceIssuer(compose, files)
 	owner := "app/" + m.Name + "/" + m.Environment
-	if err := devgateway.RemoveOwners(ctx, compose, issuer, resolved.Target.Name, owner); err != nil {
+	if err := removeApplicationGatewayOwners(ctx, compose, resolved, owner); err != nil {
 		return fmt.Errorf("suspend canonical development routes before application down: %w", err)
 	}
 	return nil
@@ -201,11 +203,39 @@ func removeApplicationDevelopmentRoutesBeforeDown(ctx context.Context, compose b
 func appDestroyCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "destroy",
-		Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
+		Summary: "Retire owned application runtime while retaining data and recovery state",
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
-		Long:    "Shows an ownership-verified destruction plan and individually lists retained repository Compose data volumes. --yes authorizes managed infrastructure removal, not deletion of repository data. With --yes it stops any repository workload and per-application Application Runtime Broker, removes BaseHarbor-managed runtime resources, volumes, OpenBao scope and application state. Repository deployment/TLS settings are preserved by default for recreate. --full-reset also removes BaseHarbor-owned repository deployment settings and normalized TLS copies, while preserving baseharbor.yaml, application-owned Compose data and any external certificate source directory.",
+		Long:    "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			return executeApplicationDestroyLifecycle(ctx, store, args, out, errOut)
+			filtered, format, err := parseReadOutputArgs(args, "app destroy")
+			if err != nil {
+				return err
+			}
+			if format != outputJSON {
+				return executeApplicationDestroyLifecycle(ctx, store, filtered, out, errOut)
+			}
+			execution, err := newApplicationDestroyExecution(ctx, store, filtered, io.Discard, io.Discard)
+			if err != nil {
+				return err
+			}
+			if !execution.confirmed && !execution.fullReset && !isRemoteApplication(execution.resolved) {
+				_, plan, err := buildApplicationRuntimeRetirementPlan(ctx, execution.resolved)
+				if err != nil {
+					return err
+				}
+				return writeJSON(out, plan)
+			}
+			if err := executeApplicationDestroyLifecycle(ctx, store, filtered, io.Discard, io.Discard); err != nil {
+				return err
+			}
+			if !execution.confirmed {
+				return nil
+			}
+			result, err := applicationDestroyResult(execution.resolved, execution.fullReset)
+			if err != nil {
+				return err
+			}
+			return writeJSON(out, result)
 		},
 	}
 }
@@ -216,6 +246,11 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 		return err
 	}
 	if isRemoteApplication(execution.resolved) {
+		unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+		if err != nil {
+			return err
+		}
+		defer unlock()
 		runtime, intent, err := restoreRemoteApplication(ctx, execution.resolved)
 		if err != nil {
 			return err
@@ -224,16 +259,42 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 			fmt.Fprintln(out, "No changes were made. Re-run with --yes to delete the owned remote Application runtime.")
 			return nil
 		}
+		plan, err := authorizeApplicationDestruction(ctx, execution.resolved, execution.fullReset, out)
+		if err != nil {
+			return err
+		}
+		if !execution.fullReset {
+			if plan.Providers.Impact == nil {
+				return runtimeMutationOwnerError()
+			}
+			if _, err := recordPendingApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact); err != nil {
+				return err
+			}
+		}
 		if err := runtime.DestroyApplication(ctx, intent, execution.fullReset); err != nil {
 			return err
 		}
 		// Keep the snapshot available through state cleanup; removing the
 		// deployment record removes it together with the verified binding.
 		execution.manifest = intent
+		if !execution.fullReset {
+			if err := application.ReleaseApplicationProviderReferencesAt(execution.resolved.TargetStateRoot, intent); err != nil {
+				return err
+			}
+			return recordVerifiedApplicationRuntimeRetirement(execution.resolved, *plan.Providers.Impact, nil, plan.Materials)
+		}
 		if err := execution.removeApplicationState(); err != nil {
 			return err
 		}
 		return recordApplicationAudit(ctx, execution.resolved, "destroy", "success", "ownership verified", "retained remote Application publication destroyed with owned cleanup verified")
+	}
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !execution.fullReset {
+		return execution.retireRuntimePreservingData(ctx, out)
 	}
 	if err := execution.runPreflight(ctx); err != nil {
 		return err
@@ -244,6 +305,9 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if !execution.confirmed {
 		fmt.Fprintln(out, "No changes were made. Re-run with --yes to permanently delete BaseHarbor-managed resources.")
 		return nil
+	}
+	if _, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out); err != nil {
+		return err
 	}
 	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err

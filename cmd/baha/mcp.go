@@ -40,8 +40,9 @@ type machineProviderAddInput struct {
 }
 
 type machineProviderRemoveInput struct {
-	ID       string `json:"id" jsonschema:"registered external provider id"`
-	Approval bool   `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit aggregate plan acknowledgement; ordinary approval does not authorize provider consequences"`
+	ID                    string                             `json:"id" jsonschema:"registered external provider id"`
+	Approval              bool                               `json:"approval,omitempty" jsonschema:"explicit approval required to remove BaseHarbor registration; foreign infrastructure is never destroyed"`
 }
 
 type machineOrganizationInput struct {
@@ -89,11 +90,19 @@ type machineApplicationInput struct {
 	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
 }
 
+type machineApplicationStopInput struct {
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit current stop consequence plan acknowledgements; ordinary approval does not imply either stage"`
+}
+
 type machineApplyInput struct {
-	Target              string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
-	Name                string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
-	Environment         string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
-	SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	SkipMemoryPreflight   bool                               `json:"skip_memory_preflight,omitempty" jsonschema:"explicit approval to continue when host memory headroom is TIGHT; does not bypass hard memory failures"`
 }
 
 type machineAppNewInput struct {
@@ -128,19 +137,21 @@ type machineBackupInput struct {
 }
 
 type machineRestoreInput struct {
-	Target       string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
-	BackupPath   string `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
-	Name         string `json:"name,omitempty" jsonschema:"optional expected application identity"`
-	Environment  string `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
-	PasswordFile string `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"two current archive/owner consequence acknowledgements and separate consent to overwrite owned data"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	BackupPath            string                             `json:"backup_path,omitempty" jsonschema:"local encrypted BaseHarbor recovery archive to restore"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional expected application identity"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional expected deployment environment"`
+	PasswordFile          string                             `json:"password_file" jsonschema:"owner-only local file containing the backup password; secret values are never accepted directly"`
 }
 
 type machineDestroyInput struct {
-	Target      string `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
-	Name        string `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
-	Environment string `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
-	Approval    bool   `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
-	FullReset   bool   `json:"full_reset,omitempty" jsonschema:"also remove BaseHarbor-owned repository deployment and normalized TLS state"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit acknowledgements of the same current retirement or destructive data impact plan"`
+	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target"`
+	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	Approval              bool                               `json:"approval,omitempty" jsonschema:"explicit operator approval required before destructive mutation"`
+	FullReset             bool                               `json:"full_reset,omitempty" jsonschema:"also remove BaseHarbor-owned repository deployment and normalized TLS state"`
 }
 
 type machineToolError struct {
@@ -196,6 +207,7 @@ func mcpCommand(store application.Store) *cli.Command {
 }
 
 func runMCPServer(ctx context.Context, store application.Store) error {
+	ctx = withLocalInvocation(ctx, "stdio")
 	return newMCPServer(store).Run(ctx, &drainingMCPTransport{reader: os.Stdin, writer: mcpStdoutWriter{os.Stdout}, timeout: time.Minute})
 }
 
@@ -263,7 +275,18 @@ func authorizeMCPOperation(ctx context.Context, operationID, target, environment
 		}
 	}
 	if operatorauth.ManagedEnvironment(environment) {
+		ctx = localWorkloadScope(ctx, operationID)
+		if _, authenticated := operatorauth.PrincipalFromContext(ctx); !authenticated {
+			if authority, local, err := verifiedLocalWorkloadAuthority(ctx, target, environment); err != nil {
+				return err
+			} else if local {
+				ctx = operatorauth.WithVerifiedLocalRuntimeAuthority(ctx, authority)
+			}
+		}
 		if err := ensureOperatorAuthForBoundary(ctx, target, environment); err != nil {
+			if machine.Classify(err).Code == machine.ErrorRuntimeUnavailable {
+				return err
+			}
 			return &machine.Error{
 				Code:        machine.ErrorAuthenticationFailed,
 				CauseCode:   "operator_authentication_required",

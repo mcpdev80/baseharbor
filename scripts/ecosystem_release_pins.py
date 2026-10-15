@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve immutable v0.4.24 consumers without circular repository SHA pins."""
+"""Resolve immutable release consumers without circular repository SHA pins."""
 import argparse
 import base64
 import json
@@ -14,11 +14,11 @@ def exact(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) is not None
 
 
-def resolve_pins(core, connector, candidate, console_candidate, demo_core, requested_demo=''):
+def resolve_pins(core, connector, candidate, console_candidate, demo_core, requested_demo='', release='0.4.24'):
     if (not exact(core) or not exact(connector) or not isinstance(candidate, dict) or
             set(candidate) != {'schema', 'release', 'core', 'console', 'demo'} or
             candidate['schema'] != 'baseharbor.ecosystem-candidate/v1' or
-            candidate['release'] != '0.4.24' or candidate['core'] != core or
+            release not in {'0.4.24', '0.4.25'} or candidate['release'] != release or candidate['core'] != core or
             not all(exact(candidate[key]) for key in ['core', 'console', 'demo']) or
             not isinstance(console_candidate, dict) or
             set(console_candidate) != {'schema', 'release', 'core', 'demo'} or
@@ -58,6 +58,7 @@ def source_file(repository, commit, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--core', required=True)
+    parser.add_argument('--tag', default='v0.4.24', choices=['v0.4.24', 'v0.4.25'])
     parser.add_argument('--connector', default='')
     parser.add_argument('--demo', default='')
     parser.add_argument('--output', required=True, type=pathlib.Path)
@@ -66,7 +67,7 @@ def main():
         raise ValueError('immutable Core commit required')
     connector = args.connector
     if not connector:
-        branch = 'work/v0.4.24-integrations-docs'
+        branch = 'work/' + args.tag + '-integrations-docs'
         ref = api(f'repos/{REPOSITORIES["connector"]}/git/ref/heads/{branch}')
         if ref.get('ref') != 'refs/heads/' + branch or ref.get('object', {}).get('type') != 'commit':
             raise ValueError('reviewed Connector candidate branch differs')
@@ -74,7 +75,7 @@ def main():
     candidate = json.loads(source_file(REPOSITORIES['connector'], connector, 'integration-candidate.json'))
     console_candidate = json.loads(source_file(REPOSITORIES['console'], candidate['console'], 'integration-candidate.json'))
     demo_core = source_file('mcpdev80/baseharbor-demo', candidate['demo'], 'baseharbor-core.ref')
-    pins = resolve_pins(args.core, connector, candidate, console_candidate, demo_core, args.demo)
+    pins = resolve_pins(args.core, connector, candidate, console_candidate, demo_core, args.demo, args.tag[1:])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(pins, indent=2) + '\n')
     args.output.chmod(0o644)

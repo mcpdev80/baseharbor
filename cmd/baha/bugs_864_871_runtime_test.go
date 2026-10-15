@@ -31,7 +31,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 			repo := t.TempDir()
 			t.Chdir(repo)
 			m := application.WithWorkloadComponents(application.New(fmt.Sprintf("final-bugs-%t", managed), "dev", managed, managed, false), "app")
-			if err := os.WriteFile(application.RepositoryManifestName, []byte(m.YAML()), 0600); err != nil {
+			if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, m, 0600); err != nil {
 				t.Fatal(err)
 			}
 			image, commandText := "docker.io/library/alpine:3.23", "echo application-started; sleep 600"
@@ -153,7 +153,7 @@ func runFinalBugRuntimeRegression(t *testing.T, ctx context.Context, target depl
 	}
 	t.Chdir(t.TempDir())
 	var output runtimeAcceptanceOutput
-	if err := runtimeDestroy(ctx, []string{"--yes"}, &output); err != nil {
+	if err := approvedNativeFixtureCleanup(t, ctx, &output); err != nil {
 		t.Fatalf("Core destroy: %v", err)
 	}
 	opts.RecoveryFile = ""

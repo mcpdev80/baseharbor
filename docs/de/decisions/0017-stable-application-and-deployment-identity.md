@@ -4,6 +4,12 @@
 
 Akzeptiert für v0.4.19.
 
+Die Application-ID-Platzierung wird ab v0.4.25 durch
+[Capability-first-Verträge](../spec/capability-first-v0425.md) und #872 ersetzt.
+Entwickler-Manifeste DÜRFEN app.id NICHT enthalten. Die ID gehört in den internen
+kanonischen State. Stabile UUID-Identität und Deployment-Ownership bleiben; der
+folgende Text dokumentiert die historische Platzierung, keine aktuelle Anleitung.
+
 ## Kontext
 
 Mensch-lesbare Anwendungsnamen, Umgebungen, Zielnamen, Projektarchivpfade und Laufzeit-spezifische Namen sind nützliche Selektoren, aber sie sind wandelbar. Sie dürfen nicht der dauerhafte Primärschlüssel für BaseHarbor-Eigentum, Versöhnung oder anhaltenden Bereitstellungszustand sein.

@@ -37,7 +37,7 @@ func rootCommand() *cli.Command {
 			Name:    "init",
 			Summary: "Initialize or adopt the application in the current repository",
 			Usage:   "baha init --agents [--json] | baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]",
-			Long:    "Canonical application initialization. Reuses the same repository inspection, guided input resolution and Core bootstrap as application initialization; explicit flags remain available for non-interactive use.",
+			Long:    "Canonical application initialization. Reuses the same repository inspection and guided input resolution as application initialization; explicit flags remain available for non-interactive use. Providers are resolved from selected intent during apply.",
 			Run:     appInitWithInputResolverCommand(store).Run,
 		},
 		{
@@ -73,9 +73,9 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "up",
-			Summary: "Start BaseHarbor and, inside an application repository, converge the application",
+			Summary: "Converge selected application intent, or explicitly start the management Core",
 			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
-			Long:    "Starts or reuses the local BaseHarbor control plane. Fresh targets use one PostgreSQL and one OpenBao server by default; --ha explicitly selects the three-member topology. A repository ha: true selects HA for its initial control plane. Existing topologies are immutable. --trust-host-ca is the explicit non-interactive opt-in for installing the managed-local public CA into the host trust store; --yes alone never changes host trust. In a detected application project without baseharbor.yaml, interactive use routes into the same guided app-init flow; --yes uses only unambiguous detected values and safe defaults through app init --quick. Once the manifest exists, deployment inputs are resolved from defaults, protected state or explicit automation input and only unresolved required values are requested before apply. A fresh managed-secret setup proposes a secure target-scoped recovery-file path outside normal BaseHarbor state. The selected path reference is persisted for later restarts; --recovery-file PATH remains an explicit override. The repository manifest remains unchanged when -e/--environment selects a deployment context; the override is applied only to resolved runtime state. Directories without application signals keep the control-plane-only behavior. --control-plane-only is an explicit advanced mode for operators and CI that intentionally skips repository application convergence.",
+			Long:    "Inside an application repository, converges selected capabilities and genuine dependencies through the same current-plan acknowledgement, authorization and verification as app apply. It does not install a management Core merely because an application exists. Unresolved deployment inputs use the existing guided resolver; --yes does not replace provider-consequence or data-deletion consent. In a detected project without baseharbor.yaml, interactive use initializes the application through the existing guided flow; --yes uses unambiguous safe defaults. Directories without application signals retain explicit management setup. --control-plane-only explicitly selects the independent SQL/Secrets/Identity management installation and its HA, port, recovery and host-trust options. --trust-host-ca remains a separate explicit opt-in; --yes never changes host trust. -e/--environment selects resolved deployment state without rewriting authored intent.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},
 		{
@@ -91,9 +91,9 @@ func rootCommand() *cli.Command {
 		},
 		{
 			Name:    "destroy",
-			Summary: "Permanently remove BaseHarbor-managed runtime resources and state",
-			Usage:   "baha destroy [--yes] | baha destroy --all [--yes]",
-			Long:    "Without --all, shows the ownership-safe destruction plan for the effective Target and refuses to run while application bindings remain. --all is the explicit installation cleanup path: it removes BaseHarbor-managed deployments across all Targets, shared runtime/provider resources, control-plane data and BaseHarbor XDG state/config while preserving application source repositories and external application-owned data.",
+			Summary: "Remove owned runtime resources with explicit consequence consent",
+			Usage:   "baha destroy [--yes] [--delete-data] | baha destroy --all [--yes]",
+			Long:    "Outside a repository, remove only canonical Core containers/startup units after two current-plan acknowledgements, including deliberately accepted outages for active consumers. Preserve data, networks, protected owners, bindings, workloads and other providers by default. --delete-data additionally selects owned Core volumes and requires separate deletion consent. --yes replaces no consequence or deletion consent. --all is the explicit installation cleanup path across all Targets; it selects owned data and installation state for deletion while preserving application source repositories and external application-owned data.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				if inApplicationRepository() && !containsExactArgument(args, "--all") {
 					return appDestroyCommand(store).Run(ctx, args, out, errOut)

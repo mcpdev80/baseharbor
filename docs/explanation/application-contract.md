@@ -8,7 +8,6 @@ It stays portable across runtime/provider products.
 version: 1
 
 app:
-  id: 550e8400-e29b-41d4-a716-446655440000
   name: my-app
   environment: dev
 
@@ -32,9 +31,10 @@ secrets:
 
 ## Stable application identity
 
-`app.id` is the opaque stable `application_id` owned by the portable repository contract.
-
-BaseHarbor onboarding flows generate it automatically.
+Developers never supply `app.id`; authored IDs are rejected before mutation.
+BaseHarbor generates the stable `application_id` once during explicit
+initialization and persists it in existing system-owned state. Reads and parsing
+never allocate identities or state.
 
 Changing the application name, repository path or runtime realization does not change `application_id`.
 

@@ -32,7 +32,7 @@ func TestResolveRegisteredApplicationRecoversIncompleteDeploymentFromProtectedSt
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveRegisteredApplication(target, targetRoot, "demo", "", "status")
+	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, "demo", "", "status")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestResolveRegisteredApplicationFailsClosedWhenIncompleteStateCannotBeRecon
 		t.Fatal(err)
 	}
 
-	_, err = resolveRegisteredApplication(target, targetRoot, "demo", "", "status")
+	_, err = resolveRegisteredApplication(t.Context(), target, targetRoot, "demo", "", "status")
 	if err == nil {
 		t.Fatal("expected incomplete deployment error")
 	}

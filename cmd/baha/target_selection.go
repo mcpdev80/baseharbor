@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,27 +24,20 @@ func readPersistedTarget() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	info, statErr := os.Lstat(path)
-	if errors.Is(statErr, os.ErrNotExist) {
-		return "", nil
-	}
-	if statErr != nil {
-		return "", fmt.Errorf("inspect active target: %w", statErr)
-	}
-	if !info.Mode().IsRegular() {
-		return "", machine.NewError(machine.ErrorValidationFailed, "active target selection is not a regular file", "Remove the invalid active-target entry after checking it, then run baha target activate NAME.", false)
-	}
-	if info.Mode().Perm()&0077 != 0 {
-		return "", machine.NewError(machine.ErrorValidationFailed, "active target selection permissions are too broad", "Restrict the active-target file to mode 0600, or recreate it using baha target activate NAME.", false)
-	}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
+	data, err := runtimeMutationOwnerBytes(path, true)
 	if err != nil {
-		return "", fmt.Errorf("read active target: %w", err)
+		return "", err
+	}
+	if data == nil {
+		return "", nil
+	}
+	if len(data) > 1024 {
+		return "", runtimeMutationOwnerError()
 	}
 	name := strings.TrimSpace(string(data))
+	if detached, ok := targetSelectionDetached(data); ok {
+		return "", targetSelectionDetachedError(detached)
+	}
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return "", fmt.Errorf("invalid persisted target: %w", err)
 	}
@@ -56,46 +48,11 @@ func writePersistedTarget(name string) error {
 	if err := deployment.ValidateTargetName(name); err != nil {
 		return err
 	}
-	path, err := targetSelectionPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".active-target-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err := f.Chmod(0600); err != nil {
-		f.Close()
-		return err
-	}
-	if _, err := f.WriteString(name + "\n"); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
+	return mutatePersistedTarget(name, false)
 }
 
 func clearPersistedTarget() error {
-	path, err := targetSelectionPath()
-	if err != nil {
-		return err
-	}
-	err = os.Remove(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	return mutatePersistedTarget("", true)
 }
 
 func selectedTargetName(explicit, environment string, cfg deployment.Config) (string, error) {

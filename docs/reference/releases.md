@@ -1,5 +1,6 @@
 # Releases and versioning
 
+[Pre-release readiness](../development/pre-release-readiness.md)
 BaseHarbor uses Semantic Versioning for normal releases with Git tags prefixed by `v`. During the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
 
 Examples: `v0.3.0`, `v0.4.15`, `v0.4.15.1`, `v1.0.0`.
@@ -78,7 +79,7 @@ Evidence rule: the release issue and release notes must identify the exact BaseH
 
 Normal releases are prepared on `develop` and promoted to `main` only after the release candidate is proven. Hotfix releases follow the main-based workflow above.
 
-The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](https://github.com/mcpdev80/baseharbor/blob/work/v0.4.24-core-ha-updates/docs/internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
+The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
 
 1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
 2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
@@ -100,7 +101,15 @@ Never move a published version tag. Fix a bad release with a new patch release.
 
 ### Immutable v0.4.24 ecosystem inputs
 
-For v0.4.24, the final Connector commit's `integration-candidate.json` binds the exact Core, Console and Demo commits. The Console manifest must bind the same Core and Demo, and the Demo's `baseharbor-core.ref` must equal that Core commit. This replaces the Core-owned `.demo-ref` for v0.4.24: mutually pinning future Git commits would create a circular dependency.
+For v0.4.24 and v0.4.25, the final Connector commit's `integration-candidate.json` binds the exact Core, Console and Demo commits. The Console manifest must bind the same Core and Demo, and the Demo's `baseharbor-core.ref` must equal that Core commit. This replaces the Core-owned `.demo-ref` for these releases: mutually pinning future Git commits would create a circular dependency. Targeted v0.4.25 atomic pushes use the same canonical matrix resolver as the pre-release source step; a mixed or mutable source is rejected before execution.
+
+An explicit `only_gates` selection or `validation/pre-release/selected/*` branch
+runs only the selected qualification set and skips the final approval job.
+Its individual artifacts are evidence; they cannot create release approval.
+For an unchanged candidate, a temporary ref named
+`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` can point
+directly at its immutable commit. The existing selector validates every requested
+ID; no source commit or consumer pin changes to choose a different small group.
 
 `scripts/ecosystem_release_pins.py` validates all bindings and resolves the public consumer evidence manifest. The pre-release workflow accepts an optional exact `consumer_ref`, or resolves the reviewed Connector integration branch once and freezes its 40-character SHA. Approval retains that immutable consumer origin; release revalidation resolves the same commits. The complete native Connector job also verifies the exact Console browser receipt, so its authenticated artifact can prove Console integration without repeating the same journey. All existing atomic gates remain required.
 

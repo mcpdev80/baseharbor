@@ -43,6 +43,9 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
+		return err
+	}
 	if err := runtimeUpGuided(ctx, applicationInput(ctx, runtimeInput), out, opts); err != nil {
 		return err
 	}
@@ -139,6 +142,12 @@ func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Write
 	if err := authorizeCurrentMCPContext(parent, "control-plane.up", "", "", ""); err != nil {
 		return err
 	}
+	return materializeControlPlaneProviders(parent, in, out, opts)
+}
+
+// The caller owns authorization: explicit management uses the wrapper above;
+// application apply invokes this only for its acknowledged real dependencies.
+func materializeControlPlaneProviders(parent context.Context, in io.Reader, out io.Writer, opts runtimeUpOptions) error {
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
@@ -149,7 +158,7 @@ func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Write
 		if opts.PostgresPort != 0 || opts.OpenBaoPort != 0 {
 			return usageError("control-plane ports cannot be changed through 'baha up' after initialization", "Edit the existing runtime deliberately or recreate the control plane instead.")
 		}
-		return runtimeUpExisting(parent, out, opts.RecoveryFile)
+		return runtimeUpExistingSelection(parent, out, opts.RecoveryFile, opts.ControlPlaneOnly)
 	}
 
 	postgresPort, err := selectControlPlanePort(out, "PostgreSQL", "--postgres-port", opts.PostgresPort, bhruntime.DefaultPostgresPort, 15432)
@@ -215,7 +224,7 @@ func runtimeUpGuidedProviders(parent context.Context, in io.Reader, out io.Write
 		}
 	}
 
-	return runtimeUpWithPorts(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA)
+	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
 }
 
 func repositoryApplicationDetectedForUp() bool {

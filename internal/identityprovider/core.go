@@ -16,6 +16,14 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
+// CoreIdentityDependency identifies the physical installation module without
+// registering an application capability or allocating runtime material.
+func CoreIdentityDependency(dataDir, namespace string) (capability.ProviderInstance, string, error) {
+	placement := capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: "core"}
+	dir, project, err := keycloakStateIdentity(application.Manifest{}, placement, dataDir, namespace)
+	return capability.ProviderInstance{ID: "runtime/" + project + "/keycloak", Provider: capability.Provider{Kind: capability.ProviderKeycloak}, Scope: placement.Scope, Ownership: placement.Ownership, SharingBoundary: placement.SharingBoundary}, dir, err
+}
+
 // ExistingCoreRuntimeFiles resolves the installation-owned Keycloak Compose and
 // backing SQL without regenerating secrets or changing provider topology.
 func ExistingCoreRuntimeFiles(dataDir, namespace string) (KeycloakFiles, error) {

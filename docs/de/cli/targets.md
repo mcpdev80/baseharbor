@@ -24,6 +24,39 @@ Im Application-Repository mit funktionierender Runtime:
 runtime != capability != delivery
 ```
 
+## Target-Definition entfernen und wiederherstellen
+
+`baha target delete NAME` entfernt den ausgewählten Konfigurationseintrag nach
+**Achtung** und zwei ausdrücklichen Bestätigungen seines aktuellen Folgenplans.
+Bestehende Deployments, Provider-Bindungen, native Prozesse, Volumes, Daten und
+Zugriffsdefinitionen bleiben erhalten. Der Befehl sichert eine geschützte Kopie der
+ursprünglichen Target-/Zugriffsreferenzen und liefert deren `recovery_file`.
+Erhaltung belegt keinen funktionierenden Zugriff, Zertifikatserneuerung oder
+Authentifizierungskontinuität; unbekannte Verbraucherfolgen bleiben teilweise.
+
+Versorgte der entfernte Eintrag die automatische Target-Auswahl, bleibt sie gesperrt.
+BaseHarbor wählt weder eine andere Runtime noch eine andere Zugriffspolitik still aus.
+Die ursprüngliche Definition lässt sich mit der ausgegebenen Recovery-Datei
+wiederherstellen. Danach das wiederhergestellte Target bewusst auswählen:
+
+```bash
+baha target delete docker-dev -o json
+baha target create docker-dev --from-recovery /path/from/recovery_file -o json
+baha target activate docker-dev
+```
+
+Ohne Zustimmung liefert der JSON-Aufruf den aktuellen strukturierten Plan.
+`BASEHARBOR_PROVIDER_CHANGE_CONSENT` in einem vertrauenswürdigen CLI-Aufruf oder
+das MCP-Objekt `provider_change_consent` enthalten dessen Plan-ID und beide
+unabhängigen Bestätigungen. Auch die Wiederherstellung braucht ihren eigenen
+aktuellen Plan. `--yes` erteilt diese Bestätigungen nicht.
+Wiederherstellung überschreibt weder vorhandene Targets/Zugriffs-Owner noch die
+ursprünglichen Runtime-/Zugriffs-/Auth-Referenzen und verschiebt keine erhaltenen
+Daten still in einen anderen Daten-Root. Sie aktiviert die Route nicht automatisch.
+Teilweise Vorbereitung erhält geschützte Recovery für Prüfung und frische Wiederholung.
+
+## Runtime und Target-Zugriff
+
 Eine Registrierung installiert keine Runtime und beweist nicht alle Capabilities.
 
 ```text
@@ -60,14 +93,18 @@ baha node connect /path/to/node-a.json
 
 Der Connector erzeugt seinen privaten Schlüssel ausschließlich lokal, verwendet die bestehende Bootstrap-API und baut anschließend die outbound-initiierte mTLS-Verbindung als rootless User-Service auf. Token und Nonce werden weder als Prozessargumente noch in Logs ausgegeben. Non-TTY-Automation verwendet die expliziten Optionen aus `baha node add --help` und fragt niemals interaktiv nach.
 
-Zum Entfernen wird zuerst der Zustand geprüft und anschließend die Sperrung ausdrücklich bestätigt:
+Zum Trennen wird der Zustand geprüft und der konkrete aktuelle Plan in zwei ausdrücklichen Schritten bestätigt:
 
 ```bash
 baha node status node-a
 baha node disconnect node-a --yes
 ```
 
-Der Core widerruft die Connector-Zulassung, bevor das leere Target entfernt wird. Ein altes, weiterhin CA-vertrauenswürdiges Zertifikat kann sich dadurch nicht unbemerkt erneut verbinden. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
+Disconnect widerruft den Connector-Zugang und übergibt sein aktuelles Zertifikat zum Widerruf an den Aussteller. Target-Definition, Node-Registrierung, Provider-Bindings und Deployment-Recovery bleiben erhalten. Native Workloads, Provider-Daten und fremde Infrastruktur werden nicht gelöscht; erhaltenes Material belegt keinen weiter funktionierenden Service-Zugang.
+
+Prüfe den aktuellen konkreten Plan vor der Bestätigung. `--yes` und MCP `approval=true` geben nur den allgemeinen Auftrag frei. Unbekannte Remote-Folgen und der Verlust des Steuerungszugangs erfordern **Achtung** und zwei getrennte ausdrückliche Bestätigungen dieses Plans. JSON-Clients verwenden `BASEHARBOR_PROVIDER_CHANGE_CONSENT` für einen vertrauenswürdigen CLI-Aufruf; MCP verwendet `provider_change_consent`. Ohne Bestätigungen wird der strukturierte Plan ohne Widerruf zurückgegeben. Core-HTTP-Clients erhalten den maßgeblichen Plan über `POST /api/v1/connectors/disconnect-plan` und bestätigen dessen aktuelle Scope-ID über `POST /api/v1/connectors/disconnect`; der Plan-Endpunkt führt übermittelte Bestätigungen nie aus.
+
+Das Ergebnis trennt Zugangswiderruf, Zertifikatswiderruf, erhaltene Eigentümer und ungeprüfte Remote-Daten/-Zugänge. Fehler beim Aussteller oder bei der Recovery-Prüfung bleiben Teilergebnisse; der Eigentümer bleibt für einen erneut geprüften Versuch erhalten. CLI/MCP verbinden bekannte lokale Recovery-Eigentümer mit dem authentifizierten Core-Plan; direktes Core-HTTP deckt dessen eigene maßgebliche Eigentümer ab. Ein Wiederanschluss benötigt das vorhandene autorisierte Enrollment-/Renewal-Verfahren und umgeht mTLS nicht. Native Kubernetes-/OpenShift-Zugriffe verwenden weiterhin normalerweise ihre nativen APIs und benötigen dafür keinen Node Connector.
 
 `--provider` bleibt Alias von `--runtime-provider`; nicht lokaler Zugriff braucht einen ausdrücklichen `--access-provider`.
 

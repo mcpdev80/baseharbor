@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 )
 
@@ -18,75 +16,32 @@ func appRestoreCommandWithRecoveryMetadata(store application.Store) *cli.Command
 	command := appRestoreCommand(store)
 	restoreRun := command.Run
 	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
-		backupPath, name, passwordPath, err := parseAppRestoreArgs(args)
+		filtered, format, err := parseReadOutputArgs(args, "app restore")
 		if err != nil {
 			return err
 		}
-		password, err := readBackupPasswordFile(passwordPath)
+		selection, environment, err := extractApplicationEnvironment(filtered, "restore")
 		if err != nil {
 			return err
 		}
-		defer zeroBytes(password)
-		archive, err := os.ReadFile(backupPath)
+		_, name, _, err := parseAppRestoreArgs(selection)
 		if err != nil {
-			return fmt.Errorf("prepare recovery metadata: read application backup: %w", err)
+			return err
 		}
-		defer zeroBytes(archive)
-		payload, err := applicationbackup.Open(archive, password)
-		if err != nil {
-			return fmt.Errorf("prepare recovery metadata: validate application backup: %w", err)
+		presentation := out
+		if format == outputJSON {
+			ctx = machineNoninteractiveContext(ctx)
+			presentation = io.Discard
 		}
-		m, err := applicationbackup.ApplicationManifestFromPayload(payload)
-		if err != nil {
-			return fmt.Errorf("prepare recovery metadata: validate application metadata: %w", err)
+		if err := restoreRun(ctx, filtered, presentation, errOut); err != nil {
+			return err
 		}
-		recoveryManifest, found, err := applicationbackup.RecoveryManifestFromPayload(payload)
-		if err != nil {
-			return fmt.Errorf("prepare recovery metadata: validate recovery manifest: %w", err)
-		}
-		if !found {
-			legacySelection, discoveryErr := applicationbackup.DiscoverManifestRecovery(m)
-			if discoveryErr != nil {
-				return fmt.Errorf("prepare recovery metadata: derive legacy recovery manifest: %w", discoveryErr)
+		if format == outputJSON {
+			status, err := collectApplicationStatusResult(ctx, store, machineApplicationArgs(name, environment))
+			if err != nil {
+				return err
 			}
-			recoveryManifest = applicationbackup.RecoveryManifest{
-				Version:      applicationbackup.RecoveryManifestVersion,
-				Contributors: legacySelection.Contributors,
-			}
-		}
-		if name != "" && name != m.Name {
-			return errors.New("restore target NAME does not match backup application identity")
-		}
-		absolutePath, err := filepath.Abs(backupPath)
-		if err != nil {
-			return fmt.Errorf("prepare recovery metadata: resolve archive path: %w", err)
-		}
-
-		if err := restoreRun(ctx, args, out, errOut); err != nil {
-			return err
-		}
-
-		resolved, err := resolveRestoreTarget(ctx, store, m)
-		if err != nil {
-			return fmt.Errorf("resolve restored deployment for recovery metadata: %w", err)
-		}
-
-		metadata := application.RecoveryMetadata{
-			Version:         application.LastRecoveryMetadataVersion,
-			ApplicationID:   m.ApplicationID,
-			DeploymentID:    resolved.DeploymentIdentity.DeploymentID,
-			Application:     m.Name,
-			Environment:     m.Environment,
-			RestoredAt:      time.Now().UTC(),
-			BackupCreatedAt: payload.Manifest.CreatedAt,
-			ArchivePath:     absolutePath,
-			Recovery:        recoveryContributorMetadata(recoveryManifest, true),
-		}
-		if err := resolved.Store.RecordLastRecovery(metadata); err != nil {
-			return fmt.Errorf("application was restored and verified but recording recovery metadata failed: %w", err)
-		}
-		if err := recordApplicationAudit(ctx, resolved, "restore", "success", "status+doctor verified", "recovery unit restored and application verification reached READY"); err != nil {
-			return err
+			return writeJSON(out, machineLifecycleStatusResult{Result: applicationlifecycle.NewResult("restore", status.Application, status.Environment, status.State, status.Ready).WithTarget(status.Target), Status: status})
 		}
 		fmt.Fprintln(out, "Status: READY")
 		return nil

@@ -155,7 +155,7 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		return nil
 	}
 
-	if err := write(application.RepositoryManifestName, []byte(manifest.YAML()), 0o644); err != nil {
+	if err := write(application.RepositoryManifestName, []byte(manifest.AuthoredYAML()), 0o644); err != nil {
 		return ProjectResult{}, err
 	}
 	profileYAML, err := yaml.Marshal(profile)

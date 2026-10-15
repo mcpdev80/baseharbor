@@ -59,8 +59,11 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
-	if err := core.UpProject(ctx, platformFiles.Project, platformFiles.Compose, platformFiles.Env); err != nil {
-		return fmt.Errorf("reconcile shared control-plane runtime before broker start: %w", err)
+	// Repository prerequisites already start and recover the selected trust
+	// plane. Reapplying its renderer here can restart and seal OpenBao after
+	// that verification; broker PKI consumes the existing installation only.
+	if err := waitForOpenBaoManagerReady(ctx, core, platformFiles, 30*time.Second); err != nil {
+		return fmt.Errorf("verify authenticated OpenBao readiness before broker PKI: %w", err)
 	}
 	if err := ensureAndStartRuntimeProviderExecutorWithCore(ctx, progress, compose, core, platformFiles, m, files, refreshMutableImage); err != nil {
 		return err
@@ -138,7 +141,7 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 		// Runtime identity files are installed atomically and mutable development
 		// images can change behind the same tag. Recreate the broker so readiness
 		// always verifies the desired identity rather than a stale container.
-		if err := compose.DownProject(ctx, project, brokerFiles.Compose, files.Env); err != nil {
+		if _, err := runtimebroker.RetireContainer(ctx, compose, m, files); err != nil {
 			return fmt.Errorf("recreate application runtime broker for desired identity: %w", err)
 		}
 	}

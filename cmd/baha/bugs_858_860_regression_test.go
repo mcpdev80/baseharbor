@@ -62,7 +62,7 @@ func bugApplicationRepository(t *testing.T) (application.Manifest, string) {
 	t.Helper()
 	repo := t.TempDir()
 	m := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Services: application.Services{SQL: true}, Workload: application.WorkloadConfig{Components: []string{"app"}}}
-	if err := os.WriteFile(filepath.Join(repo, application.RepositoryManifestName), []byte(m.YAML()), 0600); err != nil {
+	if err := writeInitializedAuthoredManifest(t, filepath.Join(repo, application.RepositoryManifestName), m, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte("services:\n  app:\n    image: docker.io/library/alpine:3.23\n"), 0600); err != nil {
@@ -332,7 +332,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	out.Reset()
 	commandErr := runWithIO(context.Background(), []string{"--no-input", "app", "init"}, &out, &out)
 	formatCLIError(&out, commandErr)
-	if cli.ExitCode(commandErr) != 1 || !strings.Contains(out.String(), "lowercase UUIDv4") || strings.Contains(out.String(), "baha doctor") {
+	if cli.ExitCode(commandErr) != 1 || !strings.Contains(out.String(), "app.id is system-owned") || strings.Contains(out.String(), "baha doctor") {
 		t.Fatalf("UUID CLI: %v: %s", commandErr, out.String())
 	}
 	t.Chdir(t.TempDir())

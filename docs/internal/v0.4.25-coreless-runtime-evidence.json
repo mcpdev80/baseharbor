@@ -1,0 +1,54 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "candidate_sha": "f3fba45e5369dda44ccb44908a3884ec06a27642",
+  "candidate_tree": "0e3f722152647fbd53f9d078b94c3fceb7ba3cf7",
+  "gate": "fresh-workload-without-capabilities",
+  "test": "TestCorelessFreshWorkloadRuntimeLifecycle",
+  "workflow_run_id": 38138120644,
+  "workflow_url": "https://github.com/mcpdev80/baseharbor/actions/runs/38138120644",
+  "attempt": 1,
+  "observed_at": "2026-10-11",
+  "scope": "Isolated real zero-capability HTTP workload, stable identity, apply/status/doctor/stop/resume/destroy and native inventory; no trust-plane bootstrap.",
+  "runtime_jobs": [
+    {
+      "runtime": "docker",
+      "job_id": 114466118137,
+      "conclusion": "success",
+      "test_result": "PASS",
+      "rootless": true,
+      "go_version": "go1.25.0 linux/amd64",
+      "observed_core_containers_throughout": 0,
+      "observed_workload_containers_when_running": 1,
+      "observed_total_containers_after_destroy": 0,
+      "artifact_id": 11701728103,
+      "artifact_name": "coreless-docker-38138120644-1",
+      "artifact_digest": "sha256:d100aa45be03b303b55479190e09cddefba73c96840d44663e16924d3764f46c"
+    },
+    {
+      "runtime": "podman",
+      "job_id": 114466117974,
+      "conclusion": "success",
+      "test_result": "PASS",
+      "rootless": true,
+      "go_version": "go1.25.0 linux/amd64",
+      "observed_core_containers_throughout": 0,
+      "observed_workload_containers_when_running": 1,
+      "observed_total_containers_after_destroy": 0,
+      "artifact_id": 11701113728,
+      "artifact_name": "coreless-podman-38138120644-1",
+      "artifact_digest": "sha256:cd34b72bf6388822484a4ec27bf78cd706dcf6b8e5c6513364c7b1b3e943f0ea"
+    }
+  ],
+  "verification": "Fetched job steps and decoded logs confirm exact-SHA checkout, verified rootless setup, actual live container counts and PASS without a skipped lifecycle test. Artifacts were uploaded for this candidate.",
+  "not_qualified_by_this_run": [
+    "Selective provider and capability combination matrix",
+    "Identity true -> false -> true authenticated usability",
+    "Shared provider and last-consumer data/recovery behavior",
+    "Selected Quadlet retirement and reboot behavior",
+    "All mutation authorities and informed two-stage consent",
+    "Actual all-family function/material/effect receipts",
+    "Demo, Console and Node Connector candidate compatibility",
+    "Final candidate and complete release readiness"
+  ],
+  "pre_release_ready": false
+}

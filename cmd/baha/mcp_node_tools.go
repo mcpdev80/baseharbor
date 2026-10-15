@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -33,8 +34,9 @@ type machineNodeTargetInput struct {
 }
 
 type machineNodeDisconnectInput struct {
-	Target   string `json:"target" jsonschema:"configured remote connector Target"`
-	Approval bool   `json:"approval" jsonschema:"explicit approval to revoke connector identity and delete the empty Target"`
+	Target                string                             `json:"target" jsonschema:"configured remote connector Target"`
+	Approval              bool                               `json:"approval" jsonschema:"ordinary operation approval; does not acknowledge access loss or delete data"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"two explicit acknowledgements of the current aggregate node disconnect plan"`
 }
 
 func registerMCPNodeTools(server *mcp.Server) {
@@ -117,7 +119,7 @@ func registerMCPNodeTools(server *mcp.Server) {
 		return nil, result, nil
 	})
 
-	mcp.AddTool(server, machineMCPTool("node.disconnect", "Revoke a node identity first, then remove its empty Target registration.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineNodeDisconnectInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, machineMCPTool("node.disconnect", "Revoke node admission and the current certificate after concrete impact acknowledgement; preserve Target and recovery owners.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineNodeDisconnectInput) (*mcp.CallToolResult, any, error) {
 		if err := authorizeCurrentMCPContext(ctx, "node.disconnect", input.Target, "", ""); err != nil {
 			return machineMCPFailure(err)
 		}
@@ -125,10 +127,10 @@ func registerMCPNodeTools(server *mcp.Server) {
 			return machineMCPFailure(machine.NewError(machine.ErrorApprovalRequired, "node.disconnect requires explicit approval", "Set approval=true after reviewing the remote Target.", false))
 		}
 		var out bytes.Buffer
-		if err := nodeDisconnect(ctx, []string{input.Target, "--yes", "--json"}, &out, &out); err != nil {
+		if err := nodeDisconnect(withProviderChangeConsent(ctx, input.ProviderChangeConsent), []string{input.Target, "--yes", "--json"}, &out, &out); err != nil {
 			return machineMCPFailure(err)
 		}
-		var result map[string]any
+		var result nodeDisconnectResult
 		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 			return machineMCPFailure(machine.Wrap(machine.ErrorInternal, err, "Inspect node disconnect output and retry.", false))
 		}

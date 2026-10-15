@@ -23,6 +23,15 @@ class WorkflowBinding(unittest.TestCase):
                                (args[0], args[1], args[2] + 1)]:
             self.assertEqual(h.candidate_for_workflow(tag, head, run), head)
 
+    def test_v025_recovery_requires_exact_candidate_workflow_and_run(self):
+        h = module()
+        self.assertEqual(h.candidate_for_workflow('v0.4.25', h.V025_RECOVERY_WORKFLOW,
+                                                h.V025_RECOVERY_RUN), h.V025_CANDIDATE)
+        for tag, head, run in [('v0.4.26', h.V025_RECOVERY_WORKFLOW, h.V025_RECOVERY_RUN),
+                               ('v0.4.25', 'f' * 40, h.V025_RECOVERY_RUN),
+                               ('v0.4.25', h.V025_RECOVERY_WORKFLOW, h.V025_RECOVERY_RUN + 1)]:
+            self.assertEqual(h.candidate_for_workflow(tag, head, run), head)
+
 
 class PublicationInputs(unittest.TestCase):
     def setUp(self):
@@ -86,6 +95,52 @@ class PublicationInputs(unittest.TestCase):
         (self.root / 'scripts/pre-release-resume.py').unlink()
         with self.assertRaisesRegex(ValueError, 'verified recovery'):
             self.h.validate_handoff(self.root, self.candidate, self.commit(), 'v0.4.24')
+
+
+class V025PublicationInputs(unittest.TestCase):
+    git = PublicationInputs.git
+    write = PublicationInputs.write
+    commit = PublicationInputs.commit
+
+    def setUp(self):
+        PublicationInputs.setUp(self)
+        self.h.V025_CANDIDATE = self.candidate
+        for name in self.h.V025_VERIFIED_TRANSPORT:
+            self.write(name, 'verified transport\n')
+        self.published = self.commit()
+        self.h.V025_VERIFIED_TRANSPORT = {
+            name: self.git('rev-parse', self.published + ':' + name)
+            for name in self.h.V025_VERIFIED_TRANSPORT}
+
+    def test_v025_exact_transport_and_publication_control_are_accepted(self):
+        self.write('.github/workflows/release.yml', 'reviewed publisher\n')
+        self.write('scripts/release-handoff.py', 'reviewed binding\n')
+        self.h.validate_handoff(self.root, self.candidate, self.commit(), 'v0.4.25')
+
+    def test_v025_changed_deleted_executable_transport_is_rejected(self):
+        for mutation in ['change', 'delete', 'mode']:
+            with self.subTest(mutation=mutation):
+                self.git('reset', '--hard', self.published)
+                path = self.root / 'scripts/evidence_api_transport.py'
+                if mutation == 'change':
+                    path.write_text('different transport\n')
+                elif mutation == 'delete':
+                    path.unlink()
+                else:
+                    path.chmod(0o755)
+                with self.assertRaisesRegex(ValueError, 'verified recovery'):
+                    self.h.validate_handoff(self.root, self.candidate, self.commit(), 'v0.4.25')
+
+    def test_v025_product_collector_workflow_pins_and_inventory_stay_exact(self):
+        for name in ['internal/auth/verifier.go', 'scripts/pre-release-resume.py',
+                     'scripts/release-requirements.json', '.github/workflows/pre-release.yml',
+                     'docs/releases/v0.4.25.demo-ref']:
+            with self.subTest(path=name):
+                self.git('reset', '--hard', self.published)
+                self.git('clean', '-fdq')
+                self.write(name, 'changed execution input\n')
+                with self.assertRaisesRegex(ValueError, 'execution inputs'):
+                    self.h.validate_handoff(self.root, self.candidate, self.commit(), 'v0.4.25')
 
 
 if __name__ == '__main__':

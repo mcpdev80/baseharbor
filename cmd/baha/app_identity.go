@@ -11,9 +11,9 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/devgateway"
 	"github.com/mcpdev80/baseharbor/internal/exposure"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -24,6 +24,8 @@ type managedIdentityExecution struct {
 	provider  capability.ProviderKind
 	target    string
 	manifest  application.Manifest
+	runtime   bhruntime.RuntimeProvider
+	files     application.RuntimeFiles
 }
 
 func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) (*managedIdentityExecution, error) {
@@ -54,6 +56,8 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 		provider: identity.Resource.Provider,
 		target:   resolved.Target.Name,
 		manifest: m,
+		runtime:  compose,
+		files:    files,
 	}
 	switch identity.Resource.Provider {
 	case capability.ProviderKeycloak:
@@ -61,11 +65,7 @@ func prepareManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvid
 		driver = keycloak
 		prepared.keycloak = keycloak
 	case capability.ProviderExternalOIDC:
-		placement, err := application.ResolveProviderPlacement(m, capability.ProviderExternalOIDC)
-		if err != nil {
-			return nil, err
-		}
-		external, err := identityprovider.NewExternalDriver(m, files, placement.ExternalReference)
+		external, err := identityprovider.NewRegisteredExternalDriver(m, files, resolved.TargetStateRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -97,6 +97,9 @@ func provisionAndVerifyManagedIdentity(ctx context.Context, out io.Writer, prepa
 		if err != nil {
 			return err
 		}
+		if managedIdentityNeedsRealizedExposure(prepared) && len(origins) == 0 {
+			return fmt.Errorf("managed identity cannot be verified before its public exposure is realized")
+		}
 		if err := prepared.keycloak.SetApplicationOrigins(origins); err != nil {
 			return err
 		}
@@ -116,15 +119,27 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 		return nil, nil
 	}
 	state := prepared.driver.State()
+	// Before realization, development callback origins already follow the
+	// declared public route names and the selected Target gateway. Resolve
+	// those logical origins without pretending the provider has materialized.
+	if identity != nil && devaccess.Enabled(identity.manifest.Environment) && len(state.Routes) == 0 {
+		for _, route := range identity.manifest.Exposures {
+			state.Routes = append(state.Routes, exposure.Route{Name: route.Name, Service: route.Service, Protocol: route.Protocol, Visibility: route.Visibility})
+		}
+	}
+	return managedIdentityOriginsForRoutes(identity, state.Host, state.Routes)
+}
+
+func managedIdentityOriginsForRoutes(identity *managedIdentityExecution, host string, routes []exposure.Route) ([]string, error) {
 	seen := map[string]struct{}{}
 	var origins []string
 	publicCount := 0
-	for _, route := range state.Routes {
+	for _, route := range routes {
 		if !strings.EqualFold(route.Visibility, "internal") {
 			publicCount++
 		}
 	}
-	for _, route := range state.Routes {
+	for _, route := range routes {
 		if strings.EqualFold(route.Visibility, "internal") {
 			continue
 		}
@@ -135,10 +150,10 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 			if err != nil {
 				return nil, err
 			}
-			origin = devaccess.CanonicalURL(host)
+			origin = devgateway.URLForRuntime(identity.target, host, identity.runtime)
 		} else {
-			host := strings.TrimSpace(state.Host)
-			if host == "" || route.PublishedPort < 1 {
+			host := strings.TrimSpace(host)
+			if host == "" || route.PublishedPort < 1 || route.PublishedPort > 65535 || (route.ProviderProtocol != "" && route.ProviderProtocol != route.Protocol) {
 				return nil, fmt.Errorf("managed application exposure is incomplete for identity redirect resolution")
 			}
 			origin = route.Protocol + "://" + net.JoinHostPort(host, strconv.Itoa(route.PublishedPort))
@@ -154,13 +169,6 @@ func managedIdentityExposureOrigins(identity *managedIdentityExecution, prepared
 
 func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, issuer serviceaccess.Issuer) error {
 	m := resolved.Manifest
-	if issuer == nil && devaccess.Enabled(m.Environment) {
-		platformFiles, err := existingTargetRuntimeFiles(ctx)
-		if err != nil {
-			return fmt.Errorf("load managed trust plane for identity verification: %w", err)
-		}
-		issuer = openbao.NewServiceIssuer(compose, platformFiles)
-	}
 	if !application.HasIdentity(m) {
 		return nil
 	}
@@ -184,6 +192,12 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Runtim
 	files := application.RuntimeFilesFor(resolved.Store, m)
 	switch identityBinding.Resource.Provider {
 	case capability.ProviderKeycloak:
+		if issuer == nil && devaccess.Enabled(m.Environment) {
+			issuer, err = resolveApplicationServiceIssuer(ctx, resolved, compose)
+			if err != nil {
+				return fmt.Errorf("load selected trust authority for identity verification: %w", err)
+			}
+		}
 		var origins []string
 		if len(m.Exposures) > 0 {
 			state, _, err := exposure.Load(files)
@@ -208,7 +222,7 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Runtim
 					if err != nil {
 						return err
 					}
-					origin = devaccess.CanonicalURL(host)
+					origin = devgateway.URLForRuntime(resolved.Target.Name, host, compose)
 				} else {
 					origin = route.Protocol + "://" + net.JoinHostPort(state.Host, strconv.Itoa(route.PublishedPort))
 				}
@@ -222,11 +236,7 @@ func verifyExistingManagedIdentity(ctx context.Context, compose bhruntime.Runtim
 		driver := identityprovider.NewKeycloakDriver(compose, m, files, issuer, resolved.TargetStateRoot, resolved.Target.Name)
 		return driver.VerifyExisting(ctx, identityBinding, origins)
 	case capability.ProviderExternalOIDC:
-		placement, err := application.ResolveProviderPlacement(m, capability.ProviderExternalOIDC)
-		if err != nil {
-			return err
-		}
-		driver, err := identityprovider.NewExternalDriver(m, files, placement.ExternalReference)
+		driver, err := identityprovider.NewRegisteredExternalDriver(m, files, resolved.TargetStateRoot)
 		if err != nil {
 			return err
 		}

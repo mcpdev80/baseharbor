@@ -55,7 +55,7 @@ func EnsureManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, iss
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	if err := setApplicationKeycloakCanonicalURL(files, canonicalBase); err != nil {
+	if err := prepareApplicationKeycloakCanonicalURL(runtime, namespace, files, canonicalBase); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	files.CanonicalPublicURL = canonicalBase
@@ -182,7 +182,12 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 	if err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
-	if err := admin.reconcileUser(ctx, operatorRealm("dev"), username, password, true); err != nil {
+	if err := admin.ensureDeveloperOwnershipAttribute(ctx, operatorRealm("dev"), target); err != nil {
+		return ManagedOperatorOIDC{}, err
+	}
+	// Apply/re-add preserves existing credentials. Credential rotation remains
+	// a distinct explicit mutation; a retained account is not a reset request.
+	if err := admin.reconcileUserWithPolicy(ctx, operatorRealm("dev"), username, password, true, true); err != nil {
 		return ManagedOperatorOIDC{}, err
 	}
 	return managed, nil

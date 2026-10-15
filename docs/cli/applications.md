@@ -88,3 +88,69 @@ baha plan
 The scaffold declares SQL and cache intent, adds Go clients, and records `DATABASE_URL`/`DATABASE_CA_FILE` and `REDIS_URL`/`REDIS_CA_FILE` binding names. It does not create shop-specific endpoints or tables. After deployment with `baha up`, inspect the workload with `baha app logs app` and the masked bindings with `baha app env --format json`.
 
 For adoption, start inside your existing repository with `baha inspect .`, then `baha init`. Do not create a second scaffold over existing application files.
+
+## Local workload without managed capabilities (v0.4.25)
+
+A developer-authored `baseharbor.yaml` must omit `app.id`; `services` is optional:
+
+```yaml
+version: 1
+app:
+  name: my-app
+  environment: dev
+```
+
+Place a supported, unambiguous Compose workload in the repository, then run
+`baha app init --quick`, `baha app plan --json` and `baha app apply`.
+Initialization assigns a stable ID through the protected repository application
+store without rewriting authored YAML. Read commands never allocate an ID.
+Absent or ambiguous source is an error, not a READY deployment.
+
+For a genuine workload without requested managed capabilities, the existing
+local lifecycle skips Core, managed gateway and broker provisioning. No profile
+switch, implicit SQL or Core login is needed. Status and doctor use real
+workload observations; stop/up and repeated destroy retain their existing
+ownership checks. This does not authorize `baha serve`: its management security
+requirements and explicit management Core installation remain unchanged.
+
+Default local `baha app destroy` retires the owned runtime and application routes,
+while keeping persistent data, credentials, recovery material and the canonical
+deployment identity. `baha app apply` reactivates that deployment from the current
+application intent. Runtime removal and complete data deletion are separate
+choices. Provider consequences are displayed with `Achtung` and require two
+explicit acknowledgements of the same current plan; `--yes` alone supplies
+neither acknowledgement. The structured destroy result reports retained material
+and the common provider-change receipt. A verified runtime removal does not
+establish continued secret delivery, login, certificate renewal or recovery
+usability; unverified consequences remain partial in the receipt.
+
+Plan JSON and MCP/HTTP plan share `footprint` (`baseharbor.footprint/v1`). A
+projected new binding is `requested/unbound`, never live evidence. Requested
+managed capabilities resolve to selected providers and their genuine dependencies;
+there is no unconditional SQL/Secrets/Identity bundle for every application.
+An independently enabled management Core keeps its security requirements.
+Memory/container quantities remain unknown when actual attribution is missing;
+provider observations remain `unverifiable` until their native inventory is
+verified. Non-interactive app `--yes` does not authorize management Core setup.
+
+Compatible native placements are reused. Unsupported native BYO or replacement
+adapters fail before provisioning; external OIDC/OTLP retain their supported
+adapters. Plans disclose the actual execution limits without claiming a working
+replacement. No legacy format migration is provided.
+
+Removing a capability releases its app binding and converges the remaining
+Target-wide dependency union. Owned runtime services that no consumer needs are
+retired; another application's or independent management consumer's requirements
+preserve shared services. Persistent data, credentials and recovery material
+remain at their owned locations by default. Retained material is recovery state,
+not proof of continued service access. A subsequent supported re-add reuses the
+existing system identity and protected provider state.
+
+Intentional provider changes show affected consumers, lost functions, selected
+continuation and retained/deleted material. Alternative-less, destructive or
+unknown consequences display **Achtung** and require two explicit acknowledgements
+of the current plan. Ordinary `--yes` supplies neither these acknowledgements nor
+data-deletion consent. Actual authority, ownership and post-mutation verification
+remain required. Failed or interrupted execution stays partial and retryable.
+The v0.4.25 candidate still requires complete all-provider, mutation-path and
+native ecosystem acceptance; individual green fixtures do not establish readiness.

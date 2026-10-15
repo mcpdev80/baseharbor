@@ -55,3 +55,77 @@ Exakte Referenz: [Application-Befehle (EN)](https://mcpdev80.github.io/baseharbo
 
 
 Technische Bezeichner: `baseharbor.yaml`, `baseharbor.workload-source-resolution/v1`, `baha status`, `baha plan`, `baha doctor`, `baha app ...`, `DATABASE_URL`, `DATABASE_CA_FILE`, `REDIS_URL`, `REDIS_CA_FILE`.
+
+## Lokale Workload ohne managed Capabilities (v0.4.25)
+
+Ein selbst geschriebenes `baseharbor.yaml` darf keine `app.id` enthalten;
+`services` ist optional:
+
+```yaml
+version: 1
+app:
+  name: my-app
+  environment: dev
+```
+
+Lege eine unterstützte, eindeutig auswählbare Compose-Workload im Repository ab
+und führe `baha app init --quick`, `baha app plan --json` und `baha app apply` aus.
+Init vergibt über den geschützten Repository-App-Store eine stabile ID, ohne das
+autorierte YAML umzuschreiben. Lesebefehle vergeben keine ID. Fehlende oder
+mehrdeutige Source ist ein Fehler und kein READY-Deployment.
+
+Eine echte lokale Workload ohne angeforderte managed Capabilities überspringt
+im vorhandenen Lifecycle Core, managed Gateway und Broker. Es braucht weder
+Profil-Schalter noch implizites SQL oder Core-Login. Status und Doctor verwenden
+echte Workload-Beobachtungen; Stop/Up und wiederholtes Destroy behalten die
+Ownership-Prüfungen. `baha serve` erhält dadurch keine Freigabe: Seine
+Management-Sicherheitsvoraussetzungen und die explizite Core-Installation
+bleiben erforderlich.
+
+Ein lokales `baha app destroy` baut standardmäßig die eigene Runtime und die
+App-Routen ab. Persistente Daten, Zugangsdaten, Recovery-Material und die
+kanonische Deployment-Identität bleiben erhalten. `baha app apply` aktiviert
+das Deployment anhand des aktuellen App-Bedarfs erneut. Runtime-Abbau und
+vollständige Datenlöschung sind getrennte Entscheidungen. Provider-Folgen
+werden mit `Achtung` angezeigt und erfordern zwei ausdrückliche Bestätigungen
+desselben aktuellen Plans; `--yes` ersetzt keine dieser Bestätigungen. Das
+strukturierte Destroy-Ergebnis enthält erhaltenes Material und das gemeinsame
+Provider-Änderungsergebnis. Verifizierter Runtime-Abbau beweist weder weitere
+Secret-Auslieferung noch Login, Zertifikatserneuerung oder nutzbare Recovery.
+Ungeprüfte Folgen bleiben im Ergebnis ausdrücklich unvollständig.
+
+Plan-JSON sowie MCP/HTTP-Plan verwenden denselben `footprint`
+(`baseharbor.footprint/v1`). Ein neu geplanter Binding ist `requested/unbound`
+und kein Live-Nachweis. Angeforderte managed Capabilities werden mit ausgewählten
+Providern und ihren echten Abhängigkeiten realisiert. Ein bedingungsloses
+SQL-/Secrets-/Identity-Paket für jede App gibt es nicht. Ein unabhängig aktivierter
+Management-Core behält seine Sicherheitsvoraussetzungen. Speicher-/Containerwerte
+bleiben unbekannt, wenn ihre Zuordnung nicht nachgewiesen ist. Provider-Beobachtungen
+bleiben bis zum geprüften nativen Inventar `unverifiable`. Nichtinteraktives
+App-`--yes` autorisiert keine Einrichtung des Management-Core.
+
+Kompatible native Placements werden wiederverwendet. Nicht unterstützte native
+BYO- oder Ersatzadapter werden vor Provisionierung abgelehnt; externe OIDC-/OTLP-
+Adapter bleiben unterstützt. Der Plan nennt die tatsächlichen Ausführungsgrenzen,
+ohne einen funktionierenden Ersatz zu behaupten. Es gibt keine Migration alter
+Manifest-Formate.
+
+Capability-Entfernung löst das App-Binding und gleicht die verbleibenden
+Target-weiten Abhängigkeiten ab. Eigene Runtime-Dienste ohne verbleibenden
+Verbraucher werden entfernt. Anforderungen anderer Apps oder unabhängig aktivierter
+Management-Verbraucher erhalten gemeinsam genutzte Dienste. Persistente Daten,
+Credentials und Recovery-Material bleiben standardmäßig an ihren eigenen Orten.
+Erhaltenes Material ermöglicht Wiederherstellung; es belegt keinen weiter
+funktionierenden Dienstzugriff. Unterstütztes Wiederhinzufügen verwendet die
+bestehende Systemidentität und den geschützten Provider-Zustand erneut.
+
+Bewusste Provider-Änderungen zeigen betroffene Verbraucher, verlorene Funktionen,
+gewählte Fortsetzung und erhaltenes/gelöschtes Material. Alternativlose,
+destruktive oder unbekannte Folgen werden mit **Achtung** angezeigt und erfordern
+zwei ausdrückliche Bestätigungen des aktuellen Plans. Gewöhnliches `--yes`
+ersetzt weder diese Bestätigungen noch die Zustimmung zur Datenlöschung.
+Tatsächliche Berechtigung, Ownership und Prüfung nach der Änderung bleiben
+Voraussetzung. Fehlgeschlagene oder unterbrochene Ausführung bleibt teilweise
+erledigt und wiederaufnehmbar. Der v0.4.25-Kandidat benötigt weiterhin die vollständige
+Abnahme aller Provider, Mutationspfade und des nativen Ecosystems. Einzelne grüne
+Fixtures belegen keine Pre-Release-Bereitschaft.

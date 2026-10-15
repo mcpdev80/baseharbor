@@ -23,6 +23,7 @@ const (
 	EnrollmentPath           = "/api/v1/connectors/enroll"
 	StatusPath               = "/api/v1/connectors/status"
 	DisconnectPath           = "/api/v1/connectors/disconnect"
+	DisconnectPlanPath       = "/api/v1/connectors/disconnect-plan"
 	enrollmentVersion        = "baseharbor.target-access-enrollment/v1"
 )
 
@@ -31,15 +32,26 @@ const (
 type ScopeResolver func(context.Context, string, string, string) (Scope, error)
 
 type HTTPHandler struct {
-	authority *Authority
-	resolve   ScopeResolver
+	authority  *Authority
+	resolve    ScopeResolver
+	disconnect DisconnectHandler
 }
 
-func NewHTTP(authority *Authority, resolve ScopeResolver) (*HTTPHandler, error) {
+// The transport delegates to the installation impact authority; applications consume enrollment.
+type DisconnectHandler func(context.Context, Scope, json.RawMessage) (any, error)
+
+func NewHTTP(authority *Authority, resolve ScopeResolver, disconnect ...DisconnectHandler) (*HTTPHandler, error) {
 	if authority == nil || resolve == nil {
 		return nil, errors.New("enrollment HTTP requires a persistent authority and Core scope resolver")
 	}
-	return &HTTPHandler{authority: authority, resolve: resolve}, nil
+	if len(disconnect) > 1 {
+		return nil, errors.New("enrollment requires one disconnect authority")
+	}
+	h := &HTTPHandler{authority: authority, resolve: resolve}
+	if len(disconnect) == 1 {
+		h.disconnect = disconnect[0]
+	}
+	return h, nil
 }
 
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +91,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.enroll(w, r)
 	case StatusPath:
 		h.lifecycle(w, r, false)
-	case DisconnectPath:
+	case DisconnectPath, DisconnectPlanPath:
 		h.lifecycle(w, r, true)
 	default:
 		enrollmentHTTPError(w, http.StatusNotFound, machine.ErrorNotFound)
@@ -145,9 +157,10 @@ func (h *HTTPHandler) authorize(w http.ResponseWriter, r *http.Request, renewal 
 }
 
 type lifecycleInput struct {
-	TargetID    string `json:"target_id"`
-	NodeID      string `json:"node_id"`
-	Environment string `json:"environment"`
+	ProviderChangeConsent json.RawMessage `json:"provider_change_consent,omitempty"`
+	TargetID              string          `json:"target_id"`
+	NodeID                string          `json:"node_id"`
+	Environment           string          `json:"environment"`
 }
 
 func (h *HTTPHandler) lifecycle(w http.ResponseWriter, r *http.Request, disconnect bool) {
@@ -185,11 +198,19 @@ func (h *HTTPHandler) lifecycle(w http.ResponseWriter, r *http.Request, disconne
 		return
 	}
 	if disconnect {
-		if err := h.authority.Disconnect(r.Context(), scope); err != nil {
-			enrollmentHTTPError(w, http.StatusConflict, machine.ErrorConflict)
+		if r.URL.Path == DisconnectPlanPath {
+			input.ProviderChangeConsent = nil
+		}
+		if h.disconnect == nil {
+			enrollmentHTTPError(w, http.StatusNotImplemented, machine.ErrorUnsupported)
 			return
 		}
-		enrollmentHTTPJSON(w, http.StatusOK, map[string]any{"contract_version": machine.ContractVersion, "target_id": scope.TargetID, "node_id": scope.NodeID, "revoked": true})
+		result, err := h.disconnect(r.Context(), scope, input.ProviderChangeConsent)
+		if err != nil {
+			enrollmentHTTPJSON(w, http.StatusConflict, machine.ResultError(err))
+			return
+		}
+		enrollmentHTTPJSON(w, http.StatusOK, result)
 		return
 	}
 	status, err := h.authority.Status(r.Context(), scope)

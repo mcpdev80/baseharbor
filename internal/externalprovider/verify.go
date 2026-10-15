@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -181,9 +180,18 @@ func tlsConfigForRegistration(reg Registration, serverName string) (*tls.Config,
 			certPath = discovery.ClientPairs[0].Certificate
 			keyPath = discovery.ClientPairs[0].PrivateKey
 		}
-		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		certificate, err := ReadMaterialReference(certPath, false)
 		if err != nil {
-			return nil, fmt.Errorf("load external provider mTLS client identity: %w", err)
+			return nil, err
+		}
+		key, err := ReadMaterialReference(keyPath, true)
+		if err != nil {
+			return nil, err
+		}
+		cert, err := tls.X509KeyPair(certificate, key)
+		zeroMaterial(key)
+		if err != nil {
+			return nil, errors.New("external provider mTLS client identity is invalid")
 		}
 		config.Certificates = []tls.Certificate{cert}
 	}
@@ -191,12 +199,15 @@ func tlsConfigForRegistration(reg Registration, serverName string) (*tls.Config,
 }
 
 func appendCAReference(pool *x509.CertPool, path string) (bool, error) {
-	pem, err := os.ReadFile(path)
+	pem, err := ReadMaterialReference(path, false)
 	if err != nil {
-		return false, fmt.Errorf("read external provider CA reference %q: %w", path, err)
+		return false, errors.New("external provider CA reference cannot be securely read")
+	}
+	if err := ValidatePublicTrustMaterial(pem); err != nil {
+		return false, err
 	}
 	if ok := pool.AppendCertsFromPEM(pem); !ok {
-		return false, fmt.Errorf("external provider CA reference %q contains no PEM certificates", path)
+		return false, errors.New("external provider CA reference contains no PEM certificates")
 	}
 	return true, nil
 }

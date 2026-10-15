@@ -447,6 +447,7 @@ func currentIssuedCertificate(certPath, serial string, expiresAt time.Time, issu
 		return IssuedCertificate{}
 	}
 	return IssuedCertificate{
+		Certificate:     pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}),
 		IssuerReference: issuerReference,
 		Serial:          serial,
 		ExpiresAt:       firstNonZeroTime(expiresAt, cert.NotAfter),

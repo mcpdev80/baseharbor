@@ -117,20 +117,18 @@ func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer
 func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string, placement capability.ProviderPlacement) (KeycloakFiles, error) {
 	var coreSQL *bhruntime.Files
 	if placement.Scope == capability.ScopeShared {
-		dependency, ok := issuer.(bhruntime.CoreDependencyProvider)
-		if !ok {
-			return KeycloakFiles{}, errors.New("shared Identity requires the existing selected Core SQL provider; a dedicated SQL server is only allowed for application placement")
-		}
-		core, err := dependency.CoreRuntimeFiles()
-		if err != nil {
-			return KeycloakFiles{}, err
-		}
-		if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
-			return KeycloakFiles{}, errors.New("shared Identity dependency does not belong to the selected Core/Target")
-		}
-		coreSQL = &core
-		if err := rejectLegacySharedIdentity(dataDir); err != nil {
-			return KeycloakFiles{}, err
+		if dependency, ok := issuer.(bhruntime.CoreDependencyProvider); ok {
+			core, err := dependency.CoreRuntimeFiles()
+			if err != nil {
+				return KeycloakFiles{}, err
+			}
+			if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
+				return KeycloakFiles{}, errors.New("shared Identity dependency does not belong to the selected Target")
+			}
+			coreSQL = &core
+			if err := rejectLegacySharedIdentity(dataDir); err != nil {
+				return KeycloakFiles{}, err
+			}
 		}
 		// Shared boundaries separate consumers logically, never physically.
 		placement.SharingBoundary = "core"
@@ -172,6 +170,13 @@ func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manife
 	}
 	if values == nil {
 		values = map[string]string{}
+	}
+	previousSQL, err := existingKeycloakCoreSQL(values)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if previousSQL != nil && coreSQL == nil {
+		return KeycloakFiles{}, errors.New("existing Identity SQL binding requires its selected provider; refusing implicit migration")
 	}
 	// An existing HA data layer must never be implicitly replaced by a
 	// single-node PostgreSQL topology (or vice versa).

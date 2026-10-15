@@ -103,8 +103,27 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 			if readerIsTerminal(appInitInput) {
 				ctx = context.WithValue(ctx, applicationInputKey{}, bufio.NewReader(appInitInput))
 			}
-			if err := applicationCorePrerequisite(ctx, applicationInput(ctx, appInitInput), out); err != nil {
-				return err
+			if containsQuickAdoptionOption(forwarded) {
+				detected, err := detectAppProject(cwd)
+				if err != nil {
+					return err
+				}
+				m, err := manifestFromDetectedProject(detected, true)
+				if err != nil {
+					return err
+				}
+				target, err := effectiveTarget(ctx)
+				if err != nil {
+					return err
+				}
+				root, err := targetDataRoot(target)
+				if err != nil {
+					return err
+				}
+				intent := resolvedApplication{Target: target, TargetStateRoot: root, Manifest: m, FromRepository: true, RepositoryRoot: cwd}
+				if err := requireResolvedApplicationCore(ctx, intent, applicationInput(ctx, appInitInput), out); err != nil {
+					return err
+				}
 			}
 		}
 		for _, arg := range forwarded {
@@ -115,10 +134,11 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				return usageError("--quick cannot be combined with explicit app-init arguments", "Use quick adoption or explicit deployment configuration separately.")
 			}
 			if hasLocalManifest {
-				m, err := application.LoadManifestFile(manifestPath)
+				resolved, err := resolveApplication(ctx, store, nil, "init")
 				if err != nil {
 					return err
 				}
+				m := resolved.Manifest
 				if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
 					return err
 				}
@@ -137,6 +157,7 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 				if err != nil {
 					return err
 				}
+				m.ApplicationID = "" // Detection's preview ID is not canonical authority.
 				result, err := persistRepositoryApplication(ctx, cwd, m, nil)
 				if err != nil {
 					return err
@@ -179,6 +200,15 @@ func appInitWithInputResolverCommand(store application.Store) *cli.Command {
 		return nil
 	}
 	return base
+}
+
+func containsQuickAdoptionOption(args []string) bool {
+	for _, arg := range args {
+		if arg == "--quick" {
+			return true
+		}
+	}
+	return false
 }
 
 func currentRepositoryManifest(cwd string) (string, bool, error) {
@@ -469,6 +499,19 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
+		if err != nil {
+			return err
+		}
+		if format == outputJSON {
+			status, err := collectApplicationStatusResult(ctx, application.DefaultStore(), nil)
+			if err != nil {
+				return err
+			}
+			return writeJSON(destination, status)
+		}
+		return nil
+	}
 	// Validate repository contracts before starting any control-plane resources.
 	if !opts.ControlPlaneOnly {
 		cwd, err := os.Getwd()

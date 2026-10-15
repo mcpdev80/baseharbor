@@ -2,28 +2,25 @@
 
 Detaillierte Planung steht in GitHub Issues. Diese Seite zeigt die Produktrichtung; [Issue #155](https://github.com/mcpdev80/baseharbor/issues/155) ist die übergeordnete Roadmap.
 
-## Aktuell — v0.4.24
+## Aktuell — v0.4.25-Kandidat
 
-Implementierung und Pre-Release-Abnahme sind abgeschlossen.
-
-- Aufgabenorientierte CLI und repositorybezogener Application-Lifecycle.
-- Explizite Core-/Target-Auswahl und Rootless-Docker als Standard.
-- Gemeinsame Provider ohne doppelte Server, mit ausdrücklich aktivierter HA.
-- Abgesicherte Provider-Updates, PostgreSQL-/etcd-Recovery und klar begrenzte Upgrade-Pfade.
-- Gemeinsame Console-/Node-Connector-Workflows und vollständige EN/DE-Dokumentation.
-
-Die [Release Notes](releases/v0.4.24.md) beschreiben die wichtigsten Änderungen und Kompatibilitätshinweise. Detaillierter Umfang und Nachweise stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+[v0.4.24 ist veröffentlicht](releases/v0.4.24.md). Der aktuelle Kandidat folgt
+[Issue #872](https://github.com/mcpdev80/baseharbor/issues/872) und
+[PR #881](https://github.com/mcpdev80/baseharbor/pull/881): Capability-first-Verträge,
+minimales Manifest mit stabiler App-ID, ehrlicher Footprint und Core-loser lokaler
+Application-Lifecycle. Der explizite Management-Core bleibt unverändert.
+Die vollständige Ecosystem-/Release-Vorbereitung wird separat geprüft;
+entwicklungsfertig bedeutet nicht automatisch Pre-Release-ready.
 
 ## Vor dem v0.5-Freeze
 
-### v0.4.25
+Die verbindliche Aufteilung steht in [#427](https://github.com/mcpdev80/baseharbor/issues/427):
 
-Semantische Akzeptanz.
-
-- Nachweis der semantischen Parität CLI/JSON/MCP;
-- Nachweis der Laufzeit/Versorgergrenzen und des Eigentums;
-- Nachweis, dass die Kompatibilität des Anbieters größer ist als die Fähigkeits-Namen-Matching;
-- die endgültige Architektur und die Lebenszyklusakzeptanz vor dem Einfrieren durchführen.
+- v0.4.26: TUI und Entwicklerabläufe (#873).
+- v0.4.27: Onboarding, Profile und Node-Authority (#874).
+- v0.4.28: Console-API und UX (#875).
+- v0.4.29: Host-Plattformen einschließlich WSL2/macOS (#876).
+- v0.4.30: finale semantische Abnahme (#174).
 
 ## v0.5
 

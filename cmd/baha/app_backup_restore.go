@@ -13,7 +13,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
@@ -193,38 +192,22 @@ func executeApplicationRestoreLifecycle(ctx context.Context, store application.S
 }
 
 func restoreApplicationState(ctx context.Context, store application.Store, out io.Writer, resolved resolvedApplication, compose bhruntime.RuntimeProvider, restoreData applicationRestoreData) error {
-	m := restoreData.manifest
+	ctx, unlock, err := prepareAuthorizedApplicationRestore(ctx, resolved, restoreData, out)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	m := resolved.Manifest
 	postgresBackups := restoreData.postgresBackups
 	secretBackup := restoreData.secretBackup
 	objectBackups := restoreData.objectStorage
 	logsHistory := restoreData.logsHistory
-	var err error
-	var platformFiles bhruntime.Files
-	var issuer serviceaccess.Issuer
-	if requiresManagedServiceIssuer(m) || m.Services.Secrets || application.RequiresRuntimeBroker(m) {
-		platformFiles, err = existingTargetRuntimeFiles(ctx)
-		if err != nil {
-			return fmt.Errorf("restore preflight BaseHarbor control plane: %w", err)
-		}
+	platformFiles, issuer, err := prepareRestoreRuntimeDependencies(ctx, resolved, compose, restoreData, out)
+	if err != nil {
+		return err
 	}
-	if requiresManagedServiceIssuer(m) {
-		issuer = openbao.NewServiceIssuer(compose, platformFiles)
-		status, err := issuer.Status(ctx)
-		if err != nil || !status.Ready {
-			if err != nil {
-				return fmt.Errorf("restore preflight managed service PKI: %w", err)
-			}
-			return errors.New("restore preflight managed service PKI is not ready")
-		}
-	}
-	if m.Services.Secrets {
-		identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
-		if err := openbao.CheckApplicationProvisioning(ctx, compose, platformFiles, identity); err != nil {
-			return fmt.Errorf("restore preflight OpenBao provisioning: %w", err)
-		}
-	}
-	if _, err := preflightRepositoryWorkloadSecurity(ctx, compose, resolved); err != nil {
-		return fmt.Errorf("restore preflight workload security: %w", err)
+	if err := materializeApplicationServiceIssuer(issuer); err != nil {
+		return fmt.Errorf("restore managed service PKI: %w", err)
 	}
 	if err := ensureRestoreDeploymentInitialization(ctx, resolved); err != nil {
 		return fmt.Errorf("restore deployment initialization: %w", err)
@@ -378,6 +361,9 @@ func restoreApplicationState(ctx context.Context, store application.Store, out i
 	if err := verifyRestoredApplicationHealth(ctx, store, m); err != nil {
 		return err
 	}
+	if err := recordVerifiedApplicationRestore(ctx, resolved, restoreData); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "Application %s / %s / %s was restored and verified.\n", resolved.Target.Name, m.Name, m.Environment)
 	return nil
 
@@ -511,94 +497,10 @@ func restoreSelectedWorkloadStorage(ctx context.Context, compose bhruntime.Runti
 	return validateRecoveredLogicalResources(restoreData.recoveryManifest, applicationbackup.StateWorkloadStorage, resolvedNames)
 }
 
-func resolveRestoreTarget(ctx context.Context, _ application.Store, backupManifest application.Manifest) (resolvedApplication, error) {
-	target, err := effectiveTarget(ctx)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
-	targetRoot, err := deployment.TargetStateRoot(target.Name)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
-	existing, deploymentFound, err := deployment.FindDeployment(target.Name, backupManifest.ApplicationID, backupManifest.Environment)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
-	var id deployment.DeploymentIdentity
-	if deploymentFound {
-		id = existing.Identity
-		id.Application = backupManifest.Name
-	} else {
-		id, err = deployment.NewDeploymentIdentity(target.Name, backupManifest.ApplicationID, backupManifest.Name, backupManifest.Environment)
-		if err != nil {
-			return resolvedApplication{}, err
-		}
-	}
-	deploymentRoot, err := deployment.DeploymentRoot(id)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
-	resolved := resolvedApplication{
-		Target:              target,
-		DeploymentIdentity:  id,
-		Manifest:            backupManifest,
-		TargetStateRoot:     targetRoot,
-		DeploymentStateRoot: deploymentRoot,
-		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return resolved, err
-	}
-	found, err := application.HasRepositoryApplication(cwd)
-	if err != nil {
-		return resolved, err
-	}
-	if !found {
-		var record deployment.DeploymentRecord
-		var recordErr error
-		if deploymentFound {
-			record = existing
-			record.Identity = id
-		} else {
-			recordErr = os.ErrNotExist
-		}
-		if recordErr == nil && deployment.SourceAvailable(record.Source) {
-			selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, backupManifest.Environment)
-			if sourceErr != nil {
-				return resolved, fmt.Errorf("restore preflight registered source: %w", sourceErr)
-			}
-			if selection.Manifest.YAML() != backupManifest.YAML() {
-				return resolved, errors.New("registered repository environment manifest does not match backup desired state")
-			}
-			resolved.DeploymentRecord = &record
-			resolved.ManifestPath = selection.ManifestPath
-			resolved.RepositoryRoot = selection.RepositoryRoot
-			resolved.SourceAvailable = true
-			resolved.FromRepository = true
-			return resolved, nil
-		}
-		if recordErr != nil && !errors.Is(recordErr, os.ErrNotExist) {
-			return resolved, fmt.Errorf("restore preflight deployment record: %w", recordErr)
-		}
-		return resolved, errors.New("restore preflight source repository is unavailable; run restore from the matching repository or restore the registered repository path before mutation")
-	}
-	selection, err := application.ResolveRepositoryEnvironment(cwd, backupManifest.Environment)
-	if err != nil {
-		return resolved, err
-	}
-	if selection.Manifest.YAML() != backupManifest.YAML() {
-		return resolved, errors.New("selected repository environment manifest does not match backup desired state")
-	}
-	resolved.ManifestPath = selection.ManifestPath
-	resolved.RepositoryRoot = selection.RepositoryRoot
-	resolved.SourceAvailable = true
-	resolved.FromRepository = true
-	return resolved, nil
-}
-
 func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, resolved resolvedApplication) error {
+	if err := requireVerifiedRestoreScope(ctx, resolved); err != nil {
+		return err
+	}
 	m := resolved.Manifest
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {
@@ -614,7 +516,7 @@ func resetRestoreTarget(ctx context.Context, compose bhruntime.RuntimeProvider, 
 		return err
 	}
 	if application.RequiresRuntimeBroker(m) {
-		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
+		if err := stopRestoreRuntimeBroker(ctx, compose, m, files); err != nil {
 			return err
 		}
 	}

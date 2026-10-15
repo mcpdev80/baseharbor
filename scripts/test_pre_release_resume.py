@@ -532,6 +532,149 @@ class GitFingerprintTests(unittest.TestCase):
                 self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.24', key) ==
                                  self.inputs.fingerprint(changed, changed_demo, 'v0.4.24', key), same)
 
+    def test_v025_preserves_only_proven_nonexecuted_inputs(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        original_demo = self.commit(self.demo)
+        for name in ['pre-release-resume.py', 'test_pre_release_resume.py']:
+            path = self.product / 'scripts' / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('source-plan collector change\n')
+        changed = self.commit(self.product)
+        (self.demo / 'baseharbor-core.ref').write_text(changed + '\n')
+        changed_demo = self.commit(self.demo)
+        for key, same in [('atomic/docker/identity', True), ('ha/podman/data', True),
+                          ('journey/podman', True), ('atomic/static/mcp', False),
+                          ('integration/podman/coreless-lifecycle', False)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, original_demo, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(changed, changed_demo, 'v0.4.25', key), same)
+        self.assertEqual(resume.GitInputs(self.product, self.demo, changed_demo).pin(changed, 'v0.4.25'), changed_demo)
+        with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+            resume.GitInputs(self.product, self.demo, original_demo).pin(changed, 'v0.4.25')
+        for name in ['internal/cli/terminal.go', 'internal/auth/auth.go',
+                     'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('actual execution change\n')
+            current = self.commit(self.product)
+            self.assertNotEqual(self.inputs.fingerprint(changed, changed_demo, 'v0.4.25', 'atomic/docker/identity'),
+                                self.inputs.fingerprint(current, changed_demo, 'v0.4.25', 'atomic/docker/identity'))
+
+    def test_v025_core_owned_integration_pin_is_separate_from_executed_collector(self):
+        product = self.v024_inventory()
+        (self.demo / 'baseharbor-core.ref').write_text(product + '\n')
+        before = self.commit(self.demo)
+        (self.demo / 'baseharbor-core.ref').write_text('f' * 40 + '\n')
+        after = self.commit(self.demo)
+        keys = ['integration/' + runtime + '/' + gate
+                for runtime in ['docker', 'podman']
+                for gate in ['core-bootstrap', 'coreless-lifecycle']]
+        for key in keys:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key))
+                with self.assertRaisesRegex(ValueError, 'Core pin differs'):
+                    resume.GitInputs(self.product, self.demo, after).pin(product, 'v0.4.25')
+        script = self.product / 'scripts/pre-release-resume.py'
+        script.write_text('changed imported producer dependency\n')
+        changed = self.commit(self.product)
+        for key in keys:
+            self.assertNotEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                self.inputs.fingerprint(changed, before, 'v0.4.25', key))
+        # Private consumers retain their exact source/matrix contract.
+        for key in ['integration/docker/remote-target', 'integration/static/live-console']:
+            self.assertNotEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key),
+                                self.inputs.fingerprint(product, after, 'v0.4.25', key))
+
+    def test_v025_core_owned_producers_and_isolated_config_matrix(self):
+        product = self.v024_inventory()
+        path = self.demo / 'tests/config-matrix/run.sh'
+        path.parent.mkdir(parents=True)
+        path.write_text('old static fixture\n')
+        before = self.commit(self.demo)
+        path.write_text('new static fixture\n')
+        after = self.commit(self.demo)
+        for key, same in [('atomic/static/config-matrix', False), ('journey/docker', False),
+                          ('atomic/docker/control-plane-recovery', True), ('ha/docker/data', True),
+                          ('integration/docker/core-bootstrap', True), ('integration/podman/coreless-lifecycle', True)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key), same)
+        # An arbitrary shared Demo change remains a dependency for actual Demo
+        # execution; the four Core-only producers do not check out/use Demo.
+        (self.demo / 'compose.yaml').write_text('services: {changed: {}}\n')
+        changed = self.commit(self.demo)
+        for key, same in [('atomic/docker/lifecycle', False), ('journey/docker', False),
+                          ('integration/docker/core-bootstrap', True), ('integration/podman/coreless-lifecycle', True)]:
+            self.assertEqual(self.inputs.fingerprint(product, after, 'v0.4.25', key) ==
+                             self.inputs.fingerprint(product, changed, 'v0.4.25', key), same)
+
+    def test_v025_cli_gates_do_not_compile_bootstrap_test_fixture(self):
+        product = self.v024_inventory()
+        path = self.product / 'cmd/baha/core_installation_runtime_test.go'
+        path.parent.mkdir(parents=True)
+        path.write_text('package main\nfunc fixture() {}\n')
+        before = self.commit(self.product)
+        path.write_text('package main\nfunc fixture() { changed() }\n')
+        after = self.commit(self.product)
+        for key, same in [('atomic/docker/backup-restore', True), ('atomic/podman/backup-restore', True),
+                          ('atomic/docker/identity', True), ('atomic/podman/identity', True),
+                          ('atomic/docker/security', True), ('atomic/podman/security', True),
+                          ('atomic/docker/guided', True), ('atomic/podman/guided', True),
+                          ('atomic/docker/lifecycle', True), ('atomic/podman/lifecycle', True),
+                          ('atomic/docker/connectivity', True), ('atomic/podman/connectivity', True),
+                          ('atomic/docker/full-destroy', True), ('atomic/podman/full-destroy', True),
+                          ('integration/docker/coreless-lifecycle', False),
+                          ('atomic/docker/control-plane-recovery', False), ('ha/docker/data', False),
+                          ('integration/docker/core-bootstrap', False), ('atomic/static/mcp', False)]:
+            self.assertEqual(self.inputs.fingerprint(before, self.d, 'v0.4.25', key) ==
+                             self.inputs.fingerprint(after, self.d, 'v0.4.25', key), same)
+        # If CLI production embeds source data, retain the fixture conservatively.
+        (path.parent / 'main.go').write_text('package main\n//go:embed source\nvar source string\n')
+        embedded = self.commit(self.product)
+        path.write_text('package main\nfunc fixture() { anotherChange() }\n')
+        changed = self.commit(self.product)
+        for runtime in ['docker', 'podman']:
+            for gate in ['backup-restore', 'identity', 'security', 'guided', 'lifecycle', 'connectivity', 'full-destroy']:
+                key = 'atomic/' + runtime + '/' + gate
+                with self.subTest(embedded=key):
+                    self.assertNotEqual(self.inputs.fingerprint(embedded, self.d, 'v0.4.25', key),
+                                        self.inputs.fingerprint(changed, self.d, 'v0.4.25', key))
+
+    def test_v025_cli_fixture_exception_keeps_security_build_and_other_test_inputs(self):
+        original = self.v024_inventory()
+        for name in ['internal/cli/terminal.go', 'internal/auth/auth.go',
+                     'contracts/machine/v1/operation.schema.json',
+                     '.github/workflows/pre-release-runtime-suite.yml', 'go.mod',
+                     'cmd/baha/other_runtime_test.go']:
+            path = self.product / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('changed real input\\n')
+            changed = self.commit(self.product)
+            for runtime in ['docker', 'podman']:
+                for gate in ['backup-restore', 'identity', 'security', 'guided', 'lifecycle', 'connectivity', 'full-destroy']:
+                    key = 'atomic/' + runtime + '/' + gate
+                    with self.subTest(path=name, gate=key):
+                        self.assertNotEqual(self.inputs.fingerprint(original, self.d, 'v0.4.25', key),
+                                            self.inputs.fingerprint(changed, self.d, 'v0.4.25', key))
+            original = changed  # Each rejection must prove this input's own change.
+
+    def test_v025_isolated_backup_change_does_not_requalify_other_atomic_gates(self):
+        product = self.v024_inventory()
+        path = self.demo / 'tests/backup-restore/run.sh'
+        path.parent.mkdir(parents=True)
+        path.write_text('old backup fixture\n')
+        before = self.commit(self.demo)
+        path.write_text('new backup fixture\n')
+        after = self.commit(self.demo)
+        for key, same in [('atomic/docker/identity', True), ('atomic/podman/backup-restore', False),
+                          ('journey/docker', False), ('integration/podman/core-bootstrap', True)]:
+            with self.subTest(key=key):
+                self.assertEqual(self.inputs.fingerprint(product, before, 'v0.4.25', key) ==
+                                 self.inputs.fingerprint(product, after, 'v0.4.25', key), same)
+
     def test_unchanged_pure_ownership_helper_relocation_preserves_native_proofs(self):
         product = self.v024_inventory()
         source = pathlib.Path('internal/identityprovider/keycloak_realm_convergence.go').read_text()

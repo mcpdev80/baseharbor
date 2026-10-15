@@ -62,6 +62,9 @@ func TestPortableCoreRuntimeBoundary(t *testing.T) {
 		"internal/application/shared_backends_runtime.go",
 		// Existing shared backend adapter split; lifecycle responsibilities are unchanged.
 		"internal/application/shared_backends_resources_runtime.go",
+		// Selective stop/re-add adapter for the existing shared runtime owner;
+		// selection and consent remain in the portable resolver/impact domain.
+		"internal/application/shared_backends_convergence_runtime.go",
 		"internal/application/valkey_credential_rotation.go",
 		"internal/application/valkey_credential_rotation_helpers.go",
 		"internal/application/valkey_credential_rotation_runtime.go",

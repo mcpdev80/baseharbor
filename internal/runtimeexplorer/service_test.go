@@ -109,7 +109,7 @@ func TestServiceOperatesManagedResourceAndReturnsReconciliationHint(t *testing.T
 	backend := &fakeBackend{containers: []runtimecontract.RuntimeContainer{
 		{ID: "id-managed", Name: "demo-api-1", Project: "bh-demo", Service: "api", Running: true, State: "running"},
 	}}
-	service, err := NewService(backend, "local", fakeResolver{})
+	service, err := NewService(backend, "local", fakeResolver{}, sourceTestMutationAuthority())
 	if err != nil {
 		t.Fatal(err)
 	}

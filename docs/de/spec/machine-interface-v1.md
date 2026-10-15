@@ -96,3 +96,63 @@ URLs mit eingebetteten Zugangsdaten DÜRFEN NICHT als normale Maschinen-Ausgabe 
 - Docker/Compose und Podman/Quadlet MÜSSEN dort dieselben agentenfähigen semantischen Operationen anbieten, wo die Lifecycle-Operation unterstützt wird.
 
 Die typisierte Registry unter `internal/machine` ist die maßgebliche Definition von Maschinenoperationen und ihren Sicherheitsklassen.
+
+## Zustimmung zur Core- und Installationszerstörung
+
+`control-plane.destroy` und `installation.destroy` akzeptieren
+`provider_change_consent` zusätzlich zum üblichen `approval`. Die Ausführung
+erfordert beide Stufen für den aktuellen gemeinsamen Scope. Installationszerstörung
+und ausgewählte Core-Volume-Löschung erfordern zusätzlich unabhängige Zustimmung
+`delete_data=true`. `--yes` oder `approval=true` allein autorisieren keine
+Zerstörung. CLI-Vorschau und typisierte Ablehnung zeigen den aktuellen konkreten
+Scope; JSON-Berichte enthalten `provider_change_plan`. Geänderte Konfigurationsbytes,
+Verbraucherregistrierungen, geschützte Core-Owner-Bytes, Target-Zugehörigkeit oder
+native Ressourceninventare machen frühere Zustimmung vor Beginn des Abbaus
+ungültig. Ungebundene App-Provider und geschützte Management-Verbraucher benötigen
+eine eigene Autorisierung.
+
+Die ausgewählte Core-Zerstörung akzeptiert optional `delete_data` als Auswahl.
+Ohne diese Auswahl werden nur kanonische Core-Container/Startdefinitionen entfernt;
+Volumes, Netzwerke, geschützte Owner, Verbraucherregistrierungen, andere Provider
+und Workloads bleiben erhalten. Aktive Bindings sind Folgen mit zwei aktuellen
+Planbestätigungen, kein dauerhaftes Entfernungsverbot. Datenlöschung verändert den
+Plan und erfordert zusätzlich unabhängiges
+`provider_change_consent.delete_data=true`. Teilweiser nativer Abbau behält Owner
+für neuen Plan/Retry; der Folgenbeleg bleibt teilweise, bis sämtliche tatsächlichen
+Verbraucherfunktionen separat verifiziert wurden.
+
+## Application-Stop über HTTP
+
+Die Core-Discovery enthält jetzt die vorhandene Operation `app.stop`. Der
+HTTP-Adapter nutzt dieselbe ausgewählte Deployment-Bindung, denselben
+Provider-Folgenscope, unabhängige planbezogene Bestätigungen,
+Eigentümerrevalidierung und tatsächliches Stop-Ergebnis wie CLI/JSON/MCP.
+Die Eingabe akzeptiert `provider_change_consent`; gewöhnliche Zustimmung
+ersetzt keine der erforderlichen Stufen. Eine Console bestätigt den äußeren
+Plan `baseharbor.provider-impact-scope/v1` für dieses ausgewählte Deployment
+statt eines Blattplans. Fremde Selektoren und mehrdeutige Bestätigungsobjekte
+werden vor der Runtime-Operation abgewiesen. Erhaltene Eigentümer beweisen
+keine weiterlaufenden Verbraucherfunktionen; ungeklärte Folgen bleiben teilweise.
+
+Transport-Quellprüfungen ersetzen weder authentifizierte Browser- noch native
+Runtime-Prüfungen am passenden Quellstand; die finale v0.4.25-Ökosystem-Abnahme
+ist weiter offen.
+
+### Ausgewählter Core-Stop
+
+`control-plane.stop` akzeptiert `target` und optional `provider_change_consent`
+mit derselben aktuellen Bereichsplan-ID und unabhängigen Bestätigungsstufen wie
+andere Provider-Änderungen. Allgemeine Freigabe und `--yes` ersetzen diese nicht.
+Das lokale `baha down --json` im Core-Modus und die MCP-Operation nutzen dieselbe
+PostgreSQL-/OpenBao-Stop-Autorität und das typisierte Ergebnis: `target`, `state`,
+`runtime` und `provider_change_result`. Andere Provider, Workloads und Verbindungen
+bleiben angefordert und laufend. Die native Prüfung kontrolliert ausgewählte
+Prozesszustände, Erhalt dauerhafter Ressourcen und Nachbardienste im gemeinsamen
+Projekt. Der bestehende native Adapter kann ausgewählte gestoppte Container
+entfernen; das Ergebnis inventarisiert den tatsächlichen Abbau und Erhalt, ohne
+eine Datenlöschung zu behaupten. Der aktuelle Plan bindet beobachtete native
+Prozessidentitäten/-zustände und interne Image-Identitätsrevisionen sowie
+geschützte Dateiinhalte; Neustart oder Image-Änderung macht frühere Zustimmung ungültig.
+Ein gestoppter Runtime-Dienst belegt keine vollständige Verbraucher-/Secrets-/
+PKI-/Session-Kontinuität; der Folgennachweis bleibt bei ungeklärten Folgen teilweise.
+Dieser Pfad behauptet keinen HTTP-Core-Stop-Adapter oder authentifizierten Browser-Test.

@@ -10,7 +10,7 @@ import (
 
 type machineApplicationCreateInput struct {
 	Target string               `json:"target,omitempty"`
-	Intent application.Manifest `json:"intent" jsonschema:"complete validated portable Application Intent with stable ApplicationID"`
+	Intent application.Manifest `json:"intent" jsonschema:"portable Application Intent; BaseHarbor assigns the system-owned application identity"`
 }
 type machineApplicationAdoptInput struct {
 	Target         string                                     `json:"target,omitempty"`
@@ -28,14 +28,14 @@ type machineApplicationConfigureInput struct {
 }
 
 func registerMCPAdoptionTools(server *mcp.Server, store application.Store) {
-	mcp.AddTool(server, machineMCPTool("app.create", "Create validated target-managed Application Intent without starting runtime resources.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationCreateInput) (*mcp.CallToolResult, any, error) {
-		path, err := createTargetManagedApplication(withTargetOverride(ctx, input.Target), input.Intent)
+	mcp.AddTool(server, machineApplicationAuthoringTool[machineApplicationCreateInput]("app.create", "Create validated target-managed Application Intent and assign its system-owned identity without starting runtime resources."), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationCreateInput) (*mcp.CallToolResult, any, error) {
+		result, err := createMachineApplication(withTargetOverride(ctx, input.Target), input.Intent)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
-		return nil, applicationAdoptionResult{Application: input.Intent.Name, ApplicationID: input.Intent.ApplicationID, Environment: input.Intent.Environment, Manifest: path}, nil
+		return nil, result, nil
 	})
-	mcp.AddTool(server, machineMCPTool("app.adopt", "Persist explicit Application Intent and inspected source selection into an existing repository without a wizard.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationAdoptInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, machineApplicationAuthoringTool[machineApplicationAdoptInput]("app.adopt", "Persist explicit Application Intent and its system-owned identity with inspected source selection into an existing repository without a wizard."), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationAdoptInput) (*mcp.CallToolResult, any, error) {
 		result, err := persistRepositoryApplication(withTargetOverride(ctx, input.Target), input.Repository, input.Intent, input.WorkloadSource)
 		if err != nil {
 			return machineMCPFailure(err)
