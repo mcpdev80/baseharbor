@@ -488,20 +488,13 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Qualify exact unmerged #896 interface without copying commits
+      - name: Verify integrated #896 isolation interface from trusted base
         shell: bash
         run: |
           set -euo pipefail
-          pinned=ab197b5a9a1b93bb87b1da161532a0929cd2052e
-          git fetch --no-tags origin "$pinned"
-          out="$RUNNER_TEMP/pr-896-isolation-exact"
-          mkdir -p "$out"
-          for file in pr-runner-isolation.py test_pr_runner_isolation.py; do
-            git show "$pinned:scripts/$file" > "$out/$file"
-          done
-          (cd "$out" && python3 -m unittest discover -p test_pr_runner_isolation.py -v)
-          python3 -m py_compile "$out/pr-runner-isolation.py"
-          echo "Qualified #896 source at exact commit $pinned (not merged)" >> "$GITHUB_STEP_SUMMARY"
+          python3 -m unittest discover -s scripts -p test_pr_runner_isolation.py -v
+          python3 -m py_compile scripts/pr-runner-isolation.py
+          echo "Verified integrated #896 in trusted PR base $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
 
   pr_consumer_pins:
     name: PR · Consumer Pins
