@@ -50,7 +50,12 @@ protected. Payload files live next to this document:
      `require_extra_approval_for_unattributed_changes: true` is carried over
      verbatim from the live ruleset (`GET` response); it is not documented in
      the PUT parameter list of the current REST reference, and omitting it
-     from a PUT body would silently downgrade the existing protection.
+     from a PUT body would silently downgrade the existing protection. Its
+     **write compatibility is unqualified**: the `GET` response and successful
+     JSON parsing prove neither that the write API accepts the field nor that
+     it persists it. Acceptance must be confirmed during live qualification
+     (read the ruleset back after applying); nothing is removed, activated or
+     trial-written here to test it.
    - `bypass_actors`: one entry
      `{actor_id: 22537373, actor_type: "User", bypass_mode: "pull_request"}`.
      Per current REST docs `User` is a supported actor type and
@@ -106,8 +111,13 @@ is explicitly insufficient.
 Run on a disposable branch/PR flow after activation; verify then close:
 
 - Foreign PR into `develop` **without** approval → merge blocked by
-  review/code-owner rule (`mergeable` blocked; API
-  `GET /repos/.../pulls/{n}/mergeability`/status shows the reason).
+  review/code-owner rule. Retrieve with
+  `GET /repos/{owner}/{repo}/pulls/{pull_number}` and read
+  `mergeable`/`mergeable_state` (plus `GET .../pulls/{n}/reviews` and
+  `GET .../commits/{sha}/check-runs`, or GraphQL `mergeStateStatus`, as
+  needed). While GitHub computes mergeability these fields can be
+  temporarily `null`/`UNKNOWN`; that is "not yet determined" and must not be
+  interpreted as success — re-check after the state settles.
 - Same PR **with** @mcpdev80 code-owner approval and green `PR Selected
   Checks` → mergeable (verify, do not merge, close).
 - New commit after approval → approval dismissed
