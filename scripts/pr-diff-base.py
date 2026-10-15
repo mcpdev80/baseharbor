@@ -35,7 +35,7 @@ def fallback(result, code, message):
 def integration_conflicts(repository, target_base, head):
     result = git(repository, 'merge-tree', '--write-tree', target_base, head, check=False)
     if result.returncode == 0:
-        return False, None
+        return False, result.stdout.strip().splitlines()[0]
     if result.returncode == 1:
         detail = (result.stderr or result.stdout).strip().splitlines()
         suffix = ': ' + detail[-1] if detail else ''
@@ -129,12 +129,29 @@ def resolve_pr_diff(repository, target_base, head, integration=None):
     if conflict is None:
         return fallback(result, 'integration_check_unavailable', conflict_message)
 
-    if integration_sha and not (
-        is_ancestor(repository, target_sha, integration_sha) and
-        is_ancestor(repository, head_sha, integration_sha)
-    ):
-        return fallback(result, 'integration_sha_mismatch',
-                        'integration SHA does not contain both the target base and PR head')
+    if integration_sha:
+        # An ancestor-only check would also accept arbitrary later commits.
+        # The synthetic integration must merge exactly these two inputs,
+        # with precisely the tree Git would produce for a clean merge.
+        commit = git(repository, 'rev-list', '--parents', '-n', '1',
+                     integration_sha, check=False)
+        if commit.returncode != 0:
+            return fallback(result, 'integration_check_unavailable',
+                            'cannot inspect integration commit parents')
+        parents = commit.stdout.strip().split()
+        if parents != [integration_sha, target_sha, head_sha]:
+            return fallback(result, 'integration_sha_mismatch',
+                            'integration commit must have exactly target base and PR head '
+                            'as its first and second parents, with no extra parents or commits')
+        actual_tree = git(repository, 'rev-parse', '--verify',
+                          integration_sha + '^{tree}', check=False)
+        if actual_tree.returncode != 0:
+            return fallback(result, 'integration_check_unavailable',
+                            'cannot inspect integration commit tree')
+        if actual_tree.stdout.strip() != conflict_message:
+            return fallback(result, 'integration_tree_mismatch',
+                            'integration commit tree differs from the clean merge '
+                            'of the exact target base and PR head')
 
     diff = git(repository, 'diff', '--name-status', '-z', '-M', '--no-ext-diff',
                result['merge_base_sha'], head_sha, '--', check=False)
