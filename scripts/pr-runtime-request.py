@@ -19,22 +19,26 @@ def requests(plan, requirements, pins):
     integration = plan.get('integration_sha')
     if not isinstance(integration, str) or not SHA.fullmatch(integration):
         raise ValueError('exact integration commit required for runtime admission')
-    if not isinstance(pins, dict) or not all(
-            SHA.fullmatch(str(pins.get(name, '')))
-            for name in ('demo_sha', 'console_sha', 'connector_sha')):
-        raise ValueError('exact verified consumer pins required')
+    if not isinstance(pins, dict) or not set(pins) <= {'demo_sha', 'console_sha', 'connector_sha'}:
+        raise ValueError('unrecognized consumer pins')
     selected = plan.get('selected_gates')
     if not isinstance(selected, list) or not selected or len(selected) != len(set(selected)):
         raise ValueError('nonempty unique gate selection required')
-    catalog = {entry['id'] for entry in requirements.get('gates', [])
+    catalog = {entry['id']: entry for entry in requirements.get('gates', [])
                if 'v0.4.26' in entry.get('required_for', [])}
-    if not set(selected) <= catalog:
+    if not set(selected) <= set(catalog):
         raise ValueError('unrecognized gate in selection')
     result = []
     for gate in sorted(selected):
         parts = gate.split('/')
-        if len(parts) < 3 or parts[1] not in RUNTIMES:
+        if len(parts) != 3 or parts[0] != 'atomic' or parts[1] not in RUNTIMES:
             continue
+        dependencies = catalog[gate].get('dependencies')
+        if not isinstance(dependencies, list) or 'core' not in dependencies or not set(dependencies) <= {'core', 'demo', 'console', 'connector'}:
+            raise ValueError('invalid authoritative dependencies')
+        required = [name + '_sha' for name in ('demo', 'console', 'connector') if name in dependencies]
+        if any(not SHA.fullmatch(str(pins.get(name, ''))) for name in required):
+            raise ValueError('missing exact gate-specific consumer pin')
         result.append({
             'schema': 'baseharbor.pr-runtime-request/v1',
             'gate_id': gate,
@@ -43,7 +47,7 @@ def requests(plan, requirements, pins):
             'head_sha': plan['head_sha'],
             'merge_base_sha': plan['merge_base_sha'],
             'integration_sha': integration,
-            'consumer_pins': {key: pins[key] for key in ('demo_sha', 'console_sha', 'connector_sha')},
+            'consumer_pins': {key: pins[key] for key in required},
             'admission': 'requires-trusted-isolated-runner',
             'evidence': 'existing-verifier-only',
         })
