@@ -540,12 +540,16 @@ jobs:
       - name: Enforce every required check (unqualified runtime remains blocked)
         env:
           PLAN_JOB: ${{ needs.pr_plan.result }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_INTEGRATION: ${{ github.sha }}
           FOCUSED_JOB: ${{ needs.pr_focused.result }}
           VALIDATION_JOB: ${{ needs.pr_validations.result }}
         run: |
           set -euo pipefail
           test "$PLAN_JOB" = success
           test -s pr-plan.json
+          python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
           git fetch --no-tags origin 74aa0b73ddbd1d732185c0997d72d91939560ae3 327444dc4480e230dcd7ee50c5f3824624d91ee7
           git show 74aa0b73ddbd1d732185c0997d72d91939560ae3:scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
           git show 327444dc4480e230dcd7ee50c5f3824624d91ee7:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
