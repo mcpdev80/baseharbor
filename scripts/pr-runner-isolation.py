@@ -69,6 +69,44 @@ def verify_github_admission(request, run_id, attempt, repository, pr_number, tok
     return True
 
 
+def verify_hosted_unprivileged_admission(request, run_id, attempt, repository, pr_number):
+    """Admit only a GitHub-created hosted PR event to a *credential-free* lane.
+
+    Not evidence, not approval for privileged persistent or self-hosted runners.
+    Call from reviewed runner source before any untrusted build/test executes.
+    """
+    env = os.environ
+    if (env.get("GITHUB_ACTIONS") != "true" or
+            env.get("RUNNER_ENVIRONMENT") != "github-hosted" or
+            env.get("GITHUB_EVENT_NAME") != "pull_request" or
+            env.get("GITHUB_REPOSITORY") != "mcpdev80/baseharbor" or
+            repository != "mcpdev80/baseharbor" or
+            env.get("GITHUB_RUN_ID") != run_id or
+            env.get("GITHUB_RUN_ATTEMPT") != str(attempt) or
+            env.get("GITHUB_REF") != "refs/pull/" + str(pr_number) + "/merge" or
+            env.get("GITHUB_SHA") != request.get("integration_sha")):
+        raise PermissionError("unprivileged hosted Actions identity differs")
+    path = Path(env.get("GITHUB_EVENT_PATH", "/nonexistent"))
+    if path.is_symlink() or not path.is_file():
+        raise PermissionError("GitHub event metadata unavailable")
+    payload = json.loads(path.read_text())
+    pr = payload.get("pull_request", {})
+    official = payload.get("repository", {})
+    identifier = official.get("id")
+    if (identifier != 1360667669 or
+            str(identifier) != env.get("GITHUB_REPOSITORY_ID") or
+            official.get("full_name") != repository or
+            pr.get("number") != pr_number or
+            pr.get("state") != "open" or
+            pr.get("base", {}).get("ref") != "develop" or
+            pr.get("base", {}).get("sha") != request.get("target_base_sha") or
+            pr.get("head", {}).get("sha") != request.get("head_sha") or
+            pr.get("head", {}).get("repo", {}).get("id") != identifier or
+            pr.get("user", {}).get("id") != official.get("owner", {}).get("id")):
+        raise PermissionError("GitHub event repository, PR or ownership differs")
+    return True
+
+
 def validate(request, run_id, attempt, capacity):
     if not isinstance(request, dict) or request.get("schema") != "baseharbor.pr-runtime-request/v1":
         raise ValueError("unsupported request schema")
@@ -98,7 +136,10 @@ def identity(request, run_id, attempt):
 
 def prepare(request, root, run_id, attempt, capacity, repository, pr_number, token):
     runtime, gate = validate(request, run_id, attempt, capacity)
-    verify_github_admission(request, run_id, attempt, repository, pr_number, token)
+    if token is None:
+        verify_hosted_unprivileged_admission(request, run_id, attempt, repository, pr_number)
+    else:
+        verify_github_admission(request, run_id, attempt, repository, pr_number, token)
     original_root = Path(root)
     if original_root.is_symlink():
         raise ValueError("symlink isolation root forbidden")
