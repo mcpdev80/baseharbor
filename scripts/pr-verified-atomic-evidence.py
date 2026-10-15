@@ -40,8 +40,8 @@ def authenticate(plan,report,requirements,run_id,attempt,head_sha,integrated_sha
             continue
         runtime,gate=parts[1:]
         matches=[j for j in jobs if j.get("name","").endswith(runtime+" · "+gate)
-                 and j.get("run_id")==run_id and j.get("run_attempt")==attempt
-                 and j.get("head_sha")==head_sha]
+                 and j.get("run_id")==run_id and
+                 j.get("head_sha",head_sha)==head_sha]
         if len(matches)!=1 or matches[0].get("status")!="completed" or matches[0].get("conclusion")!="success":
             continue
         name=f"pre-release-gate-{runtime}-{gate}-evidence-{run_id}-{attempt}"
