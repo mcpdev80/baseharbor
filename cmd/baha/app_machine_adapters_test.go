@@ -66,6 +66,8 @@ func TestAppMachineAdaptersStalePlanConsentAndCancellation(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 2, Destructive: true}
 	request := appMachineChangeRequest{Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1"}
 	calls := 0
+	planRead := func(context.Context, string) (application.ProviderImpactPlan, error) { return plan, nil }
+	authorize := func(context.Context, string, string) error { return nil }
 	apply := func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
 		calls++
 		return nil, nil
@@ -92,7 +94,7 @@ func TestAppMachineAdaptersStalePlanConsentAndCancellation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := request
 			tc.mutate(&req)
-			_, err := appMachineChange(context.Background(), req, read, plan, apply)
+			_, err := appMachineChange(context.Background(), req, read, planRead, authorize, apply)
 			var typed *appMachineError
 			if !errors.As(err, &typed) || typed.Code != tc.want || calls != 0 {
 				t.Fatalf("unexpected outcome: %v, calls=%d", err, calls)
@@ -112,12 +114,14 @@ func TestAppMachineAdaptersPartialAndUnsupported(t *testing.T) {
 		Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
 		Consent: application.ProviderChangeConsent{PlanID: "impact-1", First: true, Second: true, DeleteData: true},
 	}
-	_, err := appMachineChange(context.Background(), req, read, plan, nil)
+	planRead := func(context.Context, string) (application.ProviderImpactPlan, error) { return plan, nil }
+	authorize := func(context.Context, string, string) error { return nil }
+	_, err := appMachineChange(context.Background(), req, read, planRead, authorize, nil)
 	var typed *appMachineError
 	if !errors.As(err, &typed) || typed.Code != "unsupported" {
 		t.Fatal(err)
 	}
-	result, err := appMachineChange(context.Background(), req, read, plan,
+	result, err := appMachineChange(context.Background(), req, read, planRead, authorize,
 		func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
 			return []application.ProviderExecutionOutcome{{InstanceID: "old", Operation: "retire", Status: "failed", ErrorCode: "provider-unavailable"}}, nil
 		})
@@ -154,5 +158,58 @@ func TestAppMachineAdaptersFormatting(t *testing.T) {
 		if !bytes.Equal(original, formatted) {
 			t.Errorf("FORMATTED_%s=%q", path, string(formatted))
 		}
+	}
+}
+
+func TestAppMachineAdaptersAuthoritativePlanAndAuthorization(t *testing.T) {
+	read := func(context.Context, string) (GuidedReadContext, error) { return appMachineFixture(), nil }
+	req := appMachineChangeRequest{
+		Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
+		Consent: application.ProviderChangeConsent{PlanID: "impact-1", First: true},
+	}
+	applyCalls := 0
+	apply := func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		applyCalls++
+		return nil, nil
+	}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 1}
+	planRead := func(context.Context, string) (application.ProviderImpactPlan, error) { return plan, nil }
+	deny := func(context.Context, string, string) error { return errors.New("private authorization failure") }
+	_, err := appMachineChange(context.Background(), req, read, planRead, deny, apply)
+	var typed *appMachineError
+	if !errors.As(err, &typed) || typed.Code != "denied" || applyCalls != 0 {
+		t.Fatalf("authorization did not fail closed: %v", err)
+	}
+	allow := func(context.Context, string, string) error { return nil }
+	plan.PlanID = "stale"
+	_, err = appMachineChange(context.Background(), req, read, planRead, allow, apply)
+	if !errors.As(err, &typed) || typed.Code != "conflict" || applyCalls != 0 {
+		t.Fatalf("stale authoritative plan applied: %v", err)
+	}
+	plan.PlanID = "impact-1"
+	_, err = appMachineChange(context.Background(), req, read, nil, allow, apply)
+	if !errors.As(err, &typed) || typed.Code != "unsupported" || applyCalls != 0 {
+		t.Fatalf("missing plan owner accepted: %v", err)
+	}
+}
+
+func TestAppMachineAdaptersManagedSecretsRequirements(t *testing.T) {
+	view := appMachineFixture()
+	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
+	view.Footprint.Requirements = []application.RequirementResolution{{Requirement: secret}}
+	view.Preferences = append(view.Preferences, application.ProviderPreference{Requirement: secret})
+	result, err := appMachineInspect(context.Background(), "dev",
+		func(context.Context, string) (GuidedReadContext, error) { return view, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, requirement := range result.Requirements {
+		if requirement == secret {
+			count++
+		}
+	}
+	if count != 1 || len(result.Preferences) != 2 {
+		t.Fatalf("lost managed secrets or duplicated requirement: %+v", result)
 	}
 }
