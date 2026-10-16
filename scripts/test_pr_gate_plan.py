@@ -283,11 +283,11 @@ class MappingTests(unittest.TestCase):
             with patch.object(planner, 'CORE_752_CI_HEAD', reviewed), \\
                  patch.object(planner, 'CORE_752_CI_MERGE_BASE', shared), \\
                  patch.object(planner, 'core752_reviewed_merge_chain',
-                              wraps=lambda target_sha, head_sha:
-                              planner_core752_merge(root, target_sha, head_sha, reviewed)):
+                              side_effect=lambda target_sha, head_sha:
+                              verified_chain(target_sha, head_sha, reviewed, root)):
                 actual = resolver.resolve_pr_diff(root, target, merged_head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
-                self.assertEqual(shared, actual['merge_base_sha'])
+                self.assertEqual(target, actual['merge_base_sha'])
                 qualified = planner.plan(actual, REQ, MAP)
                 self.assertEqual('resolved', qualified['coverage_status'])
                 self.assertEqual([], qualified['selected_gates'])
@@ -299,7 +299,7 @@ class MappingTests(unittest.TestCase):
                 git('add', '.')
                 git('commit', '-qm', 'unreviewed modification of same paths')
                 unreviewed = git('rev-parse', 'HEAD')
-                self.assertFalse(planner_core752_merge(root, target, unreviewed, reviewed))
+                self.assertFalse(verified_chain(target, unreviewed, reviewed, root))
                 bad_diff = resolver.resolve_pr_diff(root, target, unreviewed)
                 self.assertEqual('unresolved', planner.plan(bad_diff, REQ, MAP)['coverage_status'])
 
