@@ -93,8 +93,8 @@ func TestAppNewWizardCreateOnlyPreservesPreviewIdentity(t *testing.T) {
 	root := filepath.Join(parent, "identity-preserved")
 	manifest, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
 	if err != nil { t.Fatal(err) }
-	if !strings.Contains(string(manifest), "application_id:") {
-		t.Fatalf("created contract missing identity: %s", manifest)
+	if !strings.Contains(string(manifest), "name: identity-preserved") {
+		t.Fatalf("created contract missing application name: %s", manifest)
 	}
 	if !strings.Contains(output.String(), "Next: cd ") || !strings.Contains(output.String(), "baha up") {
 		t.Fatal("create-only must advise explicit up, not start runtime")
