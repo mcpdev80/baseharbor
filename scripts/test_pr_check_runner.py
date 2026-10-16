@@ -35,7 +35,8 @@ class RunnerTests(unittest.TestCase):
         emitted = set()
         for group in (planner.DOC_CHECKS, planner.CODE_CHECKS, planner.CLI_CHECKS,
                       planner.WIZARD_BASE_CHECKS, planner.CAPABILITY_CHECKS,
-                      planner.CI_CHECKS, planner.INSPECT_CHECKS):
+                      planner.CI_CHECKS, planner.WORKFLOW_SYNTAX_CHECKS,
+                      planner.INSPECT_CHECKS):
             emitted |= {check['id'] for check in group}
         self.assertEqual(set(), emitted - runner.VALIDATIONS)
 
