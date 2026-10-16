@@ -78,7 +78,8 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
-# Independently reviewed closed change bundle for core-893 PR #930.
+# Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
+# SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
 # paths continue through the conservative unresolved classifier.
 AUDITED_CORE_893_PATHS = frozenset([
@@ -101,6 +102,8 @@ AUDITED_CORE_893_PATHS = frozenset([
     "scripts/test_pr_selected_runtime_matrix.py",
     "scripts/test_pr_verified_atomic_evidence.py"
 ])
+CORE_893_REVIEWED_HEAD_SHA = 'b0acfc32ddf4d940294a43f98db4618d3aba83cd'
+CORE_893_TRUSTED_MERGE_BASE_SHA = '14d864dfd38801a56e54901ea520f3b02db134b2'
 CORE_893_GATE_QUALIFICATION = {
     'integration/static/public-contracts',
     'atomic/docker/backup-restore',
@@ -163,7 +166,12 @@ def plan(diff, requirements, mapping):
             validations[check['id']] = check
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
-    if valid and not diff['broad_required'] and len(paths) == len(AUDITED_CORE_893_PATHS) and set(paths) == AUDITED_CORE_893_PATHS:
+    if (valid and not diff['broad_required'] and
+            identifiers['head_sha'] == CORE_893_REVIEWED_HEAD_SHA and
+            identifiers['merge_base_sha'] == CORE_893_TRUSTED_MERGE_BASE_SHA and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(AUDITED_CORE_893_PATHS) and
+            set(paths) == AUDITED_CORE_893_PATHS):
         require(CI_CHECKS)
         selected.update(CORE_893_GATE_QUALIFICATION)
         absent = sorted(selected - available)
