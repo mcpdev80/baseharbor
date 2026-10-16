@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -41,6 +42,8 @@ type appWizardInput struct {
 	// The caller supplies domain-generated, immutable projections. This
 	// controller neither computes impact nor authorizes their execution.
 	Footprint *GuidedReadContext
+	// Refresh must retrieve current facts from existing read-only authorities.
+	Refresh func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error)
 	Impact    *application.ProviderImpactPlan
 	TTY       bool
 	NoInput   bool
@@ -63,6 +66,7 @@ type appWizardController struct {
 	preferences map[string]string
 	footprint   *GuidedReadContext
 	impact      *application.ProviderImpactPlan
+	refresh     func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error)
 	decision    *appWizardDecision
 }
 
@@ -82,8 +86,9 @@ func newAppWizardController(ctx context.Context, input appWizardInput) (appWizar
 		snapshot:    input.Snapshot,
 		selection:   newAppCapabilitySelection(input.Selection),
 		preferences: map[string]string{},
-		footprint:   input.Footprint,
-		impact:      input.Impact,
+		impact:      nil,
+		footprint: nil,
+		refresh:    input.Refresh,
 	}, nil
 }
 
@@ -123,62 +128,74 @@ func (w appWizardController) abort() appWizardController {
 	return next
 }
 
-// Step is pure navigation. EOF/cancel/context errors are terminal. No
-// confirmation or preview event invokes a lifecycle or provider operation.
+// intent is immutable data returned to the caller, never execution authority.
+func (w appWizardController) intent() appWizardDecision {
+	d := appWizardDecision{Target: w.snapshot.Target, Requirements: append([]capability.Requirement(nil), w.selection.Requirements()...)}
+	for _, choice := range w.choices { d.Preferences = append(d.Preferences, choice.Preference()) }
+	return d
+}
+
+func (w appWizardController) choicesForSelection() ([]appProviderChoice, error) {
+	choices, err := appProviderChoices(w.manifest, w.snapshot, w.selection)
+	if err != nil { return nil, err }
+	for i := range choices {
+		if id := w.preferences[appWizardKey(w.snapshot.Target, choices[i].Requirement)]; id != "" {
+			selected, err := choices[i].Select(id)
+			if err != nil { return nil, err }
+			choices[i] = selected
+		}
+	}
+	return choices, nil
+}
+
+// freshFacts delegates all calculations to caller-provided read-only authorities.
+func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+	if w.refresh == nil { return nil, nil, errors.New("current preview authority required") }
+	fp, impact, err := w.refresh(ctx, d)
+	if err != nil { return nil, nil, err }
+	if err := ctx.Err(); err != nil { return nil, nil, err }
+	if fp == nil || impact == nil || fp.Footprint.Target != d.Target || impact.Target != d.Target {
+		return nil, nil, errors.New("missing or wrong-Target required preview")
+	}
+	return fp, impact, nil
+}
+
+// Step never invokes a mutation or consent hook. A decision requires verified
+// fresh read-only facts that exactly match the preview shown to the operator.
 func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (appWizardController, error) {
-	if err := ctx.Err(); err != nil {
-		return w.abort(), err
-	}
-	if w.phase == appWizardAborted {
-		return w, errAppWizardAbort
-	}
-	if w.phase == appWizardDecided {
-		return w, errors.New("decision already returned")
-	}
-	if event == appWizardCancel || event == appWizardEOF {
-		return w.abort(), errAppWizardAbort
-	}
+	if err := ctx.Err(); err != nil { return w.abort(), err }
+	if w.phase == appWizardAborted { return w, errAppWizardAbort }
+	if w.phase == appWizardDecided { return w, errors.New("decision already returned") }
+	if event == appWizardCancel || event == appWizardEOF { return w.abort(), errAppWizardAbort }
 	next := w.copy()
 	switch w.phase {
 	case appWizardNeeds:
-		switch event {
-		case appWizardBack, appWizardNo:
-			return next, nil
-		case appWizardNext:
-			choices, err := appProviderChoices(next.manifest, next.snapshot, next.selection)
-			if err != nil {
-				return w, err
-			}
-			for i := range choices {
-				if id, ok := next.preferences[appWizardKey(next.snapshot.Target, choices[i].Requirement)]; ok {
-					chosen, err := choices[i].Select(id)
-					if err != nil {
-						return w, err
-					}
-					choices[i] = chosen
-				}
-			}
+		if event == appWizardNext {
+			choices, err := next.choicesForSelection()
+			if err != nil { return w, err }
 			next.choices = choices
-			next.phase = appWizardProvider
-		}
-	case appWizardProvider:
-		switch event {
-		case appWizardBack, appWizardNo:
-			next.phase = appWizardNeeds
-		case appWizardNext:
+			d := next.intent()
+			fp, impact, err := next.freshFacts(ctx, d)
+			if err != nil { return w, err }
+			next.footprint, next.impact = fp, impact
 			next.phase = appWizardPreview
 		}
 	case appWizardPreview:
 		switch event {
 		case appWizardBack, appWizardNo:
-			next.phase = appWizardProvider
+			next.phase = appWizardNeeds
+			next.footprint, next.impact = nil, nil
 		case appWizardYes:
-			decision := &appWizardDecision{Target: next.snapshot.Target,
-				Requirements: append([]capability.Requirement(nil), next.selection.Requirements()...)}
-			for _, choice := range next.choices {
-				decision.Preferences = append(decision.Preferences, choice.Preference())
+			choices, err := next.choicesForSelection()
+			if err != nil { return w, err }
+			if !reflect.DeepEqual(choices, next.choices) { return w, errors.New("stale provider choices") }
+			fp, impact, err := next.freshFacts(ctx, next.intent())
+			if err != nil { return w, err }
+			if !reflect.DeepEqual(fp, next.footprint) || !reflect.DeepEqual(impact, next.impact) {
+				return w, errors.New("stale preview: return to selection and refresh")
 			}
-			next.decision = decision
+			d := next.intent()
+			next.decision = &d
 			next.phase = appWizardDecided
 		}
 	}
@@ -202,6 +219,7 @@ func (w appWizardController) SelectNeed(ctx context.Context, key string) (appWiz
 		// advancement is always an explicit controller Step(next).
 		next.selection.done = false
 	}
+	next.footprint, next.impact = nil, nil
 	return next, nil
 }
 
@@ -209,10 +227,13 @@ func (w appWizardController) SelectProvider(ctx context.Context, requirement cap
 	if err := ctx.Err(); err != nil {
 		return w.abort(), err
 	}
-	if w.phase != appWizardProvider {
-		return w, errors.New("not on provider screen")
+	if w.phase != appWizardNeeds {
+		return w, errors.New("provider choices only on needs screen")
 	}
 	next := w.copy()
+	choices, err := next.choicesForSelection()
+	if err != nil { return w, err }
+	next.choices = choices
 	for i, choice := range next.choices {
 		if choice.Requirement != requirement {
 			continue
@@ -228,6 +249,7 @@ func (w appWizardController) SelectProvider(ctx context.Context, requirement cap
 		} else {
 			next.preferences[key] = instanceID
 		}
+		next.footprint, next.impact = nil, nil
 		return next, nil
 	}
 	return w, fmt.Errorf("requirement %s/%s not in current selection", requirement.Kind, requirement.Name)
@@ -236,7 +258,10 @@ func (w appWizardController) SelectProvider(ctx context.Context, requirement cap
 func (w appWizardController) View() string {
 	switch w.phase {
 	case appWizardNeeds:
-		return w.selection.View()
+		out := w.selection.View()
+		choices, err := w.choicesForSelection()
+		if err == nil { for _, choice := range choices { out += "\\n" + choice.View() } }
+		return out
 	case appWizardProvider:
 		out := ""
 		for _, choice := range w.choices {
