@@ -13,7 +13,7 @@ planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
 GATES = ['integration/static/public-contracts', 'atomic/docker/lifecycle',
-         'journey/docker', 'journey/podman', 'ha/docker/data']
+         'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
@@ -376,6 +376,79 @@ class MappingTests(unittest.TestCase):
         self.assertIn('MUST fail closed', result['validation_contract'])
         self.assertIn('zero selected_gates is valid', result['validation_contract'])
 
+
+    def test_first_wave_wizard_files_select_exact_hosted_profiles(self):
+        profiles = {
+            'wizard-app-edit-load-tests': [
+                'cmd/baha/app_edit_load.go', 'cmd/baha/app_edit_load_test.go'],
+            'wizard-capability-selection-tests': [
+                'cmd/baha/app_capability_selection.go', 'cmd/baha/app_capability_selection_test.go'],
+            'wizard-footprint-presenter-tests': [
+                'cmd/baha/app_footprint_presenter.go', 'cmd/baha/app_footprint_presenter_test.go'],
+            'wizard-change-presentation-tests': [
+                'cmd/baha/app_change_preview.go', 'cmd/baha/app_change_preview_test.go',
+                'cmd/baha/app_change_result_presenter.go',
+                'cmd/baha/app_change_result_presenter_test.go'],
+        }
+        for expected, names in profiles.items():
+            for name in names:
+                with self.subTest(path=name):
+                    result = planner.plan(diff(paths(name)), REQ, MAP)
+                    self.assertEqual('resolved', result['coverage_status'])
+                    self.assertEqual([], result['selected_gates'])
+                    ids = {row['id'] for row in result['required_validation_checks']}
+                    self.assertIn(expected, ids)
+                    self.assertTrue({'source-contracts', 'cli-gofmt',
+                                     'cli-vet', 'cli-build'} <= ids)
+                    self.assertNotIn('cli-guided-tests', ids)
+
+    def test_wizard_profile_accepts_ordinary_trusted_target_integration(self):
+        candidate = diff(paths('cmd/baha/app_edit_load.go',
+                               'cmd/baha/app_edit_load_test.go'))
+        candidate['target_base_sha'] = 'e' * 40
+        candidate['head_sha'] = 'f' * 40
+        candidate['merge_base_sha'] = '1' * 40
+        candidate['integration_sha'] = '2' * 40
+        result = planner.plan(candidate, REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('wizard-app-edit-load-tests',
+                      {row['id'] for row in result['required_validation_checks']})
+
+    def test_wizard_unknown_nested_and_boundary_mutations_fail_closed(self):
+        for change in [
+            [{'status': 'added', 'path': 'cmd/baha/wizard/app_edit_load.go'}],
+            [{'status': 'added', 'path': 'cmd/baha/app_edit_load_helper.go'}],
+            [{'status': 'deleted', 'path': 'cmd/baha/app_edit_load_test.go'}],
+            [{'status': 'type_changed', 'path': 'cmd/baha/app_capability_selection.go'}],
+            [{'status': 'renamed', 'old_path': 'cmd/baha/app_edit_load.go',
+              'new_path': 'cmd/baha/app_edit_load_v2.go'}],
+        ]:
+            with self.subTest(change=change):
+                result = planner.plan(diff(change), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
+    def test_later_mutating_wizard_wiring_selects_only_targeted_lifecycle_gates(self):
+        result = planner.plan(diff(paths('cmd/baha/app_edit_apply.go',
+                                         'cmd/baha/app_edit_apply_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertIn('wizard-app-edit-tests',
+                      {row['id'] for row in result['required_validation_checks']})
+
+    def test_later_readonly_profiles_remain_runtime_free(self):
+        for name, check_id in [
+            ('cmd/baha/app_provider_choice.go', 'wizard-provider-choice-tests'),
+            ('cmd/baha/app_wizard_controller.go', 'wizard-controller-tests'),
+            ('cmd/baha/app_footprint_show.go', 'wizard-footprint-command-tests'),
+            ('cmd/baha/app_machine_adapters.go', 'wizard-machine-adapter-tests'),
+        ]:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual([], result['selected_gates'])
+                self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
 if __name__ == '__main__':
     unittest.main()
