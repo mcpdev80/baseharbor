@@ -280,8 +280,9 @@ class MappingTests(unittest.TestCase):
             git('merge', '--no-ff', '--no-commit', 'source')
             git('commit', '-qm', 'synthetic PR integration')
             integration = git('rev-parse', 'HEAD')
-            with patch.object(planner, 'CORE_752_CI_HEAD', reviewed), \\
-                 patch.object(planner, 'CORE_752_CI_MERGE_BASE', shared), \\
+            verified_chain = planner.core752_reviewed_merge_chain
+            with patch.object(planner, 'CORE_752_CI_HEAD', reviewed), \
+                 patch.object(planner, 'CORE_752_CI_MERGE_BASE', shared), \
                  patch.object(planner, 'core752_reviewed_merge_chain',
                               side_effect=lambda target_sha, head_sha:
                               verified_chain(target_sha, head_sha, reviewed, root)):
