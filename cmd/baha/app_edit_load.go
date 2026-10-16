@@ -53,12 +53,12 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 	// Deep-copy through JSON: both the source document and nested selections
 	// remain detached from the authority's in-memory maps and slices.
 	var snapshot struct {
-		Capabilities  []capability.Requirement `json:"capabilities"`
-		Preferences   []application.ProviderPreference `json:"preferences"`
+		Capabilities []capability.Requirement         `json:"capabilities"`
+		Preferences  []application.ProviderPreference `json:"preferences"`
 	}
 	raw, err := json.Marshal(struct {
-		Capabilities []capability.Requirement `json:"capabilities"`
-		Preferences []application.ProviderPreference `json:"preferences"`
+		Capabilities []capability.Requirement         `json:"capabilities"`
+		Preferences  []application.ProviderPreference `json:"preferences"`
 	}{view.Capabilities, view.Preferences})
 	if err != nil || json.Unmarshal(raw, &snapshot) != nil {
 		return appEditLoaded{}, &appEditLoadError{Kind: "unverifiable"}
