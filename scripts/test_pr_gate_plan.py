@@ -521,7 +521,7 @@ class MappingTests(unittest.TestCase):
 
 # Registration coverage is part of the trusted planner qualification suite.
 try:
-    from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests, RegistrationWorkflowRoute
+    from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests, RegistrationWorkflowRoute, RegistrationActualPackageSmoke
 except ModuleNotFoundError:
     from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
