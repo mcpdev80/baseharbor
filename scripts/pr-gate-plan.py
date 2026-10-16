@@ -202,6 +202,16 @@ CORE_752_CI_PATHS = frozenset({
     'scripts/test_pr_check_runner.py', 'scripts/test_pr_gate_plan.py',
 })
 
+# Independent manager qualification of the corrected #957 source. This record
+# is read only from trusted develop; it cannot authorize an unreviewed follow-up.
+WIZARD_CI_REVIEWED_HEAD = '1a94d171166d0402b95740a5f71b52482fb61d9a'
+WIZARD_CI_REVIEWED_PATHS = frozenset({
+    '.github/workflows/ci.yml', 'scripts/pr-check-runner.py',
+    'scripts/pr-gate-plan.py', 'scripts/test_pr_check_runner.py',
+    'scripts/test_pr_gate_plan.py', 'scripts/test_pr_required_final.py',
+    'scripts/test_pr_wizard_workflow_route.py',
+})
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -329,6 +339,29 @@ def plan(diff, requirements, mapping):
                     'If unresolved, final check MUST fail closed; never treat as no checks '
                     'or automatically run the complete release catalog.'),
                 'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
+    # Reuse the existing clean trusted-target merge proof, bound to the exact
+    # independently reviewed wizard CI commit and its complete seven-file diff.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(WIZARD_CI_REVIEWED_PATHS) and
+            set(paths) == WIZARD_CI_REVIEWED_PATHS and
+            all(ch.get('status') == ('added' if ch.get('path') ==
+                'scripts/test_pr_wizard_workflow_route.py' else 'modified')
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], WIZARD_CI_REVIEWED_HEAD)):
+        require(CI_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
+                    'zero selected_gates is valid only when coverage_status is resolved. '
+                    'If unresolved, final check MUST fail closed; never treat as no checks '
+                    'or automatically run the complete release catalog.'),
+                'reasons': ['independently reviewed exact #957 wizard planner/executor bundle; '
+                            'focused hosted Go/workflow-route regressions and mandatory CI checks']}
     # Review-owned trusted policy for exact #953 commit. Never read a policy
     # record from PR head. The verified diff resolver validates integration
     # parents/tree separately; a moved target base is allowed, but PR content

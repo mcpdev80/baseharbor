@@ -33,6 +33,75 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+class WizardBootstrapPolicyTests(unittest.TestCase):
+    def test_real_trusted_merge_and_unreviewed_followup(self):
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Wizard policy fixture')
+            git('config', 'user.email', 'fixture@example.test')
+            for path in planner.WIZARD_CI_REVIEWED_PATHS - {'scripts/test_pr_wizard_workflow_route.py'}:
+                file = root / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text('baseline\n')
+            git('add', '.')
+            git('commit', '-qm', 'trusted shared baseline')
+            git('branch', 'trusted')
+            git('checkout', '-qb', 'source')
+            for path in planner.WIZARD_CI_REVIEWED_PATHS:
+                (root / path).write_text('independently reviewed\n')
+            git('add', '.')
+            git('commit', '-qm', 'reviewed seven-file wizard CI change')
+            reviewed = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'trusted')
+            (root / 'accepted-policy.txt').write_text('target policy\n')
+            git('add', '.')
+            git('commit', '-qm', 'advance trusted target')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'source')
+            git('merge', '--no-ff', '-qm', 'clean trusted-target integration', 'trusted')
+            head = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'trusted')
+            git('merge', '--no-ff', '-qm', 'verified PR integration', 'source')
+            integration = git('rev-parse', 'HEAD')
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            with patch.object(planner, 'WIZARD_CI_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+                actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                self.assertEqual(target, actual['merge_base_sha'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('resolved', planned['coverage_status'])
+                self.assertEqual([], planned['selected_gates'])
+                self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+                                 {c['id'] for c in planned['required_validation_checks']})
+                stale = resolver.resolve_pr_diff(root, target, head, reviewed)
+                self.assertEqual('unresolved', planner.plan(stale, REQ, MAP)['coverage_status'])
+                # A normal extra source commit, even touching an approved path,
+                # is not a clean target merge and must lose the qualification.
+                git('checkout', '-q', 'source')
+                (root / 'scripts/pr-check-runner.py').write_text('unreviewed follow-up\n')
+                git('add', '.')
+                git('commit', '-qm', 'unreviewed change in the same file inventory')
+                changed = git('rev-parse', 'HEAD')
+                git('checkout', '-q', '-b', 'negative-integration', target)
+                git('merge', '--no-ff', '-qm', 'new PR integration', 'source')
+                changed_integration = git('rev-parse', 'HEAD')
+                bad = resolver.resolve_pr_diff(root, target, changed, changed_integration)
+                self.assertFalse(bad['broad_required'], bad['reasons'])
+                self.assertEqual('unresolved', planner.plan(bad, REQ, MAP)['coverage_status'])
+
+
 class MappingTests(unittest.TestCase):
     def test_documentation_requires_validation_but_zero_release_gates(self):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
