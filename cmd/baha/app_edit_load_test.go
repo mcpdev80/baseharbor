@@ -182,7 +182,7 @@ func TestAppEditLoadManagedSecretsHydration(t *testing.T) {
 	base.Footprint.Requirements = []application.RequirementResolution{{Requirement: secret}}
 	original := bytes.Clone(source)
 	for _, tc := range []struct {
-		target string
+		target   string
 		provider string
 	}{{"dev", ""}, {"prod", "explicit-secrets"}} {
 		view := base
@@ -216,7 +216,7 @@ func TestAppEditLoadRejectsManagedSecretsMismatch(t *testing.T) {
 	withSecrets := []byte(appEditLoadYAML + "  secrets:\n    enabled: true\n")
 	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
 	tests := []struct {
-		source []byte
+		source    []byte
 		footprint bool
 	}{
 		{withSecrets, false},
