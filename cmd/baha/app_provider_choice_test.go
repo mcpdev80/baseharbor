@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -127,4 +128,13 @@ func TestAppProviderChoiceNoProviderAndPortableRequirements(t *testing.T) {
 	if _, err := choices[0].Effective(); err == nil || !strings.Contains(err.Error(), "No compatible") { t.Fatalf("missing provider: %v", err) }
 	if _, err := choices[0].Select("unknown"); err == nil { t.Fatal("unknown provider accepted") }
 	if !reflect.DeepEqual(before, selection.Requirements()) { t.Fatal("portable requirements mutated") }
+}
+
+func TestAppProviderChoiceFormatting(t *testing.T) {
+	for _, name := range []string{"app_provider_choice.go", "app_provider_choice_test.go"} {
+		diff, err := exec.Command("gofmt", "-d", name).CombinedOutput()
+		if err != nil || len(diff) > 0 {
+			t.Fatalf("gofmt mismatch in %s: %s (%v)", name, diff, err)
+		}
+	}
 }
