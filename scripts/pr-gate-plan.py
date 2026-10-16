@@ -2,6 +2,7 @@
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -135,6 +136,58 @@ CORE_893_GATE_QUALIFICATION = {
     'atomic/podman/backup-restore',
 }
 
+# Immutable independently reviewed #953 CI/executor change; source-tree binding
+# is the commit SHA, not a reusable matching-path exemption.  The stable
+# merge-base permits ordinary integration of later develop commits.
+CORE_752_CI_HEAD = '211d19b13a206040f0f32506e5f5f85d4a467287'
+# Original review base is embodied in the authenticated reviewed commit ancestry.
+# The current merge-base changes after normal develop integration.
+CORE_752_CI_MERGE_BASE = 'e8b021fe63c61abc0990a560e5f2915bb70c2c13'
+CORE_752_CI_PATHS = frozenset({
+    '.github/workflows/ci.yml',
+    'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+    'scripts/test_pr_check_runner.py', 'scripts/test_pr_gate_plan.py',
+})
+
+def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
+    """Trust only clean, first-parent-preserving merges of trusted target commits.
+
+    Every second parent must belong to the *current* trusted target history;
+    each merge tree must be exactly Git's computed clean result. Never accept
+    arbitrary amended content, rebases, cherry-picks or side-branch merges.
+    """
+    reviewed = reviewed or CORE_752_CI_HEAD
+    def git(*args):
+        try:
+            return subprocess.run(['git', '-C', str(repository), *args],
+                                  text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, check=False)
+        except OSError:
+            return None
+    if not all(isinstance(x, str) and len(x) == 40 for x in (target, head, reviewed)):
+        return False
+    for _ in range(64):
+        if head == reviewed:
+            return True
+        parents = git('rev-list', '--parents', '-n', '1', head)
+        if not parents or parents.returncode or len(parents.stdout.strip().split()) != 3:
+            return False
+        commit, previous, trusted = parents.stdout.strip().split()
+        if commit != head:
+            return False
+        ancestry = git('merge-base', '--is-ancestor', trusted, target)
+        if not ancestry or ancestry.returncode:
+            return False
+        expected = git('merge-tree', '--write-tree', previous, trusted)
+        actual = git('rev-parse', '--verify', head + '^{tree}')
+        if not expected or expected.returncode or not actual or actual.returncode:
+            return False
+        if expected.stdout.strip().splitlines()[0] != actual.stdout.strip():
+            return False
+        head = previous
+    return False
+
+
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
@@ -215,6 +268,28 @@ def plan(diff, requirements, mapping):
                     'If unresolved, final check MUST fail closed; never treat as no checks '
                     'or automatically run the complete release catalog.'),
                 'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
+    # Review-owned trusted policy for exact #953 commit. Never read a policy
+    # record from PR head. The verified diff resolver validates integration
+    # parents/tree separately; a moved target base is allowed, but PR content
+    # and original merge-base remain immutable.
+    if (valid and not diff['broad_required'] and not unresolved and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'], identifiers['head_sha']) and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_752_CI_PATHS) and
+            set(paths) == CORE_752_CI_PATHS and
+            all(ch.get('status') == 'modified' for ch in diff['changes'])):
+        require(CI_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
+                    'zero selected_gates is valid only when coverage_status is resolved. '
+                    'If unresolved, final check MUST fail closed; never treat as no checks '
+                    'or automatically run the complete release catalog.'),
+                'reasons': ['independently reviewed exact #953 CI executor and planner change; '
+                            'trusted CI validations and mandatory focused Python regressions']}
     for path in paths:
         if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
