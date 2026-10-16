@@ -69,7 +69,7 @@ func TestAppChangeResultPresenterRejectsStaleResultAndRedactsSecrets(t *testing.
 
 func TestAppChangeResultPresenterActualPartialSecurityAndBehavior(t *testing.T) {
 	access := &application.ProviderAccess{
-		Method: "secret-method-hidden", Endpoint: "https://password@example.invalid",
+		Method: "secret-method-hidden", Endpoint: "https://example.invalid/hidden-access-path",
 		Security: capability.SecureBinding{
 			Secrets:   []capability.SecretReference{{Name: "hidden-token", Reference: "baseharbor://secrets/token"}},
 			Lifecycle: capability.SecurityLifecycleSupport{Renewable: false, Rotatable: true},
@@ -102,7 +102,7 @@ func TestAppChangeResultPresenterActualPartialSecurityAndBehavior(t *testing.T) 
 			t.Errorf("missing actual result %q: %s", want, got)
 		}
 	}
-	for _, secret := range []string{"secret-method-hidden", "password@example", "hidden-token", "baseharbor://"} {
+	for _, secret := range []string{"secret-method-hidden", "hidden-access-path", "hidden-token", "baseharbor://"} {
 		if strings.Contains(got, secret) {
 			t.Fatalf("sensitive receipt data leaked %q", secret)
 		}
