@@ -17,8 +17,8 @@ func TestAppEditLoadRichRoundTrip(t *testing.T) {
 	req := capability.Requirement{Name: "primary"}
 	view := GuidedReadContext{ApplicationID: "existing-id", Name: "demo", Target: "dev",
 		Capabilities: []capability.Requirement{req},
-		Preferences: []application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
-		Footprint: application.Footprint{Target: "dev"}, Complete: true}
+		Preferences:  []application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
+		Footprint:    application.Footprint{Target: "dev"}, Complete: true}
 	before, _ := json.Marshal(view)
 	loaded, err := appEditLoad(context.Background(), "dev", source, func(context.Context, string) (GuidedReadContext, error) { return view, nil })
 	if err != nil {
