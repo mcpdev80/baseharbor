@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -216,6 +217,8 @@ type appMachineDesiredRequest struct {
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
 type appMachineDesiredResult struct {
+	ApplicationID string
+	Desired appMachineDesiredRequest
 	Requirements     []capability.Requirement
 	Preferences      []application.ProviderPreference
 	Choices          []appProviderChoice
@@ -298,8 +301,91 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 		return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
 	}
 	return appMachineDesiredResult{
+		ApplicationID: view.ApplicationID,
+		Desired: appMachineDesiredRequest{
+			Target: req.Target, SnapshotRevision: req.SnapshotRevision,
+			Requirements: append([]capability.Requirement(nil), req.Requirements...),
+			Choices: append([]appMachineDesiredChoice(nil), req.Choices...),
+		},
 		Requirements: append([]capability.Requirement(nil), req.Requirements...),
 		Preferences:  preferences, Choices: candidates, Plan: proposed,
 		SnapshotRevision: view.SnapshotRevision, PlanRevision: proposed.PlanID,
 	}, nil
+}
+
+// appMachineDesiredChangeRequest is the immutable proposal plus the caller's
+// original typed intent. The existing-state PlanRevision is not the desired
+// change PlanID; the authoritative planner must recompute the latter.
+type appMachineDesiredChangeRequest struct {
+	Desired appMachineDesiredRequest
+	Proposal appMachineDesiredResult
+	Consent application.ProviderChangeConsent
+}
+
+// appMachineChangeDesired revalidates the exact previously proposed intent
+// against a fresh authorized snapshot and planning authority before apply.
+// Neither this adapter nor the caller may persist a pending provider selection.
+func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeRequest,
+	read appMachineRead, choices appMachineChoiceReader, planner appMachineDesiredPlanner,
+	authorize appMachineAuthorize, apply appMachineApply) (application.ProviderChangeResult, error) {
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if authorize == nil || apply == nil {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "unsupported"}
+	}
+	if !reflect.DeepEqual(req.Desired, req.Proposal.Desired) ||
+		req.Desired.Target == "" || req.Desired.SnapshotRevision == "" ||
+		req.Proposal.ApplicationID == "" || req.Proposal.Plan.PlanID == "" ||
+		req.Proposal.Plan.Revision == "" || req.Proposal.PlanRevision != req.Proposal.Plan.PlanID ||
+		req.Proposal.SnapshotRevision != req.Desired.SnapshotRevision {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	// The same choice and impact authorities are invoked again, not a cached
+	// plan from the unchanged application or a machine-owned plan store.
+	fresh, err := appMachinePropose(ctx, req.Desired, read, choices, planner)
+	if err != nil {
+		return application.ProviderChangeResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if fresh.ApplicationID != req.Proposal.ApplicationID ||
+		fresh.SnapshotRevision != req.Proposal.SnapshotRevision ||
+		fresh.PlanRevision != req.Proposal.PlanRevision ||
+		!reflect.DeepEqual(fresh.Plan, req.Proposal.Plan) ||
+		!reflect.DeepEqual(fresh.Requirements, req.Proposal.Requirements) ||
+		!reflect.DeepEqual(fresh.Preferences, req.Proposal.Preferences) {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	if err := authorize(ctx, req.Desired.Target, fresh.ApplicationID); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if err := application.ValidateProviderChangeConsent(fresh.Plan, req.Consent); err != nil {
+		var change *application.ProviderChangeError
+		if errors.As(err, &change) {
+			switch change.Code {
+			case "stale-impact-consent", "invalid-impact-plan":
+				return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+			case "impact-confirmation-required", "data-deletion-consent-required":
+				return application.ProviderChangeResult{}, &appMachineError{Code: "cancel"}
+			}
+		}
+		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}
+	}
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	outcomes, executionErr := apply(ctx, fresh.Plan, req.Consent)
+	result, resultErr := application.RecordProviderChangeResult(fresh.Plan, outcomes)
+	if resultErr != nil {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
+	}
+	if executionErr != nil {
+		return result, &appMachineError{Code: "partial"}
+	}
+	return result, nil
 }
