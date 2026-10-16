@@ -121,3 +121,62 @@ class RegistrationExecutorTests(TestCase):
                     self.exercise(absent=name)
                 with self.assertRaises(RuntimeError):
                     self.exercise(skipped=name)
+
+
+class RegistrationWorkflowRoute(TestCase):
+    def test_real_workflow_branch_uses_trusted_helper_and_rejects_missing_mcp(self):
+        import os
+        import subprocess
+        import tempfile
+
+        workflow = (ROOT.parent / ".github/workflows/ci.yml").read_text()
+        start = workflow.index("            wizard-*-tests)") + len("            wizard-*-tests)\n")
+        fragment = workflow[start:workflow.index("              ;;", start)]
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
+        self.assertIn('execute --check "$VALIDATION"', fragment)
+
+        def run(*args, cwd=None, env=None):
+            return subprocess.run(args, cwd=cwd, env=env, text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted, candidate, temp = (root / name for name in ("trusted", "candidate", "runner"))
+            for path in (trusted, candidate, temp):
+                path.mkdir()
+            self.assertEqual(0, run("git", "init", "-q", str(trusted)).returncode)
+            (trusted / "scripts").mkdir()
+            (trusted / "scripts/pr-check-runner.py").write_text(
+                (ROOT / "pr-check-runner.py").read_text())
+            self.assertEqual(0, run("git", "add", ".", cwd=trusted).returncode)
+            identity = dict(os.environ, GIT_AUTHOR_NAME="independent fixture",
+                            GIT_AUTHOR_EMAIL="fixture@example.test",
+                            GIT_COMMITTER_NAME="independent fixture",
+                            GIT_COMMITTER_EMAIL="fixture@example.test")
+            committed = run("git", "commit", "-qm", "isolated trusted helper",
+                            cwd=trusted, env=identity)
+            self.assertEqual(0, committed.returncode, committed.stdout)
+            sha = run("git", "rev-parse", "HEAD", cwd=trusted).stdout.strip()
+            self.assertEqual(0, run("git", "init", "-q", str(candidate)).returncode)
+            self.assertEqual(0, run("git", "remote", "add", "origin", str(trusted),
+                                    cwd=candidate).returncode)
+            (candidate / "go.mod").write_text("module example.com/registration-route\n\ngo 1.25\n")
+            pkg = candidate / "cmd" / "baha"
+            pkg.mkdir(parents=True)
+            environment = dict(os.environ, BASE_SHA=sha,
+                               VALIDATION="wizard-registration-tests",
+                               RUNNER_TEMP=str(temp), GITHUB_WORKSPACE=str(candidate))
+            names = list(RegistrationExecutorTests.names)
+            for missing in (None, "TestMCPRegistrationCIInProcessDiscoverAndInvoke"):
+                available = [name for name in names if name != missing]
+                (pkg / "registration_test.go").write_text(
+                    "package main\nimport \"testing\"\n" +
+                    "\n".join("func %s(t *testing.T) {}" % name for name in available) + "\n")
+                executed = run("bash", "-euo", "pipefail", "-c", fragment,
+                               cwd=candidate, env=environment)
+                if missing:
+                    self.assertNotEqual(0, executed.returncode, executed.stdout)
+                    self.assertIn("zero matching tests", executed.stdout)
+                else:
+                    self.assertEqual(0, executed.returncode, executed.stdout)
+                    self.assertIn("TestMCPRegistrationCIInProcessDiscoverAndInvoke", executed.stdout)
