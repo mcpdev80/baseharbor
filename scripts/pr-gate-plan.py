@@ -79,6 +79,31 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+# Focused, package-scoped checks for the read-only repository-inspection
+# reconciliation surface. The reconcile command is pure in-memory matching with
+# package unit tests and a thin cmd/baha consumer, so these static checks cover
+# its actual risk without a native runtime gate. They never exempt the whole
+# package: detector, model, finding or manifest files remain unresolved below.
+INSPECT_CHECKS = [
+    {'id': 'inspect-gofmt', 'owner': 'internal/repositoryinspect formatting',
+     'command': 'test -z "$(gofmt -l internal/repositoryinspect)"'},
+    {'id': 'inspect-package-tests', 'owner': 'internal/repositoryinspect',
+     'command': 'go test ./internal/repositoryinspect/ -count=1'},
+    {'id': 'inspect-vet', 'owner': 'internal/repositoryinspect',
+     'command': 'go vet ./internal/repositoryinspect/'},
+    {'id': 'inspect-consumer-tests', 'owner': 'cmd/baha inspect/reconcile consumers',
+     'command': "go test ./cmd/baha -run 'Inspect|Reconcile' -count=1"},
+    {'id': 'inspect-consumer-build', 'owner': 'cmd/baha package',
+     'command': 'go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha'},
+]
+# Explicitly reviewed reconciliation files that the narrow lane covers. The
+# package tests run at the top-level package only, so this is an exact reviewed
+# allowlist, not a prefix or name heuristic: any other repositoryinspect file,
+# including a future reconcile*.go or a nested subpackage, stays unresolved.
+INSPECT_RECONCILE_REVIEWED = frozenset([
+    'internal/repositoryinspect/reconcile.go',
+    'internal/repositoryinspect/reconcile_default_instance_test.go',
+])
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -295,6 +320,13 @@ def plan(diff, requirements, mapping):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path in INSPECT_RECONCILE_REVIEWED:
+            area = 'inspect-reconciliation'
+            require(INSPECT_CHECKS)
+        elif path.startswith('internal/repositoryinspect/') and path.endswith('.go'):
+            area = 'inspect-implementation-unresolved'
+            require(INSPECT_CHECKS)
+            unresolved.append('unreviewed repository inspection file needs targeted qualification: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)

@@ -108,6 +108,61 @@ class MappingTests(unittest.TestCase):
                 commands = {check['command'] for check in result['required_validation_checks']}
                 self.assertIn('go test ./internal/capability/... -count=1', commands)
 
+    def test_reconcile_source_runs_focused_inspect_checks_resolved(self):
+        # core-752 permanent lane: only the exact reviewed reconciliation files
+        # resolve to the focused package checks, with zero native gates.
+        for name in ['internal/repositoryinspect/reconcile.go',
+                     'internal/repositoryinspect/reconcile_default_instance_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'inspect-gofmt', 'inspect-package-tests',
+                                  'inspect-vet', 'inspect-consumer-tests',
+                                  'inspect-consumer-build'}, ids)
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
+                self.assertIn("go test ./cmd/baha -run 'Inspect|Reconcile' -count=1", commands)
+
+    def test_reconcile_with_other_package_source_stays_fail_closed(self):
+        # A reviewed reconcile change bundled with an unreviewed inspect file
+        # must never inherit the narrow resolved coverage.
+        result = planner.plan(diff(paths(
+            'internal/repositoryinspect/reconcile.go',
+            'internal/repositoryinspect/detector.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['broad_required'])
+        self.assertIn('detector.go', str(result['unresolved_coverage']))
+        ids = {c['id'] for c in result['required_validation_checks']}
+        self.assertEqual({'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
+                          'inspect-consumer-tests', 'inspect-consumer-build'}, ids)
+
+    def test_non_reconcile_inspect_source_remains_unresolved(self):
+        # No blanket permission for arbitrary repositoryinspect changes: a new
+        # reconcile*-named production file, an unreviewed file, and a nested
+        # subpackage all stay fail-closed unresolved.
+        for name in ['internal/repositoryinspect/detector.go',
+                     'internal/repositoryinspect/model.go',
+                     'internal/repositoryinspect/findings.go',
+                     'internal/repositoryinspect/manifest.go',
+                     'internal/repositoryinspect/reconcile_security.go',
+                     'internal/repositoryinspect/reconcile_other_test.go',
+                     'internal/repositoryinspect/subpackage/reconcile_security.go',
+                     'internal/repositoryinspectx/reconcile.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                if name.startswith('internal/repositoryinspect/'):
+                    self.assertEqual({'inspect-gofmt', 'inspect-package-tests',
+                                      'inspect-vet', 'inspect-consumer-tests',
+                                      'inspect-consumer-build'}, ids)
+
     def test_application_and_capability_production_remain_unresolved(self):
         for name in ['internal/application/manifest.go',
                      'internal/application/footprint.go',
