@@ -207,8 +207,8 @@ func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Manifest.ApplicationID == "" {
-		t.Fatal("missing application identity")
+	if result.Manifest.ApplicationID != manifest.ApplicationID {
+		t.Fatalf("identity changed from confirmed wizard: got %q want %q", result.Manifest.ApplicationID, manifest.ApplicationID)
 	}
 	for _, name := range []string{"baseharbor.yaml", "compose.yaml"} {
 		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
@@ -254,6 +254,16 @@ func TestAppNewWizardControllerRejectsStaleRequestAndCancelledDecision(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	request.ApplicationID = application.MustNewApplicationID()
+	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
+		t.Fatal("conflicting application ID was accepted")
+	}
+	request.ApplicationID = ""
+	request.Environment = "test"
+	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
+		t.Fatal("conflicting environment was accepted")
+	}
+	request.Environment = "dev"
 	request.Capabilities = []capability.Kind{capability.KeyValue}
 	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
 		t.Fatal("stale or mismatched capabilities were accepted")
