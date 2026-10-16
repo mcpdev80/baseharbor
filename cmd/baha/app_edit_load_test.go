@@ -166,3 +166,73 @@ func TestAppEditLoadActualFileUnchanged(t *testing.T) {
 		t.Fatal("read modified source file")
 	}
 }
+
+func TestAppEditLoadManagedSecretsHydration(t *testing.T) {
+	source := []byte(appEditLoadYAML + "  secrets:\n    enabled: true\n")
+	manifest, err := application.ParseYAML(string(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := application.PortableContractFromManifest(manifest)
+	if err != nil || !contract.Secrets.Managed {
+		t.Fatalf("managed secret contract missing: %+v %v", contract, err)
+	}
+	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
+	base := appEditLoadAuthority(t, string(source), "dev", nil)
+	base.Footprint.Requirements = []application.RequirementResolution{{Requirement: secret}}
+	original := bytes.Clone(source)
+	for _, tc := range []struct {
+		target string
+		provider string
+	}{{"dev", ""}, {"prod", "explicit-secrets"}} {
+		view := base
+		view.Target = tc.target
+		view.Footprint.Target = tc.target
+		view.Preferences = []application.ProviderPreference{{Requirement: secret, InstanceID: tc.provider}}
+		state := append([]application.ProviderPreference(nil), view.Preferences...)
+		loaded, err := appEditLoad(context.Background(), tc.target, source, func(context.Context, string) (GuidedReadContext, error) {
+			return view, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for _, requirement := range loaded.Capabilities {
+			if requirement == secret {
+				count++
+			}
+		}
+		if count != 1 || !reflect.DeepEqual(loaded.Preferences, state) || !bytes.Equal(appEditLoadSource(loaded), original) {
+			t.Fatalf("lost managed secrets: %+v", loaded)
+		}
+		loaded.Preferences[0].InstanceID = "modified"
+		if !reflect.DeepEqual(view.Preferences, state) || !bytes.Equal(source, original) {
+			t.Fatal("read mutated input authority or YAML")
+		}
+	}
+}
+
+func TestAppEditLoadRejectsManagedSecretsMismatch(t *testing.T) {
+	withSecrets := []byte(appEditLoadYAML + "  secrets:\n    enabled: true\n")
+	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
+	tests := []struct {
+		source []byte
+		footprint bool
+	}{
+		{withSecrets, false},
+		{[]byte(appEditLoadYAML), true},
+	}
+	for _, tc := range tests {
+		view := appEditLoadAuthority(t, string(tc.source), "dev", nil)
+		if tc.footprint {
+			view.Footprint.Requirements = []application.RequirementResolution{{Requirement: secret}}
+		}
+		_, err := appEditLoad(context.Background(), "dev", tc.source, func(context.Context, string) (GuidedReadContext, error) {
+			return view, nil
+		})
+		var typed *appEditLoadError
+		if !errors.As(err, &typed) || typed.Kind != "incompatible" {
+			t.Fatalf("expected managed-secrets mismatch, got %v", err)
+		}
+	}
+}
