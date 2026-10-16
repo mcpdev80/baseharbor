@@ -42,11 +42,26 @@ func appMachineInspect(ctx context.Context, target string, read appMachineRead) 
 		view.ApplicationID == "" || view.PlanRevision == "" || view.SnapshotRevision == "" {
 		return appMachineView{}, &appMachineError{Code: "conflict"}
 	}
+	// The Footprint owns requirements also stored outside the portable
+	// Capabilities list (for example managed secrets).
+	requirements := append([]capability.Requirement(nil), view.Capabilities...)
+	for _, resolved := range view.Footprint.Requirements {
+		found := false
+		for _, requirement := range requirements {
+			if requirement == resolved.Requirement {
+				found = true
+				break
+			}
+		}
+		if !found {
+			requirements = append(requirements, resolved.Requirement)
+		}
+	}
 	// Marshal-copy the domain values, never expose the wider read context.
 	var projection appMachineView
 	raw, err := json.Marshal(appMachineView{
 		Target: target, ApplicationID: view.ApplicationID,
-		Requirements: view.Capabilities, Preferences: view.Preferences,
+		Requirements: requirements, Preferences: view.Preferences,
 		Footprint: view.Footprint, SnapshotRevision: view.SnapshotRevision,
 		PlanRevision: view.PlanRevision,
 	})
@@ -87,6 +102,10 @@ func appMachineReadError(err error) error {
 	return &appMachineError{Code: "denied"}
 }
 
+// The registered caller must provide these existing, authorized read owners.
+type appMachinePlanReader func(context.Context, string) (application.ProviderImpactPlan, error)
+type appMachineAuthorize func(context.Context, string, string) error
+
 // appMachineApply is an injected, already authorized application-owned
 // execution path. This adapter does not implement runtime/provider mutations.
 type appMachineApply func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error)
@@ -101,8 +120,8 @@ type appMachineChangeRequest struct {
 // appMachineChange binds one fresh authorized read to the exact impact plan.
 // No execution occurs when any revision or approval is stale.
 func appMachineChange(ctx context.Context, request appMachineChangeRequest, read appMachineRead,
-	plan application.ProviderImpactPlan, apply appMachineApply) (application.ProviderChangeResult, error) {
-	if read == nil || request.Target == "" {
+	planRead appMachinePlanReader, authorize appMachineAuthorize, apply appMachineApply) (application.ProviderChangeResult, error) {
+	if read == nil || planRead == nil || authorize == nil || request.Target == "" {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "unsupported"}
 	}
 	view, err := read(ctx, request.Target)
@@ -110,9 +129,19 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 		return application.ProviderChangeResult{}, appMachineReadError(err)
 	}
 	if view.Target != request.Target || view.Footprint.Target != request.Target ||
-		plan.Target != request.Target || request.SnapshotRevision == "" ||
+		view.ApplicationID == "" || request.SnapshotRevision == "" ||
 		request.PlanRevision == "" || request.SnapshotRevision != view.SnapshotRevision ||
-		request.PlanRevision != view.PlanRevision || plan.PlanID != view.PlanRevision ||
+		request.PlanRevision != view.PlanRevision {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	if err := authorize(ctx, request.Target, view.ApplicationID); err != nil {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}
+	}
+	plan, err := planRead(ctx, request.Target)
+	if err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if plan.Target != request.Target || plan.PlanID != view.PlanRevision ||
 		plan.Version != application.ProviderImpactVersion {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
@@ -131,13 +160,13 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 	if apply == nil {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "unsupported"}
 	}
-	outcomes, err := apply(ctx, plan, request.Consent)
-	if err != nil {
-		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
-	}
+	outcomes, executionErr := apply(ctx, plan, request.Consent)
 	result, err := application.RecordProviderChangeResult(plan, outcomes)
 	if err != nil {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
+	}
+	if executionErr != nil {
+		return result, &appMachineError{Code: "partial"}
 	}
 	return result, nil
 }
