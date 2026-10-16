@@ -116,6 +116,35 @@ WIZARD_COMPONENTS = {
     'cmd/baha/app_machine_adapters.go': ('wizard-machine-adapter-tests', ()),
     'cmd/baha/app_machine_adapters_test.go': ('wizard-machine-adapter-tests', ()),
 }
+# Individually reviewed core-921 shared registration sources; no prefix matching,
+# no broad cmd/baha exemption, no unreviewed new files, renames or deletes.
+REGISTRATION_SHARED_FILES = frozenset({
+    'cmd/baha/commands.go',
+    'cmd/baha/app_commands.go',
+    'cmd/baha/human_new.go',
+    'cmd/baha/machine_coverage.go',
+    'cmd/baha/mcp.go',
+    'cmd/baha/mcp_tools.go',
+    'cmd/baha/mcp_application_authoring.go',
+    'cmd/baha/mcp_additional_read_tools.go',
+    'cmd/baha/mcp_adoption_tools.go',
+    'cmd/baha/mcp_environment_tools.go',
+    'cmd/baha/mcp_control_plane_tools.go',
+    'cmd/baha/mcp_platform_tools.go',
+    'cmd/baha/mcp_workspace_mutation.go',
+    'cmd/baha/mcp_provider_org_tools.go',
+})
+REGISTRATION_REFERENCE_FILES = frozenset({
+    'docs/reference/cli-machine-coverage.md',
+    'docs/reference/mcp.md',
+    'docs/de/reference/cli-machine-coverage.md',
+    'docs/de/reference/mcp.md',
+})
+REGISTRATION_TEST_FILES = frozenset({
+    'cmd/baha/registration_ci_readiness_test.go',
+})
+REGISTRATION_COVERAGE = REGISTRATION_SHARED_FILES | REGISTRATION_REFERENCE_FILES | REGISTRATION_TEST_FILES
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -385,7 +414,14 @@ def plan(diff, requirements, mapping):
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
     for path in paths:
-        if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
+        if path in REGISTRATION_COVERAGE:
+            area = 'registration-reviewed-path'
+            require(CODE_CHECKS)
+            require(WIZARD_BASE_CHECKS)
+            require([wizard_check('wizard-registration-tests')])
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('shared registration rename/delete/type change needs independent review: ' + path)
+        elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
                 path.startswith('site/')):
             area = 'documentation'
