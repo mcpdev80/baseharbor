@@ -323,7 +323,7 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 	desired := appMachineDesiredRequest{
 		Target: "dev", SnapshotRevision: "snapshot-1",
 		Requirements: []capability.Requirement{primary, analytics},
-		Choices: []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}},
+		Choices:      []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}},
 	}
 	current := appMachineFixture() // current PlanRevision is impact-1, NOT change-42
 	read := func(context.Context, string) (GuidedReadContext, error) { return current, nil }
@@ -398,7 +398,7 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 		t.Fatalf("cancel allowed execution: %v", err)
 	}
 	partialApply := func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
-		return []application.ProviderExecutionOutcome{{InstanceID: "db-a", Operation: "provide", Status: "applied"}, {InstanceID: "db-b", Operation: "provide", Status: "failed", ErrorCode: "interrupted"}}, context.Canceled
+		return []application.ProviderExecutionOutcome{{InstanceID: "db-a", Operation: "provide", Status: "applied", Verified: true, Evidence: "partial-receipt"}, {InstanceID: "db-b", Operation: "provide", Status: "failed", ErrorCode: "interrupted"}}, context.Canceled
 	}
 	partial, err := appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, partialApply)
 	if !errors.As(err, &typed) || typed.Code != "partial" || len(partial.Outcomes) != 2 {
