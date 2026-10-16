@@ -203,3 +203,52 @@ func TestAppFootprintShowWriterErrorRedacted(t *testing.T) {
 		}
 	}
 }
+
+func TestAppFootprintShowFootprintCompletenessIndependentOfPlan(t *testing.T) {
+	view := footprintShowFixture()
+	view.Footprint.Complete = true
+	view.Complete = false
+	before, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON, err := json.Marshal(view.Footprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var human, machine bytes.Buffer
+	if err := appFootprintShowContext(&human, view, appFootprintShowOptions{
+		Target: "dev", Details: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := appFootprintShowContext(&machine, view, appFootprintShowOptions{
+		Target: "dev", JSON: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(human.String(), "Resolution: complete") ||
+		strings.Contains(human.String(), "Resolution: incomplete") {
+		t.Fatalf("human completeness differs from Footprint: %q", human.String())
+	}
+	if !bytes.Equal(bytes.TrimSpace(machine.Bytes()), wantJSON) {
+		t.Fatalf("canonical JSON mismatch: got %s, want %s", machine.Bytes(), wantJSON)
+	}
+	var decoded application.Footprint
+	if err := json.Unmarshal(machine.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.Complete || decoded.Core != view.Footprint.Core ||
+		len(decoded.Existing) != len(view.Footprint.Existing) ||
+		decoded.Existing[0].MemoryBytes.Classification != "measured" ||
+		decoded.Existing[0].Containers.Classification != "estimated" {
+		t.Fatalf("JSON lost canonical evidence: %+v", decoded)
+	}
+	after, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("handlers modified input context")
+	}
+}
