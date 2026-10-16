@@ -521,3 +521,6 @@ class MappingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+# Registration coverage is part of the trusted planner qualification suite.
+from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
