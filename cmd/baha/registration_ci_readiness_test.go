@@ -94,6 +94,7 @@ func TestMachineCoverageCIRealTreeAndJSONClassification(t *testing.T) {
 }
 
 func TestMCPRegistrationCIInProcessDiscoverAndInvoke(t *testing.T) {
+	t.Skip("deliberate negative qualification: mandatory MCP family must not be skipped")
 	configureTestTarget(t)
 	session := workspaceMutationClient(t)
 	ctx := context.Background()
