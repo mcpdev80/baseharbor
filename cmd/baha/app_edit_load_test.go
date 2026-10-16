@@ -3,91 +3,166 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
-func TestAppEditLoadRichRoundTrip(t *testing.T) {
-	source := []byte("{\"name\":\"demo\",\"services\":{\"sql_instances\":{\"primary\":{},\"analytics\":{}}},\"extension\":{\"future\":[1,2,3]},\"identity\":{\"scopes\":[\"openid\"]}}")
-	original := bytes.Clone(source)
-	req := capability.Requirement{Name: "primary"}
-	view := GuidedReadContext{ApplicationID: "existing-id", Name: "demo", Target: "dev",
-		Capabilities: []capability.Requirement{req},
-		Preferences:  []application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
-		Footprint:    application.Footprint{Target: "dev"}, Complete: true}
-	before, _ := json.Marshal(view)
-	loaded, err := appEditLoad(context.Background(), "dev", source, func(context.Context, string) (GuidedReadContext, error) { return view, nil })
+const appEditLoadYAML = "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  sql:\n    instances:\n      primary: {}\n      analytics: {}\n"
+
+func appEditLoadAuthority(t *testing.T, source string, target string, prefs []application.ProviderPreference) GuidedReadContext {
+	t.Helper()
+	manifest, err := application.ParseYAML(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(appEditLoadSource(loaded), original) || loaded.ApplicationID != "existing-id" ||
-		len(loaded.Capabilities) != 1 || len(loaded.Preferences) != 1 || loaded.Preferences[0].InstanceID != "db-dev" {
-		t.Fatalf("lost source or selections: %+v", loaded)
+	contract, err := application.PortableContractFromManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
 	}
-	loaded.Source[0] = ' '
-	if !bytes.Equal(source, original) {
-		t.Fatal("source was mutated")
-	}
-	after, _ := json.Marshal(view)
-	if !bytes.Equal(before, after) {
-		t.Fatal("read authority mutated")
+	return GuidedReadContext{
+		ApplicationID: "existing-system-owned-id",
+		Name: manifest.Name,
+		Environment: manifest.Environment,
+		Target: target,
+		Capabilities: contract.Capabilities,
+		Preferences: prefs,
+		Footprint: application.Footprint{Target: target},
+		Complete: true,
 	}
 }
 
-func TestAppEditLoadTwoTargetsAndAutomatic(t *testing.T) {
-	req := capability.Requirement{Name: "primary"}
-	views := map[string]GuidedReadContext{
-		"dev": {Target: "dev", Name: "app", ApplicationID: "same", Footprint: application.Footprint{Target: "dev"},
-			Preferences: []application.ProviderPreference{{Requirement: req}}},
-		"prod": {Target: "prod", Name: "app", ApplicationID: "same", Footprint: application.Footprint{Target: "prod"},
-			Preferences: []application.ProviderPreference{{Requirement: req, InstanceID: "prod-database"}}},
+func TestAppEditLoadRichYAMLRoundTrip(t *testing.T) {
+	source := []byte("# authored manifest; do not reformat\n" + appEditLoadYAML + "# retained comment\n")
+	view := appEditLoadAuthority(t, string(source), "dev", nil)
+	if len(view.Capabilities) != 2 {
+		t.Fatalf("expected both named SQL requirements: %+v", view.Capabilities)
 	}
-	read := func(_ context.Context, target string) (GuidedReadContext, error) { return views[target], nil }
-	dev, err := appEditLoad(context.Background(), "dev", []byte("{}"), read)
+	view.Preferences = []application.ProviderPreference{
+		{Requirement: view.Capabilities[0], InstanceID: "sql-one"},
+		{Requirement: view.Capabilities[1]},
+	}
+	before := bytes.Clone(source)
+	stateBefore := append([]capability.Requirement(nil), view.Capabilities...)
+	result, err := appEditLoad(context.Background(), "dev", source, func(context.Context, string) (GuidedReadContext, error) {
+		return view, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prod, err := appEditLoad(context.Background(), "prod", []byte("{}"), read)
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(appEditLoadSource(result), before) || !reflect.DeepEqual(result.Capabilities, view.Capabilities) ||
+		!reflect.DeepEqual(result.Preferences, view.Preferences) || result.ApplicationID != view.ApplicationID {
+		t.Fatalf("lost YAML intent or preferences: %+v", result)
 	}
-	if dev.Preferences[0].InstanceID != "" || prod.Preferences[0].InstanceID != "prod-database" {
-		t.Fatalf("cross-target preference loss: %+v %+v", dev, prod)
-	}
-	prod.Preferences[0].InstanceID = "changed"
-	if views["prod"].Preferences[0].InstanceID != "prod-database" {
-		t.Fatal("authority changed")
+	result.Source[0] = '!'
+	result.Capabilities[0].Name = "altered"
+	result.Preferences[0].InstanceID = "altered"
+	if !bytes.Equal(source, before) || !reflect.DeepEqual(view.Capabilities, stateBefore) ||
+		view.Preferences[0].InstanceID != "sql-one" {
+		t.Fatal("hydration modified source or authority")
 	}
 }
 
-func TestAppEditLoadMissingAmbiguousIncompatible(t *testing.T) {
+func TestAppEditLoadTwoTargetsAutomaticExplicit(t *testing.T) {
+	source := []byte(appEditLoadYAML)
+	base := appEditLoadAuthority(t, string(source), "dev", nil)
+	dev := base
+	dev.Preferences = []application.ProviderPreference{{Requirement: base.Capabilities[0]}}
+	prod := base
+	prod.Target = "prod"
+	prod.Footprint.Target = "prod"
+	prod.Preferences = []application.ProviderPreference{{Requirement: base.Capabilities[0], InstanceID: "prod-db"}}
+	contexts := map[string]GuidedReadContext{"dev": dev, "prod": prod}
+	read := func(_ context.Context, target string) (GuidedReadContext, error) {
+		return contexts[target], nil
+	}
+	a, err := appEditLoad(context.Background(), "dev", source, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := appEditLoad(context.Background(), "prod", source, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Preferences[0].InstanceID != "" || b.Preferences[0].InstanceID != "prod-db" {
+		t.Fatal("Target preferences crossed")
+	}
+	b.Preferences[0].InstanceID = "changed"
+	if contexts["prod"].Preferences[0].InstanceID != "prod-db" {
+		t.Fatal("read changed another Target")
+	}
+}
+
+func TestAppEditLoadRejectsForeignAppEnvironmentIntent(t *testing.T) {
+	base := appEditLoadAuthority(t, appEditLoadYAML, "dev", nil)
+	cases := []struct {
+		name string
+		source string
+	}{
+		{"app", "version: 1\napp:\n  name: other\n  environment: dev\n"},
+		{"environment", "version: 1\napp:\n  name: demo\n  environment: prod\n"},
+		{"intent", "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  sql:\n    instances:\n      primary: {}\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := appEditLoad(context.Background(), "dev", []byte(tc.source), func(context.Context, string) (GuidedReadContext, error) {
+				return base, nil
+			})
+			var typed *appEditLoadError
+			if !errors.As(err, &typed) || typed.Kind != "incompatible" {
+				t.Fatalf("expected incompatible, got %v", err)
+			}
+		})
+	}
+}
+
+func TestAppEditLoadTypedSourceErrors(t *testing.T) {
 	for _, kind := range []string{"missing", "ambiguous", "incompatible", "unverifiable"} {
-		_, err := appEditLoad(context.Background(), "dev", []byte("{}"), func(context.Context, string) (GuidedReadContext, error) {
-			return GuidedReadContext{}, &GuidedReadError{Kind: kind, Cause: errors.New("/private/path?token=secret")}
+		_, err := appEditLoad(context.Background(), "dev", []byte(appEditLoadYAML), func(context.Context, string) (GuidedReadContext, error) {
+			return GuidedReadContext{}, &GuidedReadError{Kind: kind, Cause: errors.New("secret=private")}
 		})
 		var typed *appEditLoadError
-		if !errors.As(err, &typed) || typed.Kind != kind {
-			t.Fatalf("%s: %v", kind, err)
+		if !errors.As(err, &typed) || typed.Kind != kind || bytes.Contains([]byte(err.Error()), []byte("private")) {
+			t.Fatalf("unsafe source error: %v", err)
 		}
 	}
 }
 
-func TestAppEditLoadReadOnlyWrongTargetAndIncomplete(t *testing.T) {
-	calls := 0
-	view := GuidedReadContext{ApplicationID: "existing", Name: "app", Target: "dev",
-		Footprint: application.Footprint{Target: "dev"}, Complete: false}
-	reader := func(context.Context, string) (GuidedReadContext, error) { calls++; return view, nil }
-	loaded, err := appEditLoad(context.Background(), "dev", []byte("{}"), reader)
-	if err != nil || loaded.Complete {
-		t.Fatalf("%+v %v", loaded, err)
+func TestAppEditLoadActualFileUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "baseharbor.yaml")
+	if err := os.WriteFile(path, []byte(appEditLoadYAML), 0600); err != nil {
+		t.Fatal(err)
 	}
-	_, err = appEditLoad(context.Background(), "prod", []byte("{}"), reader)
-	var typed *appEditLoadError
-	if !errors.As(err, &typed) || typed.Kind != "wrong_target" || calls != 2 {
-		t.Fatalf("expected fail closed: %v calls=%d", err, calls)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statBefore, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := appEditLoadAuthority(t, string(before), "dev", nil)
+	result, err := appEditLoad(context.Background(), "dev", before, func(context.Context, string) (GuidedReadContext, error) {
+		return view, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statAfter, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) || !bytes.Equal(result.Source, before) ||
+		!statBefore.ModTime().Equal(statAfter.ModTime()) || statBefore.Mode() != statAfter.Mode() {
+		t.Fatal("read modified source file")
 	}
 }
