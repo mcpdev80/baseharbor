@@ -175,7 +175,7 @@ func TestAppCapabilitySelectionDetectedOverlapRetainsExistingNames(t *testing.T)
 		{Kind: capability.SQL, Name: "reporting"},
 	}
 	m := newAppCapabilitySelection(appCapabilitySelectionInput{
-		Current: original,
+		Current:  original,
 		Detected: []capability.Kind{capability.SQL, capability.KeyValue, capability.KeyValue},
 	})
 	want := append(append([]capability.Requirement{}, original...), capability.Requirement{Kind: capability.KeyValue, Name: "default"})
@@ -232,6 +232,9 @@ func TestAppCapabilitySelectionMixedDisclosureKeysPreserveCursorBounds(t *testin
 		m, _ = m.Update("down")
 	}
 	for _, key := range []string{"space", "enter", "enter", "space", "space", "enter"} {
+		for i := 0; i < 100; i++ {
+			m, _ = m.Update("down")
+		}
 		var done bool
 		m, done = m.Update(key)
 		if done || m.done {
