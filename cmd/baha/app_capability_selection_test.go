@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -81,7 +82,6 @@ func TestAppCapabilitySelectionExtendedNeedsAreProgressive(t *testing.T) {
 	if done || !m.extended || !strings.Contains(m.View(), "Message queue") {
 		t.Fatal("more needs must expand without confirming")
 	}
-	m, _ = m.Update("down")
 	m, _ = m.Update("space")
 	if got := m.Requirements(); len(got) != 1 || got[0].Kind != capability.ObjectStorageS3 {
 		t.Fatalf("expected object storage extension: %+v", got)
@@ -144,5 +144,14 @@ func TestAppCapabilitySelectionCursorBounds(t *testing.T) {
 	m, _ = m.Update("space")
 	if m.extended || m.cursor != len(m.visibleNeeds()) {
 		t.Fatal("collapse should clamp cursor to footer")
+	}
+}
+
+func TestAppCapabilitySelectionFormatting(t *testing.T) {
+	for _, file := range []string{"app_capability_selection.go", "app_capability_selection_test.go"} {
+		output, err := exec.Command("gofmt", "-d", file).CombinedOutput()
+		if err != nil || len(output) != 0 {
+			t.Fatalf("formatting mismatch in %s: %s (%v)", file, output, err)
+		}
 	}
 }
