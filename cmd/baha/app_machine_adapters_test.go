@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/format"
+	"os"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -130,5 +132,21 @@ func TestAppMachineAdaptersHydrationParity(t *testing.T) {
 	}
 	if !bytes.Equal(loaded.Source, before) || len(loaded.Preferences) != 1 {
 		t.Fatalf("hydration mismatch: %+v", loaded)
+	}
+}
+
+func TestAppMachineAdaptersFormatting(t *testing.T) {
+	for _, path := range []string{"app_machine_adapters.go", "app_machine_adapters_test.go"} {
+		original, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		formatted, err := format.Source(original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(original, formatted) {
+			t.Errorf("FORMATTED_%s=%q", path, string(formatted))
+		}
 	}
 }
