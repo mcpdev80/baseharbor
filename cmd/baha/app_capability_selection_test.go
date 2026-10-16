@@ -96,7 +96,7 @@ func TestAppCapabilitySelectionCurrentExtendedStateAndCatalog(t *testing.T) {
 	if !m.extended || !strings.Contains(m.View(), "Message stream") {
 		t.Fatal("current extended capability must be visible")
 	}
-	if got := m.Requirements(); len(got) != 1 || got[0].Kind != capability.MessagingStream {
+	if got := m.Requirements(); !reflect.DeepEqual(got, []capability.Requirement{{Kind: capability.MessagingStream, Name: "orders"}}) {
 		t.Fatalf("selection must use supported catalog kinds: %+v", got)
 	}
 	for _, req := range m.Requirements() {
@@ -144,6 +144,108 @@ func TestAppCapabilitySelectionCursorBounds(t *testing.T) {
 	m, _ = m.Update("space")
 	if m.extended || m.cursor != len(m.visibleNeeds()) {
 		t.Fatal("collapse should clamp cursor to footer")
+	}
+}
+
+func TestAppCapabilitySelectionPreservesNamedAndMultipleExistingResources(t *testing.T) {
+	original := []capability.Requirement{
+		{Kind: capability.SQL, Name: "primary"},
+		{Kind: capability.SQL, Name: "analytics"},
+		{Kind: capability.MessagingStream, Name: "orders"},
+		{Kind: capability.Secrets, Name: "application"},
+	}
+	m := newAppCapabilitySelection(appCapabilitySelectionInput{Current: original})
+	if got := m.Requirements(); !reflect.DeepEqual(got, original) {
+		t.Fatalf("existing requirements changed without input: got %+v want %+v", got, original)
+	}
+	m, _ = m.Update("space")
+	wantWithoutSQL := original[2:]
+	if got := m.Requirements(); !reflect.DeepEqual(got, wantWithoutSQL) {
+		t.Fatalf("deselect should omit only the selected kind: got %+v", got)
+	}
+	m, _ = m.Update("space")
+	if got := m.Requirements(); !reflect.DeepEqual(got, original) {
+		t.Fatalf("off/on must recover all exact names and instances: got %+v", got)
+	}
+}
+
+func TestAppCapabilitySelectionDetectedOverlapRetainsExistingNames(t *testing.T) {
+	original := []capability.Requirement{
+		{Kind: capability.SQL, Name: "primary"},
+		{Kind: capability.SQL, Name: "reporting"},
+	}
+	m := newAppCapabilitySelection(appCapabilitySelectionInput{
+		Current: original,
+		Detected: []capability.Kind{capability.SQL, capability.KeyValue, capability.KeyValue},
+	})
+	want := append(append([]capability.Requirement{}, original...), capability.Requirement{Kind: capability.KeyValue, Name: "default"})
+	if got := m.Requirements(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("detected/current overlap must keep original names: got %+v want %+v", got, want)
+	}
+	m, _ = m.Update("space")
+	m, _ = m.Update("space")
+	if got := m.Requirements(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("detected named resources changed after off/on: got %+v want %+v", got, want)
+	}
+}
+
+func TestAppCapabilitySelectionDefaultOnlyForNewKinds(t *testing.T) {
+	m := newAppCapabilitySelection(appCapabilitySelectionInput{
+		Current: []capability.Requirement{{Kind: capability.SQL, Name: "warehouse"}},
+	})
+	m, _ = m.Update("down")
+	m, _ = m.Update("space")
+	want := []capability.Requirement{
+		{Kind: capability.SQL, Name: "warehouse"},
+		{Kind: capability.KeyValue, Name: "default"},
+	}
+	if got := m.Requirements(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("new kind must get default; existing kind must not: got %+v", got)
+	}
+}
+
+func TestAppCapabilitySelectionEnterCollapseKeepsFooterFocused(t *testing.T) {
+	m := newAppCapabilitySelection(appCapabilitySelectionInput{})
+	for i := 0; i < len(m.visibleNeeds()); i++ {
+		m, _ = m.Update("down")
+	}
+	m, done := m.Update("enter")
+	if done || !m.extended {
+		t.Fatal("enter should expand on footer without confirmation")
+	}
+	for i := 0; i < len(m.visibleNeeds()); i++ {
+		m, _ = m.Update("down")
+	}
+	m, done = m.Update("enter")
+	if done || m.extended || m.cursor != len(m.visibleNeeds()) || m.done {
+		t.Fatalf("enter collapse must clamp footer and not confirm: %+v", m)
+	}
+	m, done = m.Update("enter")
+	if done || !m.extended || m.done {
+		t.Fatal("next Enter on visible footer should expand, not confirm")
+	}
+}
+
+func TestAppCapabilitySelectionMixedDisclosureKeysPreserveCursorBounds(t *testing.T) {
+	m := newAppCapabilitySelection(appCapabilitySelectionInput{})
+	for i := 0; i < 100; i++ {
+		m, _ = m.Update("down")
+	}
+	for _, key := range []string{"space", "enter", "enter", "space", "space", "enter"} {
+		var done bool
+		m, done = m.Update(key)
+		if done || m.done {
+			t.Fatalf("footer disclosure %q unexpectedly confirmed", key)
+		}
+		if m.cursor < 0 || m.cursor > len(m.visibleNeeds()) {
+			t.Fatalf("cursor %d outside 0..%d after %q", m.cursor, len(m.visibleNeeds()), key)
+		}
+		if !strings.Contains(m.View(), "> Show ") {
+			t.Fatalf("footer focus lost after %q: %s", key, m.View())
+		}
+		for i := 0; i < 100; i++ {
+			m, _ = m.Update("down")
+		}
 	}
 }
 
