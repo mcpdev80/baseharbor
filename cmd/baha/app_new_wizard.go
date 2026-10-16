@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"reflect"
 	"fmt"
 	"io"
 	"os"
@@ -89,8 +90,10 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		return err
 	}
 
+	// Pin identity across preview and create; a second bootstrap must not mint a different application.
+	request.ApplicationID = preview.Manifest.ApplicationID
 	printAppNewSummary(out, root, profile, kinds, preview.FilePaths)
-	confirm, err := promptYesNo(reader, out, "Create application?", true)
+	confirm, err := promptYesNo(reader, out, "Create project files only (does not start containers or deploy providers)?", true)
 	if err != nil {
 		return err
 	}
@@ -98,6 +101,14 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		fmt.Fprintln(out, "No changes were made.")
 		return nil
 	}
+
+	// Revalidate the authority-produced bootstrap before writing anything.
+	fresh, err := development.BootstrapApplication(request, registry)
+	if err != nil { return err }
+	if !reflect.DeepEqual(preview.Manifest, fresh.Manifest) || !reflect.DeepEqual(preview.Plan, fresh.Plan) || !reflect.DeepEqual(preview.Files, fresh.Files) {
+		return fmt.Errorf("application creation plan changed since preview; new preview and consent required")
+	}
+	if err := ctx.Err(); err != nil { return err }
 
 	var savedUserProfile string
 	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeUser {
