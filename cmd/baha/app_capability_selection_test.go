@@ -1,8 +1,8 @@
 package main
 
 import (
-	"reflect"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -90,7 +90,7 @@ func TestAppCapabilitySelectionExtendedNeedsAreProgressive(t *testing.T) {
 
 func TestAppCapabilitySelectionCurrentExtendedStateAndCatalog(t *testing.T) {
 	m := newAppCapabilitySelection(appCapabilitySelectionInput{
-		Current: []capability.Requirement{{Kind: capability.MessagingStream, Name: "orders"}},
+		Current:  []capability.Requirement{{Kind: capability.MessagingStream, Name: "orders"}},
 		Detected: []capability.Kind{"unsupported.capability"},
 	})
 	if !m.extended || !strings.Contains(m.View(), "Message stream") {
