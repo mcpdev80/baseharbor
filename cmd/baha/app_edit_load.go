@@ -65,6 +65,19 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 		(manifest.ApplicationID != "" && manifest.ApplicationID != view.ApplicationID) {
 		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
 	}
+	// Managed secrets are authoritative contract intent, stored outside
+	// PortableContract.Capabilities. The resolved Footprint already carries
+	// that default requirement for the selected Target.
+	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
+	footprintSecrets := 0
+	for _, resolution := range view.Footprint.Requirements {
+		if resolution.Requirement == secret {
+			footprintSecrets++
+		}
+	}
+	if footprintSecrets > 1 || (footprintSecrets == 1) != contract.Secrets.Managed {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
 	// Compare exact logical requirement identities without assuming ordering.
 	counts := make(map[capability.Requirement]int, len(contract.Capabilities))
 	for _, requirement := range contract.Capabilities {
@@ -93,6 +106,18 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 	}{view.Capabilities, view.Preferences})
 	if err != nil || json.Unmarshal(raw, &snapshot) != nil {
 		return appEditLoaded{}, &appEditLoadError{Kind: "unverifiable"}
+	}
+	if contract.Secrets.Managed {
+		present := false
+		for _, requirement := range snapshot.Capabilities {
+			if requirement == secret {
+				present = true
+				break
+			}
+		}
+		if !present {
+			snapshot.Capabilities = append(snapshot.Capabilities, secret)
+		}
 	}
 	return appEditLoaded{
 		Source: bytes.Clone(source),
