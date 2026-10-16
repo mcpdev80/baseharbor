@@ -152,6 +152,16 @@ func appNewCreateFromWizardDecision(ctx context.Context, controller appWizardCon
 	if decision.Target == "" {
 		return development.CreationResult{}, fmt.Errorf("Target is required for New preview")
 	}
+	if request.Name != controller.manifest.Name || request.Environment != controller.manifest.Environment {
+		return development.CreationResult{}, fmt.Errorf("New request identity or environment differs from confirmed wizard intent")
+	}
+	if controller.manifest.ApplicationID == "" {
+		return development.CreationResult{}, fmt.Errorf("confirmed wizard application identity is missing")
+	}
+	if request.ApplicationID != "" && request.ApplicationID != controller.manifest.ApplicationID {
+		return development.CreationResult{}, fmt.Errorf("New request application ID differs from confirmed wizard identity")
+	}
+	request.ApplicationID = controller.manifest.ApplicationID
 	for _, p := range decision.Preferences {
 		if p.InstanceID != "" {
 			return development.CreationResult{}, fmt.Errorf("explicit Target provider preference requires the existing Target binding authority; cannot silently omit %s/%s", p.Requirement.Kind, p.Requirement.Name)
