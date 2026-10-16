@@ -4,6 +4,12 @@ These rules apply to code, tests, documentation and provider/runtime work.
 
 Release readiness is governed by `docs/internal/pre-release-documentation-audit.md`; Core-only green must never be called pre-release-ready.
 
+
+## Planning transition
+
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
+
+
 ## Project engineering principle
 
 > **AI-generated, human-specified, machine-verified.**  
@@ -106,23 +112,24 @@ Branches are temporary work surfaces, not long-lived history.
 
 **Maintainer.** The Maintainer role owns merge and release approval for `develop`. The current assignment is `@mcpdev80`, defined centrally here; adding a Maintainer requires an explicitly updated responsibility grant. Entry points name the role "Maintainer" rather than a personal account.
 
-**Review and release boundary.** A pull request from another contributor into `develop` requires Maintainer approval and green required checks, and new commits invalidate a prior approval. A Maintainer may merge their own pull request without foreign review for now, but the pull request and its required green checks remain mandatory. There is no direct push to a protected branch and no blanket contributor bypass; this is a transparent solo-maintainer compromise, not an account-scoped security guarantee. Review and CI protection are configured and verified separately.
+**Review and release boundary.** Integration into `develop` is PR-only: no direct push. The intended review policy, proposed in #895, requires one approving review plus code-owner review so that approval comes from the designated code owner (currently @mcpdev80), and new commits invalidate prior approvals; the Maintainer may hold a narrowly scoped `pull_request` bypass there. GitHub does not technically restrict this bypass to the Maintainer's own PRs — a documented solo-maintainer compromise. Mandatory green completion checks are designed into a separate CI ruleset without any bypass, binding for everyone including the Maintainer; a matching display name alone does not prove a trusted origin, so the check must be bound to its workflow integration and CI files should stay under code-owner review. This states intended policy, not current enforcement: activation and live qualification are still pending, and only the live rulesets show what is actually enforced. The concrete payload proposal is `docs/internal/review-protection.md`.
 
 **Multi-session execution.** When several agent or human sessions run in parallel:
 
-- one assigned issue at a time per session;
+- one assigned task at a time per session;
 - one dedicated branch and pull request per task;
 - check and record ownership before editing, after reading the current rules and remote state;
 - respect task file boundaries and integrated dependencies;
 - preserve other sessions' commits and integrate remote changes before pushing;
 - stop after implementation, verification and pull-request handoff;
-- start the next issue only after the Maintainer accepts the result and assigns it;
+- start the next task only after the Maintainer accepts the result and assigns it;
 - report a blocking dependency rather than switching tasks autonomously.
 
 ## Documentation
 
 Follow [Documentation style](STYLE_GUIDE.md).
 
-Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. GitHub Issues plan future work. Releases preserve history.
+Human docs explain. Reference enumerates. Specs define. ADRs preserve rationale. baseharbor-plan owns future planning; GitHub Issues retain external intake and discussion. Releases preserve history.
 
 Every release runs the complete [pre-release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). It covers release-scoped issues, BaseHarbor implementation, contracts, EN/DE documentation, roadmap/staleness, changelog/release notes, the external `baseharbor-demo`, GitHub Pages, exact-candidate pre-release evidence, promotion, publication and post-release verification.
+

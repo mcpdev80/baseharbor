@@ -6,3 +6,7 @@ contact_links:
   - name: Documentation
     url: https://mcpdev80.github.io/baseharbor/
     about: Check the current BaseHarbor documentation before opening an issue.
+
+  - name: Planning and roadmap
+    url: https://github.com/mcpdev80/baseharbor-plan
+    about: Find release plans and tasks; follow the documented migration authority until activation.
