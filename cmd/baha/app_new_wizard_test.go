@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -155,5 +156,14 @@ func TestStackCreateWizardBuildsReusableProfile(t *testing.T) {
 	}
 	if len(selection.Effective.Components) != 1 || selection.Effective.Components[0].Adapter != "development/go" {
 		t.Fatalf("unexpected effective profile: %#v", selection.Effective)
+	}
+}
+
+func TestAppNewWizardFormatting(t *testing.T) {
+	for _, name := range []string{"app_new.go", "app_new_wizard.go", "app_new_wizard_test.go"} {
+		diff, err := exec.Command("gofmt", "-d", name).CombinedOutput()
+		if err != nil || len(diff) > 0 {
+			t.Errorf("gofmt mismatch in %s: %s (%v)", name, diff, err)
+		}
 	}
 }
