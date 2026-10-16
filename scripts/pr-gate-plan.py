@@ -249,10 +249,13 @@ CI_CHECKS = [
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
-    {'id': 'ci-actionlint', 'owner': '.github/workflows workflow syntax',
-     'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+]
+
+WORKFLOW_SYNTAX_CHECKS = [
+    {'id': 'ci-actionlint', 'owner': '.github/workflows workflow syntax',
+     'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
 def plan(diff, requirements, mapping):
@@ -406,12 +409,14 @@ def plan(diff, requirements, mapping):
             area = 'documentation-workflow'
             require(DOC_CHECKS)
             require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
         elif path in PLANNING_SCRIPTS:
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
             area = 'runtime-workflow-unresolved'
             require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
             unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
