@@ -83,9 +83,16 @@ workflow and explicit prerequisites before enabling them.
 - Start another run only for relevant changed inputs, a diagnosed failure, or
   an explicitly justified qualification step. Resolve queue/concurrency
   blockers before launching replacement runs.
-- Select checks from actual impact. Run targeted native runtime gates when
-  needed. Unknown impact must block explicitly; never automatically launch
-  the complete release matrix for a PR.
+- **As little as possible, as much as necessary.** Always choose the
+  smallest, fastest, least expensive set of tests that fully verifies the
+  actual changed risks. Prefer focused unit/contract/regression checks and
+  bounded smoke tests over heavyweight runtime journeys. Before choosing an
+  expensive gate (especially Backup/Restore), state what it uniquely proves
+  and why cheaper checks are insufficient. Do not trade away required coverage,
+  safety, runner isolation, authenticated evidence or fail-closed checks.
+- Select checks from actual impact. Run targeted native runtime gates only when
+  needed to prove uncovered behavior. Unknown impact must block explicitly;
+  never automatically launch the complete release matrix for a PR.
 - Reuse successful evidence only when the existing verifier proves compatible
   inputs. Label deliberate negative pilots and their expected failure.
 - Repeated pushes that unnecessarily cancel running checks are a process
