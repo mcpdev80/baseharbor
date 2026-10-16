@@ -71,8 +71,8 @@ func TestAppEditLoadMissingAmbiguousIncompatible(t *testing.T) {
 		})
 		var typed *appEditLoadError
 		if !errors.As(err, &typed) || typed.Kind != kind {
-		t.Fatalf("%s: %v", kind, err)
-	}
+			t.Fatalf("%s: %v", kind, err)
+		}
 	}
 }
 
