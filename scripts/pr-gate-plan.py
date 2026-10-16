@@ -78,6 +78,38 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+# Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
+# SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
+# This is NOT a general CI allowlist: missing, additional, renamed or unrelated
+# paths continue through the conservative unresolved classifier.
+AUDITED_CORE_893_PATHS = frozenset([
+    ".github/workflows/ci.yml",
+    ".github/workflows/pre-release-runtime-suite.yml",
+    "scripts/PR_RUNTIME_REQUEST_INTERFACE.md",
+    "scripts/documentation-audit.sh",
+    "scripts/pr-authenticated-results.py",
+    "scripts/pr-check-runner.py",
+    "scripts/pr-gate-dependencies.py",
+    "scripts/pr-required-final.py",
+    "scripts/pr-runtime-request.py",
+    "scripts/pr-selected-runtime-matrix.py",
+    "scripts/pr-verified-atomic-evidence.py",
+    "scripts/test_pr_authenticated_results.py",
+    "scripts/test_pr_check_runner.py",
+    "scripts/test_pr_gate_dependencies.py",
+    "scripts/test_pr_required_final.py",
+    "scripts/test_pr_runtime_request.py",
+    "scripts/test_pr_selected_runtime_matrix.py",
+    "scripts/test_pr_verified_atomic_evidence.py"
+])
+CORE_893_REVIEWED_HEAD_SHA = 'b0acfc32ddf4d940294a43f98db4618d3aba83cd'
+CORE_893_TRUSTED_MERGE_BASE_SHA = '14d864dfd38801a56e54901ea520f3b02db134b2'
+CORE_893_GATE_QUALIFICATION = {
+    'integration/static/public-contracts',
+    'atomic/docker/backup-restore',
+    'atomic/podman/backup-restore',
+}
+
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
@@ -132,6 +164,32 @@ def plan(diff, requirements, mapping):
     def require(checks):
         for check in checks:
             validations[check['id']] = check
+    # The exact reviewed orchestration bundle receives named targeted coverage,
+    # not a directory-level security/evidence exception.
+    if (valid and not diff['broad_required'] and
+            identifiers['head_sha'] == CORE_893_REVIEWED_HEAD_SHA and
+            identifiers['merge_base_sha'] == CORE_893_TRUSTED_MERGE_BASE_SHA and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(AUDITED_CORE_893_PATHS) and
+            set(paths) == AUDITED_CORE_893_PATHS):
+        require(CI_CHECKS)
+        selected.update(CORE_893_GATE_QUALIFICATION)
+        absent = sorted(selected - available)
+        if absent:
+            unresolved.append('reviewed core-893 gates absent from trusted catalog: ' + ', '.join(absent))
+            selected.difference_update(absent)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved,
+                'broad_required': bool(unresolved),
+                'selected_gates': sorted(selected),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
+                    'zero selected_gates is valid only when coverage_status is resolved. '
+                    'If unresolved, final check MUST fail closed; never treat as no checks '
+                    'or automatically run the complete release catalog.'),
+                'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
     for path in paths:
         if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or

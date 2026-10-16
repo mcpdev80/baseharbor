@@ -193,6 +193,40 @@ class MappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
 
+    def test_exact_core893_review_bundle_requires_original_three_gates(self):
+        reviewed = sorted(planner.AUDITED_CORE_893_PATHS)
+        inventory = json.loads((ROOT / 'release-requirements.json').read_text())
+        expected = planner.CORE_893_GATE_QUALIFICATION
+        trusted = diff(paths(*reviewed))
+        trusted['head_sha'] = planner.CORE_893_REVIEWED_HEAD_SHA
+        trusted['merge_base_sha'] = planner.CORE_893_TRUSTED_MERGE_BASE_SHA
+        complete = planner.plan(trusted, inventory, MAP)
+        self.assertEqual('resolved', complete['coverage_status'])
+        self.assertEqual(expected, set(complete['selected_gates']))
+        self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests'},
+                         {c['id'] for c in complete['required_validation_checks']})
+        for changed in (reviewed[:-1], reviewed + ['scripts/ci-unknown.py'],
+                        ['.github/workflows/ci.yml']):
+            with self.subTest(changed=changed):
+                result = planner.plan(dict(trusted, changes=paths(*changed)), inventory, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        for override in ({'head_sha': 'f' * 40},
+                         {'merge_base_sha': 'e' * 40},
+                         {'integration_sha': None},
+                         {'integration_sha': 'invalid'},
+                         {'broad_required': True, 'reasons': [{'code': 'integration_sha_mismatch',
+                           'message': 'wrong integration parents'}]}):
+            with self.subTest(override=override):
+                result = planner.plan(dict(trusted, **override), inventory, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        # Same complete path set, different unreviewed commit contents:
+        # the immutable commit SHA is different and MUST NOT inherit qualification.
+        unreviewed = dict(trusted, head_sha='c' * 40)
+        self.assertEqual(set(reviewed), set(x['path'] for x in unreviewed['changes']))
+        self.assertEqual('unresolved', planner.plan(unreviewed, inventory, MAP)['coverage_status'])
+        insufficient = planner.plan(trusted, REQ, MAP)
+        self.assertEqual('unresolved', insufficient['coverage_status'])
+
     def test_actual_repository_release_catalog(self):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
         self.assertEqual(65, len([g for g in requirements['gates']
