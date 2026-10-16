@@ -16,7 +16,7 @@ type appEditLoadReader func(context.Context, string) (GuidedReadContext, error)
 // appEditLoaded preserves the exact input document, including fields not editable
 // by the compact wizard. Source must be used when producing an unchanged roundtrip.
 type appEditLoaded struct {
-	Source        json.RawMessage
+	Source        []byte
 	Target        string
 	ApplicationID string
 	Capabilities  []capability.Requirement
@@ -30,8 +30,19 @@ func (e *appEditLoadError) Error() string { return "app edit load: " + e.Kind }
 
 // appEditLoad never rewrites the source, creates an ID, or mutates a Target.
 func appEditLoad(ctx context.Context, target string, source []byte, read appEditLoadReader) (appEditLoaded, error) {
-	if target == "" || read == nil || !json.Valid(source) {
+	if target == "" || read == nil || len(bytes.TrimSpace(source)) == 0 {
 		return appEditLoaded{}, &appEditLoadError{Kind: "missing"}
+	}
+	manifest, parseErr := application.ParseYAML(string(source))
+	if parseErr != nil {
+		manifest, parseErr = application.ParseCanonicalYAML(string(source))
+		if parseErr != nil {
+			return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+		}
+	}
+	contract, parseErr := application.PortableContractFromManifest(manifest)
+	if parseErr != nil {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
 	}
 	view, err := read(ctx, target)
 	if err != nil {
@@ -50,6 +61,26 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 	if view.ApplicationID == "" || view.Name == "" {
 		return appEditLoaded{}, &appEditLoadError{Kind: "missing"}
 	}
+	if manifest.Name != view.Name || manifest.Environment != view.Environment ||
+		(manifest.ApplicationID != "" && manifest.ApplicationID != view.ApplicationID) {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	// Compare exact logical requirement identities without assuming ordering.
+	counts := make(map[capability.Requirement]int, len(contract.Capabilities))
+	for _, requirement := range contract.Capabilities {
+		counts[requirement]++
+	}
+	for _, requirement := range view.Capabilities {
+		counts[requirement]--
+	}
+	if len(contract.Capabilities) != len(view.Capabilities) {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+		}
+	}
 	// Deep-copy through JSON: both the source document and nested selections
 	// remain detached from the authority's in-memory maps and slices.
 	var snapshot struct {
@@ -64,7 +95,7 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 		return appEditLoaded{}, &appEditLoadError{Kind: "unverifiable"}
 	}
 	return appEditLoaded{
-		Source: append(json.RawMessage(nil), source...),
+		Source: bytes.Clone(source),
 		Target: target, ApplicationID: view.ApplicationID,
 		Capabilities: snapshot.Capabilities, Preferences: snapshot.Preferences,
 		Complete: view.Complete,
