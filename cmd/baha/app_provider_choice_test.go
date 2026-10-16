@@ -189,47 +189,59 @@ func TestAppProviderChoiceNoProviderAndPortableRequirements(t *testing.T) {
 }
 
 func TestAppProviderChoiceNewNeedOverSQLFreeManifest(t *testing.T) {
- m := application.New("catalog", "dev", false, false, false)
- m.ApplicationID = providerChoiceAppID
- s := providerChoiceSnapshot("dev", providerChoiceShared("sql", ""))
- selection := providerChoiceSelection("default")
- before := m
- choices, err := appProviderChoices(m, s, selection)
- if err != nil || len(choices) != 1 || choices[0].ProposedInstanceID != "sql" { t.Fatalf("new SQL need: %+v %v", choices, err) }
- if !reflect.DeepEqual(m, before) { t.Fatal("manifest mutated") }
+	m := application.New("catalog", "dev", false, false, false)
+	m.ApplicationID = providerChoiceAppID
+	s := providerChoiceSnapshot("dev", providerChoiceShared("sql", ""))
+	selection := providerChoiceSelection("default")
+	before := m
+	choices, err := appProviderChoices(m, s, selection)
+	if err != nil || len(choices) != 1 || choices[0].ProposedInstanceID != "sql" {
+		t.Fatalf("new SQL need: %+v %v", choices, err)
+	}
+	if !reflect.DeepEqual(m, before) {
+		t.Fatal("manifest mutated")
+	}
 }
 
 func TestAppProviderChoiceDeselectedAmbiguousOldNeed(t *testing.T) {
- m := providerChoiceManifest("dev", "primary")
- m = application.WithCacheInstances(m, "default")
- s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"),
-  capability.ProviderInstance{ID:"cache", Provider:capability.Valkey, Scope:capability.ScopeShared, Ownership:capability.OwnershipBaseHarbor})
- selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{{Kind:capability.KeyValue, Name:"default"}}})
- choices, err := appProviderChoices(m,s,selection)
- if err != nil || len(choices)!=1 || choices[0].ProposedInstanceID!="cache" { t.Fatalf("deselected SQL blocked cache: %+v %v",choices,err) }
+	m := providerChoiceManifest("dev", "primary")
+	m = application.WithCacheInstances(m, "default")
+	s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"),
+		capability.ProviderInstance{ID: "cache", Provider: capability.Valkey, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor})
+	selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.KeyValue, Name: "default"}}})
+	choices, err := appProviderChoices(m, s, selection)
+	if err != nil || len(choices) != 1 || choices[0].ProposedInstanceID != "cache" {
+		t.Fatalf("deselected SQL blocked cache: %+v %v", choices, err)
+	}
 }
 
 func TestAppProviderChoiceMixedAmbiguityOrderIndependent(t *testing.T) {
- m := application.New("catalog","dev",false,false,false)
- m.ApplicationID = providerChoiceAppID
- s := providerChoiceSnapshot("dev", providerChoiceShared("a","alpha"), providerChoiceShared("b","beta"),
-  capability.ProviderInstance{ID:"cache",Provider:capability.Valkey,Scope:capability.ScopeShared,Ownership:capability.OwnershipBaseHarbor})
- sql:=capability.Requirement{Kind:capability.SQL,Name:"default"}
- cache:=capability.Requirement{Kind:capability.KeyValue,Name:"default"}
- for _, order := range [][]capability.Requirement{{sql,cache},{cache,sql}} {
-  selection:=newAppCapabilitySelection(appCapabilitySelectionInput{Current:order})
-  original:=selection.Requirements()
-  snapBefore:=s
-  manifestBefore:=m
-  choices,err:=appProviderChoices(m,s,selection)
-  if err != nil || len(choices)!=2 { t.Fatalf("order %v: %+v %v",order,choices,err) }
-  result:=map[capability.Kind]string{}
-  for _, choice:=range choices { result[choice.Requirement.Kind]=choice.ProposedInstanceID }
-  if result[capability.SQL]!="" || result[capability.KeyValue]!="cache" {t.Fatalf("independent proposals: %v",result)}
-  if !reflect.DeepEqual(selection.Requirements(),original) || !reflect.DeepEqual(m,manifestBefore) || !reflect.DeepEqual(s,snapBefore) {
-   t.Fatal("original input mutated")
-  }
- }
+	m := application.New("catalog", "dev", false, false, false)
+	m.ApplicationID = providerChoiceAppID
+	s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"),
+		capability.ProviderInstance{ID: "cache", Provider: capability.Valkey, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor})
+	sql := capability.Requirement{Kind: capability.SQL, Name: "default"}
+	cache := capability.Requirement{Kind: capability.KeyValue, Name: "default"}
+	for _, order := range [][]capability.Requirement{{sql, cache}, {cache, sql}} {
+		selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: order})
+		original := selection.Requirements()
+		snapBefore := s
+		manifestBefore := m
+		choices, err := appProviderChoices(m, s, selection)
+		if err != nil || len(choices) != 2 {
+			t.Fatalf("order %v: %+v %v", order, choices, err)
+		}
+		result := map[capability.Kind]string{}
+		for _, choice := range choices {
+			result[choice.Requirement.Kind] = choice.ProposedInstanceID
+		}
+		if result[capability.SQL] != "" || result[capability.KeyValue] != "cache" {
+			t.Fatalf("independent proposals: %v", result)
+		}
+		if !reflect.DeepEqual(selection.Requirements(), original) || !reflect.DeepEqual(m, manifestBefore) || !reflect.DeepEqual(s, snapBefore) {
+			t.Fatal("original input mutated")
+		}
+	}
 }
 
 func TestAppProviderChoiceFormatting(t *testing.T) {
