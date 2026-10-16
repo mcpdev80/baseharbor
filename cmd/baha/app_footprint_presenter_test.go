@@ -37,10 +37,14 @@ func TestAppFootprintPresenterStatesAndDetails(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if strings.Contains(summary, "new-db:") { t.Fatal("details leaked into summary") }
+	if strings.Contains(summary, "new-db:") {
+		t.Fatal("details leaked into summary")
+	}
 	detail := renderAppFootprint(fp, true, appFootprintPresenterOptions{Details: true})
 	for _, want := range []string{"new-db: new", "running-broker: reused/running", "stopped-cache: stopped/owned (not running)", "unverified: unverified", "Dependencies: broker", "Dependencies: none verified", "Dependencies: unknown"} {
-		if !strings.Contains(detail, want) { t.Errorf("missing %q: %s", want, detail) }
+		if !strings.Contains(detail, want) {
+			t.Errorf("missing %q: %s", want, detail)
+		}
 	}
 }
 
@@ -69,7 +73,9 @@ func TestAppFootprintPresenterTransitiveAndIncomplete(t *testing.T) {
 	}
 	got := renderAppFootprint(fp, false, appFootprintPresenterOptions{Details: true})
 	for _, want := range []string{"Dependencies: broker", "Dependencies: storage", "Dependencies: unknown", "Resolution: incomplete"} {
-		if !strings.Contains(got,want) { t.Errorf("missing %q: %s",want,got) }
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
 	}
 }
 
@@ -81,7 +87,7 @@ func TestAppFootprintPresenterContextAuthorityAndNoSecrets(t *testing.T) {
 	if !strings.Contains(got, "Resolution: incomplete") {
 		t.Fatal(got)
 	}
-	for _, secret := range []string{"secret-marker","private-plan","secret-name"} {
+	for _, secret := range []string{"secret-marker", "private-plan", "secret-name"} {
 		if strings.Contains(got, secret) {
 			t.Fatalf("leaked %q", secret)
 		}
