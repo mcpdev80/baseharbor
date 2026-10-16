@@ -15,8 +15,8 @@ func footprintShowFixture() GuidedReadContext {
 	ram := int64(4096)
 	count := int64(2)
 	database := application.ProviderFootprint{
-		InstanceID: "database",
-		State:      application.ProviderRunning,
+		InstanceID:   "database",
+		State:        application.ProviderRunning,
 		Dependencies: []string{"storage"},
 		MemoryBytes: application.Quantity{
 			Value: &ram, Classification: "measured", Source: "observer",
