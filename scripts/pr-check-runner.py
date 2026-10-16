@@ -17,8 +17,17 @@ WIZARD_TEST_FAMILIES = {
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
-    'wizard-registration-tests': (r'^TestAppRegistration', r'^TestCommandTree',
-                                  r'^TestMachineCoverage', r'^TestMCP'),
+    # Each required registration family is distinct and must actually RUN/PASS.
+    # The MCP family exercises real in-process SDK discovery and invocation,
+    # rather than treating a subprocess/stdio smoke as registration coverage.
+    'wizard-registration-tests': (
+        r'^TestAppRegistrationCI',
+        r'^TestCommandTreeCI',
+        r'^TestMachineCoverageCI',
+        r'^TestMachineDocumentationTracksRegistryAndCommandTree',
+        r'^TestHumanCommandIndexTracksExactCommandMetadata',
+        r'^TestMCPRegistrationCI',
+    ),
 }
 
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',

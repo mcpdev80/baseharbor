@@ -105,8 +105,12 @@ class RunnerTests(unittest.TestCase):
             'wizard-app-edit-tests':
                 ['TestAppEditApplyConfirmed', 'TestAppEditCommandInput'],
             'wizard-registration-tests':
-                ['TestAppRegistration', 'TestCommandTree',
-                 'TestMachineCoverage', 'TestMCPTool'],
+                ['TestAppRegistrationCICommandHelpAndJSONDiscovery',
+                 'TestCommandTreeCIRouterPathsUnique',
+                 'TestMachineCoverageCIRealTreeAndJSONClassification',
+                 'TestMachineDocumentationTracksRegistryAndCommandTree',
+                 'TestHumanCommandIndexTracksExactCommandMetadata',
+                 'TestMCPRegistrationCIInProcessDiscoverAndInvoke'],
         }
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

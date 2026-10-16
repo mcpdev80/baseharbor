@@ -116,6 +116,25 @@ WIZARD_COMPONENTS = {
     'cmd/baha/app_machine_adapters.go': ('wizard-machine-adapter-tests', ()),
     'cmd/baha/app_machine_adapters_test.go': ('wizard-machine-adapter-tests', ()),
 }
+# Individually reviewed core-921 shared registration sources; no prefix matching,
+# no broad cmd/baha exemption, no unreviewed new files, renames or deletes.
+# Production MCP and command files are mixed execution/registration surfaces.
+# No file-wide qualification is safe: even a one-line auth/write change
+# requires independent behavioral review and remains unresolved.
+REGISTRATION_SHARED_FILES = frozenset()
+REGISTRATION_REFERENCE_FILES = frozenset({
+    'docs/reference/cli-machine-coverage.md',
+    'docs/reference/mcp.md',
+    'docs/de/reference/cli-machine-coverage.md',
+    'docs/de/reference/mcp.md',
+    'docs/cli/command-index.md',
+    'docs/de/cli/command-index.md',
+})
+REGISTRATION_TEST_FILES = frozenset({
+    'cmd/baha/registration_ci_readiness_test.go',
+})
+REGISTRATION_COVERAGE = REGISTRATION_REFERENCE_FILES | REGISTRATION_TEST_FILES
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -421,7 +440,30 @@ def plan(diff, requirements, mapping):
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
     for path in paths:
-        if (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
+        if path in REGISTRATION_COVERAGE:
+            area = 'registration-reviewed-path'
+            require(CODE_CHECKS)
+            require(WIZARD_BASE_CHECKS)
+            require([wizard_check('wizard-registration-tests')])
+            if path in REGISTRATION_REFERENCE_FILES:
+                require(DOC_CHECKS)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('shared registration rename/delete/type change needs independent review: ' + path)
+        elif path in {
+            'cmd/baha/commands.go',
+            'cmd/baha/app_commands.go',
+            'cmd/baha/human_new.go',
+            'cmd/baha/machine_coverage.go',
+            'cmd/baha/mcp.go',
+            'cmd/baha/mcp_tools.go',
+            'cmd/baha/mcp_application_authoring.go',
+            'cmd/baha/mcp_workspace_mutation.go',
+        } or (path.startswith('cmd/baha/mcp_') and path.endswith('.go')):
+            # Registration and execution logic coexist here; mere paths or
+            # generic tests cannot qualify changed authorizers/mutators.
+            area = 'registration-mixed-unresolved'
+            unresolved.append('mixed registration/execution source needs independent diff review: ' + path)
+        elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
                 path.startswith('site/')):
             area = 'documentation'
