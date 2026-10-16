@@ -89,15 +89,21 @@ func appProviderChoices(manifest application.Manifest, snapshot application.Reso
 	resolved := make(map[capability.Requirement]string)
 	for _, req := range requirements {
 		projected, err := appProviderChoiceProjection(manifest, req)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		footprint, err := application.ResolveFootprint(projected, snapshot, nil)
 		if err != nil {
 			var resolution *application.ResolutionError
-			if errors.As(err, &resolution) && resolution.Code == "ambiguous" && resolution.Requirement == req { continue }
+			if errors.As(err, &resolution) && resolution.Code == "ambiguous" && resolution.Requirement == req {
+				continue
+			}
 			return nil, fmt.Errorf("resolve %s/%s: %w", req.Kind, req.Name, err)
 		}
 		for _, item := range footprint.Requirements {
-			if item.Requirement == req { resolved[req] = item.InstanceID }
+			if item.Requirement == req {
+				resolved[req] = item.InstanceID
+			}
 		}
 	}
 	for i := range choices {
@@ -127,27 +133,51 @@ func appProviderChoiceProjection(original application.Manifest, req capability.R
 	m := application.New(original.Name, original.Environment, false, false, false)
 	m.ApplicationID = original.ApplicationID
 	switch req.Kind {
-	case capability.SQL: m = application.WithSQLInstances(m, req.Name)
-	case capability.KeyValue: m = application.WithCacheInstances(m, req.Name)
-	case capability.DurableKeyValue: m = application.WithKeyValueInstances(m, req.Name)
-	case capability.DocumentDatabase: m = application.WithDocumentDatabaseInstances(m, req.Name)
-	case capability.MessagingQueue: m = application.WithMessagingQueueInstances(m, req.Name)
-	case capability.MessagingPubSub: m = application.WithMessagingPubSubInstances(m, req.Name)
-	case capability.MessagingStream: m = application.WithMessagingStreamInstances(m, req.Name)
-	case capability.ObjectStorageS3: m = application.WithObjectStorageBuckets(m, req.Name)
-	case capability.Identity: m = application.WithIdentity(m)
-	case capability.Secrets: m.Services.Secrets = true
-	case capability.TelemetryOTLP: m = application.WithOTLPTelemetry(m, "traces")
+	case capability.SQL:
+		m = application.WithSQLInstances(m, req.Name)
+	case capability.KeyValue:
+		m = application.WithCacheInstances(m, req.Name)
+	case capability.DurableKeyValue:
+		m = application.WithKeyValueInstances(m, req.Name)
+	case capability.DocumentDatabase:
+		m = application.WithDocumentDatabaseInstances(m, req.Name)
+	case capability.MessagingQueue:
+		m = application.WithMessagingQueueInstances(m, req.Name)
+	case capability.MessagingPubSub:
+		m = application.WithMessagingPubSubInstances(m, req.Name)
+	case capability.MessagingStream:
+		m = application.WithMessagingStreamInstances(m, req.Name)
+	case capability.ObjectStorageS3:
+		m = application.WithObjectStorageBuckets(m, req.Name)
+	case capability.Identity:
+		m = application.WithIdentity(m)
+	case capability.Secrets:
+		m.Services.Secrets = true
+	case capability.TelemetryOTLP:
+		m = application.WithOTLPTelemetry(m, "traces")
 	case capability.ExposureHTTP:
-		for _, x := range original.Exposures { if x.Name == req.Name { m.Exposures = append(m.Exposures, x) } }
-		if len(m.Exposures) == 0 { return application.Manifest{}, fmt.Errorf("HTTP exposure %q requires a portable declaration", req.Name) }
+		for _, x := range original.Exposures {
+			if x.Name == req.Name {
+				m.Exposures = append(m.Exposures, x)
+			}
+		}
+		if len(m.Exposures) == 0 {
+			return application.Manifest{}, fmt.Errorf("HTTP exposure %q requires a portable declaration", req.Name)
+		}
 	case capability.Metrics:
-		for _, x := range original.Metrics.Sources { if x.Name == req.Name { m.Metrics.Sources = append(m.Metrics.Sources, x) } }
-		if len(m.Metrics.Sources) == 0 { return application.Manifest{}, fmt.Errorf("metrics source %q requires a portable declaration", req.Name) }
+		for _, x := range original.Metrics.Sources {
+			if x.Name == req.Name {
+				m.Metrics.Sources = append(m.Metrics.Sources, x)
+			}
+		}
+		if len(m.Metrics.Sources) == 0 {
+			return application.Manifest{}, fmt.Errorf("metrics source %q requires a portable declaration", req.Name)
+		}
 	case capability.Logs:
 		m = application.WithWorkloadComponents(m, req.Name)
 		m = application.WithLogsCollection(m, req.Name)
-	default: return application.Manifest{}, fmt.Errorf("unsupported selected requirement %s/%s", req.Kind, req.Name)
+	default:
+		return application.Manifest{}, fmt.Errorf("unsupported selected requirement %s/%s", req.Kind, req.Name)
 	}
 	return m, nil
 }
