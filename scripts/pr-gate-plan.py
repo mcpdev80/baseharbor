@@ -78,6 +78,23 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+# Focused, package-scoped checks for the read-only repository-inspection
+# reconciliation surface. The reconcile command is pure in-memory matching with
+# package unit tests and a thin cmd/baha consumer, so these static checks cover
+# its actual risk without a native runtime gate. They never exempt the whole
+# package: detector, model, finding or manifest files remain unresolved below.
+INSPECT_CHECKS = [
+    {'id': 'inspect-gofmt', 'owner': 'internal/repositoryinspect formatting',
+     'command': 'test -z "$(gofmt -l internal/repositoryinspect)"'},
+    {'id': 'inspect-package-tests', 'owner': 'internal/repositoryinspect',
+     'command': 'go test ./internal/repositoryinspect/ -count=1'},
+    {'id': 'inspect-vet', 'owner': 'internal/repositoryinspect',
+     'command': 'go vet ./internal/repositoryinspect/'},
+    {'id': 'inspect-consumer-tests', 'owner': 'cmd/baha inspect/reconcile consumers',
+     'command': "go test ./cmd/baha -run 'Inspect|Reconcile' -count=1"},
+    {'id': 'inspect-consumer-build', 'owner': 'cmd/baha package',
+     'command': 'go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha'},
+]
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -220,6 +237,13 @@ def plan(diff, requirements, mapping):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path.startswith('internal/repositoryinspect/'):
+            require(INSPECT_CHECKS)
+            if path.endswith('.go') and path.rsplit('/', 1)[-1].startswith('reconcile'):
+                area = 'inspect-reconciliation'
+            else:
+                area = 'inspect-implementation-unresolved'
+                unresolved.append('repository inspection detector/model/manifest impact needs targeted qualification: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
