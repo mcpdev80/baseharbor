@@ -221,9 +221,11 @@ func TestAppMachineAdaptersDesiredNamedSQL(t *testing.T) {
 	read := func(context.Context, string) (GuidedReadContext, error) { return view, nil }
 	want := appMachineDesiredRequest{Target: "dev", SnapshotRevision: "snapshot-1",
 		Requirements: []capability.Requirement{primary, analytics},
-		Choices: []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}}}
+		Choices:      []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}}}
 	choiceRead := func(_ context.Context, target string, reqs []capability.Requirement) ([]appProviderChoice, error) {
-		if target != "dev" || len(reqs) != 2 { t.Fatal("lost target/requirements") }
+		if target != "dev" || len(reqs) != 2 {
+			t.Fatal("lost target/requirements")
+		}
 		return []appProviderChoice{
 			{Target: target, Requirement: primary, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-a"}}}},
 			{Target: target, Requirement: analytics, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-b"}}}},
@@ -262,15 +264,24 @@ func TestAppMachineAdaptersContextCancellation(t *testing.T) {
 			defer cancel()
 			applied := 0
 			read := func(context.Context, string) (GuidedReadContext, error) {
-				if stage == "read" { cancel(); return GuidedReadContext{}, context.Canceled }
+				if stage == "read" {
+					cancel()
+					return GuidedReadContext{}, context.Canceled
+				}
 				return appMachineFixture(), nil
 			}
 			auth := func(context.Context, string, string) error {
-				if stage == "authorize" { cancel(); return context.Canceled }
+				if stage == "authorize" {
+					cancel()
+					return context.Canceled
+				}
 				return nil
 			}
 			planRead := func(context.Context, string) (application.ProviderImpactPlan, error) {
-				if stage == "plan" { cancel(); return application.ProviderImpactPlan{}, context.Canceled }
+				if stage == "plan" {
+					cancel()
+					return application.ProviderImpactPlan{}, context.Canceled
+				}
 				return application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 1}, nil
 			}
 			_, err := appMachineChange(ctx, appMachineChangeRequest{
