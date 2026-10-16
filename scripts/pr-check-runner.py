@@ -7,7 +7,9 @@ from pathlib import Path
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-vet', 'cli-build', 'capability-package-tests', 'pr-planner-tests', 'ci-policy',
-               'ci-executor-verifier-tests'}
+               'ci-executor-verifier-tests',
+               'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
+               'inspect-consumer-tests', 'inspect-consumer-build'}
 
 
 def matrix(plan):

@@ -455,9 +455,11 @@ jobs:
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
           python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
           python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
-          git fetch --no-tags origin b9346c57a63e9b317225bbfbcde5bfffa91f2c13
-          git show b9346c57a63e9b317225bbfbcde5bfffa91f2c13:scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
-          echo "matrix=$(python3 "$RUNNER_TEMP/pr-check-runner.py" matrix --plan pr-plan.json)" >> "$GITHUB_OUTPUT"
+          # Run the check-runner from the same trusted base checkout as the
+          # planner, so a validation id emitted by the planner is always an id
+          # the runner whitelist accepts. The base is pinned to base.sha with
+          # persist-credentials:false, keeping the runner out of PR control.
+          echo "matrix=$(python3 scripts/pr-check-runner.py matrix --plan pr-plan.json)" >> "$GITHUB_OUTPUT"
           git fetch --no-tags origin aa8caaa571a1b3a374ae37af43b224d234c7b6a0
           git show aa8caaa571a1b3a374ae37af43b224d234c7b6a0:scripts/pr-gate-dependencies.py > "$RUNNER_TEMP/pr-gate-dependencies.py"
           python3 "$RUNNER_TEMP/pr-gate-dependencies.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-gate-dependencies.json"
@@ -691,6 +693,11 @@ jobs:
             cli-vet) go vet ./cmd/baha ;;
             cli-build) go build -o "$RUNNER_TEMP/baha-validation" ./cmd/baha ;;
             capability-package-tests) go test ./internal/capability/... -count=1 ;;
+            inspect-gofmt) test -z "$(gofmt -l internal/repositoryinspect)" ;;
+            inspect-package-tests) go test ./internal/repositoryinspect/ -count=1 ;;
+            inspect-vet) go vet ./internal/repositoryinspect/ ;;
+            inspect-consumer-tests) go test ./cmd/baha -run 'Inspect|Reconcile' -count=1 ;;
+            inspect-consumer-build) go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha ;;
             pr-planner-tests)
               python3 -m unittest scripts/test_pr_gate_plan.py ;;
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
