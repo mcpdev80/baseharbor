@@ -40,50 +40,88 @@ func providerChoiceSelection(names ...string) appCapabilitySelectionModel {
 func TestAppProviderChoiceAutomaticAndExplicit(t *testing.T) {
 	m := providerChoiceManifest("dev", "primary")
 	snapshot := providerChoiceSnapshot("target-dev", providerChoiceShared("sql-a", ""))
-	if err := snapshot.Registry.Validate(); err != nil { t.Fatal(err) }
+	if err := snapshot.Registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	choices, err := appProviderChoices(m, snapshot, providerChoiceSelection("primary"))
-	if err != nil || len(choices) != 1 { t.Fatalf("choices=%+v err=%v", choices, err) }
+	if err != nil || len(choices) != 1 {
+		t.Fatalf("choices=%+v err=%v", choices, err)
+	}
 	c := choices[0]
-	if c.Preference().InstanceID != "" || c.ProposedInstanceID != "sql-a" { t.Fatalf("automatic=%+v", c) }
-	if !strings.Contains(c.View(), "Automatic") || !strings.Contains(c.View(), "sql-a") { t.Fatal(c.View()) }
+	if c.Preference().InstanceID != "" || c.ProposedInstanceID != "sql-a" {
+		t.Fatalf("automatic=%+v", c)
+	}
+	if !strings.Contains(c.View(), "Automatic") || !strings.Contains(c.View(), "sql-a") {
+		t.Fatal(c.View())
+	}
 	c, err = c.Select("sql-a")
-	if err != nil || c.Preference().Requirement.Name != "primary" { t.Fatalf("explicit=%+v err=%v", c, err) }
-	if !strings.Contains(c.View(), "Explicit") || !strings.Contains(c.View(), "Selected: sql-a") { t.Fatal(c.View()) }
+	if err != nil || c.Preference().Requirement.Name != "primary" {
+		t.Fatalf("explicit=%+v err=%v", c, err)
+	}
+	if !strings.Contains(c.View(), "Explicit") || !strings.Contains(c.View(), "Selected: sql-a") {
+		t.Fatal(c.View())
+	}
 	c, err = c.Select("")
-	if err != nil || !strings.Contains(c.View(), "Automatic") || c.Preference().InstanceID != "" { t.Fatal(c.View()) }
+	if err != nil || !strings.Contains(c.View(), "Automatic") || c.Preference().InstanceID != "" {
+		t.Fatal(c.View())
+	}
 }
 
 func TestAppProviderChoiceMultipleNamesHaveIndependentPreferences(t *testing.T) {
 	m := providerChoiceManifest("dev", "primary", "analytics")
 	snapshot := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"))
-	if err := snapshot.Registry.Validate(); err != nil { t.Fatal(err) }
+	if err := snapshot.Registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	choices, err := appProviderChoices(m, snapshot, providerChoiceSelection("primary", "analytics"))
-	if err != nil || len(choices) != 2 { t.Fatalf("choices=%+v err=%v", choices, err) }
+	if err != nil || len(choices) != 2 {
+		t.Fatalf("choices=%+v err=%v", choices, err)
+	}
 	first, err := choices[0].Select("a")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := choices[1].Select("b")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if first.Preference().Requirement.Name != "primary" || second.Preference().Requirement.Name != "analytics" ||
 		first.Preference().InstanceID != "a" || second.Preference().InstanceID != "b" ||
 		first.Preference().Target != "dev" || second.Preference().Target != "dev" {
 		t.Fatalf("independent preferences %+v %+v", first.Preference(), second.Preference())
 	}
-	if _, err := choices[0].Effective(); err == nil { t.Fatal("ambiguous Automatic silently substituted") }
+	if _, err := choices[0].Effective(); err == nil {
+		t.Fatal("ambiguous Automatic silently substituted")
+	}
 }
 
 func TestAppProviderChoiceExistingBindingWinsAndConflictsFail(t *testing.T) {
 	m := providerChoiceManifest("dev", "primary")
 	s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"))
 	resource, err := capability.Resolve(m.Name, capability.Requirement{Kind: capability.SQL, Name: "primary"}, capability.PostgreSQL)
-	if err != nil { t.Fatal(err) }
-	if err := s.Registry.BindDeployment(resource, m.ApplicationID, m.Environment, "b"); err != nil { t.Fatal(err) }
-	if err := s.Registry.Validate(); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Registry.BindDeployment(resource, m.ApplicationID, m.Environment, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	fp, err := application.ResolveFootprint(m, s, nil)
-	if err != nil || len(fp.Requirements) != 1 || fp.Requirements[0].InstanceID != "b" { t.Fatalf("authority=%+v err=%v", fp, err) }
+	if err != nil || len(fp.Requirements) != 1 || fp.Requirements[0].InstanceID != "b" {
+		t.Fatalf("authority=%+v err=%v", fp, err)
+	}
 	choices, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
-	if err != nil || choices[0].ProposedInstanceID != "b" { t.Fatalf("binding not retained: %+v %v", choices, err) }
-	if _, err := choices[0].Select("a"); err == nil { t.Fatal("binding conflict accepted") }
-	if chosen, err := choices[0].Effective(); err != nil || chosen.ID != "b" { t.Fatalf("effective=%+v err=%v", chosen, err) }
+	if err != nil || choices[0].ProposedInstanceID != "b" {
+		t.Fatalf("binding not retained: %+v %v", choices, err)
+	}
+	if _, err := choices[0].Select("a"); err == nil {
+		t.Fatal("binding conflict accepted")
+	}
+	if chosen, err := choices[0].Effective(); err != nil || chosen.ID != "b" {
+		t.Fatalf("effective=%+v err=%v", chosen, err)
+	}
 }
 
 func TestAppProviderChoiceEnvironmentIsolationAndTargetSwitch(t *testing.T) {
@@ -93,7 +131,9 @@ func TestAppProviderChoiceEnvironmentIsolationAndTargetSwitch(t *testing.T) {
 		OwnerApplicationID: m.ApplicationID, OwnerApplication: m.Name, OwnerEnvironment: "prod"}
 	shared := providerChoiceShared("shared", "")
 	s := providerChoiceSnapshot("dev-target", instance, shared)
-	if err := s.Registry.Validate(); err != nil { t.Fatal(err) }
+	if err := s.Registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	choices, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
 	if err != nil || len(choices[0].Candidates) != 1 || choices[0].Candidates[0].Instance.ID != "shared" {
 		t.Fatalf("dev target leaked prod instance: %+v %v", choices, err)
@@ -101,7 +141,9 @@ func TestAppProviderChoiceEnvironmentIsolationAndTargetSwitch(t *testing.T) {
 	m.Environment = "prod"
 	s.Target = "prod-target"
 	prod, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
-	if err != nil || len(prod[0].Candidates) != 2 { t.Fatalf("prod choices=%+v err=%v", prod, err) }
+	if err != nil || len(prod[0].Candidates) != 2 {
+		t.Fatalf("prod choices=%+v err=%v", prod, err)
+	}
 	if prod[0].Preference().Target != "prod-target" || choices[0].Preference().Target != "dev-target" {
 		t.Fatal("target preferences leaked")
 	}
@@ -111,11 +153,19 @@ func TestAppProviderChoiceRegistryValidityAndDuplicateIDs(t *testing.T) {
 	m := providerChoiceManifest("dev", "primary")
 	s := providerChoiceSnapshot("dev", providerChoiceShared("a", ""))
 	s.Registry.Instances[0].Ownership = capability.OwnershipExternal
-	if err := s.Registry.Validate(); err == nil { t.Fatal("invalid registry test fixture") }
-	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil { t.Fatal("invalid registry accepted") }
+	if err := s.Registry.Validate(); err == nil {
+		t.Fatal("invalid registry test fixture")
+	}
+	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil {
+		t.Fatal("invalid registry accepted")
+	}
 	s = providerChoiceSnapshot("dev", providerChoiceShared("duplicate", "a"), providerChoiceShared("duplicate", "b"))
-	if err := s.Registry.Validate(); err == nil { t.Fatal("duplicate IDs not rejected by authority") }
-	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil { t.Fatal("duplicate IDs accepted") }
+	if err := s.Registry.Validate(); err == nil {
+		t.Fatal("duplicate IDs not rejected by authority")
+	}
+	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil {
+		t.Fatal("duplicate IDs accepted")
+	}
 }
 
 func TestAppProviderChoiceNoProviderAndPortableRequirements(t *testing.T) {
@@ -124,10 +174,18 @@ func TestAppProviderChoiceNoProviderAndPortableRequirements(t *testing.T) {
 	selection := providerChoiceSelection("primary")
 	before := selection.Requirements()
 	choices, err := appProviderChoices(m, s, selection)
-	if err != nil { t.Fatal(err) }
-	if _, err := choices[0].Effective(); err == nil || !strings.Contains(err.Error(), "No compatible") { t.Fatalf("missing provider: %v", err) }
-	if _, err := choices[0].Select("unknown"); err == nil { t.Fatal("unknown provider accepted") }
-	if !reflect.DeepEqual(before, selection.Requirements()) { t.Fatal("portable requirements mutated") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := choices[0].Effective(); err == nil || !strings.Contains(err.Error(), "No compatible") {
+		t.Fatalf("missing provider: %v", err)
+	}
+	if _, err := choices[0].Select("unknown"); err == nil {
+		t.Fatal("unknown provider accepted")
+	}
+	if !reflect.DeepEqual(before, selection.Requirements()) {
+		t.Fatal("portable requirements mutated")
+	}
 }
 
 func TestAppProviderChoiceFormatting(t *testing.T) {
