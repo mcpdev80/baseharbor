@@ -509,3 +509,22 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/pr-runner-lease-pilot.py "$RUNTIME"
+
+  core_893_policy_pilot:
+    name: Core893 exact immutable policy regressions
+    if: github.event_name == 'pull_request' && github.head_ref == 'pilot/core-893-policy-exact-verification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify trusted planner, diff and fixed workflow surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts/test_pr_gate_plan.py scripts/test_pr_diff_base.py -v
+          python3 -m py_compile scripts/pr-gate-plan.py scripts/pr-diff-base.py
+          bash scripts/ci-workflow-policy.sh
