@@ -79,6 +79,44 @@ func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 	}
 }
 
+func TestAppNewWizardCreateOnlyPreservesPreviewIdentity(t *testing.T) {
+	parent := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	t.Setenv("HOME", t.TempDir())
+	old := appNewInput
+	defer func() { appNewInput = old }()
+	appNewInput = strings.NewReader(strings.Join([]string{
+		"identity-preserved", parent, "1", "1", "", "",
+	}, "\n"))
+	var output bytes.Buffer
+	if err := runAppNewWizard(context.Background(), &output, &output); err != nil { t.Fatal(err) }
+	root := filepath.Join(parent, "identity-preserved")
+	manifest, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(string(manifest), "application_id:") {
+		t.Fatalf("created contract missing identity: %s", manifest)
+	}
+	if !strings.Contains(output.String(), "Next: cd ") || !strings.Contains(output.String(), "baha up") {
+		t.Fatal("create-only must advise explicit up, not start runtime")
+	}
+}
+
+func TestAppNewWizardEOFBeforeConsentWritesNothing(t *testing.T) {
+	parent := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	t.Setenv("HOME", t.TempDir())
+	old := appNewInput
+	defer func() { appNewInput = old }()
+	appNewInput = strings.NewReader(strings.Join([]string{
+		"cancel-at-confirm", parent, "1", "1",
+	}, "\n"))
+	var output bytes.Buffer
+	_ = runAppNewWizard(context.Background(), &output, &output)
+	if _, err := os.Stat(filepath.Join(parent, "cancel-at-confirm")); !os.IsNotExist(err) {
+		t.Fatalf("EOF before consent wrote project: %v", err)
+	}
+}
+
 func TestStackCreateWizardBuildsReusableProfile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	t.Setenv("HOME", t.TempDir())
