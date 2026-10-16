@@ -118,3 +118,5 @@ func TestMCPRegistrationCIInProcessDiscoverAndInvoke(t *testing.T) {
 		t.Fatalf("in-process MCP app.list invocation failed: %+v %v", invoked, err)
 	}
 }
+
+// Qualification pilot: execute all six registration families through trusted CI.
