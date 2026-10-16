@@ -7,17 +7,18 @@ import subprocess
 from pathlib import Path
 
 WIZARD_TEST_FAMILIES = {
-    'wizard-app-edit-load-tests': r'^TestAppEditLoad',
-    'wizard-capability-selection-tests': r'^TestAppCapabilitySelection',
-    'wizard-provider-choice-tests': r'^TestAppProviderChoice',
-    'wizard-footprint-presenter-tests': r'^TestAppFootprintPresenter',
-    'wizard-change-presentation-tests': r'^(TestAppChangePreview|TestAppChangeResultPresenter)',
-    'wizard-controller-tests': r'^TestAppWizardController',
-    'wizard-app-new-tests': r'^TestAppNewWizard',
-    'wizard-app-edit-tests': r'^(TestAppEditApply|TestAppEditCommand)',
-    'wizard-footprint-command-tests': r'^TestAppFootprintShow',
-    'wizard-machine-adapter-tests': r'^TestAppMachineAdapters',
-    'wizard-registration-tests': r'^(TestAppRegistration|TestCommandTree|TestMachineCoverage|TestMCP)',
+    'wizard-app-edit-load-tests': (r'^TestAppEditLoad',),
+    'wizard-capability-selection-tests': (r'^TestAppCapabilitySelection',),
+    'wizard-provider-choice-tests': (r'^TestAppProviderChoice',),
+    'wizard-footprint-presenter-tests': (r'^TestAppFootprintPresenter',),
+    'wizard-change-presentation-tests': (r'^TestAppChangePreview', r'^TestAppChangeResultPresenter'),
+    'wizard-controller-tests': (r'^TestAppWizardController',),
+    'wizard-app-new-tests': (r'^TestAppNewWizard',),
+    'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
+    'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
+    'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
+    'wizard-registration-tests': (r'^TestAppRegistration', r'^TestCommandTree',
+                                  r'^TestMachineCoverage', r'^TestMCP'),
 }
 
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
@@ -37,26 +38,39 @@ def execute_validation(check, repository):
     """
     if check not in WIZARD_TEST_FAMILIES:
         raise ValueError('unsupported executable validation')
-    pattern = WIZARD_TEST_FAMILIES[check]
+    patterns = WIZARD_TEST_FAMILIES[check]
     repo = Path(repository)
-    listed = subprocess.run(
-        ['go', 'test', './cmd/baha', '-list', pattern],
-        cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if listed.returncode:
-        raise RuntimeError('test discovery failed: ' + listed.stderr.strip())
-    matches = [
-        line.strip() for line in listed.stdout.splitlines()
-        if line.strip().startswith('Test') and re.search(pattern, line.strip())
-    ]
-    if not matches:
-        raise RuntimeError('zero matching tests for ' + check + ' (' + pattern + ')')
-    executed = subprocess.run(
-        ['go', 'test', './cmd/baha', '-run', pattern, '-count=1'],
-        cwd=repo)
-    if executed.returncode:
-        raise RuntimeError('test execution failed for ' + check)
-    return matches
-
+    all_matches = []
+    for pattern in patterns:
+        listed = subprocess.run(
+            ['go', 'test', './cmd/baha', '-list', pattern],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('test discovery failed for ' + pattern + ': ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+            and re.search(pattern, line.strip())
+        ]
+        if not matches:
+            raise RuntimeError('zero matching tests for ' + check + ' (' + pattern + ')')
+        # Run each mandatory family independently so a combined OR expression
+        # cannot replace missing tests or silently skip a required family.
+        executed = subprocess.run(
+            ['go', 'test', './cmd/baha', '-run', pattern, '-count=1', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('test execution failed for ' + check +
+                               ' (' + pattern + '): ' + executed.stdout)
+        for name in matches:
+            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
+                raise RuntimeError('required test did not execute: ' + name)
+            if re.search(r'(?m)^--- SKIP: ' + re.escape(name) + r'(?:$|\\s)', executed.stdout):
+                raise RuntimeError('required test skipped: ' + name)
+            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\\s)', executed.stdout):
+                raise RuntimeError('required test missing PASS: ' + name)
+        all_matches.extend(matches)
+    return all_matches
 
 def matrix(plan):
     checks = plan.get('required_validation_checks')
