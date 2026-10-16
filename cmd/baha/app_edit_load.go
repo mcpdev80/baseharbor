@@ -16,12 +16,12 @@ type appEditLoadReader func(context.Context, string) (GuidedReadContext, error)
 // appEditLoaded preserves the exact input document, including fields not editable
 // by the compact wizard. Source must be used when producing an unchanged roundtrip.
 type appEditLoaded struct {
-	Source      json.RawMessage
-	Target      string
+	Source        json.RawMessage
+	Target        string
 	ApplicationID string
-	Capabilities []capability.Requirement
-	Preferences []application.ProviderPreference
-	Complete    bool
+	Capabilities  []capability.Requirement
+	Preferences   []application.ProviderPreference
+	Complete      bool
 }
 
 type appEditLoadError struct{ Kind string }
@@ -53,8 +53,8 @@ func appEditLoad(ctx context.Context, target string, source []byte, read appEdit
 	// Deep-copy through JSON: both the source document and nested selections
 	// remain detached from the authority's in-memory maps and slices.
 	var snapshot struct {
-		Capabilities []capability.Requirement `json:"capabilities"`
-		Preferences []application.ProviderPreference `json:"preferences"`
+		Capabilities  []capability.Requirement `json:"capabilities"`
+		Preferences   []application.ProviderPreference `json:"preferences"`
 	}
 	raw, err := json.Marshal(struct {
 		Capabilities []capability.Requirement `json:"capabilities"`
