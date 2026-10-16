@@ -520,7 +520,10 @@ class MappingTests(unittest.TestCase):
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
 # Registration coverage is part of the trusted planner qualification suite.
-from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
+try:
+    from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
+except ModuleNotFoundError:
+    from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
 if __name__ == '__main__':
     unittest.main()
