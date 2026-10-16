@@ -227,6 +227,35 @@ class MappingTests(unittest.TestCase):
         insufficient = planner.plan(trusted, REQ, MAP)
         self.assertEqual('unresolved', insufficient['coverage_status'])
 
+    def test_core752_immutable_executor_qualification_and_drift(self):
+        reviewed = sorted(planner.CORE_752_CI_PATHS)
+        inventory = json.loads((ROOT / 'release-requirements.json').read_text())
+        trusted = diff(paths(*reviewed))
+        trusted.update(head_sha=planner.CORE_752_CI_HEAD,
+                       merge_base_sha=planner.CORE_752_CI_MERGE_BASE)
+        trusted['changes'] = [{'status': 'modified', 'path': p} for p in reviewed]
+        result = planner.plan(trusted, inventory, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests'},
+                         {x['id'] for x in result['required_validation_checks']})
+        # A new develop integration can change the target base, not the reviewed
+        # immutable PR head or historical merge-base.
+        newer = dict(trusted, target_base_sha='b' * 40, integration_sha='a' * 40)
+        self.assertEqual('resolved', planner.plan(newer, inventory, MAP)['coverage_status'])
+        invalid = [dict(trusted, head_sha='c' * 40),
+                   dict(trusted, merge_base_sha='d' * 40),
+                   dict(trusted, integration_sha=None),
+                   dict(trusted, broad_required=True,
+                        reasons=[{'code': 'integration_sha_mismatch'}]),
+                   dict(trusted, changes=trusted['changes'] +
+                        [{'status':'added', 'path':'scripts/unreviewed.py'}]),
+                   dict(trusted, changes=trusted['changes'][:-1]),
+                   dict(trusted, changes=[{'status':'added', 'path':p} for p in reviewed])]
+        for change in invalid:
+            with self.subTest(change=change):
+                self.assertEqual('unresolved', planner.plan(change, inventory, MAP)['coverage_status'])
+
     def test_actual_repository_release_catalog(self):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
         self.assertEqual(65, len([g for g in requirements['gates']
