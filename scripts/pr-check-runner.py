@@ -24,7 +24,9 @@ WIZARD_TEST_FAMILIES = {
         r'^TestAppRegistrationCI',
         r'^TestCommandTreeCI',
         r'^TestMachineCoverageCI',
-        r'^TestMachineDocumentationTracksRegistryAndCommandTree
+        r'^TestMachineDocumentationTracksRegistryAndCommandTree',
+        r'^TestMCPRegistrationCI',
+    ),
 }
 
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
