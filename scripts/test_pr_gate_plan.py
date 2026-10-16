@@ -519,8 +519,8 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
-if __name__ == '__main__':
-    unittest.main()
-
 # Registration coverage is part of the trusted planner qualification suite.
 from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
+
+if __name__ == '__main__':
+    unittest.main()
