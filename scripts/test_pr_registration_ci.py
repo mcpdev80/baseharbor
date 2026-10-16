@@ -180,3 +180,11 @@ class RegistrationWorkflowRoute(TestCase):
                 else:
                     self.assertEqual(0, executed.returncode, executed.stdout)
                     self.assertIn("TestMCPRegistrationCIInProcessDiscoverAndInvoke", executed.stdout)
+
+
+class RegistrationActualPackageSmoke(TestCase):
+    def test_real_candidate_go_registration_families(self):
+        # Supplementary HOSTED source proof. This is NOT the trusted workflow
+        # matrix job; that qualification requires independent policy promotion.
+        matched = runner.execute_validation("wizard-registration-tests", ROOT.parent)
+        self.assertEqual(6, len(matched), matched)
