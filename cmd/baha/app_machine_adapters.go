@@ -75,6 +75,9 @@ func appMachineInspect(ctx context.Context, target string, read appMachineRead) 
 func appMachineHydrate(ctx context.Context, target string, source []byte, read appEditLoadReader) (appEditLoaded, error) {
 	loaded, err := appEditLoad(ctx, target, source, read)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return appEditLoaded{}, &appMachineError{Code: "cancel"}
+		}
 		var e *appEditLoadError
 		if errors.As(err, &e) {
 			switch e.Kind {
@@ -88,6 +91,9 @@ func appMachineHydrate(ctx context.Context, target string, source []byte, read a
 }
 
 func appMachineReadError(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return &appMachineError{Code: "cancel"}
+	}
 	var guided *GuidedReadError
 	if errors.As(err, &guided) {
 		switch guided.Kind {
@@ -121,11 +127,17 @@ type appMachineChangeRequest struct {
 // No execution occurs when any revision or approval is stale.
 func appMachineChange(ctx context.Context, request appMachineChangeRequest, read appMachineRead,
 	planRead appMachinePlanReader, authorize appMachineAuthorize, apply appMachineApply) (application.ProviderChangeResult, error) {
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
 	if read == nil || planRead == nil || authorize == nil || request.Target == "" {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "unsupported"}
 	}
 	view, err := read(ctx, request.Target)
 	if err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if err := ctx.Err(); err != nil {
 		return application.ProviderChangeResult{}, appMachineReadError(err)
 	}
 	if view.Target != request.Target || view.Footprint.Target != request.Target ||
@@ -135,10 +147,16 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
 	if err := authorize(ctx, request.Target, view.ApplicationID); err != nil {
-		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
 	}
 	plan, err := planRead(ctx, request.Target)
 	if err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
+	if err := ctx.Err(); err != nil {
 		return application.ProviderChangeResult{}, appMachineReadError(err)
 	}
 	if plan.Target != request.Target || plan.PlanID != view.PlanRevision ||
@@ -160,6 +178,9 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 	if apply == nil {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "unsupported"}
 	}
+	if err := ctx.Err(); err != nil {
+		return application.ProviderChangeResult{}, appMachineReadError(err)
+	}
 	outcomes, executionErr := apply(ctx, plan, request.Consent)
 	result, err := application.RecordProviderChangeResult(plan, outcomes)
 	if err != nil {
@@ -178,4 +199,87 @@ func appMachineFootprintJSON(view GuidedReadContext, target string) ([]byte, err
 		return nil, &appMachineError{Code: "conflict"}
 	}
 	return bytes.Clone(bytes.TrimSpace(out.Bytes())), nil
+}
+
+// appMachineDesiredChoice is a Target-bound, full-requirement request.
+// No mutation or provider selection is inferred from a bare provider kind.
+type appMachineDesiredChoice struct {
+	Requirement capability.Requirement
+	InstanceID string
+}
+type appMachineDesiredRequest struct {
+	Target string
+	SnapshotRevision string
+	Requirements []capability.Requirement
+	Choices []appMachineDesiredChoice
+}
+type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
+type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
+type appMachineDesiredResult struct {
+	Requirements []capability.Requirement
+	Preferences []application.ProviderPreference
+	Choices []appProviderChoice
+	Plan application.ProviderImpactPlan
+	SnapshotRevision string
+	PlanRevision string
+}
+
+// appMachinePropose delegates provider compatibility to accepted core-913 choice
+// projection and impact planning to an injected existing domain authority.
+func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read appMachineRead,
+	choices appMachineChoiceReader, plan appMachineDesiredPlanner) (appMachineDesiredResult, error) {
+	if err := ctx.Err(); err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if read == nil || choices == nil || plan == nil || req.Target == "" {
+		return appMachineDesiredResult{}, &appMachineError{Code: "unsupported"}
+	}
+	view, err := read(ctx, req.Target)
+	if err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if err := ctx.Err(); err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if view.Target != req.Target || view.Footprint.Target != req.Target || req.SnapshotRevision == "" ||
+		req.SnapshotRevision != view.SnapshotRevision {
+		return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
+	}
+	seen := map[capability.Requirement]bool{}
+	for _, requirement := range req.Requirements {
+		if requirement.Kind == "" || requirement.Name == "" || seen[requirement] {
+			return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
+		}
+		seen[requirement] = true
+	}
+	candidates, err := choices(ctx, req.Target, req.Requirements)
+	if err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if err := ctx.Err(); err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	eligible := map[capability.Requirement]appProviderChoice{}
+	for _, choice := range candidates {
+		if choice.Target != req.Target || !seen[choice.Requirement] {
+			return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
+		}
+		eligible[choice.Requirement] = choice
+	}
+	if len(eligible) != len(seen) { return appMachineDesiredResult{}, &appMachineError{Code: "unsupported"} }
+	selected := map[capability.Requirement]bool{}
+	preferences := make([]application.ProviderPreference, 0, len(req.Choices))
+	for _, wanted := range req.Choices {
+		choice, ok := eligible[wanted.Requirement]
+		if !ok || selected[wanted.Requirement] {
+			return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
+		}
+		selected[wanted.Requirement] = true
+		updated, err := choice.Select(wanted.InstanceID)
+		if err != nil { return appMachineDesiredResult{}, &appMachineError{Code: "unsupported"} }
+		preferences = append(preferences, updated.Preference().ProviderPreference)
+	}
+	if err := ctx.Err(); err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	proposed, err := plan(ctx, req.Target, req.Requirements, preferences)
+	if err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if err := ctx.Err(); err != nil { return appMachineDesiredResult{}, appMachineReadError(err) }
+	if proposed.Target != req.Target || proposed.Version != application.ProviderImpactVersion ||
+		proposed.PlanID == "" || proposed.Revision == "" {
+		return appMachineDesiredResult{}, &appMachineError{Code: "conflict"}
+	}
+	return appMachineDesiredResult{
+		Requirements: append([]capability.Requirement(nil), req.Requirements...),
+		Preferences: preferences, Choices: candidates, Plan: proposed,
+		SnapshotRevision: view.SnapshotRevision, PlanRevision: proposed.PlanID,
+	}, nil
 }
