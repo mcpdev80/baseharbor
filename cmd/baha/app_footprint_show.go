@@ -52,7 +52,7 @@ func appFootprintShowContext(out io.Writer, view GuidedReadContext, options appF
 		return errors.New("footprint: incompatible")
 	}
 	if !options.JSON {
-		_, err := io.WriteString(out, presentAppFootprint(view, appFootprintPresenterOptions{Details: options.Details})+"\n")
+		_, err := io.WriteString(out, renderAppFootprint(view.Footprint, view.Footprint.Complete, appFootprintPresenterOptions{Details: options.Details})+"\n")
 		if err != nil {
 			return errors.New("footprint: output_failed")
 		}
