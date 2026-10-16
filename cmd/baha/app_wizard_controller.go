@@ -59,17 +59,17 @@ type appWizardDecision struct {
 
 // appWizardController contains no filesystem, process or domain mutation hook.
 type appWizardController struct {
-	phase       appWizardPhase
-	manifest    application.Manifest
-	snapshot    application.ResolutionSnapshot
-	selection   appCapabilitySelectionModel
-	choices     []appProviderChoice
-	preferences map[string]string
-	footprint   *GuidedReadContext
-	impact      *application.ProviderImpactPlan
+	phase        appWizardPhase
+	manifest     application.Manifest
+	snapshot     application.ResolutionSnapshot
+	selection    appCapabilitySelectionModel
+	choices      []appProviderChoice
+	preferences  map[string]string
+	footprint    *GuidedReadContext
+	impact       *application.ProviderImpactPlan
 	previewFacts []byte
-	refresh     func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error)
-	decision    *appWizardDecision
+	refresh      func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error)
+	decision     *appWizardDecision
 }
 
 func newAppWizardController(ctx context.Context, input appWizardInput) (appWizardController, error) {
@@ -179,15 +179,21 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 func snapshotAppWizardFacts(fp *GuidedReadContext, impact *application.ProviderImpactPlan) (*GuidedReadContext, *application.ProviderImpactPlan, []byte, error) {
 	facts, err := json.Marshal(struct {
 		Footprint *GuidedReadContext
-		Impact *application.ProviderImpactPlan
+		Impact    *application.ProviderImpactPlan
 	}{fp, impact})
-	if err != nil { return nil, nil, nil, err }
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	var detached struct {
 		Footprint *GuidedReadContext
-		Impact *application.ProviderImpactPlan
+		Impact    *application.ProviderImpactPlan
 	}
-	if err := json.Unmarshal(facts, &detached); err != nil { return nil, nil, nil, err }
-	if detached.Footprint == nil || detached.Impact == nil { return nil, nil, nil, errors.New("missing preview data") }
+	if err := json.Unmarshal(facts, &detached); err != nil {
+		return nil, nil, nil, err
+	}
+	if detached.Footprint == nil || detached.Impact == nil {
+		return nil, nil, nil, errors.New("missing preview data")
+	}
 	return detached.Footprint, detached.Impact, facts, nil
 }
 
@@ -221,7 +227,9 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 				return w, err
 			}
 			next.footprint, next.impact, next.previewFacts, err = snapshotAppWizardFacts(fp, impact)
-			if err != nil { return w, err }
+			if err != nil {
+				return w, err
+			}
 			next.phase = appWizardPreview
 		}
 	case appWizardPreview:
@@ -241,8 +249,13 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			fresh, err := json.Marshal(struct{ Footprint *GuidedReadContext; Impact *application.ProviderImpactPlan }{fp, impact})
-			if err != nil { return w, err }
+			fresh, err := json.Marshal(struct {
+				Footprint *GuidedReadContext
+				Impact    *application.ProviderImpactPlan
+			}{fp, impact})
+			if err != nil {
+				return w, err
+			}
 			if !reflect.DeepEqual(fresh, next.previewFacts) {
 				return w, errors.New("stale preview: return to selection and refresh")
 			}
