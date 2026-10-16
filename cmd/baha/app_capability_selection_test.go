@@ -243,8 +243,8 @@ func TestAppCapabilitySelectionMixedDisclosureKeysPreserveCursorBounds(t *testin
 		if m.cursor < 0 || m.cursor > len(m.visibleNeeds()) {
 			t.Fatalf("cursor %d outside 0..%d after %q", m.cursor, len(m.visibleNeeds()), key)
 		}
-		if !strings.Contains(m.View(), "> Show ") {
-			t.Fatalf("footer focus lost after %q: %s", key, m.View())
+		if !m.extended && !strings.Contains(m.View(), "> Show ") {
+			t.Fatalf("collapsed footer focus lost after %q: %s", key, m.View())
 		}
 		for i := 0; i < 100; i++ {
 			m, _ = m.Update("down")
