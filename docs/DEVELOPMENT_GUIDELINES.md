@@ -83,6 +83,31 @@ Test security, ownership, compatibility, failure and recovery behavior, not only
 
 Use local/repository validation first. Use GitHub Actions where required by the release gate.
 
+**Verification principle: as little as possible, as much as necessary.** Choose
+the smallest, cheapest and fastest set of checks that demonstrably covers every
+actual risk introduced by the change. Test selection MUST be risk-based rather
+than choosing the broadest existing workflow for convenience.
+
+- Prefer focused unit/contract/regression tests, static checks and small smoke
+  tests before expensive native end-to-end gates.
+- For CI/orchestration changes, separately prove selection/dispatch, failure
+  handling, runner isolation, evidence provenance and the final required check.
+  Use native runtime execution only for behavior these narrower checks cannot
+  establish; prefer a dedicated bounded smoke gate over a heavyweight
+  application workflow where it provides equivalent evidence.
+- Explain for every selected gate which specific changed invariant it verifies.
+  Document why a cheaper alternative is insufficient when choosing an expensive
+  gate (for example Backup/Restore or a full journey).
+- Do not weaken mandatory validations, coverage requirements or fail-closed
+  handling to save runtime. Unknown impact blocks; an independently approved
+  immutable qualification is required before replacing its selected gates.
+- Batch coherent checks, reuse authenticated evidence only for identical
+  source/integration inputs, avoid redundant reruns and never start the full
+  release matrix merely to qualify one PR.
+
+This is a selection rule for future qualifications, not retroactive permission
+to bypass already approved checks.
+
 ## 11. Keep changes scoped
 
 Do not refactor unrelated code in the same change. Preserve current architecture unless the task demonstrates a missing primitive.
