@@ -97,5 +97,20 @@ class FinalChecks(unittest.TestCase):
         plan['selected_gates']=['unknown/gate']
         self.assertTrue(final.verify(plan,REPORT,CATALOG))
 
+    def test_wizard_validation_requires_authenticated_success(self):
+        plan=copy.deepcopy(PLAN)
+        plan['selected_gates']=[]
+        plan['required_validation_checks']=[{'id':'wizard-app-edit-load-tests'}]
+        report=copy.deepcopy(REPORT)
+        report['results']=[{'kind':'validation','id':'wizard-app-edit-load-tests',
+                            'conclusion':'success'}]
+        self.assertEqual([], final.verify(plan,report,CATALOG))
+        missing=copy.deepcopy(report)
+        missing['results']=[]
+        self.assertTrue(final.verify(plan,missing,CATALOG))
+        failed=copy.deepcopy(report)
+        failed['results'][0]['conclusion']='failure'
+        self.assertTrue(final.verify(plan,failed,CATALOG))
+
 if __name__ == '__main__':
     unittest.main()

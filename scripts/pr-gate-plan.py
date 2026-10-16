@@ -63,6 +63,59 @@ CLI_CHECKS = [
     {'id': 'cli-vet', 'owner': 'cmd/baha package', 'command': 'go vet ./cmd/baha'},
     {'id': 'cli-build', 'owner': 'cmd/baha package', 'command': 'go build ./cmd/baha'},
 ]
+
+WIZARD_BASE_CHECKS = [
+    {'id': 'cli-gofmt', 'owner': 'cmd/baha formatting',
+     'command': 'test -z "$(gofmt -l cmd/baha)"'},
+    {'id': 'cli-vet', 'owner': 'cmd/baha package', 'command': 'go vet ./cmd/baha'},
+    {'id': 'cli-build', 'owner': 'cmd/baha package', 'command': 'go build ./cmd/baha'},
+]
+
+def wizard_check(identifier):
+    return {'id': identifier, 'owner': 'trusted wizard component executor',
+            'command': 'python3 scripts/pr-check-runner.py execute --check ' +
+                       identifier + ' --repository .'}
+
+# Finite component inventory from core-911..core-921. This is an exact path
+# map, never a cmd/baha prefix exemption. Pure read/presentation profiles use
+# hosted Go checks only; mutation wiring selects the existing small lifecycle
+# gates in addition to its contract/build checks.
+WIZARD_COMPONENTS = {
+    'cmd/baha/app_edit_load.go': ('wizard-app-edit-load-tests', ()),
+    'cmd/baha/app_edit_load_test.go': ('wizard-app-edit-load-tests', ()),
+    'cmd/baha/app_capability_selection.go': ('wizard-capability-selection-tests', ()),
+    'cmd/baha/app_capability_selection_test.go': ('wizard-capability-selection-tests', ()),
+    'cmd/baha/app_provider_choice.go': ('wizard-provider-choice-tests', ()),
+    'cmd/baha/app_provider_choice_test.go': ('wizard-provider-choice-tests', ()),
+    'cmd/baha/app_footprint_presenter.go': ('wizard-footprint-presenter-tests', ()),
+    'cmd/baha/app_footprint_presenter_test.go': ('wizard-footprint-presenter-tests', ()),
+    'cmd/baha/app_change_preview.go': ('wizard-change-presentation-tests', ()),
+    'cmd/baha/app_change_preview_test.go': ('wizard-change-presentation-tests', ()),
+    'cmd/baha/app_change_result_presenter.go': ('wizard-change-presentation-tests', ()),
+    'cmd/baha/app_change_result_presenter_test.go': ('wizard-change-presentation-tests', ()),
+    'cmd/baha/app_wizard_controller.go': ('wizard-controller-tests', ()),
+    'cmd/baha/app_wizard_controller_test.go': ('wizard-controller-tests', ()),
+    'cmd/baha/app_new.go': ('wizard-app-new-tests',
+                            ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_new_test.go': ('wizard-app-new-tests',
+                                 ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_new_wizard.go': ('wizard-app-new-tests',
+                                   ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_new_wizard_test.go': ('wizard-app-new-tests',
+                                        ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_edit.go': ('wizard-app-edit-tests',
+                             ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_edit_test.go': ('wizard-app-edit-tests',
+                                  ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_edit_apply.go': ('wizard-app-edit-tests',
+                                   ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_edit_apply_test.go': ('wizard-app-edit-tests',
+                                        ('atomic/docker/lifecycle', 'atomic/podman/lifecycle')),
+    'cmd/baha/app_footprint_show.go': ('wizard-footprint-command-tests', ()),
+    'cmd/baha/app_footprint_show_test.go': ('wizard-footprint-command-tests', ()),
+    'cmd/baha/app_machine_adapters.go': ('wizard-machine-adapter-tests', ()),
+    'cmd/baha/app_machine_adapters_test.go': ('wizard-machine-adapter-tests', ()),
+}
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -210,6 +263,11 @@ CI_CHECKS = [
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
 ]
 
+WORKFLOW_SYNTAX_CHECKS = [
+    {'id': 'ci-actionlint', 'owner': '.github/workflows workflow syntax',
+     'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
+]
+
 def plan(diff, requirements, mapping):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
@@ -227,6 +285,7 @@ def plan(diff, requirements, mapping):
     reasons = []
     areas = set()
     paths = []
+    path_status = {}
     if valid and diff['broad_required']:
         unresolved.append('diff-base requires unresolved coverage: ' +
                           json.dumps(diff.get('reasons', []), sort_keys=True))
@@ -245,6 +304,8 @@ def plan(diff, requirements, mapping):
                 unresolved.append('invalid changed path')
                 continue
             paths.extend(names)
+            for name in names:
+                path_status[name] = status
     if not paths:
         unresolved.append('empty or unverified changes cannot exempt checks')
     selected = set()
@@ -334,6 +395,15 @@ def plan(diff, requirements, mapping):
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             selected.add('integration/static/public-contracts')
+        elif path in WIZARD_COMPONENTS:
+            area = 'wizard-component'
+            check_id, native_gates = WIZARD_COMPONENTS[path]
+            require(CODE_CHECKS)
+            require(WIZARD_BASE_CHECKS)
+            require([wizard_check(check_id)])
+            selected.update(native_gates)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('wizard component rename/delete/type change needs explicit review: ' + path)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -372,12 +442,14 @@ def plan(diff, requirements, mapping):
             area = 'documentation-workflow'
             require(DOC_CHECKS)
             require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
         elif path in PLANNING_SCRIPTS:
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
             area = 'runtime-workflow-unresolved'
             require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
             unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
