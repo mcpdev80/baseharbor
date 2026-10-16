@@ -44,6 +44,7 @@ type appCapabilitySelectionInput struct {
 // component. No file, registry or provider mutation occurs in Update.
 type appCapabilitySelectionModel struct {
 	selected map[capability.Kind]bool
+	current  []capability.Requirement
 	detected map[capability.Kind]bool
 	cursor   int
 	extended bool
@@ -53,6 +54,7 @@ type appCapabilitySelectionModel struct {
 func newAppCapabilitySelection(input appCapabilitySelectionInput) appCapabilitySelectionModel {
 	m := appCapabilitySelectionModel{
 		selected: make(map[capability.Kind]bool),
+		current:  append([]capability.Requirement(nil), input.Current...),
 		detected: make(map[capability.Kind]bool),
 	}
 	for _, req := range input.Current {
@@ -112,17 +114,14 @@ func (m appCapabilitySelectionModel) Update(key string) (appCapabilitySelectionM
 	case " ", "space":
 		needs := m.visibleNeeds()
 		if m.cursor == len(needs) {
-			m.extended = !m.extended
-			if !m.extended && m.cursor > len(m.visibleNeeds()) {
-				m.cursor = len(m.visibleNeeds())
-			}
+			m.toggleExtended()
 		} else if m.cursor >= 0 && m.cursor < len(needs) {
 			kind := needs[m.cursor].Kind
 			m.selected[kind] = !m.selected[kind]
 		}
 	case "enter":
 		if m.cursor == len(m.visibleNeeds()) {
-			m.extended = !m.extended
+			m.toggleExtended()
 		} else {
 			m.done = true
 			return m, true
@@ -131,12 +130,30 @@ func (m appCapabilitySelectionModel) Update(key string) (appCapabilitySelectionM
 	return m, false
 }
 
-// Requirements emits only selected portable kinds in catalog order.
-// A zero-selection result is valid; nothing is implicitly provisioned.
+// toggleExtended keeps the disclosure footer focused across both key paths.
+func (m *appCapabilitySelectionModel) toggleExtended() {
+	m.extended = !m.extended
+	if m.cursor > len(m.visibleNeeds()) {
+		m.cursor = len(m.visibleNeeds())
+	}
+}
+
+// Requirements preserves original named resources, including multiple resources
+// of the same kind. "default" is only created for newly selected kinds.
 func (m appCapabilitySelectionModel) Requirements() []capability.Requirement {
 	var result []capability.Requirement
+	existing := make(map[capability.Kind]bool)
+	for _, requirement := range m.current {
+		if !appCapabilityNeedSupported(requirement.Kind) {
+			continue
+		}
+		existing[requirement.Kind] = true
+		if m.selected[requirement.Kind] {
+			result = append(result, requirement)
+		}
+	}
 	for _, need := range appCapabilityNeeds {
-		if m.selected[need.Kind] {
+		if m.selected[need.Kind] && !existing[need.Kind] {
 			result = append(result, capability.Requirement{Kind: need.Kind, Name: "default"})
 		}
 	}
