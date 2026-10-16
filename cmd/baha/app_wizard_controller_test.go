@@ -309,11 +309,11 @@ func TestAppWizardControllerDetachedNestedPreviewRejectsReusedPointer(t *testing
 	footprint.Footprint.Target = input.Snapshot.Target
 	impact := &application.ProviderImpactPlan{
 		Version: application.ProviderImpactVersion,
-		Target: input.Snapshot.Target,
-		PlanID: "original-plan",
+		Target:  input.Snapshot.Target,
+		PlanID:  "original-plan",
 		Impacts: []application.ProviderImpact{{
 			InstanceID: "sql-a",
-			Operation: "replace",
+			Operation:  "replace",
 			Functions: []application.FunctionConsequence{{
 				Consumer: "api", Function: "database.query", Outcome: "continues",
 			}},
@@ -329,7 +329,9 @@ func TestAppWizardControllerDetachedNestedPreviewRejectsReusedPointer(t *testing
 		return footprint, impact, nil
 	}
 	w, err := newAppWizardController(context.Background(), input)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	w = appWizardAdvance(t, w, appWizardNext)
 	before := w.View()
 	if !strings.Contains(before, "continues") || !strings.Contains(before, "original-plan") && w.impact.PlanID != "original-plan" {
@@ -340,8 +342,12 @@ func TestAppWizardControllerDetachedNestedPreviewRejectsReusedPointer(t *testing
 		t.Fatal("retained preview changed through external pointer")
 	}
 	next, err := w.Step(context.Background(), appWizardYes)
-	if err == nil { t.Fatal("reused mutated projections incorrectly confirmed") }
-	if _, ok := next.Decision(); ok { t.Fatal("stale data created decision") }
+	if err == nil {
+		t.Fatal("reused mutated projections incorrectly confirmed")
+	}
+	if _, ok := next.Decision(); ok {
+		t.Fatal("stale data created decision")
+	}
 	if w.impact.PlanID != "original-plan" || w.impact.Impacts[0].Functions[0].Outcome != "continues" {
 		t.Fatal("captured plan or nested consequences mutated")
 	}
@@ -349,7 +355,9 @@ func TestAppWizardControllerDetachedNestedPreviewRejectsReusedPointer(t *testing
 
 func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 	w, err := newAppWizardController(context.Background(), appWizardTestInput(t))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	view := w.View()
 	if strings.Contains(view, `\nSQL`) || strings.Contains(view, `\n[x]`) {
 		t.Fatalf("literal backslash separators in view: %q", view)
