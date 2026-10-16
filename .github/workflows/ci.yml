@@ -275,7 +275,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh podman
 
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/') && github.ref_name != 'runtime-validation/ci/893-policy-exact'
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     services:
@@ -512,7 +512,7 @@ jobs:
 
   core_893_policy_pilot:
     name: Core893 exact immutable policy regressions
-    if: github.event_name == 'pull_request' && github.head_ref == 'pilot/core-893-policy-exact-verification'
+    if: github.event_name == 'push' && github.ref_name == 'runtime-validation/ci/893-policy-exact'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
