@@ -2,6 +2,7 @@
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -121,6 +122,45 @@ CORE_752_CI_PATHS = frozenset({
     'scripts/test_pr_check_runner.py', 'scripts/test_pr_gate_plan.py',
 })
 
+def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
+    """Trust only clean, first-parent-preserving merges of trusted target commits.
+
+    Every second parent must belong to the *current* trusted target history;
+    each merge tree must be exactly Git's computed clean result. Never accept
+    arbitrary amended content, rebases, cherry-picks or side-branch merges.
+    """
+    reviewed = reviewed or CORE_752_CI_HEAD
+    def git(*args):
+        try:
+            return subprocess.run(['git', '-C', str(repository), *args],
+                                  text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, check=False)
+        except OSError:
+            return None
+    if not all(isinstance(x, str) and len(x) == 40 for x in (target, head, reviewed)):
+        return False
+    for _ in range(64):
+        if head == reviewed:
+            return True
+        parents = git('rev-list', '--parents', '-n', '1', head)
+        if not parents or parents.returncode or len(parents.stdout.strip().split()) != 3:
+            return False
+        commit, previous, trusted = parents.stdout.strip().split()
+        if commit != head:
+            return False
+        ancestry = git('merge-base', '--is-ancestor', trusted, target)
+        if not ancestry or ancestry.returncode:
+            return False
+        expected = git('merge-tree', '--write-tree', previous, trusted)
+        actual = git('rev-parse', '--verify', head + '^{tree}')
+        if not expected or expected.returncode or not actual or actual.returncode:
+            return False
+        if expected.stdout.strip().splitlines()[0] != actual.stdout.strip():
+            return False
+        head = previous
+    return False
+
+
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
@@ -206,7 +246,7 @@ def plan(diff, requirements, mapping):
     # parents/tree separately; a moved target base is allowed, but PR content
     # and original merge-base remain immutable.
     if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['head_sha'] == CORE_752_CI_HEAD and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'], identifiers['head_sha']) and
             identifiers['merge_base_sha'] == CORE_752_CI_MERGE_BASE and
             identifiers['integration_sha'] is not None and
             len(paths) == len(CORE_752_CI_PATHS) and
