@@ -55,6 +55,22 @@ class RegistrationPlannerTests(TestCase):
                 }.issubset(checks), checks)
                 self.assertEqual([], result["selected_gates"])
 
+    def test_real_mixed_source_diffs_fail_closed(self):
+        # Actual added registration and changed authorization/write hunks
+        # must not be certified from filenames without semantic review.
+        fixtures = {
+            "registration-only": ("cmd/baha/commands.go", "@@ -10,0 +11 @@\\n+registerAppCommand(root)"),
+            "authorization-change": ("cmd/baha/mcp_application_authoring.go",
+                "@@ -90 +90 @@\\n-if !allowWrite(ctx) { return denied }\\n+if false { return denied }"),
+            "write-mutation": ("cmd/baha/mcp_workspace_mutation.go",
+                "@@ -120 +120 @@\\n-return initializeApplicationWorkspace(ctx)\\n+return persistWorkspaceDirectly(ctx)"),
+        }
+        for name, (path, patch) in fixtures.items():
+            with self.subTest(name=name):
+                result = plan([{"status": "modified", "path": path, "patch": patch}])
+                self.assertEqual("unresolved", result["coverage_status"])
+                self.assertTrue(result["broad_required"])
+
     def test_shared_sources_outside_reviewed_boundary_are_unresolved(self):
         for path in (
             "cmd/baha/mcp_unreviewed_registration.go",
@@ -68,7 +84,7 @@ class RegistrationPlannerTests(TestCase):
                 self.assertTrue(result["broad_required"])
 
     def test_delete_rename_type_change_and_unverified_integration_fail_closed(self):
-        path = "cmd/baha/commands.go"
+        path = "cmd/baha/registration_ci_readiness_test.go"
         for change in (
             {"status": "deleted", "path": path},
             {"status": "type_changed", "path": path},
