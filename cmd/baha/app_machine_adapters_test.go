@@ -213,3 +213,95 @@ func TestAppMachineAdaptersManagedSecretsRequirements(t *testing.T) {
 		t.Fatalf("lost managed secrets or duplicated requirement: %+v", result)
 	}
 }
+
+func TestAppMachineAdaptersDesiredNamedSQL(t *testing.T) {
+	primary := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	analytics := capability.Requirement{Kind: capability.SQL, Name: "analytics"}
+	view := appMachineFixture()
+	read := func(context.Context, string) (GuidedReadContext, error) { return view, nil }
+	want := appMachineDesiredRequest{Target: "dev", SnapshotRevision: "snapshot-1",
+		Requirements: []capability.Requirement{primary, analytics},
+		Choices: []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}}}
+	choiceRead := func(_ context.Context, target string, reqs []capability.Requirement) ([]appProviderChoice, error) {
+		if target != "dev" || len(reqs) != 2 { t.Fatal("lost target/requirements") }
+		return []appProviderChoice{
+			{Target: target, Requirement: primary, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-a"}}}},
+			{Target: target, Requirement: analytics, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-b"}}}},
+		}, nil
+	}
+	planned := 0
+	planner := func(_ context.Context, target string, reqs []capability.Requirement, prefs []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+		planned++
+		if target != "dev" || len(reqs) != 2 || len(prefs) != 2 || prefs[0].Requirement != primary ||
+			prefs[1].Requirement != analytics || prefs[0].InstanceID != "db-a" || prefs[1].InstanceID != "db-b" {
+			t.Fatalf("desired selection lost before authority: %+v", prefs)
+		}
+		return application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target, PlanID: "fresh", Revision: "revision"}, nil
+	}
+	got, err := appMachinePropose(context.Background(), want, read, choiceRead, planner)
+	if err != nil || planned != 1 || got.PlanRevision != "fresh" || len(got.Preferences) != 2 {
+		t.Fatalf("authoritative result missing: %+v %v", got, err)
+	}
+	want.Choices[1].InstanceID = "wrong-kind"
+	_, err = appMachinePropose(context.Background(), want, read, choiceRead, planner)
+	var typed *appMachineError
+	if !errors.As(err, &typed) || typed.Code != "unsupported" || planned != 1 {
+		t.Fatalf("incompatible choice reached planner: %v", err)
+	}
+	want.Target = "prod"
+	_, err = appMachinePropose(context.Background(), want, read, choiceRead, planner)
+	if !errors.As(err, &typed) || typed.Code != "conflict" {
+		t.Fatalf("foreign target allowed: %v", err)
+	}
+}
+
+func TestAppMachineAdaptersContextCancellation(t *testing.T) {
+	for _, stage := range []string{"read", "authorize", "plan"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			applied := 0
+			read := func(context.Context, string) (GuidedReadContext, error) {
+				if stage == "read" { cancel(); return GuidedReadContext{}, context.Canceled }
+				return appMachineFixture(), nil
+			}
+			auth := func(context.Context, string, string) error {
+				if stage == "authorize" { cancel(); return context.Canceled }
+				return nil
+			}
+			planRead := func(context.Context, string) (application.ProviderImpactPlan, error) {
+				if stage == "plan" { cancel(); return application.ProviderImpactPlan{}, context.Canceled }
+				return application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 1}, nil
+			}
+			_, err := appMachineChange(ctx, appMachineChangeRequest{
+				Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
+				Consent: application.ProviderChangeConsent{PlanID: "impact-1", First: true},
+			}, read, planRead, auth, func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+				applied++
+				return nil, nil
+			})
+			var typed *appMachineError
+			if !errors.As(err, &typed) || typed.Code != "cancel" || applied != 0 {
+				t.Fatalf("cancellation allowed execution: %v, apply=%d", err, applied)
+			}
+		})
+	}
+}
+
+func TestAppMachineAdaptersPartialOnCancelledExecution(t *testing.T) {
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "db", Operation: "retire"}}}
+	got, err := appMachineChange(context.Background(), appMachineChangeRequest{
+		Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
+		Consent: application.ProviderChangeConsent{PlanID: "impact-1", First: true},
+	}, func(context.Context, string) (GuidedReadContext, error) { return appMachineFixture(), nil },
+		func(context.Context, string) (application.ProviderImpactPlan, error) { return plan, nil },
+		func(context.Context, string, string) error { return nil },
+		func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+			return []application.ProviderExecutionOutcome{{InstanceID: "db", Operation: "retire", Status: "failed", ErrorCode: "interrupted"}}, context.Canceled
+		})
+	var typed *appMachineError
+	if !errors.As(err, &typed) || typed.Code != "partial" || len(got.Outcomes) != 1 || got.Outcomes[0].ErrorCode != "interrupted" {
+		t.Fatalf("execution evidence lost: %+v, %v", got, err)
+	}
+}
