@@ -217,8 +217,8 @@ type appMachineDesiredRequest struct {
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
 type appMachineDesiredResult struct {
-	ApplicationID string
-	Desired appMachineDesiredRequest
+	ApplicationID    string
+	Desired          appMachineDesiredRequest
 	Requirements     []capability.Requirement
 	Preferences      []application.ProviderPreference
 	Choices          []appProviderChoice
@@ -305,7 +305,7 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 		Desired: appMachineDesiredRequest{
 			Target: req.Target, SnapshotRevision: req.SnapshotRevision,
 			Requirements: append([]capability.Requirement(nil), req.Requirements...),
-			Choices: append([]appMachineDesiredChoice(nil), req.Choices...),
+			Choices:      append([]appMachineDesiredChoice(nil), req.Choices...),
 		},
 		Requirements: append([]capability.Requirement(nil), req.Requirements...),
 		Preferences:  preferences, Choices: candidates, Plan: proposed,
@@ -317,9 +317,9 @@ func appMachinePropose(ctx context.Context, req appMachineDesiredRequest, read a
 // original typed intent. The existing-state PlanRevision is not the desired
 // change PlanID; the authoritative planner must recompute the latter.
 type appMachineDesiredChangeRequest struct {
-	Desired appMachineDesiredRequest
+	Desired  appMachineDesiredRequest
 	Proposal appMachineDesiredResult
-	Consent application.ProviderChangeConsent
+	Consent  application.ProviderChangeConsent
 }
 
 // appMachineChangeDesired revalidates the exact previously proposed intent
