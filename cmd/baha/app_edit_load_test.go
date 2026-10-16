@@ -27,13 +27,13 @@ func appEditLoadAuthority(t *testing.T, source string, target string, prefs []ap
 	}
 	return GuidedReadContext{
 		ApplicationID: "existing-system-owned-id",
-		Name: manifest.Name,
-		Environment: manifest.Environment,
-		Target: target,
-		Capabilities: contract.Capabilities,
-		Preferences: prefs,
-		Footprint: application.Footprint{Target: target},
-		Complete: true,
+		Name:          manifest.Name,
+		Environment:   manifest.Environment,
+		Target:        target,
+		Capabilities:  contract.Capabilities,
+		Preferences:   prefs,
+		Footprint:     application.Footprint{Target: target},
+		Complete:      true,
 	}
 }
 
@@ -101,7 +101,7 @@ func TestAppEditLoadTwoTargetsAutomaticExplicit(t *testing.T) {
 func TestAppEditLoadRejectsForeignAppEnvironmentIntent(t *testing.T) {
 	base := appEditLoadAuthority(t, appEditLoadYAML, "dev", nil)
 	cases := []struct {
-		name string
+		name   string
 		source string
 	}{
 		{"app", "version: 1\napp:\n  name: other\n  environment: dev\n"},
