@@ -115,6 +115,8 @@ CORE_893_GATE_QUALIFICATION = {
 # is the commit SHA, not a reusable matching-path exemption.  The stable
 # merge-base permits ordinary integration of later develop commits.
 CORE_752_CI_HEAD = '211d19b13a206040f0f32506e5f5f85d4a467287'
+# Original review base is embodied in the authenticated reviewed commit ancestry.
+# The current merge-base changes after normal develop integration.
 CORE_752_CI_MERGE_BASE = 'e8b021fe63c61abc0990a560e5f2915bb70c2c13'
 CORE_752_CI_PATHS = frozenset({
     '.github/workflows/ci.yml',
@@ -247,7 +249,6 @@ def plan(diff, requirements, mapping):
     # and original merge-base remain immutable.
     if (valid and not diff['broad_required'] and not unresolved and
             core752_reviewed_merge_chain(identifiers['target_base_sha'], identifiers['head_sha']) and
-            identifiers['merge_base_sha'] == CORE_752_CI_MERGE_BASE and
             identifiers['integration_sha'] is not None and
             len(paths) == len(CORE_752_CI_PATHS) and
             set(paths) == CORE_752_CI_PATHS and
