@@ -133,6 +133,36 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	return nil
 }
 
+// appNewCreateFromWizardDecision is the callable New/Controller bridge.
+// The controller must already have compared the displayed impact and footprint
+// with fresh authoritative facts. New writes only project files; runtime
+// provisioning still requires a separately authorized lifecycle command.
+func appNewCreateFromWizardDecision(ctx context.Context, controller appWizardController, root string, request development.NewApplicationRequest, registry development.Registry) (development.CreationResult, error) {
+	if err := ctx.Err(); err != nil { return development.CreationResult{}, err }
+	decision, approved := controller.Decision()
+	if !approved { return development.CreationResult{}, fmt.Errorf("application creation requires a confirmed current wizard decision") }
+	if decision.Target == "" { return development.CreationResult{}, fmt.Errorf("Target is required for New preview") }
+	for _, p := range decision.Preferences {
+		if p.InstanceID != "" { return development.CreationResult{}, fmt.Errorf("explicit Target provider preference requires the existing Target binding authority; cannot silently omit %s/%s", p.Requirement.Kind, p.Requirement.Name) }
+	}
+	if len(request.Capabilities) != len(decision.Requirements) { return development.CreationResult{}, fmt.Errorf("New request does not match confirmed capability selection") }
+	for i, requirement := range decision.Requirements {
+		if request.Capabilities[i] != requirement.Kind || requirement.Name != "default" {
+			return development.CreationResult{}, fmt.Errorf("New request cannot represent confirmed named requirement %s/%s without loss", requirement.Kind, requirement.Name)
+		}
+	}
+	preview, err := development.BootstrapApplication(request, registry)
+	if err != nil { return development.CreationResult{}, err }
+	request.ApplicationID = preview.Manifest.ApplicationID
+	fresh, err := development.BootstrapApplication(request, registry)
+	if err != nil { return development.CreationResult{}, err }
+	if !reflect.DeepEqual(preview.Manifest, fresh.Manifest) || !reflect.DeepEqual(preview.Files, fresh.Files) || !reflect.DeepEqual(preview.Plan, fresh.Plan) {
+		return development.CreationResult{}, fmt.Errorf("New preview changed; fresh plan and consent required")
+	}
+	if err := ctx.Err(); err != nil { return development.CreationResult{}, err }
+	return development.CreateApplication(root, request, registry)
+}
+
 func guidedNewApplicationRoot(reader *bufio.Reader, out io.Writer, name string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
