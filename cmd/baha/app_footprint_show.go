@@ -53,7 +53,10 @@ func appFootprintShowContext(out io.Writer, view GuidedReadContext, options appF
 	}
 	if !options.JSON {
 		_, err := io.WriteString(out, presentAppFootprint(view, appFootprintPresenterOptions{Details: options.Details})+"\n")
-		return err
+		if err != nil {
+			return errors.New("footprint: output_failed")
+		}
+		return nil
 	}
 	// Preserve the canonical domain JSON schema; do not serialize the wider
 	// GuidedReadContext (which also carries revisions and other private data).
@@ -62,5 +65,8 @@ func appFootprintShowContext(out io.Writer, view GuidedReadContext, options appF
 		return errors.New("footprint: unavailable")
 	}
 	_, err = out.Write(append(payload, '\n'))
-	return err
+	if err != nil {
+		return errors.New("footprint: output_failed")
+	}
+	return nil
 }

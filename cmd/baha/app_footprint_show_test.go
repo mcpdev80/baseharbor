@@ -186,3 +186,20 @@ func TestAppFootprintShowReadOnly(t *testing.T) {
 		t.Fatal("read-only handler mutated context")
 	}
 }
+
+type appFootprintShowFailWriter struct{}
+
+func (appFootprintShowFailWriter) Write([]byte) (int, error) {
+	return 0, errors.New("/sensitive/local/path?token=private")
+}
+
+func TestAppFootprintShowWriterErrorRedacted(t *testing.T) {
+	for _, asJSON := range []bool{false, true} {
+		err := appFootprintShowContext(appFootprintShowFailWriter{}, footprintShowFixture(), appFootprintShowOptions{
+			Target: "dev", JSON: asJSON, Details: true,
+		})
+		if err == nil || err.Error() != "footprint: output_failed" {
+			t.Fatalf("format JSON=%v: unsafe writer error: %v", asJSON, err)
+		}
+	}
+}
