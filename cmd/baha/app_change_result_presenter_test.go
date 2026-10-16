@@ -84,7 +84,7 @@ func TestAppChangeResultPresenterActualPartialSecurityAndBehavior(t *testing.T) 
 		After: &application.ProviderRealization{InstanceID: "identity", Kind: capability.ProviderKeycloak, Target: "prod", State: "running", Access: access, Verified: false},
 		Functions: []application.ProviderFunctionOutcome{{Consumer: "web", InstanceID: "identity", Function: "identity.validate",
 			Outcome: "remains", Behavior: "cached-until-expiry", ValidUntil: "2026-11-01T00:00:00Z", Verified: false}},
-		Materials: []application.MaterialOutcome{{MaterialID: "token", Disposition: "retain", Access: access, Verified: false}},
+		Materials: []application.MaterialOutcome{{MaterialID: "token", Disposition: "retained", Access: access, Verified: false}},
 	}})
 	if err != nil {
 		t.Fatal(err)
