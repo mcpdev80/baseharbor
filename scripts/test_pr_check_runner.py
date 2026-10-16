@@ -81,7 +81,7 @@ class RunnerTests(unittest.TestCase):
             pkg.mkdir(parents=True)
             (pkg / 'wizard_profiles_test.go').write_text(
                 'package main\n\nimport "testing"\n\n' +
-                '\n'.join('func %s(t *testing.T) {}' % name for name in tests.values()) + '\n')
+                '\n'.join('func %s(t *testing.T) {}' % name for name in list(tests.values()) + ['TestAppChangeResultPresenterPartial']) + '\n')
             for check_id, test_name in tests.items():
                 with self.subTest(check_id=check_id):
                     matched = runner.execute_validation(check_id, root)
@@ -96,6 +96,46 @@ class RunnerTests(unittest.TestCase):
             (pkg / 'other_test.go').write_text(
                 'package main\n\nimport "testing"\n\nfunc TestUnrelated(t *testing.T) {}\n')
             with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                runner.execute_validation('wizard-app-edit-load-tests', root)
+
+    def test_combined_profiles_require_every_family(self):
+        families = {
+            'wizard-change-presentation-tests':
+                ['TestAppChangePreviewPartial', 'TestAppChangeResultPresenterPartial'],
+            'wizard-app-edit-tests':
+                ['TestAppEditApplyConfirmed', 'TestAppEditCommandInput'],
+            'wizard-registration-tests':
+                ['TestAppRegistration', 'TestCommandTree',
+                 'TestMachineCoverage', 'TestMCPTool'],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.com/wizardfixture\n\ngo 1.25\n')
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            for profile, names in families.items():
+                with self.subTest(profile=profile):
+                    for omitted in [None] + names:
+                        cases = [n for n in names if n != omitted]
+                        (pkg / 'wizard_profiles_test.go').write_text(
+                            'package main\nimport "testing"\n' +
+                            '\n'.join('func %s(t *testing.T) {}' % n for n in cases) + '\n')
+                        if omitted is None:
+                            self.assertEqual(set(names), set(runner.execute_validation(profile, root)))
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                                runner.execute_validation(profile, root)
+
+    def test_skipped_required_test_is_not_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.com/wizardfixture\n\ngo 1.25\n')
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            (pkg / 'wizard_profiles_test.go').write_text(
+                'package main\nimport "testing"\n'
+                'func TestAppEditLoadSkip(t *testing.T) { t.Skip("not executed") }\n')
+            with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
                 runner.execute_validation('wizard-app-edit-load-tests', root)
 
 if __name__ == '__main__':
