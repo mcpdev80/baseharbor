@@ -212,6 +212,20 @@ WIZARD_CI_REVIEWED_PATHS = frozenset({
     'scripts/test_pr_wizard_workflow_route.py',
 })
 
+# Independent Maintainer source review for registration CI (#974), not task
+# acceptance or authorization of future core-921 production registration edits.
+# Evidence: run 38929047340; actual hosted route pilots remain required after
+# integration. The immutable commit and exact statuses bind this bootstrap.
+REGISTRATION_CI_REVIEWED_HEAD = 'bb9c713ab0449b0c8243e7535a51b8e43195bf0c'
+REGISTRATION_CI_REVIEWED_FILES = {
+    'cmd/baha/registration_ci_readiness_test.go': 'added',
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_check_runner.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    'scripts/test_pr_registration_ci.py': 'added',
+}
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -339,6 +353,28 @@ def plan(diff, requirements, mapping):
                     'If unresolved, final check MUST fail closed; never treat as no checks '
                     'or automatically run the complete release catalog.'),
                 'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
+    # This authority lives on trusted develop. Only the reviewed source or
+    # proven clean first-parent merges from trusted target history qualify.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(REGISTRATION_CI_REVIEWED_FILES) and
+            set(paths) == set(REGISTRATION_CI_REVIEWED_FILES) and
+            all(ch.get('status') == REGISTRATION_CI_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], REGISTRATION_CI_REVIEWED_HEAD)):
+        require(CI_CHECKS)
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Require every listed validation; exact reviewed source '
+                    'integration does not accept registration task or future handler changes.'),
+                'reasons': ['independently reviewed exact #974 registration CI source; '
+                            'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
     if (valid and not diff['broad_required'] and not unresolved and
