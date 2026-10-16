@@ -167,37 +167,53 @@ func TestStackCreateWizardBuildsReusableProfile(t *testing.T) {
 
 func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
 	registry, err := referenceDevelopmentRegistry()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	manifest := application.New("controller-only", "dev", true, false, false)
 	manifest.ApplicationID = application.MustNewApplicationID()
 	reg := capability.NewRegistry()
 	input := appWizardInput{
-		Manifest: manifest,
-		Snapshot: application.ResolutionSnapshot{Target: "dev", Registry: reg},
+		Manifest:  manifest,
+		Snapshot:  application.ResolutionSnapshot{Target: "dev", Registry: reg},
 		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "default"}}},
-		TTY: true,
+		TTY:       true,
 		Refresh: func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
 			return &GuidedReadContext{Footprint: application.Footprint{Target: d.Target}},
 				&application.ProviderImpactPlan{Target: d.Target}, nil
 		},
 	}
 	controller, err := newAppWizardController(context.Background(), input)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	root := filepath.Join(t.TempDir(), "controller-only")
 	request := development.NewApplicationRequest{Name: "controller-only", Environment: "dev", Adapter: "development/go", Capabilities: []capability.Kind{capability.SQL}}
 	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
 		t.Fatal("unconfirmed selection created a project")
 	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) { t.Fatal("early project write") }
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("early project write")
+	}
 	controller, err = controller.Step(context.Background(), appWizardNext)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	controller, err = controller.Step(context.Background(), appWizardYes)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry)
-	if err != nil { t.Fatal(err) }
-	if result.Manifest.ApplicationID == "" { t.Fatal("missing application identity") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Manifest.ApplicationID == "" {
+		t.Fatal("missing application identity")
+	}
 	for _, name := range []string{"baseharbor.yaml", "compose.yaml"} {
-		if _, err := os.Stat(filepath.Join(root, name)); err != nil { t.Fatal(err) }
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
 		t.Fatal("existing project was silently overwritten")
@@ -206,20 +222,24 @@ func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
 
 func TestAppNewWizardControllerRejectsStaleRequestAndCancelledDecision(t *testing.T) {
 	registry, err := referenceDevelopmentRegistry()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	manifest := application.New("intent-only", "dev", true, false, false)
 	manifest.ApplicationID = application.MustNewApplicationID()
 	input := appWizardInput{
 		Manifest: manifest, Snapshot: application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()},
 		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "default"}}},
-		TTY: true,
+		TTY:       true,
 		Refresh: func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
 			return &GuidedReadContext{Footprint: application.Footprint{Target: "dev"}},
 				&application.ProviderImpactPlan{Target: "dev"}, nil
 		},
 	}
 	controller, err := newAppWizardController(context.Background(), input)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	cancelled, _ := controller.Step(context.Background(), appWizardCancel)
 	root := filepath.Join(t.TempDir(), "cancelled")
 	request := development.NewApplicationRequest{Name: "intent-only", Environment: "dev", Adapter: "development/go", Capabilities: []capability.Kind{capability.SQL}}
@@ -227,14 +247,20 @@ func TestAppNewWizardControllerRejectsStaleRequestAndCancelledDecision(t *testin
 		t.Fatal("cancelled decision allowed a write")
 	}
 	controller, err = controller.Step(context.Background(), appWizardNext)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	controller, err = controller.Step(context.Background(), appWizardYes)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	request.Capabilities = []capability.Kind{capability.KeyValue}
 	if _, err := appNewCreateFromWizardDecision(context.Background(), controller, root, request, registry); err == nil {
 		t.Fatal("stale or mismatched capabilities were accepted")
 	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) { t.Fatal("rejected request wrote project") }
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("rejected request wrote project")
+	}
 }
 
 func TestAppNewWizardFormatting(t *testing.T) {
