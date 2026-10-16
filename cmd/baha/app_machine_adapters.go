@@ -20,13 +20,13 @@ type appMachineRead func(context.Context, string) (GuidedReadContext, error)
 // appMachineView is a read-only projection; authorization must already have
 // happened in the existing GuidedReadContext reader.
 type appMachineView struct {
-	Target           string                           `json:"target"`
-	ApplicationID    string                           `json:"application_id"`
-	Requirements     []capability.Requirement         `json:"requirements"`
-	Preferences      []application.ProviderPreference `json:"provider_preferences"`
-	Footprint        application.Footprint            `json:"footprint"`
-	SnapshotRevision string                           `json:"snapshot_revision"`
-	PlanRevision     string                           `json:"plan_revision"`
+	Target	string	`json:"target"`
+	ApplicationID	string	`json:"application_id"`
+	Requirements	[]capability.Requirement	`json:"requirements"`
+	Preferences	[]application.ProviderPreference	`json:"provider_preferences"`
+	Footprint	application.Footprint	`json:"footprint"`
+	SnapshotRevision	string	`json:"snapshot_revision"`
+	PlanRevision	string	`json:"plan_revision"`
 }
 
 func appMachineInspect(ctx context.Context, target string, read appMachineRead) (appMachineView, error) {
@@ -92,10 +92,10 @@ func appMachineReadError(err error) error {
 type appMachineApply func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error)
 
 type appMachineChangeRequest struct {
-	Target           string
-	SnapshotRevision string
-	PlanRevision     string
-	Consent          application.ProviderChangeConsent
+	Target	string
+	SnapshotRevision	string
+	PlanRevision	string
+	Consent	application.ProviderChangeConsent
 }
 
 // appMachineChange binds one fresh authorized read to the exact impact plan.
