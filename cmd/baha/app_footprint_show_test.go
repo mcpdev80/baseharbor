@@ -14,93 +14,118 @@ import (
 func footprintShowFixture() GuidedReadContext {
 	ram := int64(4096)
 	count := int64(2)
+	database := application.ProviderFootprint{
+		InstanceID: "database",
+		State:      application.ProviderRunning,
+		Dependencies: []string{"storage"},
+		MemoryBytes: application.Quantity{
+			Value: &ram, Classification: "measured", Source: "observer",
+		},
+		Containers: application.Quantity{
+			Value: &count, Classification: "estimated", Source: "provider-plan",
+		},
+	}
+	storage := application.ProviderFootprint{
+		InstanceID: "storage",
+		State:      application.ProviderUnverifiable,
+	}
 	return GuidedReadContext{
-		Target: "dev", Complete: false, SnapshotRevision: "private-revision",
+		Target:           "dev",
+		Complete:         false,
+		SnapshotRevision: "private-revision",
 		Footprint: application.Footprint{
-			Version: application.FootprintVersion, Target: "dev",
-			Core: application.CoreUnknown, Complete: false,
-			Existing: []application.ProviderFootprint{{
-				InstanceID: "database", State: application.ProviderRunning,
-				Dependencies: []string{"storage"},
-				MemoryBytes: application.Quantity{Value: &ram, Classification: "measured", Source: "observer"},
-				Containers: application.Quantity{Value: &count, Classification: "estimated", Source: "provider-plan"},
-		}, {InstanceID: "storage", State: application.ProviderUnverifiable}},
+			Version:  application.FootprintVersion,
+			Target:   "dev",
+			Core:     application.CoreUnknown,
+			Complete: false,
+			Existing: []application.ProviderFootprint{database, storage},
 		},
 	}
 }
 
 func TestAppFootprintShowSameAuthorityHumanAndJSON(t *testing.T) {
 	view := footprintShowFixture()
-	snapshot := view.Footprint
 	readerCalls := 0
 	read := func(context.Context) (GuidedReadContext, error) {
 		readerCalls++
 		return view, nil
 	}
 	var human, machine bytes.Buffer
-	for _, test := range []struct {
-		buffer *bytes.Buffer
-		json   bool
-	}{{&human, false}, {&machine, true}} {
-		err := appFootprintShow(context.Background(), test.buffer, read,
-			appFootprintShowOptions{Target: "dev", JSON: test.json, Details: true})
-		if err != nil {
-			t.Fatal(err)
-		}
+	if err := appFootprintShow(context.Background(), &human, read, appFootprintShowOptions{
+		Target: "dev", Details: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := appFootprintShow(context.Background(), &machine, read, appFootprintShowOptions{
+		Target: "dev", JSON: true,
+	}); err != nil {
+		t.Fatal(err)
 	}
 	var decoded application.Footprint
 	if err := json.Unmarshal(machine.Bytes(), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Version != snapshot.Version || decoded.Core != snapshot.Core || decoded.Complete != snapshot.Complete ||
-		len(decoded.Existing) != len(snapshot.Existing) || decoded.Existing[0].MemoryBytes.Classification != "measured" ||
-		decoded.Existing[0].Containers.Classification != "estimated" { t.Fatalf("JSON lost authoritative facts: %+v", decoded) }
-	for _, fact := range []string{"database", "storage", "4096 bytes (measured)", "2 (estimated)",
-		"Resolution: incomplete", "Core: unknown", "Dependencies: storage"} {
+	if decoded.Version != view.Footprint.Version ||
+		decoded.Core != view.Footprint.Core ||
+		decoded.Complete != view.Footprint.Complete ||
+		len(decoded.Existing) != 2 ||
+		decoded.Existing[0].MemoryBytes.Classification != "measured" ||
+		decoded.Existing[0].Containers.Classification != "estimated" {
+		t.Fatalf("JSON lost footprint evidence: %+v", decoded)
+	}
+	for _, fact := range []string{
+		"database", "storage", "4096 bytes (measured)",
+		"2 (estimated)", "Resolution: incomplete", "Core: unknown",
+		"Dependencies: storage",
+	} {
 		if !strings.Contains(human.String(), fact) {
-			t.Errorf("human missing %q", fact)
+			t.Errorf("human output missing %q", fact)
 		}
 	}
 	if readerCalls != 2 {
-		t.Fatalf("read calls: %d", readerCalls)
-	}
-	if view.Footprint.Existing[0].InstanceID != snapshot.Existing[0].InstanceID {
-		t.Fatal("mutated footprint")
+		t.Fatalf("expected one read per handler, got %d", readerCalls)
 	}
 	for _, output := range []string{human.String(), machine.String()} {
 		if strings.Contains(output, "private-revision") {
-			t.Fatal("leaked context metadata")
+			t.Fatal("leaked GuidedReadContext metadata")
 		}
 	}
 }
 
 func TestAppFootprintShowEmptyAndPartial(t *testing.T) {
 	for _, complete := range []bool{true, false} {
-		view := GuidedReadContext{Target: "dev", Complete: complete,
-			Footprint: application.Footprint{Version: application.FootprintVersion,
-				Target: "dev", Core: application.CoreNotRequired, Complete: complete}}
-		var h, j bytes.Buffer
-		if err := appFootprintShowContext(&h, view, appFootprintShowOptions{Target: "dev"}); err != nil {
+		view := GuidedReadContext{
+			Target: "dev", Complete: complete,
+			Footprint: application.Footprint{
+				Version:  application.FootprintVersion,
+				Target:   "dev",
+				Core:     application.CoreNotRequired,
+				Complete: complete,
+			},
+		}
+		var human, machine bytes.Buffer
+		if err := appFootprintShowContext(&human, view, appFootprintShowOptions{Target: "dev"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := appFootprintShowContext(&j, view, appFootprintShowOptions{Target: "dev", JSON: true}); err != nil {
+		if err := appFootprintShowContext(&machine, view, appFootprintShowOptions{Target: "dev", JSON: true}); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(h.String(), "No provider realizations selected.") {
-			t.Fatal(h.String())
+		if !strings.Contains(human.String(), "No provider realizations selected.") {
+			t.Fatal(human.String())
 		}
-		if complete && !strings.Contains(h.String(), "Resolution: complete") {
-			t.Fatal(h.String())
+		want := "Resolution: incomplete"
+		if complete {
+			want = "Resolution: complete"
 		}
-		if !complete && !strings.Contains(h.String(), "Resolution: incomplete") {
-			t.Fatal(h.String())
+		if !strings.Contains(human.String(), want) {
+			t.Fatal(human.String())
 		}
 		var actual application.Footprint
-		if err := json.Unmarshal(j.Bytes(), &actual); err != nil {
+		if err := json.Unmarshal(machine.Bytes(), &actual); err != nil {
 			t.Fatal(err)
 		}
 		if actual.Complete != complete || actual.Core != application.CoreNotRequired {
-			t.Fatalf("%+v", actual)
+			t.Fatalf("unexpected JSON: %+v", actual)
 		}
 	}
 }
@@ -108,7 +133,9 @@ func TestAppFootprintShowEmptyAndPartial(t *testing.T) {
 func TestAppFootprintShowWrongTargetDoesNotWrite(t *testing.T) {
 	for _, target := range []string{"prod", ""} {
 		var out bytes.Buffer
-		err := appFootprintShowContext(&out, footprintShowFixture(), appFootprintShowOptions{Target: target, JSON: true})
+		err := appFootprintShowContext(&out, footprintShowFixture(), appFootprintShowOptions{
+			Target: target, JSON: true,
+		})
 		if err == nil || !strings.Contains(err.Error(), "wrong_target") || out.Len() != 0 {
 			t.Fatalf("err=%v bytes=%q", err, out.String())
 		}
@@ -119,12 +146,18 @@ func TestAppFootprintShowDeniedAndSourceMissingRedacted(t *testing.T) {
 	for _, kind := range []string{"denied", "source_missing", "wrong_target", "unverifiable", "unexpected"} {
 		calls := 0
 		var out bytes.Buffer
-		err := appFootprintShow(context.Background(), &out,
-			func(context.Context) (GuidedReadContext, error) {
-				calls++
-				return GuidedReadContext{}, &GuidedReadError{Kind: kind, Cause: errors.New("/secret/path?token=private")}
-		}, appFootprintShowOptions{Target: "dev", JSON: true})
-		if err == nil || calls != 1 || out.Len() != 0 || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "private") {
+		read := func(context.Context) (GuidedReadContext, error) {
+			calls++
+			return GuidedReadContext{}, &GuidedReadError{
+				Kind: kind, Cause: errors.New("/secret/path?token=private"),
+			}
+		}
+		err := appFootprintShow(context.Background(), &out, read, appFootprintShowOptions{
+			Target: "dev", JSON: true,
+		})
+		if err == nil || calls != 1 || out.Len() != 0 ||
+			strings.Contains(err.Error(), "secret") ||
+			strings.Contains(err.Error(), "private") {
 			t.Fatalf("unsafe error: %v, output=%q", err, out.String())
 		}
 		if kind == "unexpected" && err.Error() != "footprint: unavailable" {
@@ -133,14 +166,16 @@ func TestAppFootprintShowDeniedAndSourceMissingRedacted(t *testing.T) {
 	}
 }
 
-func TestAppFootprintShowReadOnlyAndWriterError(t *testing.T) {
+func TestAppFootprintShowReadOnly(t *testing.T) {
 	view := footprintShowFixture()
 	original, err := json.Marshal(view)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := appFootprintShowContext(&out, view, appFootprintShowOptions{Target: "dev", Details: true}); err != nil {
+	if err := appFootprintShowContext(&out, view, appFootprintShowOptions{
+		Target: "dev", Details: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := json.Marshal(view)
@@ -148,6 +183,6 @@ func TestAppFootprintShowReadOnlyAndWriterError(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(original, after) {
-		t.Fatal("mutated read context")
+		t.Fatal("read-only handler mutated context")
 	}
 }
