@@ -639,6 +639,7 @@ jobs:
           python3 scripts/test_pr_gate_plan.py
           python3 scripts/test_pr_required_final.py
           python3 scripts/test_pr_check_runner.py
+          python3 scripts/test_pr_wizard_workflow_route.py
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_authenticated_results.py
