@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -66,6 +67,7 @@ type appWizardController struct {
 	preferences map[string]string
 	footprint   *GuidedReadContext
 	impact      *application.ProviderImpactPlan
+	previewFacts []byte
 	refresh     func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error)
 	decision    *appWizardDecision
 }
@@ -172,6 +174,23 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 	return fp, impact, nil
 }
 
+// Snapshot immutable, detached preview values. JSON round-tripping captures
+// nested exported authority data without retaining callback-owned pointers.
+func snapshotAppWizardFacts(fp *GuidedReadContext, impact *application.ProviderImpactPlan) (*GuidedReadContext, *application.ProviderImpactPlan, []byte, error) {
+	facts, err := json.Marshal(struct {
+		Footprint *GuidedReadContext
+		Impact *application.ProviderImpactPlan
+	}{fp, impact})
+	if err != nil { return nil, nil, nil, err }
+	var detached struct {
+		Footprint *GuidedReadContext
+		Impact *application.ProviderImpactPlan
+	}
+	if err := json.Unmarshal(facts, &detached); err != nil { return nil, nil, nil, err }
+	if detached.Footprint == nil || detached.Impact == nil { return nil, nil, nil, errors.New("missing preview data") }
+	return detached.Footprint, detached.Impact, facts, nil
+}
+
 // Step never invokes a mutation or consent hook. A decision requires verified
 // fresh read-only facts that exactly match the preview shown to the operator.
 func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (appWizardController, error) {
@@ -201,14 +220,15 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			next.footprint, next.impact = fp, impact
+			next.footprint, next.impact, next.previewFacts, err = snapshotAppWizardFacts(fp, impact)
+			if err != nil { return w, err }
 			next.phase = appWizardPreview
 		}
 	case appWizardPreview:
 		switch event {
 		case appWizardBack, appWizardNo:
 			next.phase = appWizardNeeds
-			next.footprint, next.impact = nil, nil
+			next.footprint, next.impact, next.previewFacts = nil, nil, nil
 		case appWizardYes:
 			choices, err := next.choicesForSelection()
 			if err != nil {
@@ -221,7 +241,9 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			if !reflect.DeepEqual(fp, next.footprint) || !reflect.DeepEqual(impact, next.impact) {
+			fresh, err := json.Marshal(struct{ Footprint *GuidedReadContext; Impact *application.ProviderImpactPlan }{fp, impact})
+			if err != nil { return w, err }
+			if !reflect.DeepEqual(fresh, next.previewFacts) {
 				return w, errors.New("stale preview: return to selection and refresh")
 			}
 			d := next.intent()
@@ -294,7 +316,7 @@ func (w appWizardController) View() string {
 		choices, err := w.choicesForSelection()
 		if err == nil {
 			for _, choice := range choices {
-				out += "\\n" + choice.View()
+				out += "\n" + choice.View()
 			}
 		}
 		return out
