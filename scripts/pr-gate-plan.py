@@ -95,6 +95,14 @@ INSPECT_CHECKS = [
     {'id': 'inspect-consumer-build', 'owner': 'cmd/baha package',
      'command': 'go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha'},
 ]
+# Explicitly reviewed reconciliation files that the narrow lane covers. The
+# package tests run at the top-level package only, so this is an exact reviewed
+# allowlist, not a prefix or name heuristic: any other repositoryinspect file,
+# including a future reconcile*.go or a nested subpackage, stays unresolved.
+INSPECT_RECONCILE_REVIEWED = frozenset([
+    'internal/repositoryinspect/reconcile.go',
+    'internal/repositoryinspect/reconcile_default_instance_test.go',
+])
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -237,13 +245,13 @@ def plan(diff, requirements, mapping):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
-        elif path.startswith('internal/repositoryinspect/'):
+        elif path in INSPECT_RECONCILE_REVIEWED:
+            area = 'inspect-reconciliation'
             require(INSPECT_CHECKS)
-            if path.endswith('.go') and path.rsplit('/', 1)[-1].startswith('reconcile'):
-                area = 'inspect-reconciliation'
-            else:
-                area = 'inspect-implementation-unresolved'
-                unresolved.append('repository inspection detector/model/manifest impact needs targeted qualification: ' + path)
+        elif path.startswith('internal/repositoryinspect/') and path.endswith('.go'):
+            area = 'inspect-implementation-unresolved'
+            require(INSPECT_CHECKS)
+            unresolved.append('unreviewed repository inspection file needs targeted qualification: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
