@@ -694,6 +694,7 @@ jobs:
             cli-guided-tests) go test ./cmd/baha -run '^TestGuided' -count=1 ;;
             cli-gofmt) test -z "$(gofmt -l cmd/baha)" ;;
             wizard-*-tests)
+              git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
               python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
               ;;
