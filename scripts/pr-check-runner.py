@@ -65,9 +65,9 @@ def execute_validation(check, repository):
         for name in matches:
             if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
                 raise RuntimeError('required test did not execute: ' + name)
-            if re.search(r'(?m)^--- SKIP: ' + re.escape(name) + r'(?:$|\\s)', executed.stdout):
+            if re.search(r'(?m)^--- SKIP: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
                 raise RuntimeError('required test skipped: ' + name)
-            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\\s)', executed.stdout):
+            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
                 raise RuntimeError('required test missing PASS: ' + name)
         all_matches.extend(matches)
     return all_matches
