@@ -116,7 +116,7 @@ class RegistrationPlannerTests(TestCase):
                     self.assertIn("@@", patch) if status == "modified" else self.assertIn("+++ b/", patch)
                     actual = git(repo, "diff", "--cached", "--name-status").splitlines()
                     self.assertEqual(1, len(actual))
-                    marker, changed = actual[0].split("\\t")
+                    marker, changed = actual[0].split("\t")
                     self.assertEqual("A" if status == "added" else "M", marker)
                     result = plan([{"status": status, "path": changed, "patch": patch}])
                     self.assertEqual(expected, result["coverage_status"])
