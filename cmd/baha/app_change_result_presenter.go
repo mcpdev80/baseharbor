@@ -47,7 +47,9 @@ func appChangeResultPresenter(plan application.ProviderImpactPlan, result applic
 		for _, function := range out.Functions {
 			fmt.Fprintf(&b, "Actual function: %s/%s | %s | verified: %t\n",
 				function.Consumer, function.Function, function.Outcome, function.Verified)
-			if function.Behavior != "" { fmt.Fprintf(&b, "Actual function behavior: %s\n", function.Behavior) }
+			if function.Behavior != "" {
+				fmt.Fprintf(&b, "Actual function behavior: %s\n", function.Behavior)
+			}
 			if function.ValidUntil != "" {
 				fmt.Fprintf(&b, "Validity until: %s\n", function.ValidUntil)
 			}
