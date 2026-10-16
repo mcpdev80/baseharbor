@@ -272,7 +272,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh podman
 
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/') && github.ref_name != 'runtime-validation/ci/core-752-policy-proof'
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 20
     services:
@@ -812,3 +812,22 @@ jobs:
               --demo-sha "$VERIFIED_DEMO_SHA"
           fi
           python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
+
+  core_752_policy_pilot:
+    name: Core752 trusted immutable policy regressions (disposable)
+    if: github.event_name == 'push' && github.ref_name == 'runtime-validation/ci/core-752-policy-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify exact trusted policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts/test_pr_gate_plan.py scripts/test_pr_diff_base.py scripts/test_pr_check_runner.py scripts/test_pr_required_final.py -v
+          python3 -m py_compile scripts/pr-gate-plan.py
+          bash scripts/ci-workflow-policy.sh
