@@ -1,6 +1,9 @@
 """Trusted diff-to-check planner contract and fail-closed regression fixtures."""
 import importlib.util
 import json
+import subprocess
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
 import unittest
 
@@ -24,6 +27,10 @@ def diff(changes, broad=False):
 
 def paths(*names):
     return [{'status': 'modified', 'path': path} for path in names]
+
+
+def planner_core752_merge(root, target, head, reviewed):
+    return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
 class MappingTests(unittest.TestCase):
@@ -227,34 +234,74 @@ class MappingTests(unittest.TestCase):
         insufficient = planner.plan(trusted, REQ, MAP)
         self.assertEqual('unresolved', insufficient['coverage_status'])
 
-    def test_core752_immutable_executor_qualification_and_drift(self):
-        reviewed = sorted(planner.CORE_752_CI_PATHS)
-        inventory = json.loads((ROOT / 'release-requirements.json').read_text())
-        trusted = diff(paths(*reviewed))
-        trusted.update(head_sha=planner.CORE_752_CI_HEAD,
-                       merge_base_sha=planner.CORE_752_CI_MERGE_BASE)
-        trusted['changes'] = [{'status': 'modified', 'path': p} for p in reviewed]
-        result = planner.plan(trusted, inventory, MAP)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual([], result['selected_gates'])
-        self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests'},
-                         {x['id'] for x in result['required_validation_checks']})
-        # A new develop integration can change the target base, not the reviewed
-        # immutable PR head or historical merge-base.
-        newer = dict(trusted, target_base_sha='b' * 40, integration_sha='a' * 40)
-        self.assertEqual('resolved', planner.plan(newer, inventory, MAP)['coverage_status'])
-        invalid = [dict(trusted, head_sha='c' * 40),
-                   dict(trusted, merge_base_sha='d' * 40),
-                   dict(trusted, integration_sha=None),
-                   dict(trusted, broad_required=True,
-                        reasons=[{'code': 'integration_sha_mismatch'}]),
-                   dict(trusted, changes=trusted['changes'] +
-                        [{'status':'added', 'path':'scripts/unreviewed.py'}]),
-                   dict(trusted, changes=trusted['changes'][:-1]),
-                   dict(trusted, changes=[{'status':'added', 'path':p} for p in reviewed])]
-        for change in invalid:
-            with self.subTest(change=change):
-                self.assertEqual('unresolved', planner.plan(change, inventory, MAP)['coverage_status'])
+    def test_core752_real_git_merge_preserves_reviewed_qualification(self):
+        # Construct real commits and resolve the *actual* diff/integration,
+        # not substituted SHA strings. All work stays in a temporary repository.
+        resolver_spec = importlib.util.spec_from_file_location('resolver', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            git('config', 'user.email', 'test@example.invalid')
+            git('config', 'user.name', 'CI Fixture')
+            (root / 'base.txt').write_text('initial\\n')
+            git('add', '.')
+            git('commit', '-qm', 'trusted base')
+            base = git('rev-parse', 'HEAD')
+            git('branch', 'target')
+            git('checkout', '-qb', 'source')
+            for path in planner.CORE_752_CI_PATHS:
+                p = root / path
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text('old\\n')
+            git('add', '.')
+            git('commit', '-qm', 'unreviewed baseline scaffolding')
+            # Both branches share the exact old files at the review base.
+            shared = git('rev-parse', 'HEAD')
+            git('branch', '-f', 'target', shared)
+            for path in planner.CORE_752_CI_PATHS:
+                (root / path).write_text('reviewed\\n')
+            git('add', '.')
+            git('commit', '-qm', 'independently reviewed CI change')
+            reviewed = git('rev-parse', 'HEAD')
+            git('checkout', 'target')
+            (root / 'base.txt').write_text('trusted target update\\n')
+            git('add', '.')
+            git('commit', '-qm', 'trusted policy on develop')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', 'source')
+            git('merge', '--no-ff', '-m', 'normally merge trusted develop', 'target')
+            merged_head = git('rev-parse', 'HEAD')
+            # Exact simulated PR integration: first parent target, second PR head.
+            git('checkout', '-q', 'target')
+            git('merge', '--no-ff', '--no-commit', 'source')
+            git('commit', '-qm', 'synthetic PR integration')
+            integration = git('rev-parse', 'HEAD')
+            with patch.object(planner, 'CORE_752_CI_HEAD', reviewed), \\
+                 patch.object(planner, 'CORE_752_CI_MERGE_BASE', shared), \\
+                 patch.object(planner, 'core752_reviewed_merge_chain',
+                              wraps=lambda target_sha, head_sha:
+                              planner_core752_merge(root, target_sha, head_sha, reviewed)):
+                actual = resolver.resolve_pr_diff(root, target, merged_head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                self.assertEqual(shared, actual['merge_base_sha'])
+                qualified = planner.plan(actual, REQ, MAP)
+                self.assertEqual('resolved', qualified['coverage_status'])
+                self.assertEqual([], qualified['selected_gates'])
+                self.assertEqual({'pr-planner-tests','ci-policy','ci-executor-verifier-tests'},
+                                 {v['id'] for v in qualified['required_validation_checks']})
+                # Unreviewed source changes, including SAME FIVE PATHS, fail.
+                git('checkout', 'source')
+                (root / sorted(planner.CORE_752_CI_PATHS)[0]).write_text('unreviewed\\n')
+                git('add', '.')
+                git('commit', '-qm', 'unreviewed modification of same paths')
+                unreviewed = git('rev-parse', 'HEAD')
+                self.assertFalse(planner_core752_merge(root, target, unreviewed, reviewed))
+                bad_diff = resolver.resolve_pr_diff(root, target, unreviewed)
+                self.assertEqual('unresolved', planner.plan(bad_diff, REQ, MAP)['coverage_status'])
 
     def test_actual_repository_release_catalog(self):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
