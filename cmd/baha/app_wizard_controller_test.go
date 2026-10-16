@@ -354,7 +354,7 @@ func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 	if strings.Contains(view, `\nSQL`) || strings.Contains(view, `\n[x]`) {
 		t.Fatalf("literal backslash separators in view: %q", view)
 	}
-	if !strings.Contains(view, "\nSQL/primary") || !strings.Contains(view, "\nSQL/analytics") {
+	if !strings.Contains(view, "\n"+string(capability.SQL)+"/primary") || !strings.Contains(view, "\n"+string(capability.SQL)+"/analytics") {
 		t.Fatalf("provider choices not on distinct lines: %q", view)
 	}
 }
