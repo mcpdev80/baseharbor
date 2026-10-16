@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -166,4 +167,13 @@ func TestAppWizardControllerNoInputMutationOutsideCorrectPhase(t *testing.T) {
 	w=appWizardAdvance(t,w,appWizardNext)
 	if _,err:=w.SelectNeed(context.Background(),"space");err==nil {t.Fatal("needs changed outside needs phase")}
 	if !reflect.DeepEqual(w.selection.Requirements(),before) {t.Fatal("unexpected mutation")}
+}
+
+func TestAppWizardControllerFormatting(t *testing.T) {
+	for _, name := range []string{"app_wizard_controller.go", "app_wizard_controller_test.go"} {
+		diff, err := exec.Command("gofmt", "-d", name).CombinedOutput()
+		if err != nil || len(diff) != 0 {
+			t.Errorf("gofmt mismatch in %s: %s (%v)", name, diff, err)
+		}
+	}
 }
