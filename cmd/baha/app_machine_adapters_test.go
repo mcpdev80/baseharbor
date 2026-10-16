@@ -16,8 +16,8 @@ func appMachineFixture() GuidedReadContext {
 	return GuidedReadContext{
 		ApplicationID: "existing-id", Target: "dev", Name: "demo", Environment: "dev",
 		Capabilities:	[]capability.Requirement{req},
-		Preferences:	[]application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
-		Footprint:	application.Footprint{Version: application.FootprintVersion, Target: "dev", Complete: true},
+		Preferences:  []application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
+		Footprint:    application.Footprint{Version: application.FootprintVersion, Target: "dev", Complete: true},
 		PlanRevision: "impact-1", SnapshotRevision: "snapshot-1",
 	}
 }
