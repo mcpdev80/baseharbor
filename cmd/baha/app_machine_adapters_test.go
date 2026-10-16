@@ -342,7 +342,7 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 		}
 		return application.ProviderImpactPlan{
 			Version: application.ProviderImpactVersion, Target: target, PlanID: "change-42",
-			Revision: "change-rev-42", ConfirmationsRequired: 2, Destructive: true,
+			Revision: "change-rev-42", Complete: true, ConfirmationsRequired: 2, Destructive: true,
 			Impacts: []application.ProviderImpact{{InstanceID: "db-a", Operation: "provide"}, {InstanceID: "db-b", Operation: "provide"}},
 		}, nil
 	}
@@ -362,8 +362,8 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 			t.Fatalf("wrong applied plan %s", plan.PlanID)
 		}
 		return []application.ProviderExecutionOutcome{
-			{InstanceID: "db-a", Operation: "provide", Status: "applied"},
-			{InstanceID: "db-b", Operation: "provide", Status: "applied"},
+			{InstanceID: "db-a", Operation: "provide", Status: "applied", Verified: true, Evidence: "receipt-a"},
+			{InstanceID: "db-b", Operation: "provide", Status: "applied", Verified: true, Evidence: "receipt-b"},
 		}, nil
 	}
 	result, err := appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, apply)
