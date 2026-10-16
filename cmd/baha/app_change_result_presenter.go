@@ -26,6 +26,7 @@ func appChangeResultPresenter(plan application.ProviderImpactPlan, result applic
 		}
 		if out.After != nil {
 			fmt.Fprintf(&b, "Observed state: %s | verified: %t\n", out.After.State, out.After.Verified)
+			appChangeSafeAccess(&b, "Actual provider access", out.After.Access)
 			for _, location := range out.After.Locations {
 				appChangeLocation(&b, "Observed location", location)
 			}
@@ -35,6 +36,7 @@ func appChangeResultPresenter(plan application.ProviderImpactPlan, result applic
 		for _, material := range out.Materials {
 			fmt.Fprintf(&b, "Actual material: %s | disposition: %s | verified: %t\n",
 				material.MaterialID, material.Disposition, material.Verified)
+			appChangeSafeAccess(&b, "Actual material access", material.Access)
 			if material.Location != nil {
 				appChangeLocation(&b, "Actual location", *material.Location)
 			}
@@ -45,6 +47,7 @@ func appChangeResultPresenter(plan application.ProviderImpactPlan, result applic
 		for _, function := range out.Functions {
 			fmt.Fprintf(&b, "Actual function: %s/%s | %s | verified: %t\n",
 				function.Consumer, function.Function, function.Outcome, function.Verified)
+			if function.Behavior != "" { fmt.Fprintf(&b, "Actual function behavior: %s\n", function.Behavior) }
 			if function.ValidUntil != "" {
 				fmt.Fprintf(&b, "Validity until: %s\n", function.ValidUntil)
 			}
