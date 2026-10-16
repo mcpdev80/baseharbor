@@ -55,7 +55,7 @@ func TestAppChangePreviewFormatting(t *testing.T) {
 	for _, name := range []string{"app_change_preview.go", "app_change_preview_test.go", "app_change_result_presenter.go", "app_change_result_presenter_test.go"} {
 		diff, err := exec.Command("gofmt", "-d", name).CombinedOutput()
 		if err != nil || len(diff) != 0 {
-			t.Fatalf("gofmt mismatch in %s: %s (%v)", name, diff, err)
+			t.Errorf("gofmt mismatch in %s: %s (%v)", name, diff, err)
 		}
 	}
 }
