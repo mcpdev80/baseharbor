@@ -69,9 +69,9 @@ func TestAppMachineAdaptersStalePlanConsentAndCancellation(t *testing.T) {
 		return nil, nil
 	}
 	cases := []struct {
-		name string
+		name   string
 		mutate func(*appMachineChangeRequest)
-		want string
+		want   string
 	}{
 		{"stale-plan", func(r *appMachineChangeRequest) { r.PlanRevision = "old" }, "conflict"},
 		{"stale-snapshot", func(r *appMachineChangeRequest) { r.SnapshotRevision = "old" }, "conflict"},
