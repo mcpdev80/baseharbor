@@ -67,18 +67,18 @@ func TestAppChangePreviewAuthoritativeRenewalAndSecurityConsequences(t *testing.
 		Method: "sensitive-method-do-not-print", Endpoint: "https://token-secret@example.invalid",
 		Security: capability.SecureBinding{
 			Credentials: []capability.CredentialReference{{Name: "hidden-credential", Reference: "baseharbor://secrets/hidden"}},
-			Trust: []capability.TrustMaterialReference{{Name: "hidden-ca", Reference: "baseharbor://trust/hidden"}},
-			Lifecycle: capability.SecurityLifecycleSupport{Renewable: true, Rotatable: true},
+			Trust:       []capability.TrustMaterialReference{{Name: "hidden-ca", Reference: "baseharbor://trust/hidden"}},
+			Lifecycle:   capability.SecurityLifecycleSupport{Renewable: true, Rotatable: true},
 		},
 	}
 	changed := &application.ProviderAccess{Security: capability.SecureBinding{Lifecycle: capability.SecurityLifecycleSupport{Renewable: false, Revocable: true}}}
 	p := application.ProviderImpactPlan{Target: "dev", Destructive: true, ConfirmationsRequired: 2, Impacts: []application.ProviderImpact{{
 		InstanceID: "pki", Operation: "stop", Before: application.ProviderRealization{State: "running", Access: secure},
-		After: &application.ProviderRealization{State: "stopped", Access: changed},
+		After:     &application.ProviderRealization{State: "stopped", Access: changed},
 		Functions: []application.FunctionConsequence{{Consumer: "web", Function: "pki.validate", Outcome: "changed", Behavior: "offline-until-expiry", ValidUntil: "2026-11-01T00:00:00Z", RemainingValiditySeconds: &remaining}},
 		Materials: []application.MaterialConsequence{{
-			Before: application.ProviderMaterial{ID: "cert", Kind: "certificate", ValidFrom: "2026-10-01T00:00:00Z", ExpiresAt: "2026-11-01T00:00:00Z", Access: secure},
-			After: application.MaterialDisposition{MaterialID: "cert", Disposition: "retain", AccessAfter: changed},
+			Before:  application.ProviderMaterial{ID: "cert", Kind: "certificate", ValidFrom: "2026-10-01T00:00:00Z", ExpiresAt: "2026-11-01T00:00:00Z", Access: secure},
+			After:   application.MaterialDisposition{MaterialID: "cert", Disposition: "retain", AccessAfter: changed},
 			Meaning: "future renewal is not implied by retention", RemainingValiditySeconds: &remaining,
 		}},
 		Prerequisites: []application.ProviderPrerequisite{{Kind: "consumer-rebind", Subject: "web", Consequence: "without verified rebind, consumer continuity is not claimed", Supported: false}},
@@ -91,23 +91,29 @@ func TestAppChangePreviewAuthoritativeRenewalAndSecurityConsequences(t *testing.
 		"credential references: 1", "trust references: 1", "renewable: true",
 		"Proposed access (unverified): reported", "renewable: false", "revocable: true", "2 confirmation",
 	} {
-		if !strings.Contains(got, want) { t.Errorf("missing authoritative explanation %q: %s", want, got) }
+		if !strings.Contains(got, want) {
+			t.Errorf("missing authoritative explanation %q: %s", want, got)
+		}
 	}
 	for _, secret := range []string{"sensitive-method-do-not-print", "token-secret", "hidden-credential", "hidden-ca", "baseharbor://"} {
-		if strings.Contains(got, secret) { t.Fatalf("sensitive access leaked %q", secret) }
+		if strings.Contains(got, secret) {
+			t.Fatalf("sensitive access leaked %q", secret)
+		}
 	}
 }
 
 func TestAppChangePreviewContinuationAndDestructiveAlternative(t *testing.T) {
 	plan := application.ProviderImpactPlan{Target: "prod", Destructive: true, ConfirmationsRequired: 2, Impacts: []application.ProviderImpact{
 		{InstanceID: "old", Operation: "replace", Scenario: "provider-replaced",
-			Functions: []application.FunctionConsequence{{Consumer: "api", Function: "database.query", Outcome: "changed", Behavior: "reconnect-verified"}},
+			Functions:     []application.FunctionConsequence{{Consumer: "api", Function: "database.query", Outcome: "changed", Behavior: "reconnect-verified"}},
 			Prerequisites: []application.ProviderPrerequisite{{Kind: "consumer-rebind", Consequence: "rebind must be verified", Supported: true, Verified: true}}},
 		{InstanceID: "unused", Operation: "destroy", Scenario: "capability-no-longer-requested",
 			Materials: []application.MaterialConsequence{{Before: application.ProviderMaterial{ID: "volume"}, After: application.MaterialDisposition{Disposition: "delete"}, Meaning: "deletion is irreversible"}}},
 	}}
 	got := appChangePreview(plan)
 	for _, want := range []string{"reconnect-verified", "rebind must be verified", "deletion is irreversible", "capability-no-longer-requested"} {
-		if !strings.Contains(got, want) { t.Errorf("missing %q", want) }
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }
