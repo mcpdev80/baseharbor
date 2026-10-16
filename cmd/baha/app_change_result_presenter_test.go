@@ -71,7 +71,7 @@ func TestAppChangeResultPresenterActualPartialSecurityAndBehavior(t *testing.T) 
 	access := &application.ProviderAccess{
 		Method: "secret-method-hidden", Endpoint: "https://password@example.invalid",
 		Security: capability.SecureBinding{
-			Secrets: []capability.SecretReference{{Name: "hidden-token", Reference: "baseharbor://secrets/token"}},
+			Secrets:   []capability.SecretReference{{Name: "hidden-token", Reference: "baseharbor://secrets/token"}},
 			Lifecycle: capability.SecurityLifecycleSupport{Renewable: false, Rotatable: true},
 		},
 	}
@@ -86,17 +86,25 @@ func TestAppChangeResultPresenterActualPartialSecurityAndBehavior(t *testing.T) 
 			Outcome: "remains", Behavior: "cached-until-expiry", ValidUntil: "2026-11-01T00:00:00Z", Verified: false}},
 		Materials: []application.MaterialOutcome{{MaterialID: "token", Disposition: "retain", Access: access, Verified: false}},
 	}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := appChangeResultPresenter(plan, result)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"partial", "lease-still-active", "cached-until-expiry", "Actual provider access: reported",
 		"Actual material access: reported", "secret references: 1", "renewable: false", "rotatable: true",
 		"verified: false", "broker: replace", "fresh consent",
 	} {
-		if !strings.Contains(got, want) { t.Errorf("missing actual result %q: %s", want, got) }
+		if !strings.Contains(got, want) {
+			t.Errorf("missing actual result %q: %s", want, got)
+		}
 	}
 	for _, secret := range []string{"secret-method-hidden", "password@example", "hidden-token", "baseharbor://"} {
-		if strings.Contains(got, secret) { t.Fatalf("sensitive receipt data leaked %q", secret) }
+		if strings.Contains(got, secret) {
+			t.Fatalf("sensitive receipt data leaked %q", secret)
+		}
 	}
 }
