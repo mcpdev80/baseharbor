@@ -28,8 +28,12 @@ func appChangePreview(plan application.ProviderImpactPlan) string {
 		}
 		for _, f := range impact.Functions {
 			fmt.Fprintf(&b, "Consumer: %s | function: %s | outcome: %s | required: %t\n", f.Consumer, f.Function, f.Outcome, f.Required)
-			if f.Behavior != "" { fmt.Fprintf(&b, "Observed function behavior: %s\n", f.Behavior) }
-			if f.RemainingValiditySeconds != nil { fmt.Fprintf(&b, "Remaining function validity (seconds): %d\n", *f.RemainingValiditySeconds) }
+			if f.Behavior != "" {
+				fmt.Fprintf(&b, "Observed function behavior: %s\n", f.Behavior)
+			}
+			if f.RemainingValiditySeconds != nil {
+				fmt.Fprintf(&b, "Remaining function validity (seconds): %d\n", *f.RemainingValiditySeconds)
+			}
 			if f.ValidUntil != "" {
 				fmt.Fprintf(&b, "Validity until: %s\n", f.ValidUntil)
 			}
@@ -40,10 +44,18 @@ func appChangePreview(plan application.ProviderImpactPlan) string {
 		for _, material := range impact.Materials {
 			fmt.Fprintf(&b, "Material: %s | kind: %s | disposition: %s | verified: %t\n",
 				material.Before.ID, material.Before.Kind, material.After.Disposition, material.After.Verified)
-			if material.Meaning != "" { fmt.Fprintf(&b, "Authoritative material meaning: %s\n", material.Meaning) }
-			if material.Before.ValidFrom != "" { fmt.Fprintf(&b, "Material valid from: %s\n", material.Before.ValidFrom) }
-			if material.Before.ExpiresAt != "" { fmt.Fprintf(&b, "Material expires at: %s\n", material.Before.ExpiresAt) }
-			if material.RemainingValiditySeconds != nil { fmt.Fprintf(&b, "Remaining material validity (seconds): %d\n", *material.RemainingValiditySeconds) }
+			if material.Meaning != "" {
+				fmt.Fprintf(&b, "Authoritative material meaning: %s\n", material.Meaning)
+			}
+			if material.Before.ValidFrom != "" {
+				fmt.Fprintf(&b, "Material valid from: %s\n", material.Before.ValidFrom)
+			}
+			if material.Before.ExpiresAt != "" {
+				fmt.Fprintf(&b, "Material expires at: %s\n", material.Before.ExpiresAt)
+			}
+			if material.RemainingValiditySeconds != nil {
+				fmt.Fprintf(&b, "Remaining material validity (seconds): %d\n", *material.RemainingValiditySeconds)
+			}
 			appChangeSafeAccess(&b, "Before material access", material.Before.Access)
 			appChangeSafeAccess(&b, "Proposed material access (unverified)", material.After.AccessAfter)
 			if material.Before.Location != nil {
@@ -65,7 +77,9 @@ func appChangePreview(plan application.ProviderImpactPlan) string {
 		for _, prerequisite := range impact.Prerequisites {
 			fmt.Fprintf(&b, "Required action: %s | %s | supported: %t | verified: %t\n",
 				prerequisite.Kind, prerequisite.Subject, prerequisite.Supported, prerequisite.Verified)
-			if prerequisite.Consequence != "" { fmt.Fprintf(&b, "Prerequisite consequence: %s\n", prerequisite.Consequence) }
+			if prerequisite.Consequence != "" {
+				fmt.Fprintf(&b, "Prerequisite consequence: %s\n", prerequisite.Consequence)
+			}
 		}
 		for _, dependency := range impact.ContinuationDependencies {
 			fmt.Fprintf(&b, "Continuation dependency: %s\n", dependency.Realization.InstanceID)
