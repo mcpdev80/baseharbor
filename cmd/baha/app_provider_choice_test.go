@@ -5,105 +5,126 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
+const providerChoiceAppID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+func providerChoiceManifest(environment string, names ...string) application.Manifest {
+	m := application.New("catalog", environment, false, false, false)
+	m.ApplicationID = providerChoiceAppID
+	return application.WithSQLInstances(m, names...)
+}
+
+func providerChoiceShared(id, boundary string) capability.ProviderInstance {
+	return capability.ProviderInstance{ID: id, Provider: capability.PostgreSQL,
+		Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor, SharingBoundary: boundary}
+}
+
+func providerChoiceSnapshot(target string, instances ...capability.ProviderInstance) application.ResolutionSnapshot {
+	reg := capability.NewRegistry()
+	reg.Instances = instances
+	return application.ResolutionSnapshot{Target: target, Registry: reg, Facts: map[string]application.ProviderFact{}}
+}
+
+func providerChoiceSelection(names ...string) appCapabilitySelectionModel {
+	reqs := make([]capability.Requirement, 0, len(names))
+	for _, name := range names {
+		reqs = append(reqs, capability.Requirement{Kind: capability.SQL, Name: name})
+	}
+	return newAppCapabilitySelection(appCapabilitySelectionInput{Current: reqs})
+}
+
 func TestAppProviderChoiceAutomaticAndExplicit(t *testing.T) {
-	sel := newAppCapabilitySelection(appCapabilitySelectionInput{Detected: []capability.Kind{capability.SQL}})
-	reg := capability.NewRegistry()
-	reg.Instances = []capability.ProviderInstance{{ID: "sql-one", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Scope: capability.ScopeShared}}
-	choices, err := appProviderChoices("dev", "app", sel, reg)
-	if err != nil || len(choices) != 1 {
-		t.Fatalf("choices=%v err=%v", choices, err)
-	}
+	m := providerChoiceManifest("dev", "primary")
+	snapshot := providerChoiceSnapshot("target-dev", providerChoiceShared("sql-a", ""))
+	if err := snapshot.Registry.Validate(); err != nil { t.Fatal(err) }
+	choices, err := appProviderChoices(m, snapshot, providerChoiceSelection("primary"))
+	if err != nil || len(choices) != 1 { t.Fatalf("choices=%+v err=%v", choices, err) }
 	c := choices[0]
-	if c.Preference().InstanceID != "" || c.ProposedInstanceID != "sql-one" {
-		t.Fatalf("automatic selection: %+v", c)
-	}
-	instance, err := c.Effective()
-	if err != nil || instance.ID != "sql-one" {
-		t.Fatalf("effective=%+v err=%v", instance, err)
-	}
-	c, err = c.Select("sql-one")
-	if err != nil || c.Preference().InstanceID != "sql-one" {
-		t.Fatalf("explicit=%+v err=%v", c, err)
-	}
-	if !strings.Contains(c.View(), "postgresql") || !strings.Contains(c.View(), "Reason:") {
-		t.Fatalf("missing reason: %s", c.View())
-	}
+	if c.Preference().InstanceID != "" || c.ProposedInstanceID != "sql-a" { t.Fatalf("automatic=%+v", c) }
+	if !strings.Contains(c.View(), "Automatic") || !strings.Contains(c.View(), "sql-a") { t.Fatal(c.View()) }
+	c, err = c.Select("sql-a")
+	if err != nil || c.Preference().Requirement.Name != "primary" { t.Fatalf("explicit=%+v err=%v", c, err) }
+	if !strings.Contains(c.View(), "Explicit") || !strings.Contains(c.View(), "Selected: sql-a") { t.Fatal(c.View()) }
 	c, err = c.Select("")
-	if err != nil || c.Preference().InstanceID != "" {
-		t.Fatal("Automatic should reset preference")
+	if err != nil || !strings.Contains(c.View(), "Automatic") || c.Preference().InstanceID != "" { t.Fatal(c.View()) }
+}
+
+func TestAppProviderChoiceMultipleNamesHaveIndependentPreferences(t *testing.T) {
+	m := providerChoiceManifest("dev", "primary", "analytics")
+	snapshot := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"))
+	if err := snapshot.Registry.Validate(); err != nil { t.Fatal(err) }
+	choices, err := appProviderChoices(m, snapshot, providerChoiceSelection("primary", "analytics"))
+	if err != nil || len(choices) != 2 { t.Fatalf("choices=%+v err=%v", choices, err) }
+	first, err := choices[0].Select("a")
+	if err != nil { t.Fatal(err) }
+	second, err := choices[1].Select("b")
+	if err != nil { t.Fatal(err) }
+	if first.Preference().Requirement.Name != "primary" || second.Preference().Requirement.Name != "analytics" ||
+		first.Preference().InstanceID != "a" || second.Preference().InstanceID != "b" ||
+		first.Preference().Target != "dev" || second.Preference().Target != "dev" {
+		t.Fatalf("independent preferences %+v %+v", first.Preference(), second.Preference())
+	}
+	if _, err := choices[0].Effective(); err == nil { t.Fatal("ambiguous Automatic silently substituted") }
+}
+
+func TestAppProviderChoiceExistingBindingWinsAndConflictsFail(t *testing.T) {
+	m := providerChoiceManifest("dev", "primary")
+	s := providerChoiceSnapshot("dev", providerChoiceShared("a", "alpha"), providerChoiceShared("b", "beta"))
+	resource, err := capability.Resolve(m.Name, capability.Requirement{Kind: capability.SQL, Name: "primary"}, capability.PostgreSQL)
+	if err != nil { t.Fatal(err) }
+	if err := s.Registry.BindDeployment(resource, m.ApplicationID, m.Environment, "b"); err != nil { t.Fatal(err) }
+	if err := s.Registry.Validate(); err != nil { t.Fatal(err) }
+	fp, err := application.ResolveFootprint(m, s, nil)
+	if err != nil || len(fp.Requirements) != 1 || fp.Requirements[0].InstanceID != "b" { t.Fatalf("authority=%+v err=%v", fp, err) }
+	choices, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
+	if err != nil || choices[0].ProposedInstanceID != "b" { t.Fatalf("binding not retained: %+v %v", choices, err) }
+	if _, err := choices[0].Select("a"); err == nil { t.Fatal("binding conflict accepted") }
+	if chosen, err := choices[0].Effective(); err != nil || chosen.ID != "b" { t.Fatalf("effective=%+v err=%v", chosen, err) }
+}
+
+func TestAppProviderChoiceEnvironmentIsolationAndTargetSwitch(t *testing.T) {
+	m := providerChoiceManifest("dev", "primary")
+	instance := capability.ProviderInstance{ID: "prod", Provider: capability.PostgreSQL,
+		Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor,
+		OwnerApplicationID: m.ApplicationID, OwnerApplication: m.Name, OwnerEnvironment: "prod"}
+	shared := providerChoiceShared("shared", "")
+	s := providerChoiceSnapshot("dev-target", instance, shared)
+	if err := s.Registry.Validate(); err != nil { t.Fatal(err) }
+	choices, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
+	if err != nil || len(choices[0].Candidates) != 1 || choices[0].Candidates[0].Instance.ID != "shared" {
+		t.Fatalf("dev target leaked prod instance: %+v %v", choices, err)
+	}
+	m.Environment = "prod"
+	s.Target = "prod-target"
+	prod, err := appProviderChoices(m, s, providerChoiceSelection("primary"))
+	if err != nil || len(prod[0].Candidates) != 2 { t.Fatalf("prod choices=%+v err=%v", prod, err) }
+	if prod[0].Preference().Target != "prod-target" || choices[0].Preference().Target != "dev-target" {
+		t.Fatal("target preferences leaked")
 	}
 }
 
-func TestAppProviderChoiceAmbiguousAndIncompatible(t *testing.T) {
-	sel := newAppCapabilitySelection(appCapabilitySelectionInput{Detected: []capability.Kind{capability.SQL}})
-	reg := capability.NewRegistry()
-	provider := capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}
-	reg.Instances = []capability.ProviderInstance{{ID: "sql-a", Provider: provider, Scope: capability.ScopeShared}, {ID: "sql-b", Provider: provider, Scope: capability.ScopeExternal}, {ID: "cache", Provider: capability.Provider{Kind: capability.ProviderValkey, Capabilities: []capability.Kind{capability.KeyValue}}, Scope: capability.ScopeShared}, {ID: "other-app", Provider: provider, Scope: capability.ScopeApplication, OwnerApplicationID: "other"}}
-	choices, err := appProviderChoices("dev", "mine", sel, reg)
-	if err != nil || len(choices[0].Candidates) != 2 {
-		t.Fatalf("choices=%+v err=%v", choices, err)
-	}
-	c := choices[0]
-	if _, err = c.Effective(); err == nil || !strings.Contains(err.Error(), "multiple") {
-		t.Fatalf("ambiguity must fail: %v", err)
-	}
-	for _, id := range []string{"postgresql", "cache", "other-app", "missing"} {
-		if _, err = c.Select(id); err == nil {
-			t.Fatalf("incompatible or ambiguous ID %q accepted", id)
-		}
-	}
-	c, err = c.Select("sql-b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	chosen, err := c.Effective()
-	if err != nil || chosen.ID != "sql-b" {
-		t.Fatalf("explicit effective=%+v err=%v", chosen, err)
-	}
+func TestAppProviderChoiceRegistryValidityAndDuplicateIDs(t *testing.T) {
+	m := providerChoiceManifest("dev", "primary")
+	s := providerChoiceSnapshot("dev", providerChoiceShared("a", ""))
+	s.Registry.Instances[0].Ownership = capability.OwnershipExternal
+	if err := s.Registry.Validate(); err == nil { t.Fatal("invalid registry test fixture") }
+	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil { t.Fatal("invalid registry accepted") }
+	s = providerChoiceSnapshot("dev", providerChoiceShared("duplicate", "a"), providerChoiceShared("duplicate", "b"))
+	if err := s.Registry.Validate(); err == nil { t.Fatal("duplicate IDs not rejected by authority") }
+	if _, err := appProviderChoices(m, s, providerChoiceSelection("primary")); err == nil { t.Fatal("duplicate IDs accepted") }
 }
 
-func TestAppProviderChoiceNoProviderAndTargetSwitch(t *testing.T) {
-	sel := newAppCapabilitySelection(appCapabilitySelectionInput{Detected: []capability.Kind{capability.Secrets}})
-	empty := capability.NewRegistry()
-	first, err := appProviderChoices("dev", "app", sel, empty)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := first[0].Effective(); err == nil || !strings.Contains(err.Error(), "No compatible") {
-		t.Fatalf("missing provider not reported: %v", err)
-	}
-	reg := capability.NewRegistry()
-	reg.Instances = []capability.ProviderInstance{{ID: "secret-prod", Scope: capability.ScopeExternal, Provider: capability.Provider{Kind: capability.ProviderOpenBao, Capabilities: []capability.Kind{capability.Secrets}}}}
-	prod, err := appProviderChoices("prod", "app", sel, reg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prod[0].Preference().Target != "prod" || prod[0].Preference().InstanceID != "" {
-		t.Fatal("preferences leaked across targets")
-	}
-	pref, err := prod[0].Select("secret-prod")
-	if err != nil || !reflect.DeepEqual(pref.Preference(), appProviderPreference{Target: "prod", Kind: capability.Secrets, InstanceID: "secret-prod"}) {
-		t.Fatalf("target preference %+v %v", pref.Preference(), err)
-	}
-	if first[0].Preference().Target != "dev" || first[0].Preference().InstanceID != "" {
-		t.Fatal("dev preference mutated")
-	}
-}
-
-func TestAppProviderChoiceSelectionRequirementsRemainPortable(t *testing.T) {
-	sel := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "primary"}, {Kind: capability.SQL, Name: "analytics"}}})
-	registry := capability.NewRegistry()
-	registry.Instances = []capability.ProviderInstance{{ID: "sql", Scope: capability.ScopeShared, Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}}}
-	before := sel.Requirements()
-	choices, err := appProviderChoices("test", "app", sel, registry)
-	if err != nil || len(choices) != 2 {
-		t.Fatalf("choices=%+v err=%v", choices, err)
-	}
-	_, err = choices[0].Select("sql")
-	if err != nil || !reflect.DeepEqual(sel.Requirements(), before) {
-		t.Fatal("portable requirement changed")
-	}
+func TestAppProviderChoiceNoProviderAndPortableRequirements(t *testing.T) {
+	m := providerChoiceManifest("dev", "primary")
+	s := providerChoiceSnapshot("dev")
+	selection := providerChoiceSelection("primary")
+	before := selection.Requirements()
+	choices, err := appProviderChoices(m, s, selection)
+	if err != nil { t.Fatal(err) }
+	if _, err := choices[0].Effective(); err == nil || !strings.Contains(err.Error(), "No compatible") { t.Fatalf("missing provider: %v", err) }
+	if _, err := choices[0].Select("unknown"); err == nil { t.Fatal("unknown provider accepted") }
+	if !reflect.DeepEqual(before, selection.Requirements()) { t.Fatal("portable requirements mutated") }
 }
