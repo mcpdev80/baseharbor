@@ -17,7 +17,7 @@ func appMachineFixture() GuidedReadContext {
 	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	return GuidedReadContext{
 		ApplicationID: "existing-id", Target: "dev", Name: "demo", Environment: "dev",
-		Capabilities:	[]capability.Requirement{req},
+		Capabilities: []capability.Requirement{req},
 		Preferences:  []application.ProviderPreference{{Requirement: req, InstanceID: "db-dev"}},
 		Footprint:    application.Footprint{Version: application.FootprintVersion, Target: "dev", Complete: true},
 		PlanRevision: "impact-1", SnapshotRevision: "snapshot-1",
@@ -77,10 +77,16 @@ func TestAppMachineAdaptersStalePlanConsentAndCancellation(t *testing.T) {
 	}{
 		{"stale-plan", func(r *appMachineChangeRequest) { r.PlanRevision = "old" }, "conflict"},
 		{"stale-snapshot", func(r *appMachineChangeRequest) { r.SnapshotRevision = "old" }, "conflict"},
-		{"stale-consent", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "old", First: true, Second: true, DeleteData: true} }, "conflict"},
+		{"stale-consent", func(r *appMachineChangeRequest) {
+			r.Consent = application.ProviderChangeConsent{PlanID: "old", First: true, Second: true, DeleteData: true}
+		}, "conflict"},
 		{"cancel-first", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "impact-1"} }, "cancel"},
-		{"cancel-second", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true} }, "cancel"},
-		{"cancel-delete", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true, Second: true} }, "cancel"},
+		{"cancel-second", func(r *appMachineChangeRequest) {
+			r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true}
+		}, "cancel"},
+		{"cancel-delete", func(r *appMachineChangeRequest) {
+			r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true, Second: true}
+		}, "cancel"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
