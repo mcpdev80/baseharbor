@@ -71,6 +71,56 @@ class RegistrationPlannerTests(TestCase):
                 self.assertEqual("unresolved", result["coverage_status"])
                 self.assertTrue(result["broad_required"])
 
+    def test_real_git_diffs_positive_dedicated_registration_and_negative_mutation(self):
+        import subprocess
+        import tempfile
+
+        def git(repo, *args):
+            return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
+
+        with tempfile.TemporaryDirectory() as location:
+            repo = Path(location)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            git(repo, "config", "user.name", "CI Fixture")
+            git(repo, "config", "user.email", "ci@example.invalid")
+            registry = repo / "cmd" / "baha"
+            registry.mkdir(parents=True)
+            for name in ("commands.go", "mcp_application_authoring.go", "mcp_workspace_mutation.go"):
+                (registry / name).write_text("package main\\nfunc existingHandler() { authorize(); persist() }\\n")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "trusted base")
+            source = {
+                "dedicated-registration-test": ("registration_ci_readiness_test.go",
+                                                "package main\\nfunc TestAppRegistrationCI() {}\\n",
+                                                "added", "resolved"),
+                "registration-source": ("commands.go",
+                                         "package main\\nfunc existingHandler() { authorize(); persist() }\\nfunc registerCommand() {}\\n",
+                                         "modified", "unresolved"),
+                "authorization-change": ("mcp_application_authoring.go",
+                                           "package main\\nfunc existingHandler() { persist() }\\n",
+                                           "modified", "unresolved"),
+                "write-change": ("mcp_workspace_mutation.go",
+                                   "package main\\nfunc existingHandler() { authorize(); persistUnchecked() }\\n",
+                                   "modified", "unresolved"),
+            }
+            for label, (filename, new_content, status, expected) in source.items():
+                with self.subTest(label=label):
+                    git(repo, "reset", "--hard", "HEAD")
+                    testfile = registry / "registration_ci_readiness_test.go"
+                    if testfile.exists():
+                        testfile.unlink()
+                    target = registry / filename
+                    target.write_text(new_content)
+                    git(repo, "add", "-A")
+                    patch = git(repo, "diff", "--cached", "--", str(target.relative_to(repo)))
+                    self.assertIn("@@", patch) if status == "modified" else self.assertIn("+++ b/", patch)
+                    actual = git(repo, "diff", "--cached", "--name-status").splitlines()
+                    self.assertEqual(1, len(actual))
+                    marker, changed = actual[0].split("\\t")
+                    self.assertEqual("A" if status == "added" else "M", marker)
+                    result = plan([{"status": status, "path": changed, "patch": patch}])
+                    self.assertEqual(expected, result["coverage_status"])
+
     def test_shared_sources_outside_reviewed_boundary_are_unresolved(self):
         for path in (
             "cmd/baha/mcp_unreviewed_registration.go",

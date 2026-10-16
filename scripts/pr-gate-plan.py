@@ -425,6 +425,7 @@ def plan(diff, requirements, mapping):
         } or (path.startswith('cmd/baha/mcp_') and path.endswith('.go')):
             # Registration and execution logic coexist here; mere paths or
             # generic tests cannot qualify changed authorizers/mutators.
+            area = 'registration-mixed-unresolved'
             unresolved.append('mixed registration/execution source needs independent diff review: ' + path)
         elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
                 path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
