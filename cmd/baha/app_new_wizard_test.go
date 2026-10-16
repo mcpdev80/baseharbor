@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
 func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
@@ -92,10 +92,14 @@ func TestAppNewWizardCreateOnlyPreservesPreviewIdentity(t *testing.T) {
 		"identity-preserved", parent, "1", "1", "", "",
 	}, "\n"))
 	var output bytes.Buffer
-	if err := runAppNewWizard(context.Background(), &output, &output); err != nil { t.Fatal(err) }
+	if err := runAppNewWizard(context.Background(), &output, &output); err != nil {
+		t.Fatal(err)
+	}
 	root := filepath.Join(parent, "identity-preserved")
 	manifest, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(string(manifest), "name: identity-preserved") {
 		t.Fatalf("created contract missing application name: %s", manifest)
 	}
