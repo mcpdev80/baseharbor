@@ -316,3 +316,92 @@ func TestAppMachineAdaptersPartialOnCancelledExecution(t *testing.T) {
 		t.Fatalf("execution evidence lost: %+v, %v", got, err)
 	}
 }
+
+func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
+	primary := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	analytics := capability.Requirement{Kind: capability.SQL, Name: "analytics"}
+	desired := appMachineDesiredRequest{
+		Target: "dev", SnapshotRevision: "snapshot-1",
+		Requirements: []capability.Requirement{primary, analytics},
+		Choices: []appMachineDesiredChoice{{Requirement: primary, InstanceID: "db-a"}, {Requirement: analytics, InstanceID: "db-b"}},
+	}
+	current := appMachineFixture() // current PlanRevision is impact-1, NOT change-42
+	read := func(context.Context, string) (GuidedReadContext, error) { return current, nil }
+	choices := func(_ context.Context, target string, reqs []capability.Requirement) ([]appProviderChoice, error) {
+		return []appProviderChoice{
+			{Target: target, Requirement: primary, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-a"}}}},
+			{Target: target, Requirement: analytics, Candidates: []appProviderCandidate{{Instance: capability.ProviderInstance{ID: "db-b"}}}},
+		}, nil
+	}
+	planCalls := 0
+	planner := func(_ context.Context, target string, reqs []capability.Requirement, prefs []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+		planCalls++
+		if len(reqs) != 2 || len(prefs) != 2 || prefs[0].Requirement != primary ||
+			prefs[1].Requirement != analytics || prefs[0].InstanceID != "db-a" || prefs[1].InstanceID != "db-b" {
+			t.Fatalf("authority lost typed intent: %+v %+v", reqs, prefs)
+		}
+		return application.ProviderImpactPlan{
+			Version: application.ProviderImpactVersion, Target: target, PlanID: "change-42",
+			Revision: "change-rev-42", ConfirmationsRequired: 2, Destructive: true,
+			Impacts: []application.ProviderImpact{{InstanceID: "db-a", Operation: "provide"}, {InstanceID: "db-b", Operation: "provide"}},
+		}, nil
+	}
+	proposal, err := appMachinePropose(context.Background(), desired, read, choices, planner)
+	if err != nil || proposal.PlanRevision != "change-42" || proposal.PlanRevision == current.PlanRevision {
+		t.Fatalf("not a fresh change plan: %+v %v", proposal, err)
+	}
+	req := appMachineDesiredChangeRequest{
+		Desired: desired, Proposal: proposal,
+		Consent: application.ProviderChangeConsent{PlanID: proposal.Plan.PlanID, First: true, Second: true, DeleteData: true},
+	}
+	applied := 0
+	authorize := func(context.Context, string, string) error { return nil }
+	apply := func(_ context.Context, plan application.ProviderImpactPlan, consent application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		applied++
+		if plan.PlanID != "change-42" || consent.PlanID != plan.PlanID {
+			t.Fatalf("wrong applied plan %s", plan.PlanID)
+		}
+		return []application.ProviderExecutionOutcome{
+			{InstanceID: "db-a", Operation: "provide", Status: "applied"},
+			{InstanceID: "db-b", Operation: "provide", Status: "applied"},
+		}, nil
+	}
+	result, err := appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, apply)
+	if err != nil || applied != 1 || len(result.Outcomes) != 2 || planCalls != 2 {
+		t.Fatalf("propose -> consent -> apply failed: %+v err=%v calls=%d planned=%d", result, err, applied, planCalls)
+	}
+	checkRejected := func(label string, request appMachineDesiredChangeRequest, reader appMachineRead) {
+		t.Helper()
+		before := applied
+		_, err := appMachineChangeDesired(context.Background(), request, reader, choices, planner, authorize, apply)
+		var machineErr *appMachineError
+		if !errors.As(err, &machineErr) || machineErr.Code != "conflict" || applied != before {
+			t.Fatalf("%s: unsafe execution: %v applied=%d", label, err, applied)
+		}
+	}
+	stale := current
+	stale.SnapshotRevision = "snapshot-2"
+	checkRejected("stale snapshot", req, func(context.Context, string) (GuidedReadContext, error) { return stale, nil })
+	changed := req
+	changed.Desired.Choices = append([]appMachineDesiredChoice(nil), req.Desired.Choices...)
+	changed.Desired.Choices[1].InstanceID = "db-a"
+	checkRejected("changed intent", changed, read)
+	badConsent := req
+	badConsent.Consent.PlanID = current.PlanRevision
+	checkRejected("wrong consent", badConsent, read)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	before := applied
+	_, err = appMachineChangeDesired(ctx, req, read, choices, planner, authorize, apply)
+	var typed *appMachineError
+	if !errors.As(err, &typed) || typed.Code != "cancel" || applied != before {
+		t.Fatalf("cancel allowed execution: %v", err)
+	}
+	partialApply := func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		return []application.ProviderExecutionOutcome{{InstanceID: "db-a", Operation: "provide", Status: "applied"}, {InstanceID: "db-b", Operation: "provide", Status: "failed", ErrorCode: "interrupted"}}, context.Canceled
+	}
+	partial, err := appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, partialApply)
+	if !errors.As(err, &typed) || typed.Code != "partial" || len(partial.Outcomes) != 2 {
+		t.Fatalf("lost partial outcomes: %+v %v", partial, err)
+	}
+}
