@@ -6,15 +6,42 @@ on:
     - cron: "17 * * * *"
     - cron: "37 */2 * * *"
   workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - '.github/workflows/artifact-gc.yml'
+      - 'scripts/test_artifact_gc.py'
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: read
+permissions: {}
 
 jobs:
+  gc-tests:
+    name: GC tests
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install 'PyYAML==6.0.2'
+      - name: Validate workflow and execute mocked GC tests
+        run: |
+          python -m py_compile scripts/test_artifact_gc.py
+          python -c 'import yaml; yaml.safe_load(open(".github/workflows/artifact-gc.yml"))'
+          python -m unittest discover -s scripts -p test_artifact_gc.py -v
+
   artifacts:
     name: Delete ephemeral artifacts older than 2h
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *' }}
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +55,7 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import urllib.request
           from datetime import datetime, timedelta, timezone
 
@@ -83,16 +111,59 @@ jobs:
                       candidates.append(artifact)
               page += 1
 
+          # Discover live heads before deleting anything. Unavailable/partial
+          # discovery fails closed; it is not evidence that a ref is inactive.
+          def pages(path, key):
+              result = []
+              page = 1
+              while True:
+                  payload = request(
+                      f"https://api.github.com/repos/{repo}/{path}"
+                      f"{'&' if '?' in path else '?'}per_page=100&page={page}"
+                  )
+                  entries = payload if isinstance(payload, list) else payload[key]
+                  if not isinstance(entries, list):
+                      raise ValueError("incomplete GC reference discovery")
+                  result.extend(entries)
+                  if len(entries) < 100:
+                      return result
+                  page += 1
+
+          open_heads = set()
+          for pr in pages("pulls?state=open", "pulls"):
+              head = pr.get("head") or {}
+              if (head.get("repo") or {}).get("full_name") == repo:
+                  open_heads.add(head["ref"])
+          merged_heads = set()
+          for pr in pages("pulls?state=closed", "pulls"):
+              head = pr.get("head") or {}
+              if (pr.get("merged_at") and
+                      (head.get("repo") or {}).get("full_name") == repo):
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
+                      merged_heads.add((head["ref"], sha))
+          active_refs = {"main", "develop"} | open_heads
+          for branch in pages("branches", "branches"):
+              name = branch["name"]
+              if (branch.get("protected") or
+                      (name.startswith(("release/v", "candidate/", "release-candidate/"))
+                       and (name, (branch.get("commit") or {}).get("sha")) not in merged_heads)):
+                  active_refs.add(name)
+
           deleted = 0
           for artifact in candidates:
               run = artifact.get("workflow_run") or {}
               run_id = run.get("id")
+              if not run_id:
+                  print(f"keep unbound artifact {artifact['id']} {artifact['name']}")
+                  continue
               if run_id:
                   run_state = request(
                       f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
                   )
-                  if run_state.get("status") != "completed":
-                      print(f"keep active-run artifact {artifact['id']} {artifact['name']}")
+                  if (run_state.get("status") != "completed" or
+                          run_state.get("head_branch") in active_refs):
+                      print(f"keep active-ref artifact {artifact['id']} {artifact['name']}")
                       continue
 
               request(
@@ -110,6 +181,10 @@ jobs:
 
   repository-hygiene:
     name: Prune completed runs and stale branches
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '37 */2 * * *' }}
     runs-on: ubuntu-latest
     steps:
@@ -124,6 +199,7 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import urllib.error
           import urllib.parse
           import urllib.request
@@ -176,6 +252,8 @@ jobs:
               "fix/",
               "release/",
               "chore/",
+              "candidate/",
+              "release-candidate/",
           )
 
           headers = {
@@ -201,6 +279,8 @@ jobs:
               while True:
                   sep = "&" if "?" in url else "?"
                   items = request(f"{url}{sep}per_page=100&page={page}")
+                  if items is None:
+                      raise ValueError("GC reference discovery unavailable")
                   if not items:
                       break
                   if isinstance(items, dict):
@@ -250,9 +330,38 @@ jobs:
                   break
               page += 1
 
+          # Discover all active source owners before *any* deletion. In
+          # particular, a failed PR/branch API cannot permit run pruning.
+          active_pr_heads = set()
+          for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=open"):
+              head = pr.get("head") or {}
+              if (head.get("repo") or {}).get("full_name") == repo and head.get("ref"):
+                  active_pr_heads.add(head["ref"])
+          discovered_branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          # A merged candidate is no longer automatically active; its
+          # authenticated release evidence stays under preserved_workflows.
+          merged_heads = set()
+          for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=closed"):
+              head = pr.get("head") or {}
+              if (pr.get("merged_at") and
+                      (head.get("repo") or {}).get("full_name") == repo):
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
+                      merged_heads.add((head["ref"], sha))
+          active_candidate_heads = {
+              branch["name"] for branch in discovered_branches
+              if branch.get("protected") or
+              (branch["name"].startswith(
+                  ("candidate/", "release-candidate/", "release/v0.4.26"))
+               and (branch["name"], (branch.get("commit") or {}).get("sha")) not in merged_heads)
+          }
+          protected_run_heads = active_pr_heads | active_candidate_heads
+
           deleted_runs = 0
           max_run_deletes = 2000
           for run in run_candidates[:max_run_deletes]:
+              if run.get("head_branch") in protected_run_heads:
+                  continue
               request(
                   f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}",
                   method="DELETE",
@@ -264,6 +373,7 @@ jobs:
               )
 
           # Open PR branches are always protected from cleanup.
+          # A missing discovery response must never authorize deletion.
           open_pr_heads = set()
           for pr in paged(f"https://api.github.com/repos/{repo}/pulls?state=open"):
               head = pr.get("head") or {}
@@ -283,9 +393,11 @@ jobs:
               head = pr.get("head") or {}
               head_repo = (head.get("repo") or {}).get("full_name")
               if head_repo == repo and head.get("ref"):
-                  merged_pr_heads.add(head["ref"])
+                  sha = head.get("sha")
+                  if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha):
+                      merged_pr_heads.add((head["ref"], sha))
 
-          branches = list(paged(f"https://api.github.com/repos/{repo}/branches"))
+          branches = discovered_branches
           deleted_branches = 0
 
           for branch in branches:
@@ -302,7 +414,7 @@ jobs:
               ephemeral = name.startswith(ephemeral_prefixes)
               merged_work = (
                   name.startswith(merged_work_prefixes)
-                  and name in merged_pr_heads
+                  and (name, (branch.get("commit") or {}).get("sha")) in merged_pr_heads
               )
               if not (ephemeral or merged_work):
                   continue

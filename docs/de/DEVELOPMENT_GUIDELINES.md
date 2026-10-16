@@ -4,6 +4,12 @@
 Release-Bereitschaft richtet sich nach `docs/internal/pre-release-documentation-audit.md`; grüne Core-Tests allein bedeuten niemals Pre-Release-ready.
 Diese Regeln gelten für Code, Tests, Dokumentation und Anbieter-/Laufzeitarbeit.
 
+
+## Übergang der Planung
+
+Die Planung liegt in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), aktiviert mit `47474109ea69475e60be4f065ad17476c71665bb`. Für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben gelten die dortige `AGENTS.md` und die zugewiesene Task-Notiz. Technische Entwicklungsregeln, PR-Reviews und authentifizierte Release-Nachweise bleiben in ihren bisherigen Repositories. Wegen Migration geschlossene Issues sind historische Verweise und kein Umsetzungsnachweis.
+
+
 ## Prinzip der Projekttechnik
 
 > **AI-generiert, menschlich spezifiziert, maschinenverifiziert.**
@@ -106,23 +112,24 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 
 **Maintainer.** Die Rolle Maintainer besitzt die Merge- und Freigabe-Hoheit für `develop`. Die aktuelle Zuordnung ist `@mcpdev80` und wird hier zentral definiert; ein weiterer Maintainer erfordert eine ausdrücklich aktualisierte Zuständigkeit. Einstiege nennen die Rolle „Maintainer" statt eines persönlichen Kontos.
 
-**Review- und Freigabegrenze.** Ein Pull Request eines anderen Beitragenden in `develop` erfordert Maintainer-Freigabe und grüne Pflichtprüfungen; neue Commits entwerten eine frühere Freigabe. Ein Maintainer darf den eigenen Pull Request vorerst ohne Fremdreview mergen, aber Pull Request und dessen erforderliche grüne Prüfungen bleiben Pflicht. Es gibt kein direktes Push auf einen geschützten Branch und keinen pauschalen Contributor-Bypass; dies ist ein transparenter Solo-Maintainer-Kompromiss, keine kontobezogene Sicherheitsgarantie. Review- und CI-Schutz werden getrennt konfiguriert und nachgeprüft.
+**Review- und Freigabegrenze.** Die Integration in `develop` erfolgt ausschließlich über Pull Requests: kein direktes Push. Die beabsichtigte Review-Richtlinie, vorgeschlagen in #895, verlangt eine zustimmende Review plus Code-Owner-Review, sodass die Freigabe vom benannten Code Owner kommen muss (aktuell @mcpdev80); neue Commits entwerten eine frühere Freigabe. Der Maintainer darf dort einen eng gefassten `pull_request`-Bypass besitzen; GitHub beschränkt diesen Bypass technisch nicht auf eigene PRs des Maintainers — ein dokumentierter Solo-Maintainer-Kompromiss. Verpflichtende grüne Abschlussprüfungen sind in einem separaten CI-Ruleset ohne Bypass vorgesehen und sollen für alle verbindlich sein, auch für den Maintainer; ein passender Anzeige-Name allein belegt keine vertrauenswürdige Herkunft, deshalb muss der Check an seine Workflow-Integration gebunden werden und CI-Dateien sollen der Code-Owner-Review unterliegen. Dies beschreibt beabsichtigte Richtlinie, nicht aktuelle Erzwingung: Aktivierung und Live-Qualifikation stehen noch aus; tatsächlich verbindlich ist nur, was die aktiven Rulesets zeigen. Der konkrete Payload-Vorschlag steht in `docs/internal/review-protection.md`.
 
 **Multi-Session-Ausführung.** Wenn mehrere Agent- oder menschliche Sitzungen parallel arbeiten:
 
-- eine zugewiesene Issue pro Sitzung und Zeitpunkt;
+- eine zugewiesene Aufgabe pro Sitzung und Zeitpunkt;
 - ein eigener Branch und Pull Request pro Task;
 - Ownership vor Änderungen prüfen und dokumentieren, nachdem aktuelle Regeln und Remote-Stände gelesen wurden;
 - Task-Dateigrenzen und integrierte Abhängigkeiten einhalten;
 - Commits anderer Sitzungen erhalten und Remote-Änderungen vor dem Push integrieren;
 - nach Implementierung, Verifikation und Pull-Request-Übergabe stoppen;
-- die nächste Issue erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
+- die nächste Aufgabe erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
 - eine blockierende Abhängigkeit melden, statt autonom die Aufgabe zu wechseln.
 
 ## Dokumentation
 
 Folgen[Documentation style](STYLE_GUIDE.md).
 
-Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. GitHub Issues planen zukünftige Arbeit. Releases bewahren Geschichte.
+Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. baseharbor-plan enthält die zukünftige Planung; GitHub Issues dienen externen Meldungen und Diskussionen. Releases bewahren Geschichte.
 
 Jedes Release läuft das komplette [interne Pre-Release-Dokumentations-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
+

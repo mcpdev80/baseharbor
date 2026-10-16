@@ -4,6 +4,12 @@ Thanks for helping improve BaseHarbor.
 
 This page is intentionally short. It gives you the fastest path into the project and links to the authoritative documentation instead of duplicating it.
 
+
+## Planning transition
+
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
+
+
 ## Start here
 
 Before changing code, read:
@@ -134,3 +140,4 @@ Keep PRs reviewable. If a change requires a new architectural primitive, make th
 ## License
 
 By contributing, you agree that your contributions are licensed under the repository's [Apache License 2.0](LICENSE).
+

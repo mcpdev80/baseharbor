@@ -1,4 +1,4 @@
-"""Independent table-driven expected gates and conservative failure fixtures."""
+"""Trusted diff-to-check planner contract and fail-closed regression fixtures."""
 import importlib.util
 import json
 from pathlib import Path
@@ -9,120 +9,240 @@ spec = importlib.util.spec_from_file_location('planner', ROOT / 'pr-gate-plan.py
 planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
-STATIC = ['atomic/static/config-matrix', 'atomic/static/init', 'atomic/static/mcp',
-          'atomic/static/agent', 'atomic/static/shell-ux', 'integration/static/public-contracts',
-          'integration/static/configuration-policy', 'integration/static/browser-terminal',
-          'integration/static/live-console']
-DOCKER = STATIC + ['atomic/docker/lifecycle', 'ha/docker/data', 'integration/docker/remote-target',
-                   'adoption/conformance', 'adoption/realworld-compose', 'journey/docker']
-ALL = sorted(set(DOCKER + ['atomic/podman/guided', 'journey/podman', 'integration/podman/core-bootstrap']))
-REQ = {'releases': ['v0.4.26'], 'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in ALL]}
+GATES = ['integration/static/public-contracts', 'atomic/docker/lifecycle',
+         'journey/docker', 'journey/podman', 'ha/docker/data']
+REQ = {'releases': ['v0.4.26'],
+       'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
 
 def diff(changes, broad=False):
-    return {'target_base_sha': 'a'*40, 'head_sha': 'b'*40, 'merge_base_sha': 'c'*40,
-            'integration_sha': 'd'*40, 'broad_required': broad,
-            'reasons': [{'code': 'conflict'}] if broad else [], 'changes': changes}
+    return {'target_base_sha': 'a'*40, 'head_sha': 'b'*40,
+            'merge_base_sha': 'c'*40, 'integration_sha': 'd'*40,
+            'broad_required': broad, 'reasons': [{'code': 'conflict', 'message': 'conflict'}] if broad else [],
+            'changes': changes}
+
+
+def paths(*names):
+    return [{'status': 'modified', 'path': path} for path in names]
 
 
 class MappingTests(unittest.TestCase):
-    def test_independently_expected_table(self):
-        cases = [
-            ('prose', [{'status': 'modified', 'path': 'docs/how-to/x.md'}], STATIC, False),
-            ('docker', [{'status': 'added', 'path': 'deploy/docker/service.yaml'}], DOCKER, False),
-            ('cli', [{'status': 'modified', 'path': 'cmd/baha/root.go'}], ALL, True),
-            ('shared-security', [{'status': 'modified', 'path': 'internal/operatorauth/policy.go'}], ALL, True),
-            ('toolchain', [{'status': 'modified', 'path': 'go.mod'}], ALL, True),
-            ('image', [{'status': 'modified', 'path': 'Dockerfile'}], ALL, True),
-            ('workflow-policy', [{'status': 'modified', 'path': '.github/workflows/ci.yml'}], ALL, True),
-            ('build-tags', [{'status': 'modified', 'path': 'internal/providers/docker/tagged_linux.go'}], ALL, True),
-            ('test-imports', [{'status': 'modified', 'path': 'internal/runtime/core_test.go'}], ALL, True),
-            ('embedded', [{'status': 'modified', 'path': 'internal/assets/embed.json'}], ALL, True),
-            ('generated', [{'status': 'modified', 'path': 'spec/generated.pb.go'}], ALL, True),
-            ('renamed-boundary', [{'status': 'renamed', 'old_path': 'docs/a.md', 'new_path': 'go.mod'}], ALL, True),
-            ('deleted-unknown', [{'status': 'deleted', 'path': 'config/old.yaml'}], ALL, True),
-            ('empty', [], ALL, True),
+    def test_documentation_requires_validation_but_zero_release_gates(self):
+        for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
+                     'README.md', 'mkdocs.yml']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                self.assertEqual(4, len(result['required_validation_checks']))
+                self.assertFalse(result['unresolved_coverage'])
+
+    def test_code_picks_contract_without_private_consumers(self):
+        for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual(['integration/static/public-contracts'],
+                                 result['selected_gates'])
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
+
+    def test_cli_requires_compilation_and_real_targeted_tests(self):
+        result = planner.plan(diff(paths('cmd/baha/guided_application_read_context.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        commands = {c['command'] for c in result['required_validation_checks']}
+        self.assertIn('go vet ./cmd/baha', commands)
+        self.assertIn('go build ./cmd/baha', commands)
+        self.assertIn("go test ./cmd/baha -run '^TestGuided' -count=1", commands)
+
+    def test_mutating_cli_cannot_claim_readonly_coverage(self):
+        for name in ['cmd/baha/app_backup_restore.go',
+                     'cmd/baha/app_apply.go', 'cmd/baha/app.go',
+                     'cmd/baha/new_command.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go build ./cmd/baha', commands)
+                self.assertIn('go vet ./cmd/baha', commands)
+                self.assertNotIn('journey/docker', result['selected_gates'])
+
+    def test_workflow_risk_does_not_silently_resolve(self):
+        for name in ['.github/workflows/ci.yml',
+                     '.github/workflows/artifact-gc.yml',
+                     '.github/workflows/pre-release.yml',
+                     '.github/workflows/docker-runtime-acceptance.yml',
+                     '.github/workflows/release.yml',
+                     'scripts/ci-evidence.sh',
+                     'scripts/verify-journey-evidence.py']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertIn('ci-executor-verifier-tests',
+                              {c['id'] for c in result['required_validation_checks']})
+                self.assertEqual([], result['selected_gates'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertTrue(any(c.startswith('PYTHONPATH=scripts python3 -m unittest') for c in commands))
+
+    def test_documentation_workflow_has_validation_without_native_gates(self):
+        result = planner.plan(diff(paths('.github/workflows/pages.yml')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('documentation-audit', {c['id'] for c in result['required_validation_checks']})
+
+    def test_capability_allowlist_runs_package_own_tests(self):
+        for name in ['internal/capability/domain_test.go',
+                     'internal/capability/integration_contract_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                commands = {check['command'] for check in result['required_validation_checks']}
+                self.assertIn('go test ./internal/capability/... -count=1', commands)
+
+    def test_application_and_capability_production_remain_unresolved(self):
+        for name in ['internal/application/manifest.go',
+                     'internal/application/footprint.go',
+                     'internal/application/provider_union.go',
+                     'internal/capability/registry.go',
+                     'internal/capability/lifecycle.go',
+                     'internal/capability/provider_placement.go',
+                     'internal/capability/registry_test.go',
+                     'internal/capability/new_provider.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual(set(GATES), set(result['selected_gates']))
+                if name.startswith('internal/capability/'):
+                    commands = {c['command'] for c in result['required_validation_checks']}
+                    self.assertIn('go test ./internal/capability/... -count=1', commands)
+
+    def test_docker_deployment_scripts_cannot_claim_lifecycle_only_coverage(self):
+        for name in ['deploy/docker/service.yaml',
+                     'deploy/docker/backup.sh',
+                     'deploy/docker/security.yml',
+                     'deploy/docker/production-setup.sh']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+
+    def test_ci_evidence_selects_policy_planner_executor_verifier(self):
+        for name in ['scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual([], result['selected_gates'])
+                self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-verifier-tests'},
+                                 {c['id'] for c in result['required_validation_checks']})
+
+    def test_unknown_never_auto_selects_full_release_catalog(self):
+        for name in ['go.mod', 'Dockerfile', 'internal/operatorauth/policy.go',
+                     'config/deleted.yaml', 'spec/generated.pb.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                self.assertNotEqual(set(GATES), set(result['selected_gates']))
+
+    def test_rename_and_delete_paths_are_not_lost(self):
+        result = planner.plan(diff([
+            {'status': 'renamed', 'old_path': 'docs/a.md', 'new_path': 'go.mod'},
+            {'status': 'deleted', 'path': 'docs/deleted.md'}]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertEqual(4, len(result['required_validation_checks']))
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('go.mod', str(result['unresolved_coverage']))
+
+    def test_invalid_and_empty_inputs_fail_closed_without_matrix(self):
+        base = diff(paths('docs/readme.md'))
+        mutations = [
+            {'head_sha': 'abc'}, {'merge_base_sha': None},
+            {'target_base_sha': 4}, {'integration_sha': False},
+            {'broad_required': 'false'}, {'changes': [None]},
+            {'reasons': 'invalid'}, {'changes': []},
+            {'changes': [{'status': 'unmerged', 'path': 'docs/x.md'}]},
+            {'changes': [{'status': 'added', 'path': '../docs/x.md'}]},
+            {'broad_required': True},
         ]
-        for name, changes, expected, broad in cases:
-            with self.subTest(name=name):
-                result = planner.plan(diff(changes), REQ, MAP)
-                self.assertEqual(sorted(expected), result['selected_gates'])
-                self.assertEqual(broad, result['broad_required'])
-                self.assertTrue(result['reasons'])
-                self.assertEqual('a'*40, result['target_base_sha'])
-
-    def test_diff_fallback_propagates(self):
-        result = planner.plan(diff([{'status': 'modified', 'path': 'docs/a.md'}], True), REQ, MAP)
-        self.assertTrue(result['broad_required'])
-        self.assertEqual(ALL, result['selected_gates'])
-        self.assertIn('conflict', str(result['reasons']))
-
-    def test_unknown_status_and_bad_path(self):
-        for change in ({'status': 'unmerged', 'path': 'docs/a.md'},
-                       {'status': 'added', 'path': '../docs/a.md'}):
-            with self.subTest(change=change):
-                result = planner.plan(diff([change]), REQ, MAP)
-                self.assertTrue(result['broad_required'])
-                self.assertEqual(ALL, result['selected_gates'])
-
-    def test_incomplete_diff_cannot_narrow(self):
-        malformed = {'changes': [{'status': 'modified', 'path': 'docs/how-to/x.md'}]}
-        result = planner.plan(malformed, REQ, MAP)
-        self.assertTrue(result['broad_required'])
-        self.assertEqual(ALL, result['selected_gates'])
-        self.assertIn('broad_required', str(result['reasons']))
-
-    def test_malformed_input_table(self):
-        for mutation in [
-            {'head_sha': 'abc'}, {'target_base_sha': 15},
-            {'merge_base_sha': None}, {'integration_sha': False},
-            {'broad_required': 'false'}, {'changes': 'not-an-array'},
-            {'changes': [None]}, {'reasons': 'not-an-array'},
-        ]:
+        for mutation in mutations:
             with self.subTest(mutation=mutation):
-                payload = diff([{'status': 'modified', 'path': 'docs/a.md'}])
-                payload.update(mutation)
-                result = planner.plan(payload, REQ, MAP)
+                candidate = dict(base)
+                candidate.update(mutation)
+                result = planner.plan(candidate, REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
                 self.assertTrue(result['broad_required'])
-                self.assertEqual(ALL, result['selected_gates'])
 
-    def test_legitimate_fallback_and_optional_integration(self):
-        payload = diff([{'status': 'modified', 'path': 'docs/a.md'}], True)
-        payload['target_base_sha'] = None
-        payload['merge_base_sha'] = None
-        payload['integration_sha'] = None
-        self.assertTrue(planner.plan(payload, REQ, MAP)['broad_required'])
-        payload = diff([{'status': 'modified', 'path': 'docs/a.md'}])
-        payload['integration_sha'] = None
-        self.assertFalse(planner.plan(payload, REQ, MAP)['broad_required'])
+    def test_immutable_diff_inputs_and_optional_integration(self):
+        candidate = diff(paths('docs/readme.md'))
+        candidate['integration_sha'] = None
+        result = planner.plan(candidate, REQ, MAP)
+        for key in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha'):
+            self.assertEqual(candidate[key], result[key])
 
-    def test_documentation_requires_existing_validation_owners(self):
-        result = planner.plan(diff([{'status': 'modified', 'path': 'docs/how-to/x.md'}]), REQ, MAP)
-        self.assertEqual({'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
-                          'pages-candidate-build'},
-                         {check['id'] for check in result['required_validation_checks']})
-        self.assertTrue(all(check['owner'] and check['command'] for check in result['required_validation_checks']))
-        self.assertIn('#893', result['validation_contract'])
+    def test_missing_mapped_catalog_gate_is_unresolved(self):
+        catalog = {'releases': ['v0.4.26'], 'gates': [
+            {'id': 'journey/podman', 'required_for': ['v0.4.26']}]}
+        result = planner.plan(diff(paths('cmd/baha/app.go')), catalog, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
 
-    def test_actual_release_requirements_inventory(self):
+    def test_exact_core893_review_bundle_requires_original_three_gates(self):
+        reviewed = sorted(planner.AUDITED_CORE_893_PATHS)
+        inventory = json.loads((ROOT / 'release-requirements.json').read_text())
+        expected = planner.CORE_893_GATE_QUALIFICATION
+        trusted = diff(paths(*reviewed))
+        trusted['head_sha'] = planner.CORE_893_REVIEWED_HEAD_SHA
+        trusted['merge_base_sha'] = planner.CORE_893_TRUSTED_MERGE_BASE_SHA
+        complete = planner.plan(trusted, inventory, MAP)
+        self.assertEqual('resolved', complete['coverage_status'])
+        self.assertEqual(expected, set(complete['selected_gates']))
+        self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests'},
+                         {c['id'] for c in complete['required_validation_checks']})
+        for changed in (reviewed[:-1], reviewed + ['scripts/ci-unknown.py'],
+                        ['.github/workflows/ci.yml']):
+            with self.subTest(changed=changed):
+                result = planner.plan(dict(trusted, changes=paths(*changed)), inventory, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        for override in ({'head_sha': 'f' * 40},
+                         {'merge_base_sha': 'e' * 40},
+                         {'integration_sha': None},
+                         {'integration_sha': 'invalid'},
+                         {'broad_required': True, 'reasons': [{'code': 'integration_sha_mismatch',
+                           'message': 'wrong integration parents'}]}):
+            with self.subTest(override=override):
+                result = planner.plan(dict(trusted, **override), inventory, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        # Same complete path set, different unreviewed commit contents:
+        # the immutable commit SHA is different and MUST NOT inherit qualification.
+        unreviewed = dict(trusted, head_sha='c' * 40)
+        self.assertEqual(set(reviewed), set(x['path'] for x in unreviewed['changes']))
+        self.assertEqual('unresolved', planner.plan(unreviewed, inventory, MAP)['coverage_status'])
+        insufficient = planner.plan(trusted, REQ, MAP)
+        self.assertEqual('unresolved', insufficient['coverage_status'])
+
+    def test_actual_repository_release_catalog(self):
         requirements = json.loads((ROOT / 'release-requirements.json').read_text())
-        self.assertEqual('baseharbor.release-requirements/v1', requirements['schema'])
-        self.assertEqual(65, len([g for g in requirements['gates'] if 'v0.4.26' in g['required_for']]))
-        docs = planner.plan(diff([{'status': 'modified', 'path': 'docs/how-to/x.md'}]),
-                            requirements, MAP)
-        self.assertEqual(9, len(docs['selected_gates']))
+        self.assertEqual(65, len([g for g in requirements['gates']
+                                  if 'v0.4.26' in g['required_for']]))
+        docs = planner.plan(diff(paths('docs/how-to/guide.md')), requirements, MAP)
+        self.assertEqual('resolved', docs['coverage_status'])
+        self.assertEqual([], docs['selected_gates'])
         self.assertEqual(4, len(docs['required_validation_checks']))
-        fallback = planner.plan(diff([{'status': 'modified', 'path': 'go.mod'}]),
-                                requirements, MAP)
-        self.assertTrue(fallback['broad_required'])
-        self.assertEqual(65, len(fallback['selected_gates']))
+        unknown = planner.plan(diff(paths('go.mod')), requirements, MAP)
+        self.assertEqual('unresolved', unknown['coverage_status'])
+        self.assertNotEqual(65, len(unknown['selected_gates']))
 
-    def test_catalog_mismatch_is_not_silent(self):
-        mapping = json.loads(json.dumps(MAP))
-        mapping['areas']['prose']['exact'].append('invented/gate')
-        result = planner.plan(diff([{'status': 'added', 'path': 'docs/a.md'}]), REQ, mapping)
-        self.assertTrue(result['broad_required'])
-        self.assertEqual(ALL, result['selected_gates'])
+    def test_consumer_contract_is_fail_closed(self):
+        result = planner.plan(diff(paths('go.mod')), REQ, MAP)
+        self.assertIn('MUST fail closed', result['validation_contract'])
+        self.assertIn('zero selected_gates is valid', result['validation_contract'])
 
 
 if __name__ == '__main__':
