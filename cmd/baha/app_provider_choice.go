@@ -68,7 +68,7 @@ func appProviderChoices(manifest application.Manifest, snapshot application.Reso
 			}
 			c.Candidates = append(c.Candidates, appProviderCandidate{
 				Instance: instance,
-				Reason: fmt.Sprintf("%s supports %s (scope: %s)", instance.Provider.Kind, req.Kind, instance.Scope),
+				Reason:   fmt.Sprintf("%s supports %s (scope: %s)", instance.Provider.Kind, req.Kind, instance.Scope),
 			})
 		}
 		sort.Slice(c.Candidates, func(i, j int) bool { return c.Candidates[i].Instance.ID < c.Candidates[j].Instance.ID })
