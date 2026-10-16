@@ -139,6 +139,8 @@ REGISTRATION_REFERENCE_FILES = frozenset({
     'docs/reference/mcp.md',
     'docs/de/reference/cli-machine-coverage.md',
     'docs/de/reference/mcp.md',
+    'docs/cli/command-index.md',
+    'docs/de/cli/command-index.md',
 })
 REGISTRATION_TEST_FILES = frozenset({
     'cmd/baha/registration_ci_readiness_test.go',
@@ -419,6 +421,8 @@ def plan(diff, requirements, mapping):
             require(CODE_CHECKS)
             require(WIZARD_BASE_CHECKS)
             require([wizard_check('wizard-registration-tests')])
+            if path in REGISTRATION_REFERENCE_FILES:
+                require(DOC_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('shared registration rename/delete/type change needs independent review: ' + path)
         elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or

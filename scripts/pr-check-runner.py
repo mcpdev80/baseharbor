@@ -25,6 +25,7 @@ WIZARD_TEST_FAMILIES = {
         r'^TestCommandTreeCI',
         r'^TestMachineCoverageCI',
         r'^TestMachineDocumentationTracksRegistryAndCommandTree',
+        r'^TestHumanCommandIndexTracksExactCommandMetadata',
         r'^TestMCPRegistrationCI',
     ),
 }

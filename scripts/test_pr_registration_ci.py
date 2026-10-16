@@ -89,6 +89,7 @@ class RegistrationExecutorTests(TestCase):
         "TestCommandTreeCIRouterPathsUnique",
         "TestMachineCoverageCIRealTreeAndJSONClassification",
         "TestMachineDocumentationTracksRegistryAndCommandTree",
+        "TestHumanCommandIndexTracksExactCommandMetadata",
         "TestMCPRegistrationCIInProcessDiscoverAndInvoke",
     )
 
@@ -114,7 +115,7 @@ class RegistrationExecutorTests(TestCase):
         self.exercise()
 
     def test_missing_or_skipped_mcp_and_documentation_fail(self):
-        for name in self.names[-2:]:
+        for name in self.names[-3:]:
             with self.subTest(name=name):
                 with self.assertRaises(RuntimeError):
                     self.exercise(absent=name)

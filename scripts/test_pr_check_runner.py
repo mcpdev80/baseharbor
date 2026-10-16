@@ -109,6 +109,7 @@ class RunnerTests(unittest.TestCase):
                  'TestCommandTreeCIRouterPathsUnique',
                  'TestMachineCoverageCIRealTreeAndJSONClassification',
                  'TestMachineDocumentationTracksRegistryAndCommandTree',
+                 'TestHumanCommandIndexTracksExactCommandMetadata',
                  'TestMCPRegistrationCIInProcessDiscoverAndInvoke'],
         }
         with tempfile.TemporaryDirectory() as tmp:
