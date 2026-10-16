@@ -819,3 +819,49 @@ jobs:
               --demo-sha "$VERIFIED_DEMO_SHA"
           fi
           python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
+
+  # Disposable bootstrap (never merged): proves the five new pr_validations
+  # executor cases actually run on GitHub-hosted CI for the reviewed #953 lane,
+  # since the develop PR-time plan is derived from the trusted base checkout
+  # that does not yet contain the lane until #953 merges. Bound by ancestry to
+  # the exact reviewed lane SHA so a later #953 update cannot silently reuse or
+  # broaden this qualification; re-cut per head. Does not bypass any required
+  # check (the normal plan/validations/PR Selected Checks still run in parallel).
+  core752_lane_execution_bootstrap:
+    name: BOOTSTRAP · Inspect Lane Execution (disposable)
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.head_ref == 'task/953-inspect-lane-bootstrap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Bind to the reviewed lane commit
+        env:
+          LANE_SHA: 211d19b13a206040f0f32506e5f5f85d4a467287
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$LANE_SHA"
+          git merge-base --is-ancestor "$LANE_SHA" HEAD
+          test -f internal/repositoryinspect/reconcile_default_instance_test.go
+      - name: Lane resolves the governed reconcile change
+        run: |
+          set -euo pipefail
+          python3 scripts/pr-gate-plan.py --diff <(python3 -c 'import json;print(json.dumps({"target_base_sha":"a"*40,"head_sha":"b"*40,"merge_base_sha":"c"*40,"integration_sha":"d"*40,"broad_required":False,"reasons":[],"changes":[{"status":"modified","path":"internal/repositoryinspect/reconcile.go"},{"status":"added","path":"internal/repositoryinspect/reconcile_default_instance_test.go"}]}))') > "$RUNNER_TEMP/plan.json"
+          python3 scripts/pr-check-runner.py matrix --plan "$RUNNER_TEMP/plan.json"
+          python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); assert p["coverage_status"]=="resolved", p; want={"inspect-gofmt","inspect-package-tests","inspect-vet","inspect-consumer-tests","inspect-consumer-build"}; assert {c["id"] for c in p["required_validation_checks"]}==want, p; print("lane resolved with five focused checks")' "$RUNNER_TEMP/plan.json"
+      - name: Execute all five focused checks
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l internal/repositoryinspect)"
+          go test ./internal/repositoryinspect/ -count=1
+          go vet ./internal/repositoryinspect/
+          go test ./cmd/baha -run 'Inspect|Reconcile' -count=1
+          go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha
+          echo "all five inspect-lane checks executed successfully"
