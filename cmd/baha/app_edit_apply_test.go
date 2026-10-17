@@ -848,7 +848,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("after-run native SQL runtime unavailable: %v", err)
 	}
-	runtimeFiles := application.RuntimeFilesFor(application.DefaultStore(), resolved.Manifest)
+	runtimeFiles, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	if err != nil {
+		t.Fatalf("authoritative deployment runtime files unavailable after Edit: %v", err)
+	}
 	catalog, err := application.ObserveSQLConsumerInventory(ctx,
 		application.NewRuntimeBackendProbeExecutor(nativeRuntime, runtimeFiles),
 		runtimeFiles, resolved.Manifest, "default")
