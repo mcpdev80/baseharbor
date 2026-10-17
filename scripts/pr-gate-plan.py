@@ -176,6 +176,14 @@ INSPECT_RECONCILE_REVIEWED = frozenset([
     'internal/repositoryinspect/reconcile.go',
     'internal/repositoryinspect/reconcile_default_instance_test.go',
 ])
+# core-751 prospective scope is explicit but never a path-only qualification.
+# Source review and immutable commit binding must precede resolved coverage.
+INSPECT_IMPORT_CANDIDATE_FILES = {
+    'internal/repositoryinspect/capability_detection_runtime.go': 'modified',
+    'internal/repositoryinspect/capability_import_detection_test.go': 'added',
+}
+INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
+
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -554,6 +562,12 @@ def plan(diff, requirements, mapping):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path in INSPECT_IMPORT_CANDIDATE_FILES:
+            area = 'inspect-import-unreviewed-source'
+            require(INSPECT_CHECKS)
+            if path_status.get(path) != INSPECT_IMPORT_CANDIDATE_FILES[path]:
+                unresolved.append('import detector status requires source review: ' + path)
+            unresolved.append('import detector requires independent immutable source binding: ' + path)
         elif path in INSPECT_RECONCILE_REVIEWED:
             area = 'inspect-reconciliation'
             require(INSPECT_CHECKS)
