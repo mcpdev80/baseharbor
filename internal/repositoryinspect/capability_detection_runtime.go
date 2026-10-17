@@ -349,14 +349,13 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 		}
 		return flush()
 	case ".java":
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "import ") && strings.HasSuffix(line, ";") {
-				module := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "import "), ";"))
-				for _, signal := range signals {
-					if matches(module) || strings.Contains(strings.ToLower(module), "."+strings.ToLower(signal)+".") {
-						return true
-					}
+		clean := javaImportSurface(data)
+		importDecl := regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)\s*;[ \t]*$`)
+		for _, groups := range importDecl.FindAllStringSubmatch(clean, -1) {
+			module := groups[1]
+			for _, signal := range signals {
+				if matches(module) || strings.Contains(strings.ToLower(module), "."+strings.ToLower(signal)+".") {
+					return true
 				}
 			}
 		}
@@ -422,6 +421,7 @@ func jsModuleTokens(data []byte) []string {
 	// Track control-condition parentheses separately from calls and grouping.
 	// Only a completed control condition can begin a regexp statement.
 	var controlParens []bool
+	var blockBraces []bool
 	var tokens []string
 	for i := 0; i < len(data); {
 		c := data[i]
@@ -468,18 +468,10 @@ func jsModuleTokens(data []byte) []string {
 			i++
 			for i < len(data) {
 				if delimiter == 96 && data[i] == '$' && i+1 < len(data) && data[i+1] == '{' {
-					begin, depth, j := i+2, 1, i+2
-					for ; j < len(data) && depth > 0; j++ {
-						if data[j] == '{' {
-							depth++
-						}
-						if data[j] == '}' {
-							depth--
-						}
-					}
-					if depth == 0 {
-						tokens = append(tokens, jsModuleTokens(data[begin:j-1])...)
-						i = j
+					begin := i + 2
+					if end := jsInterpolationEnd(data, begin); end >= 0 {
+						tokens = append(tokens, jsModuleTokens(data[begin:end])...)
+						i = end + 1
 						continue
 					}
 				}
@@ -519,6 +511,26 @@ func jsModuleTokens(data []byte) []string {
 				i++
 			}
 			tokens = append(tokens, string(data[start:i]))
+			continue
+		}
+		if c == '{' {
+			prev := previousJSToken(tokens)
+			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == ""
+			blockBraces = append(blockBraces, block)
+			tokens = append(tokens, "{")
+			i++
+			continue
+		}
+		if c == '}' {
+			kind := "}"
+			if len(blockBraces) > 0 {
+				if blockBraces[len(blockBraces)-1] {
+					kind = "BLOCK_CLOSE"
+				}
+				blockBraces = blockBraces[:len(blockBraces)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
 			continue
 		}
 		if c == '(' {
@@ -568,7 +580,7 @@ func jsRegexCanStart(tokens []string) bool {
 		return true
 	}
 	switch tokens[last] {
-	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE", "}":
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE", "BLOCK_CLOSE":
 		return true
 	}
 	return false
@@ -581,4 +593,136 @@ func previousJSToken(tokens []string) string {
 		}
 	}
 	return ""
+}
+
+func javaImportSurface(data []byte) string {
+	out := make([]byte, len(data))
+	state := byte(0)
+	quote := byte(0)
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c == '\n' {
+			out[i] = '\n'
+			if state == 1 {
+				state = 0
+			}
+			continue
+		}
+		switch state {
+		case 1:
+			continue
+		case 2:
+			if c == '*' && i+1 < len(data) && data[i+1] == '/' {
+				i++
+				state = 0
+			}
+			continue
+		case 3:
+			if c == '\\' && i+1 < len(data) {
+				i++
+				continue
+			}
+			if c == quote {
+				state = 0
+			}
+			continue
+		case 4:
+			if c == '"' && i+2 < len(data) && data[i+1] == '"' && data[i+2] == '"' {
+				i += 2
+				state = 0
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			state = 1
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			state = 2
+			i++
+			continue
+		}
+		if c == '"' && i+2 < len(data) && data[i+1] == '"' && data[i+2] == '"' {
+			state = 4
+			i += 2
+			continue
+		}
+		if c == '"' || c == '\'' {
+			state = 3
+			quote = c
+			continue
+		}
+		out[i] = c
+	}
+	return string(out)
+}
+
+func jsInterpolationEnd(data []byte, start int) int {
+	depth := 1
+	last := byte(0)
+	for i := start; i < len(data); i++ {
+		c := data[i]
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			i++
+			continue
+		}
+		if c == 39 || c == 34 || c == 96 {
+			quote := c
+			for i++; i < len(data); i++ {
+				if data[i] == '\\' {
+					i++
+					continue
+				}
+				if data[i] == quote {
+					break
+				}
+			}
+			last = 'v'
+			continue
+		}
+		if c == '/' && (last == 0 || strings.ContainsRune("=([{,:!?", rune(last))) {
+			inClass := false
+			for i++; i < len(data); i++ {
+				if data[i] == '\\' {
+					i++
+					continue
+				}
+				if data[i] == '[' {
+					inClass = true
+				}
+				if data[i] == ']' {
+					inClass = false
+				}
+				if data[i] == '/' && !inClass {
+					break
+				}
+			}
+			last = 'v'
+			continue
+		}
+		if c == '{' {
+			depth++
+		}
+		if c == '}' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			last = c
+		}
+	}
+	return -1
 }

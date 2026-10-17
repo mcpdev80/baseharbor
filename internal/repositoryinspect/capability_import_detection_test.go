@@ -257,3 +257,42 @@ func TestJSModuleReferenceMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestReview984LexicalBoundariesDirectEvidence(t *testing.T) {
+	cases := []struct {
+		name, path, source string
+		want               bool
+	}{
+		{"java comment block", "app.java", "/*\nimport com.mongodb.client.MongoClient;\n*/\nclass App {}", false},
+		{"java text block", "app.java", "class App { String prompt = \"\"\"\nimport com.mongodb.client.MongoClient;\n\"\"\"; }", false},
+		{"java tabbed import", "app.java", "import\tcom.mongodb.client.MongoClient;\nclass App {}", true},
+		{"java line comment", "app.java", "// import com.mongodb.client.MongoClient;", false},
+		{"js object division", "app.js", "const ratio = {} / require('mongodb').value;", true},
+		{"js block regex", "app.js", "if (ready) {} /import 'mongodb'/.test(text);", false},
+		{"js quoted brace", "app.js", "const message = `${\"}\" + require('mongodb').value}`;", true},
+		{"js comment brace", "app.js", "const message = `${/* } */ require('mongodb').value}`;", true},
+		{"js regex brace", "app.js", "const message = `${/}/.test(text) + require('mongodb').value}`;", true},
+		{"js template prose", "app.js", "const message = `require('mongodb')`;", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient(tc.path, data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct=%t want=%t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{tc.path: data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, finding := range findings {
+				for _, evidence := range finding.Evidence {
+					found = found || evidence.Kind == EvidenceImport
+				}
+			}
+			if found != tc.want {
+				t.Errorf("EvidenceImport=%t want=%t: %+v", found, tc.want, findings)
+			}
+		})
+	}
+}
