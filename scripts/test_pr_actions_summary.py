@@ -99,7 +99,7 @@ class SummaryTests(unittest.TestCase):
                     {"verified": True, "url": "https://github.com/mcpdev80/baseharbor/actions/runs/55"},
                     {"verified": False, "url": "https://github.com/mcpdev80/baseharbor/actions/runs/66"},
                 ]}
-        rendered = self.render([], plan)
+        rendered = self.render([job("Workflow policy", "success")], plan)
         self.assertIn("### Reused (1)", rendered)
         self.assertIn("/runs/55", rendered)
         self.assertNotIn("/runs/66", rendered)
