@@ -129,3 +129,50 @@ func TestImportDetectorRetainsDependencyMetadata(t *testing.T) {
 	}
 	t.Fatalf("dependency evidence was lost: %+v", findings)
 }
+
+// The same cases must pass both syntax detection and actual EvidenceImport.
+func TestJSModuleReferenceMatrix(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want bool
+	}{
+		{"static normal", "import client from 'mongodb';", true},
+		{"static multiline", "import {\nClient\n} from\n'mongodb';", true},
+		{"static comments", "import {Client} /* note */ from /* note */ 'mongodb';", true},
+		{"static member", "obj.import('mongodb');", false},
+		{"dynamic normal", "const db = import('mongodb');", true},
+		{"dynamic multiline", "const db = import\n(\n'mongodb'\n);", true},
+		{"dynamic comments", "const db = import/* note */( /* note */ 'mongodb' /* note */ );", true},
+		{"dynamic member", "obj.import('mongodb');", false},
+		{"require normal", "const db = require('mongodb');", true},
+		{"require multiline", "const db = require\n(\n'mongodb'\n);", true},
+		{"require comments", "const db = require/* note */( /* note */ 'mongodb' /* note */ );", true},
+		{"require member", "obj.require('mongodb');", false},
+		{"member optional import", "obj?.import('mongodb');", false},
+		{"member optional require", "obj?.require('mongodb');", false},
+		{"reexport multiline comments", "export {Client}\nfrom /* note */ 'mongodb';", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient("app.ts", data, []string{"mongodb"}); got != tc.want {
+				t.Fatalf("direct syntax: got %t, want %t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{"app.ts": data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, finding := range findings {
+				for _, evidence := range finding.Evidence {
+					if evidence.Kind == EvidenceImport {
+						found = true
+					}
+				}
+			}
+			if found != tc.want {
+				t.Fatalf("EvidenceImport: got %t, want %t; findings=%+v", found, tc.want, findings)
+			}
+		})
+	}
+}

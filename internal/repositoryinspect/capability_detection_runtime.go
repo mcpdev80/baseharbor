@@ -339,6 +339,23 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 		return flush()
 	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
 		tokens := jsModuleTokens(data)
+		// Token positions, not physical lines, decide call arguments.
+		// Comments have already been removed by the lexer.
+		next := func(i int) int {
+			for i < len(tokens) && tokens[i] == "\n" {
+				i++
+			}
+			return i
+		}
+		previous := func(i int) string {
+			for i >= 0 && tokens[i] == "\n" {
+				i--
+			}
+			if i < 0 {
+				return ""
+			}
+			return tokens[i]
+		}
 		importing := false
 		for i, tok := range tokens {
 			if tok == ";" {
@@ -346,21 +363,26 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 				continue
 			}
 			if tok == "import" || tok == "export" {
-				importing = true
-			}
-			if tok == "require" && (i == 0 || tokens[i-1] != ".") && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
-				return true
-			}
-			if tok == "import" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
-				return true
-			}
-			// A newline is whitespace within a static import/export declaration.
-			// Only the statement terminator ends the pending module specifier.
-			if importing && (tok == "import" || tok == "from") {
-				j := i + 1
-				for j < len(tokens) && tokens[j] == "\n" {
-					j++
+				if previous(i-1) != "." && previous(i-1) != "?." {
+					importing = true
 				}
+			}
+			if tok == "require" || tok == "import" {
+				if previous(i-1) != "." && previous(i-1) != "?." {
+					open := next(i + 1)
+					if open < len(tokens) && tokens[open] == "(" {
+						arg := next(open + 1)
+						if arg < len(tokens) && strings.HasPrefix(tokens[arg], "STRING:") {
+							close := next(arg + 1)
+							if close < len(tokens) && tokens[close] == ")" && matches(strings.TrimPrefix(tokens[arg], "STRING:")) {
+								return true
+							}
+						}
+					}
+				}
+			}
+			if importing && (tok == "import" || tok == "from") {
+				j := next(i + 1)
 				if j < len(tokens) && strings.HasPrefix(tokens[j], "STRING:") && matches(strings.TrimPrefix(tokens[j], "STRING:")) {
 					return true
 				}
