@@ -268,6 +268,35 @@ CORE_917_REVIEWED_FILES = {
 }
 CORE_917_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
+# Proposed independent core-918 qualification: immutable reviewed source, exact
+# 21-file diff (including 15 previously unresolved paths), and only verified
+# normal trusted-target merges. This record is NOT a reusable file allowlist.
+CORE_918_REVIEWED_HEAD = '95eed33e6a3852c21b8dc1a25ccc17e601f38da8'
+CORE_918_REVIEWED_FILES = {
+    'cmd/baha/app_apply.go': 'modified',
+    'cmd/baha/app_apply_lifecycle.go': 'modified',
+    'cmd/baha/app_apply_result.go': 'added',
+    'cmd/baha/app_apply_result_test.go': 'added',
+    'cmd/baha/app_edit.go': 'added',
+    'cmd/baha/app_edit_apply.go': 'added',
+    'cmd/baha/app_edit_apply_result.go': 'added',
+    'cmd/baha/app_edit_apply_test.go': 'added',
+    'cmd/baha/app_edit_test.go': 'added',
+    'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_machine_adapters_test.go': 'modified',
+    'cmd/baha/application_native_backend_impact.go': 'modified',
+    'cmd/baha/application_native_backend_impact_test.go': 'added',
+    'cmd/baha/application_native_backend_observation.go': 'modified',
+    'cmd/baha/application_native_sql_projection.go': 'added',
+    'cmd/baha/application_native_sql_projection_unix.go': 'added',
+    'cmd/baha/application_native_sql_projection_windows.go': 'added',
+    'cmd/baha/application_provider_impact.go': 'modified',
+    'internal/application/backend_probe_test.go': 'modified',
+    'internal/application/runtime_backend_probe.go': 'modified',
+    'internal/application/runtime_postgres.go': 'modified',
+}
+CORE_918_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -399,6 +428,36 @@ def plan(diff, requirements, mapping):
                 'reasons': ['exact core-917 source reviewed in #975 review 5555616115; '
                             'New/controller/Guided/owner contracts and both native lifecycle gates; '
                             'qualification evidence run 38995396298, not a path-wide exemption']}
+    # Independently reviewed full Edit/Apply source and exact statuses only.
+    # No path-only approval: the normal trusted-target merge proof checks each
+    # merge tree; unrelated changes after the review commit fail closed.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_918_REVIEWED_FILES) and
+            set(paths) == set(CORE_918_REVIEWED_FILES) and
+            all(change.get('status') == CORE_918_REVIEWED_FILES.get(change.get('path'))
+                for change in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], CORE_918_REVIEWED_HEAD)):
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(WIZARD_BASE_CHECKS)
+        require([wizard_check('wizard-app-edit-tests'),
+                 wizard_check('wizard-machine-adapter-tests')])
+        absent = sorted(CORE_918_REQUIRED_GATES - available)
+        if absent:
+            unresolved.append('reviewed core-918 required gates absent: ' + ', '.join(absent))
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(CORE_918_REQUIRED_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('All checks and both native lifecycle gates must pass for '
+                                        'the currently verified integration; missing/failed/skipped '
+                                        'results fail closed.'),
+                'reasons': ['Exact 21-file core-918 candidate, reviewed source SHA and '
+                            'clean trusted-target integration only; no file-wide exemption']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
     if (valid and not diff['broad_required'] and
