@@ -120,8 +120,9 @@ func appEditMachineRequest(decision appWizardDecision, snapshotRevision string) 
 
 // driveAppEditWizard runs the accepted controller over line-oriented input,
 // editing needs with the selection keys and providers with "provider <kind/name>
-// <id>". EOF, cancel and repeated No stay write-free (core-916); Enter previews a
-// fresh impact and never confirms execution.
+// <id>". The line terminator is stripped but spaces are preserved, so a literal
+// space toggles while a bare Enter advances. EOF, cancel and repeated No stay
+// write-free (core-916); Enter previews a fresh impact and never confirms.
 func driveAppEditWizard(ctx context.Context, session appEditSession, reader *bufio.Reader, out io.Writer) (appEditSession, error) {
 	for session.Controller.phase != appWizardDecided && session.Controller.phase != appWizardAborted {
 		if err := ctx.Err(); err != nil {
@@ -130,16 +131,16 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 		}
 		fmt.Fprintln(out, session.Controller.View())
 		line, readErr := reader.ReadString('\n')
-		trimmed := strings.ToLower(strings.TrimSpace(line))
-		if readErr != nil && trimmed == "" {
+		key := strings.ToLower(strings.TrimRight(line, "\r\n"))
+		if readErr != nil && key == "" {
 			session.Controller, _ = session.Controller.Step(ctx, appWizardEOF)
 			return session, errAppWizardAbort
 		}
 		switch session.Controller.phase {
 		case appWizardNeeds:
-			session = driveAppEditNeeds(ctx, session, trimmed, out)
+			session = driveAppEditNeeds(ctx, session, key, out)
 		case appWizardPreview:
-			next, err := driveAppEditPreview(ctx, session, trimmed)
+			next, err := driveAppEditPreview(ctx, session, key)
 			session.Controller = next
 			if err != nil {
 				return session, err
@@ -151,8 +152,8 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 
 // driveAppEditNeeds applies a selection, provider-choice or navigation command on
 // the needs screen. It never confirms a decision or reaches execution.
-func driveAppEditNeeds(ctx context.Context, session appEditSession, trimmed string, out io.Writer) appEditSession {
-	switch trimmed {
+func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, out io.Writer) appEditSession {
+	switch key {
 	case "", "next", "enter":
 		next, _ := session.Controller.Step(ctx, appWizardNext)
 		session.Controller = next
@@ -160,7 +161,7 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, trimmed stri
 	case "c", "cancel", "q", "quit":
 		session.Controller, _ = session.Controller.Step(ctx, appWizardCancel)
 		return session
-	case "space", " ":
+	case " ", "space":
 		next, _ := session.Controller.SelectNeed(ctx, "space")
 		session.Controller = next
 		return session
@@ -176,8 +177,8 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, trimmed stri
 		fmt.Fprintln(out, "already on the needs screen; adjust the checklist or press enter to preview")
 		return session
 	}
-	if strings.HasPrefix(trimmed, "provider ") {
-		fields := strings.Fields(strings.TrimPrefix(trimmed, "provider "))
+	if strings.HasPrefix(key, "provider ") {
+		fields := strings.Fields(strings.TrimPrefix(key, "provider "))
 		if len(fields) == 2 {
 			if requirement, ok := parseAppEditRequirementRef(fields[0]); ok {
 				next, err := session.Controller.SelectProvider(ctx, requirement, fields[1])

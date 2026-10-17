@@ -123,29 +123,24 @@ func appImpactIsAttestedRetirement(impact application.ProviderImpact) bool {
 		len(impact.ContinuationDependencies) == 0
 }
 
-// appProviderRegistryFunc loads the authoritative Target provider registry used
-// to attest a realized instance's identity and ownership. It defaults to the
-// registry store.
+// appProviderRegistryFunc loads the authoritative Target provider registry. The
+// evidence-collecting lifecycle calls it once, inside the Target lock, so identity
+// and ownership are captured with the runtime facts rather than re-read later.
 var appProviderRegistryFunc = func(resolved resolvedApplication) (capability.Registry, error) {
 	return (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 }
 
-// appAuthoritativeRealization derives a realization from registry and runtime
-// facts, never the proposal. It reports whether the instance is a BaseHarbor-owned
-// provider on the expected Target, with the observed state from fact.
-func appAuthoritativeRealization(resolved resolvedApplication, instanceID string, fact application.ProviderFact) (application.ProviderRealization, bool) {
-	if fact.Target != "" && fact.Target != resolved.Target.Name {
-		return application.ProviderRealization{}, false
-	}
-	registry, err := appProviderRegistryFunc(resolved)
-	if err != nil {
+// appAuthoritativeRealization derives a realization from the captured registry
+// and the observed fact, never from the proposal.
+func appAuthoritativeRealization(registry capability.Registry, target string, instanceID string, fact application.ProviderFact) (application.ProviderRealization, bool) {
+	if fact.Target != "" && fact.Target != target {
 		return application.ProviderRealization{}, false
 	}
 	for _, instance := range registry.Instances {
 		if instance.ID != instanceID || instance.Ownership != capability.OwnershipBaseHarbor {
 			continue
 		}
-		owner := "target/" + resolved.Target.Name
+		owner := "target/" + target
 		if instance.Scope == capability.ScopeApplication {
 			owner = instance.OwnerApplicationID
 		}
@@ -155,7 +150,7 @@ func appAuthoritativeRealization(resolved resolvedApplication, instanceID string
 		return application.ProviderRealization{
 			InstanceID: instanceID,
 			Kind:       instance.Provider.Kind,
-			Target:     resolved.Target.Name,
+			Target:     target,
 			Scope:      instance.Scope,
 			Ownership:  instance.Ownership,
 			Owner:      owner,
@@ -190,7 +185,7 @@ func appAttestedRealizationOutcome(target string, impact application.ProviderImp
 		// or unmeasured fact is not proven absence and cannot support a claim.
 		return application.ProviderExecutionOutcome{}, false
 	}
-	observed, attested := appAuthoritativeRealization(evidence.Resolved, impact.After.InstanceID, afterFact)
+	observed, attested := appAuthoritativeRealization(evidence.Registry, target, impact.After.InstanceID, afterFact)
 	if !attested {
 		// Identity/ownership could not be attested from the authoritative
 		// registry; report pending rather than copy the proposal.

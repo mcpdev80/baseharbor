@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -61,10 +62,13 @@ type applicationApplyLifecycleHooks struct {
 	CollectEvidence bool
 }
 
-// applicationApplyLifecycleEvidence binds observed provider facts to one
-// concrete lifecycle invocation on one resolved Target.
+// applicationApplyLifecycleEvidence binds observed provider facts and the
+// provider registry snapshot to one concrete lifecycle invocation, captured
+// together under the same Target lock. The result projection must reuse these
+// captured facts and never re-read the registry after the lock is released.
 type applicationApplyLifecycleEvidence struct {
 	Resolved resolvedApplication
+	Registry capability.Registry
 	Before   map[string]application.ProviderFact
 	After    map[string]application.ProviderFact
 }
@@ -131,7 +135,12 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		evidence.Resolved = execution.resolved
 		evidence.Before = observeApplicationProviderFactsFunc(ctx, execution.resolved)
 		defer func() {
+			// Capture the registry identity/ownership together with the after
+			// facts, still under the Target lifecycle lock.
 			evidence.After = observeApplyLifecycleAfter(ctx, evidence.Resolved)
+			if registry, err := appProviderRegistryFunc(evidence.Resolved); err == nil {
+				evidence.Registry = registry
+			}
 		}()
 	}
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")

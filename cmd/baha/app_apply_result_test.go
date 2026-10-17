@@ -43,18 +43,20 @@ func appEditResultResolved(target string) resolvedApplication {
 	return resolvedApplication{Target: deployment.ResolvedTarget{Name: target}, Store: application.Store{Root: filepath.Join(os.TempDir(), "baha-nonexistent-store")}}
 }
 
+// appEditResultTestRegistry is the captured registry snapshot the projector reads
+// for these direct-projection tests (it mirrors what the lifecycle records under
+// the Target lock in production).
+var appEditResultTestRegistry capability.Registry
+
 func appEditResultEvidence(before, after map[string]application.ProviderFact) applicationApplyLifecycleEvidence {
-	return applicationApplyLifecycleEvidence{Resolved: appEditResultResolved("prod"), Before: before, After: after}
+	return applicationApplyLifecycleEvidence{Resolved: appEditResultResolved("prod"), Registry: appEditResultTestRegistry, Before: before, After: after}
 }
 
-// attestRegistry installs an authoritative provider registry containing
-// BaseHarbor-owned application-scoped instances for the given ids, so
-// realization attestation reads identity/ownership from the registry rather
-// than from any proposal field.
+// attestRegistry records BaseHarbor-owned application-scoped instances for the
+// given ids, so realization attestation reads identity/ownership from the
+// captured registry rather than from any proposal field.
 func attestRegistry(t *testing.T, ownedIDs ...string) {
 	t.Helper()
-	prev := appProviderRegistryFunc
-	t.Cleanup(func() { appProviderRegistryFunc = prev })
 	registry := capability.Registry{}
 	for _, id := range ownedIDs {
 		registry.Instances = append(registry.Instances, capability.ProviderInstance{
@@ -62,16 +64,18 @@ func attestRegistry(t *testing.T, ownedIDs ...string) {
 			Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor, OwnerApplicationID: "app-1",
 		})
 	}
-	appProviderRegistryFunc = func(resolvedApplication) (capability.Registry, error) { return registry, nil }
+	prev := appEditResultTestRegistry
+	t.Cleanup(func() { appEditResultTestRegistry = prev })
+	appEditResultTestRegistry = registry
 }
 
-// denyRegistry makes realization attestation impossible (no owned instances),
-// so add/stop/replace receipts stay pending while retirements still attest.
+// denyRegistry records no owned instances, so add/stop/replace receipts stay
+// pending while retirements still attest.
 func denyRegistry(t *testing.T) {
 	t.Helper()
-	prev := appProviderRegistryFunc
-	t.Cleanup(func() { appProviderRegistryFunc = prev })
-	appProviderRegistryFunc = func(resolvedApplication) (capability.Registry, error) { return capability.Registry{}, nil }
+	prev := appEditResultTestRegistry
+	t.Cleanup(func() { appEditResultTestRegistry = prev })
+	appEditResultTestRegistry = capability.Registry{}
 }
 
 func TestAppApplyObservedOutcomesMarksOnlyRetiredAbsence(t *testing.T) {

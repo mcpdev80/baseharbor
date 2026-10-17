@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -362,7 +363,9 @@ func TestReview918DriverEditsNeedsFromInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := appEditSession{Loaded: loaded, Controller: controller}
-	session, err = driveAppEditWizard(context.Background(), session, bufioReader("space\nnext\nyes\n"), io.Discard)
+	// Real input bytes: a single space toggles the focused need, a bare Enter
+	// advances to the preview, then yes confirms.
+	session, err = driveAppEditWizard(context.Background(), session, bufioReader(" \n\nyes\n"), io.Discard)
 	if err != nil {
 		t.Fatalf("drive: %v", err)
 	}
@@ -378,21 +381,23 @@ func TestReview918DriverEditsNeedsFromInput(t *testing.T) {
 }
 
 // TestReview918DriverEditsProviderFromInput proves provider choices are editable:
-// selecting the proposal's automatic candidate is carried into the decision.
+// a real candidate instance from the Target registry is carried into the decision.
 func TestReview918DriverEditsProviderFromInput(t *testing.T) {
 	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
 	manifest := mustAppEditManifest(t, loaded)
-	snapshot := application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()}
+	registry := capability.NewRegistry()
+	registry.Instances = append(registry.Instances, capability.ProviderInstance{
+		ID: "sql/shared", Provider: capability.PostgreSQL,
+		Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor,
+	})
+	snapshot := application.ResolutionSnapshot{Target: "dev", Registry: registry, Facts: map[string]application.ProviderFact{}}
 	selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{req}})
 	choices, err := appProviderChoices(manifest, snapshot, selection)
-	if err != nil || len(choices) == 0 {
-		t.Fatalf("no provider choices: %v", err)
+	if err != nil || len(choices) == 0 || len(choices[0].Candidates) == 0 {
+		t.Fatalf("no provider candidates: %v", err)
 	}
-	instanceID := choices[0].ProposedInstanceID
-	if instanceID == "" {
-		t.Skip("no automatic proposal to switch to")
-	}
+	instanceID := choices[0].Candidates[0].Instance.ID
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true}
 	controller, err := newAppWizardController(context.Background(), appWizardInput{
 		Manifest: manifest, Snapshot: snapshot,
@@ -424,32 +429,97 @@ func TestReview918DriverEditsProviderFromInput(t *testing.T) {
 	t.Fatalf("provider selection lost: %+v", decision.Preferences)
 }
 
-// TestReview918RunAppEditEndToEndCancelsWriteFree calls the assembled command
-// handler end-to-end. With no registered application it must fail closed before
-// any lifecycle run and leave the source bytes untouched.
-func TestReview918RunAppEditEndToEndCancelsWriteFree(t *testing.T) {
-	fixtureTargetName(t)
-	writeWorkloadFixture(t)
-	before, _ := os.ReadFile(application.RepositoryManifestName)
+// TestReview918RunAppEditCancelsWriteFree calls the assembled handler end-to-end
+// against a registered existing application. A cancel must reach the input path,
+// return the cancel error, and produce no lifecycle run and no source write.
+func TestReview918RunAppEditCancelsWriteFree(t *testing.T) {
+	target := configureTestTarget(t)
+	root := t.TempDir()
+	t.Chdir(root)
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n")
+	m := application.New("edit-cancel", "dev", false, false, false)
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	manifestPath := filepath.Join(root, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, manifestPath, m)
+	registerTestDeployment(t, target, m, root, manifestPath)
+
+	sourceBefore, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runs := 0
 	prevRun, prevObserve := applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc
 	t.Cleanup(func() {
 		applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc = prevRun, prevObserve
 	})
-	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact { return nil }
+	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact {
+		return map[string]application.ProviderFact{}
+	}
 	applicationApplyLifecycleRunWithHooks = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (applicationApplyLifecycleEvidence, error) {
 		runs++
 		return prevRun(ctx, store, args, out, errOut, hooks)
 	}
-	if _, err := runAppEdit(context.Background(), application.DefaultStore(), []string{"demo"}, strings.NewReader("cancel\n"), io.Discard, io.Discard); err != nil && !errors.Is(err, errAppWizardAbort) {
-		// A not-yet-registered application fails hydration; that is a closed path.
-		t.Logf("hydration closed early: %v", err)
+
+	_, err = runAppEdit(context.Background(), application.DefaultStore(), []string{"edit-cancel"}, strings.NewReader("cancel\n"), io.Discard, io.Discard)
+	if !errors.Is(err, errAppWizardAbort) {
+		t.Fatalf("cancel path error = %v, want %v", err, errAppWizardAbort)
 	}
 	if runs != 0 {
-		t.Fatalf("runAppEdit reached the lifecycle without confirmation (%d runs)", runs)
+		t.Fatalf("cancel reached the lifecycle %d times", runs)
 	}
-	after, _ := os.ReadFile(application.RepositoryManifestName)
-	if !bytes.Equal(before, after) {
-		t.Fatal("runAppEdit modified the source before any confirmed mutation")
+	sourceAfter, _ := os.ReadFile(manifestPath)
+	if !bytes.Equal(sourceBefore, sourceAfter) {
+		t.Fatal("cancel modified the application source")
+	}
+}
+
+// TestReview918SpaceAndEnterBytesAreDistinct confirms the classifier preserves
+// whitespace before deciding: a real space byte toggles the focused need while a
+// bare Enter (empty line) only advances and leaves the selection intact.
+func TestReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
+	manifest := mustAppEditManifest(t, loaded)
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true}
+	build := func() appEditSession {
+		controller, err := newAppWizardController(context.Background(), appWizardInput{
+			Manifest: manifest, Snapshot: application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()},
+			Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}}, TTY: true,
+			Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+				view := &GuidedReadContext{ApplicationID: manifest.ApplicationID, Target: "dev", Footprint: application.Footprint{Version: application.FootprintVersion, Target: "dev"}}
+				copyPlan := plan
+				return view, &copyPlan, nil
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return appEditSession{Loaded: loaded, Controller: controller}
+	}
+
+	// Bare Enter only: the selected need is re-confirmed unchanged.
+	enterOnly, _ := driveAppEditWizard(context.Background(), build(), bufioReader("\nyes\n"), io.Discard)
+	if _, confirmed := enterOnly.Controller.Decision(); !confirmed {
+		t.Fatal("bare-Enter run did not confirm")
+	}
+	selected := false
+	for _, got := range enterOnly.Controller.decision.Requirements {
+		if got == req {
+			selected = true
+		}
+	}
+	if !selected {
+		t.Fatalf("bare Enter must not toggle the need: %+v", enterOnly.Controller.decision.Requirements)
+	}
+
+	// A single space byte toggles the focused need off; Enter then advances.
+	spaced, _ := driveAppEditWizard(context.Background(), build(), bufioReader(" \n\nyes\n"), io.Discard)
+	if _, confirmed := spaced.Controller.Decision(); !confirmed {
+		t.Fatal("space run did not confirm")
+	}
+	for _, got := range spaced.Controller.decision.Requirements {
+		if got == req {
+			t.Fatalf("real space byte did not toggle the need: %+v", spaced.Controller.decision.Requirements)
+		}
 	}
 }
