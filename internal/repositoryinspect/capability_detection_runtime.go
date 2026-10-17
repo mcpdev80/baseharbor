@@ -350,7 +350,7 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 		return flush()
 	case ".java":
 		clean := javaImportSurface(data)
-		importDecl := regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)\s*;[ \t]*$`)
+		importDecl := regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)(?:\.\*)?\s*;[ \t]*$`)
 		for _, groups := range importDecl.FindAllStringSubmatch(clean, -1) {
 			module := groups[1]
 			for _, signal := range signals {
@@ -515,7 +515,7 @@ func jsModuleTokens(data []byte) []string {
 		}
 		if c == '{' {
 			prev := previousJSToken(tokens)
-			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == ""
+			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == "" || jsDeclarationBody(tokens)
 			blockBraces = append(blockBraces, block)
 			tokens = append(tokens, "{")
 			i++
@@ -597,6 +597,9 @@ func previousJSToken(tokens []string) string {
 
 func javaImportSurface(data []byte) string {
 	out := make([]byte, len(data))
+	for i := range out {
+		out[i] = ' '
+	}
 	state := byte(0)
 	quote := byte(0)
 	for i := 0; i < len(data); i++ {
@@ -660,7 +663,6 @@ func javaImportSurface(data []byte) string {
 
 func jsInterpolationEnd(data []byte, start int) int {
 	depth := 1
-	last := byte(0)
 	for i := start; i < len(data); i++ {
 		c := data[i]
 		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
@@ -688,10 +690,9 @@ func jsInterpolationEnd(data []byte, start int) int {
 					break
 				}
 			}
-			last = 'v'
 			continue
 		}
-		if c == '/' && (last == 0 || strings.ContainsRune("=([{,:!?", rune(last))) {
+		if c == '/' && jsRegexCanStart(jsModuleTokens(data[start:i])) {
 			inClass := false
 			for i++; i < len(data); i++ {
 				if data[i] == '\\' {
@@ -708,7 +709,6 @@ func jsInterpolationEnd(data []byte, start int) int {
 					break
 				}
 			}
-			last = 'v'
 			continue
 		}
 		if c == '{' {
@@ -720,9 +720,21 @@ func jsInterpolationEnd(data []byte, start int) int {
 				return i
 			}
 		}
-		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
-			last = c
-		}
 	}
 	return -1
+}
+
+func jsDeclarationBody(tokens []string) bool {
+	// Only declaration-leading function/class bodies are statement boundaries.
+	// Expressions such as const f = function() {} remain division operands.
+	start := 0
+	for i, token := range tokens {
+		if token == ";" || token == "BLOCK_CLOSE" {
+			start = i + 1
+		}
+	}
+	for start < len(tokens) && (tokens[start] == "\n" || tokens[start] == "export" || tokens[start] == "default" || tokens[start] == "async") {
+		start++
+	}
+	return start < len(tokens) && (tokens[start] == "function" || tokens[start] == "class")
 }

@@ -296,3 +296,42 @@ func TestReview984LexicalBoundariesDirectEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestReview984RemainingSyntaxDirectEvidence(t *testing.T) {
+	cases := []struct {
+		name, path, source string
+		want               bool
+	}{
+		{"js function declaration regex", "app.js", "function probe() {} /import 'mongodb'/.test(text);", false},
+		{"js class declaration regex", "app.js", "class Probe {} /import 'mongodb'/.test(text);", false},
+		{"js function expression division", "app.js", "const probe = function() {} / require('mongodb').value;", true},
+		{"js class expression division", "app.js", "const Probe = class {} / require('mongodb').value;", true},
+		{"js interpolation and regex", "app.js", "const message = `${ready && /}/.test(text) ? require('mongodb').value : null}`;", true},
+		{"java wildcard", "app.java", "import com.mongodb.client.*;\nclass App {}", true},
+		{"java trailing comment", "app.java", "import com.mongodb.client.MongoClient; // actual import\nclass App {}", true},
+		{"java separator comment", "app.java", "import /* valid separator */ com.mongodb.client.MongoClient;\nclass App {}", true},
+		{"java comment fake", "app.java", "/* import com.mongodb.client.MongoClient; */\nclass App {}", false},
+		{"java text fake", "app.java", "class App { String s = \"\"\"\nimport com.mongodb.client.MongoClient;\n\"\"\"; }", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient(tc.path, data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct=%t want=%t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{tc.path: data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, finding := range findings {
+				for _, ev := range finding.Evidence {
+					found = found || ev.Kind == EvidenceImport
+				}
+			}
+			if found != tc.want {
+				t.Errorf("EvidenceImport=%t want=%t: %+v", found, tc.want, findings)
+			}
+		})
+	}
+}
