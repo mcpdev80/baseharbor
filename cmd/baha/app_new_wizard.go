@@ -3,14 +3,17 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
@@ -26,6 +29,8 @@ type guidedStackSelection struct {
 	SaveScope  development.ProfileScope
 	Created    bool
 }
+
+var appNewLifecycleExecutor = executeApplicationApplyLifecycle
 
 func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	reader := bufio.NewReader(appNewInput)
@@ -43,7 +48,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 
 	name, err := promptLine(reader, out, "Application name", "")
 	if err != nil {
-		return err
+		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
 	name = slugifyAppName(name)
 	if name == "" {
@@ -52,17 +57,15 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 
 	root, err := guidedNewApplicationRoot(reader, out, name)
 	if err != nil {
-		return err
+		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
-
 	stack, err := guidedStackProfile(reader, out, catalog, registry)
 	if err != nil {
-		return err
+		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
-
 	kinds, secrets, profile, err := guidedGreenfieldCapabilities(reader, out, stack.Effective, registry)
 	if err != nil {
-		return err
+		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
 	if stack.Created && stack.RawProfile != nil {
 		raw := *stack.RawProfile
@@ -75,30 +78,122 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	}
 
 	request := development.NewApplicationRequest{
-		Name:         name,
-		Environment:  "dev",
-		Profile:      &profile,
-		Capabilities: kinds,
-		Secrets:      secrets,
+		Name: name, Environment: "dev", Profile: &profile, Capabilities: kinds, Secrets: secrets,
 	}
 	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeRepository {
 		request.RepositoryStackProfile = stack.RawProfile
 	}
-	preview, err := development.BootstrapApplication(request, registry)
+	bootstrap, err := development.BootstrapApplication(request, registry)
 	if err != nil {
 		return err
 	}
+	request.ApplicationID = bootstrap.Manifest.ApplicationID
 
-	printAppNewSummary(out, root, profile, kinds, preview.FilePaths)
-	confirm, err := promptYesNo(reader, out, "Create application?", true)
+	resolved, snapshot, err := appNewWizardAuthorityContext(ctx, root, bootstrap.Manifest)
 	if err != nil {
 		return err
 	}
-	if !confirm {
-		fmt.Fprintln(out, "No changes were made.")
-		return nil
+	requirements, err := appNewManifestRequirements(bootstrap.Manifest)
+	if err != nil {
+		return err
+	}
+	controller, err := newAppWizardController(ctx, appWizardInput{
+		Manifest: bootstrap.Manifest, Snapshot: snapshot,
+		Selection: appCapabilitySelectionInput{Current: requirements},
+		TTY:       true,
+		Refresh: func(refreshCtx context.Context, decision appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			var guided GuidedReadContext
+			var impact *application.ProviderImpactPlan
+			err := withAppNewTargetPreferences(snapshot, decision.Preferences, func() error {
+				var refreshErr error
+				guided, refreshErr = readGuidedApplicationContext(refreshCtx, resolved)
+				if refreshErr != nil {
+					return refreshErr
+				}
+				plan, refreshErr := buildResolvedApplicationPlan(refreshCtx, resolved)
+				if refreshErr != nil {
+					return refreshErr
+				}
+				if plan.ProviderPlan.Impact != nil {
+					impact = plan.ProviderPlan.Impact
+				} else {
+					// The accepted plan reports no provider change; retain a
+					// read-only empty impact, not an invented mutation.
+					impact = &application.ProviderImpactPlan{Target: decision.Target}
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			return &guided, impact, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	controller, err = appNewCollectProviderPreferences(ctx, reader, out, controller)
+	if err != nil {
+		if errors.Is(err, errAppWizardAbort) || errors.Is(err, io.EOF) {
+			fmt.Fprintln(out, "No changes were made.")
+			return nil
+		}
+		return err
+	}
+	controller, err = controller.Step(ctx, appWizardNext)
+	if err != nil {
+		return err
+	}
+	mode, err := appNewExecutionMode(reader, out)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, errAppWizardAbort) {
+			_, _ = controller.Step(ctx, appWizardEOF)
+			fmt.Fprintln(out, "No changes were made.")
+			return nil
+		}
+		return err
 	}
 
+	for {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, controller.View())
+		question := "Create project files only (does not start containers or deploy providers)?"
+		if mode == "run" {
+			question = "Create project files and continue into the separately authorized lifecycle?"
+		}
+		confirm, promptErr := promptYesNo(reader, out, question, true)
+		if promptErr != nil {
+			if errors.Is(promptErr, io.EOF) {
+				_, _ = controller.Step(ctx, appWizardEOF)
+				fmt.Fprintln(out, "No changes were made.")
+				return nil
+			}
+			return promptErr
+		}
+		if !confirm {
+			_, _ = controller.Step(ctx, appWizardNo)
+			fmt.Fprintln(out, "No changes were made.")
+			return nil
+		}
+		decided, decideErr := controller.Step(ctx, appWizardYes)
+		if decideErr == nil {
+			controller = decided
+			break
+		}
+		if !appNewStalePreview(decideErr) {
+			return decideErr
+		}
+		controller, _ = controller.Step(ctx, appWizardNo)
+		controller, err = controller.Step(ctx, appWizardNext)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "The Target plan changed. Review the refreshed preview and confirm again.")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	var savedUserProfile string
 	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeUser {
 		savedUserProfile, err = development.SaveProfile(*stack.RawProfile, development.ProfileScopeUser, root)
@@ -106,20 +201,279 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			return err
 		}
 	}
-	result, err := development.CreateApplication(root, request, registry)
+	result, err := appNewCreateFromWizardDecision(ctx, controller, root, request, registry)
 	if err != nil {
 		if savedUserProfile != "" {
 			_ = os.Remove(savedUserProfile)
 		}
 		return err
 	}
-
 	fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
 	fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
 	fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
 	fmt.Fprintln(out, "Validation: SATISFIED")
-	fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
+
+	if mode == "create-only" {
+		fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
+		return nil
+	}
+	decision, ok := controller.Decision()
+	if !ok {
+		return errors.New("confirmed New decision was lost before lifecycle execution")
+	}
+	err = withAppNewTargetPreferences(snapshot, decision.Preferences, func() error {
+		previous, chdirErr := os.Getwd()
+		if chdirErr != nil {
+			return chdirErr
+		}
+		if chdirErr = os.Chdir(root); chdirErr != nil {
+			return chdirErr
+		}
+		defer func() { _ = os.Chdir(previous) }()
+		return appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
+	})
+	if err != nil {
+		fmt.Fprintln(errOut, "Project files were created; the authorized lifecycle did not complete.")
+		return fmt.Errorf("New lifecycle incomplete after project creation: %w", err)
+	}
+	fmt.Fprintln(out, "Lifecycle: VERIFIED")
 	return nil
+}
+
+func appNewWizardAuthorityContext(ctx context.Context, root string, manifest application.Manifest) (resolvedApplication, application.ResolutionSnapshot, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return resolvedApplication{}, application.ResolutionSnapshot{}, err
+	}
+	stateRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return resolvedApplication{}, application.ResolutionSnapshot{}, err
+	}
+	resolved := resolvedApplication{Target: target, TargetStateRoot: stateRoot, Manifest: manifest, RepositoryRoot: root, FromRepository: true, SourceAvailable: false}
+	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	if err != nil {
+		return resolvedApplication{}, application.ResolutionSnapshot{}, err
+	}
+	return resolved, snapshot, nil
+}
+
+func appNewManifestRequirements(manifest application.Manifest) ([]capability.Requirement, error) {
+	contract, err := application.PortableContractFromManifest(manifest)
+	if err != nil {
+		return nil, err
+	}
+	requirements := append([]capability.Requirement(nil), contract.Capabilities...)
+	if contract.Secrets.Managed {
+		requirements = append(requirements, capability.Requirement{Kind: capability.Secrets, Name: "default"})
+	}
+	return requirements, nil
+}
+
+func appNewCollectProviderPreferences(ctx context.Context, reader *bufio.Reader, out io.Writer, controller appWizardController) (appWizardController, error) {
+	choices, err := controller.choicesForSelection()
+	if err != nil {
+		return controller, err
+	}
+	if len(choices) == 0 {
+		return controller, nil
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Target provider selection")
+	for _, choice := range choices {
+		fmt.Fprintln(out, choice.View())
+		if len(choice.Candidates) == 0 {
+			continue
+		}
+		value, promptErr := promptLine(reader, out, fmt.Sprintf("Provider for %s/%s (automatic or instance id)", choice.Requirement.Kind, choice.Requirement.Name), "automatic")
+		if promptErr != nil {
+			if errors.Is(promptErr, io.EOF) {
+				aborted, _ := controller.Step(ctx, appWizardEOF)
+				return aborted, errAppWizardAbort
+			}
+			return controller, promptErr
+		}
+		value = strings.TrimSpace(value)
+		if strings.EqualFold(value, "cancel") {
+			aborted, _ := controller.Step(ctx, appWizardCancel)
+			return aborted, errAppWizardAbort
+		}
+		if value == "" || strings.EqualFold(value, "automatic") {
+			continue
+		}
+		controller, err = controller.SelectProvider(ctx, choice.Requirement, value)
+		if err != nil {
+			return controller, err
+		}
+	}
+	return controller, nil
+}
+
+func appNewExecutionMode(reader *bufio.Reader, out io.Writer) (string, error) {
+	value, err := promptLine(reader, out, "After creation (create-only or run)", "create-only")
+	if err != nil {
+		return "", err
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "", "create-only", "create":
+		return "create-only", nil
+	case "run":
+		return "run", nil
+	case "cancel":
+		return "", errAppWizardAbort
+	default:
+		return "", fmt.Errorf("invalid New execution mode %q", value)
+	}
+}
+
+func appNewAbortOnEOF(ctx context.Context, out io.Writer, controller appWizardController, err error) error {
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	if controller.snapshot.Target != "" {
+		_, _ = controller.Step(ctx, appWizardEOF)
+	}
+	fmt.Fprintln(out, "No changes were made.")
+	return nil
+}
+
+func appNewStalePreview(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "stale preview") || strings.Contains(message, "stale provider choices")
+}
+
+type appNewEnvRestore struct {
+	name    string
+	value   string
+	present bool
+}
+
+func withAppNewTargetPreferences(snapshot application.ResolutionSnapshot, preferences []appProviderPreference, fn func() error) error {
+	if fn == nil {
+		return errors.New("New preference execution callback is required")
+	}
+	instances := map[string]capability.ProviderInstance{}
+	for _, instance := range snapshot.Registry.Instances {
+		instances[instance.ID] = instance
+	}
+	placements := map[capability.ProviderKind]capability.ProviderPlacement{}
+	for _, preference := range preferences {
+		if preference.Target != snapshot.Target {
+			return fmt.Errorf("provider preference Target %q differs from preview Target %q", preference.Target, snapshot.Target)
+		}
+		if preference.InstanceID == "" {
+			continue
+		}
+		instance, ok := instances[preference.InstanceID]
+		if !ok {
+			return fmt.Errorf("selected provider instance %q is no longer part of the preview inventory", preference.InstanceID)
+		}
+		placement := capability.ProviderPlacement{Scope: instance.Scope, SharingBoundary: instance.SharingBoundary, Ownership: instance.Ownership, ExternalReference: instance.Reference}
+		if previous, exists := placements[instance.Provider.Kind]; exists && !reflect.DeepEqual(previous, placement) {
+			return fmt.Errorf("selected requirements require conflicting placements for provider %s", instance.Provider.Kind)
+		}
+		placements[instance.Provider.Kind] = placement
+	}
+	var restore []appNewEnvRestore
+	set := func(name, value string) error {
+		old, present := os.LookupEnv(name)
+		restore = append(restore, appNewEnvRestore{name: name, value: old, present: present})
+		if value == "" {
+			return os.Unsetenv(name)
+		}
+		return os.Setenv(name, value)
+	}
+	defer func() {
+		for i := len(restore) - 1; i >= 0; i-- {
+			item := restore[i]
+			if item.present {
+				_ = os.Setenv(item.name, item.value)
+			} else {
+				_ = os.Unsetenv(item.name)
+			}
+		}
+	}()
+	for provider, placement := range placements {
+		if err := set(application.ProviderScopeEnv(provider), string(placement.Scope)); err != nil {
+			return err
+		}
+		if err := set(application.ProviderSharingBoundaryEnv(provider), placement.SharingBoundary); err != nil {
+			return err
+		}
+		if err := set(application.ProviderExternalReferenceEnv(provider), placement.ExternalReference); err != nil {
+			return err
+		}
+	}
+	return fn()
+}
+
+// appNewCreateFromWizardDecision bridges the accepted controller decision into
+// the existing project authoring authority. Target provider preferences remain
+// Target policy and are deliberately not serialized into the portable source.
+func appNewCreateFromWizardDecision(ctx context.Context, controller appWizardController, root string, request development.NewApplicationRequest, registry development.Registry) (development.CreationResult, error) {
+	if err := ctx.Err(); err != nil {
+		return development.CreationResult{}, err
+	}
+	decision, approved := controller.Decision()
+	if !approved {
+		return development.CreationResult{}, errors.New("application creation requires a confirmed current wizard decision")
+	}
+	if decision.Target == "" {
+		return development.CreationResult{}, errors.New("Target is required for New preview")
+	}
+	if request.Name != controller.manifest.Name || request.Environment != controller.manifest.Environment {
+		return development.CreationResult{}, errors.New("New request identity or environment differs from confirmed wizard intent")
+	}
+	if controller.manifest.ApplicationID == "" {
+		return development.CreationResult{}, errors.New("confirmed wizard application identity is missing")
+	}
+	if request.ApplicationID != "" && request.ApplicationID != controller.manifest.ApplicationID {
+		return development.CreationResult{}, errors.New("New request application ID differs from confirmed wizard identity")
+	}
+	request.ApplicationID = controller.manifest.ApplicationID
+	confirmedRequirements, err := appNewManifestRequirements(controller.manifest)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	if !reflect.DeepEqual(confirmedRequirements, decision.Requirements) {
+		return development.CreationResult{}, errors.New("confirmed New requirements changed before project creation")
+	}
+	bootstrap, err := development.BootstrapApplication(request, registry)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	if bootstrap.Manifest.ApplicationID != controller.manifest.ApplicationID {
+		return development.CreationResult{}, errors.New("New bootstrap changed the confirmed application identity")
+	}
+	var extras []development.GeneratedFile
+	for _, file := range bootstrap.Files {
+		if file.Path == "catalog-info.yaml" || strings.HasPrefix(file.Path, ".baseharbor/stacks/") {
+			extras = append(extras, file)
+		}
+	}
+	project, err := development.BootstrapProject(root, controller.manifest, bootstrap.Profile, registry, extras...)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	contract, err := application.PortableContractFromManifest(controller.manifest)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	bootstrap.Manifest = controller.manifest
+	bootstrap.Contract = contract
+	bootstrap.Plan = project.Plan
+	bootstrap.FilePaths = append([]string(nil), project.Files...)
+	validation := development.Validation{Satisfied: project.Satisfied, Capabilities: map[capability.Kind]bool{}}
+	for _, componentValidation := range project.Validations {
+		for kind, satisfied := range componentValidation.Capabilities {
+			validation.Capabilities[kind] = validation.Capabilities[kind] || satisfied
+		}
+		validation.Diagnostics = append(validation.Diagnostics, componentValidation.Diagnostics...)
+	}
+	return development.CreationResult{BootstrapResult: bootstrap, Validation: validation}, nil
 }
 
 func guidedNewApplicationRoot(reader *bufio.Reader, out io.Writer, name string) (string, error) {
