@@ -101,9 +101,36 @@ func appApplyObservedOutcomes(plan application.ProviderImpactPlan, evidence appl
 		}
 		if outcome, ok := appAttestedRealizationOutcome(target, impact, evidence); ok {
 			outcomes = append(outcomes, outcome)
+		} else if outcome, ok := appObservedPendingUpdate(target, impact, evidence); ok {
+			outcomes = append(outcomes, outcome)
 		}
 	}
 	return outcomes
+}
+
+// An update with unresolved consumer/material consequences can still return
+// its measured runtime observation. It remains pending, never applied.
+func appObservedPendingUpdate(target string, impact application.ProviderImpact, evidence applicationApplyLifecycleEvidence) (application.ProviderExecutionOutcome, bool) {
+	if impact.Operation != "update" || impact.After == nil {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	before, hadBefore := evidence.Before[impact.InstanceID]
+	after, hadAfter := evidence.After[impact.InstanceID]
+	if !hadBefore || !hadAfter || before.Containers.Classification != "measured" || !appFactMeasuredRunning(target, after) {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	observed, ok := appAuthoritativeRealization(evidence.Registry, target, impact.InstanceID, after)
+	if !ok {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	observed.Verified = true
+	observed.Evidence = "measured running provider runtime and authoritative Target registry; consumer and material outcomes not attested"
+	return application.ProviderExecutionOutcome{
+		InstanceID: impact.InstanceID, Operation: impact.Operation,
+		Status: "pending", Materials: []application.MaterialOutcome{},
+		Evidence: "runtime state observed after Apply; SQL consumer and data consequences remain unverified",
+		After: &observed,
+	}, true
 }
 
 // appImpactIsAttestedRetirement reports a pure physical retirement the Target

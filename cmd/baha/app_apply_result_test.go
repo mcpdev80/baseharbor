@@ -771,3 +771,32 @@ func TestAppEditApplyReview918EditExecutorDefaultBindsRealLifecycle(t *testing.T
 		t.Fatalf("real lifecycle runs = %d, want exactly 1 via the default connection", realRuns)
 	}
 }
+
+func TestAppApplyObservedPendingSQLUpdatePreservesMeasuredPartial(t *testing.T) {
+	attestRegistry(t, "sql-one")
+	impact := application.ProviderImpact{
+		InstanceID: "sql-one", Operation: "update",
+		After: &application.ProviderRealization{InstanceID: "sql-one", Target: "prod", Kind: capability.ProviderPostgreSQL, State: application.ProviderRunning},
+		Functions: []application.FunctionConsequence{{Consumer: "app/one", Function: "database.sql", Outcome: "changed"}},
+	}
+	plan := appEditResultTestPlan(impact)
+	plan.Complete = false
+	evidence := appEditResultEvidence(
+		map[string]application.ProviderFact{"sql-one": measuredZeroFact("prod")},
+		map[string]application.ProviderFact{"sql-one": presentFact("prod")},
+	)
+	got := appApplyObservedOutcomes(plan, evidence)
+	if len(got) != 1 || got[0].Status != "pending" || got[0].After == nil || !got[0].After.Verified {
+		t.Fatalf("measured runtime did not produce honest pending update: %+v", got)
+	}
+	result, err := application.RecordProviderChangeResult(plan, got)
+	if err != nil || result.Status != "partial" || result.Outcomes[0].Status != "pending" {
+		t.Fatalf("measured runtime was promoted to success: %+v %v", result, err)
+	}
+	missing := evidence
+	missing.After = map[string]application.ProviderFact{}
+	if observed := appApplyObservedOutcomes(plan, missing); len(observed) != 0 {
+		t.Fatalf("missing post-run observation yielded receipt: %+v", observed)
+	}
+}
+
