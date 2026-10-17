@@ -335,3 +335,46 @@ func TestReview984RemainingSyntaxDirectEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestReview984NestedDeclarationAndExpressionContexts(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         bool
+	}{
+		{"top-level declaration semicolon", "function probe() {}; /import 'mongodb'/.test(text);", false},
+		{"top-level declaration ASI", "const ready = true\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"top-level object semicolon", "const ratio = {}; const n = {} / require('mongodb').value;", true},
+		{"top-level object no semicolon", "const ratio = {} / require('mongodb').value", true},
+		{"nested object semicolon", "function probe() { const ratio = {}; const n = {} / require('mongodb').value; }", true},
+		{"nested object no semicolon", "function probe() { const ratio = {} / require('mongodb').value }", true},
+		{"nested declaration semicolon", "if (ready) { function probe() {}; /import 'mongodb'/.test(text); }", false},
+		{"nested declaration no semicolon", "if (ready) { function probe() {} /import 'mongodb'/.test(text); }", false},
+		{"nested class declaration", "if (ready) { class Probe {} /import 'mongodb'/.test(text); }", false},
+		{"top-level class declaration", "class Probe {} /import 'mongodb'/.test(text);", false},
+		{"nested function expression", "if (ready) { const probe = function() {} / require('mongodb').value; }", true},
+		{"nested class expression", "if (ready) { const Probe = class {} / require('mongodb').value; }", true},
+		{"top-level expression ASI", "const factory =\nfunction() {} / require('mongodb').value;", true},
+		{"nested statement after semicolon", "if (ready) { const x = true; function probe() {} /import 'mongodb'/.test(text); }", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient("app.js", data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct=%t want=%t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{"app.js": data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, f := range findings {
+				for _, e := range f.Evidence {
+					found = found || e.Kind == EvidenceImport
+				}
+			}
+			if found != tc.want {
+				t.Errorf("EvidenceImport=%t want=%t, findings=%+v", found, tc.want, findings)
+			}
+		})
+	}
+}

@@ -422,6 +422,7 @@ func jsModuleTokens(data []byte) []string {
 	// Only a completed control condition can begin a regexp statement.
 	var controlParens []bool
 	var blockBraces []bool
+	var blockStarts []int // lexical start of each current brace scope
 	var tokens []string
 	for i := 0; i < len(data); {
 		c := data[i]
@@ -515,9 +516,10 @@ func jsModuleTokens(data []byte) []string {
 		}
 		if c == '{' {
 			prev := previousJSToken(tokens)
-			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == "" || jsDeclarationBody(tokens)
+			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == "" || jsDeclarationBody(tokens, jsCurrentScopeStart(blockStarts))
 			blockBraces = append(blockBraces, block)
 			tokens = append(tokens, "{")
+			blockStarts = append(blockStarts, len(tokens))
 			i++
 			continue
 		}
@@ -528,6 +530,7 @@ func jsModuleTokens(data []byte) []string {
 					kind = "BLOCK_CLOSE"
 				}
 				blockBraces = blockBraces[:len(blockBraces)-1]
+				blockStarts = blockStarts[:len(blockStarts)-1]
 			}
 			tokens = append(tokens, kind)
 			i++
@@ -724,17 +727,42 @@ func jsInterpolationEnd(data []byte, start int) int {
 	return -1
 }
 
-func jsDeclarationBody(tokens []string) bool {
-	// Only declaration-leading function/class bodies are statement boundaries.
-	// Expressions such as const f = function() {} remain division operands.
-	start := 0
-	for i, token := range tokens {
-		if token == ";" || token == "BLOCK_CLOSE" {
+func jsCurrentScopeStart(starts []int) int {
+	if len(starts) == 0 {
+		return 0
+	}
+	return starts[len(starts)-1]
+}
+
+func jsDeclarationBody(tokens []string, scopeStart int) bool {
+	// Consider statement boundaries only in the innermost lexical brace scope.
+	// An outer function declaration must not turn inner object expressions into blocks.
+	start := scopeStart
+	for i := scopeStart; i < len(tokens); i++ {
+		if tokens[i] == ";" || tokens[i] == "BLOCK_CLOSE" {
 			start = i + 1
 		}
 	}
-	for start < len(tokens) && (tokens[start] == "\n" || tokens[start] == "export" || tokens[start] == "default" || tokens[start] == "async") {
-		start++
+	declarationAt := func(i int) bool {
+		for i < len(tokens) && (tokens[i] == "\n" || tokens[i] == "export" || tokens[i] == "default" || tokens[i] == "async") {
+			i++
+		}
+		return i < len(tokens) && (tokens[i] == "function" || tokens[i] == "class")
 	}
-	return start < len(tokens) && (tokens[start] == "function" || tokens[start] == "class")
+	if declarationAt(start) {
+		return true
+	}
+	// An ASI boundary can begin a new declaration without an explicit ';'.
+	// Do not mistake expressions such as "const f =\nfunction() {}" for
+	// declarations: the preceding expression must already be complete.
+	for i := start + 1; i < len(tokens); i++ {
+		if tokens[i] != "\n" || !declarationAt(i+1) {
+			continue
+		}
+		prev := previousJSToken(tokens[:i])
+		if prev == "NUMBER" || prev == "LITERAL" || prev == ")" || prev == "}" || prev == "true" || prev == "false" || strings.HasPrefix(prev, "STRING:") {
+			return true
+		}
+	}
+	return false
 }
