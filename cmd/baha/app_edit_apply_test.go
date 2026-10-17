@@ -868,3 +868,13 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	}
 	t.Fatalf("real lifecycle did not preserve exact Target provider binding %q", selected.ID)
 }
+
+func TestAppEditCommandChecksGoSourceFormat(t *testing.T) {
+	output, err := exec.Command("gofmt", "-l", ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("gofmt failed: %v", err)
+	}
+	if files := strings.TrimSpace(string(output)); files != "" {
+		t.Fatalf("unformatted command sources:\n%s", files)
+	}
+}
