@@ -114,7 +114,7 @@ func appEditTestAuthorities(target, applicationID string, requirements []capabil
 			(*execute)++
 			outcomes := make([]application.ProviderExecutionOutcome, 0, len(plan.Impacts))
 			for _, impact := range plan.Impacts {
-				outcomes = append(outcomes, application.ProviderExecutionOutcome{InstanceID: impact.InstanceID, Operation: impact.Operation, Status: "applied", Verified: true})
+				outcomes = append(outcomes, application.ProviderExecutionOutcome{InstanceID: impact.InstanceID, Operation: impact.Operation, Status: "applied", Verified: true, Evidence: "test execution receipt"})
 			}
 			return outcomes, nil
 		},
@@ -197,7 +197,7 @@ func TestAppEditApplyForeignOwnerAndPartialActualResult(t *testing.T) {
 	authorities = appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{plan}, &executed)
 	authorities.Execute = func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
 		executed++
-		return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true}}, errors.New("old SQL stop failed")
+		return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true, Evidence: "cache add verified"}}, errors.New("old SQL stop failed")
 	}
 	result, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
 	var partial *appMachineError
@@ -229,7 +229,7 @@ func TestAppEditApplyTargetPreferencesAndPreservedIntent(t *testing.T) {
 				if !desired.Manifest.HA || !reflect.DeepEqual(application.WorkloadComponentNames(desired.Manifest), []string{"api"}) {
 					t.Fatalf("non-edited intent lost: %+v", desired.Manifest)
 				}
-				return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true}}, nil
+				return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true, Evidence: "cache add verified"}}, nil
 			}
 			_, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
 			if err != nil {
@@ -239,5 +239,99 @@ func TestAppEditApplyTargetPreferencesAndPreservedIntent(t *testing.T) {
 				t.Fatalf("execute calls = %d", executed)
 			}
 		})
+	}
+}
+
+
+func TestAppEditApplyProviderSwitchUsesConfirmedTargetPreference(t *testing.T) {
+	requirement := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	before := []capability.Requirement{requirement}
+	loadedPreference := application.ProviderPreference{Requirement: requirement, InstanceID: "sql-old"}
+	confirmedPreference := application.ProviderPreference{Requirement: requirement, InstanceID: "provider-sql-primary"}
+	loaded := appEditTestLoaded(t, "prod", before, []application.ProviderPreference{loadedPreference})
+	plan := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, Target: "prod", Revision: "r-switch", PlanID: "plan-switch",
+		Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "sql-old", Operation: "replace"}},
+	}
+	controller := appEditTestController("prod", before, []application.ProviderPreference{confirmedPreference}, plan)
+	executed := 0
+	authorities := appEditTestAuthorities("prod", loaded.ApplicationID, before, []application.ProviderPreference{loadedPreference}, []application.ProviderImpactPlan{plan}, &executed)
+	authorities.Execute = func(_ context.Context, desired appEditDesired, gotPlan application.ProviderImpactPlan, _ application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		executed++
+		if len(desired.Preferences) != 1 || desired.Preferences[0] != confirmedPreference {
+			t.Fatalf("confirmed provider switch lost: %+v", desired.Preferences)
+		}
+		if len(gotPlan.Impacts) != 1 || gotPlan.Impacts[0].Operation != "replace" || gotPlan.Impacts[0].InstanceID != "sql-old" {
+			t.Fatalf("provider switch plan changed: %+v", gotPlan.Impacts)
+		}
+		return []application.ProviderExecutionOutcome{{InstanceID: "sql-old", Operation: "replace", Status: "applied", Verified: true, Evidence: "provider switch verified"}}, nil
+	}
+	result, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executed != 1 || result.Result.Status != "complete" {
+		t.Fatalf("provider switch result: calls=%d result=%+v", executed, result.Result)
+	}
+}
+
+func TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics(t *testing.T) {
+	sql := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	cache := capability.Requirement{Kind: capability.KeyValue, Name: "cache"}
+	before := []capability.Requirement{sql, cache}
+	after := []capability.Requirement{sql}
+	loaded := appEditTestLoaded(t, "prod", before, nil)
+
+	destructive := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, Target: "prod", Revision: "r-destroy", PlanID: "plan-destroy",
+		Complete: true, ConfirmationsRequired: 2, Destructive: true,
+		Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "destroy"}},
+	}
+	controller := appEditTestController("prod", after, nil, destructive)
+	executed := 0
+	authorities := appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{destructive}, &executed)
+	_, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: destructive.PlanID, First: true, Second: true}, authorities)
+	var machineErr *appMachineError
+	if !errors.As(err, &machineErr) || machineErr.Code != "cancel" || executed != 0 {
+		t.Fatalf("destructive removal without data consent: err=%v calls=%d", err, executed)
+	}
+
+	authorities = appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{destructive}, &executed)
+	authorities.Execute = func(_ context.Context, _ appEditDesired, gotPlan application.ProviderImpactPlan, consent application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		executed++
+		if !consent.DeleteData || gotPlan.Impacts[0].Operation != "destroy" {
+			t.Fatalf("destructive consent/plan changed: consent=%+v plan=%+v", consent, gotPlan.Impacts)
+		}
+		return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "destroy", Status: "applied", Verified: true, Evidence: "destructive removal verified"}}, nil
+	}
+	if _, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: destructive.PlanID, First: true, Second: true, DeleteData: true}, authorities); err != nil {
+		t.Fatal(err)
+	}
+	if executed != 1 {
+		t.Fatalf("destructive removal execute calls = %d", executed)
+	}
+
+	shared := destructive
+	shared.Revision = "r-unbind"
+	shared.PlanID = "plan-unbind"
+	shared.Destructive = false
+	shared.ConfirmationsRequired = 1
+	shared.Impacts = []application.ProviderImpact{{InstanceID: "shared-cache", Operation: "unbind"}}
+	controller = appEditTestController("prod", after, nil, shared)
+	executed = 0
+	authorities = appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{shared}, &executed)
+	authorities.Execute = func(_ context.Context, _ appEditDesired, gotPlan application.ProviderImpactPlan, consent application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		executed++
+		if consent.DeleteData || len(gotPlan.Impacts) != 1 || gotPlan.Impacts[0].Operation != "unbind" {
+			t.Fatalf("shared-provider plan was escalated: consent=%+v plan=%+v", consent, gotPlan.Impacts)
+		}
+		return []application.ProviderExecutionOutcome{{InstanceID: "shared-cache", Operation: "unbind", Status: "applied", Verified: true, Evidence: "shared binding removal verified"}}, nil
+	}
+	if _, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: shared.PlanID, First: true}, authorities); err != nil {
+		t.Fatal(err)
+	}
+	if executed != 1 {
+		t.Fatalf("shared unbind execute calls = %d", executed)
 	}
 }
