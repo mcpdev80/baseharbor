@@ -6,14 +6,17 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func appEditTestLoaded(t *testing.T, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) appEditLoaded {
@@ -626,4 +629,97 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 	if err != nil || placement.SharingBoundary != selected.SharingBoundary {
 		t.Fatalf("later app resolution ignored the selected instance: %+v %v", placement, err)
 	}
+}
+
+func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	t.Chdir(root)
+	m := application.New("edit-runtime-integration", "dev", false, false, false)
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, '300']\n")
+	sourcePath := filepath.Join(root, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, sourcePath, m)
+	registerTestDeployment(t, target, m, root, sourcePath)
+
+	desired := application.WithSQLInstances(m, "default")
+	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected capability.ProviderInstance
+	for _, instance := range registry.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeApplication {
+			selected = instance
+		}
+	}
+	if selected.ID == "" {
+		t.Fatal("SQL selection lacks a canonical provider instance")
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Save(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	project := bhruntime.ApplicationProjectName(target.Name, m.Name, m.Environment)
+	t.Cleanup(func() {
+		output, err := exec.Command("docker", "ps", "-aq", "--filter", "label=com.docker.compose.project="+project).Output()
+		if err == nil && len(strings.Fields(string(output))) > 0 {
+			args := append([]string{"rm", "-fv"}, strings.Fields(string(output))...)
+			_ = exec.Command("docker", args...).Run()
+		}
+	})
+	oldSource, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	var out bytes.Buffer
+	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
+	if err != nil {
+		t.Fatalf("real Edit lifecycle did not converge: %v\n%s", err, out.String())
+	}
+	if !result.Changed || result.Presentation == "" {
+		t.Fatalf("confirmed real edit did not return an execution result: %+v", result)
+	}
+	newSource, err := os.ReadFile(sourcePath)
+	if err != nil || bytes.Equal(newSource, oldSource) {
+		t.Fatalf("real Edit did not persist changed portable intent: %v", err)
+	}
+	prefs, err := application.DesiredProviderPreferencesAt(stateRoot, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, pref := range prefs {
+		if pref.Requirement == (capability.Requirement{Kind: capability.SQL, Name: "default"}) &&
+			pref.InstanceID == selected.ID && pref.ProviderKind == selected.Provider.Kind {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("real Edit lost exact selected Target provider: %+v", prefs)
+	}
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{m.Name}, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings.Bindings {
+		if binding.Resource.Kind == capability.SQL && binding.Resource.Name == "default" &&
+			binding.ProviderInstanceID == selected.ID {
+			return
+		}
+	}
+	t.Fatalf("real lifecycle did not preserve exact Target provider binding %q", selected.ID)
 }
