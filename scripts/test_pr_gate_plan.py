@@ -769,7 +769,7 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
             self.assertTrue(actual_proof(target, merged, reviewed))
             candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
             candidate.update({'target_base_sha': target, 'head_sha': merged})
-            with patch.object(planner, 'CORE_754_TEST_HEAD', reviewed), \\
+            with patch.object(planner, 'CORE_754_TEST_HEAD', reviewed), \
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=actual_proof):
                 planned = planner.plan(candidate, REQ, MAP)
                 self.assertIn(planner.CORE_754_TEST_CHECK,
