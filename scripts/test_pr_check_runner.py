@@ -159,41 +159,43 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION"', workflow)
         self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
 
-    def test_real_two_family_execution_and_fail_closed(self):
+    def test_both_required_families_execute_or_block(self):
+        from subprocess import CompletedProcess
+        from unittest.mock import patch
         names = ('TestExpectedPreconditionsShareTypedCLIMCPErrors',
                  'TestMCPReadEntryExpectedPreconditions')
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / 'go.mod').write_text('module example.com/mcpcifixture\n\ngo 1.22\n')
-            package = root / 'cmd' / 'baha'
-            package.mkdir(parents=True)
-            def write_tests(omit=None, skipped=None, failed=None):
-                funcs = []
-                for name in names:
-                    if name == omit:
-                        continue
-                    action = ('t.Skip("required family skipped")' if name == skipped else
-                              't.Fatal("required family failed")' if name == failed else '')
-                    funcs.append('func %s(t *testing.T) { %s }' % (name, action))
-                (package / 'preconditions_test.go').write_text(
-                    'package main\nimport "testing"\n' + '\n'.join(funcs) + '\n')
-            write_tests()
-            self.assertEqual(list(names), runner.execute_validation('wizard-core754-mcp-tests', root))
-            for missing in names:
-                write_tests(omit=missing)
-                with self.subTest(missing=missing):
+        def run_case(missing=None, skipped=None, failed=None):
+            seen = []
+            def fake_run(args, **kwargs):
+                pattern = args[args.index('-list') + 1] if '-list' in args else args[args.index('-run') + 1]
+                name = next(name for name in names if name in pattern)
+                if '-list' in args:
+                    return CompletedProcess(args, 0, '' if name == missing else name + '\\n', '')
+                seen.append(name)
+                status = 'SKIP' if name == skipped else 'FAIL' if name == failed else 'PASS'
+                output = '=== RUN   ' + name + '\\n--- ' + status + ': ' + name + ' (0.00s)\\n'
+                return CompletedProcess(args, 1 if name == failed else 0, output, '')
+            with patch.object(runner.subprocess, 'run', side_effect=fake_run):
+                if missing:
                     with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
-                        runner.execute_validation('wizard-core754-mcp-tests', root)
-            for skipped in names:
-                write_tests(skipped=skipped)
-                with self.subTest(skipped=skipped):
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                elif skipped:
                     with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
-                        runner.execute_validation('wizard-core754-mcp-tests', root)
-            for failed in names:
-                write_tests(failed=failed)
-                with self.subTest(failed=failed):
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                elif failed:
                     with self.assertRaisesRegex(RuntimeError, 'test execution failed'):
-                        runner.execute_validation('wizard-core754-mcp-tests', root)
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                else:
+                    self.assertEqual(list(names), runner.execute_validation('wizard-core754-mcp-tests', '.'))
+            return seen
+        self.assertEqual(list(names), run_case())
+        for name in names:
+            with self.subTest(missing=name):
+                self.assertEqual(list(names[:names.index(name)]), run_case(missing=name))
+            with self.subTest(skipped=name):
+                self.assertEqual(list(names[:names.index(name)+1]), run_case(skipped=name))
+            with self.subTest(failed=name):
+                self.assertEqual(list(names[:names.index(name)+1]), run_case(failed=name))
 
     def test_missing_and_skipped_mandatory_tests_block(self):
         from unittest.mock import patch
