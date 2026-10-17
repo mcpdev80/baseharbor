@@ -856,6 +856,10 @@ jobs:
               plan = json.loads(Path("pr-plan.json").read_text())
               if not isinstance(plan, dict) or not isinstance(plan.get("required_validation_checks"), list) or not isinstance(plan.get("selected_gates"), list):
                   raise ValueError("incomplete PR plan")
+              if plan.get("coverage_status") not in {"resolved", "unresolved"}:
+                  raise ValueError("missing coverage status")
+              if plan["coverage_status"] == "unresolved":
+                  groups["Blocked"].append(f"[Trusted plan coverage unresolved]({link}) · duration unknown")
               required = {f"PR · Validation · {item['id']}" for item in
                           plan.get("required_validation_checks", [])}
               required.update({"PR · Trusted Plan", "PR · Focused Python",

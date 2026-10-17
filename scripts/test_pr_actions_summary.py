@@ -36,6 +36,7 @@ class SummaryTests(unittest.TestCase):
         plan = plan if plan is not None else {
             "required_validation_checks": [{"id": "ci-policy"}],
             "selected_gates": [],
+            "coverage_status": "resolved",
         }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -94,7 +95,7 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("### Blocked (1)", rendered)
 
     def test_only_verified_reuse_is_listed(self):
-        plan = {"required_validation_checks": [], "selected_gates": [],
+        plan = {"required_validation_checks": [], "selected_gates": [], "coverage_status": "resolved",
                 "verified_reused_evidence": [
                     {"verified": True, "url": "https://github.com/mcpdev80/baseharbor/actions/runs/55"},
                     {"verified": False, "url": "https://github.com/mcpdev80/baseharbor/actions/runs/66"},
@@ -118,8 +119,15 @@ class SummaryTests(unittest.TestCase):
                 self.assertIn("Result overview unavailable", rendered)
                 self.assertIn("### Blocked (1)", rendered)
 
+    def test_unresolved_coverage_is_displayed_as_blocked(self):
+        plan = {"required_validation_checks": [], "selected_gates": [],
+                "coverage_status": "unresolved"}
+        rendered = self.render([job("Workflow policy", "success")], plan)
+        self.assertIn("Trusted plan coverage unresolved", rendered)
+        self.assertIn("### Blocked (1)", rendered)
+
     def test_required_runtime_skip_is_blocked(self):
-        plan = {"required_validation_checks": [],
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
                 "selected_gates": ["atomic/docker/lifecycle"]}
         rendered = self.render([job("PR · Selected Runtime", "skipped")], plan)
         self.assertIn("### Blocked (1)", rendered)
