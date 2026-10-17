@@ -21,7 +21,10 @@ WIZARD_TEST_FAMILIES = {
     # The MCP family exercises real in-process SDK discovery and invocation,
     # rather than treating a subprocess/stdio smoke as registration coverage.
     'wizard-core754-mcp-tests': (
-        r'^TestExpectedPreconditionsShareTypedCLIMCPErrors
+        r'^TestExpectedPreconditionsShareTypedCLIMCPErrors\Z',
+        r'^TestMCPReadEntryExpectedPreconditions\Z',
+    ),
+    'wizard-registration-tests': (
         r'^TestAppRegistrationCI',
         r'^TestCommandTreeCI',
         r'^TestMachineCoverageCI',
