@@ -109,7 +109,7 @@ func (w appWizardController) copy() appWizardController {
 		next.selection.detected[k] = v
 	}
 	next.selection.current = append([]capability.Requirement(nil), w.selection.current...)
-	next.choices = append([]appProviderChoice(nil), w.choices...)
+	next.choices = append([]appProviderChoice{}, w.choices...)
 	next.preferences = make(map[string]string, len(w.preferences))
 	for k, v := range w.preferences {
 		next.preferences[k] = v

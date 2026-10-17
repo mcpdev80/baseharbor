@@ -4,16 +4,20 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/creack/pty"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
@@ -59,10 +63,10 @@ func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
 		"cancel-app",
 		parent,
 		"1",
-		"1",
-		"",
-		"",
+		"create-only",
+		"enter",
 		"n",
+		"cancel",
 		"",
 	}, "\n"))
 
@@ -88,7 +92,7 @@ func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 	oldInput := appNewInput
 	defer func() { appNewInput = oldInput }()
 	var out bytes.Buffer
-	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"guided-app", parent, "1", "1,2"}, mode: "create-only"}
+	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"guided-app", parent, "1"}, mode: "create-only"}
 	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +124,7 @@ func TestAppNewWizardCreateOnlyPreservesPreviewIdentity(t *testing.T) {
 	old := appNewInput
 	defer func() { appNewInput = old }()
 	var output bytes.Buffer
-	appNewInput = &newWizardPromptReader{output: &output, prefix: []string{"identity-preserved", parent, "1", "1"}, mode: "create-only"}
+	appNewInput = &newWizardPromptReader{output: &output, prefix: []string{"identity-preserved", parent, "1"}, mode: "create-only"}
 	if err := runAppNewWizard(context.Background(), &output, &output); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +150,7 @@ func TestAppNewWizardEOFBeforeConsentWritesNothing(t *testing.T) {
 	old := appNewInput
 	defer func() { appNewInput = old }()
 	appNewInput = strings.NewReader(strings.Join([]string{
-		"cancel-at-confirm", parent, "1", "1", "", "",
+		"cancel-at-confirm", parent, "1", "create-only", "enter",
 	}, "\n"))
 	var output bytes.Buffer
 	_ = runAppNewWizard(context.Background(), &output, &output)
@@ -197,6 +201,8 @@ func TestStackCreateWizardBuildsReusableProfile(t *testing.T) {
 }
 
 func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
 	registry, err := referenceDevelopmentRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +213,7 @@ func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
 	reg := capability.NewRegistry()
 	input := appWizardInput{
 		Manifest:  manifest,
-		Snapshot:  application.ResolutionSnapshot{Target: "dev", Registry: reg},
+		Snapshot:  application.ResolutionSnapshot{Target: "docker-dev", Registry: reg},
 		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}},
 		TTY:       true,
 		Refresh: func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
@@ -260,6 +266,8 @@ func TestAppNewWizardControllerCreateOnlyAdapter(t *testing.T) {
 }
 
 func TestAppNewWizardControllerRejectsStaleRequestAndCancelledDecision(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
 	registry, err := referenceDevelopmentRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -308,73 +316,6 @@ func TestAppNewWizardControllerRejectsStaleRequestAndCancelledDecision(t *testin
 	}
 }
 
-func TestAppNewWizardExplicitTargetPreferenceUsesExistingPlacementPolicy(t *testing.T) {
-	manifest := application.New("explicit-provider", "dev", true, false, false)
-	manifest.ApplicationID = application.MustNewApplicationID()
-	registry := capability.NewRegistry()
-	instance := capability.ProviderInstance{
-		ID:              "postgresql/shared/environment-dev",
-		Provider:        capability.PostgreSQL,
-		Scope:           capability.ScopeShared,
-		SharingBoundary: "environment:dev",
-		Ownership:       capability.OwnershipBaseHarbor,
-	}
-	if err := registry.Register(instance); err != nil {
-		t.Fatal(err)
-	}
-	req := capability.Requirement{Kind: capability.SQL, Name: "default"}
-	snapshot := application.ResolutionSnapshot{
-		Target:   "dev",
-		Registry: registry,
-		Facts: map[string]application.ProviderFact{
-			instance.ID: {Target: "dev", State: application.ProviderRunning, Core: application.CoreNotRequired},
-		},
-	}
-	controller, err := newAppWizardController(context.Background(), appWizardInput{
-		Manifest:  manifest,
-		Snapshot:  snapshot,
-		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}},
-		TTY:       true,
-		Refresh: func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
-			return &GuidedReadContext{Footprint: application.Footprint{Target: d.Target}}, &application.ProviderImpactPlan{Target: d.Target}, nil
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	controller, err = controller.SelectProvider(context.Background(), req, instance.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	controller, err = controller.Step(context.Background(), appWizardNext)
-	if err != nil {
-		t.Fatal(err)
-	}
-	controller, err = controller.Step(context.Background(), appWizardYes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decision, ok := controller.Decision()
-	if !ok {
-		t.Fatal("confirmed decision missing")
-	}
-	originalScope, hadScope := os.LookupEnv(application.ProviderScopeEnv(capability.ProviderPostgreSQL))
-	if err := withAppNewTargetPreferences(snapshot, decision.Preferences, func() error {
-		if got := os.Getenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL)); got != "shared" {
-			t.Fatalf("scope policy = %q", got)
-		}
-		if got := os.Getenv(application.ProviderSharingBoundaryEnv(capability.ProviderPostgreSQL)); got != "environment:dev" {
-			t.Fatalf("sharing boundary = %q", got)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got, present := os.LookupEnv(application.ProviderScopeEnv(capability.ProviderPostgreSQL)); present != hadScope || (present && got != originalScope) {
-		t.Fatal("temporary Target preference leaked beyond authorized operation")
-	}
-}
-
 func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	configureTestTarget(t)
@@ -388,7 +329,7 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 		appNewLifecycleExecutor = oldExecutor
 	}()
 	var out bytes.Buffer
-	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"partial-run", parent, "1", "1"}, mode: "run"}
+	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"partial-run", parent, "1"}, mode: "run"}
 	appNewLifecycleExecutor = func(context.Context, application.Store, []string, io.Writer, io.Writer) error {
 		return errors.New("fixture lifecycle failure")
 	}
@@ -410,5 +351,348 @@ func TestAppNewWizardFormatting(t *testing.T) {
 		if err != nil || len(diff) > 0 {
 			t.Errorf("gofmt mismatch in %s: %s (%v)", name, diff, err)
 		}
+	}
+}
+
+// Script the actual New entry by prompt, including repeated back navigation.
+type newWizardScenario struct {
+	output        *bytes.Buffer
+	prefix        []string
+	actions       []string
+	confirmations []string
+	onConfirm     func(int)
+	count         int
+}
+
+func (r *newWizardScenario) Read(dst []byte) (int, error) {
+	answer := ""
+	if len(r.prefix) > 0 {
+		answer = r.prefix[0]
+		r.prefix = r.prefix[1:]
+	} else {
+		prompt := r.output.String()
+		if i := strings.LastIndexByte(prompt, '\n'); i >= 0 {
+			prompt = prompt[i+1:]
+		}
+		switch {
+		case strings.Contains(prompt, "After creation"):
+			answer = "create-only"
+		case strings.Contains(prompt, "Selection action"):
+			if len(r.actions) == 0 {
+				return 0, io.EOF
+			}
+			answer = r.actions[0]
+			r.actions = r.actions[1:]
+		case strings.Contains(prompt, "Create project files"):
+			r.count++
+			if r.onConfirm != nil {
+				r.onConfirm(r.count)
+			}
+			if len(r.confirmations) == 0 {
+				return 0, io.EOF
+			}
+			answer = r.confirmations[0]
+			r.confirmations = r.confirmations[1:]
+		default:
+			return 0, io.EOF
+		}
+	}
+	return copy(dst, answer+"\n"), nil
+}
+
+func TestAppNewWizardRepeatedNoPreservesEditableChecklist(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	parent := t.TempDir()
+	var out bytes.Buffer
+	old := appNewInput
+	defer func() { appNewInput = old }()
+	scenario := &newWizardScenario{output: &out, prefix: []string{"back-loop", parent, "1"}, actions: []string{"space", "enter", "space", "enter", "enter"}, confirmations: []string{"n", "n", "y"}}
+	scenario.onConfirm = func(n int) {
+		if n < 3 {
+			if _, err := os.Stat(filepath.Join(parent, "back-loop")); !os.IsNotExist(err) {
+				t.Fatal("preview wrote project before confirmation")
+			}
+		}
+	}
+	appNewInput = scenario
+	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	if scenario.count != 3 {
+		t.Fatal("repeated No did not return to selection")
+	}
+	if strings.Count(out.String(), "Return to the preserved checklist") != 2 {
+		t.Fatal(out.String())
+	}
+	selection, err := application.ResolveRepositoryEnvironment(filepath.Join(parent, "back-loop"), "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Manifest.Services.SQL {
+		t.Fatal("second selection did not remove SQL")
+	}
+}
+
+func TestAppNewWizardEmptyNeedsCreateOnlyDoesNotRun(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	parent := t.TempDir()
+	var out bytes.Buffer
+	old := appNewInput
+	executor := appNewLifecycleExecutor
+	defer func() { appNewInput = old; appNewLifecycleExecutor = executor }()
+	appNewLifecycleExecutor = func(context.Context, application.Store, []string, io.Writer, io.Writer) error {
+		t.Fatal("create-only executed lifecycle")
+		return nil
+	}
+	appNewInput = &newWizardScenario{output: &out, prefix: []string{"empty-needs", parent, "1"}, actions: []string{"down", "down", "down", "down", "space", "enter"}, confirmations: []string{"y"}}
+	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	selection, err := application.ResolveRepositoryEnvironment(filepath.Join(parent, "empty-needs"), "dev")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	contract, err := application.PortableContractFromManifest(selection.Manifest)
+	if err != nil || len(contract.Capabilities) != 0 || contract.Secrets.Managed {
+		t.Fatal("empty selection manufactured needs", err)
+	}
+}
+
+func TestAppNewWizardPersistsExactExplicitPreferenceForLaterResolution(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.NewRegistry()
+	selected := capability.ProviderInstance{ID: "postgresql/shared/custom", Provider: capability.PostgreSQL, Scope: capability.ScopeShared, SharingBoundary: "team:custom", Ownership: capability.OwnershipBaseHarbor}
+	probe := application.New("probe", "dev", true, false, false)
+	probe.ApplicationID = application.MustNewApplicationID()
+	probe, err = application.WithBackendPlacementProjection(probe, map[capability.ProviderKind]capability.ProviderPlacement{capability.ProviderPostgreSQL: {Scope: selected.Scope, SharingBoundary: selected.SharingBoundary, Ownership: selected.Ownership}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := application.PreviewReferenceProviderRegistryAt(root, probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, instance := range canonical.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL {
+			selected = instance
+		}
+	}
+	if err := registry.Register(selected); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Save(registry); err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	var out bytes.Buffer
+	old := appNewInput
+	defer func() { appNewInput = old }()
+	appNewInput = &newWizardScenario{output: &out, prefix: []string{"exact-provider", parent, "1"}, actions: []string{"space", "provider database.sql/default " + selected.ID, "enter"}, confirmations: []string{"y"}}
+	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	records, err := deployment.ListDeployments(target.Name)
+	if err != nil || len(records) != 1 {
+		t.Fatal("missing configured owner", records, err)
+	}
+	var m application.Manifest
+	if err := json.Unmarshal(records[0].Applied.Intent, &m); err != nil {
+		t.Fatal(err)
+	}
+	prefs, err := application.DesiredProviderPreferencesAt(root, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, pref := range prefs {
+		if pref.Requirement.Kind == capability.SQL && pref.InstanceID == selected.ID && pref.ProviderKind == selected.Provider.Kind {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("exact preference not retained: %+v", prefs)
+	}
+	planned, err := application.PreviewReferenceProviderRegistryAt(root, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, binding := range planned.Bindings {
+		if binding.Resource.Kind == capability.SQL && binding.ProviderInstanceID == selected.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("later registry preview ignored exact preference")
+	}
+	// Resolve through the normal later app entry, not merely a registry helper.
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Join(parent, "exact-provider")); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(previous) }()
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Manifest.ApplicationID != m.ApplicationID {
+		t.Fatal("later entry changed the confirmed system identity")
+	}
+	placement, err := application.ResolveProviderPlacement(resolved.Manifest, capability.ProviderPostgreSQL)
+	if err != nil || placement.SharingBoundary != selected.SharingBoundary {
+		t.Fatal("later native entry ignored desired placement", placement, err)
+	}
+	if records[0].Observed.Ready || !records[0].Observed.VerifiedAt.IsZero() {
+		t.Fatal("create-only claimed runtime verified")
+	}
+	source, err := os.ReadFile(filepath.Join(parent, "exact-provider", "baseharbor.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), selected.ID) {
+		t.Fatal("Target provider leaked into portable source")
+	}
+}
+
+func TestAppNewWizardStaleExplicitProviderWritesNoProject(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.NewRegistry()
+	chosen := capability.ProviderInstance{ID: "postgresql/shared/selected", Provider: capability.PostgreSQL, Scope: capability.ScopeShared, SharingBoundary: "team:selected", Ownership: capability.OwnershipBaseHarbor}
+	probe := application.New("probe", "dev", true, false, false)
+	probe.ApplicationID = application.MustNewApplicationID()
+	probe, err = application.WithBackendPlacementProjection(probe, map[capability.ProviderKind]capability.ProviderPlacement{capability.ProviderPostgreSQL: {Scope: chosen.Scope, SharingBoundary: chosen.SharingBoundary, Ownership: chosen.Ownership}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := application.PreviewReferenceProviderRegistryAt(root, probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, instance := range canonical.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL {
+			chosen = instance
+		}
+	}
+	if err := registry.Register(chosen); err != nil {
+		t.Fatal(err)
+	}
+	store := capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}
+	if err := store.Save(registry); err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	var out bytes.Buffer
+	old := appNewInput
+	defer func() { appNewInput = old }()
+	scenario := &newWizardScenario{output: &out, prefix: []string{"stale-choice", parent, "1"}, actions: []string{"space", "provider database.sql/default " + chosen.ID, "enter"}, confirmations: []string{"y"}}
+	scenario.onConfirm = func(int) {
+		if err := store.Save(capability.NewRegistry()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appNewInput = scenario
+	if err := runAppNewWizard(context.Background(), &out, &out); err == nil {
+		t.Fatal("stale explicit selection accepted")
+	}
+	if _, err := os.Stat(filepath.Join(parent, "stale-choice")); !os.IsNotExist(err) {
+		t.Fatal("stale selection wrote project")
+	}
+	records, err := deployment.ListDeployments(target.Name)
+	if err != nil || len(records) != 0 {
+		t.Fatal("stale selection wrote deployment/preference state", err)
+	}
+}
+
+func TestAppNewWizardActualTerminalSelectionUsesArrowSpaceAndEnter(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	t.Setenv("TERM", "xterm-256color")
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pty.Setsize(master, &pty.Winsize{Rows: 40, Cols: 120}); err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	old := appNewInput
+	appNewInput = slave
+	defer func() { appNewInput = old }()
+	m := application.New("terminal-needs", "dev", true, false, false)
+	m.ApplicationID = application.MustNewApplicationID()
+	m = application.WithWorkloadComponents(m, "app")
+	_, snapshot, err := appNewWizardAuthorityContext(context.Background(), "", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := newAppWizardController(context.Background(), appWizardInput{Manifest: m, Snapshot: snapshot, Selection: appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "default"}}}, TTY: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	type result struct {
+		controller appWizardController
+		err        error
+	}
+	finished := make(chan result, 1)
+	go func() {
+		c, e := appNewEditSelection(ctx, bufio.NewReader(slave), slave, controller)
+		finished <- result{c, e}
+	}()
+	ready := make(chan struct{}, 1)
+	go func() {
+		var rendered strings.Builder
+		buf := make([]byte, 4096)
+		for {
+			n, e := master.Read(buf)
+			rendered.Write(buf[:n])
+			if strings.Contains(rendered.String(), "What does your application need?") {
+				select {
+				case ready <- struct{}{}:
+				default:
+				}
+			}
+			if e != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		t.Fatal("terminal selection did not render")
+	}
+	// Move to Cache and select it without a newline, then confirm with Enter.
+	if _, err := master.Write([]byte("\x1b[B \r")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-finished:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		reqs := got.controller.selection.Requirements()
+		if len(reqs) != 2 {
+			t.Fatalf("real terminal keys did not preserve SQL and select Cache: %+v", reqs)
+		}
+	case <-ctx.Done():
+		t.Fatal("terminal selection did not finish")
 	}
 }

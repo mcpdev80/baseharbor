@@ -8,13 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
@@ -63,20 +63,12 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
-	kinds, secrets, profile, err := guidedGreenfieldCapabilities(reader, out, stack.Effective, registry)
-	if err != nil {
-		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
+	profile := stack.Effective
+	var kinds []capability.Kind
+	if profileSupportsKind(profile, registry, capability.ExposureHTTP) {
+		kinds = []capability.Kind{capability.ExposureHTTP}
 	}
-	if stack.Created && stack.RawProfile != nil {
-		raw := *stack.RawProfile
-		for _, preference := range profile.Capabilities {
-			if !profileContainsPreference(stack.Effective, preference) && !profileContainsPreference(raw, preference) {
-				raw.Capabilities = append(raw.Capabilities, preference)
-			}
-		}
-		stack.RawProfile = &raw
-	}
-
+	var secrets []string
 	request := development.NewApplicationRequest{
 		Name: name, Environment: "dev", Profile: &profile, Capabilities: kinds, Secrets: secrets,
 	}
@@ -93,6 +85,7 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
+	ctx = withTargetOverride(ctx, resolved.Target.Name)
 	requirements, err := appNewManifestRequirements(bootstrap.Manifest)
 	if err != nil {
 		return err
@@ -102,45 +95,34 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		Selection: appCapabilitySelectionInput{Current: requirements},
 		TTY:       true,
 		Refresh: func(refreshCtx context.Context, decision appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
-			var guided GuidedReadContext
-			var impact *application.ProviderImpactPlan
-			err := withAppNewTargetPreferences(snapshot, decision.Preferences, func() error {
-				var refreshErr error
-				guided, refreshErr = readGuidedApplicationContext(refreshCtx, resolved)
-				if refreshErr != nil {
-					return refreshErr
-				}
-				plan, refreshErr := buildResolvedApplicationPlan(refreshCtx, resolved)
-				if refreshErr != nil {
-					return refreshErr
-				}
-				if plan.ProviderPlan.Impact != nil {
-					impact = plan.ProviderPlan.Impact
-				} else {
-					// The accepted plan reports no provider change; retain a
-					// read-only empty impact, not an invented mutation.
-					impact = &application.ProviderImpactPlan{Target: decision.Target}
-				}
-				return nil
-			})
+			manifest, err := appNewDecisionManifest(bootstrap.Manifest, decision)
 			if err != nil {
 				return nil, nil, err
+			}
+			prefs, err := appNewDesiredPreferences(decision.Target, decision.Preferences)
+			if err != nil {
+				return nil, nil, err
+			}
+			projected := resolved
+			projected.Manifest, err = application.WithDesiredProviderPlacementsAt(projected.TargetStateRoot, application.WithProviderPreferences(manifest, prefs))
+			if err != nil {
+				return nil, nil, err
+			}
+			guided, err := readGuidedApplicationContext(refreshCtx, projected)
+			if err != nil {
+				return nil, nil, err
+			}
+			plan, err := buildResolvedApplicationPlan(refreshCtx, projected)
+			if err != nil {
+				return nil, nil, err
+			}
+			impact := plan.ProviderPlan.Impact
+			if impact == nil {
+				impact = &application.ProviderImpactPlan{Target: decision.Target}
 			}
 			return &guided, impact, nil
 		},
 	})
-	if err != nil {
-		return err
-	}
-	controller, err = appNewCollectProviderPreferences(ctx, reader, out, controller)
-	if err != nil {
-		if errors.Is(err, errAppWizardAbort) || errors.Is(err, io.EOF) {
-			fmt.Fprintln(out, "No changes were made.")
-			return nil
-		}
-		return err
-	}
-	controller, err = controller.Step(ctx, appWizardNext)
 	if err != nil {
 		return err
 	}
@@ -154,7 +136,22 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		return err
 	}
 
+	var creationUnlock func()
 	for {
+		if controller.phase == appWizardNeeds {
+			controller, err = appNewEditSelection(ctx, reader, out, controller)
+			if err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, errAppWizardAbort) {
+					fmt.Fprintln(out, "No changes were made.")
+					return nil
+				}
+				return err
+			}
+			controller, err = controller.Step(ctx, appWizardNext)
+			if err != nil {
+				return err
+			}
+		}
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, controller.View())
 		question := "Create project files only (does not start containers or deploy providers)?"
@@ -171,29 +168,39 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 			return promptErr
 		}
 		if !confirm {
-			_, _ = controller.Step(ctx, appWizardNo)
-			fmt.Fprintln(out, "No changes were made.")
-			return nil
+			controller, err = controller.Step(ctx, appWizardNo)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(out, "Return to the preserved checklist; no changes were made.")
+			continue
+		}
+		unlock, lockErr := lockApplicationTargetLifecycle(resolved)
+		if lockErr != nil {
+			return lockErr
 		}
 		decided, decideErr := controller.Step(ctx, appWizardYes)
 		if decideErr == nil {
 			controller = decided
+			creationUnlock = unlock
 			break
 		}
+		unlock()
 		if !appNewStalePreview(decideErr) {
 			return decideErr
 		}
 		controller, _ = controller.Step(ctx, appWizardNo)
-		controller, err = controller.Step(ctx, appWizardNext)
-		if err != nil {
-			return err
-		}
 		fmt.Fprintln(out, "The Target plan changed. Review the refreshed preview and confirm again.")
 	}
 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	defer func() {
+		if creationUnlock != nil {
+			creationUnlock()
+		}
+	}()
 	var savedUserProfile string
 	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeUser {
 		savedUserProfile, err = development.SaveProfile(*stack.RawProfile, development.ProfileScopeUser, root)
@@ -208,36 +215,13 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		}
 		return err
 	}
-	fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
-	fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
-	fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
-	fmt.Fprintln(out, "Validation: SATISFIED")
-
-	if mode == "create-only" {
-		fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
-		return nil
-	}
-	decision, ok := controller.Decision()
-	if !ok {
-		return errors.New("confirmed New decision was lost before lifecycle execution")
-	}
-	err = withAppNewTargetPreferences(snapshot, decision.Preferences, func() error {
-		previous, chdirErr := os.Getwd()
-		if chdirErr != nil {
-			return chdirErr
+	release := func() {
+		if creationUnlock != nil {
+			creationUnlock()
+			creationUnlock = nil
 		}
-		if chdirErr = os.Chdir(root); chdirErr != nil {
-			return chdirErr
-		}
-		defer func() { _ = os.Chdir(previous) }()
-		return appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
-	})
-	if err != nil {
-		fmt.Fprintln(errOut, "Project files were created; the authorized lifecycle did not complete.")
-		return fmt.Errorf("New lifecycle incomplete after project creation: %w", err)
 	}
-	fmt.Fprintln(out, "Lifecycle: VERIFIED")
-	return nil
+	return finishAppNewWizard(ctx, root, result, profile, controller, mode, out, errOut, release)
 }
 
 func appNewWizardAuthorityContext(ctx context.Context, root string, manifest application.Manifest) (resolvedApplication, application.ResolutionSnapshot, error) {
@@ -245,7 +229,7 @@ func appNewWizardAuthorityContext(ctx context.Context, root string, manifest app
 	if err != nil {
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}
-	stateRoot, err := targetRuntimeStateRoot(target)
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		return resolvedApplication{}, application.ResolutionSnapshot{}, err
 	}
@@ -267,45 +251,6 @@ func appNewManifestRequirements(manifest application.Manifest) ([]capability.Req
 		requirements = append(requirements, capability.Requirement{Kind: capability.Secrets, Name: "default"})
 	}
 	return requirements, nil
-}
-
-func appNewCollectProviderPreferences(ctx context.Context, reader *bufio.Reader, out io.Writer, controller appWizardController) (appWizardController, error) {
-	choices, err := controller.choicesForSelection()
-	if err != nil {
-		return controller, err
-	}
-	if len(choices) == 0 {
-		return controller, nil
-	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Target provider selection")
-	for _, choice := range choices {
-		fmt.Fprintln(out, choice.View())
-		if len(choice.Candidates) == 0 {
-			continue
-		}
-		value, promptErr := promptLine(reader, out, fmt.Sprintf("Provider for %s/%s (automatic or instance id)", choice.Requirement.Kind, choice.Requirement.Name), "automatic")
-		if promptErr != nil {
-			if errors.Is(promptErr, io.EOF) {
-				aborted, _ := controller.Step(ctx, appWizardEOF)
-				return aborted, errAppWizardAbort
-			}
-			return controller, promptErr
-		}
-		value = strings.TrimSpace(value)
-		if strings.EqualFold(value, "cancel") {
-			aborted, _ := controller.Step(ctx, appWizardCancel)
-			return aborted, errAppWizardAbort
-		}
-		if value == "" || strings.EqualFold(value, "automatic") {
-			continue
-		}
-		controller, err = controller.SelectProvider(ctx, choice.Requirement, value)
-		if err != nil {
-			return controller, err
-		}
-	}
-	return controller, nil
 }
 
 func appNewExecutionMode(reader *bufio.Reader, out io.Writer) (string, error) {
@@ -345,71 +290,6 @@ func appNewStalePreview(err error) bool {
 	return strings.Contains(message, "stale preview") || strings.Contains(message, "stale provider choices")
 }
 
-type appNewEnvRestore struct {
-	name    string
-	value   string
-	present bool
-}
-
-func withAppNewTargetPreferences(snapshot application.ResolutionSnapshot, preferences []appProviderPreference, fn func() error) error {
-	if fn == nil {
-		return errors.New("New preference execution callback is required")
-	}
-	instances := map[string]capability.ProviderInstance{}
-	for _, instance := range snapshot.Registry.Instances {
-		instances[instance.ID] = instance
-	}
-	placements := map[capability.ProviderKind]capability.ProviderPlacement{}
-	for _, preference := range preferences {
-		if preference.Target != snapshot.Target {
-			return fmt.Errorf("provider preference Target %q differs from preview Target %q", preference.Target, snapshot.Target)
-		}
-		if preference.InstanceID == "" {
-			continue
-		}
-		instance, ok := instances[preference.InstanceID]
-		if !ok {
-			return fmt.Errorf("selected provider instance %q is no longer part of the preview inventory", preference.InstanceID)
-		}
-		placement := capability.ProviderPlacement{Scope: instance.Scope, SharingBoundary: instance.SharingBoundary, Ownership: instance.Ownership, ExternalReference: instance.Reference}
-		if previous, exists := placements[instance.Provider.Kind]; exists && !reflect.DeepEqual(previous, placement) {
-			return fmt.Errorf("selected requirements require conflicting placements for provider %s", instance.Provider.Kind)
-		}
-		placements[instance.Provider.Kind] = placement
-	}
-	var restore []appNewEnvRestore
-	set := func(name, value string) error {
-		old, present := os.LookupEnv(name)
-		restore = append(restore, appNewEnvRestore{name: name, value: old, present: present})
-		if value == "" {
-			return os.Unsetenv(name)
-		}
-		return os.Setenv(name, value)
-	}
-	defer func() {
-		for i := len(restore) - 1; i >= 0; i-- {
-			item := restore[i]
-			if item.present {
-				_ = os.Setenv(item.name, item.value)
-			} else {
-				_ = os.Unsetenv(item.name)
-			}
-		}
-	}()
-	for provider, placement := range placements {
-		if err := set(application.ProviderScopeEnv(provider), string(placement.Scope)); err != nil {
-			return err
-		}
-		if err := set(application.ProviderSharingBoundaryEnv(provider), placement.SharingBoundary); err != nil {
-			return err
-		}
-		if err := set(application.ProviderExternalReferenceEnv(provider), placement.ExternalReference); err != nil {
-			return err
-		}
-	}
-	return fn()
-}
-
 // appNewCreateFromWizardDecision bridges the accepted controller decision into
 // the existing project authoring authority. Target provider preferences remain
 // Target policy and are deliberately not serialized into the portable source.
@@ -434,12 +314,26 @@ func appNewCreateFromWizardDecision(ctx context.Context, controller appWizardCon
 		return development.CreationResult{}, errors.New("New request application ID differs from confirmed wizard identity")
 	}
 	request.ApplicationID = controller.manifest.ApplicationID
-	confirmedRequirements, err := appNewManifestRequirements(controller.manifest)
+	desired, err := appNewDecisionManifest(controller.manifest, decision)
 	if err != nil {
 		return development.CreationResult{}, err
 	}
-	if !reflect.DeepEqual(confirmedRequirements, decision.Requirements) {
-		return development.CreationResult{}, errors.New("confirmed New requirements changed before project creation")
+	projected, _, err := appNewWizardAuthorityContext(ctx, root, desired)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	prefs, err := appNewDesiredPreferences(decision.Target, decision.Preferences)
+	if err != nil {
+		return development.CreationResult{}, err
+	}
+	if err := ensureOperatorAuthForBoundary(ctx, projected.Target.Name, desired.Environment); err != nil {
+		return development.CreationResult{}, err
+	}
+	if projected.Target.Name != decision.Target {
+		return development.CreationResult{}, errors.New("New Target changed")
+	}
+	if err := application.ValidateProviderPreferencesAt(projected.TargetStateRoot, desired, prefs); err != nil {
+		return development.CreationResult{}, err
 	}
 	bootstrap, err := development.BootstrapApplication(request, registry)
 	if err != nil {
@@ -454,15 +348,15 @@ func appNewCreateFromWizardDecision(ctx context.Context, controller appWizardCon
 			extras = append(extras, file)
 		}
 	}
-	project, err := development.BootstrapProject(root, controller.manifest, bootstrap.Profile, registry, extras...)
+	project, err := development.BootstrapProject(root, desired, bootstrap.Profile, registry, extras...)
 	if err != nil {
 		return development.CreationResult{}, err
 	}
-	contract, err := application.PortableContractFromManifest(controller.manifest)
+	contract, err := application.PortableContractFromManifest(desired)
 	if err != nil {
 		return development.CreationResult{}, err
 	}
-	bootstrap.Manifest = controller.manifest
+	bootstrap.Manifest = desired
 	bootstrap.Contract = contract
 	bootstrap.Plan = project.Plan
 	bootstrap.FilePaths = append([]string(nil), project.Files...)
@@ -692,70 +586,6 @@ func guidedCreateStackProfile(reader *bufio.Reader, out io.Writer, catalog devel
 		scope = development.ProfileScopeRepository
 	}
 	return guidedStackSelection{RawProfile: &raw, Effective: resolved.Profile, SaveScope: scope, Created: true}, nil
-}
-
-func guidedGreenfieldCapabilities(reader *bufio.Reader, out io.Writer, profile development.StackProfile, registry development.Registry) ([]capability.Kind, []string, development.StackProfile, error) {
-	candidates := []greenfieldCapabilityChoice{
-		{capability.ExposureHTTP, "HTTP"},
-		{capability.SQL, "SQL"},
-		{capability.KeyValue, "Cache"},
-		{capability.DurableKeyValue, "Durable Key-Value"},
-		{capability.DocumentDatabase, "Document Database"},
-		{capability.MessagingQueue, "Messaging Queue"},
-		{capability.MessagingPubSub, "Messaging Pub/Sub"},
-		{capability.MessagingStream, "Messaging Stream"},
-		{capability.ObjectStorageS3, "Object Storage"},
-		{capability.Secrets, "Managed Secrets"},
-		{capability.TelemetryOTLP, "Traces / OTLP"},
-	}
-	var available []greenfieldCapabilityChoice
-	for _, candidate := range candidates {
-		if profileSupportsKind(profile, registry, candidate.kind) {
-			available = append(available, candidate)
-		}
-	}
-	fmt.Fprintln(out, "\nCapabilities")
-	for i, candidate := range available {
-		mark := " "
-		if candidate.kind == capability.ExposureHTTP {
-			mark = "x"
-		}
-		fmt.Fprintf(out, "  [%s] %d. %s\n", mark, i+1, candidate.label)
-	}
-	line, err := promptLine(reader, out, "Select capabilities (comma-separated numbers)", defaultCapabilitySelection(available))
-	if err != nil {
-		return nil, nil, profile, err
-	}
-	selectedIndexes, err := parseNumberSet(line, len(available))
-	if err != nil {
-		return nil, nil, profile, err
-	}
-	var kinds []capability.Kind
-	for i, candidate := range available {
-		if selectedIndexes[i+1] {
-			kinds = append(kinds, candidate.kind)
-		}
-	}
-	if len(kinds) == 0 {
-		return nil, nil, profile, fmt.Errorf("select at least one application capability")
-	}
-
-	var secrets []string
-	for _, kind := range kinds {
-		if kind == capability.Secrets {
-			value, err := promptLine(reader, out, "Required secret names (comma-separated)", "APP_SECRET")
-			if err != nil {
-				return nil, nil, profile, err
-			}
-			secrets = splitWizardItems(value)
-		}
-	}
-
-	profile, err = guidedCapabilityPlacement(reader, out, profile, registry, kinds)
-	if err != nil {
-		return nil, nil, profile, err
-	}
-	return kinds, secrets, profile, nil
 }
 
 func guidedCapabilityPlacement(reader *bufio.Reader, out io.Writer, profile development.StackProfile, registry development.Registry, kinds []capability.Kind) (development.StackProfile, error) {

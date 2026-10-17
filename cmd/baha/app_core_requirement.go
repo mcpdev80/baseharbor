@@ -63,7 +63,7 @@ func applicationLifecycleSnapshot(resolved resolvedApplication, observations map
 		}
 		requirement := capability.Requirement{Kind: binding.Resource.Kind, Name: binding.Resource.Name}
 		if requested[requirement] {
-			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID})
+			preferences = append(preferences, application.ProviderPreference{Requirement: requirement, InstanceID: binding.ProviderInstanceID, ProviderKind: binding.Resource.Provider})
 		}
 		for _, old := range registry.Bindings {
 			if old == binding {
