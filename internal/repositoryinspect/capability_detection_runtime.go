@@ -245,125 +245,192 @@ func likelySecretName(name string) bool {
 		strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_PRIVATE_KEY")
 }
 
-var pythonImportLine = regexp.MustCompile("^\\s*(?:import\\s+([a-zA-Z_][\\w.]*)|from\\s+([a-zA-Z_][\\w.]*)\\s+import\\b)")
+var pythonImportLine = regexp.MustCompile(`^\s*(?:import\s+([A-Za-z_][\w.]*)(?:\s*,|\s|$)|from\s+([A-Za-z_][\w.]*)\s+import\b)`)
 
-// Source import evidence requires syntax, not a matching comment or string.
+// Source import evidence requires syntax, not a matching comment or literal.
 func sourceImportsCompatibleClient(base string, data []byte, signals []string) bool {
-    matches := func(module string) bool {
-        module = strings.ToLower(strings.TrimSpace(module))
-        for _, signal := range signals {
-            signal = strings.ToLower(signal)
-            if module == signal || strings.HasPrefix(module, signal + ".") ||
-                strings.HasPrefix(module, signal + "/") ||
-                strings.HasSuffix(module, "/" + signal) ||
-                strings.Contains(module, "/" + signal + "/") {
-                return true
-            }
-        }
-        return false
-    }
-    switch strings.ToLower(filepath.Ext(base)) {
-    case ".go":
-        file, err := parser.ParseFile(token.NewFileSet(), base, data, parser.ImportsOnly)
-        if err != nil { return false }
-        for _, imp := range file.Imports {
-            module, err := strconv.Unquote(imp.Path.Value)
-            if err == nil && matches(module) { return true }
-        }
-    case ".py":
-        var quote byte
-        triple := false
-        var line strings.Builder
-        flush := func() bool {
-            m := pythonImportLine.FindStringSubmatch(line.String())
-            line.Reset()
-            return m != nil && (matches(m[1]) || matches(m[2]))
-        }
-        for i := 0; i < len(data); i++ {
-            c := data[i]
-            if c == '\n' {
-                if flush() { return true }
-                continue
-            }
-            if quote != 0 {
-                if c == '\\' && !triple && i+1 < len(data) { i++; continue }
-                if c == quote {
-                    if triple {
-                        if i+2 < len(data) && data[i+1] == quote && data[i+2] == quote {
-                            quote = 0; triple = false; i += 2
-                        }
-                    } else { quote = 0 }
-                }
-                line.WriteByte(' ')
-                continue
-            }
-            if c == '#' {
-                for i+1 < len(data) && data[i+1] != '\n' { i++ }
-                continue
-            }
-            if c == '\'' || c == '"' {
-                quote = c
-                triple = i+2 < len(data) && data[i+1] == c && data[i+2] == c
-                if triple { i += 2 }
-                line.WriteByte(' ')
-                continue
-            }
-            line.WriteByte(c)
-        }
-        return flush()
-    case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
-        var tokens []string
-        for i := 0; i < len(data); {
-            c := data[i]
-            if c == '/' && i+1 < len(data) && data[i+1] == '/' {
-                for i < len(data) && data[i] != '\n' { i++ }
-                continue
-            }
-            if c == '/' && i+1 < len(data) && data[i+1] == '*' {
-                i += 2
-                for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') { i++ }
-                if i+1 < len(data) { i += 2 }
-                continue
-            }
-            if c == '\'' || c == '"' || c == 96 {
-                start, delimiter := i+1, c
-                i++
-                for i < len(data) {
-                    if data[i] == '\\' && i+1 < len(data) { i += 2; continue }
-                    if data[i] == delimiter { break }
-                    i++
-                }
-                if delimiter != 96 && i < len(data) {
-                    tokens = append(tokens, "STRING:"+string(data[start:i]))
-                } else { tokens = append(tokens, "LITERAL") }
-                if i < len(data) { i++ }
-                continue
-            }
-            if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
-                start := i
-                for i < len(data) {
-                    x := data[i]
-                    if !(x == '_' || x == '$' || x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z' || x >= '0' && x <= '9') { break }
-                    i++
-                }
-                tokens = append(tokens, string(data[start:i]))
-                continue
-            }
-            if c == ';' || c == '(' || c == ')' || c == '=' || c == '\n' {
-                tokens = append(tokens, string(c))
-            }
-            i++
-        }
-        for i, tok := range tokens {
-            if tok == "require" && i+3 < len(tokens) && tokens[i+1] == "(" &&
-                strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" &&
-                matches(strings.TrimPrefix(tokens[i+2], "STRING:")) { return true }
-            if (tok == "import" || tok == "from") && i+1 < len(tokens) &&
-                strings.HasPrefix(tokens[i+1], "STRING:") &&
-                matches(strings.TrimPrefix(tokens[i+1], "STRING:")) { return true }
-            if tok == "from" && i+1 < len(tokens) && strings.HasPrefix(tokens[i+1], "STRING:") &&
-                matches(strings.TrimPrefix(tokens[i+1], "STRING:")) { return true }
-        }
-    }
-    return false
+	matches := func(module string) bool {
+		module = strings.ToLower(strings.TrimSpace(module))
+		for _, signal := range signals {
+			signal = strings.ToLower(signal)
+			if module == signal || strings.HasPrefix(module, signal+".") || strings.HasPrefix(module, signal+"/") || strings.HasSuffix(module, "/"+signal) || strings.Contains(module, "/"+signal+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(base)) {
+	case ".go":
+		file, err := parser.ParseFile(token.NewFileSet(), base, data, parser.ImportsOnly)
+		if err != nil {
+			return false
+		}
+		for _, imp := range file.Imports {
+			module, err := strconv.Unquote(imp.Path.Value)
+			if err == nil && matches(module) {
+				return true
+			}
+		}
+	case ".py":
+		var quote byte
+		triple := false
+		var line strings.Builder
+		flush := func() bool {
+			m := pythonImportLine.FindStringSubmatch(line.String())
+			line.Reset()
+			return m != nil && (matches(m[1]) || matches(m[2]))
+		}
+		for i := 0; i < len(data); i++ {
+			c := data[i]
+			if c == '\n' {
+				if flush() {
+					return true
+				}
+				continue
+			}
+			if quote != 0 {
+				if c == '\\' && !triple && i+1 < len(data) {
+					i++
+					continue
+				}
+				if c == quote {
+					if triple {
+						if i+2 < len(data) && data[i+1] == quote && data[i+2] == quote {
+							quote = 0
+							triple = false
+							i += 2
+						}
+					} else {
+						quote = 0
+					}
+				}
+				line.WriteByte(' ')
+				continue
+			}
+			if c == '#' {
+				for i+1 < len(data) && data[i+1] != '\n' {
+					i++
+				}
+				continue
+			}
+			if c == '\'' || c == '"' {
+				quote = c
+				triple = i+2 < len(data) && data[i+1] == c && data[i+2] == c
+				if triple {
+					i += 2
+				}
+				line.WriteByte(' ')
+				continue
+			}
+			line.WriteByte(c)
+		}
+		return flush()
+	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		tokens := jsModuleTokens(data)
+		importing := false
+		for i, tok := range tokens {
+			if tok == ";" || tok == "\n" {
+				importing = false
+				continue
+			}
+			if tok == "import" || tok == "export" {
+				importing = true
+			}
+			if tok == "require" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
+				return true
+			}
+			if tok == "import" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
+				return true
+			}
+			if importing && (tok == "import" || tok == "from") && i+1 < len(tokens) && strings.HasPrefix(tokens[i+1], "STRING:") && matches(strings.TrimPrefix(tokens[i+1], "STRING:")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsModuleTokens(data []byte) []string {
+	var tokens []string
+	for i := 0; i < len(data); {
+		c := data[i]
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			if i+1 < len(data) {
+				i += 2
+			}
+			continue
+		}
+		if c == '/' && (len(tokens) == 0 || tokens[len(tokens)-1] == "=" || tokens[len(tokens)-1] == "(" || tokens[len(tokens)-1] == ":" || tokens[len(tokens)-1] == ",") {
+			i++
+			inClass := false
+			for i < len(data) && data[i] != '\n' {
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == '[' {
+					inClass = true
+				}
+				if data[i] == ']' {
+					inClass = false
+				}
+				if data[i] == '/' && !inClass {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if c == '\'' || c == '"' || c == 96 {
+			start, delimiter := i+1, c
+			i++
+			for i < len(data) {
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == delimiter {
+					break
+				}
+				i++
+			}
+			if delimiter != 96 && i < len(data) {
+				tokens = append(tokens, "STRING:"+string(data[start:i]))
+			} else {
+				tokens = append(tokens, "LITERAL")
+			}
+			if i < len(data) {
+				i++
+			}
+			continue
+		}
+		if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			start := i
+			for i < len(data) {
+				x := data[i]
+				if !(x == '_' || x == '$' || x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z' || x >= '0' && x <= '9') {
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, string(data[start:i]))
+			continue
+		}
+		if c == ';' || c == '(' || c == ')' || c == '=' || c == ':' || c == ',' || c == '\n' {
+			tokens = append(tokens, string(c))
+		}
+		i++
+	}
+	return tokens
 }
