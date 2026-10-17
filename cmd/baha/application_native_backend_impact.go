@@ -115,7 +115,7 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 			fact.Materials = []application.ProviderMaterial{}
 			fact.InventoryComplete = true
 			fact.Realization.Evidence += "; canonical Target project inspected: no owned SQL resources or prior protected SQL material"
-		} else if seen && sqlNativeFilesPermitCompleteInventory(complete, fileErr) {
+		} else if seen && fileErr == nil && (complete || sqlNativeGeneratedProjectionInventory(fact.Materials, materialRoot)) {
 			inventory, probeErr := application.ObserveSQLConsumerInventory(ctx,
 				application.NewRuntimeBackendProbeExecutor(provider, files),
 				files, resolved.Manifest, sqlName)

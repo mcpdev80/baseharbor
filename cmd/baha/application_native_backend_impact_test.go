@@ -96,3 +96,50 @@ func TestNativeSQLInventoryKnownFilesRequireActualInspection(t *testing.T) {
 		t.Fatalf("failed certificate inspection authorized inventory: %+v", materials)
 	}
 }
+
+func TestNativeSQLGeneratedProjectionRequiresProtectedAncestorAndSource(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "providers", "postgresql", "default")
+	dir := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "pg_hba.conf")
+	generated := "local all all trust\nhostssl all all 0.0.0.0/0 scram-sha-256\nhostssl all all ::/0 scram-sha-256\nhostnossl all all 0.0.0.0/0 reject\nhostnossl all all ::/0 reject\n"
+	if err := os.WriteFile(path, []byte(generated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	check := func() bool {
+		materials, complete, err := observeOwnedProviderFiles("app", "target", "sql", root)
+		return err == nil && (complete || sqlNativeGeneratedProjectionInventory(materials, root))
+	}
+	if !check() {
+		t.Fatal("known genuinely generated public configuration should remain eligible for independent SQL probe")
+	}
+	if err := os.Chmod(path, 0664); err != nil {
+		t.Fatal(err)
+	}
+	if check() {
+		t.Fatal("group-writable generated projection bypassed protection")
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("different content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if check() {
+		t.Fatal("unexpected content on generated path bypassed provenance")
+	}
+	if err := os.WriteFile(path, []byte(generated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if check() {
+		t.Fatal("unprotected parent directory bypassed ownership")
+	}
+}
