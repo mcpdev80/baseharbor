@@ -104,6 +104,13 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("/runs/55", rendered)
         self.assertNotIn("/runs/66", rendered)
 
+    def test_empty_api_and_partial_plan_are_blocked(self):
+        for kwargs in ({"jobs": []}, {"plan": {}}, {"plan": {"selected_gates": []}}):
+            with self.subTest(kwargs=kwargs):
+                rendered = self.render(**kwargs)
+                self.assertIn("Result overview unavailable", rendered)
+                self.assertIn("### Blocked (1)", rendered)
+
     def test_missing_plan_or_api_is_blocked(self):
         for kwargs in ({"missing_plan": True}, {"api_error": True}):
             with self.subTest(kwargs=kwargs):

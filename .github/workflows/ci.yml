@@ -854,6 +854,8 @@ jobs:
                     "Failed": [], "Blocked": []}
           try:
               plan = json.loads(Path("pr-plan.json").read_text())
+              if not isinstance(plan, dict) or not isinstance(plan.get("required_validation_checks"), list) or not isinstance(plan.get("selected_gates"), list):
+                  raise ValueError("incomplete PR plan")
               required = {f"PR · Validation · {item['id']}" for item in
                           plan.get("required_validation_checks", [])}
               required.update({"PR · Trusted Plan", "PR · Focused Python",
@@ -878,6 +880,8 @@ jobs:
                   jobs.extend(batch)
                   if len(batch) < 100:
                       break
+              if not jobs:
+                  raise ValueError("empty Actions jobs response")
               def duration(job):
                   a, b = job.get("started_at"), job.get("completed_at")
                   if not a or not b:
@@ -903,7 +907,7 @@ jobs:
                   else:
                       category = "Blocked"
                   groups[category].append(item)
-              # Reuse requires explicit authenticated evidence. Never infer
+              # Reuse is display-only metadata from the trusted plan. Never infer
               # reuse merely from a skipped job or a green previous run.
               for evidence in plan.get("verified_reused_evidence", []):
                   if not isinstance(evidence, dict) or evidence.get("verified") is not True:
@@ -911,7 +915,9 @@ jobs:
                   url = evidence.get("url", "")
                   if isinstance(url, str) and url.startswith(
                       f"https://github.com/{repository}/actions/runs/"):
-                      groups["Reused"].append(f"[Verified prior evidence]({url})")
+                      seconds = evidence.get("duration_seconds")
+                  elapsed = f"{seconds}s" if type(seconds) is int and seconds >= 0 else "duration unknown"
+                  groups["Reused"].append(f"[Plan-marked verified evidence]({url}) · {elapsed}")
           except (OSError, ValueError, KeyError, TypeError) as error:
               groups["Blocked"].append("Result overview unavailable; inspect the required check and run logs.")
           lines = [f"## PR checks · [Run {run_id} (attempt {attempt})]({link})",
