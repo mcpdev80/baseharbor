@@ -126,10 +126,38 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 			if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {
 				return classifyProviderChangeConsent(err)
 			}
-			// Persist the confirmed source exactly once, under the lock, after the
-			// plan, consent and current ownership all revalidated.
-			if err := writeSource(ctx, locked, desired.Manifest); err != nil {
-				return fmt.Errorf("persist confirmed application edit: %w", err)
+			// Validate persisted Target selection intent before either write.
+			previous, err := application.DesiredProviderPreferencesAt(locked.TargetStateRoot, locked.Manifest)
+			if err != nil {
+				return fmt.Errorf("read current Target preferences: %w", err)
+			}
+			changedPreferences := !reflect.DeepEqual(appEditSortedPreferences(previous), appEditSortedPreferences(desired.Preferences))
+			if changedPreferences {
+				if err := application.ValidateProviderPreferencesAt(locked.TargetStateRoot, desired.Manifest, desired.Preferences); err != nil {
+					return fmt.Errorf("validate confirmed Target preferences: %w", err)
+				}
+			}
+			sourceChanged := true
+			if len(desired.Source) != 0 {
+				original, err := application.ParseYAML(string(desired.Source))
+				if err != nil {
+					original, err = application.ParseCanonicalYAML(string(desired.Source))
+					if err != nil {
+						return fmt.Errorf("parse original application source: %w", err)
+					}
+				}
+				original.ApplicationID = desired.ApplicationID
+				sourceChanged = !reflect.DeepEqual(original, desired.Manifest)
+			}
+			if sourceChanged {
+				if err := writeSource(ctx, locked, desired.Manifest); err != nil {
+					return fmt.Errorf("persist confirmed application edit: %w", err)
+				}
+			}
+			if changedPreferences {
+				if err := application.SaveDesiredProviderPreferencesAt(locked.TargetStateRoot, desired.Target, desired.Manifest, desired.Preferences); err != nil {
+					return fmt.Errorf("persist confirmed Target preferences: %w", err)
+				}
 			}
 			return nil
 		}

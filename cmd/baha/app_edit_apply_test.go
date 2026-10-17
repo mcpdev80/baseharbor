@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 func appEditTestLoaded(t *testing.T, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) appEditLoaded {
@@ -521,5 +522,96 @@ func TestReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 		if got == req {
 			t.Fatalf("real space byte did not toggle the need: %+v", spaced.Controller.decision.Requirements)
 		}
+	}
+}
+
+func TestReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := application.WithSQLInstances(application.New("edit-preference", "dev", true, false, false), "primary")
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	selectedManifest, err := application.WithBackendPlacementProjection(m, map[capability.ProviderKind]capability.ProviderPlacement{
+		capability.ProviderPostgreSQL: {Scope: capability.ScopeShared, SharingBoundary: "team:edit-choice", Ownership: capability.OwnershipBaseHarbor},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := application.PreviewReferenceProviderRegistryAt(root, selectedManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected capability.ProviderInstance
+	for _, instance := range projected.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeShared {
+			selected = instance
+		}
+	}
+	if selected.ID == "" {
+		t.Fatal("no canonical selected provider instance")
+	}
+	registry := capability.NewRegistry()
+	if err := registry.Register(selected); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Save(registry); err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	t.Chdir(parent)
+	mustWriteWizardTestFile(t, filepath.Join(parent, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n")
+	path := filepath.Join(parent, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, path, m)
+	registerTestDeployment(t, target, m, parent, path)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{"edit-preference"}, "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	pref := application.ProviderPreference{Requirement: req, InstanceID: selected.ID, ProviderKind: selected.Provider.Kind}
+	desired := appEditDesired{
+		Source: source, Manifest: m, Target: target.Name, ApplicationID: m.ApplicationID,
+		Requirements: []capability.Requirement{req}, Preferences: []application.ProviderPreference{pref},
+	}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name, PlanID: "edit-exact-choice", Revision: "r1", ConfirmationsRequired: 1}
+	calls := 0
+	authorities := appEditTestAuthorities(target.Name, m.ApplicationID, []capability.Requirement{req}, nil, []application.ProviderImpactPlan{plan}, &calls)
+	authorities.Choices = func(_ context.Context, gotTarget string, _ []capability.Requirement) ([]appProviderChoice, error) {
+		return []appProviderChoice{{Target: gotTarget, Requirement: req, ProposedInstanceID: selected.ID, Candidates: []appProviderCandidate{{Instance: selected}}}}, nil
+	}
+	executor := appEditRuntimeExecuteAuthority(application.DefaultStore(), []string{"edit-preference"}, resolved, source, authorities, io.Discard, io.Discard, nil,
+		func(ctx context.Context, _ application.Store, _ []string, _ application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, _, _ io.Writer) ([]application.ProviderExecutionOutcome, error) {
+			calls++
+			return nil, mutate(ctx, resolved)
+		})
+	if _, err := executor(context.Background(), desired, plan, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one mutation invocation, got %d", calls)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, source) {
+		t.Fatalf("preference-only Edit rewrote portable source: %v", err)
+	}
+	saved, err := application.DesiredProviderPreferencesAt(root, m)
+	if err != nil || len(saved) != 1 || saved[0] != pref {
+		t.Fatalf("confirmed preference not stored by canonical owner: %+v %v", saved, err)
+	}
+	afterResolved, err := resolveApplication(context.Background(), application.DefaultStore(), []string{"edit-preference"}, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	placement, err := application.ResolveProviderPlacement(afterResolved.Manifest, capability.ProviderPostgreSQL)
+	if err != nil || placement.SharingBoundary != selected.SharingBoundary {
+		t.Fatalf("later app resolution ignored the selected instance: %+v %v", placement, err)
 	}
 }
