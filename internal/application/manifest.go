@@ -14,6 +14,7 @@ const defaultServiceInstance = "default"
 
 // Manifest is the declarative application backend request understood by BaseHarbor.
 type Manifest struct {
+	providerPreferences *[]ProviderPreference // deployment-only; never serialized
 	// Read-only native owner projection; never authored or serialized intent.
 	backendPlacements map[capability.ProviderKind]capability.ProviderPlacement
 	Version           int

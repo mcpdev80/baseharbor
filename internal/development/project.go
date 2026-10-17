@@ -189,6 +189,10 @@ func BootstrapProject(root string, manifest application.Manifest, profile StackP
 		return ProjectResult{}, fmt.Errorf("inspect generated project: %w", err)
 	}
 	satisfied := allDeclaredCapabilitiesSatisfied(inspection)
+	if len(contract.Capabilities) == 0 && !contract.Secrets.Managed {
+		satisfied = generatedWorkloadOnlySatisfied(manifest, inspection)
+	}
+
 	validations := make(map[string]Validation, len(profile.Components))
 	for _, component := range profile.Components {
 		adapter, err := registry.Resolve(component.Adapter)
@@ -333,4 +337,20 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func generatedWorkloadOnlySatisfied(manifest application.Manifest, inspection repositoryinspect.Result) bool {
+	if inspection.SelectedWorkloadSource == nil || len(manifest.Workload.Components) == 0 {
+		return false
+	}
+	for _, component := range manifest.Workload.Components {
+		found := false
+		for _, service := range inspection.WorkloadServices {
+			found = found || service == component
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

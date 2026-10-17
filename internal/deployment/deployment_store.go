@@ -71,11 +71,12 @@ type ObservedDeployment struct {
 }
 
 type DeploymentRecord struct {
-	Version  int                `json:"version"`
-	Identity DeploymentIdentity `json:"identity"`
-	Source   DeploymentSource   `json:"source"`
-	Applied  AppliedDeployment  `json:"applied"`
-	Observed ObservedDeployment `json:"observed,omitempty"`
+	DesiredProviderPreferences json.RawMessage    `json:"desired_provider_preferences,omitempty"`
+	Version                    int                `json:"version"`
+	Identity                   DeploymentIdentity `json:"identity"`
+	Source                     DeploymentSource   `json:"source"`
+	Applied                    AppliedDeployment  `json:"applied"`
+	Observed                   ObservedDeployment `json:"observed,omitempty"`
 }
 
 type DeploymentRecordStateError struct {
@@ -160,6 +161,22 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	root, err := DeploymentRoot(record.Identity)
 	if err != nil {
 		return err
+	}
+	// Existing lifecycle callers reconstruct records. Preserve separately owned
+	// desired preferences unless an explicit replacement (including []) is supplied.
+	if record.DesiredProviderPreferences == nil {
+		previous, loadErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
+		if loadErr == nil {
+			if previous.Identity.ApplicationID != record.Identity.ApplicationID || previous.Identity.Environment != record.Identity.Environment {
+				return errors.New("cannot retain preferences from a different deployment owner")
+			}
+			record.DesiredProviderPreferences = previous.DesiredProviderPreferences
+		} else if !errors.Is(loadErr, os.ErrNotExist) {
+			return loadErr
+		}
+	}
+	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
+		return errors.New("desired provider preferences must be a JSON array")
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
