@@ -775,8 +775,9 @@ func TestAppEditApplyReview918EditExecutorDefaultBindsRealLifecycle(t *testing.T
 func TestAppApplyObservedPendingSQLUpdatePreservesMeasuredPartial(t *testing.T) {
 	attestRegistry(t, "sql-one")
 	impact := application.ProviderImpact{
-		InstanceID: "sql-one", Operation: "update",
-		After:     &application.ProviderRealization{InstanceID: "sql-one", Target: "prod", Kind: capability.ProviderPostgreSQL, State: application.ProviderRunning},
+		InstanceID: "sql-one",
+		Operation:  "update",
+		After:      &application.ProviderRealization{InstanceID: "sql-one", Target: "prod", Kind: capability.ProviderPostgreSQL, State: application.ProviderRunning},
 		Functions: []application.FunctionConsequence{{Consumer: "app/one", Function: "database.sql", Outcome: "changed"}},
 	}
 	plan := appEditResultTestPlan(impact)

@@ -126,10 +126,12 @@ func appObservedPendingUpdate(target string, impact application.ProviderImpact, 
 	observed.Verified = true
 	observed.Evidence = "measured running provider runtime and authoritative Target registry; consumer and material outcomes not attested"
 	return application.ProviderExecutionOutcome{
-		InstanceID: impact.InstanceID, Operation: impact.Operation,
-		Status: "pending", Materials: []application.MaterialOutcome{},
-		Evidence: "runtime state observed after Apply; SQL consumer and data consequences remain unverified",
-		After:    &observed,
+		InstanceID: impact.InstanceID,
+		Operation:  impact.Operation,
+		Status:     "pending",
+		Materials:  []application.MaterialOutcome{},
+		Evidence:   "runtime state observed after Apply; SQL consumer and data consequences remain unverified",
+		After:      &observed,
 	}, true
 }
 

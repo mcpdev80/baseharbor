@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -23,7 +26,27 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	// Protected file ownership is independently observable even when the
 	// runtime is unavailable. Keep its revision bound to consent without
 	// claiming live provider authority or content recovery.
-	materials, complete, fileErr := observeOwnedProviderFiles(fact.Realization.Owner, resolved.Target.Name, instance.ID, files.Dir)
+	// Native database material belongs to this exact provider, not every file
+	// in the application's Compose project.
+	materialRoot := files.Dir
+	sqlName := ""
+	if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeApplication &&
+		instance.OwnerApplicationID == resolved.Manifest.ApplicationID {
+		projected, projectErr := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
+		if projectErr == nil {
+			for _, binding := range projected.Bindings {
+				if binding.ApplicationID == resolved.Manifest.ApplicationID &&
+					binding.Environment == resolved.Manifest.Environment &&
+					binding.ProviderInstanceID == instance.ID && binding.Resource.Kind == capability.SQL {
+					sqlName = binding.Resource.Name
+				}
+			}
+		}
+		if sqlName != "" {
+			materialRoot = filepath.Join(files.Dir, "providers", "postgresql", sqlName)
+		}
+	}
+	materials, complete, fileErr := observeOwnedProviderFiles(fact.Realization.Owner, resolved.Target.Name, instance.ID, materialRoot)
 	fact.Materials = append(fact.Materials, materials...)
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
@@ -51,6 +74,44 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	if !complete || fileErr != nil {
 		fact.Realization.Evidence += "; protected file inventory incomplete"
 	}
-	fact.InventoryComplete = false // Transient work and actual consumer behavior remain unknown.
+	// Existing SQL contents are never assumed transferable. Only a source
+	// with no canonical provider resources and no protected provider material,
+	// or a freshly empty database queried with the retained application SQL
+	// credential, can be classified complete in this bounded creation case.
+	fact.InventoryComplete = false
+	if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeApplication &&
+		instance.OwnerApplicationID == resolved.Manifest.ApplicationID && sqlName != "" {
+		expected, expectedErr := application.NativeBackendInstanceResources(resolved.Manifest, files, instance)
+		seen := false
+		if expectedErr == nil {
+			for _, candidate := range expected {
+				for _, resource := range actual {
+					if candidate.Kind == resource.Kind && candidate.Name == resource.Name {
+						seen = true
+					}
+				}
+			}
+		}
+		priorHasSQL := false
+		for _, name := range application.SQLInstanceNames(prior) {
+			if name == sqlName {
+				priorHasSQL = true
+			}
+		}
+		if expectedErr == nil && !seen && !priorHasSQL && errors.Is(fileErr, os.ErrNotExist) {
+			fact.Materials = []application.ProviderMaterial{}
+			fact.InventoryComplete = true
+			fact.Realization.Evidence += "; canonical Target project inspected: no owned SQL resources or prior protected SQL material"
+		} else if seen && complete && fileErr == nil {
+			inventory, probeErr := application.ObserveSQLConsumerInventory(ctx,
+				application.NewRuntimeBackendProbeExecutor(provider, files),
+				files, resolved.Manifest, sqlName)
+			if probeErr == nil && inventory.Empty &&
+				inventory.Consumer == "application/"+resolved.Manifest.ApplicationID+"/"+resolved.Manifest.Environment {
+				fact.InventoryComplete = true
+				fact.Realization.Evidence += "; " + inventory.Evidence + "; no consumer SQL objects or large objects found"
+			}
+		}
+	}
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 }

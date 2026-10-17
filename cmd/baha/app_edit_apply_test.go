@@ -633,7 +633,7 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 	}
 }
 
-func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
+func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	target := configureTestTarget(t)
@@ -692,11 +692,97 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	defer cancel()
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
+	if err == nil || !strings.Contains(err.Error(), "partial") {
+		t.Fatalf("unobserved SQL consumer/data changes must remain partial: result=%+v err=%v\n%s", result, err, out.String())
+	}
+	if result.Result.Status == "complete" {
+		t.Fatal("unobserved SQL change returned a complete receipt")
+	}
+}
+
+func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	target := configureTestTarget(t)
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	t.Chdir(root)
+	m := application.New("edit-runtime-integration", "dev", false, false, false)
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, '300']\n")
+	sourcePath := filepath.Join(root, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, sourcePath, m)
+	registerTestDeployment(t, target, m, root, sourcePath)
+	// Establish the real previous workload-only deployment. Its retained
+	// canonical native definition and exact runtime inventory must prove
+	// absence of a SQL provider before the confirmed Edit creates one.
+	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer setupCancel()
+	if err := executeApplicationApplyLifecycle(setupCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
+	}
+
+	desired := application.WithSQLInstances(m, "default")
+	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected capability.ProviderInstance
+	for _, instance := range registry.Instances {
+		if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeApplication {
+			selected = instance
+		}
+	}
+	if selected.ID == "" {
+		t.Fatalf("SQL selection lacks an application-owned canonical provider instance: %+v", registry.Instances)
+	}
+	// Make the instance selectable without pretending the new SQL requirement
+	// is already bound before the real Edit lifecycle executes.
+	available := capability.NewRegistry()
+	if err := available.Register(selected); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Save(available); err != nil {
+		t.Fatal(err)
+	}
+
+	project := bhruntime.ApplicationProjectName(target.Name, m.Name, m.Environment)
+	t.Cleanup(func() {
+		output, err := exec.Command("docker", "ps", "-aq", "--filter", "label=com.docker.compose.project="+project).Output()
+		if err == nil && len(strings.Fields(string(output))) > 0 {
+			args := append([]string{"rm", "-fv"}, strings.Fields(string(output))...)
+			_ = exec.Command("docker", args...).Run()
+		}
+	})
+	oldSource, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	var out bytes.Buffer
+	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
 	if err != nil {
 		t.Fatalf("real Edit lifecycle did not converge: %v\n%s", err, out.String())
 	}
-	if !result.Changed || result.Presentation == "" {
+	if !result.Changed || result.Presentation == "" || result.Result.Status != "complete" {
 		t.Fatalf("confirmed real edit did not return an execution result: %+v", result)
+	}
+	applied := false
+	for _, outcome := range result.Result.Outcomes {
+		if outcome.InstanceID == selected.ID && outcome.Operation == "add" &&
+			outcome.Status == "applied" && outcome.Verified && outcome.After != nil &&
+			outcome.After.Verified && outcome.Evidence != "" {
+			applied = true
+		}
+	}
+	if !applied {
+		t.Fatalf("no authoritative native add receipt for confirmed provider: %+v", result.Result.Outcomes)
 	}
 	newSource, err := os.ReadFile(sourcePath)
 	if err != nil || bytes.Equal(newSource, oldSource) {
@@ -720,7 +806,19 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
+	nativeRuntime, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		t.Fatalf("after-run native SQL runtime unavailable: %v", err)
+	}
+	runtimeFiles := application.RuntimeFilesFor(application.DefaultStore(), resolved.Manifest)
+	catalog, err := application.ObserveSQLConsumerInventory(ctx,
+		application.NewRuntimeBackendProbeExecutor(nativeRuntime, runtimeFiles),
+		runtimeFiles, resolved.Manifest, "default")
+	if err != nil || !catalog.Empty ||
+		catalog.Consumer != "application/"+m.ApplicationID+"/"+m.Environment {
+		t.Fatalf("actual application SQL consumer/catalog not verified: %+v %v", catalog, err)
+	}
+		bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
