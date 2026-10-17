@@ -151,12 +151,20 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertEqual([{'check': 'wizard-core754-mcp-tests'}],
                          runner.matrix({'required_validation_checks': [{'id': 'wizard-core754-mcp-tests'}]})['include'])
 
+    def test_actual_workflow_loads_runner_from_trusted_base(self):
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github' / 'workflows' / 'ci.yml').read_text()
+        self.assertIn('wizard-*-tests)', workflow)
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', workflow)
+        self.assertIn('python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION"', workflow)
+        self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
+
     def test_real_two_family_execution_and_fail_closed(self):
         names = ('TestExpectedPreconditionsShareTypedCLIMCPErrors',
                  'TestMCPReadEntryExpectedPreconditions')
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / 'go.mod').write_text('module example.com/mcpcifixture\n\ngo 1.25\n')
+            (root / 'go.mod').write_text('module example.com/mcpcifixture\n\ngo 1.22\n')
             package = root / 'cmd' / 'baha'
             package.mkdir(parents=True)
             def write_tests(omit=None, skipped=None, failed=None):
