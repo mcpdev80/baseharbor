@@ -638,7 +638,7 @@ func writeWorkloadFixture(t *testing.T) {
 // hook-bearing lifecycle: runApplicationApplyLifecycle (no lifecycleSeam)
 // populates evidence.After through its named-return defer even when a later step
 // fails, so genuine partial effects survive.
-func TestReview918RealLifecycleReturnsAfterFacts(t *testing.T) {
+func TestAppEditApplyReview918RealLifecycleReturnsAfterFacts(t *testing.T) {
 	name := fixtureTargetName(t)
 	writeWorkloadFixture(t)
 
@@ -672,7 +672,7 @@ func TestReview918RealLifecycleReturnsAfterFacts(t *testing.T) {
 // TestReview918RetirementRepreparedAfterEdit proves finding 3: after the in-lock
 // source mutation, runApplicationApplyLifecycle re-prepares retirement for the
 // rebuilt resolved state instead of reusing a stale or zero providerPlan.
-func TestReview918RetirementRepreparedAfterEdit(t *testing.T) {
+func TestAppEditApplyReview918RetirementRepreparedAfterEdit(t *testing.T) {
 	fixtureTargetName(t)
 	writeWorkloadFixture(t)
 
@@ -697,7 +697,7 @@ func TestReview918RetirementRepreparedAfterEdit(t *testing.T) {
 
 // TestReview918AlreadyAbsentCannotBecomeApplied proves a measured-zero BEFORE is
 // not treated as runtime presence, so a no-change retirement is not applied.
-func TestReview918AlreadyAbsentCannotBecomeApplied(t *testing.T) {
+func TestAppEditApplyReview918AlreadyAbsentCannotBecomeApplied(t *testing.T) {
 	denyRegistry(t)
 	plan := appEditResultTestPlan(application.ProviderImpact{InstanceID: "sql-old", Operation: "destroy"})
 	evidence := appEditResultEvidence(map[string]application.ProviderFact{"sql-old": measuredZeroFact("prod")}, map[string]application.ProviderFact{"sql-old": measuredZeroFact("prod")})
@@ -711,7 +711,7 @@ func TestReview918AlreadyAbsentCannotBecomeApplied(t *testing.T) {
 // TestReview918RuntimeCountsCannotVerifyProposedOwner proves finding 4: an Owner
 // supplied only by the proposal is not verified by runtime counts; the realized
 // owner comes from the registry, so the domain recorder must not report complete.
-func TestReview918RuntimeCountsCannotVerifyProposedOwner(t *testing.T) {
+func TestAppEditApplyReview918RuntimeCountsCannotVerifyProposedOwner(t *testing.T) {
 	attestRegistry(t, "cache")
 	plan := appEditResultTestPlan(application.ProviderImpact{InstanceID: "cache", Operation: "add", After: &application.ProviderRealization{
 		InstanceID: "cache", Target: "prod", Kind: "valkey", Scope: capability.ScopeApplication,
@@ -738,7 +738,7 @@ func TestReview918RuntimeCountsCannotVerifyProposedOwner(t *testing.T) {
 // TestReview918EditExecutorDefaultBindsRealLifecycle proves the Edit executor's
 // default (non-injected) connection reaches the real hook-bearing
 // runApplicationApplyLifecycle, not a seam that returns preconstructed evidence.
-func TestReview918EditExecutorDefaultBindsRealLifecycle(t *testing.T) {
+func TestAppEditApplyReview918EditExecutorDefaultBindsRealLifecycle(t *testing.T) {
 	name := fixtureTargetName(t)
 	writeWorkloadFixture(t)
 	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "edit")

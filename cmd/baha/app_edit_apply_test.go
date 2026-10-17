@@ -345,7 +345,7 @@ func TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics(t *testing
 // TestReview918DriverEditsNeedsFromInput proves the delivered interactive handler
 // actually edits needs: a space toggles the focused need, then navigation and
 // confirmation reflect the changed selection rather than re-confirming it.
-func TestReview918DriverEditsNeedsFromInput(t *testing.T) {
+func TestAppEditCommandReview918DriverEditsNeedsFromInput(t *testing.T) {
 	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true, ConfirmationsRequired: 0}
@@ -383,7 +383,7 @@ func TestReview918DriverEditsNeedsFromInput(t *testing.T) {
 
 // TestReview918DriverEditsProviderFromInput proves provider choices are editable:
 // a real candidate instance from the Target registry is carried into the decision.
-func TestReview918DriverEditsProviderFromInput(t *testing.T) {
+func TestAppEditCommandReview918DriverEditsProviderFromInput(t *testing.T) {
 	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
 	manifest := mustAppEditManifest(t, loaded)
@@ -433,7 +433,7 @@ func TestReview918DriverEditsProviderFromInput(t *testing.T) {
 // TestReview918RunAppEditCancelsWriteFree calls the assembled handler end-to-end
 // against a registered existing application. A cancel must reach the input path,
 // return the cancel error, and produce no lifecycle run and no source write.
-func TestReview918RunAppEditCancelsWriteFree(t *testing.T) {
+func TestAppEditCommandReview918RunAppEditCancelsWriteFree(t *testing.T) {
 	target := configureTestTarget(t)
 	root := t.TempDir()
 	t.Chdir(root)
@@ -477,7 +477,7 @@ func TestReview918RunAppEditCancelsWriteFree(t *testing.T) {
 // TestReview918SpaceAndEnterBytesAreDistinct confirms the classifier preserves
 // whitespace before deciding: a real space byte toggles the focused need while a
 // bare Enter (empty line) only advances and leaves the selection intact.
-func TestReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
+func TestAppEditCommandReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
 	manifest := mustAppEditManifest(t, loaded)
@@ -525,7 +525,7 @@ func TestReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 	}
 }
 
-func TestReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
+func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
@@ -592,6 +592,18 @@ func TestReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
 			calls++
 			return nil, mutate(ctx, resolved)
 		})
+	if _, err := executor(context.Background(), desired, plan, application.ProviderChangeConsent{PlanID: "stale-plan", First: true}); err == nil {
+		t.Fatal("stale consent unexpectedly accepted")
+	}
+	notStored, err := application.DesiredProviderPreferencesAt(root, m)
+	if err != nil || len(notStored) != 0 {
+		t.Fatalf("stale consent wrote desired provider preference: %+v %v", notStored, err)
+	}
+	unchanged, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(unchanged, source) {
+		t.Fatalf("stale consent wrote portable source: %v", err)
+	}
+	calls = 0
 	if _, err := executor(context.Background(), desired, plan, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}); err != nil {
 		t.Fatal(err)
 	}
