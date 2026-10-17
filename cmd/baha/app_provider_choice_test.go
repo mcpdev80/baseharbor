@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -240,6 +241,72 @@ func TestAppProviderChoiceMixedAmbiguityOrderIndependent(t *testing.T) {
 		}
 		if !reflect.DeepEqual(selection.Requirements(), original) || !reflect.DeepEqual(m, manifestBefore) || !reflect.DeepEqual(s, snapBefore) {
 			t.Fatal("original input mutated")
+		}
+	}
+}
+
+func TestAppProviderChoiceWorkloadDependentProjections(t *testing.T) {
+	base := application.New("catalog", "dev", false, false, false)
+	base.ApplicationID = providerChoiceAppID
+	base = application.WithWorkloadComponents(base, "api", "worker")
+	check := func(t *testing.T, manifest application.Manifest, req capability.Requirement, provider capability.Provider) {
+		t.Helper()
+		snapshot := providerChoiceSnapshot("dev", capability.ProviderInstance{ID: "compatible", Provider: provider, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor})
+		selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{req}})
+		before, err := json.Marshal([]any{manifest, snapshot, selection.Requirements()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		projected, err := appProviderChoiceProjection(manifest, req)
+		if err != nil || !reflect.DeepEqual(projected.Workload.Components, manifest.Workload.Components) {
+			t.Fatalf("workload identity lost: %+v %v", projected.Workload, err)
+		}
+		projected.Workload.Components[0] = "changed-projection"
+		if manifest.Workload.Components[0] != "api" {
+			t.Fatal("projection aliases original workload")
+		}
+		want, err := application.ResolveFootprint(manifest, snapshot, nil)
+		if err != nil || len(want.Requirements) != 1 {
+			t.Fatalf("authority fixture: %+v %v", want, err)
+		}
+		choices, err := appProviderChoices(manifest, snapshot, selection)
+		if err != nil || len(choices) != 1 {
+			t.Fatalf("provider projection: %+v %v", choices, err)
+		}
+		if choices[0].ProposedInstanceID != want.Requirements[0].InstanceID || choices[0].ProposedInstanceID != "compatible" {
+			t.Fatalf("proposal differs from authority: %+v", choices)
+		}
+		after, err := json.Marshal([]any{manifest, snapshot, selection.Requirements()})
+		if err != nil || string(before) != string(after) {
+			t.Fatal("original manifest, snapshot or selection changed")
+		}
+	}
+	t.Run("http", func(t *testing.T) {
+		manifest := application.WithHTTPExposure(base, "web", "api", 8080, "http")
+		check(t, manifest, capability.Requirement{Kind: capability.ExposureHTTP, Name: "web"}, capability.Caddy)
+	})
+	t.Run("metrics", func(t *testing.T) {
+		t.Setenv(application.MetricsEnabledEnv, "true")
+		manifest := application.WithMetricsSource(base, "application", "api", 8080, "/metrics")
+		check(t, manifest, capability.Requirement{Kind: capability.Metrics, Name: "application"}, capability.Prometheus)
+	})
+	t.Run("otlp", func(t *testing.T) {
+		manifest := application.WithOTLPTelemetry(base, "traces")
+		check(t, manifest, capability.Requirement{Kind: capability.TelemetryOTLP, Name: "default"}, capability.OTelCollector)
+	})
+}
+
+func TestAppProviderChoiceInvalidHTTPWorkloadStillRejected(t *testing.T) {
+	base := application.New("catalog", "dev", false, false, false)
+	base.ApplicationID = providerChoiceAppID
+	snapshot := providerChoiceSnapshot("dev", capability.ProviderInstance{ID: "gateway", Provider: capability.Caddy, Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor})
+	selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.ExposureHTTP, Name: "web"}}})
+	missing := application.WithHTTPExposure(base, "web", "api", 8080, "http")
+	wrong := application.WithWorkloadComponents(missing, "worker")
+	undeclared := application.WithWorkloadComponents(base, "api")
+	for _, manifest := range []application.Manifest{missing, wrong, undeclared} {
+		if _, err := appProviderChoices(manifest, snapshot, selection); err == nil {
+			t.Fatal("invalid workload or absent HTTP declaration accepted")
 		}
 	}
 }

@@ -132,6 +132,8 @@ func appProviderChoices(manifest application.Manifest, snapshot application.Reso
 func appProviderChoiceProjection(original application.Manifest, req capability.Requirement) (application.Manifest, error) {
 	m := application.New(original.Name, original.Environment, false, false, false)
 	m.ApplicationID = original.ApplicationID
+	// Preserve portable endpoint identity; the constructor detaches the slice.
+	m = application.WithWorkloadComponents(m, original.Workload.Components...)
 	switch req.Kind {
 	case capability.SQL:
 		m = application.WithSQLInstances(m, req.Name)
