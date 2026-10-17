@@ -319,6 +319,17 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 				line.WriteByte(' ')
 				continue
 			}
+			if c == '\\' && i+1 < len(data) && data[i+1] == '\n' {
+				i++
+				line.WriteByte(' ')
+				continue
+			}
+			if c == ';' || c == ':' {
+				if flush() {
+					return true
+				}
+				continue
+			}
 			if c == '#' {
 				for i+1 < len(data) && data[i+1] != '\n' {
 					i++
@@ -337,6 +348,18 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 			line.WriteByte(c)
 		}
 		return flush()
+	case ".java":
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "import ") && strings.HasSuffix(line, ";") {
+				module := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "import "), ";"))
+				for _, signal := range signals {
+					if matches(module) || strings.Contains(strings.ToLower(module), "."+strings.ToLower(signal)+".") {
+						return true
+					}
+				}
+			}
+		}
 	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
 		tokens := jsModuleTokens(data)
 		// Token positions, not physical lines, decide call arguments.
@@ -386,6 +409,9 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 				if j < len(tokens) && strings.HasPrefix(tokens[j], "STRING:") && matches(strings.TrimPrefix(tokens[j], "STRING:")) {
 					return true
 				}
+			}
+			if importing && strings.HasPrefix(tok, "STRING:") {
+				importing = false
 			}
 		}
 	}
@@ -441,6 +467,22 @@ func jsModuleTokens(data []byte) []string {
 			start, delimiter := i+1, c
 			i++
 			for i < len(data) {
+				if delimiter == 96 && data[i] == '$' && i+1 < len(data) && data[i+1] == '{' {
+					begin, depth, j := i+2, 1, i+2
+					for ; j < len(data) && depth > 0; j++ {
+						if data[j] == '{' {
+							depth++
+						}
+						if data[j] == '}' {
+							depth--
+						}
+					}
+					if depth == 0 {
+						tokens = append(tokens, jsModuleTokens(data[begin:j-1])...)
+						i = j
+						continue
+					}
+				}
 				if data[i] == '\\' && i+1 < len(data) {
 					i += 2
 					continue
@@ -460,6 +502,13 @@ func jsModuleTokens(data []byte) []string {
 			}
 			continue
 		}
+		if c >= '0' && c <= '9' {
+			for i < len(data) && (data[i] >= '0' && data[i] <= '9' || data[i] == '.') {
+				i++
+			}
+			tokens = append(tokens, "NUMBER")
+			continue
+		}
 		if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
 			start := i
 			for i < len(data) {
@@ -475,7 +524,7 @@ func jsModuleTokens(data []byte) []string {
 		if c == '(' {
 			control := false
 			if len(tokens) > 0 {
-				switch tokens[len(tokens)-1] {
+				switch previousJSToken(tokens) {
 				case "if", "while", "for", "with", "switch", "catch":
 					control = true
 				}
@@ -519,8 +568,17 @@ func jsRegexCanStart(tokens []string) bool {
 		return true
 	}
 	switch tokens[last] {
-	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE":
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE", "}":
 		return true
 	}
 	return false
+}
+
+func previousJSToken(tokens []string) string {
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if tokens[i] != "\n" {
+			return tokens[i]
+		}
+	}
+	return ""
 }

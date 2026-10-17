@@ -71,6 +71,45 @@ func TestSyntaxImportDetection(t *testing.T) {
 	}
 }
 
+func TestReview984DirectAndEvidenceImport(t *testing.T) {
+	cases := []struct {
+		name, path, source string
+		want               bool
+	}{
+		{"block regex", "app.js", "if (ready) {} /import 'mongodb'/.test(text);", false},
+		{"multiline control", "app.js", "if\n(ready) /import 'mongodb'/.test(text);", false},
+		{"completed import", "app.js", "import 'other'\nfrom\n'mongodb'", false},
+		{"division require", "app.js", "const ratio = 10 / require('mongodb').value;", true},
+		{"template require", "app.js", "const message = `result: ${require('mongodb').value}`;", true},
+		{"template prose", "app.js", "const message = `require('mongodb')`;", false},
+		{"python semicolon", "app.py", "import os; import pymongo", true},
+		{"python suite", "app.py", "if enabled: import pymongo", true},
+		{"python continuation", "app.py", "import os, \\\n pymongo", true},
+		{"java import", "app.java", "import com.mongodb.client.MongoClient;", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient(tc.path, data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct got %t, want %t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{tc.path: data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, finding := range findings {
+				for _, e := range finding.Evidence {
+					got = got || e.Kind == EvidenceImport
+				}
+			}
+			if got != tc.want {
+				t.Errorf("EvidenceImport got %t, want %t: %+v", got, tc.want, findings)
+			}
+		})
+	}
+}
+
 func TestImportEvidenceUsesOnlySyntax(t *testing.T) {
 	for _, tc := range []struct {
 		path, source string
