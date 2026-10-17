@@ -464,16 +464,18 @@ func TestAppEditCommandReview918RunAppEditCancelsWriteFree(t *testing.T) {
 		return prevRun(ctx, store, args, out, errOut, hooks)
 	}
 
-	_, err = runAppEdit(context.Background(), application.DefaultStore(), []string{"edit-cancel"}, strings.NewReader("cancel\n"), io.Discard, io.Discard)
-	if !errors.Is(err, errAppWizardAbort) {
-		t.Fatalf("cancel path error = %v, want %v", err, errAppWizardAbort)
-	}
-	if runs != 0 {
-		t.Fatalf("cancel reached the lifecycle %d times", runs)
-	}
-	sourceAfter, _ := os.ReadFile(manifestPath)
-	if !bytes.Equal(sourceBefore, sourceAfter) {
-		t.Fatal("cancel modified the application source")
+	for _, input := range []string{"cancel\n", ""} {
+		_, err = runAppEdit(context.Background(), application.DefaultStore(), []string{"edit-cancel"}, strings.NewReader(input), io.Discard, io.Discard)
+		if !errors.Is(err, errAppWizardAbort) {
+			t.Fatalf("cancel/EOF path %q error = %v, want %v", input, err, errAppWizardAbort)
+		}
+		if runs != 0 {
+			t.Fatalf("cancel/EOF path %q reached the lifecycle %d times", input, runs)
+		}
+		sourceAfter, _ := os.ReadFile(manifestPath)
+		if !bytes.Equal(sourceBefore, sourceAfter) {
+			t.Fatalf("cancel/EOF path %q modified application source", input)
+		}
 	}
 }
 
@@ -633,6 +635,7 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	target := configureTestTarget(t)
 	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -660,9 +663,15 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		}
 	}
 	if selected.ID == "" {
-		t.Fatal("SQL selection lacks a canonical provider instance")
+		t.Fatalf("SQL selection lacks an application-owned canonical provider instance: %+v", registry.Instances)
 	}
-	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Save(registry); err != nil {
+	// Make the instance selectable without pretending the new SQL requirement
+	// is already bound before the real Edit lifecycle executes.
+	available := capability.NewRegistry()
+	if err := available.Register(selected); err != nil {
+		t.Fatal(err)
+	}
+	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Save(available); err != nil {
 		t.Fatal(err)
 	}
 
