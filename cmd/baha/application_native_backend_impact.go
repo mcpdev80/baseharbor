@@ -32,9 +32,12 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	sqlName := ""
 	if instance.Provider.Kind == capability.ProviderPostgreSQL && instance.Scope == capability.ScopeApplication &&
 		instance.OwnerApplicationID == resolved.Manifest.ApplicationID {
-		projected, projectErr := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
-		if projectErr == nil {
-			for _, binding := range projected.Bindings {
+		// A newly requested SQL requirement is not yet in the source before
+		// Edit. Resolve the previously recorded binding from the Target owner,
+		// not from the uncommitted requested manifest.
+		registry, registryErr := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+		if registryErr == nil {
+			for _, binding := range registry.Bindings {
 				if binding.ApplicationID == resolved.Manifest.ApplicationID &&
 					binding.Environment == resolved.Manifest.Environment &&
 					binding.ProviderInstanceID == instance.ID && binding.Resource.Kind == capability.SQL {
