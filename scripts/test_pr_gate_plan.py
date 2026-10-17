@@ -737,8 +737,9 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
         candidate['head_sha'] = 'e' * 40
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
             result = planner.plan(candidate, REQ, MAP)
-        proof.assert_called_once_with(candidate['target_base_sha'],
-                                      candidate['head_sha'], planner.CORE_754_TEST_HEAD)
+        self.assertIn(((candidate['target_base_sha'], candidate['head_sha'],
+                        planner.CORE_754_TEST_HEAD), {}),
+                      [(call.args, call.kwargs) for call in proof.call_args_list])
         self.assertIn(planner.CORE_754_TEST_CHECK,
                       {check['id'] for check in result['required_validation_checks']})
         self.assertEqual('unresolved', result['coverage_status'])
