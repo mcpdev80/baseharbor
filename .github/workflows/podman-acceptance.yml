@@ -167,7 +167,16 @@ jobs:
           grep -q "ensure cache.key-value:default" /tmp/podman-plan.txt
 
           $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
-          timeout 180s $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          # Take the impact ID from a fresh, read-only plan immediately before
+          # apply; generic --yes cannot authorize provider consequences.
+          plan_file="$(mktemp)"
+          chmod 600 "$plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$plan_file"
+          consent="$(python3 scripts/ci-podman-typed-consent.py "$plan_file")"
+          rm -f "$plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" timeout 180s \
+            $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          unset consent
 
           $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
