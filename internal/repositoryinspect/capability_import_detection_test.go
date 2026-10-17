@@ -2,6 +2,7 @@ package repositoryinspect
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -376,5 +377,54 @@ func TestReview984NestedDeclarationAndExpressionContexts(t *testing.T) {
 				t.Errorf("EvidenceImport=%t want=%t, findings=%+v", found, tc.want, findings)
 			}
 		})
+	}
+}
+
+func TestReview984ASIAndInterpolationDirectEvidence(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         bool
+	}{
+		{"identifier", "const ready = config\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"index", "const ready = values[0]\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"null", "const ready = null\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"postfix", "let ready = config++\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"regex literal", "const ready = /ok/\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"nested identifier", "if (ready) { const x = config\nfunction probe() {} /import 'mongodb'/.test(text); }", false},
+		{"expression multiline", "const f =\nfunction() {} / require('mongodb').value;", true},
+		{"interpolation division", "const msg = `${a/a/a/a + require('mongodb').value}`;", true},
+		{"interpolation boolean regex", "const msg = `${ready && /}/.test(text) ? require('mongodb').value : null}`;", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient("app.js", data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct=%t want=%t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{"app.js": data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, f := range findings {
+				for _, e := range f.Evidence {
+					found = found || e.Kind == EvidenceImport
+				}
+			}
+			if found != tc.want {
+				t.Errorf("EvidenceImport=%t want=%t, findings=%+v", found, tc.want, findings)
+			}
+		})
+	}
+}
+func TestReview984InterpolationLinearWorkBound(t *testing.T) {
+	// The long source exercises thousands of divisions, not a timing oracle.
+	// Linear lexical advancement must keep allocations proportional to input.
+	for _, n := range []int{512, 4096} {
+		source := []byte("const s = `${" + strings.Repeat("a/", n) + "a}`;")
+		alloc := testing.AllocsPerRun(3, func() { jsModuleTokens(source) })
+		if alloc > float64(n)*8+128 {
+			t.Fatalf("allocations=%v for %d divisions", alloc, n)
+		}
 	}
 }
