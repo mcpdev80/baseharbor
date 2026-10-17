@@ -72,7 +72,23 @@ func defaultAppEditSourceWriter(originalSource []byte) appEditSourceWriter {
 // still returns every effect genuinely observed before it.
 func appEditRuntimeExecuteAuthority(store application.Store, args []string, resolved resolvedApplication, originalSource []byte, authorities appEditAuthorities, out, errOut io.Writer, writeSource appEditSourceWriter, runLifecycle appEditLifecycleRunner) appEditExecuteAuthority {
 	if writeSource == nil {
-		writeSource = defaultAppEditSourceWriter(originalSource)
+		// The hydrated source owns repository persistence. A named Apply may
+		// resolve its protected deployment copy under the lock; do not let
+		// that change the confirmed repository source of truth.
+		authoredOwner := resolved
+		writer := defaultAppEditSourceWriter(originalSource)
+		writeSource = func(ctx context.Context, locked resolvedApplication, manifest application.Manifest) error {
+			if authoredOwner.FromRepository && authoredOwner.ManifestPath != "" {
+				if locked.Target.Name != authoredOwner.Target.Name ||
+					locked.Manifest.ApplicationID != authoredOwner.Manifest.ApplicationID {
+					return errAppApplyResultTargetMismatch
+				}
+				locked.FromRepository = true
+				locked.ManifestPath = authoredOwner.ManifestPath
+				locked.RepositoryRoot = authoredOwner.RepositoryRoot
+			}
+			return writer(ctx, locked, manifest)
+		}
 	}
 	if runLifecycle == nil {
 		runLifecycle = defaultAppEditLifecycleRunner
