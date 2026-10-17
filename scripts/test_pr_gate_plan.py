@@ -761,14 +761,16 @@ class Core918TrustedCoverageTests(unittest.TestCase):
         return proc.stdout.strip()
 
     def input_for(self, head, changes=None):
+        spec = importlib.util.spec_from_file_location('core918_diff_owner', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
         tree = self.git('merge-tree', '--write-tree', self.target, head).splitlines()[0]
         integration = self.git('commit-tree', tree, '-p', self.target, '-p', head,
                                '-m', 'validated PR integration')
-        changes = changes or [{'path': p, 'status': s}
-                              for p, s in planner.CORE_918_REVIEWED_FILES.items()]
-        return {'target_base_sha': self.target, 'head_sha': head,
-                'merge_base_sha': self.base, 'integration_sha': integration,
-                'changes': changes, 'broad_required': False, 'reasons': []}
+        actual = resolver.resolve_pr_diff(self.root, self.target, head, integration)
+        if changes is not None:
+            actual['changes'] = changes
+        return actual
 
     def planned(self, head, changes=None, required=REQ):
         actual = self.input_for(head, changes)
@@ -781,18 +783,28 @@ class Core918TrustedCoverageTests(unittest.TestCase):
 
     def test_unmodified_reviewed_source_and_clean_develop_merge_resolve(self):
         for head in [self.reviewed, self.merged]:
+            actual = self.input_for(head)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            self.assertEqual(self.target if head == self.merged else self.base,
+                             actual['merge_base_sha'])
+            self.assertEqual(planner.CORE_918_REVIEWED_FILES,
+                             {c['path']: c['status'] for c in actual['changes']})
             result = self.planned(head)
             self.assertEqual('resolved', result['coverage_status'])
             self.assertEqual(set(planner.CORE_918_REQUIRED_GATES), set(result['selected_gates']))
             ids = {c['id'] for c in result['required_validation_checks']}
             self.assertTrue({'wizard-app-edit-tests', 'wizard-machine-adapter-tests',
-                             'cli-gofmt', 'cli-vet', 'cli-build', 'source-contracts'} <= ids)
+                             'cli-gofmt', 'cli-vet', 'cli-build', 'source-contracts',
+                             'wizard-core918-native-sql-safety-tests'} <= ids)
 
     def test_followup_change_is_not_qualified(self):
         (self.root / 'cmd/baha/app_apply.go').write_text('unreviewed change\\n')
         self.git('add', '.')
         self.git('commit', '-qm', 'unreviewed follow-up')
-        self.assertEqual('unresolved', self.planned(self.git('rev-parse','HEAD'))['coverage_status'])
+        actual = self.input_for(self.git('rev-parse', 'HEAD'))
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        self.assertEqual(self.target, actual['merge_base_sha'])
+        self.assertEqual('unresolved', self.planned(actual['head_sha'])['coverage_status'])
 
     def test_renamed_deleted_extra_and_missing_file_are_denied(self):
         base = [{'path': p, 'status': s}

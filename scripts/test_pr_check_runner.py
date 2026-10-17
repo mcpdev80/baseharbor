@@ -142,5 +142,40 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
                 runner.execute_validation('wizard-app-edit-load-tests', root)
 
+    def test_core918_native_security_executor_missing_skip_failed(self):
+        names = ["TestNativeSQLInventoryRejectsUnverifiedMaterialRegardlessOfKnownPath","TestNativeSQLInventoryKnownFilesRequireActualInspection","TestNativeSQLGeneratedProjectionRequiresProtectedAncestorAndSource","TestNativeSQLProductionMaterialGateRejectsOversizedAndBrokenPublicSources"]
+        check = 'wizard-core918-native-sql-safety-tests'
+        self.assertEqual(tuple('^' + n for n in names),
+                         runner.WIZARD_TEST_FAMILIES[check])
+        self.assertEqual([{'check': check}],
+                         runner.matrix({'required_validation_checks': [{'id': check}]})['include'])
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'go.mod').write_text('module example.com/nativefixture' + chr(10) * 2 + 'go 1.25' + chr(10))
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            fixture = pkg / 'safety_test.go'
+            def prepare(missing=None, skipped=None, failed=None):
+                lines = ['package main', 'import "testing"']
+                for name in names:
+                    if name == missing:
+                        continue
+                    body = 't.Skip("skip")' if name == skipped else 't.Fatal("failure")' if name == failed else ''
+                    lines.append('func %s(t *testing.T) { %s }' % (name, body))
+                fixture.write_text(chr(10).join(lines) + chr(10))
+            prepare()
+            self.assertEqual(names, runner.execute_validation(check, root))
+            for name in names:
+                with self.subTest(missing=name):
+                    prepare(missing=name)
+                    with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                        runner.execute_validation(check, root)
+            prepare(skipped=names[0])
+            with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
+                runner.execute_validation(check, root)
+            prepare(failed=names[0])
+            with self.assertRaisesRegex(RuntimeError, 'test execution failed'):
+                runner.execute_validation(check, root)
+
 if __name__ == '__main__':
     unittest.main()

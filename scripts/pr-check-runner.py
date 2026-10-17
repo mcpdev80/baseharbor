@@ -17,6 +17,12 @@ WIZARD_TEST_FAMILIES = {
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
+    'wizard-core918-native-sql-safety-tests': (
+        r'^TestNativeSQLInventoryRejectsUnverifiedMaterialRegardlessOfKnownPath',
+        r'^TestNativeSQLInventoryKnownFilesRequireActualInspection',
+        r'^TestNativeSQLGeneratedProjectionRequiresProtectedAncestorAndSource',
+        r'^TestNativeSQLProductionMaterialGateRejectsOversizedAndBrokenPublicSources',
+    ),
     # Each required registration family is distinct and must actually RUN/PASS.
     # The MCP family exercises real in-process SDK discovery and invocation,
     # rather than treating a subprocess/stdio smoke as registration coverage.
@@ -48,6 +54,8 @@ def execute_validation(check, repository):
     if check not in WIZARD_TEST_FAMILIES:
         raise ValueError('unsupported executable validation')
     patterns = WIZARD_TEST_FAMILIES[check]
+    if check == 'wizard-core918-native-sql-safety-tests':
+        patterns = tuple(pattern + chr(36) for pattern in patterns)
     repo = Path(repository)
     all_matches = []
     for pattern in patterns:

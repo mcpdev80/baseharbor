@@ -443,7 +443,8 @@ def plan(diff, requirements, mapping):
         require(CLI_CHECKS)
         require(WIZARD_BASE_CHECKS)
         require([wizard_check('wizard-app-edit-tests'),
-                 wizard_check('wizard-machine-adapter-tests')])
+                 wizard_check('wizard-machine-adapter-tests'),
+                 wizard_check('wizard-core918-native-sql-safety-tests')])
         absent = sorted(CORE_918_REQUIRED_GATES - available)
         if absent:
             unresolved.append('reviewed core-918 required gates absent: ' + ', '.join(absent))
