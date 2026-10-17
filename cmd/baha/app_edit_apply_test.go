@@ -699,7 +699,25 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	// Hosted CI provides an explicitly selected rootful Docker daemon, not the
+	// default rootless socket. Never fall back after a failed engine selection.
+	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 	target := configureTestTarget(t)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := cfg.Targets[target.Name]
+	definition.Runtime.DockerMode = "rootful"
+	definition.Runtime.DockerEndpoint = "unix:///var/run/docker.sock"
+	cfg.Targets[target.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	target, err = cfg.ResolveTarget("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatal(err)

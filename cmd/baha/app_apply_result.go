@@ -181,22 +181,25 @@ func appAttestedSQLNewConsumer(target string, impact application.ProviderImpact,
 			return application.ProviderExecutionOutcome{}, false
 		}
 		functions = append(functions, application.ProviderFunctionOutcome{
-			Consumer: inventory.Consumer, InstanceID: impact.InstanceID,
-			Function: string(capability.SQL), Outcome: "changed", Verified: true,
-			Evidence: inventory.Evidence,
+			Consumer:   inventory.Consumer,
+			InstanceID: impact.InstanceID,
+			Function:   string(capability.SQL),
+			Outcome:    "changed",
+			Verified:   true,
+			Evidence:   inventory.Evidence,
 		})
 	}
 	actual.Verified = true
 	actual.Evidence = "owned SQL container changed from measured absent to running; canonical Target registry and native application consumer query attest realization"
 	return application.ProviderExecutionOutcome{
 		InstanceID: impact.InstanceID,
-		Operation: "add",
-		Status: "applied",
-		Verified: true,
-		Evidence: "same-lock runtime transition, Target-owned provider and actual scoped SQL consumer query",
-		After: &actual,
-		Functions: functions,
-		Materials: []application.MaterialOutcome{},
+		Operation:  "add",
+		Status:     "applied",
+		Verified:   true,
+		Evidence:   "same-lock runtime transition, Target-owned provider and actual scoped SQL consumer query",
+		After:      &actual,
+		Functions:  functions,
+		Materials:  []application.MaterialOutcome{},
 	}, true
 }
 

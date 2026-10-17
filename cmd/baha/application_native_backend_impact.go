@@ -125,3 +125,49 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	}
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 }
+
+const sqlApplyReadLimit = 16
+
+// Collect only actual SQL consumers in the applied Target registry. The probe
+// reads retained credentials within the native owner and returns no secrets.
+// Cancellation never authorizes writes; this bounded post-run read uses the
+// same lock and retains errors as missing evidence.
+func observeNativeSQLApplyResults(ctx context.Context, resolved resolvedApplication, registry capability.Registry) map[string]application.SQLConsumerInventory {
+	observed := map[string]application.SQLConsumerInventory{}
+	if isRemoteApplication(resolved) || len(registry.Bindings) > sqlApplyReadLimit {
+		return observed
+	}
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), appApplyEvidenceObservationTimeout)
+	defer cancel()
+	provider, err := detectRuntimeForTarget(readCtx, resolved.Target)
+	if err != nil {
+		return observed
+	}
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	for _, binding := range registry.Bindings {
+		if readCtx.Err() != nil {
+			break
+		}
+		if binding.ApplicationID != resolved.Manifest.ApplicationID ||
+			binding.Environment != resolved.Manifest.Environment ||
+			binding.Resource.Kind != capability.SQL {
+			continue
+		}
+		for _, instance := range registry.Instances {
+			if instance.ID != binding.ProviderInstanceID ||
+				instance.Provider.Kind != capability.ProviderPostgreSQL ||
+				instance.Ownership != capability.OwnershipBaseHarbor ||
+				instance.Scope != capability.ScopeApplication ||
+				instance.OwnerApplicationID != resolved.Manifest.ApplicationID {
+				continue
+			}
+			inventory, err := application.ObserveSQLConsumerInventory(readCtx,
+				application.NewRuntimeBackendProbeExecutor(provider, files),
+				files, resolved.Manifest, binding.Resource.Name)
+			if err == nil && inventory.Consumer == "application/"+resolved.Manifest.ApplicationID+"/"+resolved.Manifest.Environment {
+				observed[instance.ID] = inventory
+			}
+		}
+	}
+	return observed
+}
