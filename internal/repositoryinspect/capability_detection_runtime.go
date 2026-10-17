@@ -341,7 +341,7 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 		tokens := jsModuleTokens(data)
 		importing := false
 		for i, tok := range tokens {
-			if tok == ";" || tok == "\n" {
+			if tok == ";" {
 				importing = false
 				continue
 			}
@@ -354,8 +354,16 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 			if tok == "import" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
 				return true
 			}
-			if importing && (tok == "import" || tok == "from") && i+1 < len(tokens) && strings.HasPrefix(tokens[i+1], "STRING:") && matches(strings.TrimPrefix(tokens[i+1], "STRING:")) {
-				return true
+			// A newline is whitespace within a static import/export declaration.
+			// Only the statement terminator ends the pending module specifier.
+			if importing && (tok == "import" || tok == "from") {
+				j := i + 1
+				for j < len(tokens) && tokens[j] == "\n" {
+					j++
+				}
+				if j < len(tokens) && strings.HasPrefix(tokens[j], "STRING:") && matches(strings.TrimPrefix(tokens[j], "STRING:")) {
+					return true
+				}
 			}
 		}
 	}
@@ -479,8 +487,17 @@ func jsRegexCanStart(tokens []string) bool {
 	if len(tokens) == 0 {
 		return true
 	}
-	switch tokens[len(tokens)-1] {
-	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", ">", "CONTROL_CLOSE":
+	// Ignore line breaks when deciding whether / begins a regex: a line
+	// break alone cannot turn division after an expression into a regex.
+	last := len(tokens) - 1
+	for last >= 0 && tokens[last] == "\n" {
+		last--
+	}
+	if last < 0 {
+		return true
+	}
+	switch tokens[last] {
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "CONTROL_CLOSE":
 		return true
 	}
 	return false
