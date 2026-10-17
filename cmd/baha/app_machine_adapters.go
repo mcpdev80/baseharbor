@@ -188,7 +188,9 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
 	}
 	if executionErr != nil {
-		return result, &appMachineError{Code: "partial"}
+		// Preserve the original lifecycle failure with the observed partial
+		// result. The machine code stays stable for callers.
+		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr)
 	}
 	return result, nil
 }

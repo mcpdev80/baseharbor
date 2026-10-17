@@ -401,7 +401,7 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 		return []application.ProviderExecutionOutcome{{InstanceID: "db-a", Operation: "provide", Status: "applied", Verified: true, Evidence: "partial-receipt"}, {InstanceID: "db-b", Operation: "provide", Status: "failed", ErrorCode: "interrupted"}}, context.Canceled
 	}
 	partial, err := appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, partialApply)
-	if !errors.As(err, &typed) || typed.Code != "partial" || len(partial.Outcomes) != 2 {
-		t.Fatalf("lost partial outcomes: %+v %v", partial, err)
+	if !errors.As(err, &typed) || typed.Code != "partial" || !errors.Is(err, context.Canceled) || len(partial.Outcomes) != 2 {
+		t.Fatalf("lost partial outcomes or original lifecycle error: %+v %v", partial, err)
 	}
 }
