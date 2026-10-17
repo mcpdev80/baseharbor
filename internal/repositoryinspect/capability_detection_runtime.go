@@ -4,6 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"go/parser"
+	"go/token"
+	"regexp"
+	"strconv"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -136,7 +140,7 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 				Detail: "dependency metadata references a compatible client/provider",
 			})
 		}
-		if isSourceFile(base) && containsAny(lower, signals.imports) {
+		if isSourceFile(base) && sourceImportsCompatibleClient(base, data, signals.imports) {
 			suggested = append(suggested, Evidence{
 				Kind: EvidenceImport, Path: path,
 				Detail: "source imports/references a compatible client",
@@ -239,4 +243,127 @@ func likelySecretName(name string) bool {
 	return upper == "SECRET_KEY" || strings.Contains(upper, "PASSWORD") ||
 		strings.HasSuffix(upper, "_SECRET") || strings.HasSuffix(upper, "_TOKEN") ||
 		strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_PRIVATE_KEY")
+}
+
+var pythonImportLine = regexp.MustCompile("^\\s*(?:import\\s+([a-zA-Z_][\\w.]*)|from\\s+([a-zA-Z_][\\w.]*)\\s+import\\b)")
+
+// Source import evidence requires syntax, not a matching comment or string.
+func sourceImportsCompatibleClient(base string, data []byte, signals []string) bool {
+    matches := func(module string) bool {
+        module = strings.ToLower(strings.TrimSpace(module))
+        for _, signal := range signals {
+            signal = strings.ToLower(signal)
+            if module == signal || strings.HasPrefix(module, signal + ".") ||
+                strings.HasPrefix(module, signal + "/") ||
+                strings.HasSuffix(module, "/" + signal) ||
+                strings.Contains(module, "/" + signal + "/") {
+                return true
+            }
+        }
+        return false
+    }
+    switch strings.ToLower(filepath.Ext(base)) {
+    case ".go":
+        file, err := parser.ParseFile(token.NewFileSet(), base, data, parser.ImportsOnly)
+        if err != nil { return false }
+        for _, imp := range file.Imports {
+            module, err := strconv.Unquote(imp.Path.Value)
+            if err == nil && matches(module) { return true }
+        }
+    case ".py":
+        var quote byte
+        triple := false
+        var line strings.Builder
+        flush := func() bool {
+            m := pythonImportLine.FindStringSubmatch(line.String())
+            line.Reset()
+            return m != nil && (matches(m[1]) || matches(m[2]))
+        }
+        for i := 0; i < len(data); i++ {
+            c := data[i]
+            if c == '\n' {
+                if flush() { return true }
+                continue
+            }
+            if quote != 0 {
+                if c == '\\' && !triple && i+1 < len(data) { i++; continue }
+                if c == quote {
+                    if triple {
+                        if i+2 < len(data) && data[i+1] == quote && data[i+2] == quote {
+                            quote = 0; triple = false; i += 2
+                        }
+                    } else { quote = 0 }
+                }
+                line.WriteByte(' ')
+                continue
+            }
+            if c == '#' {
+                for i+1 < len(data) && data[i+1] != '\n' { i++ }
+                continue
+            }
+            if c == '\'' || c == '"' {
+                quote = c
+                triple = i+2 < len(data) && data[i+1] == c && data[i+2] == c
+                if triple { i += 2 }
+                line.WriteByte(' ')
+                continue
+            }
+            line.WriteByte(c)
+        }
+        return flush()
+    case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+        var tokens []string
+        for i := 0; i < len(data); {
+            c := data[i]
+            if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+                for i < len(data) && data[i] != '\n' { i++ }
+                continue
+            }
+            if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+                i += 2
+                for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') { i++ }
+                if i+1 < len(data) { i += 2 }
+                continue
+            }
+            if c == '\'' || c == '"' || c == 96 {
+                start, delimiter := i+1, c
+                i++
+                for i < len(data) {
+                    if data[i] == '\\' && i+1 < len(data) { i += 2; continue }
+                    if data[i] == delimiter { break }
+                    i++
+                }
+                if delimiter != 96 && i < len(data) {
+                    tokens = append(tokens, "STRING:"+string(data[start:i]))
+                } else { tokens = append(tokens, "LITERAL") }
+                if i < len(data) { i++ }
+                continue
+            }
+            if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+                start := i
+                for i < len(data) {
+                    x := data[i]
+                    if !(x == '_' || x == '$' || x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z' || x >= '0' && x <= '9') { break }
+                    i++
+                }
+                tokens = append(tokens, string(data[start:i]))
+                continue
+            }
+            if c == ';' || c == '(' || c == ')' || c == '=' || c == '\n' {
+                tokens = append(tokens, string(c))
+            }
+            i++
+        }
+        for i, tok := range tokens {
+            if tok == "require" && i+3 < len(tokens) && tokens[i+1] == "(" &&
+                strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" &&
+                matches(strings.TrimPrefix(tokens[i+2], "STRING:")) { return true }
+            if (tok == "import" || tok == "from") && i+1 < len(tokens) &&
+                strings.HasPrefix(tokens[i+1], "STRING:") &&
+                matches(strings.TrimPrefix(tokens[i+1], "STRING:")) { return true }
+            if tok == "from" && i+1 < len(tokens) && strings.HasPrefix(tokens[i+1], "STRING:") &&
+                matches(strings.TrimPrefix(tokens[i+1], "STRING:")) { return true }
+        }
+    }
+    return false
 }
