@@ -719,9 +719,6 @@ try:
 except ModuleNotFoundError:
     from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
     def test_exact_candidate_selects_both_tests_but_remains_unresolved(self):
@@ -735,6 +732,17 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
         self.assertTrue(planned['unresolved_coverage'])
         self.assertEqual([], planned['selected_gates'])
 
+    def test_clean_develop_merge_keeps_execution_unresolved(self):
+        candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
+        candidate['head_sha'] = 'e' * 40
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+            result = planner.plan(candidate, REQ, MAP)
+        proof.assert_called_once_with(candidate['target_base_sha'],
+                                      candidate['head_sha'], planner.CORE_754_TEST_HEAD)
+        self.assertIn(planner.CORE_754_TEST_CHECK,
+                      {check['id'] for check in result['required_validation_checks']})
+        self.assertEqual('unresolved', result['coverage_status'])
+
     def test_changed_candidate_and_statuses_cannot_get_qualified(self):
         for head, change in [
             (planner.CORE_754_TEST_HEAD, {'status': 'deleted', 'path': planner.CORE_754_TEST_PATH}),
@@ -747,3 +755,5 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
                 result = planner.plan(candidate, REQ, MAP)
                 self.assertEqual('unresolved', result['coverage_status'])
                 self.assertTrue(result['unresolved_coverage'])
+if __name__ == '__main__':
+    unittest.main()

@@ -513,7 +513,10 @@ def plan(diff, requirements, mapping):
             require(WIZARD_BASE_CHECKS)
             require([wizard_check(CORE_754_TEST_CHECK)])
             if (len(paths) != 1 or path_status.get(path) != 'added' or
-                    identifiers['head_sha'] != CORE_754_TEST_HEAD):
+                    not (identifiers['head_sha'] == CORE_754_TEST_HEAD or
+                         core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                                      identifiers['head_sha'],
+                                                      CORE_754_TEST_HEAD))):
                 unresolved.append('core-754 test source differs from exact reviewed candidate')
             unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
         elif path in {
