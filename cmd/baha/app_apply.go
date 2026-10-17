@@ -94,16 +94,27 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		return evidence, err
 	}
 	defer unlock()
+	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	// Keep the existing read-only retirement preparation before an Edit so the
+	// post-mutation preparation remains a true re-plan. Provider authorization,
+	// however, must not run against the obsolete pre-edit source.
+	if hooks.Mutate == nil {
+		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+	}
+	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+	if err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
 	if hooks.Mutate != nil {
 		if err := hooks.Mutate(ctx, execution.resolved); err != nil {
 			return evidence, err
 		}
-		// Edit approval belongs to the confirmed desired source. Do not
-		// authorize or prepare retirement against the obsolete pre-edit
-		// manifest: that can manufacture a destructive removal before the
-		// confirmed requirement is persisted. Re-read under the same Target
-		// lock, then run the normal lifecycle authorities exactly once for the
-		// changed source.
+		// Edit approval belongs to the confirmed desired source. Re-read under
+		// the same Target lock, then authorize and re-plan the changed source.
 		reresolved, err := resolveApplication(ctx, store, args, "apply")
 		if err != nil {
 			return evidence, err
@@ -115,16 +126,13 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		if err != nil {
 			return evidence, err
 		}
-	}
-	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return evidence, execution.recordFailedDeployment(err)
-	}
-	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return evidence, err
-	}
-	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
-	if err != nil {
-		return evidence, execution.recordFailedDeployment(err)
+		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
+		}
 	}
 	if hooks.CollectEvidence {
 		evidence.Resolved = execution.resolved

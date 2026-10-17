@@ -404,4 +404,13 @@ func TestAppMachineAdaptersProposeConsentApplyEndToEnd(t *testing.T) {
 	if !errors.As(err, &typed) || typed.Code != "partial" || !errors.Is(err, context.Canceled) || len(partial.Outcomes) != 2 {
 		t.Fatalf("lost partial outcomes or original lifecycle error: %+v %v", partial, err)
 	}
+	projectionFailure := func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		return []application.ProviderExecutionOutcome{{InstanceID: "unplanned", Operation: "provide", Status: "applied", Verified: true, Evidence: "unexpected"}}, context.Canceled
+	}
+	_, err = appMachineChangeDesired(context.Background(), req, read, choices, planner, authorize, projectionFailure)
+	var changeErr *application.ProviderChangeError
+	if !errors.As(err, &typed) || typed.Code != "partial" || !errors.Is(err, context.Canceled) ||
+		!errors.As(err, &changeErr) || changeErr.Code != "unplanned-provider-outcome" {
+		t.Fatalf("projection failure hid machine, lifecycle or projection cause: %v", err)
+	}
 }
