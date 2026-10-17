@@ -157,7 +157,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
     def test_missing_and_skipped_mandatory_tests_block(self):
         from unittest.mock import patch
         from subprocess import CompletedProcess
-        listed = CompletedProcess([], 0, 'TestExpectedPreconditionsShareTypedCLIMCPErrors\\n', '')
+        listed = CompletedProcess([], 0, 'TestExpectedPreconditionsShareTypedCLIMCPErrors\n', '')
         with patch.object(runner.subprocess, 'run', return_value=listed):
             with self.assertRaisesRegex(RuntimeError, 'did not execute'):
                 runner.execute_validation('wizard-core754-mcp-tests', '.')
