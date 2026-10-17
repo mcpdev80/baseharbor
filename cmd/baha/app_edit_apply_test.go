@@ -683,10 +683,6 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 			_ = exec.Command("docker", args...).Run()
 		}
 	})
-	oldSource, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
@@ -818,7 +814,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		catalog.Consumer != "application/"+m.ApplicationID+"/"+m.Environment {
 		t.Fatalf("actual application SQL consumer/catalog not verified: %+v %v", catalog, err)
 	}
-		bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
+	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
