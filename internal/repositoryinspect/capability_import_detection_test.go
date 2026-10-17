@@ -134,7 +134,7 @@ func TestImportDetectorRetainsDependencyMetadata(t *testing.T) {
 func TestJSModuleReferenceMatrix(t *testing.T) {
 	cases := []struct {
 		name, source string
-		want bool
+		want         bool
 	}{
 		{"static normal", "import client from 'mongodb';", true},
 		{"static multiline", "import {\nClient\n} from\n'mongodb';", true},
