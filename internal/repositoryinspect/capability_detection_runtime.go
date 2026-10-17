@@ -245,7 +245,7 @@ func likelySecretName(name string) bool {
 		strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_PRIVATE_KEY")
 }
 
-var pythonImportLine = regexp.MustCompile(`^\s*(?:import\s+([A-Za-z_][\w.]*)(?:\s*,|\s|$)|from\s+([A-Za-z_][\w.]*)\s+import\b)`)
+var pythonImportLine = regexp.MustCompile(`^\s*(?:import\s+([A-Za-z_][\w.]*(?:\s+as\s+[A-Za-z_]\w*)?(?:\s*,\s*[A-Za-z_][\w.]*(?:\s+as\s+[A-Za-z_]\w*)?)*)|from\s+([A-Za-z_][\w.]*)\s+import\b)`)
 
 // Source import evidence requires syntax, not a matching comment or literal.
 func sourceImportsCompatibleClient(base string, data []byte, signals []string) bool {
@@ -278,7 +278,19 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 		flush := func() bool {
 			m := pythonImportLine.FindStringSubmatch(line.String())
 			line.Reset()
-			return m != nil && (matches(m[1]) || matches(m[2]))
+			if m == nil {
+				return false
+			}
+			if matches(m[2]) {
+				return true
+			}
+			for _, entry := range strings.Split(m[1], ",") {
+				fields := strings.Fields(entry)
+				if len(fields) > 0 && matches(fields[0]) {
+					return true
+				}
+			}
+			return false
 		}
 		for i := 0; i < len(data); i++ {
 			c := data[i]
@@ -336,7 +348,7 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 			if tok == "import" || tok == "export" {
 				importing = true
 			}
-			if tok == "require" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
+			if tok == "require" && (i == 0 || tokens[i-1] != ".") && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
 				return true
 			}
 			if tok == "import" && i+3 < len(tokens) && tokens[i+1] == "(" && strings.HasPrefix(tokens[i+2], "STRING:") && tokens[i+3] == ")" && matches(strings.TrimPrefix(tokens[i+2], "STRING:")) {
@@ -370,7 +382,7 @@ func jsModuleTokens(data []byte) []string {
 			}
 			continue
 		}
-		if c == '/' && (len(tokens) == 0 || tokens[len(tokens)-1] == "=" || tokens[len(tokens)-1] == "(" || tokens[len(tokens)-1] == ":" || tokens[len(tokens)-1] == ",") {
+		if c == '/' && jsRegexCanStart(tokens) {
 			i++
 			inClass := false
 			for i < len(data) && data[i] != '\n' {
@@ -427,10 +439,21 @@ func jsModuleTokens(data []byte) []string {
 			tokens = append(tokens, string(data[start:i]))
 			continue
 		}
-		if c == ';' || c == '(' || c == ')' || c == '=' || c == ':' || c == ',' || c == '\n' {
+		if c == ';' || c == '(' || c == ')' || c == '=' || c == ':' || c == ',' || c == '.' || c == '[' || c == '{' || c == '!' || c == '?' || c == '>' || c == '\n' {
 			tokens = append(tokens, string(c))
 		}
 		i++
 	}
 	return tokens
+}
+
+func jsRegexCanStart(tokens []string) bool {
+	if len(tokens) == 0 {
+		return true
+	}
+	switch tokens[len(tokens)-1] {
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", ">":
+		return true
+	}
+	return false
 }

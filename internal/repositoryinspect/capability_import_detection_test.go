@@ -29,6 +29,19 @@ func TestSyntaxImportDetection(t *testing.T) {
 		{"js comments", "app.js", "// require('mongodb')\n/* import x from 'mongodb' */\n", []string{"mongodb"}, false},
 		{"js strings", "app.tsx", "const prompt = \"require('mongodb')\";\n", []string{"mongodb"}, false},
 		{"js regex", "app.tsx", "const rx = /require('mongodb')/;\n", []string{"mongodb"}, false},
+		{"python comma import", "app.py", "import os, pymongo\n", []string{"pymongo"}, true},
+		{"python aliases", "app.py", "import os as operating_system, pymongo as mongo\n", []string{"pymongo"}, true},
+		{"python comma absent", "app.py", "import os, sys as system\n", []string{"pymongo"}, false},
+		{"python commented list", "app.py", "import os # , pymongo\n", []string{"pymongo"}, false},
+		{"js regex return", "app.ts", "function probe() { return /import 'mongodb'/; }\n", []string{"mongodb"}, false},
+		{"js regex throw", "app.ts", "function probe() { throw /require('mongodb')/; }\n", []string{"mongodb"}, false},
+		{"js regex case", "app.ts", "switch (x) { case /import 'mongodb'/: break; }\n", []string{"mongodb"}, false},
+		{"js regex yield", "app.ts", "function* probe() { yield /import 'mongodb'/; }\n", []string{"mongodb"}, false},
+		{"js regex grouped", "app.js", "const value = (/import 'mongodb'/).test(text);\n", []string{"mongodb"}, false},
+		{"js method require", "app.js", "const obj = { require() { return 1 } }; obj.require('mongodb');\n", []string{"mongodb"}, false},
+		{"js optional method require", "app.js", "obj?.require('mongodb');\n", []string{"mongodb"}, false},
+		{"js commonjs", "app.js", "const db = require('mongodb');\n", []string{"mongodb"}, true},
+		{"js dynamic import", "app.ts", "const db = import('mongodb');\n", []string{"mongodb"}, true},
 		{"python redis", "app.py", "from redis import Redis\n", []string{"redis"}, true},
 	}
 	for _, tc := range cases {
@@ -50,6 +63,9 @@ func TestImportEvidenceUsesOnlySyntax(t *testing.T) {
 		{"tests/guided/drive.py", "Rule(r\"MongoDB-compatible document database instances\", callback)\n", false},
 		{"app.go", "package demo\n// import \"go.mongodb.org/mongo-driver/mongo\"\n", false},
 		{"app.ts", "const prompt = /require('mongodb')/;\n", false},
+		{"app.ts", "function probe() { return /import 'mongodb'/; }\n", false},
+		{"app.ts", "obj.require('mongodb');\n", false},
+		{"app.py", "import os, pymongo as mongo\n", true},
 		{"app.ts", "const db = require('mongodb');\n", true},
 	} {
 		t.Run(tc.path+tc.source, func(t *testing.T) {
