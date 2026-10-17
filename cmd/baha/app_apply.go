@@ -45,19 +45,19 @@ func appApplyCommand(store application.Store) *cli.Command {
 	}
 }
 
-// applicationApplyLifecycleHooks carries the bounded result-propagation hooks
-// authorized for core-918. The zero value reproduces the original error-only
-// lifecycle exactly: no extra observation and no mutation slot.
+// applicationApplyLifecycleHooks carries optional result-propagation hooks. The
+// zero value reproduces the original error-only lifecycle: no observation, no
+// mutation slot.
 type applicationApplyLifecycleHooks struct {
 	// Mutate runs inside the Target lifecycle lock after admission,
 	// authorization and retirement preparation, and before the first
-	// deployment state or source write. A failing mutation aborts the run
-	// with zero writes and never records a failed deployment.
+	// deployment or source write. A failing mutation aborts with zero writes
+	// and never records a failed deployment.
 	Mutate func(context.Context, resolvedApplication) error
-	// CollectEvidence captures authoritative provider facts around the single
-	// lifecycle run while the Target lock is still held. The post-run
-	// observation uses a bounded independent read-only context so cancellation
-	// or a run error preserves whatever partial effects really happened.
+	// CollectEvidence captures authoritative provider facts around the run
+	// while the Target lock is held. The post-run observation uses a bounded
+	// independent read-only context so cancellation or a run error preserves
+	// whatever partial effects really happened.
 	CollectEvidence bool
 }
 
@@ -74,8 +74,9 @@ func executeApplicationApplyLifecycle(ctx context.Context, store application.Sto
 	return err
 }
 
-func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (applicationApplyLifecycleEvidence, error) {
-	var evidence applicationApplyLifecycleEvidence
+// runApplicationApplyLifecycle uses named result slots so the deferred
+// post-observation writes evidence.After into the returned value on every path.
+func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
 	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
 	if err != nil {
 		return evidence, err
@@ -94,7 +95,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return evidence, err
 	}
-	execution.providerPlan, err = prepareApplicationProviderRetirement(ctx, execution.resolved)
+	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
 	if err != nil {
 		return evidence, execution.recordFailedDeployment(err)
 	}
@@ -115,6 +116,15 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		execution, err = newApplicationApplyExecutionFromResolved(ctx, reresolved, io.Discard, io.Discard)
 		if err != nil {
 			return evidence, err
+		}
+		// Re-authorize and re-prepare retirement for the freshly persisted state
+		// under the same lock, so later retirement sees the post-edit plan.
+		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
 		}
 	}
 	if hooks.CollectEvidence {

@@ -118,9 +118,10 @@ func appEditMachineRequest(decision appWizardDecision, snapshotRevision string) 
 	return request
 }
 
-// driveAppEditWizard runs the accepted controller over line-oriented input.
-// EOF and cancel stay write-free (core-916 contract); the preview phase needs
-// an explicit yes before it can confirm a decision.
+// driveAppEditWizard runs the accepted controller over line-oriented input,
+// editing needs with the selection keys and providers with "provider <kind/name>
+// <id>". EOF, cancel and repeated No stay write-free (core-916); Enter previews a
+// fresh impact and never confirms execution.
 func driveAppEditWizard(ctx context.Context, session appEditSession, reader *bufio.Reader, out io.Writer) (appEditSession, error) {
 	for session.Controller.phase != appWizardDecided && session.Controller.phase != appWizardAborted {
 		if err := ctx.Err(); err != nil {
@@ -129,54 +130,101 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 		}
 		fmt.Fprintln(out, session.Controller.View())
 		line, readErr := reader.ReadString('\n')
-		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "", "next":
-			if readErr != nil && line == "" {
-				session.Controller, _ = session.Controller.Step(ctx, appWizardEOF)
-				return session, errAppWizardAbort
-			}
-			event := appWizardNext
-			if session.Controller.phase == appWizardPreview {
-				event = appWizardBack // Enter never confirms a preview; return to needs
-			}
-			next, err := session.Controller.Step(ctx, event)
-			session.Controller = next
-			if err != nil {
-				return session, err
-			}
-		case "y", "yes":
-			next, err := session.Controller.Step(ctx, appWizardYes)
-			session.Controller = next
-			if err != nil {
-				return session, err
-			}
-		case "n", "no", "b", "back":
-			next, err := session.Controller.Step(ctx, appWizardNo)
-			session.Controller = next
-			if err != nil {
-				return session, err
-			}
-		case "c", "cancel", "q", "quit":
-			session.Controller, _ = session.Controller.Step(ctx, appWizardCancel)
+		trimmed := strings.ToLower(strings.TrimSpace(line))
+		if readErr != nil && trimmed == "" {
+			session.Controller, _ = session.Controller.Step(ctx, appWizardEOF)
 			return session, errAppWizardAbort
-		default:
-			if readErr != nil {
-				session.Controller, _ = session.Controller.Step(ctx, appWizardEOF)
-				return session, errAppWizardAbort
+		}
+		switch session.Controller.phase {
+		case appWizardNeeds:
+			session = driveAppEditNeeds(ctx, session, trimmed, out)
+		case appWizardPreview:
+			next, err := driveAppEditPreview(ctx, session, trimmed)
+			session.Controller = next
+			if err != nil {
+				return session, err
 			}
-			fmt.Fprintln(out, "unrecognized edit navigation; use enter to continue, y to confirm, n to go back, or cancel to quit without changes")
 		}
 	}
 	return session, nil
 }
 
-// runAppEdit is the callable, end-to-end Edit command handler. It assembles the
-// production lifecycle and source connection itself (default authorities, the
-// real Apply lifecycle and the exact authoritative source bytes), hydrates the
-// current selection, drives interactive input to a confirmed or aborted
-// decision and applies only through the confirmed consequence path below.
-// Central command/MCP registration stays with core-921; that registration may
-// bind directly to this function.
+// driveAppEditNeeds applies a selection, provider-choice or navigation command on
+// the needs screen. It never confirms a decision or reaches execution.
+func driveAppEditNeeds(ctx context.Context, session appEditSession, trimmed string, out io.Writer) appEditSession {
+	switch trimmed {
+	case "", "next", "enter":
+		next, _ := session.Controller.Step(ctx, appWizardNext)
+		session.Controller = next
+		return session
+	case "c", "cancel", "q", "quit":
+		session.Controller, _ = session.Controller.Step(ctx, appWizardCancel)
+		return session
+	case "space", " ":
+		next, _ := session.Controller.SelectNeed(ctx, "space")
+		session.Controller = next
+		return session
+	case "up", "k":
+		next, _ := session.Controller.SelectNeed(ctx, "up")
+		session.Controller = next
+		return session
+	case "down", "j":
+		next, _ := session.Controller.SelectNeed(ctx, "down")
+		session.Controller = next
+		return session
+	case "n", "no", "back", "b":
+		fmt.Fprintln(out, "already on the needs screen; adjust the checklist or press enter to preview")
+		return session
+	}
+	if strings.HasPrefix(trimmed, "provider ") {
+		fields := strings.Fields(strings.TrimPrefix(trimmed, "provider "))
+		if len(fields) == 2 {
+			if requirement, ok := parseAppEditRequirementRef(fields[0]); ok {
+				next, err := session.Controller.SelectProvider(ctx, requirement, fields[1])
+				if err == nil {
+					session.Controller = next
+					return session
+				}
+				fmt.Fprintf(out, "provider selection failed: %v\n", err)
+				return session
+			}
+		}
+		fmt.Fprintln(out, "usage: provider <kind/name> <instance-id>")
+		return session
+	}
+	fmt.Fprintln(out, "use space/up/down to edit needs, 'provider <kind/name> <id>' to choose a provider, enter to preview, or cancel to quit without changes")
+	return session
+}
+
+// driveAppEditPreview confirms or returns from the read-only preview. Enter and
+// no/back return to the needs screen with a fresh preview on the next advance.
+func driveAppEditPreview(ctx context.Context, session appEditSession, trimmed string) (appWizardController, error) {
+	switch trimmed {
+	case "y", "yes":
+		return session.Controller.Step(ctx, appWizardYes)
+	case "", "n", "no", "b", "back":
+		return session.Controller.Step(ctx, appWizardBack)
+	case "c", "cancel", "q", "quit":
+		next, _ := session.Controller.Step(ctx, appWizardCancel)
+		return next, errAppWizardAbort
+	default:
+		return session.Controller, nil
+	}
+}
+
+// parseAppEditRequirementRef parses a "kind/name" requirement reference.
+func parseAppEditRequirementRef(ref string) (capability.Requirement, bool) {
+	kind, name, found := strings.Cut(ref, "/")
+	if !found || kind == "" || name == "" {
+		return capability.Requirement{}, false
+	}
+	return capability.Requirement{Kind: capability.Kind(kind), Name: name}, true
+}
+
+// runAppEdit is the callable end-to-end Edit handler. It assembles the
+// production lifecycle and source connection, hydrates the current selection,
+// drives input to a confirmed or aborted decision and applies only through the
+// confirmed consequence path. Central command/MCP registration stays with core-921.
 func runAppEdit(ctx context.Context, store application.Store, args []string, in io.Reader, out, errOut io.Writer) (appEditApplyResult, error) {
 	resolved, err := resolveApplication(ctx, store, args, "edit")
 	if err != nil {
@@ -199,12 +247,15 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 	if in == nil {
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, errAppWizardAbort
 	}
-	session, driveErr := driveAppEditWizard(ctx, session, bufio.NewReader(in), out)
+	// One buffered reader carries navigation and consequence consent so already
+	// buffered consent bytes are not lost between phases.
+	reader := bufio.NewReader(in)
+	session, driveErr := driveAppEditWizard(ctx, session, reader, out)
 	if driveErr != nil {
 		if _, confirmed := session.Controller.Decision(); !confirmed {
 			return appEditApplyResult{Source: appEditLoadSource(session.Loaded), Presentation: "Cancelled; no application changes.\n"}, driveErr
 		}
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, driveErr
 	}
-	return runAppEditCommand(ctx, session, in, out, authorities)
+	return runAppEditCommand(ctx, session, reader, out, authorities)
 }

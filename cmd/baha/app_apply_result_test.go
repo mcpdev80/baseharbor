@@ -47,7 +47,35 @@ func appEditResultEvidence(before, after map[string]application.ProviderFact) ap
 	return applicationApplyLifecycleEvidence{Resolved: appEditResultResolved("prod"), Before: before, After: after}
 }
 
+// attestRegistry installs an authoritative provider registry containing
+// BaseHarbor-owned application-scoped instances for the given ids, so
+// realization attestation reads identity/ownership from the registry rather
+// than from any proposal field.
+func attestRegistry(t *testing.T, ownedIDs ...string) {
+	t.Helper()
+	prev := appProviderRegistryFunc
+	t.Cleanup(func() { appProviderRegistryFunc = prev })
+	registry := capability.Registry{}
+	for _, id := range ownedIDs {
+		registry.Instances = append(registry.Instances, capability.ProviderInstance{
+			ID: id, Provider: capability.Provider{Kind: capability.ProviderValkey},
+			Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor, OwnerApplicationID: "app-1",
+		})
+	}
+	appProviderRegistryFunc = func(resolvedApplication) (capability.Registry, error) { return registry, nil }
+}
+
+// denyRegistry makes realization attestation impossible (no owned instances),
+// so add/stop/replace receipts stay pending while retirements still attest.
+func denyRegistry(t *testing.T) {
+	t.Helper()
+	prev := appProviderRegistryFunc
+	t.Cleanup(func() { appProviderRegistryFunc = prev })
+	appProviderRegistryFunc = func(resolvedApplication) (capability.Registry, error) { return capability.Registry{}, nil }
+}
+
 func TestAppApplyObservedOutcomesMarksOnlyRetiredAbsence(t *testing.T) {
+	denyRegistry(t)
 	plan := appEditResultTestPlan(
 		application.ProviderImpact{InstanceID: "sql-old", Operation: "destroy"},
 		application.ProviderImpact{InstanceID: "cache", Operation: "add", After: &application.ProviderRealization{InstanceID: "cache", Target: "prod", Kind: "valkey", State: application.ProviderRunning}},
@@ -56,10 +84,10 @@ func TestAppApplyObservedOutcomesMarksOnlyRetiredAbsence(t *testing.T) {
 	after := map[string]application.ProviderFact{"sql-old": measuredZeroFact("prod"), "cache": presentFact("prod")}
 
 	got := appApplyObservedOutcomes(plan, appEditResultEvidence(before, after))
+	// Only the retirement is attestation-eligible; the add stays pending because
+	// no authoritative registry fact confirms the new realization.
 	want := []application.ProviderExecutionOutcome{
 		{InstanceID: "sql-old", Operation: "destroy", Status: "applied", Verified: true, Evidence: "observed owned provider runtime physically retired by this Apply lifecycle run"},
-		{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true, Materials: []application.MaterialOutcome{}, Evidence: "observed provider runtime state verified by this Apply lifecycle run",
-			After: &application.ProviderRealization{InstanceID: "cache", Target: "prod", Kind: "valkey", State: application.ProviderRunning, Verified: true, Evidence: "observed authoritative Target provider observation during this Apply lifecycle run"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("observed outcomes = %+v, want %+v", got, want)
@@ -128,6 +156,7 @@ func TestAppApplyObservedOutcomesNeverFabricatesApplied(t *testing.T) {
 }
 
 func TestAppApplyObservedOutcomesStopAndReplaceTransitions(t *testing.T) {
+	attestRegistry(t, "cache", "sql-new")
 	stopPlan := appEditResultTestPlan(application.ProviderImpact{InstanceID: "cache", Operation: "stop",
 		After: &application.ProviderRealization{InstanceID: "cache", Target: "prod", Kind: "valkey", State: application.ProviderStoppedOwned}})
 	stop := appApplyObservedOutcomes(stopPlan, appEditResultEvidence(
@@ -580,5 +609,161 @@ func TestDefaultAppEditAuthoritiesAreCallable(t *testing.T) {
 	}
 	if _, err := authorities.Read(context.Background(), "missing"); err == nil {
 		t.Fatal("production read succeeded without any application")
+	}
+}
+
+// fixtureTargetName resolves a real Target through the accepted configuration.
+func fixtureTargetName(t *testing.T) string {
+	t.Helper()
+	return configureTestTarget(t).Name
+}
+
+// writeWorkloadFixture creates an http workload app that passes the pre-lock
+// admission checks, so the lifecycle reaches its bracketed observation and then
+// stops at runtime detection without requiring a container.
+func writeWorkloadFixture(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	t.Chdir(root)
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  demo-app:\n    build: .\n    ports:\n      - '8080:8080'\n")
+	m := application.Manifest{Version: application.CurrentVersion, ApplicationID: application.MustNewApplicationID(), Name: "demo", Environment: "dev", Workload: application.WorkloadConfig{Components: []string{"demo-app"}}}
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
+}
+
+// TestReview918RealLifecycleReturnsAfterFacts proves finding 2 on the ACTUAL
+// hook-bearing lifecycle: runApplicationApplyLifecycle (no lifecycleSeam)
+// populates evidence.After through its named-return defer even when a later step
+// fails, so genuine partial effects survive.
+func TestReview918RealLifecycleReturnsAfterFacts(t *testing.T) {
+	name := fixtureTargetName(t)
+	writeWorkloadFixture(t)
+
+	prev := observeApplicationProviderFactsFunc
+	t.Cleanup(func() { observeApplicationProviderFactsFunc = prev })
+	calls := 0
+	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact {
+		calls++
+		if calls == 1 {
+			return map[string]application.ProviderFact{"sql-primary": presentFact(name)}
+		}
+		return map[string]application.ProviderFact{"sql-primary": measuredZeroFact(name)}
+	}
+
+	evidence, _ := runApplicationApplyLifecycle(context.Background(), application.DefaultStore(), nil, io.Discard, io.Discard, applicationApplyLifecycleHooks{CollectEvidence: true})
+	if evidence.Resolved.Target.Name != name || evidence.Before == nil || evidence.After == nil {
+		t.Fatalf("real lifecycle did not populate bracketed observations: resolved=%q before=%v after=%v", evidence.Resolved.Target.Name, evidence.Before, evidence.After)
+	}
+	if calls < 2 {
+		t.Fatalf("post-observation did not run (observe calls=%d)", calls)
+	}
+
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: name, Revision: "r", PlanID: "p", Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "sql-primary", Operation: "destroy"}}}
+	outcomes := appApplyObservedOutcomes(plan, evidence)
+	if len(outcomes) != 1 || outcomes[0].Status != "applied" {
+		t.Fatalf("real-lifecycle retirement not attested: %+v", outcomes)
+	}
+}
+
+// TestReview918RetirementRepreparedAfterEdit proves finding 3: after the in-lock
+// source mutation, runApplicationApplyLifecycle re-prepares retirement for the
+// rebuilt resolved state instead of reusing a stale or zero providerPlan.
+func TestReview918RetirementRepreparedAfterEdit(t *testing.T) {
+	fixtureTargetName(t)
+	writeWorkloadFixture(t)
+
+	prev := prepareApplicationProviderRetirementFunc
+	t.Cleanup(func() { prepareApplicationProviderRetirementFunc = prev })
+	prepared := 0
+	prepareApplicationProviderRetirementFunc = func(ctx context.Context, resolved resolvedApplication) (application.ProviderPlan, error) {
+		prepared++
+		return prev(ctx, resolved)
+	}
+	mutateCalled := 0
+	_, _ = runApplicationApplyLifecycle(context.Background(), application.DefaultStore(), nil, io.Discard, io.Discard, applicationApplyLifecycleHooks{
+		Mutate: func(context.Context, resolvedApplication) error { mutateCalled++; return nil },
+	})
+	if mutateCalled != 1 {
+		t.Fatalf("mutate calls = %d, want 1", mutateCalled)
+	}
+	if prepared < 2 {
+		t.Fatalf("retirement was not re-prepared after the source mutation: prepared=%d", prepared)
+	}
+}
+
+// TestReview918AlreadyAbsentCannotBecomeApplied proves a measured-zero BEFORE is
+// not treated as runtime presence, so a no-change retirement is not applied.
+func TestReview918AlreadyAbsentCannotBecomeApplied(t *testing.T) {
+	denyRegistry(t)
+	plan := appEditResultTestPlan(application.ProviderImpact{InstanceID: "sql-old", Operation: "destroy"})
+	evidence := appEditResultEvidence(map[string]application.ProviderFact{"sql-old": measuredZeroFact("prod")}, map[string]application.ProviderFact{"sql-old": measuredZeroFact("prod")})
+	for _, out := range appApplyObservedOutcomes(plan, evidence) {
+		if out.Status == "applied" {
+			t.Fatalf("already-absent instance attested as retired: %+v", out)
+		}
+	}
+}
+
+// TestReview918RuntimeCountsCannotVerifyProposedOwner proves finding 4: an Owner
+// supplied only by the proposal is not verified by runtime counts; the realized
+// owner comes from the registry, so the domain recorder must not report complete.
+func TestReview918RuntimeCountsCannotVerifyProposedOwner(t *testing.T) {
+	attestRegistry(t, "cache")
+	plan := appEditResultTestPlan(application.ProviderImpact{InstanceID: "cache", Operation: "add", After: &application.ProviderRealization{
+		InstanceID: "cache", Target: "prod", Kind: "valkey", Scope: capability.ScopeApplication,
+		Ownership: capability.OwnershipBaseHarbor, Owner: "owner-only-in-proposal", State: application.ProviderRunning,
+	}})
+	evidence := appEditResultEvidence(
+		map[string]application.ProviderFact{"cache": measuredZeroFact("prod")},
+		map[string]application.ProviderFact{"cache": presentFact("prod")})
+	outcomes := appApplyObservedOutcomes(plan, evidence)
+	result, err := application.RecordProviderChangeResult(plan, outcomes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status == "complete" {
+		t.Fatalf("proposal-only owner verified from runtime counts: %+v", result)
+	}
+	for _, out := range outcomes {
+		if out.After != nil && out.After.Owner == "owner-only-in-proposal" {
+			t.Fatalf("proposal owner copied into receipt: %+v", out.After)
+		}
+	}
+}
+
+// TestReview918EditExecutorDefaultBindsRealLifecycle proves the Edit executor's
+// default (non-injected) connection reaches the real hook-bearing
+// runApplicationApplyLifecycle, not a seam that returns preconstructed evidence.
+func TestReview918EditExecutorDefaultBindsRealLifecycle(t *testing.T) {
+	name := fixtureTargetName(t)
+	writeWorkloadFixture(t)
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevRun, prevObserve := applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc
+	t.Cleanup(func() {
+		applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc = prevRun, prevObserve
+	})
+	calls, realRuns := 0, 0
+	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact {
+		calls++
+		if calls == 1 {
+			return map[string]application.ProviderFact{"sql-primary": presentFact(name)}
+		}
+		return map[string]application.ProviderFact{"sql-primary": measuredZeroFact(name)}
+	}
+	applicationApplyLifecycleRunWithHooks = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (applicationApplyLifecycleEvidence, error) {
+		realRuns++
+		return runApplicationApplyLifecycle(ctx, store, args, out, errOut, hooks)
+	}
+	desired := appEditDesired{Target: name, ApplicationID: resolved.Manifest.ApplicationID, Manifest: resolved.Manifest, Requirements: []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}}
+	executor := appEditRuntimeExecuteAuthority(application.DefaultStore(), nil, resolved, nil, defaultAppEditAuthorities(application.DefaultStore(), nil), io.Discard, io.Discard,
+		func(context.Context, resolvedApplication, application.Manifest) error { return nil }, nil)
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: name, Revision: "r", PlanID: "p", Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "sql-primary", Operation: "destroy"}}}
+	_, _ = executor(context.Background(), desired, plan, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true})
+	if realRuns != 1 {
+		t.Fatalf("real lifecycle runs = %d, want exactly 1 via the default connection", realRuns)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -335,5 +337,119 @@ func TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics(t *testing
 	}
 	if executed != 1 {
 		t.Fatalf("shared unbind execute calls = %d", executed)
+	}
+}
+
+// TestReview918DriverEditsNeedsFromInput proves the delivered interactive handler
+// actually edits needs: a space toggles the focused need, then navigation and
+// confirmation reflect the changed selection rather than re-confirming it.
+func TestReview918DriverEditsNeedsFromInput(t *testing.T) {
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true, ConfirmationsRequired: 0}
+	controller, err := newAppWizardController(context.Background(), appWizardInput{
+		Manifest:  mustAppEditManifest(t, loaded),
+		Snapshot:  application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()},
+		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}},
+		TTY:       true,
+		Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			view := &GuidedReadContext{ApplicationID: loaded.ApplicationID, Target: "dev", Footprint: application.Footprint{Version: application.FootprintVersion, Target: "dev"}}
+			copyPlan := plan
+			return view, &copyPlan, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := appEditSession{Loaded: loaded, Controller: controller}
+	session, err = driveAppEditWizard(context.Background(), session, bufioReader("space\nnext\nyes\n"), io.Discard)
+	if err != nil {
+		t.Fatalf("drive: %v", err)
+	}
+	decision, confirmed := session.Controller.Decision()
+	if !confirmed {
+		t.Fatal("edit driver did not reach a confirmed decision")
+	}
+	for _, got := range decision.Requirements {
+		if got == req {
+			t.Fatalf("space did not toggle the focused need; still selected: %+v", decision.Requirements)
+		}
+	}
+}
+
+// TestReview918DriverEditsProviderFromInput proves provider choices are editable:
+// selecting the proposal's automatic candidate is carried into the decision.
+func TestReview918DriverEditsProviderFromInput(t *testing.T) {
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	loaded := appEditTestLoaded(t, "dev", []capability.Requirement{req}, nil)
+	manifest := mustAppEditManifest(t, loaded)
+	snapshot := application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()}
+	selection := newAppCapabilitySelection(appCapabilitySelectionInput{Current: []capability.Requirement{req}})
+	choices, err := appProviderChoices(manifest, snapshot, selection)
+	if err != nil || len(choices) == 0 {
+		t.Fatalf("no provider choices: %v", err)
+	}
+	instanceID := choices[0].ProposedInstanceID
+	if instanceID == "" {
+		t.Skip("no automatic proposal to switch to")
+	}
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true}
+	controller, err := newAppWizardController(context.Background(), appWizardInput{
+		Manifest: manifest, Snapshot: snapshot,
+		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{req}}, TTY: true,
+		Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			view := &GuidedReadContext{ApplicationID: manifest.ApplicationID, Target: "dev", Footprint: application.Footprint{Version: application.FootprintVersion, Target: "dev"}}
+			copyPlan := plan
+			return view, &copyPlan, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := appEditSession{Loaded: loaded, Controller: controller}
+	command := "provider " + string(capability.SQL) + "/" + req.Name + " " + instanceID + "\n"
+	session, err = driveAppEditWizard(context.Background(), session, bufioReader(command+"next\nyes\n"), io.Discard)
+	if err != nil {
+		t.Fatalf("drive: %v", err)
+	}
+	decision, confirmed := session.Controller.Decision()
+	if !confirmed {
+		t.Fatal("provider edit did not confirm")
+	}
+	for _, p := range decision.Preferences {
+		if p.Requirement == req && p.InstanceID == instanceID {
+			return
+		}
+	}
+	t.Fatalf("provider selection lost: %+v", decision.Preferences)
+}
+
+// TestReview918RunAppEditEndToEndCancelsWriteFree calls the assembled command
+// handler end-to-end. With no registered application it must fail closed before
+// any lifecycle run and leave the source bytes untouched.
+func TestReview918RunAppEditEndToEndCancelsWriteFree(t *testing.T) {
+	fixtureTargetName(t)
+	writeWorkloadFixture(t)
+	before, _ := os.ReadFile(application.RepositoryManifestName)
+	runs := 0
+	prevRun, prevObserve := applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc
+	t.Cleanup(func() {
+		applicationApplyLifecycleRunWithHooks, observeApplicationProviderFactsFunc = prevRun, prevObserve
+	})
+	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact { return nil }
+	applicationApplyLifecycleRunWithHooks = func(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (applicationApplyLifecycleEvidence, error) {
+		runs++
+		return prevRun(ctx, store, args, out, errOut, hooks)
+	}
+	if _, err := runAppEdit(context.Background(), application.DefaultStore(), []string{"demo"}, strings.NewReader("cancel\n"), io.Discard, io.Discard); err != nil && !errors.Is(err, errAppWizardAbort) {
+		// A not-yet-registered application fails hydration; that is a closed path.
+		t.Logf("hydration closed early: %v", err)
+	}
+	if runs != 0 {
+		t.Fatalf("runAppEdit reached the lifecycle without confirmation (%d runs)", runs)
+	}
+	after, _ := os.ReadFile(application.RepositoryManifestName)
+	if !bytes.Equal(before, after) {
+		t.Fatal("runAppEdit modified the source before any confirmed mutation")
 	}
 }

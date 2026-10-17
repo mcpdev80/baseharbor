@@ -16,35 +16,28 @@ import (
 
 // appEditLifecycleRunner is the concrete Apply lifecycle connection used by the
 // production Edit executor. The mutate callback runs inside the existing Target
-// lifecycle lock, immediately before the first deployment state write; the
-// default binds directly to executeApplicationApplyLifecycleResults so the
-// receipt path is never an exclusively injected callback. Tests may substitute
-// it only to observe the single invocation.
+// lifecycle lock, immediately before the first deployment state write.
 type appEditLifecycleRunner func(context.Context, application.Store, []string, application.ProviderImpactPlan, func(context.Context, resolvedApplication) error, io.Writer, io.Writer) ([]application.ProviderExecutionOutcome, error)
 
 // appEditSourceWriter persists confirmed Edit intent through the existing
-// source-of-truth owner INSIDE the Target lifecycle lock. Repository
-// applications keep their own manifest file behind an exact-byte compare and
-// swap; store-managed applications recompare the internal copy before
-// synchronization. Untouched manifest intent is carried unchanged by the
-// hydrated desired state.
+// source-of-truth owner inside the Target lifecycle lock. Repository
+// applications keep their own manifest behind a byte compare-and-swap;
+// store-managed applications recompare the internal copy before synchronization.
 type appEditSourceWriter func(context.Context, resolvedApplication, application.Manifest) error
 
 // errAppEditPlanDrifted aborts a confirmed Edit when the live Target state no
 // longer produces the exact approved plan, before any source or state write.
 var errAppEditPlanDrifted = errors.New("provider impact plan changed after confirmation")
 
-// defaultAppEditLifecycleRunner is the real, non-injected lifecycle connection.
+// defaultAppEditLifecycleRunner is the real lifecycle connection.
 func defaultAppEditLifecycleRunner(ctx context.Context, store application.Store, args []string, plan application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, out, errOut io.Writer) ([]application.ProviderExecutionOutcome, error) {
 	return executeApplicationApplyLifecycleResults(ctx, store, args, plan, mutate, out, errOut)
 }
 
 // defaultAppEditSourceWriter writes confirmed intent to the authoritative source
-// without ever clobbering a concurrent or foreign edit. Repository writes are
-// guarded by an exact-byte compare and swap against the hydrated original,
-// rechecked immediately before the atomic replace. It must only ever run while
-// the Target lifecycle lock is held, which serializes every BaseHarbor process
-// that could touch this application's state.
+// without clobbering a concurrent edit: repository writes are guarded by a
+// byte compare-and-swap against the hydrated original, rechecked immediately
+// before the atomic replace. It must run while the Target lifecycle lock is held.
 func defaultAppEditSourceWriter(originalSource []byte) appEditSourceWriter {
 	return func(_ context.Context, resolved resolvedApplication, manifest application.Manifest) error {
 		if resolved.FromRepository && resolved.ManifestPath != "" {
@@ -73,10 +66,10 @@ func defaultAppEditSourceWriter(originalSource []byte) appEditSourceWriter {
 }
 
 // appEditRuntimeExecuteAuthority builds the production Edit executor. The
-// confirmed source is persisted exactly once, and only after a fresh Target
-// read, replan and consent revalidation succeed inside the existing lifecycle
-// lock. A source-write or revalidation failure prevents any lifecycle mutation;
-// a lifecycle failure still returns every effect genuinely observed before it.
+// confirmed source is persisted exactly once, only after a fresh Target read,
+// replan and consent revalidation succeed inside the lifecycle lock. A
+// revalidation or source-write failure prevents convergence; a lifecycle failure
+// still returns every effect genuinely observed before it.
 func appEditRuntimeExecuteAuthority(store application.Store, args []string, resolved resolvedApplication, originalSource []byte, authorities appEditAuthorities, out, errOut io.Writer, writeSource appEditSourceWriter, runLifecycle appEditLifecycleRunner) appEditExecuteAuthority {
 	if writeSource == nil {
 		writeSource = defaultAppEditSourceWriter(originalSource)
@@ -96,9 +89,8 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 		if desired.Target != plan.Target || desired.Target != resolved.Target.Name {
 			return nil, errAppApplyResultTargetMismatch
 		}
-		// Nothing above this point may write source or state. The fresh plan,
-		// consent and source check all happen inside the lifecycle lock below,
-		// immediately before the first state write.
+		// Nothing here may write source or state; plan, consent and source
+		// checks run inside the lifecycle lock below, before the first write.
 		mutate := func(ctx context.Context, locked resolvedApplication) error {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -134,8 +126,8 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 			if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {
 				return classifyProviderChangeConsent(err)
 			}
-			// Persist the confirmed source exactly once, under the lock, after
-			// the plan, consent and current ownership all revalidated.
+			// Persist the confirmed source exactly once, under the lock, after the
+			// plan, consent and current ownership all revalidated.
 			if err := writeSource(ctx, locked, desired.Manifest); err != nil {
 				return fmt.Errorf("persist confirmed application edit: %w", err)
 			}
@@ -150,12 +142,9 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 }
 
 // atomicWriteApplicationManifest replaces a repository manifest while preserving
-// the existing file permissions and never leaving a partial document. The
-// original bytes are rechecked immediately before the atomic rename so a change
-// that raced with the compare and staging step still aborts the write. The
-// residual window (an external non-cooperating writer renaming between the last
-// comparison and the rename) is closed for BaseHarbor processes by the Target
-// lifecycle lock that serializes every mutation of this source.
+// file permissions and leaving no partial document. The original bytes are
+// rechecked immediately before the rename; BaseHarbor's Target lifecycle lock
+// serializes concurrent writers of this source.
 func atomicWriteApplicationManifest(path string, original, data []byte) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -197,9 +186,8 @@ func atomicWriteApplicationManifest(path string, original, data []byte) error {
 }
 
 // defaultAppEditAuthorities assembles the production Edit authorities from the
-// accepted read, footprint, choice and impact planning owners. No authority
-// persists anything; only the Execute connection mutates state, once, through
-// the existing Apply lifecycle.
+// accepted read, footprint, choice and impact planning owners. Only the Execute
+// connection mutates state, once, through the existing Apply lifecycle.
 func defaultAppEditAuthorities(store application.Store, args []string) appEditAuthorities {
 	reresolve := func(ctx context.Context, target string) (resolvedApplication, error) {
 		resolved, err := resolveApplicationFunc(ctx, store, args, "edit")

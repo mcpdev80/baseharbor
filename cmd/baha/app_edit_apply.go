@@ -43,15 +43,11 @@ func appEditParseSource(loaded appEditLoaded) (application.Manifest, error) {
 	return manifest, nil
 }
 
-// appEditDesiredFromDecision changes only wizard-owned portable requirements.
-// Other manifest intent is copied from the hydrated source. Rich declarations
-// (HTTP, metrics, logs, OTLP) may be removed but are never invented from a bare
-// checkbox because their source fields are not represented by the compact UI.
 // appEditProjectRequirements projects the wizard-owned portable requirements
 // onto a fresh copy of the authoritative manifest. Other manifest intent is
 // carried unchanged. Rich declarations (HTTP, metrics, logs, OTLP) may be
-// retained but are never invented from a bare checkbox because their source
-// fields are not represented by the compact UI.
+// retained but are never invented from a bare checkbox, because the compact UI
+// does not represent their source fields.
 func appEditProjectRequirements(original application.Manifest, requirements []capability.Requirement) (application.Manifest, error) {
 	manifest := original
 	manifest.Services.SQL, manifest.Services.Cache, manifest.Services.KeyValue = false, false, false
@@ -231,9 +227,8 @@ func appEditSortedPreferences(in []application.ProviderPreference) []application
 }
 
 // appEditApplyConfirmed is the only Edit path that can reach mutation. The
-// accepted machine adapter re-reads, replans, re-authorizes and validates the
-// exact consent immediately before Execute. Stale plans and foreign ownership
-// therefore fail before source/runtime mutation.
+// machine adapter re-reads, replans, re-authorizes and revalidates consent before
+// Execute, so stale plans and foreign ownership fail before any write.
 func appEditApplyConfirmed(ctx context.Context, controller appWizardController, loaded appEditLoaded, consent application.ProviderChangeConsent, authorities appEditAuthorities) (appEditApplyResult, error) {
 	decision, confirmed := controller.Decision()
 	if !confirmed {
@@ -281,10 +276,10 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 	return output, changeErr
 }
 
-// runAppEditCommand consumes an already decided accepted controller. Central
-// command registration is deliberately owned by core-921. Consequence consent
-// is collected with the existing authority; No/Cancel/EOF never reach Execute.
-func runAppEditCommand(ctx context.Context, session appEditSession, in io.Reader, out io.Writer, authorities appEditAuthorities) (appEditApplyResult, error) {
+// runAppEditCommand applies a decided controller through the existing consent and
+// reconcile authorities. No/Cancel/EOF never reach Execute; command registration
+// stays with core-921.
+func runAppEditCommand(ctx context.Context, session appEditSession, reader *bufio.Reader, out io.Writer, authorities appEditAuthorities) (appEditApplyResult, error) {
 	decision, confirmed := session.Controller.Decision()
 	if !confirmed {
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, errAppWizardAbort
@@ -302,10 +297,10 @@ func runAppEditCommand(ctx context.Context, session appEditSession, in io.Reader
 	if out == nil {
 		out = io.Discard
 	}
-	if in == nil {
+	if reader == nil {
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, errAppWizardAbort
 	}
-	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, *session.Controller.impact)
+	consent, err := readProviderImpactAcknowledgements(reader, out, *session.Controller.impact)
 	if err != nil {
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, err
 	}
