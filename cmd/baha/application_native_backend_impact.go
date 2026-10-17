@@ -129,8 +129,6 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 }
 
-
-
 func sqlNativeMaterialInventoryAllowsPublicProjection(materials []application.ProviderMaterial, materialRoot string) bool {
 	allowed := map[string]bool{
 		filepath.Clean(filepath.Join(materialRoot, "runtime", "pg_hba.conf")):                   true,
