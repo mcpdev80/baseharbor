@@ -142,7 +142,7 @@ func appObservedPendingUpdate(target string, impact application.ProviderImpact, 
 // consumer query captured after this same lifecycle run. Existing SQL updates,
 // non-empty inventories and migrations cannot enter this success path.
 func appAttestedSQLNewConsumer(target string, impact application.ProviderImpact, evidence applicationApplyLifecycleEvidence) (application.ProviderExecutionOutcome, bool) {
-	if impact.Operation != "add" || impact.After == nil || impact.After.Kind != capability.ProviderPostgreSQL ||
+	if (impact.Operation != "add" && impact.Operation != "resume") || impact.After == nil || impact.After.Kind != capability.ProviderPostgreSQL ||
 		impact.After.Scope != capability.ScopeApplication || len(impact.Materials) != 0 ||
 		len(impact.Effects) != 0 || len(impact.ContinuationDependencies) != 0 ||
 		len(impact.Functions) == 0 || impact.After.Access != nil || len(impact.After.Locations) != 0 {
@@ -193,7 +193,7 @@ func appAttestedSQLNewConsumer(target string, impact application.ProviderImpact,
 	actual.Evidence = "owned SQL container changed from measured absent to running; canonical Target registry and native application consumer query attest realization"
 	return application.ProviderExecutionOutcome{
 		InstanceID: impact.InstanceID,
-		Operation:  "add",
+		Operation:  impact.Operation,
 		Status:     "applied",
 		Verified:   true,
 		Evidence:   "same-lock runtime transition, Target-owned provider and actual scoped SQL consumer query",

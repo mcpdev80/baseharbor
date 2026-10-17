@@ -800,4 +800,3 @@ func TestAppApplyObservedPendingSQLUpdatePreservesMeasuredPartial(t *testing.T) 
 		t.Fatalf("missing post-run observation yielded receipt: %+v", observed)
 	}
 }
-

@@ -760,6 +760,16 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err := available.Register(selected); err != nil {
 		t.Fatal(err)
 	}
+	// Retain the canonical binding of a stopped, never-realized SQL provider.
+	// This is a supported empty-provider resume, not a data migration or a
+	// fabricated runtime receipt; the actual daemon still has no SQL volume.
+	resource, err := capability.Resolve(m.Name, capability.Requirement{Kind: capability.SQL, Name: "default"}, capability.PostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := available.BindDeployment(resource, m.ApplicationID, m.Environment, selected.ID); err != nil {
+		t.Fatal(err)
+	}
 	if err := (capability.RegistryStore{Path: filepath.Join(stateRoot, "provider-registry.json")}).Save(available); err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +799,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	}
 	applied := false
 	for _, outcome := range result.Result.Outcomes {
-		if outcome.InstanceID == selected.ID && outcome.Operation == "add" &&
+		if outcome.InstanceID == selected.ID && (outcome.Operation == "add" || outcome.Operation == "resume") &&
 			outcome.Status == "applied" && outcome.Verified && outcome.After != nil &&
 			outcome.After.Verified && outcome.Evidence != "" {
 			applied = true
