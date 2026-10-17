@@ -137,6 +137,11 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	}
 
 	var creationUnlock func()
+	defer func() {
+		if creationUnlock != nil {
+			creationUnlock()
+		}
+	}()
 	for {
 		if controller.phase == appWizardNeeds {
 			controller, err = appNewEditSelection(ctx, reader, out, controller)
@@ -196,11 +201,6 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	defer func() {
-		if creationUnlock != nil {
-			creationUnlock()
-		}
-	}()
 	var savedUserProfile string
 	if stack.Created && stack.RawProfile != nil && stack.SaveScope == development.ProfileScopeUser {
 		savedUserProfile, err = development.SaveProfile(*stack.RawProfile, development.ProfileScopeUser, root)

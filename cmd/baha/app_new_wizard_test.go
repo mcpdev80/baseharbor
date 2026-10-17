@@ -330,11 +330,12 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 	}()
 	var out bytes.Buffer
 	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"partial-run", parent, "1"}, mode: "run"}
+	lifecycleErr := errors.New("fixture lifecycle failure")
 	appNewLifecycleExecutor = func(context.Context, application.Store, []string, io.Writer, io.Writer) error {
-		return errors.New("fixture lifecycle failure")
+		return lifecycleErr
 	}
 	err := runAppNewWizard(context.Background(), &out, &out)
-	if err == nil || !strings.Contains(err.Error(), "fixture lifecycle failure") {
+	if !errors.Is(err, lifecycleErr) {
 		t.Fatalf("partial lifecycle failure missing: %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(parent, "partial-run", "baseharbor.yaml")); statErr != nil {
@@ -342,6 +343,12 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 	}
 	if !strings.Contains(out.String(), "Project files were created; the authorized lifecycle did not complete.") {
 		t.Fatalf("partial result was not presented:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Provider change result:") {
+		t.Fatalf("shared result presenter was not used:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "status: applied") || strings.Contains(out.String(), "Lifecycle: VERIFIED") {
+		t.Fatalf("aggregate failure fabricated verified provider results:\n%s", out.String())
 	}
 }
 

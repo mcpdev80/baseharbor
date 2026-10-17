@@ -240,7 +240,22 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	err := appNewLifecycleExecutor(ctx, application.DefaultStore(), nil, out, errOut)
 	if err != nil {
 		fmt.Fprintln(errOut, "Project files were created; the authorized lifecycle did not complete.")
-		return fmt.Errorf("New lifecycle incomplete after project creation: %w", err)
+		// The error-only lifecycle cannot attest individual provider effects.
+		// Keep unobserved operations pending through the shared result owner;
+		// neither the preview nor the aggregate error is an execution receipt.
+		var presentErr error
+		if controller.impact != nil {
+			result, recordErr := application.RecordProviderChangeResult(*controller.impact, nil)
+			presentErr = recordErr
+			if recordErr == nil {
+				presentation, renderErr := appChangeResultPresenter(*controller.impact, result)
+				presentErr = renderErr
+				if renderErr == nil {
+					fmt.Fprint(errOut, presentation)
+				}
+			}
+		}
+		return fmt.Errorf("New lifecycle incomplete after project creation: %w", errors.Join(err, presentErr))
 	}
 	fmt.Fprintln(out, "Lifecycle: VERIFIED")
 	return nil
