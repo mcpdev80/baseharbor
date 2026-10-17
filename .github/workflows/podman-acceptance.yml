@@ -169,14 +169,14 @@ jobs:
           $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
           # Take the impact ID from a fresh, read-only plan immediately before
           # apply; generic --yes cannot authorize provider consequences.
-          plan_file="$(mktemp)"
-          chmod 600 "$plan_file"
-          $RUNNER_TEMP/baha app plan podman-ci -o json > "$plan_file"
-          consent="$(python3 scripts/ci-podman-typed-consent.py "$plan_file")"
-          rm -f "$plan_file"
-          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" timeout 180s \
+          apply_plan_file="$(mktemp)"
+          chmod 600 "$apply_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$apply_plan_file"
+          apply_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$apply_plan_file")"
+          rm -f "$apply_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$apply_consent" timeout 180s \
             $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
-          unset consent
+          unset apply_consent
 
           $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
           grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
@@ -185,12 +185,38 @@ jobs:
           $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
           grep -q '^READY$' /tmp/podman-app-doctor.txt
 
-          $RUNNER_TEMP/baha app down podman-ci | tee /tmp/podman-down.txt
-          $RUNNER_TEMP/baha app up podman-ci | tee /tmp/podman-up.txt
+          down_plan_file="$(mktemp)"
+          chmod 600 "$down_plan_file"
+          if $RUNNER_TEMP/baha --no-input app down podman-ci > "$down_plan_file" 2>/tmp/podman-down-plan-error.txt; then
+            echo "app down unexpectedly succeeded without typed provider consent" >&2
+            exit 1
+          fi
+          down_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" scope-output "$down_plan_file")"
+          rm -f "$down_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$down_consent" \
+            $RUNNER_TEMP/baha app down podman-ci | tee /tmp/podman-down.txt
+          unset down_consent
+
+          up_plan_file="$(mktemp)"
+          chmod 600 "$up_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$up_plan_file"
+          up_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$up_plan_file")"
+          rm -f "$up_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" \
+            $RUNNER_TEMP/baha app up podman-ci | tee /tmp/podman-up.txt
+          unset up_consent
+
           $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
           grep -q '^READY$' /tmp/podman-resume-doctor.txt
 
-          $RUNNER_TEMP/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+          destroy_plan_file="$(mktemp)"
+          chmod 600 "$destroy_plan_file"
+          $RUNNER_TEMP/baha app destroy podman-ci -o json > "$destroy_plan_file"
+          destroy_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" impact "$destroy_plan_file")"
+          rm -f "$destroy_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$destroy_consent" \
+            $RUNNER_TEMP/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+          unset destroy_consent
 
       - name: Reset runtime state before integration tests
         shell: bash
