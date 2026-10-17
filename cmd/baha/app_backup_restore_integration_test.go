@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
@@ -35,6 +38,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	}
 
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
+	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
 	if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
 		t.Fatalf("runtime up: %v", err)
 	}
@@ -197,4 +201,52 @@ services:
 	if bytes.Equal(certBefore, certAfter) {
 		t.Fatal("runtime mTLS client certificate was replayed instead of regenerated")
 	}
+}
+
+// Configure the real guided-up Target in the isolated test state. The native
+// test runtime environment selects the runner, not the product default Target.
+func configureAppBackupRuntimeTarget(t *testing.T, configRoot, dataRoot string) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", configRoot)
+	t.Setenv("XDG_DATA_HOME", dataRoot)
+	t.Setenv("BASEHARBOR_TARGET", "")
+	kind, err := backupFixtureRuntimeKind()
+	if err != nil {
+		t.Fatalf("native backup fixture runtime selection: %v", err)
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: "backup-recovery-ci",
+		Access: map[string]deployment.AccessDefinition{
+			"local-backup-ci": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			"backup-recovery-ci": {
+				Runtime: deployment.RuntimeDefinition{Provider: string(kind)},
+				Access:  deployment.TargetAccess{Reference: "local-backup-ci"},
+				Scope:   "local",
+			},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	target, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Name != cfg.DefaultTarget || target.RuntimeProvider != string(kind) || target.AccessProvider != "local" {
+		t.Fatalf("native guided-up Target mismatch: got %q/%q/%q, want %q/%q/local",
+			target.Name, target.RuntimeProvider, target.AccessProvider, cfg.DefaultTarget, kind)
+	}
+}
+func backupFixtureRuntimeKind() (string, error) {
+	kind, err := runtimecontract.ParseProviderKind(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")))
+	if err != nil {
+		return "", err
+	}
+	if string(kind) != "docker" && string(kind) != "podman" {
+		return "", fmt.Errorf("unsupported native backup test runtime %q", kind)
+	}
+	return string(kind), nil
 }
