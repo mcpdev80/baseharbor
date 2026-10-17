@@ -792,6 +792,20 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
 	if err != nil {
+		afterResolved, resolveErr := resolveApplication(context.Background(), application.DefaultStore(), []string{m.Name}, "plan")
+		if resolveErr == nil {
+			t.Logf("measured post-Edit fact: %+v", observeApplicationProviderFacts(context.Background(), afterResolved)[selected.ID])
+			t.Logf("native selected SQL registry: %+v", afterResolved.Manifest.Services)
+			if nativeRuntime, runtimeErr := detectRuntimeForTarget(ctx, target); runtimeErr == nil {
+				files := application.RuntimeFilesFor(application.DefaultStore(), afterResolved.Manifest)
+				inventory, probeErr := application.ObserveSQLConsumerInventory(ctx, application.NewRuntimeBackendProbeExecutor(nativeRuntime, files), files, afterResolved.Manifest, "default")
+				t.Logf("actual SQL consumer inventory: %+v probe=%v", inventory, probeErr)
+			} else {
+				t.Logf("native SQL runtime unavailable for post-Edit probe: %v", runtimeErr)
+			}
+		} else {
+			t.Logf("post-Edit application resolution failed: %v", resolveErr)
+		}
 		t.Fatalf("real Edit lifecycle did not converge: %v\nplan=%+v\nresult=%+v\n%s", err, result.Plan, result.Result, out.String())
 	}
 	if !result.Changed || result.Presentation == "" || result.Result.Status != "complete" {

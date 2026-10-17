@@ -778,7 +778,7 @@ func TestAppApplyObservedPendingSQLUpdatePreservesMeasuredPartial(t *testing.T) 
 		InstanceID: "sql-one",
 		Operation:  "update",
 		After:      &application.ProviderRealization{InstanceID: "sql-one", Target: "prod", Kind: capability.ProviderPostgreSQL, State: application.ProviderRunning},
-		Functions: []application.FunctionConsequence{{Consumer: "app/one", Function: "database.sql", Outcome: "changed"}},
+		Functions:  []application.FunctionConsequence{{Consumer: "app/one", Function: "database.sql", Outcome: "changed"}},
 	}
 	plan := appEditResultTestPlan(impact)
 	plan.Complete = false
