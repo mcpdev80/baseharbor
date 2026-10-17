@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"regexp"
 	"strconv"
-	"path/filepath"
 	"strings"
 	"unicode"
 )
