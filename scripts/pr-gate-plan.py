@@ -245,6 +245,29 @@ REGISTRATION_CI_REVIEWED_FILES = {
     'scripts/test_pr_registration_ci.py': 'added',
 }
 
+# Proposed exact qualification for core-917 (#975). This record becomes an
+# authority only after independent policy review and integration into develop.
+# Source inspection: PR review 5555616115. Focused + Docker/Podman evidence:
+# run 38995396298, source d8caa81f, integration e1a7f0cb. These references explain
+# the decision; current integration results must still be authenticated afresh.
+# Never accept the same paths with different source, statuses or extra changes.
+CORE_917_REVIEWED_HEAD = 'd8caa81f0c85bf4f9f48797408a9bfdb99c15b2e'
+CORE_917_REVIEWED_FILES = {
+    'cmd/baha/app_core_requirement.go': 'modified',
+    'cmd/baha/app_new_wizard.go': 'modified',
+    'cmd/baha/app_new_wizard_test.go': 'modified',
+    'cmd/baha/app_wizard_controller.go': 'modified',
+    'cmd/baha/application_backend_placement_owner.go': 'modified',
+    'cmd/baha/application_provider_preferences.go': 'added',
+    'internal/application/manifest.go': 'modified',
+    'internal/application/provider_preferences.go': 'added',
+    'internal/application/provider_preferences_test.go': 'added',
+    'internal/application/provider_registry.go': 'modified',
+    'internal/deployment/deployment_store.go': 'modified',
+    'internal/development/project.go': 'modified',
+}
+CORE_917_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -346,6 +369,36 @@ def plan(diff, requirements, mapping):
     def require(checks):
         for check in checks:
             validations[check['id']] = check
+    # Reuse the existing content/ancestry proof for strict target updates.
+    # Resolver validation proves the current PR integration parents and tree;
+    # this rule only covers the immutable reviewed source and clean target merges.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_917_REVIEWED_FILES) and
+            set(paths) == set(CORE_917_REVIEWED_FILES) and
+            all(ch.get('status') == CORE_917_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], CORE_917_REVIEWED_HEAD)):
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(WIZARD_BASE_CHECKS)
+        require([wizard_check('wizard-app-new-tests'), wizard_check('wizard-controller-tests')])
+        absent = sorted(CORE_917_REQUIRED_GATES - available)
+        if absent:
+            unresolved.append('reviewed core-917 gates absent from trusted catalog: ' + ', '.join(absent))
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(CORE_917_REQUIRED_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Require every listed validation and authenticated native gate '
+                    'for the exact current integration; prior evidence is not automatically reusable. '
+                    'If unresolved, final check MUST fail closed.'),
+                'reasons': ['exact core-917 source reviewed in #975 review 5555616115; '
+                            'New/controller/Guided/owner contracts and both native lifecycle gates; '
+                            'qualification evidence run 38995396298, not a path-wide exemption']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
     if (valid and not diff['broad_required'] and
