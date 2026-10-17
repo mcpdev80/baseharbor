@@ -497,7 +497,7 @@ func jsModuleTokens(data []byte) []string {
 			i++
 			continue
 		}
-		if c == ';' || c == '=' || c == ':' || c == ',' || c == '.' || c == '[' || c == '{' || c == '!' || c == '?' || c == '>' || c == '\n' {
+		if strings.ContainsRune(";=:,.[{}]!?>&|+-*%^~<", rune(c)) || c == '\n' {
 			tokens = append(tokens, string(c))
 		}
 		i++
@@ -519,7 +519,7 @@ func jsRegexCanStart(tokens []string) bool {
 		return true
 	}
 	switch tokens[last] {
-	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "CONTROL_CLOSE":
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE":
 		return true
 	}
 	return false

@@ -130,6 +130,48 @@ func TestImportDetectorRetainsDependencyMetadata(t *testing.T) {
 	t.Fatalf("dependency evidence was lost: %+v", findings)
 }
 
+// Operator and computed-member syntax must survive tokenization.
+func TestJSOperatorAndMemberMatrix(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         bool
+	}{
+		{"and regex", "const rx = ready && /import 'mongodb'/;", false},
+		{"or regex", "const rx = ready || /require('mongodb')/;", false},
+		{"ternary regex", "const rx = ready ? /import 'mongodb'/ : /require('mongodb')/;", false},
+		{"computed require", "obj[require]('mongodb');", false},
+		{"computed import", "obj[import]('mongodb');", false},
+		{"optional computed require", "obj?.[require]('mongodb');", false},
+		{"direct import", "const db = import('mongodb');", true},
+		{"direct require", "const db = require('mongodb');", true},
+		{"multiline import", "const db = import\n(\n'mongodb'\n);", true},
+		{"static declaration", "import {DB} from\n'mongodb';", true},
+		{"re-export declaration", "export {DB} from\n'mongodb';", true},
+		{"division and import", "const n = calculate(x) / other;\nconst db = require('mongodb');", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient("app.ts", data, []string{"mongodb"}); got != tc.want {
+				t.Fatalf("direct: got %t, want %t", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{"app.ts": data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, finding := range findings {
+				for _, evidence := range finding.Evidence {
+					got = got || evidence.Kind == EvidenceImport
+				}
+			}
+			if got != tc.want {
+				t.Fatalf("EvidenceImport: got %t, want %t; findings=%+v", got, tc.want, findings)
+			}
+		})
+	}
+}
+
 // The same cases must pass both syntax detection and actual EvidenceImport.
 func TestJSModuleReferenceMatrix(t *testing.T) {
 	cases := []struct {
