@@ -170,10 +170,10 @@ class Core754MCPExecutionTests(unittest.TestCase):
                 pattern = args[args.index('-list') + 1] if '-list' in args else args[args.index('-run') + 1]
                 name = next(name for name in names if name in pattern)
                 if '-list' in args:
-                    return CompletedProcess(args, 0, '' if name == missing else name + '\\n', '')
+                    return CompletedProcess(args, 0, '' if name == missing else name + '\n', '')
                 seen.append(name)
                 status = 'SKIP' if name == skipped else 'FAIL' if name == failed else 'PASS'
-                output = '=== RUN   ' + name + '\\n--- ' + status + ': ' + name + ' (0.00s)\\n'
+                output = '=== RUN   ' + name + '\n--- ' + status + ': ' + name + ' (0.00s)\n'
                 return CompletedProcess(args, 1 if name == failed else 0, output, '')
             with patch.object(runner.subprocess, 'run', side_effect=fake_run):
                 if missing:
