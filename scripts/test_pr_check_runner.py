@@ -146,10 +146,29 @@ class RunnerTests(unittest.TestCase):
 class Core754MCPExecutionTests(unittest.TestCase):
     def test_exact_two_tests_are_mandatory_in_existing_runner(self):
         profile = runner.WIZARD_TEST_FAMILIES['wizard-core754-mcp-tests']
-        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors\Z',
-                          r'^TestMCPReadEntryExpectedPreconditions\Z'), profile)
+        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors$',
+                          r'^TestMCPReadEntryExpectedPreconditions$'), profile)
         self.assertEqual([{'check': 'wizard-core754-mcp-tests'}],
                          runner.matrix({'required_validation_checks': [{'id': 'wizard-core754-mcp-tests'}]})['include'])
+
+    def test_actual_go_regex_selection_and_execution(self):
+        # No project imports or toolchain download; Go's regexp engine is
+        # exercised by the actual runner on an isolated package.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.com/core754fixture\n\ngo 1.22\n')
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            (pkg / 'core754_test.go').write_text(
+                'package main\n\nimport "testing"\n\n'
+                'func TestExpectedPreconditionsShareTypedCLIMCPErrors(t *testing.T) {}\n'
+                'func TestMCPReadEntryExpectedPreconditions(t *testing.T) {}\n'
+                'func TestExpectedPreconditionsShareTypedCLIMCPErrorsExtra(t *testing.T) { t.Fatal("extra matched") }\n'
+                'func TestMCPReadEntryExpectedPreconditionsExtra(t *testing.T) { t.Fatal("extra matched") }\n')
+            self.assertEqual(
+                ['TestExpectedPreconditionsShareTypedCLIMCPErrors',
+                 'TestMCPReadEntryExpectedPreconditions'],
+                runner.execute_validation('wizard-core754-mcp-tests', root))
 
     def test_actual_workflow_loads_runner_from_trusted_base(self):
         workflow = (Path(__file__).resolve().parent.parent /
