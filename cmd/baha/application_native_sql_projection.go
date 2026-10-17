@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -55,8 +56,8 @@ func sqlNativeGeneratedProjectionFile(path, root, classification string) bool {
 			return false
 		}
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 || len(data) > 1<<20 {
+	data, err := sqlReadBoundedProjection(path, info, sqlPublicProjectionOwner)
+	if err != nil {
 		return false
 	}
 	defer zeroBytes(data)
@@ -87,7 +88,11 @@ func sqlNativeGeneratedProjectionFile(path, root, classification string) bool {
 		} else if !sqlPublicProjectionOwner(original) {
 			return false
 		}
-		protected, err := os.ReadFile(source)
+		owner := sqlPublicProjectionOwner
+		if sourceProtected {
+			owner = func(info os.FileInfo) bool { return bhruntime.ProtectedStateOwner(source, info) }
+		}
+		protected, err := sqlReadBoundedProjection(source, original, owner)
 		if err != nil {
 			return false
 		}
@@ -111,4 +116,34 @@ func sqlNativeGeneratedProjectionFile(path, root, classification string) bool {
 	default:
 		return false
 	}
+}
+
+const sqlProjectionMaxBytes = 1 << 20
+
+// Validate the opened handle, not only a potentially stale pathname. Both
+// stat size and the actual read enforce the same bound.
+func sqlReadBoundedProjection(path string, expected os.FileInfo, owner func(os.FileInfo) bool) ([]byte, error) {
+	if expected.Size() <= 0 || expected.Size() > sqlProjectionMaxBytes || !owner(expected) {
+		return nil, os.ErrPermission
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(expected, opened) || !owner(opened) {
+		return nil, os.ErrPermission
+	}
+	data, err := io.ReadAll(io.LimitReader(file, sqlProjectionMaxBytes+1))
+	if err != nil || len(data) == 0 || len(data) > sqlProjectionMaxBytes {
+		zeroBytes(data)
+		return nil, os.ErrInvalid
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(expected, current) || !owner(current) {
+		zeroBytes(data)
+		return nil, os.ErrPermission
+	}
+	return data, nil
 }

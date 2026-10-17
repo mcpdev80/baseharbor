@@ -115,7 +115,7 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 			fact.Materials = []application.ProviderMaterial{}
 			fact.InventoryComplete = true
 			fact.Realization.Evidence += "; canonical Target project inspected: no owned SQL resources or prior protected SQL material"
-		} else if seen && fileErr == nil && (complete || sqlNativeGeneratedProjectionInventory(fact.Materials, materialRoot)) {
+		} else if seen && sqlNativeMaterialInventoryPermitsSQLProbe(fact.Materials, materialRoot, complete, fileErr) {
 			inventory, probeErr := application.ObserveSQLConsumerInventory(ctx,
 				application.NewRuntimeBackendProbeExecutor(provider, files),
 				files, resolved.Manifest, sqlName)
@@ -129,10 +129,9 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
 }
 
-// The material observer owns classification. A known renderer pathname cannot
-// override failed owner, link, permission, or certificate inspection.
-func sqlNativeFilesPermitCompleteInventory(complete bool, err error) bool {
-	return complete && err == nil
+// The same production gate is exercised by filesystem safety regressions.
+func sqlNativeMaterialInventoryPermitsSQLProbe(materials []application.ProviderMaterial, root string, complete bool, err error) bool {
+	return err == nil && (complete || sqlNativeGeneratedProjectionInventory(materials, root))
 }
 
 const sqlApplyReadLimit = 16
