@@ -50,10 +50,10 @@ func appApplyCommand(store application.Store) *cli.Command {
 // zero value reproduces the original error-only lifecycle: no observation, no
 // mutation slot.
 type applicationApplyLifecycleHooks struct {
-	// Mutate runs inside the Target lifecycle lock after admission,
-	// authorization and retirement preparation, and before the first
-	// deployment or source write. A failing mutation aborts with zero writes
-	// and never records a failed deployment.
+	// Mutate runs inside the Target lifecycle lock before provider
+	// authorization/retirement are resolved for the changed source and before
+	// the first deployment or source-independent lifecycle state write. A
+	// failing mutation aborts without convergence.
 	Mutate func(context.Context, resolvedApplication) error
 	// CollectEvidence captures authoritative provider facts around the run
 	// while the Target lock is held. The post-run observation uses a bounded
@@ -94,23 +94,16 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		return evidence, err
 	}
 	defer unlock()
-	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return evidence, execution.recordFailedDeployment(err)
-	}
-	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return evidence, err
-	}
-	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
-	if err != nil {
-		return evidence, execution.recordFailedDeployment(err)
-	}
 	if hooks.Mutate != nil {
 		if err := hooks.Mutate(ctx, execution.resolved); err != nil {
 			return evidence, err
 		}
-		// The lifecycle must converge the freshly persisted source, not the
-		// pre-edit manifest resolved before the lock. Re-read under the same
-		// Target lock and rebuild silently; no state has been written yet.
+		// Edit approval belongs to the confirmed desired source. Do not
+		// authorize or prepare retirement against the obsolete pre-edit
+		// manifest: that can manufacture a destructive removal before the
+		// confirmed requirement is persisted. Re-read under the same Target
+		// lock, then run the normal lifecycle authorities exactly once for the
+		// changed source.
 		reresolved, err := resolveApplication(ctx, store, args, "apply")
 		if err != nil {
 			return evidence, err
@@ -122,15 +115,16 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		if err != nil {
 			return evidence, err
 		}
-		// Re-authorize and re-prepare retirement for the freshly persisted state
-		// under the same lock, so later retirement sees the post-edit plan.
-		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-			return evidence, err
-		}
-		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
-		if err != nil {
-			return evidence, execution.recordFailedDeployment(err)
-		}
+	}
+	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return evidence, err
+	}
+	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+	if err != nil {
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if hooks.CollectEvidence {
 		evidence.Resolved = execution.resolved

@@ -384,10 +384,12 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 	outcomes, executionErr := apply(ctx, fresh.Plan, req.Consent)
 	result, resultErr := application.RecordProviderChangeResult(fresh.Plan, outcomes)
 	if resultErr != nil {
-		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
+		// Keep the stable machine classification without hiding either the
+		// lifecycle failure or a result-projection failure.
+		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr, resultErr)
 	}
 	if executionErr != nil {
-		return result, &appMachineError{Code: "partial"}
+		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr)
 	}
 	return result, nil
 }
