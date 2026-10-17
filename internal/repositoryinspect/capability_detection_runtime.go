@@ -4,7 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -136,7 +140,7 @@ func detectCapability(ctx context.Context, snapshot Snapshot, capability string,
 				Detail: "dependency metadata references a compatible client/provider",
 			})
 		}
-		if isSourceFile(base) && containsAny(lower, signals.imports) {
+		if isSourceFile(base) && sourceImportsCompatibleClient(base, data, signals.imports) {
 			suggested = append(suggested, Evidence{
 				Kind: EvidenceImport, Path: path,
 				Detail: "source imports/references a compatible client",
@@ -239,4 +243,638 @@ func likelySecretName(name string) bool {
 	return upper == "SECRET_KEY" || strings.Contains(upper, "PASSWORD") ||
 		strings.HasSuffix(upper, "_SECRET") || strings.HasSuffix(upper, "_TOKEN") ||
 		strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_PRIVATE_KEY")
+}
+
+var pythonImportLine = regexp.MustCompile(`^\s*(?:import\s+([A-Za-z_][\w.]*(?:\s+as\s+[A-Za-z_]\w*)?(?:\s*,\s*[A-Za-z_][\w.]*(?:\s+as\s+[A-Za-z_]\w*)?)*)|from\s+([A-Za-z_][\w.]*)\s+import\b)`)
+
+// Source import evidence requires syntax, not a matching comment or literal.
+func sourceImportsCompatibleClient(base string, data []byte, signals []string) bool {
+	matches := func(module string) bool {
+		module = strings.ToLower(strings.TrimSpace(module))
+		for _, signal := range signals {
+			signal = strings.ToLower(signal)
+			if module == signal || strings.HasPrefix(module, signal+".") || strings.HasPrefix(module, signal+"/") || strings.HasSuffix(module, "/"+signal) || strings.Contains(module, "/"+signal+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(base)) {
+	case ".go":
+		file, err := parser.ParseFile(token.NewFileSet(), base, data, parser.ImportsOnly)
+		if err != nil {
+			return false
+		}
+		for _, imp := range file.Imports {
+			module, err := strconv.Unquote(imp.Path.Value)
+			if err == nil && matches(module) {
+				return true
+			}
+		}
+	case ".py":
+		var quote byte
+		triple := false
+		var line strings.Builder
+		flush := func() bool {
+			m := pythonImportLine.FindStringSubmatch(line.String())
+			line.Reset()
+			if m == nil {
+				return false
+			}
+			if matches(m[2]) {
+				return true
+			}
+			for _, entry := range strings.Split(m[1], ",") {
+				fields := strings.Fields(entry)
+				if len(fields) > 0 && matches(fields[0]) {
+					return true
+				}
+			}
+			return false
+		}
+		for i := 0; i < len(data); i++ {
+			c := data[i]
+			if c == '\n' {
+				if flush() {
+					return true
+				}
+				continue
+			}
+			if quote != 0 {
+				if c == '\\' && !triple && i+1 < len(data) {
+					i++
+					continue
+				}
+				if c == quote {
+					if triple {
+						if i+2 < len(data) && data[i+1] == quote && data[i+2] == quote {
+							quote = 0
+							triple = false
+							i += 2
+						}
+					} else {
+						quote = 0
+					}
+				}
+				line.WriteByte(' ')
+				continue
+			}
+			if c == '\\' && i+1 < len(data) && data[i+1] == '\n' {
+				i++
+				line.WriteByte(' ')
+				continue
+			}
+			if c == ';' || c == ':' {
+				if flush() {
+					return true
+				}
+				continue
+			}
+			if c == '#' {
+				for i+1 < len(data) && data[i+1] != '\n' {
+					i++
+				}
+				continue
+			}
+			if c == '\'' || c == '"' {
+				quote = c
+				triple = i+2 < len(data) && data[i+1] == c && data[i+2] == c
+				if triple {
+					i += 2
+				}
+				line.WriteByte(' ')
+				continue
+			}
+			line.WriteByte(c)
+		}
+		return flush()
+	case ".java":
+		clean := javaImportSurface(data)
+		importDecl := regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)(?:\.\*)?\s*;[ \t]*$`)
+		for _, groups := range importDecl.FindAllStringSubmatch(clean, -1) {
+			module := groups[1]
+			for _, signal := range signals {
+				if matches(module) || strings.Contains(strings.ToLower(module), "."+strings.ToLower(signal)+".") {
+					return true
+				}
+			}
+		}
+	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		tokens := jsModuleTokens(data)
+		// Token positions, not physical lines, decide call arguments.
+		// Comments have already been removed by the lexer.
+		next := func(i int) int {
+			for i < len(tokens) && tokens[i] == "\n" {
+				i++
+			}
+			return i
+		}
+		previous := func(i int) string {
+			for i >= 0 && tokens[i] == "\n" {
+				i--
+			}
+			if i < 0 {
+				return ""
+			}
+			return tokens[i]
+		}
+		importing := false
+		for i, tok := range tokens {
+			if tok == ";" {
+				importing = false
+				continue
+			}
+			if tok == "import" || tok == "export" {
+				if previous(i-1) != "." && previous(i-1) != "?." {
+					importing = true
+				}
+			}
+			if tok == "require" || tok == "import" {
+				if previous(i-1) != "." && previous(i-1) != "?." {
+					open := next(i + 1)
+					if open < len(tokens) && tokens[open] == "(" {
+						arg := next(open + 1)
+						if arg < len(tokens) && strings.HasPrefix(tokens[arg], "STRING:") {
+							close := next(arg + 1)
+							if close < len(tokens) && tokens[close] == ")" && matches(strings.TrimPrefix(tokens[arg], "STRING:")) {
+								return true
+							}
+						}
+					}
+				}
+			}
+			if importing && (tok == "import" || tok == "from") {
+				j := next(i + 1)
+				if j < len(tokens) && strings.HasPrefix(tokens[j], "STRING:") && matches(strings.TrimPrefix(tokens[j], "STRING:")) {
+					return true
+				}
+			}
+			if importing && strings.HasPrefix(tok, "STRING:") {
+				importing = false
+			}
+		}
+	}
+	return false
+}
+
+func jsModuleTokens(data []byte) []string {
+	// Track control-condition parentheses separately from calls and grouping.
+	// Only a completed control condition can begin a regexp statement.
+	var controlParens []bool
+	var blockBraces []bool
+	var blockStarts []int // lexical start of each current brace scope
+	var tokens []string
+	for i := 0; i < len(data); {
+		c := data[i]
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			if i+1 < len(data) {
+				i += 2
+			}
+			continue
+		}
+		if c == '/' && jsRegexCanStart(tokens) {
+			i++
+			inClass := false
+			for i < len(data) && data[i] != '\n' {
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == '[' {
+					inClass = true
+				}
+				if data[i] == ']' {
+					inClass = false
+				}
+				if data[i] == '/' && !inClass {
+					i++
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, "LITERAL")
+			continue
+		}
+		if c == '\'' || c == '"' || c == 96 {
+			start, delimiter := i+1, c
+			i++
+			for i < len(data) {
+				if delimiter == 96 && data[i] == '$' && i+1 < len(data) && data[i+1] == '{' {
+					begin := i + 2
+					if end := jsInterpolationEnd(data, begin); end >= 0 {
+						tokens = append(tokens, jsModuleTokens(data[begin:end])...)
+						i = end + 1
+						continue
+					}
+				}
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == delimiter {
+					break
+				}
+				i++
+			}
+			if delimiter != 96 && i < len(data) {
+				tokens = append(tokens, "STRING:"+string(data[start:i]))
+			} else {
+				tokens = append(tokens, "LITERAL")
+			}
+			if i < len(data) {
+				i++
+			}
+			continue
+		}
+		if c >= '0' && c <= '9' {
+			for i < len(data) && (data[i] >= '0' && data[i] <= '9' || data[i] == '.') {
+				i++
+			}
+			tokens = append(tokens, "NUMBER")
+			continue
+		}
+		if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			start := i
+			for i < len(data) {
+				x := data[i]
+				if !(x == '_' || x == '$' || x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z' || x >= '0' && x <= '9') {
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, string(data[start:i]))
+			continue
+		}
+		if c == '{' {
+			prev := previousJSToken(tokens)
+			block := prev == "CONTROL_CLOSE" || prev == "else" || prev == "do" || prev == "try" || prev == "finally" || prev == "=>" || prev == ";" || prev == "BLOCK_CLOSE" || prev == "" || jsDeclarationBody(tokens, jsCurrentScopeStart(blockStarts))
+			blockBraces = append(blockBraces, block)
+			tokens = append(tokens, "{")
+			blockStarts = append(blockStarts, len(tokens))
+			i++
+			continue
+		}
+		if c == '}' {
+			kind := "}"
+			if len(blockBraces) > 0 {
+				if blockBraces[len(blockBraces)-1] {
+					kind = "BLOCK_CLOSE"
+				}
+				blockBraces = blockBraces[:len(blockBraces)-1]
+				blockStarts = blockStarts[:len(blockStarts)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
+			continue
+		}
+		if c == '(' {
+			control := false
+			if len(tokens) > 0 {
+				switch previousJSToken(tokens) {
+				case "if", "while", "for", "with", "switch", "catch":
+					control = true
+				}
+			}
+			controlParens = append(controlParens, control)
+			tokens = append(tokens, "(")
+			i++
+			continue
+		}
+		if c == ')' {
+			kind := ")"
+			if len(controlParens) > 0 {
+				if controlParens[len(controlParens)-1] {
+					kind = "CONTROL_CLOSE"
+				}
+				controlParens = controlParens[:len(controlParens)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
+			continue
+		}
+		if strings.ContainsRune(";=:,.[{}]!?>&|+-*%^~<", rune(c)) || c == '\n' {
+			tokens = append(tokens, string(c))
+		}
+		i++
+	}
+	return tokens
+}
+
+func jsRegexCanStart(tokens []string) bool {
+	if len(tokens) == 0 {
+		return true
+	}
+	// Ignore line breaks when deciding whether / begins a regex: a line
+	// break alone cannot turn division after an expression into a regex.
+	last := len(tokens) - 1
+	for last >= 0 && tokens[last] == "\n" {
+		last--
+	}
+	if last < 0 {
+		return true
+	}
+	switch tokens[last] {
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", "else", "do", ">", "<", "&", "|", "+", "-", "*", "%", "^", "~", "CONTROL_CLOSE", "BLOCK_CLOSE":
+		return true
+	}
+	return false
+}
+
+func previousJSToken(tokens []string) string {
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if tokens[i] != "\n" {
+			return tokens[i]
+		}
+	}
+	return ""
+}
+
+func javaImportSurface(data []byte) string {
+	out := make([]byte, len(data))
+	for i := range out {
+		out[i] = ' '
+	}
+	state := byte(0)
+	quote := byte(0)
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c == '\n' {
+			out[i] = '\n'
+			if state == 1 {
+				state = 0
+			}
+			continue
+		}
+		switch state {
+		case 1:
+			continue
+		case 2:
+			if c == '*' && i+1 < len(data) && data[i+1] == '/' {
+				i++
+				state = 0
+			}
+			continue
+		case 3:
+			if c == '\\' && i+1 < len(data) {
+				i++
+				continue
+			}
+			if c == quote {
+				state = 0
+			}
+			continue
+		case 4:
+			if c == '"' && i+2 < len(data) && data[i+1] == '"' && data[i+2] == '"' {
+				i += 2
+				state = 0
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			state = 1
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			state = 2
+			i++
+			continue
+		}
+		if c == '"' && i+2 < len(data) && data[i+1] == '"' && data[i+2] == '"' {
+			state = 4
+			i += 2
+			continue
+		}
+		if c == '"' || c == '\'' {
+			state = 3
+			quote = c
+			continue
+		}
+		out[i] = c
+	}
+	return string(out)
+}
+
+func jsInterpolationEnd(data []byte, start int) int {
+	depth := 1
+	var controlParens []bool
+	var tokens []string // Advance lexical context once, never rescan prefixes.
+	for i := start; i < len(data); {
+		c := data[i]
+		if c == ' ' || c == '\t' || c == '\r' {
+			i++
+			continue
+		}
+		if c == '\n' {
+			tokens = append(tokens, "\n")
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(data) && data[i+1] == '*' {
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			if i+1 < len(data) {
+				i += 2
+			}
+			continue
+		}
+		if c == 39 || c == 34 || c == 96 {
+			quote := c
+			i++
+			for i < len(data) {
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == quote {
+					i++
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, "LITERAL")
+			continue
+		}
+		if c == '/' && jsRegexCanStart(tokens) {
+			i++
+			inClass := false
+			for i < len(data) {
+				if data[i] == '\\' && i+1 < len(data) {
+					i += 2
+					continue
+				}
+				if data[i] == '[' {
+					inClass = true
+				}
+				if data[i] == ']' {
+					inClass = false
+				}
+				if data[i] == '/' && !inClass {
+					i++
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, "LITERAL")
+			continue
+		}
+		if c == '(' {
+			prev := previousJSToken(tokens)
+			control := false
+			switch prev {
+			case "if", "while", "for", "with", "switch", "catch":
+				control = true
+			}
+			controlParens = append(controlParens, control)
+			tokens = append(tokens, "(")
+			i++
+			continue
+		}
+		if c == ')' {
+			kind := ")"
+			if len(controlParens) > 0 {
+				if controlParens[len(controlParens)-1] {
+					kind = "CONTROL_CLOSE"
+				}
+				controlParens = controlParens[:len(controlParens)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
+			continue
+		}
+		if c == '{' {
+			depth++
+			tokens = append(tokens, "{")
+			i++
+			continue
+		}
+		if c == '}' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+			tokens = append(tokens, "}")
+			i++
+			continue
+		}
+		if c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			begin := i
+			i++
+			for i < len(data) {
+				x := data[i]
+				if !(x == '_' || x == '$' || x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z' || x >= '0' && x <= '9') {
+					break
+				}
+				i++
+			}
+			tokens = append(tokens, string(data[begin:i]))
+			continue
+		}
+		if c >= '0' && c <= '9' {
+			for i < len(data) && (data[i] >= '0' && data[i] <= '9' || data[i] == '.') {
+				i++
+			}
+			tokens = append(tokens, "NUMBER")
+			continue
+		}
+		tokens = append(tokens, string(c))
+		i++
+	}
+	return -1
+}
+func jsCurrentScopeStart(starts []int) int {
+	if len(starts) == 0 {
+		return 0
+	}
+	return starts[len(starts)-1]
+}
+
+func jsDeclarationBody(tokens []string, scopeStart int) bool {
+	// Consider statement boundaries only in the innermost lexical brace scope.
+	// An outer function declaration must not turn inner object expressions into blocks.
+	start := scopeStart
+	for i := scopeStart; i < len(tokens); i++ {
+		if tokens[i] == ";" || tokens[i] == "BLOCK_CLOSE" {
+			start = i + 1
+		}
+	}
+	declarationAt := func(i int) bool {
+		for i < len(tokens) && (tokens[i] == "\n" || tokens[i] == "export" || tokens[i] == "default" || tokens[i] == "async") {
+			i++
+		}
+		return i < len(tokens) && (tokens[i] == "function" || tokens[i] == "class")
+	}
+	if declarationAt(start) {
+		return true
+	}
+	// An ASI boundary can begin a new declaration without an explicit ';'.
+	// Do not mistake expressions such as "const f =\nfunction() {}" for
+	// declarations: the preceding expression must already be complete.
+	for i := start + 1; i < len(tokens); i++ {
+		if tokens[i] != "\n" || !declarationAt(i+1) {
+			continue
+		}
+		if jsCanCompleteExpression(tokens, start, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsCanCompleteExpression(tokens []string, start, end int) bool {
+	// A completed expression (not a token whitelist) can terminate a simple
+	// statement at a newline. Reject continuations/operators and unclosed
+	// expression delimiters in this lexical statement segment.
+	var parens, brackets int
+	for _, tok := range tokens[start:end] {
+		switch tok {
+		case "(":
+			parens++
+		case ")":
+			parens--
+		case "[":
+			brackets++
+		case "]":
+			brackets--
+		}
+	}
+	if parens != 0 || brackets != 0 {
+		return false
+	}
+	last := previousJSToken(tokens[:end])
+	if (last == "+" || last == "-") && end >= 2 {
+		prev := previousJSToken(tokens[:end-1])
+		if prev == last {
+			return true
+		} // postfix update expression
+	}
+	if last == "" {
+		return false
+	}
+	switch last {
+	case "=", "+", "-", "*", "/", "%", "!", "?", ":", ",", ".", "&", "|", "^", "~", ">", "<", "(", "[", "{", "return", "throw", "new", "const", "let", "var", "function", "class", "=>", "in", "instanceof", "await", "yield", "as", "satisfies":
+		return false
+	}
+	// Identifiers, literal values, completed access/call/index expressions,
+	// and postfix updates terminate a statement. Earlier operators may still
+	// occur inside an otherwise completed expression.
+	return true
 }
