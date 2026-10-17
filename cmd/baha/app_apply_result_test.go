@@ -800,3 +800,30 @@ func TestAppApplyObservedPendingSQLUpdatePreservesMeasuredPartial(t *testing.T) 
 		t.Fatalf("missing post-run observation yielded receipt: %+v", observed)
 	}
 }
+
+func TestAppEditApplyConfirmedConsentSurfaceIgnoresOnlyEvidenceAndIdentity(t *testing.T) {
+	base := application.ProviderImpactPlan{
+		Version: application.ProviderImpactVersion, Target: "dev", Revision: "before", PlanID: "before-id", Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{
+			InstanceID: "sql-a", Operation: "resume", Scenario: "provider-changed", Selection: "automatic",
+			Before: application.ProviderRealization{InstanceID: "sql-a", Kind: capability.ProviderPostgreSQL, Target: "dev", Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor, Owner: "app-a", State: application.ProviderStoppedOwned, Verified: true, Evidence: "preview"},
+			After: &application.ProviderRealization{InstanceID: "sql-a", Kind: capability.ProviderPostgreSQL, Target: "dev", Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor, Owner: "app-a", State: application.ProviderRunning},
+			Functions: []application.FunctionConsequence{{Consumer: "application/app-a/dev", Function: "database.sql", Via: []string{"sql-a"}, Required: true, Outcome: "changed", Evidence: "preview evidence"}},
+			Materials: []application.MaterialConsequence{}, Effects: []application.OperationalConsequence{},
+		}},
+	}
+	current := base
+	current.Revision, current.PlanID = "after", "after-id"
+	current.Impacts = append([]application.ProviderImpact(nil), base.Impacts...)
+	current.Impacts[0].Before.Evidence = "authoritative runtime"
+	current.Impacts[0].Functions = append([]application.FunctionConsequence(nil), base.Impacts[0].Functions...)
+	current.Impacts[0].Functions[0].Evidence = "authoritative binding"
+	if !sameAppEditAuthorizationSurface(base, current) { t.Fatal("evidence-only post-mutation change invalidated confirmed authorization") }
+	current.Impacts[0].Operation = "update"
+	if sameAppEditAuthorizationSurface(base, current) { t.Fatal("changed provider operation reused stale consent") }
+	current = base; current.PlanID, current.Revision, current.ConfirmationsRequired = "after-id", "after", 2
+	if sameAppEditAuthorizationSurface(base, current) { t.Fatal("changed confirmation requirement reused stale consent") }
+	current = base; current.PlanID, current.Revision = "after-id", "after"
+	current.Impacts = append([]application.ProviderImpact(nil), base.Impacts...); current.Impacts[0].Before.Verified = false
+	if sameAppEditAuthorizationSurface(base, current) { t.Fatal("changed verification state reused stale consent") }
+}

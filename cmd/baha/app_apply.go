@@ -60,6 +60,10 @@ type applicationApplyLifecycleHooks struct {
 	// independent read-only context so cancellation or a run error preserves
 	// whatever partial effects really happened.
 	CollectEvidence bool
+	// ApprovedPlan carries an already-confirmed Edit impact through the same
+	// invocation. After mutation it may be rebound only when the freshly
+	// resolved authorization surface is unchanged.
+	ApprovedPlan *application.ProviderImpactPlan
 }
 
 // applicationApplyLifecycleEvidence binds observed provider facts and the
@@ -126,7 +130,11 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		if err != nil {
 			return evidence, err
 		}
-		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		if hooks.ApprovedPlan != nil {
+			if err := authorizeConfirmedApplicationEdit(ctx, execution.resolved, *hooks.ApprovedPlan, applicationInput(ctx, runtimeInput), out); err != nil {
+				return evidence, err
+			}
+		} else if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 			return evidence, err
 		}
 		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)

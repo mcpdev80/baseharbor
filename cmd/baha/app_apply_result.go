@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"path/filepath"
@@ -59,11 +61,81 @@ func executeApplicationApplyLifecycleResults(ctx context.Context, store applicat
 	if resolved.Target.Name != plan.Target {
 		return nil, errAppApplyResultTargetMismatch
 	}
-	evidence, runErr := applicationApplyLifecycleRunWithHooks(ctx, store, args, out, errOut, applicationApplyLifecycleHooks{
+	hooks := applicationApplyLifecycleHooks{
 		Mutate:          mutate,
 		CollectEvidence: true,
-	})
+	}
+	if providerChangeConsentFromContext(ctx) != nil {
+		approved := plan
+		hooks.ApprovedPlan = &approved
+	}
+	evidence, runErr := applicationApplyLifecycleRunWithHooks(ctx, store, args, out, errOut, hooks)
 	return appApplyObservedOutcomes(plan, evidence), runErr
+}
+
+
+
+// authorizeConfirmedApplicationEdit reuses an Edit acknowledgement only when
+// the post-mutation plan differs solely in plan/revision identity or evidence
+// text. Any changed consequence, verification state or confirmation requirement
+// remains stale and requires fresh consent.
+func authorizeConfirmedApplicationEdit(ctx context.Context, resolved resolvedApplication, approved application.ProviderImpactPlan, in io.Reader, out io.Writer) error {
+	consent := providerChangeConsentFromContext(ctx)
+	if consent == nil {
+		return authorizeApplicationProviderChanges(ctx, resolved, in, out)
+	}
+	if err := application.ValidateProviderChangeConsent(approved, *consent); err != nil {
+		return classifyProviderChangeConsent(err)
+	}
+	current, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	if current.ProviderPlan.Impact == nil || !sameAppEditAuthorizationSurface(approved, *current.ProviderPlan.Impact) {
+		return classifyProviderChangeConsent(&application.ProviderChangeError{Code: "stale-impact-consent"})
+	}
+	forwarded := *consent
+	forwarded.PlanID = current.ProviderPlan.Impact.PlanID
+	return authorizeApplicationProviderChanges(withProviderChangeConsent(ctx, &forwarded), resolved, in, out)
+}
+
+func sameAppEditAuthorizationSurface(left, right application.ProviderImpactPlan) bool {
+	l, err := appEditAuthorizationSurface(left)
+	if err != nil {
+		return false
+	}
+	r, err := appEditAuthorizationSurface(right)
+	return err == nil && bytes.Equal(l, r)
+}
+
+func appEditAuthorizationSurface(plan application.ProviderImpactPlan) ([]byte, error) {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	stripAppEditAuthorizationMetadata(value, true)
+	return json.Marshal(value)
+}
+
+func stripAppEditAuthorizationMetadata(value any, top bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if key == "evidence" || top && (key == "plan_id" || key == "revision") {
+				delete(typed, key)
+				continue
+			}
+			stripAppEditAuthorizationMetadata(child, false)
+		}
+	case []any:
+		for _, child := range typed {
+			stripAppEditAuthorizationMetadata(child, false)
+		}
+	}
 }
 
 // observeApplyLifecycleAfter does the post-run read-only observation on a

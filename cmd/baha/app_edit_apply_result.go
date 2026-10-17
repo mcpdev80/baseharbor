@@ -177,7 +177,11 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 			}
 			return nil
 		}
-		outcomes, runErr := runLifecycle(ctx, store, args, plan, mutate, out, errOut)
+		// Carry the freshly validated Edit consent only for this lifecycle
+		// invocation; the lifecycle rebinds it only to an unchanged authorization
+		// surface after the source mutation.
+		lifecycleCtx := withProviderChangeConsent(ctx, &consent)
+		outcomes, runErr := runLifecycle(lifecycleCtx, store, args, plan, mutate, out, errOut)
 		if runErr != nil {
 			return outcomes, runErr
 		}
