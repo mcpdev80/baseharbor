@@ -115,7 +115,7 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 			fact.Materials = []application.ProviderMaterial{}
 			fact.InventoryComplete = true
 			fact.Realization.Evidence += "; canonical Target project inspected: no owned SQL resources or prior protected SQL material"
-		} else if seen && complete && fileErr == nil {
+		} else if seen && fileErr == nil && (complete || sqlNativeMaterialInventoryAllowsPublicProjection(fact.Materials, materialRoot)) {
 			inventory, probeErr := application.ObserveSQLConsumerInventory(ctx,
 				application.NewRuntimeBackendProbeExecutor(provider, files),
 				files, resolved.Manifest, sqlName)
@@ -127,6 +127,30 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 		}
 	}
 	sort.Slice(fact.Materials, func(i, j int) bool { return fact.Materials[i].ID < fact.Materials[j].ID })
+}
+
+
+
+func sqlNativeMaterialInventoryAllowsPublicProjection(materials []application.ProviderMaterial, materialRoot string) bool {
+	allowed := map[string]bool{
+		filepath.Clean(filepath.Join(materialRoot, "runtime", "pg_hba.conf")):                   true,
+		filepath.Clean(filepath.Join(materialRoot, "runtime", "server-cert.pem")):               true,
+		filepath.Clean(filepath.Join(materialRoot, "runtime", "server-key.pem")):                true,
+		filepath.Clean(filepath.Join(materialRoot, "service-access", "pki", "ca.pem")):          true,
+		filepath.Clean(filepath.Join(materialRoot, "service-access", "pki", "server-cert.pem")): true,
+	}
+	for _, material := range materials {
+		if material.Verified {
+			continue
+		}
+		if material.Location == nil || material.Location.Kind != "path" {
+			return false
+		}
+		if !allowed[filepath.Clean(material.Location.Reference)] {
+			return false
+		}
+	}
+	return true
 }
 
 const sqlApplyReadLimit = 16
