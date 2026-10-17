@@ -814,6 +814,20 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		catalog.Consumer != "application/"+m.ApplicationID+"/"+m.Environment {
 		t.Fatalf("actual application SQL consumer/catalog not verified: %+v %v", catalog, err)
 	}
+	nativeFact := application.ProviderImpactFact{Realization: application.ProviderRealization{Owner: m.ApplicationID}}
+	observeNativeBackendImpact(ctx, resolved, selected, &nativeFact)
+	if !nativeFact.InventoryComplete {
+		t.Fatalf("native post-edit consumer and material inventory incomplete: %+v", nativeFact)
+	}
+	hasOwnedVolume := false
+	for _, material := range nativeFact.Materials {
+		if material.Kind == "persistent-provider-data" && material.Verified && material.Location != nil {
+			hasOwnedVolume = true
+		}
+	}
+	if !hasOwnedVolume {
+		t.Fatalf("native runtime did not observe its protected SQL data volume: %+v", nativeFact.Materials)
+	}
 	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, resolved.Manifest)
 	if err != nil {
 		t.Fatal(err)

@@ -101,6 +101,8 @@ func appApplyObservedOutcomes(plan application.ProviderImpactPlan, evidence appl
 		}
 		if outcome, ok := appAttestedRealizationOutcome(target, impact, evidence); ok {
 			outcomes = append(outcomes, outcome)
+		} else if outcome, ok := appAttestedSQLNewConsumer(target, impact, evidence); ok {
+			outcomes = append(outcomes, outcome)
 		} else if outcome, ok := appObservedPendingUpdate(target, impact, evidence); ok {
 			outcomes = append(outcomes, outcome)
 		}
@@ -132,6 +134,69 @@ func appObservedPendingUpdate(target string, impact application.ProviderImpact, 
 		Materials:  []application.MaterialOutcome{},
 		Evidence:   "runtime state observed after Apply; SQL consumer and data consequences remain unverified",
 		After:      &observed,
+	}, true
+}
+
+// Attest only a new application-owned SQL realization with real native
+// container transition, canonical registry ownership and a credential-bound
+// consumer query captured after this same lifecycle run. Existing SQL updates,
+// non-empty inventories and migrations cannot enter this success path.
+func appAttestedSQLNewConsumer(target string, impact application.ProviderImpact, evidence applicationApplyLifecycleEvidence) (application.ProviderExecutionOutcome, bool) {
+	if impact.Operation != "add" || impact.After == nil || impact.After.Kind != capability.ProviderPostgreSQL ||
+		impact.After.Scope != capability.ScopeApplication || len(impact.Materials) != 0 ||
+		len(impact.Effects) != 0 || len(impact.ContinuationDependencies) != 0 ||
+		len(impact.Functions) == 0 || impact.After.Access != nil || len(impact.After.Locations) != 0 {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	before, beforeKnown := evidence.Before[impact.InstanceID]
+	after, afterKnown := evidence.After[impact.InstanceID]
+	if !beforeKnown || !afterKnown || !appFactMeasuredAbsent(target, before) || !appFactMeasuredRunning(target, after) {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	actual, ok := appAuthoritativeRealization(evidence.Registry, target, impact.InstanceID, after)
+	inventory, measured := evidence.SQL[impact.InstanceID]
+	if !ok || !measured || !inventory.Empty ||
+		inventory.Consumer == "" || inventory.Instance == "" || inventory.Evidence == "" ||
+		actual.Owner == "" || actual.Owner != "target/"+target && actual.Scope != capability.ScopeApplication {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	matchesOwner := false
+	for _, instance := range evidence.Registry.Instances {
+		if instance.ID == impact.InstanceID && instance.OwnerApplicationID != "" &&
+			inventory.Consumer == "application/"+instance.OwnerApplicationID+"/"+instance.OwnerEnvironment &&
+			instance.Scope == capability.ScopeApplication && instance.Ownership == capability.OwnershipBaseHarbor {
+			matchesOwner = true
+		}
+	}
+	if !matchesOwner {
+		return application.ProviderExecutionOutcome{}, false
+	}
+	functions := make([]application.ProviderFunctionOutcome, 0, len(impact.Functions))
+	for _, need := range impact.Functions {
+		// A newly reachable consumer SELECT is measured; runtime/catalog
+		// checks cannot attest handoff, expiry or custom behavior.
+		if need.Consumer != inventory.Consumer || need.Function != string(capability.SQL) ||
+			len(need.Via) != 1 || need.Via[0] != impact.InstanceID ||
+			need.ValidUntil != "" || need.Behavior != "" || need.Transition != nil {
+			return application.ProviderExecutionOutcome{}, false
+		}
+		functions = append(functions, application.ProviderFunctionOutcome{
+			Consumer: inventory.Consumer, InstanceID: impact.InstanceID,
+			Function: string(capability.SQL), Outcome: "changed", Verified: true,
+			Evidence: inventory.Evidence,
+		})
+	}
+	actual.Verified = true
+	actual.Evidence = "owned SQL container changed from measured absent to running; canonical Target registry and native application consumer query attest realization"
+	return application.ProviderExecutionOutcome{
+		InstanceID: impact.InstanceID,
+		Operation: "add",
+		Status: "applied",
+		Verified: true,
+		Evidence: "same-lock runtime transition, Target-owned provider and actual scoped SQL consumer query",
+		After: &actual,
+		Functions: functions,
+		Materials: []application.MaterialOutcome{},
 	}, true
 }
 

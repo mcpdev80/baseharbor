@@ -71,6 +71,7 @@ type applicationApplyLifecycleEvidence struct {
 	Registry capability.Registry
 	Before   map[string]application.ProviderFact
 	After    map[string]application.ProviderFact
+	SQL      map[string]application.SQLConsumerInventory
 }
 
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
@@ -140,6 +141,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 			evidence.After = observeApplyLifecycleAfter(ctx, evidence.Resolved)
 			if registry, err := appProviderRegistryFunc(evidence.Resolved); err == nil {
 				evidence.Registry = registry
+				evidence.SQL = observeNativeSQLApplyResults(ctx, evidence.Resolved, registry)
 			}
 		}()
 	}

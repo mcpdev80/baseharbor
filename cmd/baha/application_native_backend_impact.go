@@ -61,6 +61,16 @@ func observeNativeBackendImpact(ctx context.Context, resolved resolvedApplicatio
 	for _, resource := range selected {
 		selectedNames[resource.Kind+"/"+resource.Name] = true
 	}
+	if sqlName != "" {
+		// The desired canonical renderer identifies which owned resources to
+		// inspect. Only resources actually returned by the native inspector
+		// become recorded materials; desired definitions are not receipts.
+		if desired, err := application.NativeBackendInstanceResources(resolved.Manifest, files, instance); err == nil {
+			for _, resource := range desired {
+				selectedNames[resource.Kind+"/"+resource.Name] = true
+			}
+		}
+	}
 	fact.Realization.Supported, fact.Realization.Verified = true, true
 	fact.Realization.Evidence = "existing canonical native backend renderer and exact owned runtime inspection"
 	for _, resource := range actual {
