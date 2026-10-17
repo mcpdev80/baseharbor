@@ -643,6 +643,7 @@ jobs:
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_authenticated_results.py
+          python3 scripts/test_pr_actions_summary.py
           python3 scripts/test_pr_gate_dependencies.py
           git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
           python3 scripts/test_pr_selected_runtime_matrix.py
