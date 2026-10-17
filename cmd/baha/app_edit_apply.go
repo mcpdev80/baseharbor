@@ -47,16 +47,13 @@ func appEditParseSource(loaded appEditLoaded) (application.Manifest, error) {
 // Other manifest intent is copied from the hydrated source. Rich declarations
 // (HTTP, metrics, logs, OTLP) may be removed but are never invented from a bare
 // checkbox because their source fields are not represented by the compact UI.
-func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision) (appEditDesired, error) {
-	if decision.Target == "" || decision.Target != loaded.Target {
-		return appEditDesired{}, errors.New("confirmed edit decision has the wrong Target")
-	}
-	manifest, err := appEditParseSource(loaded)
-	if err != nil {
-		return appEditDesired{}, err
-	}
-	original := manifest
-
+// appEditProjectRequirements projects the wizard-owned portable requirements
+// onto a fresh copy of the authoritative manifest. Other manifest intent is
+// carried unchanged. Rich declarations (HTTP, metrics, logs, OTLP) may be
+// retained but are never invented from a bare checkbox because their source
+// fields are not represented by the compact UI.
+func appEditProjectRequirements(original application.Manifest, requirements []capability.Requirement) (application.Manifest, error) {
+	manifest := original
 	manifest.Services.SQL, manifest.Services.Cache, manifest.Services.KeyValue = false, false, false
 	manifest.Services.DocumentDatabase = false
 	manifest.Services.MessagingQueue, manifest.Services.MessagingPubSub, manifest.Services.MessagingStream = false, false, false
@@ -75,9 +72,9 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 	manifest.Telemetry.OTLP = nil
 
 	seen := map[capability.Requirement]bool{}
-	for _, requirement := range decision.Requirements {
+	for _, requirement := range requirements {
 		if requirement.Kind == "" || requirement.Name == "" || seen[requirement] {
-			return appEditDesired{}, fmt.Errorf("invalid or duplicate requirement %s/%s", requirement.Kind, requirement.Name)
+			return application.Manifest{}, fmt.Errorf("invalid or duplicate requirement %s/%s", requirement.Kind, requirement.Name)
 		}
 		seen[requirement] = true
 		switch requirement.Kind {
@@ -104,31 +101,31 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 		case capability.ExposureHTTP:
 			item, ok := appEditExposure(original, requirement.Name)
 			if !ok {
-				return appEditDesired{}, fmt.Errorf("HTTP exposure %q cannot be invented by app edit", requirement.Name)
+				return application.Manifest{}, fmt.Errorf("HTTP exposure %q cannot be invented by app edit", requirement.Name)
 			}
 			manifest.Exposures = append(manifest.Exposures, item)
 		case capability.Metrics:
 			item, ok := appEditMetric(original, requirement.Name)
 			if !ok {
-				return appEditDesired{}, fmt.Errorf("metrics source %q cannot be invented by app edit", requirement.Name)
+				return application.Manifest{}, fmt.Errorf("metrics source %q cannot be invented by app edit", requirement.Name)
 			}
 			manifest.Metrics.Sources = append(manifest.Metrics.Sources, item)
 		case capability.Logs:
 			if !containsString(original.Logs.Collect, requirement.Name) {
-				return appEditDesired{}, fmt.Errorf("log source %q cannot be invented by app edit", requirement.Name)
+				return application.Manifest{}, fmt.Errorf("log source %q cannot be invented by app edit", requirement.Name)
 			}
 			manifest.Logs.Collect = append(manifest.Logs.Collect, requirement.Name)
 		case capability.TelemetryOTLP:
 			if original.Telemetry.OTLP == nil {
-				return appEditDesired{}, errors.New("OTLP details cannot be invented by app edit")
+				return application.Manifest{}, errors.New("OTLP details cannot be invented by app edit")
 			}
 			copyOTLP := *original.Telemetry.OTLP
 			copyOTLP.Signals = append([]string(nil), original.Telemetry.OTLP.Signals...)
 			manifest.Telemetry.OTLP = &copyOTLP
 		case capability.Traces:
-			return appEditDesired{}, errors.New("standalone traces selection is not representable by the current manifest contract")
+			return application.Manifest{}, errors.New("standalone traces selection is not representable by the current manifest contract")
 		default:
-			return appEditDesired{}, fmt.Errorf("unsupported edit requirement %s/%s", requirement.Kind, requirement.Name)
+			return application.Manifest{}, fmt.Errorf("unsupported edit requirement %s/%s", requirement.Kind, requirement.Name)
 		}
 	}
 
@@ -140,10 +137,29 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 	if manifest.Services.Secrets {
 		manifest.Secrets = original.Secrets
 	} else if len(original.Secrets.Required) > 0 || len(original.Secrets.Optional) > 0 {
-		return appEditDesired{}, errors.New("managed secrets cannot be deselected while authored secret requirements remain")
+		return application.Manifest{}, errors.New("managed secrets cannot be deselected while authored secret requirements remain")
+	}
+	return manifest, nil
+}
+
+func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision) (appEditDesired, error) {
+	if decision.Target == "" || decision.Target != loaded.Target {
+		return appEditDesired{}, errors.New("confirmed edit decision has the wrong Target")
+	}
+	manifest, err := appEditParseSource(loaded)
+	if err != nil {
+		return appEditDesired{}, err
+	}
+	manifest, err = appEditProjectRequirements(manifest, decision.Requirements)
+	if err != nil {
+		return appEditDesired{}, err
 	}
 
 	preferences := make([]application.ProviderPreference, 0, len(decision.Preferences))
+	seen := map[capability.Requirement]bool{}
+	for _, requirement := range decision.Requirements {
+		seen[requirement] = true
+	}
 	for _, preference := range decision.Preferences {
 		if preference.Target != decision.Target || !seen[preference.Requirement] {
 			return appEditDesired{}, errors.New("provider preference is not bound to the confirmed Target and requirement")
