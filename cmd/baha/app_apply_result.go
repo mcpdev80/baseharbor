@@ -73,8 +73,6 @@ func executeApplicationApplyLifecycleResults(ctx context.Context, store applicat
 	return appApplyObservedOutcomes(plan, evidence), runErr
 }
 
-
-
 // authorizeConfirmedApplicationEdit reuses an Edit acknowledgement only when
 // the post-mutation plan differs solely in plan/revision identity or evidence
 // text. Any changed consequence, verification state or confirmation requirement
