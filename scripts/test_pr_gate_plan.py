@@ -33,6 +33,130 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+class Core917ExactQualificationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.repository = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Core917 policy fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+        for name, status in planner.CORE_917_REVIEWED_FILES.items():
+            path = self.repository / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if status == 'modified':
+                path.write_text('baseline\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted base')
+        self.git('branch', 'trusted')
+        self.git('checkout', '-qb', 'source')
+        for name in planner.CORE_917_REVIEWED_FILES:
+            (self.repository / name).write_text('reviewed source\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'reviewed twelve-file source')
+        self.reviewed = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'trusted')
+        (self.repository / 'trusted-policy.txt').write_text('accepted policy\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'advance trusted target')
+        self.target = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'source')
+        self.git('merge', '--no-ff', '-qm', 'clean target integration', 'trusted')
+        self.head = self.git('rev-parse', 'HEAD')
+        rspec = importlib.util.spec_from_file_location('new_owner_diff', ROOT / 'pr-diff-base.py')
+        self.resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(self.resolver)
+        self.proof = planner.core752_reviewed_merge_chain
+
+    def git(self, *args):
+        result = subprocess.run(['git', '-C', str(self.repository), *args],
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def resolved_diff(self, head):
+        tree = self.git('merge-tree', '--write-tree', self.target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', self.target, '-p', head,
+                               '-m', 'exact PR integration')
+        actual = self.resolver.resolve_pr_diff(self.repository, self.target, head, integration)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        return actual
+
+    def qualify(self, actual, requirements=REQ):
+        def proof(target, head, reviewed=None):
+            return self.proof(target, head, reviewed, self.repository)
+        with patch.object(planner, 'CORE_917_REVIEWED_HEAD', self.reviewed), \
+             patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+            return planner.plan(actual, requirements, MAP)
+
+    def test_exact_source_and_real_clean_trusted_merge_require_all_checks(self):
+        for head in (self.reviewed, self.head):
+            with self.subTest(head=head):
+                actual = self.resolved_diff(head)
+                result = self.qualify(actual)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(planner.CORE_917_REQUIRED_GATES, set(result['selected_gates']))
+                self.assertEqual({'source-contracts', 'cli-guided-tests', 'cli-vet', 'cli-build',
+                                  'cli-gofmt', 'wizard-app-new-tests', 'wizard-controller-tests'},
+                                 {check['id'] for check in result['required_validation_checks']})
+        self.assertEqual(self.target, self.resolved_diff(self.head)['merge_base_sha'])
+
+    def test_same_paths_changed_content_and_forged_merge_are_rejected(self):
+        name = 'internal/deployment/deployment_store.go'
+        (self.repository / name).write_text('unreviewed mutation\n')
+        self.git('add', '.')
+        tree = self.git('write-tree')
+        ordinary = self.git('commit-tree', tree, '-p', self.head, '-m', 'unreviewed followup')
+        forged = self.git('commit-tree', tree, '-p', self.reviewed, '-p', self.target,
+                          '-m', 'unreviewed tree in nominal trusted merge')
+        for head in (ordinary, forged):
+            with self.subTest(head=head):
+                actual = self.resolved_diff(head)
+                self.assertEqual(set(planner.CORE_917_REVIEWED_FILES),
+                                 {change['path'] for change in actual['changes']})
+                self.assertEqual('unresolved', self.qualify(actual)['coverage_status'])
+
+    def test_extra_renamed_deleted_paths_and_status_mismatch_are_rejected(self):
+        actual = self.resolved_diff(self.head)
+        variants = []
+        added = json.loads(json.dumps(actual))
+        added['changes'].append({'path': 'internal/deployment/extra.go', 'status': 'added'})
+        variants.append(added)
+        for change in ({'path': 'internal/deployment/deployment_store.go', 'status': 'deleted'},
+                       {'path': 'internal/deployment/deployment_store.go', 'status': 'added'},
+                       {'old_path': 'internal/deployment/deployment_store.go',
+                        'new_path': 'internal/deployment/renamed.go', 'status': 'renamed'}):
+            bad = json.loads(json.dumps(actual))
+            index = next(i for i, row in enumerate(bad['changes'])
+                         if row.get('path') == 'internal/deployment/deployment_store.go')
+            bad['changes'][index] = change
+            variants.append(bad)
+        for bad in variants:
+            with self.subTest(changes=bad['changes']):
+                self.assertEqual('unresolved', self.qualify(bad)['coverage_status'])
+
+    def test_invalid_or_missing_integration_and_missing_gate_fail_closed(self):
+        actual = self.resolved_diff(self.head)
+        old_integration = self.resolved_diff(self.reviewed)['integration_sha']
+        stale = self.resolver.resolve_pr_diff(self.repository, self.target,
+                                             self.head, old_integration)
+        self.assertTrue(stale['broad_required'])
+        self.assertEqual('unresolved', self.qualify(stale)['coverage_status'])
+        for key, value in (('integration_sha', None), ('integration_sha', 'bad'),
+                           ('broad_required', True), ('head_sha', 'f' * 40)):
+            with self.subTest(key=key, value=value):
+                bad = dict(actual, **{key: value})
+                self.assertEqual('unresolved', self.qualify(bad)['coverage_status'])
+        catalog = json.loads(json.dumps(REQ))
+        catalog['gates'] = [gate for gate in catalog['gates']
+                            if gate['id'] != 'atomic/podman/lifecycle']
+        self.assertEqual('unresolved', self.qualify(actual, catalog)['coverage_status'])
+        requirements = json.loads((ROOT / 'release-requirements.json').read_text())
+        result = self.qualify(actual, requirements)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(planner.CORE_917_REQUIRED_GATES, set(result['selected_gates']))
+
+
 class WizardBootstrapPolicyTests(unittest.TestCase):
     def test_real_trusted_merge_and_unreviewed_followup(self):
         rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')

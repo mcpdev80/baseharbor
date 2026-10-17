@@ -97,6 +97,16 @@ Source layout is part of the contributor contract.
 - Tests, generated artifacts, reference documentation and historical release material are not governed by these source-code limits.
 - The normal source-quality workflow and Pre-Release gate enforce these limits with `scripts/source-readability-audit.sh`.
 
+### Code comments
+
+Comments MUST be clear, concise and precise. Prefer one to three short sentences; use more only when a necessary contract cannot be stated clearly otherwise.
+
+- Document exported declarations using [Go doc-comment conventions](https://go.dev/doc/comment). Comment internal code only when it adds information the code does not make clear.
+- State the purpose, required behavior or non-obvious reason directly. Avoid filler, vague claims and line-by-line narration of the implementation.
+- Preserve essential safety, ownership, locking, side-effect and error guarantees. Put a short explanation beside the relevant code when needed; comments are not limited to functions.
+- Keep task/PR history, progress reports and caller counts out of comments. Put change history in the PR and substantial design rationale in architecture documentation or an ADR.
+- Keep comments accurate when behavior changes; remove misleading or redundant comments. No rigid line limit justifies omitting an essential contract.
+
 ## 13. Delete merged branches
 
 Branches are temporary work surfaces, not long-lived history.

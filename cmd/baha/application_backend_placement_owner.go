@@ -92,9 +92,14 @@ func recordBackendPlacementOwner(record *deployment.DeploymentRecord, resolved r
 // including interruption or a disabled capability. Explicit operator policy is
 // the existing replacement mechanism; no additional portable intent field.
 func resolveAppliedBackendSelection(resolved resolvedApplication) (application.Manifest, error) {
+	// Preserve applied-owner observations; layer confirmed desired choices only
+	// on the execution projection returned to this caller.
+	projectDesired := func(m application.Manifest) (application.Manifest, error) {
+		return application.WithDesiredProviderPlacementsAt(resolved.TargetStateRoot, m)
+	}
 	m := resolved.Manifest
 	if resolved.TargetStateRoot == "" || (!m.Services.SQL && !m.Services.Cache && !m.Services.KeyValue) {
-		return m, nil
+		return projectDesired(m)
 	}
 	encoded := ""
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
@@ -126,9 +131,13 @@ func resolveAppliedBackendSelection(resolved resolvedApplication) (application.M
 		placements[kind] = placement
 	}
 	if len(placements) == 0 {
-		return m, nil
+		return projectDesired(m)
 	}
-	return application.WithBackendPlacementProjection(m, placements)
+	projected, err := application.WithBackendPlacementProjection(m, placements)
+	if err != nil {
+		return application.Manifest{}, err
+	}
+	return projectDesired(projected)
 }
 
 func retainedBackendPlacementProjection(resolved resolvedApplication, m application.Manifest, encoded string) (application.Manifest, error) {
