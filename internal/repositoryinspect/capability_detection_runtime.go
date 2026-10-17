@@ -667,6 +667,7 @@ func javaImportSurface(data []byte) string {
 
 func jsInterpolationEnd(data []byte, start int) int {
 	depth := 1
+	var controlParens []bool
 	var tokens []string // Advance lexical context once, never rescan prefixes.
 	for i := start; i < len(data); {
 		c := data[i]
@@ -733,6 +734,30 @@ func jsInterpolationEnd(data []byte, start int) int {
 				i++
 			}
 			tokens = append(tokens, "LITERAL")
+			continue
+		}
+		if c == '(' {
+			prev := previousJSToken(tokens)
+			control := false
+			switch prev {
+			case "if", "while", "for", "with", "switch", "catch":
+				control = true
+			}
+			controlParens = append(controlParens, control)
+			tokens = append(tokens, "(")
+			i++
+			continue
+		}
+		if c == ')' {
+			kind := ")"
+			if len(controlParens) > 0 {
+				if controlParens[len(controlParens)-1] {
+					kind = "CONTROL_CLOSE"
+				}
+				controlParens = controlParens[:len(controlParens)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
 			continue
 		}
 		if c == '{' {
@@ -845,7 +870,7 @@ func jsCanCompleteExpression(tokens []string, start, end int) bool {
 		return false
 	}
 	switch last {
-	case "=", "+", "-", "*", "/", "%", "!", "?", ":", ",", ".", "&", "|", "^", "~", "(", "[", "{", "return", "throw", "new", "const", "let", "var", "function", "class", "=>":
+	case "=", "+", "-", "*", "/", "%", "!", "?", ":", ",", ".", "&", "|", "^", "~", ">", "<", "(", "[", "{", "return", "throw", "new", "const", "let", "var", "function", "class", "=>", "in", "instanceof", "await", "yield", "as", "satisfies":
 		return false
 	}
 	// Identifiers, literal values, completed access/call/index expressions,

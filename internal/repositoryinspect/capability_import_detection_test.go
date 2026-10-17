@@ -428,3 +428,40 @@ func TestReview984InterpolationLinearWorkBound(t *testing.T) {
 		}
 	}
 }
+
+func TestReview984LatestControlAndContinuation(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         bool
+	}{
+		{"greater-than", "const f = value >\nfunction() {} / require('mongodb').value;", true},
+		{"less-than", "const f = value <\nfunction() {} / require('mongodb').value;", true},
+		{"equality", "const f = value ==\nfunction() {} / require('mongodb').value;", true},
+		{"bitwise", "const f = value &\nfunction() {} / require('mongodb').value;", true},
+		{"control if regex", "const msg = `${(() => { if (ready) /}/.test(text); return 1; })() + require('mongodb').value}`;", true},
+		{"control while regex", "const msg = `${(() => { while (ready) /}/.test(text); return 1; })() + require('mongodb').value}`;", true},
+		{"complete identifier", "const ready = config\nfunction probe() {} /import 'mongodb'/.test(text);", false},
+		{"division inside interpolation", "const msg = `${a/a/a + require('mongodb').value}`;", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(tc.source)
+			if got := sourceImportsCompatibleClient("app.js", data, documentDatabaseSignals().imports); got != tc.want {
+				t.Errorf("direct=%v want=%v", got, tc.want)
+			}
+			findings, err := detectCapability(context.Background(), Snapshot{Files: map[string][]byte{"app.js": data}}, "database.document", documentDatabaseSignals())
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, f := range findings {
+				for _, e := range f.Evidence {
+					found = found || e.Kind == EvidenceImport
+				}
+			}
+			if found != tc.want {
+				t.Errorf("EvidenceImport=%v want=%v, findings=%+v", found, tc.want, findings)
+			}
+		})
+	}
+}
