@@ -141,10 +141,10 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 type BackendProbeKind string
 
 const (
-	BackendProbeSQLSelectOne      BackendProbeKind = "sql.select-one"
+	BackendProbeSQLSelectOne          BackendProbeKind = "sql.select-one"
 	BackendProbeSQLConsumerInventory BackendProbeKind = "sql.consumer-inventory"
-	BackendProbeCachePing         BackendProbeKind = "cache.ping"
-	BackendProbeDurableKeyValueRW BackendProbeKind = "database.key-value.write-read"
+	BackendProbeCachePing            BackendProbeKind = "cache.ping"
+	BackendProbeDurableKeyValueRW    BackendProbeKind = "database.key-value.write-read"
 )
 
 type BackendProbe struct {
@@ -174,7 +174,7 @@ func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files Runtim
 type SQLConsumerInventory struct {
 	Consumer string
 	Instance string
-	Empty bool
+	Empty    bool
 	Evidence string
 }
 

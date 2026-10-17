@@ -792,7 +792,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
 	if err != nil {
-		t.Fatalf("real Edit lifecycle did not converge: %v\n%s", err, out.String())
+		t.Fatalf("real Edit lifecycle did not converge: %v\nplan=%+v\nresult=%+v\n%s", err, result.Plan, result.Result, out.String())
 	}
 	if !result.Changed || result.Presentation == "" || result.Result.Status != "complete" {
 		t.Fatalf("confirmed real edit did not return an execution result: %+v", result)
