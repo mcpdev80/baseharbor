@@ -242,12 +242,14 @@ func TestAppEditApplyTargetPreferencesAndPreservedIntent(t *testing.T) {
 	}
 }
 
-
 func TestAppEditApplyProviderSwitchUsesConfirmedTargetPreference(t *testing.T) {
 	requirement := capability.Requirement{Kind: capability.SQL, Name: "primary"}
 	before := []capability.Requirement{requirement}
 	loadedPreference := application.ProviderPreference{Requirement: requirement, InstanceID: "sql-old"}
-	confirmedPreference := application.ProviderPreference{Requirement: requirement, InstanceID: "provider-sql-primary"}
+	// The confirmed switch must target a genuine Target candidate produced by the
+	// accepted choice projection ("provider-" + capability.SQL + "-" + name), not a
+	// fabricated identifier, so the real choice authority resolves the transition.
+	confirmedPreference := application.ProviderPreference{Requirement: requirement, InstanceID: "provider-" + string(capability.SQL) + "-" + requirement.Name}
 	loaded := appEditTestLoaded(t, "prod", before, []application.ProviderPreference{loadedPreference})
 	plan := application.ProviderImpactPlan{
 		Version: application.ProviderImpactVersion, Target: "prod", Revision: "r-switch", PlanID: "plan-switch",
