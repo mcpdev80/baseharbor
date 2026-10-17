@@ -33,6 +33,37 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+class Core751ImportCoverageProposalTests(unittest.TestCase):
+    def test_candidate_selects_real_checks_but_fails_closed_without_source_binding(self):
+        changes = [{'path': path, 'status': status}
+                   for path, status in planner.INSPECT_IMPORT_CANDIDATE_FILES.items()]
+        result = planner.plan(diff(changes), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertEqual(planner.INSPECT_IMPORT_REQUIRED_IDS,
+                         {check['id'] for check in result['required_validation_checks']})
+        self.assertFalse(result['selected_gates'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_extra_rename_delete_and_unreviewed_content_stay_unresolved(self):
+        candidate = [{'path': path, 'status': status}
+                     for path, status in planner.INSPECT_IMPORT_CANDIDATE_FILES.items()]
+        variants = [
+            candidate,
+            candidate + [{'path': 'internal/repositoryinspect/inspect.go', 'status': 'modified'}],
+            candidate[:1],
+            [{'path': candidate[0]['path'], 'status': 'deleted'}],
+            [{'path': candidate[0]['path'], 'status': 'renamed',
+              'old_path': candidate[0]['path'], 'new_path': 'internal/repositoryinspect/new.go'}],
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes):
+                result = planner.plan(diff(changes), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        stale = diff(candidate)
+        stale['integration_sha'] = None
+        self.assertEqual('unresolved', planner.plan(stale, REQ, MAP)['coverage_status'])
+
+
 class Core917ExactQualificationTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
