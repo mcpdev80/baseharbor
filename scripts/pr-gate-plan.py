@@ -307,6 +307,12 @@ def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     return False
 
 
+
+# Execution of this reviewed test candidate is not content qualification.
+CORE_754_TEST_HEAD = '5a3813385af5392a9be3095bd038424a4f9950b7'
+CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
+CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
+
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
@@ -502,6 +508,14 @@ def plan(diff, requirements, mapping):
                 require(DOC_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('shared registration rename/delete/type change needs independent review: ' + path)
+        elif path == CORE_754_TEST_PATH:
+            area = 'core754-mcp-test-unresolved'
+            require(WIZARD_BASE_CHECKS)
+            require([wizard_check(CORE_754_TEST_CHECK)])
+            if (len(paths) != 1 or path_status.get(path) != 'added' or
+                    identifiers['head_sha'] != CORE_754_TEST_HEAD):
+                unresolved.append('core-754 test source differs from exact reviewed candidate')
+            unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
         elif path in {
             'cmd/baha/commands.go',
             'cmd/baha/app_commands.go',

@@ -144,3 +144,23 @@ class RunnerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Core754MCPExecutionTests(unittest.TestCase):
+    def test_exact_two_tests_are_mandatory_in_existing_runner(self):
+        profile = runner.WIZARD_TEST_FAMILIES['wizard-core754-mcp-tests']
+        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors$',
+                          r'^TestMCPReadEntryExpectedPreconditions$'), profile)
+        self.assertEqual([{'check': 'wizard-core754-mcp-tests'}],
+                         runner.matrix({'required_validation_checks': [{'id': 'wizard-core754-mcp-tests'}]})['include'])
+
+    def test_missing_and_skipped_mandatory_tests_block(self):
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        listed = CompletedProcess([], 0, 'TestExpectedPreconditionsShareTypedCLIMCPErrors\\n', '')
+        with patch.object(runner.subprocess, 'run', return_value=listed):
+            with self.assertRaisesRegex(RuntimeError, 'did not execute'):
+                runner.execute_validation('wizard-core754-mcp-tests', '.')
+        with patch.object(runner.subprocess, 'run', return_value=CompletedProcess([], 0, '', '')):
+            with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                runner.execute_validation('wizard-core754-mcp-tests', '.')

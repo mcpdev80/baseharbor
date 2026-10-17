@@ -721,3 +721,29 @@ except ModuleNotFoundError:
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
+    def test_exact_candidate_selects_both_tests_but_remains_unresolved(self):
+        candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
+        candidate['head_sha'] = planner.CORE_754_TEST_HEAD
+        planned = planner.plan(candidate, REQ, MAP)
+        checks = {row['id'] for row in planned['required_validation_checks']}
+        self.assertIn(planner.CORE_754_TEST_CHECK, checks)
+        self.assertTrue({'cli-gofmt', 'cli-vet', 'cli-build'} <= checks)
+        self.assertEqual('unresolved', planned['coverage_status'])
+        self.assertTrue(planned['unresolved_coverage'])
+        self.assertEqual([], planned['selected_gates'])
+
+    def test_changed_candidate_and_statuses_cannot_get_qualified(self):
+        for head, change in [
+            (planner.CORE_754_TEST_HEAD, {'status': 'deleted', 'path': planner.CORE_754_TEST_PATH}),
+            ('c'*40, {'status': 'added', 'path': planner.CORE_754_TEST_PATH}),
+            (planner.CORE_754_TEST_HEAD, {'status': 'renamed', 'old_path': 'cmd/baha/old_test.go', 'new_path': planner.CORE_754_TEST_PATH}),
+        ]:
+            with self.subTest(head=head, change=change):
+                candidate = diff([change])
+                candidate['head_sha'] = head
+                result = planner.plan(candidate, REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
