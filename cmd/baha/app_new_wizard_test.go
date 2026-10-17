@@ -17,6 +17,35 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/development"
 )
 
+// newWizardPromptReader supplies one input per real prompt. Provider discovery
+// may change the number of automatic choices, but the separate execution mode
+// and write consent must still be explicitly reached and accepted.
+type newWizardPromptReader struct {
+	output *bytes.Buffer
+	prefix []string
+	mode   string
+}
+
+func (r *newWizardPromptReader) Read(dst []byte) (int, error) {
+	answer := ""
+	if len(r.prefix) > 0 {
+		answer = r.prefix[0]
+		r.prefix = r.prefix[1:]
+	} else {
+		prompt := r.output.String()
+		if i := strings.LastIndexByte(prompt, '\n'); i >= 0 {
+			prompt = prompt[i+1:]
+		}
+		switch {
+		case strings.Contains(prompt, "After creation"):
+			answer = r.mode
+		case strings.Contains(prompt, "Create project files"):
+			answer = "y"
+		}
+	}
+	return copy(dst, answer+"\n"), nil
+}
+
 func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	configureTestTarget(t)
@@ -58,18 +87,8 @@ func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 
 	oldInput := appNewInput
 	defer func() { appNewInput = oldInput }()
-	appNewInput = strings.NewReader(strings.Join([]string{
-		"guided-app",
-		parent,
-		"1",
-		"1,2",
-		"",
-		"",
-		"",
-		"",
-	}, "\n"))
-
 	var out bytes.Buffer
+	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"guided-app", parent, "1", "1,2"}, mode: "create-only"}
 	if err := runAppNewWizard(context.Background(), &out, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -100,10 +119,8 @@ func TestAppNewWizardCreateOnlyPreservesPreviewIdentity(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	old := appNewInput
 	defer func() { appNewInput = old }()
-	appNewInput = strings.NewReader(strings.Join([]string{
-		"identity-preserved", parent, "1", "1", "", "", "",
-	}, "\n"))
 	var output bytes.Buffer
+	appNewInput = &newWizardPromptReader{output: &output, prefix: []string{"identity-preserved", parent, "1", "1"}, mode: "create-only"}
 	if err := runAppNewWizard(context.Background(), &output, &output); err != nil {
 		t.Fatal(err)
 	}
@@ -370,13 +387,11 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 		appNewInput = oldInput
 		appNewLifecycleExecutor = oldExecutor
 	}()
-	appNewInput = strings.NewReader(strings.Join([]string{
-		"partial-run", parent, "1", "1", "", "run", "",
-	}, "\n"))
+	var out bytes.Buffer
+	appNewInput = &newWizardPromptReader{output: &out, prefix: []string{"partial-run", parent, "1", "1"}, mode: "run"}
 	appNewLifecycleExecutor = func(context.Context, application.Store, []string, io.Writer, io.Writer) error {
 		return errors.New("fixture lifecycle failure")
 	}
-	var out bytes.Buffer
 	err := runAppNewWizard(context.Background(), &out, &out)
 	if err == nil || !strings.Contains(err.Error(), "fixture lifecycle failure") {
 		t.Fatalf("partial lifecycle failure missing: %v", err)
