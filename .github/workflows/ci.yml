@@ -1,6 +1,6 @@
 name: "CI · Source & Quality"
 
-run-name: "CI · Source & Quality · ${{ github.ref_name }}"
+run-name: "CI · ${{ github.event.pull_request.number && format('PR #{0}', github.event.pull_request.number) || github.ref_name }}"
 
 on:
   workflow_dispatch:
@@ -829,3 +829,99 @@ jobs:
               --demo-sha "$VERIFIED_DEMO_SHA"
           fi
           python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
+
+      - name: Summarize checked, reused, unnecessary and blocked work
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+          base = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
+          link = f"https://github.com/{repository}/actions/runs/{run_id}/attempts/{attempt}"
+          groups = {"Checked": [], "Reused": [], "Not required": [],
+                    "Failed": [], "Blocked": []}
+          try:
+              plan = json.loads(Path("pr-plan.json").read_text())
+              required = {f"PR · Validation · {item['id']}" for item in
+                          plan.get("required_validation_checks", [])}
+              required.update({"PR · Trusted Plan", "PR · Focused Python",
+                               "Workflow policy", "PR Selected Checks"})
+              selected = set(plan.get("selected_gates", []))
+              if any(g.startswith(("atomic/docker/", "atomic/podman/"))
+                     for g in selected):
+                  required.add("PR · Selected Runtime")
+              if "integration/static/public-contracts" in selected:
+                  required.add("PR · Public Contracts")
+              jobs = []
+              token = os.environ["GH_TOKEN"]
+              for page in range(1, 11):
+                  url = (f"https://api.github.com/repos/{repository}/actions/runs/"
+                         f"{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}")
+                  request = Request(url, headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                  })
+                  with urlopen(request, timeout=15) as response:
+                      batch = json.load(response)["jobs"]
+                  jobs.extend(batch)
+                  if len(batch) < 100:
+                      break
+              def duration(job):
+                  a, b = job.get("started_at"), job.get("completed_at")
+                  if not a or not b:
+                      return "duration unknown"
+                  try:
+                      start = dt.datetime.fromisoformat(a.replace("Z", "+00:00"))
+                      end = dt.datetime.fromisoformat(b.replace("Z", "+00:00"))
+                      return f"{max(0, int((end - start).total_seconds()))}s"
+                  except ValueError:
+                      return "duration unknown"
+              for job in jobs:
+                  name = job.get("name") or "Unnamed job"
+                  if name == "PR Selected Checks":
+                      continue  # This very job is still in progress.
+                  state = job.get("conclusion")
+                  item = f"[{name}]({job.get('html_url') or link}) · {duration(job)}"
+                  if state == "success":
+                      category = "Checked"
+                  elif state in {"failure", "timed_out", "action_required"}:
+                      category = "Failed"
+                  elif state == "skipped" and name not in required:
+                      category = "Not required"
+                  else:
+                      category = "Blocked"
+                  groups[category].append(item)
+              # Reuse requires explicit authenticated evidence. Never infer
+              # reuse merely from a skipped job or a green previous run.
+              for evidence in plan.get("verified_reused_evidence", []):
+                  if not isinstance(evidence, dict) or evidence.get("verified") is not True:
+                      continue
+                  url = evidence.get("url", "")
+                  if isinstance(url, str) and url.startswith(
+                      f"https://github.com/{repository}/actions/runs/"):
+                      groups["Reused"].append(f"[Verified prior evidence]({url})")
+          except (OSError, ValueError, KeyError, TypeError) as error:
+              groups["Blocked"].append("Result overview unavailable; inspect the required check and run logs.")
+          lines = [f"## PR checks · [Run {run_id} (attempt {attempt})]({link})",
+                   "", "Presentation only; the independent required verifier remains authoritative.",
+                   ""]
+          for group, entries in groups.items():
+              lines.extend([f"### {group} ({len(entries)})", ""])
+              lines.extend(f"- {entry}" for entry in entries)
+              if not entries:
+                  lines.append("- None confirmed")
+              lines.append("")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("\n".join(lines) + "\n")
+          PY
