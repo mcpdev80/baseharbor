@@ -129,7 +129,7 @@ func appObservedPendingUpdate(target string, impact application.ProviderImpact, 
 		InstanceID: impact.InstanceID, Operation: impact.Operation,
 		Status: "pending", Materials: []application.MaterialOutcome{},
 		Evidence: "runtime state observed after Apply; SQL consumer and data consequences remain unverified",
-		After: &observed,
+		After:    &observed,
 	}, true
 }
 
