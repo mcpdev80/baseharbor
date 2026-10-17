@@ -42,6 +42,13 @@ func TestSyntaxImportDetection(t *testing.T) {
 		{"js optional method require", "app.js", "obj?.require('mongodb');\n", []string{"mongodb"}, false},
 		{"js commonjs", "app.js", "const db = require('mongodb');\n", []string{"mongodb"}, true},
 		{"js dynamic import", "app.ts", "const db = import('mongodb');\n", []string{"mongodb"}, true},
+		{"js if regex statement", "app.js", "if (ready) /import 'mongodb'/.test(text);\n", []string{"mongodb"}, false},
+		{"js while regex statement", "app.js", "while (ready) /import 'mongodb'/.test(text);\n", []string{"mongodb"}, false},
+		{"js for regex statement", "app.js", "for (; ready; ) /import 'mongodb'/.test(text);\n", []string{"mongodb"}, false},
+		{"js nested control regex", "app.ts", "if ((ready)) /import 'mongodb'/.test(text);\n", []string{"mongodb"}, false},
+		{"js call result division", "app.ts", "const n = calculate(ready) / divisor;\n", []string{"mongodb"}, false},
+		{"js control then real import", "app.ts", "if (ready) /import 'mongodb'/.test(text);\nimport { MongoClient } from 'mongodb';\n", []string{"mongodb"}, true},
+		{"js division then real import", "app.js", "const n = calculate(ready) / divisor;\nconst db = require('mongodb');\n", []string{"mongodb"}, true},
 		{"python redis", "app.py", "from redis import Redis\n", []string{"redis"}, true},
 	}
 	for _, tc := range cases {
@@ -65,6 +72,10 @@ func TestImportEvidenceUsesOnlySyntax(t *testing.T) {
 		{"app.ts", "const prompt = /require('mongodb')/;\n", false},
 		{"app.ts", "function probe() { return /import 'mongodb'/; }\n", false},
 		{"app.ts", "obj.require('mongodb');\n", false},
+		{"app.ts", "if (ready) /import 'mongodb'/.test(text);\n", false},
+		{"app.ts", "while (ready) /import 'mongodb'/.test(text);\n", false},
+		{"app.js", "for (; ready; ) /import 'mongodb'/.test(text);\n", false},
+		{"app.ts", "const n = calculate(ready) / divisor;\nconst db = require('mongodb');\n", true},
 		{"app.py", "import os, pymongo as mongo\n", true},
 		{"app.ts", "const db = require('mongodb');\n", true},
 	} {

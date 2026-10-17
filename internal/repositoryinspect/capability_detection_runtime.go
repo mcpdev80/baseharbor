@@ -363,6 +363,9 @@ func sourceImportsCompatibleClient(base string, data []byte, signals []string) b
 }
 
 func jsModuleTokens(data []byte) []string {
+	// Track control-condition parentheses separately from calls and grouping.
+	// Only a completed control condition can begin a regexp statement.
+	var controlParens []bool
 	var tokens []string
 	for i := 0; i < len(data); {
 		c := data[i]
@@ -439,7 +442,32 @@ func jsModuleTokens(data []byte) []string {
 			tokens = append(tokens, string(data[start:i]))
 			continue
 		}
-		if c == ';' || c == '(' || c == ')' || c == '=' || c == ':' || c == ',' || c == '.' || c == '[' || c == '{' || c == '!' || c == '?' || c == '>' || c == '\n' {
+		if c == '(' {
+			control := false
+			if len(tokens) > 0 {
+				switch tokens[len(tokens)-1] {
+				case "if", "while", "for", "with", "switch", "catch":
+					control = true
+				}
+			}
+			controlParens = append(controlParens, control)
+			tokens = append(tokens, "(")
+			i++
+			continue
+		}
+		if c == ')' {
+			kind := ")"
+			if len(controlParens) > 0 {
+				if controlParens[len(controlParens)-1] {
+					kind = "CONTROL_CLOSE"
+				}
+				controlParens = controlParens[:len(controlParens)-1]
+			}
+			tokens = append(tokens, kind)
+			i++
+			continue
+		}
+		if c == ';' || c == '=' || c == ':' || c == ',' || c == '.' || c == '[' || c == '{' || c == '!' || c == '?' || c == '>' || c == '\n' {
 			tokens = append(tokens, string(c))
 		}
 		i++
@@ -452,7 +480,7 @@ func jsRegexCanStart(tokens []string) bool {
 		return true
 	}
 	switch tokens[len(tokens)-1] {
-	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", ">":
+	case "=", "(", ":", ",", "[", "{", "!", "?", ";", "return", "throw", "yield", "case", ">", "CONTROL_CLOSE":
 		return true
 	}
 	return false
