@@ -751,6 +751,203 @@ except ModuleNotFoundError:
     from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
 
+
+class Core918TrustedCoverageTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Fixture Reviewer')
+        self.git('config', 'user.email', 'review@example.test')
+        for path, status in planner.CORE_918_REVIEWED_FILES.items():
+            item = self.root / path
+            item.parent.mkdir(parents=True, exist_ok=True)
+            if status == 'modified':
+                item.write_text('base\\n')
+        self.git('add', '.')
+        self.git('commit', '--allow-empty', '-qm', 'trusted base')
+        self.base = self.git('rev-parse', 'HEAD')
+        self.git('branch', 'trusted')
+        self.git('checkout', '-qb', 'source')
+        for name in planner.CORE_918_REVIEWED_FILES:
+            item = self.root / name
+            item.write_text('reviewed\\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'independently reviewed source change')
+        self.reviewed = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'trusted')
+        (self.root / 'policy-marker.txt').write_text('accepted trusted target\\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'advance develop with unrelated policy')
+        self.target = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'source')
+        self.git('merge', '--no-ff', '-qm', 'normal develop merge', 'trusted')
+        self.merged = self.git('rev-parse', 'HEAD')
+
+    def git(self, *args):
+        proc = subprocess.run(['git', '-C', str(self.root), *args],
+                              text=True, capture_output=True)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        return proc.stdout.strip()
+
+    def input_for(self, head, changes=None):
+        spec = importlib.util.spec_from_file_location('core918_diff_owner', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        tree = self.git('merge-tree', '--write-tree', self.target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', self.target, '-p', head,
+                               '-m', 'validated PR integration')
+        actual = resolver.resolve_pr_diff(self.root, self.target, head, integration)
+        if changes is not None:
+            actual['changes'] = changes
+        return actual
+
+    def planned(self, head, changes=None, required=REQ):
+        actual = self.input_for(head, changes)
+        real = planner.core752_reviewed_merge_chain
+        with patch.object(planner, 'core752_reviewed_merge_chain',
+                          side_effect=lambda target, sha, reviewed=None:
+                          real(target, sha, self.reviewed if reviewed ==
+                               planner.CORE_918_REVIEWED_HEAD else reviewed, self.root)):
+            return planner.plan(actual, required, MAP)
+
+    def test_unmodified_reviewed_source_and_clean_develop_merge_resolve(self):
+        for head in [self.reviewed, self.merged]:
+            actual = self.input_for(head)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            self.assertEqual(self.target if head == self.merged else self.base,
+                             actual['merge_base_sha'])
+            self.assertEqual(planner.CORE_918_REVIEWED_FILES,
+                             {c['path']: c['status'] for c in actual['changes']})
+            result = self.planned(head)
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertEqual(set(planner.CORE_918_REQUIRED_GATES), set(result['selected_gates']))
+            ids = {c['id'] for c in result['required_validation_checks']}
+            self.assertTrue({'wizard-app-edit-tests', 'wizard-machine-adapter-tests',
+                             'cli-gofmt', 'cli-vet', 'cli-build', 'source-contracts',
+                             'wizard-core918-native-sql-safety-tests'} <= ids)
+
+    def test_followup_change_is_not_qualified(self):
+        (self.root / 'cmd/baha/app_apply.go').write_text('unreviewed change\\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'unreviewed follow-up')
+        actual = self.input_for(self.git('rev-parse', 'HEAD'))
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        self.assertEqual(self.target, actual['merge_base_sha'])
+        self.assertEqual('unresolved', self.planned(actual['head_sha'])['coverage_status'])
+
+    def test_renamed_deleted_extra_and_missing_file_are_denied(self):
+        base = [{'path': p, 'status': s}
+                for p, s in planner.CORE_918_REVIEWED_FILES.items()]
+        for mutated in [base[:-1],
+                        base + [{'path': 'cmd/baha/unreviewed.go', 'status': 'added'}],
+                        [dict(change, status='deleted') if change['path'] == base[0]['path']
+                         else change for change in base],
+                        [dict(change, status='renamed', old_path=change['path'],
+                              new_path='new.go') if change['path'] == base[0]['path']
+                         else change for change in base]]:
+            with self.subTest(changes=mutated):
+                result=self.planned(self.merged, mutated)
+                self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_missing_native_gate_cannot_resolve(self):
+        incomplete = {'releases': ['v0.4.26'],
+                      'gates': [{'id': 'atomic/docker/lifecycle',
+                                 'required_for': ['v0.4.26']}]}
+        self.assertEqual('unresolved', self.planned(self.merged, required=incomplete)['coverage_status'])
+
+
+class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
+    def test_exact_candidate_selects_both_tests_but_remains_unresolved(self):
+        candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
+        candidate['head_sha'] = planner.CORE_754_TEST_HEAD
+        planned = planner.plan(candidate, REQ, MAP)
+        checks = {row['id'] for row in planned['required_validation_checks']}
+        self.assertIn(planner.CORE_754_TEST_CHECK, checks)
+        self.assertTrue({'cli-gofmt', 'cli-vet', 'cli-build'} <= checks)
+        self.assertEqual('unresolved', planned['coverage_status'])
+        self.assertTrue(planned['unresolved_coverage'])
+        self.assertEqual([], planned['selected_gates'])
+
+    def test_actual_normal_develop_merge_retains_execution_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                                        text=True, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Core 754 fixture')
+            git('config', 'user.email', 'fixture@example.test')
+            (root / 'baseline.txt').write_text('base\\n')
+            git('add', '.')
+            git('commit', '-qm', 'trusted base')
+            git('branch', 'trusted')
+            git('checkout', '-qb', 'source')
+            path = root / planner.CORE_754_TEST_PATH
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('two expected MCP test families\\n')
+            git('add', '.')
+            git('commit', '-qm', 'reviewed core-754 candidate')
+            reviewed = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'trusted')
+            (root / 'trusted.txt').write_text('independently integrated CI runner\\n')
+            git('add', '.')
+            git('commit', '-qm', 'advance develop with reviewed CI')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'source')
+            git('merge', '--no-ff', '-qm', 'normal develop integration', 'trusted')
+            merged = git('rev-parse', 'HEAD')
+            proof = planner.core752_reviewed_merge_chain
+            def actual_proof(base, head, reviewed_sha=None):
+                return proof(base, head, reviewed_sha, root)
+            self.assertTrue(actual_proof(target, merged, reviewed))
+            candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
+            candidate.update({'target_base_sha': target, 'head_sha': merged})
+            with patch.object(planner, 'CORE_754_TEST_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=actual_proof):
+                planned = planner.plan(candidate, REQ, MAP)
+                self.assertIn(planner.CORE_754_TEST_CHECK,
+                              {c['id'] for c in planned['required_validation_checks']})
+                self.assertEqual('unresolved', planned['coverage_status'])
+                self.assertNotIn('core-754 test source differs from exact reviewed candidate',
+                                 str(planned['unresolved_coverage']))
+                path.write_text('unreviewed post-merge modification\\n')
+                git('add', '.')
+                git('commit', '-qm', 'unreviewed follow-up')
+                candidate['head_sha'] = git('rev-parse', 'HEAD')
+                rejected = planner.plan(candidate, REQ, MAP)
+                self.assertEqual('unresolved', rejected['coverage_status'])
+                self.assertIn('core-754 test source differs from exact reviewed candidate',
+                              str(rejected['unresolved_coverage']))
+
+    def test_clean_develop_merge_keeps_execution_unresolved(self):
+        candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
+        candidate['head_sha'] = 'e' * 40
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+            result = planner.plan(candidate, REQ, MAP)
+        self.assertIn(((candidate['target_base_sha'], candidate['head_sha'],
+                        planner.CORE_754_TEST_HEAD), {}),
+                      [(call.args, call.kwargs) for call in proof.call_args_list])
+        self.assertIn(planner.CORE_754_TEST_CHECK,
+                      {check['id'] for check in result['required_validation_checks']})
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_changed_candidate_and_statuses_cannot_get_qualified(self):
+        for head, change in [
+            (planner.CORE_754_TEST_HEAD, {'status': 'deleted', 'path': planner.CORE_754_TEST_PATH}),
+            ('c'*40, {'status': 'added', 'path': planner.CORE_754_TEST_PATH}),
+            (planner.CORE_754_TEST_HEAD, {'status': 'renamed', 'old_path': 'cmd/baha/old_test.go', 'new_path': planner.CORE_754_TEST_PATH}),
+        ]:
+            with self.subTest(head=head, change=change):
+                candidate = diff([change])
+                candidate['head_sha'] = head
+                result = planner.plan(candidate, REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
 class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
     def test_real_git_diff_base_merge_and_unreviewed_followup(self):
         resolver_spec = importlib.util.spec_from_file_location(
