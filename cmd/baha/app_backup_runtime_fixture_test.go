@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
@@ -96,7 +96,7 @@ func TestAppBackupCoreStateUsesSelectedTargetForNativeRuntimes(t *testing.T) {
 
 func TestAppBackupOwnedCoreFixtureCleanupOnEveryExit(t *testing.T) {
 	for _, scenario := range []struct {
-		name string
+		name     string
 		startErr error
 		readyErr error
 	}{
@@ -108,8 +108,12 @@ func TestAppBackupOwnedCoreFixtureCleanupOnEveryExit(t *testing.T) {
 			root := t.TempDir()
 			owned := filepath.Join(root, "owned")
 			foreign := filepath.Join(root, "foreign")
-			if err := os.WriteFile(owned, []byte("owned"), 0600); err != nil { t.Fatal(err) }
-			if err := os.WriteFile(foreign, []byte("foreign"), 0600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(owned, []byte("owned"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(foreign, []byte("foreign"), 0600); err != nil {
+				t.Fatal(err)
+			}
 			calls := []string{}
 			cancelled, cancel := context.WithCancel(context.Background())
 			t.Cleanup(func() {
@@ -120,7 +124,9 @@ func TestAppBackupOwnedCoreFixtureCleanupOnEveryExit(t *testing.T) {
 					t.Errorf("foreign sentinel affected: %v", err)
 				}
 				want := []string{"start", "cleanup"}
-				if scenario.startErr == nil { want = []string{"start", "ready", "cleanup"} }
+				if scenario.startErr == nil {
+					want = []string{"start", "ready", "cleanup"}
+				}
 				if fmt.Sprint(calls) != fmt.Sprint(want) {
 					t.Errorf("fixture operations %v, want %v", calls, want)
 				}
@@ -130,8 +136,12 @@ func TestAppBackupOwnedCoreFixtureCleanupOnEveryExit(t *testing.T) {
 				func(ctx context.Context) error { calls = append(calls, "ready"); return scenario.readyErr },
 				func(ctx context.Context) error {
 					calls = append(calls, "cleanup")
-					if ctx.Err() != nil { return fmt.Errorf("cleanup inherited cancelled context") }
-					if _, ok := ctx.Deadline(); !ok { return fmt.Errorf("cleanup missing bounded deadline") }
+					if ctx.Err() != nil {
+						return fmt.Errorf("cleanup inherited cancelled context")
+					}
+					if _, ok := ctx.Deadline(); !ok {
+						return fmt.Errorf("cleanup missing bounded deadline")
+					}
 					return os.Remove(owned)
 				},
 			)
@@ -152,14 +162,18 @@ func TestAppBackupOwnedCoreCleanupContextIsBounded(t *testing.T) {
 		_ = runOwnedBackupCoreFixture(t, ctx, func(context.Context) error {
 			return errors.New("start failed")
 		}, func(context.Context) error { t.Error("unexpected ready"); return nil },
-		func(cleanup context.Context) error {
-			cleaned = true
-			if cleanup.Err() != nil { return cleanup.Err() }
-			if deadline, ok := cleanup.Deadline(); !ok || time.Until(deadline) > 3*time.Minute {
-				return errors.New("cleanup context not bounded")
-			}
-			return nil
-		})
+			func(cleanup context.Context) error {
+				cleaned = true
+				if cleanup.Err() != nil {
+					return cleanup.Err()
+				}
+				if deadline, ok := cleanup.Deadline(); !ok || time.Until(deadline) > 3*time.Minute {
+					return errors.New("cleanup context not bounded")
+				}
+				return nil
+			})
 	})
-	if !cleaned { t.Fatal("cleanup not executed on partial-start failure") }
+	if !cleaned {
+		t.Fatal("cleanup not executed on partial-start failure")
+	}
 }
