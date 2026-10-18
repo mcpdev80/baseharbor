@@ -201,11 +201,17 @@ func TestAppBackupOwnedCoreCleanupAfterLaterAbort(t *testing.T) {
 			func(context.Context) error { calls = append(calls, "ready"); return nil },
 			func(ctx context.Context) error {
 				calls = append(calls, "cleanup")
-				if ctx.Err() != nil { return ctx.Err() }
-				if _, ok := ctx.Deadline(); !ok { return errors.New("unbounded cleanup") }
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if _, ok := ctx.Deadline(); !ok {
+					return errors.New("unbounded cleanup")
+				}
 				return os.Remove(owned)
 			})
-		if err != nil { t.Fatalf("unexpected ready error: %v", err) }
+		if err != nil {
+			t.Fatalf("unexpected ready error: %v", err)
+		}
 		// SkipNow exits after readiness and still executes the fixture's
 		// registered cleanup, without failing the containing regression.
 		t.SkipNow()
