@@ -958,7 +958,9 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES,
              planner.INSPECT_IMPORT_REQUIRED_IDS),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES,
-             {c['id'] for c in planner.CI_CHECKS}),
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
         ):
             with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
@@ -1030,10 +1032,23 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     result = planner.plan(actual, REQ, MAP)
                 self.assertEqual('unresolved', result['coverage_status'])
 
+    def test_replacement_is_exact_three_file_reviewed_candidate(self):
+        self.assertEqual('cf0a19bc4c8f398d7ee3fc07a635833168081ff5',
+                         planner.CORE_751_REVIEWED_HEAD)
+        self.assertEqual({
+            'internal/repositoryinspect/capability_detection_runtime.go': 'modified',
+            'internal/repositoryinspect/capability_detection_js_context.go': 'added',
+            'internal/repositoryinspect/capability_import_detection_test.go': 'added',
+        }, planner.INSPECT_IMPORT_CANDIDATE_FILES)
+        self.assertEqual(5, len(planner.INSPECT_CHECKS))
+        self.assertEqual({c['id'] for c in planner.INSPECT_CHECKS},
+                         planner.INSPECT_IMPORT_REQUIRED_IDS)
+
     def test_missing_extra_rename_delete_changed_status_and_unverified_inputs_block(self):
         for sha_name, files in (
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
+            ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES),
         ):
             changes = [{'path': path, 'status': status} for path, status in files.items()]
             cases = [changes[:-1],
