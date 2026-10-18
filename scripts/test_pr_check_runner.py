@@ -180,12 +180,8 @@ class RunnerTests(unittest.TestCase):
 class Core754MCPExecutionTests(unittest.TestCase):
     def test_exact_two_tests_are_mandatory_in_existing_runner(self):
         profile = runner.WIZARD_TEST_FAMILIES['wizard-core754-mcp-tests']
-        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors
-    unittest.main()
-,
-                          r'^TestMCPReadEntryExpectedPreconditions
-    unittest.main()
-), profile)
+        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors$',
+                          r'^TestMCPReadEntryExpectedPreconditions$'), profile)
         self.assertEqual([{'check': 'wizard-core754-mcp-tests'}],
                          runner.matrix({'required_validation_checks': [{'id': 'wizard-core754-mcp-tests'}]})['include'])
 
