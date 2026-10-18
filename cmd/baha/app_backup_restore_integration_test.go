@@ -15,9 +15,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
-	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
 func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
@@ -43,11 +41,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		t.Fatalf("runtime up: %v", err)
 	}
 	defer func() { _ = approvedNativeCoreStop(t, context.Background(), io.Discard) }()
-	compose, err := testruntime.Resolve(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	platformFiles, err := bhruntime.ExistingFiles("")
+	compose, platformFiles, err := openBaoRuntime(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
