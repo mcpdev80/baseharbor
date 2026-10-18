@@ -129,7 +129,9 @@ class SummaryTests(unittest.TestCase):
     def test_required_runtime_skip_is_blocked(self):
         plan = {"required_validation_checks": [], "coverage_status": "resolved",
                 "selected_gates": ["atomic/docker/lifecycle"]}
-        rendered = self.render([job("PR · Selected Runtime", "skipped")], plan)
+        rendered = self.render([job(
+            "PR · Selected Runtime (atomic/docker/lifecycle, docker, lifecycle) / docker · lifecycle",
+            "skipped")], plan)
         self.assertIn("### Blocked (", rendered)
 
 
@@ -174,8 +176,62 @@ class SummaryTests(unittest.TestCase):
                 "selected_gates": ["atomic/podman/backup",
                                    "integration/static/public-contracts"]}
         rendered = self.render([job("Workflow policy", "success")], plan)
-        self.assertIn("Missing required job: PR · Selected Runtime", rendered)
+        self.assertIn("Missing required job: PR · Selected Runtime (atomic/podman/backup, podman, backup) / podman · backup", rendered)
         self.assertIn("Missing required job: PR · Public Contracts", rendered)
+
+
+    def test_actual_runtime_matrix_jobs_all_present(self):
+        names = [
+            "PR · Selected Runtime (atomic/podman/lifecycle, podman, lifecycle) / podman · lifecycle",
+            "PR · Selected Runtime (atomic/docker/lifecycle, docker, lifecycle) / docker · lifecycle",
+        ]
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["atomic/podman/lifecycle", "atomic/docker/lifecycle"]}
+        rendered = self.render([job("Workflow policy", "success")] +
+                               [job(name, "success") for name in names], plan)
+        for name in names:
+            self.assertIn("[" + name + "](", rendered)
+            self.assertNotIn("Missing required job: " + name, rendered)
+
+    def test_exactly_one_runtime_gate_missing(self):
+        podman = "PR · Selected Runtime (atomic/podman/lifecycle, podman, lifecycle) / podman · lifecycle"
+        docker = "PR · Selected Runtime (atomic/docker/lifecycle, docker, lifecycle) / docker · lifecycle"
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["atomic/podman/lifecycle", "atomic/docker/lifecycle"]}
+        rendered = self.render([job("Workflow policy", "success"),
+                                job(podman, "success")], plan)
+        self.assertIn("Missing required job: " + docker, rendered)
+        self.assertNotIn("Missing required job: " + podman, rendered)
+
+    def test_real_required_child_skipped_is_blocked(self):
+        child = "PR · Selected Runtime (atomic/podman/lifecycle, podman, lifecycle) / podman · lifecycle"
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["atomic/podman/lifecycle"]}
+        rendered = self.render([job("Workflow policy", "success"),
+                                job(child, "skipped")], plan)
+        blocked = rendered.split("### Blocked (", 1)[1]
+        self.assertIn("[" + child + "](", blocked)
+        self.assertNotIn("[" + child + "](", rendered.split("### Not required (", 1)[1].split("### Failed",1)[0])
+        self.assertNotIn("Missing required job: " + child, rendered)
+
+    def test_unrelated_prefix_cannot_fulfill_gate(self):
+        expected = "PR · Selected Runtime (atomic/podman/lifecycle, podman, lifecycle) / podman · lifecycle"
+        impostor = expected + " extra"
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["atomic/podman/lifecycle"]}
+        rendered = self.render([job("Workflow policy", "success"),
+                                job(impostor, "success")], plan)
+        self.assertIn("Missing required job: " + expected, rendered)
+
+    def test_reusable_public_contracts_real_job_name(self):
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["integration/static/public-contracts"]}
+        name = "PR · Public Contracts"
+        rendered = self.render([job("Workflow policy", "success"), job(name, "success")], plan)
+        self.assertNotIn("Missing required job: " + name, rendered)
+        skipped = self.render([job("Workflow policy", "success"), job(name, "skipped")], plan)
+        self.assertIn("[" + name + "](", skipped.split("### Blocked (", 1)[1])
+        self.assertNotIn("[" + name + "](", skipped.split("### Not required (", 1)[1].split("### Failed", 1)[0])
 
 
 if __name__ == "__main__":

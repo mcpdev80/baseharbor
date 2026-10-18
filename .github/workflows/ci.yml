@@ -866,9 +866,13 @@ jobs:
               required.update({"PR · Trusted Plan", "PR · Focused Python",
                                "Workflow policy", "PR Selected Checks"})
               selected = set(plan.get("selected_gates", []))
-              if any(g.startswith(("atomic/docker/", "atomic/podman/"))
-                     for g in selected):
-                  required.add("PR · Selected Runtime")
+              for gate in selected:
+                  parts = gate.split("/")
+                  if len(parts) == 3 and parts[0] == "atomic" and parts[1] in {"docker", "podman"}:
+                      runtime, suite = parts[1], parts[2]
+                      required.add(
+                          f"PR · Selected Runtime ({gate}, {runtime}, {suite}) / "
+                          f"{runtime} · {suite}")
               if "integration/static/public-contracts" in selected:
                   required.add("PR · Public Contracts")
               jobs = []
