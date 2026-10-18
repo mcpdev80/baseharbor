@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -45,70 +46,156 @@ func appApplyCommand(store application.Store) *cli.Command {
 	}
 }
 
+// applicationApplyLifecycleHooks carries optional result-propagation hooks. The
+// zero value reproduces the original error-only lifecycle: no observation, no
+// mutation slot.
+type applicationApplyLifecycleHooks struct {
+	// Mutate runs inside the Target lifecycle lock before provider
+	// authorization/retirement are resolved for the changed source and before
+	// the first deployment or source-independent lifecycle state write. A
+	// failing mutation aborts without convergence.
+	Mutate func(context.Context, resolvedApplication) error
+	// CollectEvidence captures authoritative provider facts around the run
+	// while the Target lock is held. The post-run observation uses a bounded
+	// independent read-only context so cancellation or a run error preserves
+	// whatever partial effects really happened.
+	CollectEvidence bool
+	// ApprovedPlan carries an already-confirmed Edit impact through the same
+	// invocation. After mutation it may be rebound only when the freshly
+	// resolved authorization surface is unchanged.
+	ApprovedPlan *application.ProviderImpactPlan
+}
+
+// applicationApplyLifecycleEvidence binds observed provider facts and the
+// provider registry snapshot to one concrete lifecycle invocation, captured
+// together under the same Target lock. The result projection must reuse these
+// captured facts and never re-read the registry after the lock is released.
+type applicationApplyLifecycleEvidence struct {
+	Resolved resolvedApplication
+	Registry capability.Registry
+	Before   map[string]application.ProviderFact
+	After    map[string]application.ProviderFact
+	SQL      map[string]application.SQLConsumerInventory
+}
+
 func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	_, err := runApplicationApplyLifecycle(ctx, store, args, out, errOut, applicationApplyLifecycleHooks{})
+	return err
+}
+
+// runApplicationApplyLifecycle uses named result slots so the deferred
+// post-observation writes evidence.After into the returned value on every path.
+func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
 	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
 	if err != nil {
-		return err
+		return evidence, err
 	}
 	if isRemoteApplication(execution.resolved) {
-		return executeRemoteApplicationApply(ctx, execution.resolved, out)
+		return evidence, executeRemoteApplicationApply(ctx, execution.resolved, out)
 	}
 	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
 	if err != nil {
-		return err
+		return evidence, err
 	}
 	defer unlock()
 	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
-	if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return err
+	// Keep the existing read-only retirement preparation before an Edit so the
+	// post-mutation preparation remains a true re-plan. Provider authorization,
+	// however, must not run against the obsolete pre-edit source.
+	if hooks.Mutate == nil {
+		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
 	}
-	execution.providerPlan, err = prepareApplicationProviderRetirement(ctx, execution.resolved)
+	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
 	if err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if hooks.Mutate != nil {
+		if err := hooks.Mutate(ctx, execution.resolved); err != nil {
+			return evidence, err
+		}
+		// Edit approval belongs to the confirmed desired source. Re-read under
+		// the same Target lock, then authorize and re-plan the changed source.
+		reresolved, err := resolveApplication(ctx, store, args, "apply")
+		if err != nil {
+			return evidence, err
+		}
+		if isRemoteApplication(reresolved) {
+			return evidence, errors.New("application source changed to a remote target during mutation")
+		}
+		execution, err = newApplicationApplyExecutionFromResolved(ctx, reresolved, io.Discard, io.Discard)
+		if err != nil {
+			return evidence, err
+		}
+		if hooks.ApprovedPlan != nil {
+			if err := authorizeConfirmedApplicationEdit(ctx, execution.resolved, *hooks.ApprovedPlan, applicationInput(ctx, runtimeInput), out); err != nil {
+				return evidence, err
+			}
+		} else if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
+		}
+	}
+	if hooks.CollectEvidence {
+		evidence.Resolved = execution.resolved
+		evidence.Before = observeApplicationProviderFactsFunc(ctx, execution.resolved)
+		defer func() {
+			// Capture the registry identity/ownership together with the after
+			// facts, still under the Target lifecycle lock.
+			evidence.After = observeApplyLifecycleAfter(ctx, evidence.Resolved)
+			if registry, err := appProviderRegistryFunc(evidence.Resolved); err == nil {
+				evidence.Registry = registry
+				evidence.SQL = observeNativeSQLApplyResults(ctx, evidence.Resolved, registry)
+			}
+		}()
 	}
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")
 	if err != nil {
-		return fmt.Errorf("record deployment before mutation: %w", err)
+		return evidence, fmt.Errorf("record deployment before mutation: %w", err)
 	}
 	execution.resolved.DeploymentRecord = &pending
 	if err := application.RetainPendingProviderOwnersAt(execution.resolved.TargetStateRoot, execution.manifest); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.runPreflight(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.retainPendingProviderOwners(); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.prepareManagedRuntime(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.verifyManagedRuntime(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.convergeApplicationRuntime(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := retireReleasedApplicationProviders(ctx, execution.resolved, execution.compose, execution.issuer, execution.providerPlan, out); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	// Release old bindings only after owned runtime convergence is verified.
 	// Interrupted cleanup retains its existing registry owner for retry.
 	if err := execution.recordRealizedProviders(); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
 	if err := execution.recordVerifiedDeployment(ctx); err != nil {
-		return execution.recordFailedDeployment(err)
+		return evidence, execution.recordFailedDeployment(err)
 	}
-	return recordApplicationAudit(ctx, execution.resolved, "apply", "success", "verified", "desired application state converged and verified")
+	return evidence, recordApplicationAudit(ctx, execution.resolved, "apply", "success", "verified", "desired application state converged and verified")
 }
 
 func (e *applicationApplyExecution) recordFailedDeployment(cause error) error {

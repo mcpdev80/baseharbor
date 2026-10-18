@@ -57,7 +57,14 @@ func nativeBackendChangeRequests(resolved resolvedApplication, existing []applic
 			return nil, err
 		}
 		if !reflect.DeepEqual(before, after) {
-			existing = append(existing, application.ProviderChangeRequest{InstanceID: instance.ID, Operation: "update", Selection: "automatic", Consumers: []string{}, Materials: []application.MaterialDisposition{}})
+			operation := "update"
+			// No previous native provider resources means a new instance
+			// realization, not a consumer/data migration. Retained instances
+			// remain updates and still require independent material evidence.
+			if len(before) == 0 && len(after) != 0 {
+				operation = "add"
+			}
+			existing = append(existing, application.ProviderChangeRequest{InstanceID: instance.ID, Operation: operation, Selection: "automatic", Consumers: []string{}, Materials: []application.MaterialDisposition{}})
 		}
 	}
 	sort.Slice(existing, func(i, j int) bool { return existing[i].InstanceID < existing[j].InstanceID })

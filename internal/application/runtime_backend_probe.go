@@ -56,6 +56,20 @@ func (e RuntimeBackendProbeExecutor) ProbeBackend(ctx context.Context, probe Bac
 		// role or regenerate credentials merely to satisfy the verifier.
 		command := fmt.Sprintf(`PGPASSWORD="$POSTGRES_PASSWORD" psql "host=%s port=5432 user=$POSTGRES_USER dbname=$POSTGRES_DB sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem" -tAc 'SELECT 1'`, postgresAccessService(instance))
 		return e.execute(ctx, service, "sh", "-ec", command)
+	case BackendProbeSQLConsumerInventory:
+		service := runtimeServiceName("postgres", instance)
+		if strings.TrimSpace(probe.Database) == "" {
+			return "", errors.New("SQL consumer database required")
+		}
+		// Use retained protected native SQL credentials. Return only principal,
+		// database and bounded catalog counts; never emit secrets or row values.
+		const sql = "SELECT current_user, current_database(), " +
+			"(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace " +
+			"WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema' " +
+			"AND c.relkind IN ('r','p','m','v','S','f')), " +
+			"(SELECT count(*) FROM pg_largeobject_metadata)"
+		command := fmt.Sprintf(`PGPASSWORD="$POSTGRES_PASSWORD" psql "host=%s port=5432 user=$POSTGRES_USER dbname=$POSTGRES_DB sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem" --no-psqlrc -At -F '|' --set=ON_ERROR_STOP=1 -c "%s"`, postgresAccessService(instance), sql)
+		return e.execute(ctx, service, "sh", "-ec", command)
 	case BackendProbeCachePing:
 		service := runtimeServiceName("valkey", instance)
 		command := fmt.Sprintf(`VALKEYCLI_AUTH="$VALKEY_PASSWORD" valkey-cli --tls --cacert /run/baseharbor/tls/ca.pem -h %s -p 6379 ping`, valkeyAccessService(instance))
