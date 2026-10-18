@@ -145,10 +145,18 @@ func TestAppBackupOwnedCoreFixtureCleanupOnEveryExit(t *testing.T) {
 					return os.Remove(owned)
 				},
 			)
-			if !errors.Is(err, scenario.startErr) && !errors.Is(err, scenario.readyErr) {
-				if err != nil || scenario.startErr != nil || scenario.readyErr != nil {
-					t.Errorf("failure cause lost: %v", err)
+			var expected error
+			if scenario.startErr != nil {
+				expected = scenario.startErr
+			} else {
+				expected = scenario.readyErr
+			}
+			if expected == nil {
+				if err != nil {
+					t.Fatalf("successful fixture returned error: %v", err)
 				}
+			} else if err == nil || !errors.Is(err, expected) {
+				t.Fatalf("fixture lost original failure: got %v, want %v", err, expected)
 			}
 		})
 	}
@@ -175,5 +183,40 @@ func TestAppBackupOwnedCoreCleanupContextIsBounded(t *testing.T) {
 	})
 	if !cleaned {
 		t.Fatal("cleanup not executed on partial-start failure")
+	}
+}
+
+func TestAppBackupOwnedCoreCleanupAfterLaterAbort(t *testing.T) {
+	root := t.TempDir()
+	owned, foreign := filepath.Join(root, "owned"), filepath.Join(root, "foreign")
+	for _, file := range []string{owned, foreign} {
+		if err := os.WriteFile(file, []byte("sentinel"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := []string{}
+	t.Run("later abort", func(t *testing.T) {
+		err := runOwnedBackupCoreFixture(t, context.Background(),
+			func(context.Context) error { calls = append(calls, "start"); return nil },
+			func(context.Context) error { calls = append(calls, "ready"); return nil },
+			func(ctx context.Context) error {
+				calls = append(calls, "cleanup")
+				if ctx.Err() != nil { return ctx.Err() }
+				if _, ok := ctx.Deadline(); !ok { return errors.New("unbounded cleanup") }
+				return os.Remove(owned)
+			})
+		if err != nil { t.Fatalf("unexpected ready error: %v", err) }
+		// SkipNow exits after readiness and still executes the fixture's
+		// registered cleanup, without failing the containing regression.
+		t.SkipNow()
+	})
+	if got, want := fmt.Sprint(calls), fmt.Sprint([]string{"start", "ready", "cleanup"}); got != want {
+		t.Fatalf("cleanup order = %s, want %s", got, want)
+	}
+	if _, err := os.Stat(owned); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("owned state remained after abort: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("unrelated sentinel removed: %v", err)
 	}
 }
