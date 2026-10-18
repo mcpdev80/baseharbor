@@ -36,29 +36,29 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
 	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
-	// Register cleanup before any startup side effect. The dedicated fixture
-	// owns this isolated Target; its destruction still requires the normal
-	// inventory and two-stage explicit consent checked by the existing owner.
-	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer stop()
-		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
-			t.Errorf("owned backup Core cleanup: %v", err)
-		}
-	})
-	if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
-		t.Fatalf("runtime up: %v", err)
+	if err := runOwnedBackupCoreFixture(t, ctx,
+		func(startCtx context.Context) error {
+			return runtimeUpGuided(startCtx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true})
+		},
+		func(readyCtx context.Context) error {
+			state, err := inspectManagedOpenBao(readyCtx)
+			if err != nil {
+				return err
+			}
+			if !state.Initialized || !state.Unsealed || !state.ManagerReady {
+				return fmt.Errorf("guided Core OpenBao manager not ready: initialized=%t unsealed=%t manager=%t",
+					state.Initialized, state.Unsealed, state.ManagerReady)
+			}
+			return nil
+		},
+		func(cleanupCtx context.Context) error {
+			return approvedNativeFixtureCleanup(t, cleanupCtx, io.Discard)
+		}); err != nil {
+		t.Fatalf("guided Core start / authenticated OpenBao readiness: %v", err)
 	}
 	compose, _, err := openBaoRuntime(ctx)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Guided-up owns initialization and manager credentials. Verify the real
-	// ready authenticated trust plane, never bootstrap an initialized Core.
-	state, err := inspectManagedOpenBao(ctx)
-	if err != nil || !state.Initialized || !state.Unsealed || !state.ManagerReady {
-		t.Fatalf("guided Core OpenBao manager not ready: initialized=%t unsealed=%t manager=%t: %v",
-			state.Initialized, state.Unsealed, state.ManagerReady, err)
 	}
 
 	manifest := `version: 1
@@ -254,4 +254,24 @@ func backupFixtureRuntimeKind() (string, error) {
 		return "", fmt.Errorf("unsupported native backup test runtime %q", kind)
 	}
 	return string(kind), nil
+}
+
+// runOwnedBackupCoreFixture registers the existing consent-checked owner
+// before startup, including partial starts. Recovery never re-bootstraps an
+// already initialized trust plane. Failure retains the original start error;
+// cleanup is independently bounded and runs even after parent cancellation.
+func runOwnedBackupCoreFixture(t *testing.T, ctx context.Context,
+	start, ready, stop func(context.Context) error) error {
+	t.Helper()
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		if err := stop(cleanupCtx); err != nil {
+			t.Errorf("owned Core fixture cleanup: %v", err)
+		}
+	})
+	if err := start(ctx); err != nil {
+		return err
+	}
+	return ready(ctx)
 }
