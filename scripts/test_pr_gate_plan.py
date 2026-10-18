@@ -750,5 +750,117 @@ try:
 except ModuleNotFoundError:
     from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
+
+class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
+    def test_real_git_diff_base_merge_and_unreviewed_followup(self):
+        resolver_spec = importlib.util.spec_from_file_location(
+            'policy_diff_resolver', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        for reviewed_name, files, expected_checks in (
+            ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES,
+             planner.INSPECT_IMPORT_REQUIRED_IDS),
+            ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS}),
+        ):
+            with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                def git(*args):
+                    result = subprocess.run(['git', '-C', str(root), *args],
+                                            text=True, capture_output=True)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    return result.stdout.strip()
+                git('init', '-q')
+                git('config', 'user.name', 'Review fixture')
+                git('config', 'user.email', 'review@example.test')
+                for filename, status in files.items():
+                    path = root / filename
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if status == 'modified':
+                        path.write_text('baseline\n')
+                git('add', '.')
+                git('commit', '--allow-empty', '-qm', 'base')
+                first = git('rev-parse', 'HEAD')
+                git('branch', 'trusted')
+                git('checkout', '-qb', 'source')
+                for filename in files:
+                    (root / filename).write_text('reviewed\n')
+                git('add', '.')
+                git('commit', '-qm', 'reviewed exact source')
+                reviewed_sha = git('rev-parse', 'HEAD')
+                git('checkout', '-q', 'trusted')
+                (root / 'new-trusted-policy.txt').write_text('develop advance\n')
+                git('add', '.')
+                git('commit', '-qm', 'advance develop')
+                target = git('rev-parse', 'HEAD')
+                git('checkout', '-q', 'source')
+                git('merge', '--no-ff', '-qm', 'normal develop integration', 'trusted')
+                merged = git('rev-parse', 'HEAD')
+                for head, merge_base in ((reviewed_sha, first), (merged, target)):
+                    tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+                    integrated = git('commit-tree', tree, '-p', target, '-p', head,
+                                     '-m', 'expected integration')
+                    actual = resolver.resolve_pr_diff(root, target, head, integrated)
+                    self.assertFalse(actual['broad_required'], actual['reasons'])
+                    self.assertEqual(merge_base, actual['merge_base_sha'])
+                    self.assertEqual(files, {c['path']: c['status'] for c in actual['changes']})
+                    proof = planner.core752_reviewed_merge_chain
+                    with patch.object(planner, reviewed_name, reviewed_sha), patch.object(
+                        planner, 'core752_reviewed_merge_chain',
+                        side_effect=lambda base, current, reviewed=None:
+                            proof(base, current, reviewed, root)):
+                        result = planner.plan(actual, REQ, MAP)
+                    self.assertEqual('resolved', result['coverage_status'])
+                    self.assertEqual(expected_checks, {
+                        check['id'] for check in result['required_validation_checks']})
+                    self.assertEqual([], result['selected_gates'])
+                # Real post-review content modification, evaluated by same diff owner.
+                changed = root / next(iter(files))
+                changed.write_text('unreviewed follow-up\n')
+                git('add', '.')
+                git('commit', '-qm', 'unreviewed change')
+                new_head = git('rev-parse', 'HEAD')
+                tree = git('merge-tree', '--write-tree', target, new_head).splitlines()[0]
+                integrated = git('commit-tree', tree, '-p', target, '-p', new_head,
+                                 '-m', 'unreviewed integration')
+                actual = resolver.resolve_pr_diff(root, target, new_head, integrated)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                proof = planner.core752_reviewed_merge_chain
+                with patch.object(planner, reviewed_name, reviewed_sha), patch.object(
+                    planner, 'core752_reviewed_merge_chain',
+                    side_effect=lambda base, current, reviewed=None:
+                        proof(base, current, reviewed, root)):
+                    result = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_missing_extra_rename_delete_changed_status_and_unverified_inputs_block(self):
+        for sha_name, files in (
+            ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
+            ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
+        ):
+            changes = [{'path': path, 'status': status} for path, status in files.items()]
+            cases = [changes[:-1],
+                     changes + [{'path': 'scripts/unreviewed.py', 'status': 'added'}],
+                     [dict(c, status='deleted') if i == 0 else c
+                      for i, c in enumerate(changes)],
+                     [dict(c, status='renamed', old_path=c['path'],
+                           new_path='scripts/renamed.py') if i == 0 else c
+                      for i, c in enumerate(changes)],
+                     [dict(c, status='modified' if c['status'] == 'added' else 'added')
+                      if i == 0 else c for i, c in enumerate(changes)]]
+            for variant in cases:
+                with self.subTest(sha=sha_name, variant=variant):
+                    candidate = diff(variant)
+                    with patch.object(planner, 'core752_reviewed_merge_chain',
+                                      return_value=True):
+                        self.assertEqual('unresolved',
+                                         planner.plan(candidate, REQ, MAP)['coverage_status'])
+            for missing in ('head_sha', 'integration_sha', 'merge_base_sha'):
+                with self.subTest(sha=sha_name, missing=missing):
+                    candidate = diff(changes)
+                    candidate[missing] = None
+                    self.assertEqual('unresolved',
+                                     planner.plan(candidate, REQ, MAP)['coverage_status'])
+
 if __name__ == '__main__':
     unittest.main()

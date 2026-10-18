@@ -184,6 +184,17 @@ INSPECT_IMPORT_CANDIDATE_FILES = {
 }
 INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
 
+# Independently reviewed exact candidates: commit ancestry and complete diff
+# status are both mandatory, never a reusable path-only allowlist.
+CORE_751_REVIEWED_HEAD = '9fcc77cd1feb0bf02e7647aa64bc02a2ebb47ae2'
+CORE_991_REVIEWED_HEAD = 'ba577f0384b291ad01f8e4530ffe80119aa34c06'
+CORE_991_REVIEWED_FILES = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_check_runner.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+}
+
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -377,6 +388,32 @@ def plan(diff, requirements, mapping):
     def require(checks):
         for check in checks:
             validations[check['id']] = check
+    # Exact source hashes bind all content, including individual file status.
+    # Each clean develop merge is proved by the existing Git tree/ancestry owner.
+    for reviewed, expected, checks, label in (
+        (CORE_751_REVIEWED_HEAD, INSPECT_IMPORT_CANDIDATE_FILES,
+         INSPECT_CHECKS, 'core-751 reviewed import evidence'),
+        (CORE_991_REVIEWED_HEAD, CORE_991_REVIEWED_FILES,
+         CI_CHECKS, 'reviewed core-754/core-918 trusted CI integration'),
+    ):
+        if (valid and not diff['broad_required'] and not unresolved and
+                identifiers['integration_sha'] is not None and
+                len(paths) == len(expected) and set(paths) == set(expected) and
+                all(ch.get('status') == expected.get(ch.get('path'))
+                    for ch in diff['changes']) and
+                core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                             identifiers['head_sha'], reviewed)):
+            require(checks)
+            return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                    'mapping_schema': mapping['schema'], 'release': release,
+                    'coverage_status': 'resolved', 'unresolved_coverage': [],
+                    'broad_required': False, 'selected_gates': [],
+                    'required_validation_checks': [validations[k] for k in sorted(validations)],
+                    'validation_contract': ('Every listed test must execute and PASS on the '
+                        'authenticated current integration. Missing, skipped and failed '
+                        'validations block in the existing trusted final verifier.'),
+                    'reasons': [label + ': exact source hash, complete changed status '
+                                'set and proven clean trusted-target merge only']}
     # Reuse the existing content/ancestry proof for strict target updates.
     # Resolver validation proves the current PR integration parents and tree;
     # this rule only covers the immutable reviewed source and clean target merges.
