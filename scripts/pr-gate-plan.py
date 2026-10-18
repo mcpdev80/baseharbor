@@ -180,13 +180,14 @@ INSPECT_RECONCILE_REVIEWED = frozenset([
 # Source review and immutable commit binding must precede resolved coverage.
 INSPECT_IMPORT_CANDIDATE_FILES = {
     'internal/repositoryinspect/capability_detection_runtime.go': 'modified',
+    'internal/repositoryinspect/capability_detection_js_context.go': 'added',
     'internal/repositoryinspect/capability_import_detection_test.go': 'added',
 }
 INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
 
 # Independently reviewed exact candidates: commit ancestry and complete diff
 # status are both mandatory, never a reusable path-only allowlist.
-CORE_751_REVIEWED_HEAD = '9fcc77cd1feb0bf02e7647aa64bc02a2ebb47ae2'
+CORE_751_REVIEWED_HEAD = 'cf0a19bc4c8f398d7ee3fc07a635833168081ff5'
 CORE_991_REVIEWED_HEAD = 'eeda633071714a0b43551ab947ad036ffaac1b1b'
 CORE_982_REVIEWED_HEAD = '0ab44b7edb94618489cb505cf897ff7e6d73da6c'
 CORE_982_REVIEWED_FILES = {
