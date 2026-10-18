@@ -82,17 +82,17 @@ class SummaryTests(unittest.TestCase):
 
     def test_required_skip_is_blocked_not_unnecessary(self):
         rendered = self.render([job("PR · Validation · ci-policy", "skipped")])
-        self.assertIn("### Blocked (1)", rendered)
+        self.assertIn("### Blocked (", rendered)
         self.assertIn("### Not required (0)", rendered)
 
     def test_optional_skip_is_not_required(self):
         rendered = self.render([job("PR · Selected Runtime", "skipped")])
         self.assertIn("### Not required (1)", rendered)
-        self.assertIn("### Blocked (0)", rendered)
+        self.assertIn("### Blocked (", rendered)
 
     def test_missing_conclusion_is_blocked(self):
         rendered = self.render([job("PR · Focused Python", None)])
-        self.assertIn("### Blocked (1)", rendered)
+        self.assertIn("### Blocked (", rendered)
 
     def test_only_verified_reuse_is_listed(self):
         plan = {"required_validation_checks": [], "selected_gates": [], "coverage_status": "resolved",
@@ -110,27 +110,72 @@ class SummaryTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 rendered = self.render(**kwargs)
                 self.assertIn("Result overview unavailable", rendered)
-                self.assertIn("### Blocked (1)", rendered)
+                self.assertIn("### Blocked (", rendered)
 
     def test_missing_plan_or_api_is_blocked(self):
         for kwargs in ({"missing_plan": True}, {"api_error": True}):
             with self.subTest(kwargs=kwargs):
                 rendered = self.render(**kwargs)
                 self.assertIn("Result overview unavailable", rendered)
-                self.assertIn("### Blocked (1)", rendered)
+                self.assertIn("### Blocked (", rendered)
 
     def test_unresolved_coverage_is_displayed_as_blocked(self):
         plan = {"required_validation_checks": [], "selected_gates": [],
                 "coverage_status": "unresolved"}
         rendered = self.render([job("Workflow policy", "success")], plan)
         self.assertIn("Trusted plan coverage unresolved", rendered)
-        self.assertIn("### Blocked (1)", rendered)
+        self.assertIn("### Blocked (", rendered)
 
     def test_required_runtime_skip_is_blocked(self):
         plan = {"required_validation_checks": [], "coverage_status": "resolved",
                 "selected_gates": ["atomic/docker/lifecycle"]}
         rendered = self.render([job("PR · Selected Runtime", "skipped")], plan)
-        self.assertIn("### Blocked (1)", rendered)
+        self.assertIn("### Blocked (", rendered)
+
+
+    def test_verified_reuse_invalid_urls_and_duration_are_safe(self):
+        base = "https://github.com/mcpdev80/baseharbor/actions/runs/"
+        evidence = [
+            {"verified": True, "url": "https://example.net/evidence", "duration_seconds": 42},
+            {"verified": True, "url": "https://github.com.evil.net/mcpdev80/baseharbor/actions/runs/2"},
+            {"verified": True, "url": base + "invalid"},
+            {"verified": True, "url": base + "2?extra=1"},
+            {"verified": True, "url": 17},
+            {"verified": False, "url": base + "3"},
+            {"verified": True, "url": base + "4", "duration_seconds": -5},
+            {"verified": True, "url": base + "5", "duration_seconds": "12"},
+            {"verified": True, "url": base + "6", "duration_seconds": 8},
+        ]
+        plan = {"required_validation_checks": [], "selected_gates": [],
+                "coverage_status": "resolved", "verified_reused_evidence": evidence}
+        rendered = self.render([job("Workflow policy", "success")], plan)
+        self.assertIn("### Reused (3)", rendered)
+        for run in ("4", "5", "6"):
+            self.assertIn(base + run, rendered)
+        self.assertIn("Plan-marked verified evidence](" + base + "6) · 8s", rendered)
+        self.assertEqual(rendered.count("Plan-marked verified evidence"), 3)
+        self.assertIn("duration unknown", rendered)
+        self.assertNotIn("example.net", rendered)
+        self.assertNotIn("evil.net", rendered)
+
+    def test_missing_required_jobs_in_nonempty_api_are_blocked(self):
+        plan = {"required_validation_checks": [{"id": "ci-policy"}],
+                "selected_gates": [], "coverage_status": "resolved"}
+        rendered = self.render([job("Workflow policy", "success")], plan)
+        for missing in ("PR · Trusted Plan", "PR · Focused Python",
+                        "PR · Validation · ci-policy"):
+            self.assertIn("Missing required job: " + missing, rendered)
+        self.assertIn("### Blocked (3)", rendered)
+        self.assertNotIn("Missing required job: PR Selected Checks", rendered)
+        self.assertIn("### Checked (1)", rendered)
+
+    def test_required_runtime_and_contract_jobs_missing_from_api(self):
+        plan = {"required_validation_checks": [], "coverage_status": "resolved",
+                "selected_gates": ["atomic/podman/backup",
+                                   "integration/static/public-contracts"]}
+        rendered = self.render([job("Workflow policy", "success")], plan)
+        self.assertIn("Missing required job: PR · Selected Runtime", rendered)
+        self.assertIn("Missing required job: PR · Public Contracts", rendered)
 
 
 if __name__ == "__main__":

@@ -843,6 +843,7 @@ jobs:
           import json
           import os
           from pathlib import Path
+          from urllib.parse import urlsplit
           from urllib.request import Request, urlopen
 
           repository = os.environ["GITHUB_REPOSITORY"]
@@ -896,8 +897,10 @@ jobs:
                       return f"{max(0, int((end - start).total_seconds()))}s"
                   except ValueError:
                       return "duration unknown"
+              seen = set()
               for job in jobs:
                   name = job.get("name") or "Unnamed job"
+                  seen.add(name)
                   if name == "PR Selected Checks":
                       continue  # This very job is still in progress.
                   state = job.get("conclusion")
@@ -911,16 +914,29 @@ jobs:
                   else:
                       category = "Blocked"
                   groups[category].append(item)
+              # This running final check cannot yet have a terminal conclusion.
+              # Every other mandatory name absent from an API response is blocked.
+              for name in sorted(required - seen - {"PR Selected Checks"}):
+                  groups["Blocked"].append(
+                      f"[Missing required job: {name}]({link}) · duration unknown")
               # Reuse is display-only metadata from the trusted plan. Never infer
               # reuse merely from a skipped job or a green previous run.
               for evidence in plan.get("verified_reused_evidence", []):
                   if not isinstance(evidence, dict) or evidence.get("verified") is not True:
                       continue
-                  url = evidence.get("url", "")
-                  if isinstance(url, str) and url.startswith(
-                      f"https://github.com/{repository}/actions/runs/"):
-                      seconds = evidence.get("duration_seconds")
-                  elapsed = f"{seconds}s" if type(seconds) is int and seconds >= 0 else "duration unknown"
+                  url = evidence.get("url")
+                  if not isinstance(url, str):
+                      continue
+                  parsed = urlsplit(url)
+                  prefix = f"/{repository}/actions/runs/"
+                  suffix = parsed.path[len(prefix):] if parsed.path.startswith(prefix) else ""
+                  if (parsed.scheme != "https" or parsed.netloc != "github.com"
+                          or not suffix or not suffix.split("/")[0].isdigit()
+                          or parsed.query or parsed.fragment):
+                      continue
+                  seconds = evidence.get("duration_seconds")
+                  elapsed = (f"{seconds}s" if type(seconds) is int and seconds >= 0
+                             else "duration unknown")
                   groups["Reused"].append(f"[Plan-marked verified evidence]({url}) · {elapsed}")
           except (OSError, ValueError, KeyError, TypeError) as error:
               groups["Blocked"].append("Result overview unavailable; inspect the required check and run logs.")
