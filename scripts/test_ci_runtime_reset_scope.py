@@ -19,6 +19,41 @@ class RuntimeResetOwnershipTests(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.log = self.root / "operations.log"
+        self.rm_log = self.root / "removals.log"
+        self.external = tempfile.TemporaryDirectory()
+        self.addCleanup(self.external.cleanup)
+        self.external_sentinel = Path(self.external.name) / "outside-root-sentinel"
+        self.external_sentinel.write_text("outside-root-preserved")
+        rm = self.bin / "rm"
+        rm.write_text("""#!/usr/bin/env python3
+import os
+from pathlib import Path
+import shutil
+import sys
+
+root = Path(os.environ["SAFE_RESET_ROOT"]).resolve(strict=True)
+args = sys.argv[1:]
+paths = [arg for arg in args if not arg.startswith("-")]
+with open(os.environ["SAFE_RM_LOG"], "a", encoding="utf-8") as log:
+    for arg in paths:
+        candidate = Path(arg).resolve(strict=False)
+        if not candidate.is_relative_to(root):
+            if arg.startswith("/tmp/"):
+                log.write("BLOCKED_GLOBAL " + arg + chr(10))
+                continue
+            log.write("DENIED " + arg + chr(10))
+            sys.exit(87)
+    for arg in paths:
+        candidate = Path(arg).resolve(strict=False)
+        if not candidate.is_relative_to(root):
+            continue
+        log.write("ALLOWED " + str(candidate.relative_to(root)) + chr(10))
+        if candidate.is_dir() and not candidate.is_symlink():
+            shutil.rmtree(candidate)
+        elif candidate.exists() or candidate.is_symlink():
+            candidate.unlink()
+""")
+        rm.chmod(0o755)
         engine = self.bin / "docker"
         engine.write_text("""#!/usr/bin/env bash
 set -euo pipefail
@@ -45,6 +80,8 @@ esac
             XDG_CONFIG_HOME=str(self.root / "config"),
             XDG_CACHE_HOME=str(self.root / "cache"),
             STUB_LOG=str(self.log),
+            SAFE_RESET_ROOT=str(self.root),
+            SAFE_RM_LOG=str(self.rm_log),
             PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
         )
         for name in ("data", "config", "cache"):
@@ -111,6 +148,13 @@ esac
         result = self.run_reset()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assert_state(False)
+        self.assertEqual("outside-root-preserved", self.external_sentinel.read_text())
+        removals = self.rm_log.read_text()
+        for name in ("/tmp/baseharbor-", "/tmp/baha", "/tmp/mailflow", "/tmp/baseharbor-demo"):
+            self.assertIn("BLOCKED_GLOBAL " + name, removals)
+        self.assertNotIn("DENIED ", removals)
+        for kind in ("data", "config", "cache"):
+            self.assertIn("ALLOWED " + kind + "/baseharbor", removals)
         ops = self.log.read_text()
         self.assertIn("container rm baseharbor-selected baseharbor-foreign", ops)
         self.assertIn("network rm baseharbor-selected baseharbor-foreign", ops)
