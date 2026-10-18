@@ -107,7 +107,7 @@ class ArtifactGC(unittest.TestCase):
         workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
                                    '.github/workflows/artifact-gc.yml').read_text())
         shell = workflow['jobs']['artifacts']['steps'][0]['run']
-        source = shell.split("python3 - <<'PY'\\n", 1)[1].rsplit('\\nPY', 1)[0]
+        source = shell.split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
         deleted = []
         artifacts = [dict(id=i, name=name, created_at='2020-01-01T00:00:00Z',
                           workflow_run={'id': i}) for i, name in enumerate((
@@ -125,8 +125,8 @@ class ArtifactGC(unittest.TestCase):
             if path.startswith('actions/runs/'):
                 return Response({'status': 'completed', 'head_branch': 'diag/old'})
             raise AssertionError(path)
-        with patch.dict(os.environ, {'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only'}), \\
-                patch.object(urllib.request, 'urlopen', request), \\
+        with patch.dict(os.environ, {'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only'}), \
+                patch.object(urllib.request, 'urlopen', request), \
                 contextlib.redirect_stdout(io.StringIO()):
             exec(compile(source, 'artifact-gc.yml', 'exec'), {})
         self.assertEqual(deleted, ['actions/artifacts/4'])
