@@ -14,7 +14,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
 
@@ -37,17 +36,29 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
 	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	// Register cleanup before any startup side effect. The dedicated fixture
+	// owns this isolated Target; its destruction still requires the normal
+	// inventory and two-stage explicit consent checked by the existing owner.
+	t.Cleanup(func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer stop()
+		if err := approvedNativeFixtureCleanup(t, cleanup, io.Discard); err != nil {
+			t.Errorf("owned backup Core cleanup: %v", err)
+		}
+	})
 	if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true}); err != nil {
 		t.Fatalf("runtime up: %v", err)
 	}
-	defer func() { _ = approvedNativeCoreStop(t, context.Background(), io.Discard) }()
-	compose, platformFiles, err := openBaoRuntime(ctx)
+	compose, _, err := openBaoRuntime(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recoveryPath := filepath.Join(root, "openbao-recovery.json")
-	if err := openbao.Bootstrap(ctx, compose, platformFiles, recoveryPath); err != nil {
-		t.Fatalf("OpenBao bootstrap: %v", err)
+	// Guided-up owns initialization and manager credentials. Verify the real
+	// ready authenticated trust plane, never bootstrap an initialized Core.
+	state, err := inspectManagedOpenBao(ctx)
+	if err != nil || !state.Initialized || !state.Unsealed || !state.ManagerReady {
+		t.Fatalf("guided Core OpenBao manager not ready: initialized=%t unsealed=%t manager=%t: %v",
+			state.Initialized, state.Unsealed, state.ManagerReady, err)
 	}
 
 	manifest := `version: 1
