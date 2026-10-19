@@ -1257,11 +1257,9 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
-            ('GC_999_REVIEWED_HEAD', planner.GC_999_REVIEWED_FILES,
-              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
-            ('BINDING_PR_1007_REVIEWED_HEAD', planner.BINDING_PR_1007_REVIEWED_FILES,
-              {c['id'] for c in planner.CI_CHECKS}),
-        ):
+             ('GC_999_REVIEWED_HEAD', planner.GC_999_REVIEWED_FILES,
+               {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+         ):
             with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 def git(*args):
@@ -1400,6 +1398,91 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         self.assertEqual({'source-contracts', 'cli-guided-tests', 'cli-vet', 'cli-build'},
                          {c['id'] for c in result['required_validation_checks']})
         self.assertEqual([], result['selected_gates'])
+
+    def test_binding_pr_1007_resolves_on_linear_head_and_rejects_other_heads(self):
+        # #1007 is a binding PR: a single linear head 48def9e8 whose single 1st
+        # parent 706b5244 sits one commit ahead of the develop tip, so its merge
+        # base with the target base is exactly that base. The dedicated binding
+        # clause resolves only for that immutable reviewed head; any other linear
+        # head (different sha) or follow-up content stays unresolved.
+        resolver_spec = importlib.util.spec_from_file_location(
+            'binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        for _ in range(2):
+            with self.subTest(reviewed='BINDING_PR_1007_REVIEWED_HEAD'), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                def git(*args):
+                    result = subprocess.run(['git', '-C', str(root), *args],
+                                            text=True, capture_output=True)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    return result.stdout.strip()
+                git('init', '-q')
+                git('config', 'user.name', 'Binding fixture')
+                git('config', 'user.email', 'fixture@example.test')
+                for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                    (root / path).parent.mkdir(parents=True, exist_ok=True)
+                    (root / path).write_text('baseline\n')
+                git('add', '.')
+                git('commit', '--allow-empty', '-qm', 'develop baseline')
+                git('branch', 'trusted')
+                # The target tip is the current develop line.
+                target = git('rev-parse', 'trusted')
+                # The binding head is exactly one linear commit ahead of the
+                # target tip: build it directly on top of the trusted branch so
+                # its single 1st parent is the target tip and its merge base with
+                # the target is exactly that tip.
+                git('checkout', '-q', 'trusted')
+                for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                    (root / path).write_text('reviewed\n')
+                git('add', '.')
+                git('commit', '-qm', 'binding linear head')
+                head = git('rev-parse', 'HEAD')
+                self.assertEqual(target, git('merge-base', head, target))
+                parents = git('rev-list', '--parents', '-n', '1', head).split()
+                self.assertEqual(2, len(parents))
+                self.assertEqual(target, parents[1])
+                for h in (head,):
+                    tree = git('merge-tree', '--write-tree', target, h).splitlines()[0]
+                    integrated = git('commit-tree', tree, '-p', target, '-p', h,
+                                     '-m', 'binding integration')
+                    actual = resolver.resolve_pr_diff(root, target, h, integrated)
+                    self.assertFalse(actual['broad_required'], actual['reasons'])
+                    self.assertEqual(target, actual['merge_base_sha'])
+                    self.assertEqual({p: s for p, s in
+                                      planner.BINDING_PR_1007_REVIEWED_FILES.items()},
+                                     {c['path']: c['status'] for c in actual['changes']})
+                    with patch.object(planner, 'BINDING_PR_1007_REVIEWED_HEAD', h), \
+                           patch.object(planner, 'BINDING_PR_1007_LINEAR_PARENT', target):
+                        proof_ancestry = planner.core752_binding_linear_ancestry
+                        with patch.object(
+                        planner, 'core752_binding_linear_ancestry',
+                        side_effect=lambda base, current, single_parent,
+                        repository=root: proof_ancestry(
+                        base, current, single_parent, repository)):
+                            planned = planner.plan(actual, REQ, MAP)
+                    self.assertEqual('resolved', planned['coverage_status'], planned)
+                    self.assertEqual([], planned['unresolved_coverage'])
+                    self.assertEqual([], planned['selected_gates'])
+                    self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+                                     {c['id'] for c in planned['required_validation_checks']})
+                # A different linear head (same 3 files, different sha) cannot
+                # equal the immutable reviewed anchor and stays unresolved.
+                git('checkout', '-q', 'trusted')
+                (root / 'extra-binding.txt').write_text('not reviewed\n')
+                git('add', '.')
+                git('commit', '-qm', 'forged follow-up binding head')
+                forged = git('rev-parse', 'HEAD')
+                self.assertNotEqual(forged, head)
+                self.assertEqual(target, git('merge-base', forged, target))
+                tree = git('merge-tree', '--write-tree', target, forged).splitlines()[0]
+                integrated = git('commit-tree', tree, '-p', target, '-p', forged,
+                                 '-m', 'forged integration')
+                forged_actual = resolver.resolve_pr_diff(root, target, forged, integrated)
+                self.assertFalse(forged_actual['broad_required'], forged_actual['reasons'])
+                with patch.object(planner, 'BINDING_PR_1007_REVIEWED_HEAD', h):
+                    forged_planned = planner.plan(forged_actual, REQ, MAP)
+                self.assertEqual('unresolved', forged_planned['coverage_status'], forged_planned)
 
 
 class CopiedTrustedTreeReviewTests(unittest.TestCase):
