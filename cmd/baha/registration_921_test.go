@@ -198,7 +198,10 @@ func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
 	session := workspaceMutationClient(t)
 	ctx := context.Background()
 
-	runEdit := func(label string, arguments map[string]any, wantContains string) {
+	// structuredCode asserts the MCP result carries a concrete typed Code on the
+	// public boundary, not the internal_error fallthrough from an unclassified
+	// domain error.
+	structuredCode := func(label string, arguments map[string]any, wantCode string) string {
 		result, callErr := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: arguments})
 		if callErr != nil {
 			t.Fatalf("%s: call failed: %v", label, callErr)
@@ -206,28 +209,43 @@ func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
 		if result == nil || !result.IsError {
 			t.Fatalf("%s: expected a typed failure for %v", label, arguments)
 		}
-		payload, _ := json.Marshal(result.StructuredContent)
-		if !strings.Contains(string(payload), wantContains) {
-			t.Fatalf("%s: handler did not return %q: %s", label, wantContains, string(payload))
+		if result.StructuredContent == nil {
+			t.Fatalf("%s: error result has no structured error payload", label)
 		}
+		var payload struct {
+			Error struct {
+				Code      string `json:"code"`
+				CauseCode string `json:"cause"`
+				Next      string `json:"next,omitempty"`
+			} `json:"error"`
+		}
+		raw, _ := json.Marshal(result.StructuredContent)
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("%s: error payload not structured: %v (%s)", label, err, string(raw))
+		}
+		if payload.Error.Code != wantCode {
+			t.Fatalf("%s: handler returned code %q, want %q (payload: %s)", label, payload.Error.Code, wantCode, string(raw))
+		}
+		return payload.Error.CauseCode
 	}
 
 	// Wrong Target: a configured target that does not match the resolved app.
-	runEdit("wrong-target", map[string]any{
+	// Must classify through the typed machine error owner as a conflict.
+	structuredCode("wrong-target", map[string]any{
 		"target":  "docker-dev",
 		"phase":   "propose",
 		"desired": map[string]any{"target": "podman-dev"},
 	}, "conflict")
 
 	// Invalid phase must classify as validation_failed with remediation.
-	runEdit("invalid-phase", map[string]any{
+	structuredCode("invalid-phase", map[string]any{
 		"target":  "docker-dev",
 		"phase":   "suspend",
 		"desired": map[string]any{"target": "docker-dev"},
 	}, "validation_failed")
 
 	// Apply without proposal/consent must classify as validation_failed.
-	runEdit("apply-missing", map[string]any{
+	structuredCode("apply-missing", map[string]any{
 		"target":  "docker-dev",
 		"phase":   "apply",
 		"desired": map[string]any{"target": "docker-dev"},

@@ -112,7 +112,9 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 				return machineMCPFailure(err)
 			}
 			if input.Target == "" || input.Target != resolved.Target.Name || input.Desired.Target != input.Target {
-				return machineMCPFailure(&appMachineError{Code: "conflict"})
+				return machineMCPFailure(machine.NewError(machine.ErrorConflict,
+					"app edit Target does not match the resolved deployment Target.",
+					"Resubmit with the exact resolved deployment Target for this application.", false))
 			}
 			if err := authorizeResolvedMCPOperation(ctx, "app.edit", resolved, ""); err != nil {
 				return machineMCPFailure(err)
