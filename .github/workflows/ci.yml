@@ -425,7 +425,7 @@ jobs:
           name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   pr_plan:
     name: PR · Trusted Plan
@@ -476,7 +476,7 @@ jobs:
         with:
           name: trusted-pr-plan
           path: pr-plan.json
-          retention-days: 2
+          retention-days: 30
 
   pr_runner_interface:
     name: PR · Runner Interface
@@ -530,7 +530,7 @@ jobs:
           name: pr-consumer-pins
           path: ${{ runner.temp }}/pr-consumer-pins.json
           if-no-files-found: error
-          retention-days: 2
+          retention-days: 30
 
   pr_demo_pin:
     name: PR · Demo Pin
@@ -579,7 +579,7 @@ jobs:
           name: verified-pr-demo-pin
           path: ${{ runner.temp }}/verified-demo.sha
           if-no-files-found: error
-          retention-days: 2
+          retention-days: 30
 
   pr_candidate:
     name: PR · Exact Candidate
@@ -618,7 +618,7 @@ jobs:
           name: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/pr-exact-candidate
           if-no-files-found: error
-          retention-days: 2
+          retention-days: 30
 
   pr_focused:
     name: PR · Focused Python

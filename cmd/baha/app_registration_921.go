@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -88,16 +88,18 @@ func registerMCPFootprintShowTool(server *mcp.Server, store application.Store) {
 		})
 }
 
-// MCP change is deliberately two phase; callers must resubmit the exact typed
-// proposal and provider-consequence consent, which are freshly revalidated.
+// appMCPEditInput is the valid MCP propose/apply boundary. The propose phase
+// requires only the Target-bound edit intent; the apply phase additionally
+// demands the exact typed proposal and provider-consequence consent, which the
+// handler enforces after the schema has accepted an optional proposal/consent.
 type appMCPEditInput struct {
-	Target      string
-	Name        string
-	Environment string
-	Phase       string
-	Desired     appMachineDesiredRequest
-	Proposal    *appMachineDesiredResult
-	Consent     *application.ProviderChangeConsent
+	Target      string                             `json:"target" jsonschema:"exact resolved deployment target for this edit"`
+	Name        string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
+	Environment string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
+	Phase       string                             `json:"phase" jsonschema:"required exactly \"propose\" or \"apply\""`
+	Desired     appMachineDesiredRequest           `json:"desired" jsonschema:"Target-bound edit intent; required for both phases"`
+	Proposal    *appMachineDesiredResult           `json:"proposal,omitempty" jsonschema:"typed proposal from the matching propose phase; required for apply"`
+	Consent     *application.ProviderChangeConsent `json:"consent,omitempty" jsonschema:"fresh provider-consequence consent from the matching propose phase; required for apply"`
 }
 
 func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
@@ -110,7 +112,7 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 				return machineMCPFailure(err)
 			}
 			if input.Target == "" || input.Target != resolved.Target.Name || input.Desired.Target != input.Target {
-				return machineMCPFailure(errors.New("app edit: wrong Target"))
+				return machineMCPFailure(&appMachineError{Code: "conflict"})
 			}
 			if err := authorizeResolvedMCPOperation(ctx, "app.edit", resolved, ""); err != nil {
 				return machineMCPFailure(err)
@@ -119,7 +121,9 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 			switch strings.ToLower(strings.TrimSpace(input.Phase)) {
 			case "propose":
 				if input.Proposal != nil || input.Consent != nil {
-					return machineMCPFailure(errors.New("app edit: unexpected consent or proposal"))
+					return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed,
+						"app edit propose must not carry the typed proposal or provider-consequence consent.",
+						"Resubmit propose with only the Target-bound desired intent.", false))
 				}
 				proposal, err := appMachinePropose(ctx, input.Desired, authorities.Read, authorities.Choices, authorities.Plan)
 				if err != nil {
@@ -128,7 +132,9 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 				return nil, proposal, nil
 			case "apply":
 				if input.Proposal == nil || input.Consent == nil {
-					return machineMCPFailure(errors.New("app edit: exact proposal and consent required"))
+					return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed,
+						"app edit apply requires the exact typed proposal and provider-consequence consent.",
+						"Resubmit apply with the matching proposal and the fresh consent from the propose phase.", false))
 				}
 				source, err := appEditSourceBytes(resolved)
 				if err != nil {
@@ -161,7 +167,9 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 				}
 				return nil, result, nil
 			default:
-				return machineMCPFailure(errors.New("app edit: phase must be propose or apply"))
+				return machineMCPFailure(machine.NewError(machine.ErrorValidationFailed,
+					"app edit phase must be exactly \"propose\" or \"apply\".",
+					"Resubmit with one of the two supported phases.", false))
 			}
 		})
 }

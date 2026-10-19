@@ -81,7 +81,10 @@ func TestObserveSQLConsumerInventoryRequiresActualCredentialBoundCatalog(t *test
 		exec.probes[0].Database != "demo_dev" {
 		t.Fatalf("native SQL probe missing: %+v", exec.probes)
 	}
-	for _, tc := range []struct{out string; wantErr, wantEmpty bool}{
+	for _, tc := range []struct {
+		out                string
+		wantErr, wantEmpty bool
+	}{
 		{"baseharbor|demo_dev|1|0", false, false},
 		{"baseharbor|demo_dev|0|2", false, false},
 		{"postgres|demo_dev|0|0", true, false},

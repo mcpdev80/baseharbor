@@ -206,27 +206,37 @@ func appMachineFootprintJSON(view GuidedReadContext, target string) ([]byte, err
 
 // appMachineDesiredChoice is a Target-bound, full-requirement request.
 // No mutation or provider selection is inferred from a bare provider kind.
+// Its public JSON contract is snake_case so the MCP SDK infers consistent
+// field names.
 type appMachineDesiredChoice struct {
-	Requirement capability.Requirement
-	InstanceID  string
+	Requirement capability.Requirement `json:"requirement"`
+	InstanceID  string                 `json:"instance_id,omitempty"`
 }
+
+// appMachineDesiredRequest is the portable, Target-bound edit intent carried
+// across the MCP boundary. Its public JSON contract is snake_case so the MCP
+// SDK infers consistent field names; no field leaks reconciliation state.
 type appMachineDesiredRequest struct {
-	Target           string
-	SnapshotRevision string
-	Requirements     []capability.Requirement
-	Choices          []appMachineDesiredChoice
+	Target           string                    `json:"target" jsonschema:"exact resolved deployment target for this edit"`
+	SnapshotRevision string                    `json:"snapshot_revision,omitempty" jsonschema:"optional current snapshot revision matched during propose"`
+	Requirements     []capability.Requirement  `json:"requirements,omitempty" jsonschema:"portable capability requirements to converge"`
+	Choices          []appMachineDesiredChoice `json:"choices,omitempty" jsonschema:"optional per-requirement provider instance selections"`
 }
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
+
+// appMachineDesiredResult is the typed propose response carried back across the
+// MCP boundary. Its public JSON contract is snake_case so the SDK infers
+// consistent field names; no field leaks internal reconciliation state.
 type appMachineDesiredResult struct {
-	ApplicationID    string
-	Desired          appMachineDesiredRequest
-	Requirements     []capability.Requirement
-	Preferences      []application.ProviderPreference
-	Choices          []appProviderChoice
-	Plan             application.ProviderImpactPlan
-	SnapshotRevision string
-	PlanRevision     string
+	ApplicationID    string                           `json:"application_id"`
+	Desired          appMachineDesiredRequest         `json:"desired"`
+	Requirements     []capability.Requirement         `json:"requirements,omitempty"`
+	Preferences      []application.ProviderPreference `json:"preferences,omitempty"`
+	Choices          []appProviderChoice              `json:"choices,omitempty"`
+	Plan             application.ProviderImpactPlan   `json:"plan"`
+	SnapshotRevision string                           `json:"snapshot_revision,omitempty"`
+	PlanRevision     string                           `json:"plan_revision,omitempty"`
 }
 
 // appMachinePropose delegates provider compatibility to accepted core-913 choice

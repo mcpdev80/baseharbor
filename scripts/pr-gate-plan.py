@@ -190,6 +190,48 @@ INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
 CORE_751_REVIEWED_HEAD = 'cf0a19bc4c8f398d7ee3fc07a635833168081ff5'
 CORE_991_REVIEWED_HEAD = 'eeda633071714a0b43551ab947ad036ffaac1b1b'
 CORE_982_REVIEWED_HEAD = '0ab44b7edb94618489cb505cf897ff7e6d73da6c'
+# Independently qualified GC candidate is bound to its immutable full SHA.
+# Any follow-up contents, changed file inventory or rename stays unresolved.
+GC_999_REVIEWED_HEAD = '31089e281390c58189199b25d22925c590ab228d'
+GC_999_REVIEWED_FILES = {
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
+
+RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
+RUNTIME_RESET_REVIEWED_FILES = {
+    'scripts/ci-runtime-reset.sh': 'modified',
+    'scripts/test_ci_runtime_reset_scope.py': 'added',
+}
+PODMAN_CONSENT_REVIEWED_HEAD = 'c3809b12c345f675359c85f4ac3aeffc8948eaab'
+PODMAN_CONSENT_REVIEWED_FILES = {
+    '.github/workflows/podman-acceptance.yml': 'modified',
+    'scripts/ci-podman-typed-consent.py': 'added',
+    'scripts/test_ci_podman_typed_consent.py': 'added',
+}
+MCP_PRECONDITIONS_REVIEWED_HEAD = '3dfac93c0775f0d6739e9d696033307250a81093'
+MCP_PRECONDITIONS_REVIEWED_FILES = {
+    'cmd/baha/mcp_preconditions_test.go': 'added',
+}
+
+EVIDENCE_RETENTION_REVIEWED_HEAD = '2e3325e142995aedd3d69a2e5569452127cbc58f'
+EVIDENCE_RETENTION_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    '.github/workflows/podman-acceptance.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
+SQL_RUNTIME_LAYOUT_REVIEWED_HEAD = '887eece62ffdfe2ba694ceb1f332dc5a74ce7872'
+SQL_RUNTIME_LAYOUT_REVIEWED_FILES = {
+    'internal/application/backend_probe_test.go': 'modified',
+    'internal/application/runtime_environment.go': 'added',
+    'internal/application/runtime_postgres.go': 'modified',
+}
+
 CORE_982_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_actions_summary.py': 'added',
@@ -431,6 +473,17 @@ def plan(diff, requirements, mapping):
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
+        (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed scoped-reset source'),
+        (PODMAN_CONSENT_REVIEWED_HEAD, PODMAN_CONSENT_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed operations-bound consent source'),
+        (MCP_PRECONDITIONS_REVIEWED_HEAD, MCP_PRECONDITIONS_REVIEWED_FILES,
+         WIZARD_BASE_CHECKS + [wizard_check(CORE_754_TEST_CHECK)],
+         'reviewed MCP precondition tests'),
+        (SQL_RUNTIME_LAYOUT_REVIEWED_HEAD, SQL_RUNTIME_LAYOUT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS, 'reviewed SQL runtime layout source'),
         (CORE_751_REVIEWED_HEAD, INSPECT_IMPORT_CANDIDATE_FILES,
          INSPECT_CHECKS, 'core-751 reviewed import evidence'),
         (CORE_991_REVIEWED_HEAD, CORE_991_REVIEWED_FILES,
@@ -439,6 +492,9 @@ def plan(diff, requirements, mapping):
         (CORE_982_REVIEWED_HEAD, CORE_982_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed core-894 Actions summary presentation'),
+        (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed exact #999 GC evidence retention candidate'),
     ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and

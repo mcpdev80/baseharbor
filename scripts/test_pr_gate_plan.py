@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
 from pathlib import Path
@@ -927,7 +928,9 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
     def test_clean_develop_merge_keeps_execution_unresolved(self):
         candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
         candidate['head_sha'] = 'e' * 40
-        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+        with patch.object(planner, 'core752_reviewed_merge_chain',
+                          side_effect=lambda base, head, reviewed=None:
+                              reviewed == planner.CORE_754_TEST_HEAD) as proof:
             result = planner.plan(candidate, REQ, MAP)
         self.assertIn(((candidate['target_base_sha'], candidate['head_sha'],
                         planner.CORE_754_TEST_HEAD), {}),
@@ -955,11 +958,23 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(resolver_spec)
         resolver_spec.loader.exec_module(resolver)
         for reviewed_name, files, expected_checks in (
+            ('EVIDENCE_RETENTION_REVIEWED_HEAD', planner.EVIDENCE_RETENTION_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES,
+             {c['id'] for c in planner.WIZARD_BASE_CHECKS} | {planner.CORE_754_TEST_CHECK}),
+            ('SQL_RUNTIME_LAYOUT_REVIEWED_HEAD', planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES,
+             {c['id'] for c in planner.CODE_CHECKS + planner.CLI_CHECKS}),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES,
              planner.INSPECT_IMPORT_REQUIRED_IDS),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('GC_999_REVIEWED_HEAD', planner.GC_999_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
         ):
             with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
@@ -1046,6 +1061,11 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
 
     def test_missing_extra_rename_delete_changed_status_and_unverified_inputs_block(self):
         for sha_name, files in (
+            ('EVIDENCE_RETENTION_REVIEWED_HEAD', planner.EVIDENCE_RETENTION_REVIEWED_FILES),
+            ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES),
+            ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES),
+            ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES),
+            ('SQL_RUNTIME_LAYOUT_REVIEWED_HEAD', planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES),
@@ -1073,6 +1093,165 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     candidate[missing] = None
                     self.assertEqual('unresolved',
                                      planner.plan(candidate, REQ, MAP)['coverage_status'])
+
+
+    def test_runtime_sql_layout_binds_reviewed_source_and_existing_hosted_checks(self):
+        self.assertEqual('887eece62ffdfe2ba694ceb1f332dc5a74ce7872',
+                         planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD)
+        self.assertEqual({
+            'internal/application/backend_probe_test.go': 'modified',
+            'internal/application/runtime_environment.go': 'added',
+            'internal/application/runtime_postgres.go': 'modified',
+        }, planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES)
+        candidate = diff([{'path': path, 'status': status}
+                          for path, status in planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES.items()])
+        candidate['head_sha'] = planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+            result = planner.plan(candidate, REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        proof.assert_called_once_with(candidate['target_base_sha'], candidate['head_sha'],
+                                      planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD)
+        self.assertEqual({'source-contracts', 'cli-guided-tests', 'cli-vet', 'cli-build'},
+                         {c['id'] for c in result['required_validation_checks']})
+        self.assertEqual([], result['selected_gates'])
+
+
+class CopiedTrustedTreeReviewTests(unittest.TestCase):
+    def test_conflict_resolution_needs_fresh_review_then_clean_merges_work(self):
+        resolver_spec = importlib.util.spec_from_file_location(
+            'copied_tree_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                                        text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Review fixture')
+            git('config', 'user.email', 'review@example.test')
+            tracked = root / 'tracked.txt'
+            tracked.write_text('baseline\n')
+            git('add', '.')
+            git('commit', '-qm', 'common base')
+            base = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'trusted')
+            tracked.write_text('trusted first\n')
+            git('commit', '-qam', 'trusted advance')
+            tracked.write_text('trusted second\n')
+            git('commit', '-qam', 'trusted advances again')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'source', base)
+            tracked.write_text('trusted first\n')
+            candidate = root / planner.CORE_754_TEST_PATH
+            candidate.parent.mkdir(parents=True)
+            candidate.write_text('reviewed test source\n')
+            git('add', '.')
+            git('commit', '-qm', 'copy trusted tree without ancestry')
+            reviewed = git('rev-parse', 'HEAD')
+            conflict = subprocess.run(
+                ['git', '-C', str(root), 'merge-tree', '--write-tree', reviewed, target],
+                text=True, capture_output=True)
+            self.assertEqual(1, conflict.returncode)
+            tracked.write_text('trusted second\n')
+            git('add', '.')
+            resolved = git('commit-tree', git('write-tree'), '-p', reviewed,
+                           '-p', target, '-m', 'explicit conflict resolution')
+            self.assertFalse(planner.core752_reviewed_merge_chain(
+                target, resolved, reviewed, root))
+            integration = git('commit-tree', git('rev-parse', resolved + '^{tree}'),
+                              '-p', target, '-p', resolved, '-m', 'PR integration')
+            actual = resolver.resolve_pr_diff(root, target, resolved, integration)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            self.assertEqual({planner.CORE_754_TEST_PATH: 'added'},
+                             {c['path']: c['status'] for c in actual['changes']})
+            proof = planner.core752_reviewed_merge_chain
+            for anchor, expected in ((reviewed, 'unresolved'), (resolved, 'resolved')):
+                with patch.object(planner, 'MCP_PRECONDITIONS_REVIEWED_HEAD', anchor), patch.object(
+                    planner, 'core752_reviewed_merge_chain',
+                    side_effect=lambda base, head, source=None: proof(base, head, source, root)):
+                    self.assertEqual(expected, planner.plan(actual, REQ, MAP)['coverage_status'])
+            git('checkout', '-q', 'trusted')
+            (root / 'new-trusted.txt').write_text('independent target advance\n')
+            git('add', '.')
+            git('commit', '-qm', 'later target')
+            later = git('rev-parse', 'HEAD')
+            git('checkout', '-qB', 'source', resolved)
+            git('merge', '--no-ff', '-qm', 'clean target integration after fresh review', 'trusted')
+            self.assertTrue(proof(later, git('rev-parse', 'HEAD'), resolved, root))
+
+class ReviewedUtilityExecutionTests(unittest.TestCase):
+    def run_candidate_suite(self, filename, expected):
+        path = ROOT / filename
+        if not path.exists():
+            self.skipTest('suite belongs only to its exact reviewed candidate')
+        script = r"""
+import importlib.util
+from pathlib import Path
+import sys
+import unittest
+path = Path(sys.argv[1])
+expected = set(sys.argv[2:])
+spec = importlib.util.spec_from_file_location('reviewed_utility_tests', path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+def flatten(node):
+    for item in node:
+        if isinstance(item, unittest.TestSuite):
+            yield from flatten(item)
+        else:
+            yield item
+actual = {case._testMethodName for case in flatten(suite)}
+if actual != expected:
+    raise SystemExit('missing or changed required utility test family: ' + repr(actual))
+result = unittest.TextTestRunner(verbosity=2).run(suite)
+if (not result.wasSuccessful() or result.skipped or
+        result.testsRun != len(expected)):
+    raise SystemExit('missing, skipped or failed reviewed utility regression')
+"""
+        result = subprocess.run([sys.executable, '-c', script, str(path), *sorted(expected)],
+                                text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=120)
+        print(result.stdout, end='')
+        self.assertEqual(0, result.returncode, result.stdout)
+
+    def test_reviewed_scoped_reset_runs_all_five_sandbox_regressions(self):
+        self.run_candidate_suite('test_ci_runtime_reset_scope.py', {
+            'test_scoped_shared_state_preserved_resources_filtered',
+            'test_unknown_scope_preserves_all_state_and_resources',
+            'test_scoped_podman_quadlet_only_selected_and_retains_xdg',
+            'test_even_isolated_scoped_root_has_no_implicit_delete_authority',
+            'test_unscoped_dedicated_runner_full_reset_unchanged',
+        })
+
+    def test_reviewed_consent_runs_all_eight_actual_shell_regressions(self):
+        self.run_candidate_suite('test_ci_podman_typed_consent.py', {
+            'test_fresh_two_stage_consent_preserves_incomplete_inventory',
+            'test_single_stage_only_if_required_by_plan',
+            'test_operation_sources_bind_to_their_own_plan_shape',
+            'test_missing_invalid_or_destructive_impact_blocks',
+            'test_scope_output_parser_accepts_only_one_emitted_plan',
+            'test_helper_runs_from_application_workdir_using_checkout_root',
+            'test_actual_lifecycle_shell_fragment_uses_fresh_consent_per_operation',
+            'test_workflow_uses_fresh_operation_bound_consent_for_full_lifecycle',
+        })
+
+    def test_reviewed_retention_runs_all_seven_gc_regressions(self):
+        path = ROOT / 'test_artifact_gc.py'
+        if not path.exists() or 'def test_pr_provenance_and_native_evidence_keep_review_window(' not in path.read_text():
+            self.skipTest('retention suite belongs only to its exact reviewed candidate')
+        self.run_candidate_suite('test_artifact_gc.py', {
+            'test_qualification_outcomes_and_branches_survive_gc',
+            'test_artifact_gc_retains_active_refs_and_deletes_inactive',
+            'test_pr_evidence_artifacts_are_not_ephemeral',
+            'test_gc_discovery_failure_never_deletes',
+            'test_candidate_sha_and_second_page_fail_closed',
+            'test_pr_event_is_read_only_and_never_enters_cleanup',
+            'test_pr_provenance_and_native_evidence_keep_review_window',
+        })
 
 if __name__ == '__main__':
     unittest.main()
