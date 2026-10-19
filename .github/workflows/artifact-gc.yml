@@ -68,9 +68,10 @@ jobs:
           prefixes = (
               "targeted-",
               "demo-",
-              "ci-evidence-",
-              "docker-runtime-evidence-",
-              "podman-evidence-",
+              # PR/runtime evidence can be referenced by trusted v0.4.26
+              # verification after the originating task or branch closes.
+              # Never aggressively GC these artifacts; the source workflow
+              # retention policy remains their upper bound.
               "pre-release-source-candidate",
               "pre-release-runtime-candidate",
           )
@@ -213,6 +214,12 @@ jobs:
           branch_cutoff = now - timedelta(hours=2)
 
           preserved_workflows = {
+              # PR CI run IDs are original verification origins, including for
+              # independently checked and later reused v0.4.26 evidence.
+              # Protect them even after PR merge/branch cleanup.
+              ".github/workflows/ci.yml",
+              ".github/workflows/docker-runtime-acceptance.yml",
+              ".github/workflows/podman-acceptance.yml",
               ".github/workflows/pre-release.yml",
               ".github/workflows/release.yml",
               # Atomic runs can be nominated as immutable release proof origins.

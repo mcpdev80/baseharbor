@@ -328,4 +328,4 @@ jobs:
           name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/podman-evidence
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
