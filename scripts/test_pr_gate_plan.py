@@ -1092,6 +1092,73 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                                      planner.plan(candidate, REQ, MAP)['coverage_status'])
 
 
+
+class CopiedTrustedTreeReviewTests(unittest.TestCase):
+    def test_conflict_resolution_needs_fresh_review_then_clean_merges_work(self):
+        resolver_spec = importlib.util.spec_from_file_location(
+            'copied_tree_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                                        text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Review fixture')
+            git('config', 'user.email', 'review@example.test')
+            tracked = root / 'tracked.txt'
+            tracked.write_text('baseline\n')
+            git('add', '.')
+            git('commit', '-qm', 'common base')
+            base = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'trusted')
+            tracked.write_text('trusted first\n')
+            git('commit', '-qam', 'trusted advance')
+            tracked.write_text('trusted second\n')
+            git('commit', '-qam', 'trusted advances again')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'source', base)
+            tracked.write_text('trusted first\n')
+            candidate = root / planner.CORE_754_TEST_PATH
+            candidate.parent.mkdir(parents=True)
+            candidate.write_text('reviewed test source\n')
+            git('add', '.')
+            git('commit', '-qm', 'copy trusted tree without ancestry')
+            reviewed = git('rev-parse', 'HEAD')
+            conflict = subprocess.run(
+                ['git', '-C', str(root), 'merge-tree', '--write-tree', reviewed, target],
+                text=True, capture_output=True)
+            self.assertEqual(1, conflict.returncode)
+            tracked.write_text('trusted second\n')
+            git('add', '.')
+            resolved = git('commit-tree', git('write-tree'), '-p', reviewed,
+                           '-p', target, '-m', 'explicit conflict resolution')
+            self.assertFalse(planner.core752_reviewed_merge_chain(
+                target, resolved, reviewed, root))
+            integration = git('commit-tree', git('rev-parse', resolved + '^{tree}'),
+                              '-p', target, '-p', resolved, '-m', 'PR integration')
+            actual = resolver.resolve_pr_diff(root, target, resolved, integration)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            self.assertEqual({planner.CORE_754_TEST_PATH: 'added'},
+                             {c['path']: c['status'] for c in actual['changes']})
+            proof = planner.core752_reviewed_merge_chain
+            for anchor, expected in ((reviewed, 'unresolved'), (resolved, 'resolved')):
+                with patch.object(planner, 'MCP_PRECONDITIONS_REVIEWED_HEAD', anchor), patch.object(
+                    planner, 'core752_reviewed_merge_chain',
+                    side_effect=lambda base, head, source=None: proof(base, head, source, root)):
+                    self.assertEqual(expected, planner.plan(actual, REQ, MAP)['coverage_status'])
+            git('checkout', '-q', 'trusted')
+            (root / 'new-trusted.txt').write_text('independent target advance\n')
+            git('add', '.')
+            git('commit', '-qm', 'later target')
+            later = git('rev-parse', 'HEAD')
+            git('checkout', '-qB', 'source', resolved)
+            git('merge', '--no-ff', '-qm', 'clean target integration after fresh review', 'trusted')
+            self.assertTrue(proof(later, git('rev-parse', 'HEAD'), resolved, root))
+
 class ReviewedUtilityExecutionTests(unittest.TestCase):
     def run_candidate_suite(self, filename, expected):
         path = ROOT / filename
