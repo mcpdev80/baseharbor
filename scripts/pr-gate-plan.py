@@ -672,10 +672,20 @@ def plan(diff, requirements, mapping):
                 for ch in diff['changes']) and
             core752_reviewed_merge_chain(identifiers['target_base_sha'],
                                          identifiers['head_sha'], CORE_921_PRODUCTION_REVIEWED_HEAD)):
+        # Require the affected coverage explicitly so the new families actually
+        # execute: the shared registration CI matrix, the machine-adapter and
+        # provider-choice regression families, the core-921 TestCore921
+        # regressions, plus the cmd/baha formatting gate. cli-guided-tests only
+        # runs ^TestGuided and the existing registration runner does not select
+        # ^TestCore921, so these are required as named lanes.
         require(CI_CHECKS)
         require(CODE_CHECKS)
         require(CLI_CHECKS)
         require(DOC_CHECKS)
+        require([wizard_check('wizard-registration-tests'),
+                 wizard_check('wizard-machine-adapter-tests'),
+                 wizard_check('wizard-provider-choice-tests'),
+                 wizard_check('wizard-core921-tests')])
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
                 'mapping_schema': mapping['schema'], 'release': release,
                 'coverage_status': 'resolved', 'unresolved_coverage': [],
