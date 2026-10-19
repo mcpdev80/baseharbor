@@ -966,6 +966,8 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES,
              {c['id'] for c in planner.WIZARD_BASE_CHECKS} | {planner.CORE_754_TEST_CHECK}),
+            ('SQL_RUNTIME_LAYOUT_REVIEWED_HEAD', planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES,
+             {c['id'] for c in planner.CODE_CHECKS + planner.CLI_CHECKS}),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES,
              planner.INSPECT_IMPORT_REQUIRED_IDS),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES,
@@ -1063,6 +1065,7 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
             ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES),
             ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES),
             ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES),
+            ('SQL_RUNTIME_LAYOUT_REVIEWED_HEAD', planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES),
@@ -1091,6 +1094,26 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     self.assertEqual('unresolved',
                                      planner.plan(candidate, REQ, MAP)['coverage_status'])
 
+
+    def test_runtime_sql_layout_binds_reviewed_source_and_existing_hosted_checks(self):
+        self.assertEqual('887eece62ffdfe2ba694ceb1f332dc5a74ce7872',
+                         planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD)
+        self.assertEqual({
+            'internal/application/backend_probe_test.go': 'modified',
+            'internal/application/runtime_environment.go': 'added',
+            'internal/application/runtime_postgres.go': 'modified',
+        }, planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES)
+        candidate = diff([{'path': path, 'status': status}
+                          for path, status in planner.SQL_RUNTIME_LAYOUT_REVIEWED_FILES.items()])
+        candidate['head_sha'] = planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+            result = planner.plan(candidate, REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        proof.assert_called_once_with(candidate['target_base_sha'], candidate['head_sha'],
+                                      planner.SQL_RUNTIME_LAYOUT_REVIEWED_HEAD)
+        self.assertEqual({'source-contracts', 'cli-guided-tests', 'cli-vet', 'cli-build'},
+                         {c['id'] for c in result['required_validation_checks']})
+        self.assertEqual([], result['selected_gates'])
 
 
 class CopiedTrustedTreeReviewTests(unittest.TestCase):
