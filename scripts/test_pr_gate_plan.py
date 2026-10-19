@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
 from pathlib import Path
@@ -927,7 +928,9 @@ class Core754ExecutionWithoutQualificationTests(unittest.TestCase):
     def test_clean_develop_merge_keeps_execution_unresolved(self):
         candidate = diff([{'status': 'added', 'path': planner.CORE_754_TEST_PATH}])
         candidate['head_sha'] = 'e' * 40
-        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True) as proof:
+        with patch.object(planner, 'core752_reviewed_merge_chain',
+                          side_effect=lambda base, head, reviewed=None:
+                              reviewed == planner.CORE_754_TEST_HEAD) as proof:
             result = planner.plan(candidate, REQ, MAP)
         self.assertIn(((candidate['target_base_sha'], candidate['head_sha'],
                         planner.CORE_754_TEST_HEAD), {}),
@@ -955,6 +958,12 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(resolver_spec)
         resolver_spec.loader.exec_module(resolver)
         for reviewed_name, files, expected_checks in (
+            ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES,
+             {c['id'] for c in planner.WIZARD_BASE_CHECKS} | {planner.CORE_754_TEST_CHECK}),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES,
              planner.INSPECT_IMPORT_REQUIRED_IDS),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES,
@@ -1048,6 +1057,9 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
 
     def test_missing_extra_rename_delete_changed_status_and_unverified_inputs_block(self):
         for sha_name, files in (
+            ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES),
+            ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES),
+            ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES),
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES),
@@ -1075,6 +1087,64 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     candidate[missing] = None
                     self.assertEqual('unresolved',
                                      planner.plan(candidate, REQ, MAP)['coverage_status'])
+
+
+class ReviewedUtilityExecutionTests(unittest.TestCase):
+    def run_candidate_suite(self, filename, expected):
+        path = ROOT / filename
+        if not path.exists():
+            self.skipTest('suite belongs only to its exact reviewed candidate')
+        script = r"""
+import importlib.util
+from pathlib import Path
+import sys
+import unittest
+path = Path(sys.argv[1])
+expected = set(sys.argv[2:])
+spec = importlib.util.spec_from_file_location('reviewed_utility_tests', path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+def flatten(node):
+    for item in node:
+        if isinstance(item, unittest.TestSuite):
+            yield from flatten(item)
+        else:
+            yield item
+actual = {case._testMethodName for case in flatten(suite)}
+if actual != expected:
+    raise SystemExit('missing or changed required utility test family: ' + repr(actual))
+result = unittest.TextTestRunner(verbosity=2).run(suite)
+if (not result.wasSuccessful() or result.skipped or
+        result.testsRun != len(expected)):
+    raise SystemExit('missing, skipped or failed reviewed utility regression')
+"""
+        result = subprocess.run([sys.executable, '-c', script, str(path), *sorted(expected)],
+                                text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=120)
+        print(result.stdout, end='')
+        self.assertEqual(0, result.returncode, result.stdout)
+
+    def test_reviewed_scoped_reset_runs_all_five_sandbox_regressions(self):
+        self.run_candidate_suite('test_ci_runtime_reset_scope.py', {
+            'test_scoped_shared_state_preserved_resources_filtered',
+            'test_unknown_scope_preserves_all_state_and_resources',
+            'test_scoped_podman_quadlet_only_selected_and_retains_xdg',
+            'test_even_isolated_scoped_root_has_no_implicit_delete_authority',
+            'test_unscoped_dedicated_runner_full_reset_unchanged',
+        })
+
+    def test_reviewed_consent_runs_all_eight_actual_shell_regressions(self):
+        self.run_candidate_suite('test_ci_podman_typed_consent.py', {
+            'test_fresh_two_stage_consent_preserves_incomplete_inventory',
+            'test_single_stage_only_if_required_by_plan',
+            'test_operation_sources_bind_to_their_own_plan_shape',
+            'test_missing_invalid_or_destructive_impact_blocks',
+            'test_scope_output_parser_accepts_only_one_emitted_plan',
+            'test_helper_runs_from_application_workdir_using_checkout_root',
+            'test_actual_lifecycle_shell_fragment_uses_fresh_consent_per_operation',
+            'test_workflow_uses_fresh_operation_bound_consent_for_full_lifecycle',
+        })
 
 if __name__ == '__main__':
     unittest.main()
