@@ -39,6 +39,13 @@ class ArtifactGC(unittest.TestCase):
         runs.append(dict(id=5, path='.github/workflows/ci.yml',
                          head_branch='merged/old-pr', status='completed',
                          conclusion='success', updated_at='2020-01-01T00:00:00Z'))
+        for identifier, workflow in (
+                (6, '.github/workflows/docker-runtime-acceptance.yml'),
+                (7, '.github/workflows/podman-acceptance.yml')):
+            runs.append(dict(id=identifier, path=workflow,
+                             head_branch='merged/retired-native-proof',
+                             status='completed', conclusion='failure',
+                             updated_at='2020-01-01T00:00:00Z'))
         deleted = []
 
         def request(req):
@@ -251,6 +258,29 @@ class ArtifactGC(unittest.TestCase):
             self.assertIn('github.event.schedule', job['if'])
             self.assertEqual(job['permissions']['actions'], 'write')
             self.assertNotIn('secrets', str(job))
+
+
+    def test_pr_provenance_and_native_evidence_keep_review_window(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        expected = {
+            '.github/workflows/ci.yml': (
+                'trusted-pr-plan', 'pr-consumer-pins', 'verified-pr-demo-pin',
+                'pr-exact-candidate-', 'ci-evidence-'),
+            '.github/workflows/docker-runtime-acceptance.yml': (
+                'docker-runtime-evidence-',),
+            '.github/workflows/podman-acceptance.yml': ('podman-evidence-',),
+        }
+        for workflow_path, names in expected.items():
+            workflow = yaml.safe_load((root / workflow_path).read_text())
+            uploads = [step for job in workflow['jobs'].values()
+                       for step in job.get('steps', [])
+                       if step.get('uses', '').startswith('actions/upload-artifact@')]
+            for prefix in names:
+                with self.subTest(workflow=workflow_path, artifact=prefix):
+                    matches = [step['with'] for step in uploads
+                               if step.get('with', {}).get('name', '').startswith(prefix)]
+                    self.assertEqual(1, len(matches), 'proof upload missing or duplicated')
+                    self.assertGreaterEqual(matches[0].get('retention-days', 0), 30)
 
 if __name__ == '__main__':
     unittest.main()

@@ -218,6 +218,8 @@ jobs:
               # independently checked and later reused v0.4.26 evidence.
               # Protect them even after PR merge/branch cleanup.
               ".github/workflows/ci.yml",
+              ".github/workflows/docker-runtime-acceptance.yml",
+              ".github/workflows/podman-acceptance.yml",
               ".github/workflows/pre-release.yml",
               ".github/workflows/release.yml",
               # Atomic runs can be nominated as immutable release proof origins.
