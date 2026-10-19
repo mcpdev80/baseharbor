@@ -225,6 +225,13 @@ EVIDENCE_RETENTION_REVIEWED_FILES = {
     'scripts/test_artifact_gc.py': 'modified',
 }
 
+SQL_RUNTIME_LAYOUT_REVIEWED_HEAD = '887eece62ffdfe2ba694ceb1f332dc5a74ce7872'
+SQL_RUNTIME_LAYOUT_REVIEWED_FILES = {
+    'internal/application/backend_probe_test.go': 'modified',
+    'internal/application/runtime_environment.go': 'added',
+    'internal/application/runtime_postgres.go': 'modified',
+}
+
 CORE_982_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_actions_summary.py': 'added',
@@ -475,6 +482,8 @@ def plan(diff, requirements, mapping):
         (MCP_PRECONDITIONS_REVIEWED_HEAD, MCP_PRECONDITIONS_REVIEWED_FILES,
          WIZARD_BASE_CHECKS + [wizard_check(CORE_754_TEST_CHECK)],
          'reviewed MCP precondition tests'),
+        (SQL_RUNTIME_LAYOUT_REVIEWED_HEAD, SQL_RUNTIME_LAYOUT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS, 'reviewed SQL runtime layout source'),
         (CORE_751_REVIEWED_HEAD, INSPECT_IMPORT_CANDIDATE_FILES,
          INSPECT_CHECKS, 'core-751 reviewed import evidence'),
         (CORE_991_REVIEWED_HEAD, CORE_991_REVIEWED_FILES,
